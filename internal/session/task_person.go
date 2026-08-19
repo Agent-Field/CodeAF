@@ -34,17 +34,30 @@ type taskJudgeVerdict struct {
 
 // StartTask starts one person-authored task without routing it through the chat
 // model or presenting the model's proposal card.
-func (a *Agent) StartTask(_ context.Context, brief string) (uint64, string, error) {
+//
+// THE BRIEF IS SHAPED BEFORE IT IS ADMITTED (task_shape.go), and the shaped text
+// is what the node, the room, the roster and the journal all carry — there is no
+// second, secret version of the work anywhere. What is NOT shaped is the title
+// and the summary: those are drawn from the person's own words, so the row on the
+// rail reads as the thing they typed and not as a document a model wrote about
+// it. A shaper that could not run leaves the brief exactly as they typed it.
+func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
 		return 0, "", errors.New("a task needs a brief")
 	}
 	title := taskPersonTitle(brief)
+	work, acceptance := a.shapeBrief(ctx, brief)
 	graph := a.graph()
 	id := graph.reserve()
+	// THE REQUEST STAYS THE PERSON'S SENTENCE whatever the shaper wrote, and
+	// [composeBrief] prints it above the work under the heading that says whose
+	// words they are, with the rule that theirs win where the two read
+	// differently (task_brief.go). Where nothing shaped it the two halves are
+	// identical and that same function prints them once.
 	graph.admit(id, taskSpec{
-		title: title, summary: firstLine(brief), brief: brief,
-		acceptance: "Complete the brief and report the result and checks run.",
+		title: title, summary: firstLine(brief), request: brief, brief: work,
+		acceptance: acceptance,
 	})
 	return id, title, nil
 }
@@ -58,7 +71,27 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) 
 		return "", "", errors.New("an adaptive task needs a brief")
 	}
 	title := taskPersonTitle(brief)
-	goal := brief
+	// THE PERSON TYPED THIS, so it is what the run's planner and every one of its
+	// nodes will be shown as the request (task_brief.go). Without this line the
+	// run would carry whatever was last said in the CHAT, which on this path is
+	// some other conversation entirely — the brief came in through a command. It
+	// is recorded BEFORE the shaping call and from the raw sentence, because the
+	// request is the one thing on this path no model is allowed to have written.
+	a.rememberAsk(brief)
+	// The adaptive shape is shaped too — "this is true for all tasks". A run's
+	// nodes are workers with the same silence around them as a single task's, and
+	// a planner cutting up one unshaped sentence cuts up the same ambiguity into
+	// several pieces.
+	goal, acceptance := a.shapeBrief(ctx, brief)
+	// A RUN HAS NO ACCEPTANCE FIELD — it is a goal, a planner and a fleet
+	// (orchestrate.go) — so a shaped done-condition would be thrown away unless
+	// it rides in the goal. It goes under [briefDoneHeading], the same word every
+	// node brief already spells it with, and only when shaping actually happened:
+	// where it did not, the goal is the person's sentence and nothing else, which
+	// is what this path did before.
+	if acceptance != taskPersonAcceptance && strings.TrimSpace(acceptance) != "" {
+		goal += "\n\n" + briefDoneHeading + "\n" + acceptance
+	}
 	if plannerHint = strings.TrimSpace(plannerHint); plannerHint != "" {
 		goal += "\n\nPossible parallel parts: " + plannerHint
 	}

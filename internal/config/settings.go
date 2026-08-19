@@ -185,6 +185,17 @@ const (
 	// and it is a CHOICE rather than a bool because "less" and "none" are two
 	// different answers a reader gives for two different reasons.
 	KeyTimestamps = "ui.timestamps"
+
+	// KeyTaskColumn is whether the v3 chat opens with the task roster's column
+	// standing beside the conversation. It is a BOOLEAN where the v2 sidebar
+	// ([KeyRailState]) is a choice, because the v3 column has no middle rung: its
+	// two narrower tiers are decided by the frame's own width, and the one answer
+	// a person gives it by hand is whether the column is there at all.
+	//
+	// It is a separate row from the v2 sidebar and must stay one. They are two
+	// surfaces with two shapes, and a person who put v3's column away has said
+	// nothing whatever about v2's three rungs.
+	KeyTaskColumn = "ui.task_column"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
@@ -192,6 +203,21 @@ const (
 	// beside the guardian because both spend a model on the person's behalf:
 	// the guardian to answer, the auditor to check.
 	KeyTaskAudit = "task.audit"
+	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
+	// or a planner cutting the work into pieces that run at once (internal/tui3's
+	// taskcommand.go). Shipped, it asks — a small sizing call reads the brief and,
+	// where it finds independent parts, a two-row chooser opens.
+	//
+	// It is a row because the question is not really about one task. Somebody who
+	// works in pieces wants the pieces every time and is answering the same
+	// chooser every time; somebody who does not want a planner at all is
+	// dismissing it every time. Both are a preference stated once, and the row is
+	// where you state it.
+	//
+	// The two silent answers also decide what is SPENT: `single` skips the sizing
+	// call outright, because that call exists only to raise the chooser and
+	// running it to ignore the answer is a model paid to be overruled.
+	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router
 	// that decides which remembered lines a turn needs, the post-turn pass that
@@ -398,6 +424,31 @@ var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
 
 // DefaultTaskAudit is on.
 const DefaultTaskAudit = TaskAuditOn
+
+// The three answers to [KeyTaskStart], and they are not three settings but one
+// question asked once instead of on every `/task`: who decides the shape.
+//
+//	ask        you do, when there is something to decide. The sizing call runs,
+//	           and only a brief with independent parts in it raises the chooser.
+//	adaptive   aforge does, toward the planner: parts found, it runs adaptive
+//	           without asking; none found, it starts one worker, because a planner
+//	           over work that cannot be split is a whole extra model deciding
+//	           nothing. A single worker can still split its own brief when it
+//	           finds independent parts in it, so nothing is closed off.
+//	single     aforge does, toward one worker, and the sizing call is not made
+//	           at all.
+const (
+	TaskStartAsk      = "ask"
+	TaskStartAdaptive = "adaptive"
+	TaskStartSingle   = "single"
+)
+
+// TaskStartModes lists them, the default first.
+var TaskStartModes = []string{TaskStartAsk, TaskStartAdaptive, TaskStartSingle}
+
+// DefaultTaskStart is ask: the shipped behaviour, and the only one of the three
+// that never decides something the person might have wanted the other way.
+const DefaultTaskStart = TaskStartAsk
 
 // The timestamps row's three answers, and they are a LADDER rather than three
 // unrelated pictures: each rung draws strictly less of the clock than the one
@@ -757,6 +808,14 @@ const (
 	// open it again on their behalf — the handle's dot is the only attention
 	// ask this surface has left.
 	DefaultRailState = RailOpen
+
+	// DefaultTaskColumn stands the v3 task column up on a session that has never
+	// been told otherwise, for [DefaultRailState]'s reason said about a different
+	// surface: the column is how a person finds out that this chat runs work you
+	// can walk away from. Once they put it away we never stand it up again on
+	// their behalf — the strip is what keeps running work reachable from a frame
+	// with no column on it (internal/tui3's taskstrip.go).
+	DefaultTaskColumn = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -1229,6 +1288,22 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return WorkAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyWork, raw, WorkModes) },
 		},
+		// Before the audit row, because it comes first in the life of a task: this
+		// says what STARTS when you type /task, the audit row says what has to be
+		// true before what started is allowed to land.
+		Setting{
+			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
+			Label: "starting a task", Choices: TaskStartModes,
+			Hint: "what /task <brief> does before it starts. ask reads the brief first and " +
+				"offers you adaptive or single whenever it finds parts that could run at the " +
+				"same time; that offer is the default. adaptive takes it without asking and " +
+				"starts one worker when there is nothing to split. single always starts one " +
+				"worker and skips the reading altogether. /task solo and /task adaptive still " +
+				"say so outright whatever this is set to, and a single worker can still split " +
+				"its own brief when it finds independent parts in it.",
+			read:  func() string { return TaskStartAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
+		},
 		Setting{
 			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
@@ -1533,6 +1608,17 @@ func (s *Settings) build() []Setting {
 				"ctrl+o walks the three; this is where the answer is remembered.",
 			read:  func() string { return RailStateAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
+		},
+		Setting{
+			Key: KeyTaskColumn, Category: CategoryInterface, Kind: SettingBool,
+			Label: "task column",
+			Hint: "whether the task roster stands in a column on the right of the chat: the " +
+				"work this session has run, newest first, foldable into the shape each run " +
+				"grew. ctrl+g puts it away and brings it back; this is where the answer is " +
+				"remembered. With no column, running work still shows as a row of chips above " +
+				"the conversation. A change here lands the next time aforge starts.",
+			read:  func() string { return formatBool(TaskColumnAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyTaskColumn, raw) },
 		},
 		Setting{
 			Key: KeyHistoryEnabled, Category: CategoryInterface, Kind: SettingBool,
@@ -2007,6 +2093,28 @@ func SaveRailState(profileDir, state string) error {
 	return writeChoice(profileDir, KeyRailState, state, RailStates)
 }
 
+// TaskColumnAt resolves whether the v3 chat stands its task column up, default
+// on. A row that will not parse reads as the default rather than as off, for
+// [TimestampsAt]'s reason: a garbled row must not quietly take the session's
+// record of its own work off the screen.
+func TaskColumnAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyTaskColumn); ok {
+		return value
+	}
+	return DefaultTaskColumn
+}
+
+// SaveTaskColumn records what the person did to the column with their hands.
+//
+// It is EXPORTED for [SaveRailState]'s reason, and it is the v3 half of the same
+// bargain: this is the one interface row whose value is normally chosen by a
+// keystroke rather than by visiting the sheet, so the key needs a door to disk
+// that goes through the same writer the row's own does. Two doors, one
+// validation.
+func SaveTaskColumn(profileDir string, open bool) error {
+	return writeBool(profileDir, KeyTaskColumn, formatBool(open))
+}
+
 func knownRailState(state string) bool {
 	for _, known := range RailStates {
 		if known == state {
@@ -2375,6 +2483,22 @@ func TaskAuditAt(profileDir string) string {
 // TaskAuditEnabledAt is [TaskAuditAt] as the bool the session's Config takes.
 func TaskAuditEnabledAt(profileDir string) bool {
 	return TaskAuditAt(profileDir) == TaskAuditOn
+}
+
+// TaskStartAt resolves [KeyTaskStart]: the persisted row, else the default. A
+// value this build does not recognise reads as the default rather than as an
+// error, because the row decides what a command does and a typo in a config file
+// must not be a command that refuses.
+func TaskStartAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTaskStart); ok {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, mode := range TaskStartModes {
+			if mode == value {
+				return value
+			}
+		}
+	}
+	return DefaultTaskStart
 }
 
 // MemoryAt resolves the memory row to its word, default on.

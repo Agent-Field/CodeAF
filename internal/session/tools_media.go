@@ -218,6 +218,28 @@ func mediaTitle(prompt, path string) string {
 	return filepath.Base(path)
 }
 
+// picturePathInResult is the path the two PICTURE tools name, and it is
+// ABSOLUTE where [displayMediaPath] is relative.
+//
+// THE RESULT LINE IS THE FALLBACK WHEN NO PICTURE CAN BE DRAWN. A terminal that
+// reached the xterm cube gets the picture itself under the row (tui3's
+// imagepreview.go); one that did not — sixteen colours, an ascii terminal, a
+// screen reader — gets these words and nothing else, and then the only thing
+// that matters about them is whether the person can open the file. `book/cover.jpg`
+// is openable from one directory in the world and unopenable from every other,
+// and a person reading a conversation is very often not standing in that one.
+//
+// Nothing is given up by saying it whole. The relative form exists so the model's
+// read tool and the person's shell take the string verbatim, and both take an
+// absolute path verbatim too — it is the strictly wider answer, and it is only
+// longer.
+//
+// The other three making verbs keep [displayMediaPath]: a wav and an mp4 are
+// never drawn on this surface, so their line is not standing in for a picture.
+func picturePathInResult(path string) string {
+	return filepath.ToSlash(path)
+}
+
 // displayMediaPath is the path as the model should say it back: relative to the
 // workspace when it is inside it, so the read tool and the person's own shell
 // both accept the string verbatim.

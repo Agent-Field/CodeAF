@@ -860,9 +860,11 @@ func (t *Toolbox) optionalDefinitions() map[string]ai.ToolDefinition {
 				"model":           prop("string", mediaModelArgDescription),
 				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths to use as references"},
 			}, "prompt"),
-			define("generate_music", "Generate a music clip as an MP3 in the workspace media directory.", map[string]any{
-				"prompt": prop("string", "music prompt or lyrics"),
-				"format": prop("string", "optional output format; mp3 is currently supported"),
+			// No format and no duration: the composing endpoint takes neither,
+			// and the format argument that used to be here promised a choice
+			// the wire never offered (internal/provider/music.go).
+			define("generate_music", "Compose music into the workspace media directory. The prompt describes the music — genre, instruments, tempo, mood — not lyrics to sing and not text to read out; use speak for a voiceover. There is no length argument: the model writes a piece of its own choosing, around a minute, and the call costs the same however long it turns out.", map[string]any{
+				"prompt": prop("string", "a description of the music to compose"),
 				"model":  prop("string", mediaModelArgDescription),
 			}, "prompt"),
 			define("generate_video", "Generate a video into the workspace media directory. This call waits for the asynchronous provider job to finish, for up to ten minutes. The first two reference_paths become first/last frames; any remaining images are style references.", map[string]any{

@@ -113,11 +113,16 @@ const toolWindow = 3
 // turns are its own numbering, and [app.stamps] is keyed by the session's, so a
 // page that ran the clock would draw the conversation's receipts against a
 // node's turns and report figures nobody measured.
+//
+// showsWork says this page IS the work rather than a conversation about it, so
+// nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
+// Only a room sets it.
 type deck struct {
 	entries     []entry
 	unfolded    map[int]bool
 	workOpen    map[int]bool
 	clock       bool
+	showsWork   bool
 	runningTurn int
 }
 
@@ -210,7 +215,7 @@ func (a *app) layout(width int) []row {
 // four rules exist to prevent.
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
-	folds := deriveWorkfolds(es, d.runningTurn)
+	folds := a.deckFolds(d)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -482,7 +487,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			out = append(out, lead+a.pal.accent(line))
+			// AND A RECOGNIZED SLASH COMMAND KEEPS ITS CHIP AFTER IT IS SENT
+			// (slashchip.go). The box is where a person learns that this surface
+			// knows the word, and a message that dropped the mark on its way into
+			// the transcript would take the fact back the moment it mattered — a
+			// conversation scrolled back through is the only record of what was
+			// asked for. Every row of a wrapped message opens at a boundary: the
+			// wrap breaks on spaces, and a word too long to break on one is not a
+			// command either.
+			out = append(out, lead+paintCommands(line, a.pal, a.pal.accent, true))
 		}
 		return out
 
@@ -575,6 +588,86 @@ const stillWorking = 10 * time.Second
 // stillWorkingWord is the suffix.
 const stillWorkingWord = " · still working"
 
+// ── THE WAIT FOR THE FIRST BYTE ─────────────────────────────────────────────
+//
+//	···                                                    under four seconds
+//	··· waiting for kimi-k3 · 12s                          past them
+//	··· waiting for kimi-k3 · 47s · nothing has come back yet
+//
+// THE DEFECT THIS FIXES: [stillWorking] above is measured from [app.lastDelta],
+// which is the last thing the stream SAID — so it describes a turn that spoke
+// and then stopped. The state a person actually complains about is the other
+// one: a request went out and the provider has not yet produced a first byte,
+// for twenty seconds, for a minute. Nothing is streaming, no call is spinning,
+// and the pulse claims exactly as much at second one as at second fifty. From
+// where the person sits that is indistinguishable from a hung program.
+//
+// WHAT THE LINE IS ALLOWED TO CLAIM is bounded by what the surface can see, and
+// the surface cannot see the wire. It knows a request went out ([app.awaited]),
+// it knows the stream has said nothing since, and it knows which model the
+// conversation is pointed at. So it says exactly that and no more: not
+// "retrying", not "the network is slow", not "the model is thinking" — the
+// surface does not know any of those and two of them are frequently false.
+//
+// IT NEVER RUNS UNDER A CALL. A tool that is executing has its own spinner and
+// its own count-up (toolview.go), and [app.ellipsis] has already stood the
+// pulse down for it — a second clock on the same wait would be the surface
+// timing a `go test` and calling it a provider.
+const (
+	// waitingGrace is how long a request may be outstanding before the surface
+	// puts a clock on it. A FAST PROVIDER MUST NEVER SHOW ONE: a first token
+	// commonly lands in one or two seconds, and a figure that appears and
+	// vanishes on every ordinary turn is chrome that trains the eye to ignore
+	// it — so the grace sits above the ordinary case rather than at it.
+	waitingGrace = 4 * time.Second
+	// waitingLong is when the wait stops being ordinary. Past thirty seconds a
+	// person is no longer waiting, they are deciding whether to interrupt, and
+	// the honest thing to give them for that decision is the plain fact.
+	waitingLong = 30 * time.Second
+)
+
+const (
+	// waitForWord opens the line when the model is known, waitBareWord when it is
+	// not — the emptiness law: an unknown name renders as nothing rather than as
+	// an empty slot after "waiting for".
+	waitForWord  = " waiting for "
+	waitBareWord = " waiting"
+	// waitLongWord is the escalation, and it is a statement of fact rather
+	// than an alarm: the request is out, and the answer is that nothing has
+	// arrived. It deliberately does not say whose fault that is.
+	waitLongWord = " · nothing has come back yet"
+)
+
+// waitingWords is the dim tail on the pulse while a model request is
+// outstanding and the stream has said nothing at all against it, or "" when
+// there is nothing to say — no turn running, a call spinning, the stream
+// already speaking, or a wait still inside its grace.
+//
+// NOTHING NEW TICKS FOR IT. The frame clock already redraws while a turn runs —
+// it is what turns the pulse — so the count-up is a function of the time at
+// paint, in the spelling every other live clock on this surface uses
+// ([countUpWord], toolview.go), and costs the surface no wakeup of its own.
+func (a *app) waitingWords() string {
+	if a.state != stateWorking || a.awaited.IsZero() || a.running() {
+		return ""
+	}
+	waited := time.Since(a.awaited)
+	if waited < waitingGrace {
+		return ""
+	}
+	word := waitBareWord
+	if name := modelBase(a.model); name != "" {
+		word = waitForWord + name
+	}
+	if clock := countUpWord(waited); clock != "" {
+		word += " · " + clock
+	}
+	if waited >= waitingLong {
+		word += waitLongWord
+	}
+	return word
+}
+
 // pulse is the ellipsis frame — or the still one, in the linear tier, where an
 // animation is a word repeated forever.
 func (a *app) pulse() string {
@@ -596,6 +689,13 @@ func (a *app) ellipsis() (string, bool) {
 		return "", false
 	}
 	line := a.pal.accent("  " + a.pulse())
+	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
+	// line. They are two ways of saying the same thing — nothing is arriving —
+	// and the wait is the more specific of them: it names what is being waited
+	// on and how long for, where "still working" only says that something is.
+	if tail := a.waitingWords(); tail != "" {
+		return line + a.pal.dim(tail), true
+	}
 	if a.silentFor() >= stillWorking {
 		line += a.pal.dim(stillWorkingWord)
 	}
@@ -1787,6 +1887,7 @@ func (a *app) legendRight(width int) string {
 //	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
 //	a question is up      a allow · t always · d deny  (consent.go's own keys)
 //	a turn is running     esc interrupt
+//	the column is away    ctrl+g tasks               (task.go's [railBackHint])
 //	idle                  nothing
 //
 // The keys are quoted from the handlers rather than authored here — a hint that
@@ -1886,8 +1987,29 @@ func (a *app) hintWord() string {
 		// [app.railKey]'s guard stands down; and above the running turn, because
 		// while it is held esc gives the keyboard back rather than interrupting.
 		return railHoldHint
+	case len(a.parks) > 0:
+		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
+		// more thing than it did: it stops the turn AND sends what is parked
+		// (park.go). It outranks the plain interrupt below for the reason the
+		// armed rewind outranks it — the slot promises what the NEXT esc does,
+		// and that is no longer only a stop. It is spelled exactly as the block's
+		// own dim line spells it, so the two lines on one screen agree.
+		return parkedHint[1]
 	case a.state == stateWorking:
 		return "esc interrupt"
+	case a.railAway && a.railAvail():
+		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
+		// [app.railStow]). It ranks LAST, under every state above it, because it is
+		// the only line here that is not about the next keystroke — it is where the
+		// work went, said in the one slot a person looks at when they cannot see
+		// something they know exists.
+		//
+		// AND IT IS THE HALF THE STRIP CANNOT SAY. The chips above the conversation
+		// draw what is RUNNING and nothing else, so a session whose work has all
+		// landed has a roster full of results and no sign on the frame that it is
+		// there. This is that sign. With nothing run at all it says nothing, which
+		// is the emptiness law: there is no column to miss.
+		return railBackHint
 	}
 	return ""
 }

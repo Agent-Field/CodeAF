@@ -393,7 +393,7 @@ func TestTheWindowedDraftDrawsWhatTheWholeDraftDrew(t *testing.T) {
 			for _, maxRows := range []int{1, 2, draftRows} {
 				for cursor := 0; cursor <= len(value); cursor++ {
 					e := &editor{value: value, cursor: cursor}
-					gotRows, gotX, gotRow := draftBlock(e, pal, width, maxRows, "")
+					gotRows, gotX, gotRow := draftBlock(e, pal, width, maxRows, "", "")
 					wantRows, wantX, wantRow := refBlock(e, pal, width, maxRows, "")
 					if gotX != wantX || gotRow != wantRow || !sameRows(gotRows, wantRows) {
 						t.Fatalf("draft %q at width %d, %d rows, caret %d:\n got %q x=%d row=%d\nwant %q x=%d row=%d",

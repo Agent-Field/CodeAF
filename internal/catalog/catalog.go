@@ -1031,15 +1031,22 @@ func writeCache(path string, cached cache) error {
 // modalities — so it satisfies newRows without a cleaning pass of its own.
 //
 // Every row is PriceUnknown, and that is worth writing out rather than letting
-// the zero value speak: these five are names this build happens to remember,
-// not rows anybody fetched, and a fallback claiming a price of zero would be
-// this package inventing economics for a model it could not reach.
+// the zero value speak: these are names this build happens to remember, not
+// rows anybody fetched, and a fallback claiming a price of zero would be this
+// package inventing economics for a model it could not reach.
+//
+// The list leads with the name internal/config prefers for each generation
+// slot, because config's curated rung is only usable on a cold machine while a
+// row here vouches for exactly that id's capabilities.
 func hardcodedFallbacks() []Model {
 	return []Model{
 		{ID: "krea/krea-2-medium-turbo", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "fish-audio/s1", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "hexgrad/kokoro-82m", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "openai/gpt-4o-mini-tts", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
+		{ID: "google/lyria-3-pro-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}},
 		{ID: "google/lyria-3-clip-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}, RequestPrice: 0.04},
+		{ID: "bytedance/seedance-2.0-mini", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 		{ID: "bytedance/seedance-1-5-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 	}
 }

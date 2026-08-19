@@ -74,17 +74,33 @@ package session
 // the array ([harnessThreadBrief] states the whole mechanism, and
 // [harnessPageContext] is what rides on it).
 //
-// WHAT IT CANNOT DO IS SAVE A SECOND VERSION, and the thread says so rather
-// than implying otherwise. Writing a page is the designer's job and the
-// designer is entered through build_harness; a revision is therefore a new
-// design, with a node and a thread of its own, and this thread's answer to
-// "change it to also run the linter" is to say that and to say what to ask for.
+// AND THE THREAD CAN CHANGE THE PAGE, WHICH IS WHY THE ROOM IS WORTH STANDING
+// IN. It used to be able only to talk about one: asked to "change it to also run
+// the linter" it said, correctly and uselessly, that a revision was a new design
+// and pointed at the door. A person looking at a draft, in the draft's own room,
+// told to leave and start over — and the key on the card that offered to help
+// silently dropped the page first.
+//
+// It has one verb for that now (tools_harness.go's revise_design), and the verb
+// hands the person's own words to the design loop parked on the card
+// ([TaskNode.reviseDoor]). The card comes down, the designer writes the page
+// again with the change in it, the same milestones are journaled for the rework,
+// and a new card goes up. It goes round as many times as it takes.
+//
+// WHAT IT STILL CANNOT DO IS SAVE. Nothing in this thread reaches the registry:
+// only the person's approval of a card does, and that has not moved. Which is
+// also why the card is no longer the only door — the room draws an approval row
+// of its own while one is waiting (internal/tui3's roomapproval.go), so the
+// three things a person can do about a page can all be done where they are
+// standing.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -283,9 +299,18 @@ func harnessReviewNote(revised harnessRevision) string {
 // other moment when work is finished and waiting on somebody (internal/tui3's
 // taskUnverifiedWord), because it is the same thing happening: the machine has
 // done its part and the next move is a person's.
+//
+// HarnessPhaseAsking IS EXPORTED AND THE OTHER IS NOT, and the asymmetry is the
+// point. A surface has to be able to tell this one phase apart from work that is
+// genuinely running, because a design at this phase is NOT running — the machine
+// has finished its part and the only step left is a person's, so it belongs in
+// the tally that says how many things need somebody rather than in the one that
+// says how many things are working (internal/tui3's railGroupOf). Comparing
+// against a string spelled out again over there would be the same fact written
+// down twice, and the second copy would be the one that drifts.
 const (
 	harnessPhaseDesigning = "designing"
-	harnessPhaseAsking    = "awaiting your look"
+	HarnessPhaseAsking    = "awaiting your look"
 )
 
 // designStoppedWord is the report a design a person ended settles with. It says
@@ -370,17 +395,19 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	design := node.spec.design
 	goal, model := design.goal, design.model
 	ctx = (roleRequest{model: model, effort: design.effort}).context(ctx)
-	processCtx := ctx
-	// THE DESIGN'S OWN WINDOW, taken off the node's hour-long leash. Both halves
-	// of this job are bounded by it — the writing and the wait for an answer —
-	// and it is shorter than a node's deadline because the second half is a card
-	// on somebody's screen: half an hour of nobody answering is a person who is
-	// not coming back, and a goroutine parked on that question is parked forever
-	// (harness_build.go's harnessDesignWindow).
-	ctx, cut := context.WithTimeout(ctx, harnessDesignWindow)
-	defer cut()
+	// THE CLOCK IS TAKEN INSIDE THE ROUND AND NOT HERE, which is where it moved
+	// when a design stopped being one page ([designRun.round] carries the whole
+	// argument). Nothing in this function has a deadline of its own: what bounds
+	// the node is the node's own leash, and what bounds each attempt at writing a
+	// page is a window that round takes and gives back.
 	log := taskLog(listed)
 	fmt.Fprintf(log, "task %d · %s\ndesigning with %s\n", node.id, node.title(), model)
+
+	// THE CHANGES LANE IS OPENED BEFORE THE THREAD IS BUILT, and it has to be:
+	// the thread's one extra hand is wired out of it, and a belt is assembled
+	// once, when the agent is constructed (agent.go). A door handed over
+	// afterwards would be a verb the model is never told it has.
+	changes := node.openRevisions()
 
 	// THE THREAD IS BUILT BEFORE THE FIRST MODEL CALL, so that somebody who
 	// walks into the room while the page is being written finds a room with
@@ -413,64 +440,238 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	child.record(textMessage("user", harnessThreadOpening(goal)))
 	child.record(textMessage("system", harnessThreadBrief(model)))
 
+	run := &designRun{
+		agent:   a,
+		node:    node,
+		child:   child,
+		seat:    designSeat{id: node.id, room: room, thread: child},
+		log:     log,
+		goal:    goal,
+		model:   model,
+		changes: changes,
+	}
+	// ── A DESIGN IS A LOOP NOW, AND THAT IS THE WHOLE OF WHAT THIS FILE LEARNED ─
+	//
+	// It used to be a straight line: write a page, raise a card, take the yes or
+	// the no, land. The room underneath it was a place a person could stand and
+	// watch and ask questions in, and the one thing they most wanted to do there —
+	// say what was wrong with the page — was the one thing the line had no shape
+	// for. The thread refused it in so many words, and what a person had to do
+	// instead was drop a good design and commission a new one from the top.
+	//
+	// So the line is a loop, and the extra edge is the only thing that is new: a
+	// wait can end in a CHANGE as well as an answer (harness_build.go's
+	// [harnessWord]), and a change goes round again with the standing page in
+	// hand. Everything else about a round is what it always was — the same
+	// gauntlet, the same milestones in the same journal, the same card, the same
+	// registry untouched until somebody approves. Nothing about a design that is
+	// approved on the first card behaves differently than it did.
+	//
+	// ONE THING ENDS THIS LOOP, AND IT IS ALWAYS A ROUND SAYING SO. Saved,
+	// declined, stopped, written badly enough three times running, or a card the
+	// process closed under: every one of them is a state and a report from
+	// [designRun.round], and there is no other exit.
+	var change string
+	for {
+		state, settled, next := run.round(ctx, change)
+		if settled {
+			return state
+		}
+		change = next
+	}
+}
+
+// designRun is one design job, carried across however many rounds the person and
+// the designer take to agree on a page. Everything on it is constant for the
+// whole job except [designRun.standing], which is the page as it currently
+// stands.
+type designRun struct {
+	agent *Agent
+	node  *TaskNode
+	child *Agent
+	// seat is who is watching every one of this job's model calls: the same room
+	// and the same journal for the fourth rewrite as for the first draft, which
+	// is what makes the room read back as one story ([designSeat]).
+	seat designSeat
+	log  io.Writer
+	// goal is the brief the design was admitted with, and it does not move. A
+	// rewrite is a change to the PAGE and never to what the harness is for; a
+	// job whose goal drifted with each request would be a design nobody could
+	// say what it was of.
+	goal  string
+	model string
+	// changes is the lane the design's own thread asks for a rewrite on
+	// ([TaskNode.openRevisions]).
+	changes <-chan string
+	// standing is the page as it stands: what the first round drafted, and then
+	// whatever each rewrite made of it. It is the thing a rewrite is a rewrite OF.
+	standing harnessAccepted
+}
+
+// round is one write-and-ask: the page written (or written again), the card
+// raised, and whatever answers it.
+//
+// It reports the node's ending and whether this round WAS the ending. When it
+// was not, the third value is the change the next round writes from — the only
+// way this loop goes round, and the only thing a round hands the next one.
+func (r *designRun) round(ctx context.Context, change string) (TaskState, bool, string) {
+	a, node, child := r.agent, r.node, r.child
+
+	// A REWRITE IS A DESIGN AND SAYS SO ON THE ROW. The phase goes back to
+	// "designing" for exactly as long as the page is being written again, which
+	// is what takes the approval row out of the design's room and puts the live
+	// progress row back (internal/tui3): the person asked for a change, and what
+	// is happening now is the change being made.
 	node.doingNow(harnessPhaseDesigning)
+
+	// ── THE CLOCK IS ON THE WRITING, AND IT IS TAKEN PER ROUND ──────────────
+	//
+	// THE CLOCK IS ON THE WRITING AND ON NOTHING ELSE, which this node's
+	// lifecycle learned the hard way. The window used to cover both halves of the
+	// job — the page being written AND the card waiting for an answer — so a
+	// design that wrote its page in ten minutes and then sat on somebody's screen
+	// was collected at thirty and reported as "the design ran out of time before
+	// it finished; nothing was saved". Both clauses were false: it had finished,
+	// and the page it finished was in the room. A card is a question on a
+	// person's screen and a person is not a step that can be timed out.
+	//
+	// AND IT IS TAKEN HERE RATHER THAN ONCE FOR THE JOB, because a design is a
+	// conversation now and a conversation has more than one page in it. One
+	// window over the whole job would start on the first draft and expire in the
+	// middle of the third rewrite — cutting somebody off for having worked on the
+	// design rather than waved it through. Each attempt at writing a page gets
+	// the window whole, and it is given back the instant a page exists.
+	writing, cut := context.WithTimeout(ctx, a.harnessWritingWindow())
 	// AND THE DESIGNER WRITES INTO THIS ROOM, which is the whole of what the seat
 	// is for: the room to stream into while it thinks and drafts, and the thread
 	// whose journal keeps that discussion after the card has scrolled away
-	// ([designSeat]).
-	page, cues, err := a.designPage(ctx, goal, model, designSeat{id: node.id, room: room, thread: child})
+	// ([designSeat]). Every milestone a first draft journals, a rewrite journals
+	// too — the draft that passed, an attempt the law turned down, what the review
+	// made of it — because they are the same stages happening again.
+	accepted, err := r.write(writing, change)
 	if err != nil {
-		if processCtx.Err() != nil && !node.stoppedByPerson() {
-			return a.pauseHarnessNode(node, child)
+		// The window is given back on the way out rather than here, so that the
+		// report below can still ask it whether it was the thing that ran out.
+		defer cut()
+		if ctx.Err() != nil && !node.stoppedByPerson() {
+			return a.pauseHarnessNode(node, child), true, ""
 		}
-		fmt.Fprintf(log, "design failed: %v\n", err)
-		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design failed: "+err.Error()), TaskFailed)
+		fmt.Fprintf(r.log, "design failed: %v\n", err)
+		return a.landHarnessNode(node, child, harnessDesignEnding(writing, node, harnessWriteFailed(change, err)), TaskFailed), true, ""
 	}
+	// THE WRITING IS OVER, SO ITS CLOCK IS OVER. Cutting it here rather than
+	// leaving it to a deferred call is what makes the paragraph above true: from
+	// this line to the answer there is no timer anywhere in this node, and no
+	// ending it could reach can say the design ran out of time — because a page
+	// exists.
+	cut()
+	r.standing = accepted
+	page := accepted.page
+
 	// THE CARD IS WHAT A PERSON READS AND THE PAGE IS WHAT THE MODEL READS, and
 	// they are two messages for exactly that reason ([harnessPageContext]).
-	child.record(textMessage("assistant", harnessPageThread(page)))
-	if encoded, err := subharness.Encode(page); err == nil {
-		child.record(textMessage("system", harnessPageContext(encoded)))
+	if change == "" {
+		child.record(textMessage("assistant", harnessPageThread(page)))
+	} else {
+		child.record(textMessage("assistant", harnessPageRewritten(page)))
 	}
-	fmt.Fprintf(log, "page written: %s\n", page.Id.Name)
+	if encoded, encodeErr := subharness.Encode(page); encodeErr == nil {
+		// AND THE MODEL'S COPY IS REPLACED IN WORDS, because it cannot be replaced
+		// any other way ([harnessPageSuperseded] states the whole mechanism): a
+		// thread carrying two pages would answer from whichever one it read.
+		if change == "" {
+			child.record(textMessage("system", harnessPageContext(encoded)))
+		} else {
+			child.record(textMessage("system", harnessPageSuperseded(encoded)))
+		}
+	}
+	fmt.Fprintf(r.log, "page written: %s\n", page.Id.Name)
 
 	// THE CARD, on the same lane and answered by the same method it always was
 	// (harness_build.go's askHarnessDesign). The node stays running under it,
 	// because it is: the work is not over until somebody says what to do with
 	// the page, and a node that settled here would take its own room away one
-	// moment before the person needed it.
-	node.doingNow(harnessPhaseAsking)
-	answer, err := a.askHarnessDesign(ctx, node.id, page, model)
+	// moment before the person needed it — the room being where they can ask the
+	// design about the page they are being shown, and where they can say what
+	// they want changed about it.
+	node.doingNow(HarnessPhaseAsking)
+	word, err := a.askHarnessDesign(ctx, node.id, page, r.model, r.changes)
 	if err != nil {
-		if processCtx.Err() != nil && !node.stoppedByPerson() {
-			return a.pauseHarnessNode(node, child)
-		}
-		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design ended before it was answered"), TaskFailed)
+		// TWO THINGS END THIS WAIT WITHOUT AN ANSWER, and neither of them is the
+		// design failing: a person pressed ✕, or the session closed under the card.
+		// The page was written either way, so the report says what became of the
+		// page rather than pretending the work never happened, and this node
+		// SETTLES instead of pausing — a design has no goal on its checkpoint to
+		// resume from, and there is nobody left to answer a card whose process is
+		// gone (task_store.go's interrupt says the same).
+		fmt.Fprintf(r.log, "card unanswered: %s\n", page.Id.Name)
+		return a.landHarnessNode(node, child, harnessCardEnding(node, page), TaskDone), true, ""
 	}
-	if !answer.run {
+	if word.change != "" {
+		// ANOTHER ROUND, AND NOTHING HAS LANDED. The card was withdrawn at the
+		// instant those words were taken (harness_build.go), the registry is
+		// untouched, and the page in hand is what the next round rewrites.
+		fmt.Fprintf(r.log, "rewriting: %s\n", firstLine(word.change))
+		return "", false, word.change
+	}
+	if !word.answer.run {
 		// A DECLINE IS NOT A FAILURE. The person was asked and they answered,
 		// which is this node's whole job done; a failed row here would send
 		// somebody looking for a fault that is their own decision (task.go says
 		// the same about a declined proposal).
 		return a.landHarnessNode(node, child,
-			fmt.Sprintf("harness %q was designed and not saved", page.Id.Name), TaskDone)
+			fmt.Sprintf("harness %q was designed and not saved", page.Id.Name), TaskDone), true, ""
 	}
-	saved, err := a.saveHarness(page, cues)
+	saved, err := a.saveHarness(page, accepted.cues)
 	if err != nil {
-		fmt.Fprintf(log, "save failed: %v\n", err)
+		fmt.Fprintf(r.log, "save failed: %v\n", err)
 		return a.landHarnessNode(node, child,
-			fmt.Sprintf("harness %q could not be saved: %v", page.Id.Name, err), TaskFailed)
+			fmt.Sprintf("harness %q could not be saved: %v", page.Id.Name, err), TaskFailed), true, ""
 	}
-	fmt.Fprintf(log, "saved: %s v%d\n", saved.Id.Name, saved.Id.Version)
+	fmt.Fprintf(r.log, "saved: %s v%d\n", saved.Id.Name, saved.Id.Version)
 	// THE NODE IS NOW THE HARNESS'S THREAD, and this is where that is written
 	// down: the next sentence that names this harness can be pointed at a number
 	// (see [Agent.harnessThread]).
 	a.rememberHarnessThread(saved.Id.Name, node.id)
-	return a.landHarnessNode(node, child, harnessSavedWord(saved), TaskDone)
+	return a.landHarnessNode(node, child, harnessSavedWord(saved), TaskDone), true, ""
 }
 
+// write is the one branch between a first draft and a rewrite, and it is the
+// only one: both end in the same gauntlet one function down
+// (harness_build.go's writeHarness).
+func (r *designRun) write(ctx context.Context, change string) (harnessAccepted, error) {
+	if change == "" {
+		return r.agent.draftPage(ctx, r.goal, r.model, r.seat)
+	}
+	return r.agent.revisePage(ctx, r.goal, r.model, r.standing, change, r.seat)
+}
+
+// harnessWriteFailed is the report a round that never reached a card settles
+// with, and it says WHICH of the two failed.
+//
+// A rewrite that could not be written is not the first design failing: there is
+// a page the person has already read and asked about, and a settle card reading
+// "the design failed" would be a sentence about the wrong thing. What both
+// spellings agree on is the part that matters, which is that nothing was saved.
+func harnessWriteFailed(change string, err error) string {
+	if change == "" {
+		return "the design failed: " + err.Error()
+	}
+	return "the rewrite failed and nothing was saved: " + err.Error()
+}
+
+// pauseHarnessNode is what a design says when the PROCESS ended under it — the
+// session closed while the page was still being written, or while the card was
+// still up.
+//
+// IT DOES NOT PROMISE A RESUME, because a design does not get one. The node is
+// deliberately left running so the checkpoint carries it, and the next session
+// settles it with this same sentence (task_store.go's [interrupt], which also
+// says why it must not go back on the frontier). A room that said "paused — it
+// resumes" tonight and a recovery note that said nothing was saved tomorrow
+// would be the harness telling somebody two different things about one page.
 func (a *Agent) pauseHarnessNode(node *TaskNode, child *Agent) TaskState {
-	const report = "paused — it resumes"
+	const report = harnessInterruptedReport
 	child.record(textMessage("assistant", report))
 	node.doingNow("")
 	node.finish(report, nil, "", "")
@@ -506,14 +707,46 @@ func (a *Agent) landHarnessNode(node *TaskNode, child *Agent, report string, sta
 
 // harnessDesignEnding is the report for a design that did not reach a card:
 // the reason, or — when a person ended it — their own word for it.
-func harnessDesignEnding(ctx context.Context, node *TaskNode, reason string) string {
+//
+// THE CONTEXT IT IS HANDED IS THE WRITING'S, and it is the only one that may be
+// asked, because "it ran out of time" is a true sentence about writing a page and
+// was never a true sentence about a card. A design that reached a page never
+// comes through here at all ([Agent.designHarnessNode]); [harnessCardEnding] is
+// what speaks for that one.
+func harnessDesignEnding(writing context.Context, node *TaskNode, reason string) string {
 	if node.stoppedByPerson() {
 		return designStoppedWord
 	}
-	if ctx.Err() != nil {
+	if writing.Err() != nil {
 		return "the design ran out of time before it finished; nothing was saved"
 	}
 	return reason
+}
+
+// harnessCardEnding is the report for a design whose page was written and whose
+// card was never answered — a person's ✕, or the session closing under it.
+//
+// IT NAMES THE PAGE, because the page is the fact the person needs: the design
+// did its work, and what did not happen is the keeping of it. Nothing here can
+// say the design failed or ran out of time; the only clock this node ever had
+// stopped when the page was written.
+func harnessCardEnding(node *TaskNode, page subharness.Harness) string {
+	if node.stoppedByPerson() {
+		return designStoppedWord
+	}
+	return fmt.Sprintf("harness %q was designed; the card went unanswered, so nothing was saved", page.Id.Name)
+}
+
+// harnessWritingWindow is how long this session gives the writing of one page,
+// which is [harnessDesignWindow] unless the person's config named another. The
+// override exists for the same reason Config.TaskDeadline's does: the behaviour
+// at the end of the window is worth a test, and half an hour is not a thing a
+// test can wait for.
+func (a *Agent) harnessWritingWindow() time.Duration {
+	if window := a.config.HarnessDesignWindow; window > 0 {
+		return window
+	}
+	return harnessDesignWindow
 }
 
 // harnessSavedWord is the settle card's line: the name, the version it landed
@@ -537,6 +770,74 @@ func (n *TaskNode) doingNow(phase string) {
 	n.graph.mu.Unlock()
 	if changed {
 		n.graph.announce(n)
+	}
+}
+
+// ── THE LANE A PERSON ASKS FOR A CHANGE ON ──────────────────────────────────
+//
+// A design card had two answers and now has three, and the third one arrives
+// through a completely different door than the other two. Save and drop come
+// from a SURFACE, through [Agent.ResolveHarness], because they are keys somebody
+// pressed. "Make it also run the linter" arrives from the design's own THREAD,
+// because it is a sentence somebody said — and the thing that hears sentences in
+// this room is the thread agent, one turn later, having decided that what it just
+// heard was a request and not a question (tools_harness.go's revise_design).
+//
+// SO THE CHANNEL HANGS ON THE NODE. It is the one object both ends can reach:
+// the design loop is parked on it in [Agent.askHarnessDesign], and the thread
+// agent was handed a closure over it when it was built (task_run.go's
+// newTaskAgent wires Config.reviseDesign from [TaskNode.reviseDoor]).
+
+// openRevisions mints the lane a design's thread asks for a rewrite on and
+// answers with the reading end. It is called once, before the thread agent
+// exists, because that agent's belt is assembled at construction.
+//
+// IT IS BUFFERED TO ONE AND IT IS NOT A QUEUE. A person asks for one change and
+// waits to see what it did to the page; a second ask arriving while the first is
+// still being written is refused in words rather than stacked behind it, because
+// a designer handed two changes one after another would answer the second about a
+// page written for the first that nobody has read.
+func (n *TaskNode) openRevisions() <-chan string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.revise == nil {
+		n.revise = make(chan string, 1)
+	}
+	return n.revise
+}
+
+// reviseDoor is how a design's thread reaches the loop parked on its card — or
+// NIL, which is every node that is not a design.
+//
+// The nil is the whole gate. tools.go's law is that a capability with nothing
+// behind it is absent rather than broken, so an agent with no door here is not
+// given the revise_design verb at all: an ordinary task node's thread cannot
+// even name the tool, let alone call it and be refused.
+func (n *TaskNode) reviseDoor() func(string) error {
+	n.graph.mu.Lock()
+	lane := n.revise
+	n.graph.mu.Unlock()
+	if lane == nil {
+		return nil
+	}
+	return func(change string) error {
+		// THE CARD HAS TO BE UP, AND THE PHASE IS HOW THAT IS ASKED. A change
+		// wanted while the page is still being written is a change to a page
+		// nobody has read; one wanted after the design has landed is a change to
+		// something already saved or already gone. Neither is this door's to take,
+		// and both are worth a sentence rather than a silence.
+		n.graph.mu.Lock()
+		waiting := n.doing == HarnessPhaseAsking
+		n.graph.mu.Unlock()
+		if !waiting {
+			return errors.New("this design is not waiting on an answer right now, so there is no page in front of them to change")
+		}
+		select {
+		case lane <- change:
+			return nil
+		default:
+			return errors.New("a change to this page is already being made")
+		}
 	}
 }
 
@@ -611,17 +912,28 @@ func harnessThreadOpening(goal string) string {
 // harnessThreadBrief is what the thread agent is for, addressed to it.
 //
 // It is the half of the old opening that was never the person's to read: what
-// this thread answers, what it may not do, and who is writing the page while
-// they wait.
+// this thread answers, what it may DO about what it is told, and what it still
+// may not do.
+//
+// IT USED TO BEGIN BY REFUSING. The brief said a revision was a new design and
+// told the thread to say so — which was true of the machinery and useless to the
+// person, because they were standing in the design's own room, looking at the
+// page, saying the one thing anybody ever says about a draft. The room is where
+// a page is worked on now (revise_design), so the brief that denied it is gone
+// and this one is written for a collaborator.
+//
+// WHAT IT STILL REFUSES IS THE SAVE, and that has not moved an inch: nothing in
+// this thread writes to the registry, and the card is the person's to answer.
 func harnessThreadBrief(model string) string {
 	var out strings.Builder
-	out.WriteString("This is one sub-harness's own thread. The page is being written now")
+	out.WriteString("This is one sub-harness's own thread, and you are the person's collaborator on the page in it. The page is being written now")
 	if model = strings.TrimSpace(model); model != "" {
 		out.WriteString(" by " + model)
 	}
 	out.WriteString("; when it is ready it appears here as a card, and the person is asked whether to save it or drop it.\n\n")
-	out.WriteString("Your job in this thread is to answer questions about this harness — why it is shaped the way it is, what its steps do, whether it fits some other work — using the page as your source. ")
-	out.WriteString("You cannot write or save a version of it from here: designing a page is a job of its own, and a revision is a new design, asked for the same way this one was. When somebody wants the harness changed, say that plainly and say what to ask for.")
+	out.WriteString("ANSWER QUESTIONS about this harness from the page — why it is shaped the way it is, what its steps do, whether it would fit some other work. Say what it does in words; never quote the page back as JSON.\n\n")
+	out.WriteString("WHEN THEY WANT SOMETHING CHANGED, CHANGE IT. Call revise_design with the change stated completely and the harness is written again with it in, then put back in front of them as a new card. Do not tell them a change means starting over — it does not, and it has not for a while.\n\n")
+	out.WriteString("WHAT YOU CANNOT DO IS SAVE IT. Nothing here reaches this machine's registry: only the person's approval of the card saves a page, and if they ask you to save it, say exactly that.")
 	return out.String()
 }
 
@@ -637,6 +949,26 @@ func harnessThreadBrief(model string) string {
 func harnessPageContext(encoded []byte) string {
 	return "The page that was written, as it will be saved:\n\n" + string(encoded) +
 		"\n\nAnswer questions about this harness from this page. Do not quote it back as JSON — say what it does in words."
+}
+
+// harnessPageSuperseded is a REWRITTEN page for the thread agent, and it opens
+// by retiring every copy above it.
+//
+// A TRANSCRIPT IS APPEND-ONLY AND THE MODEL READS ALL OF IT. [Agent.record]
+// writes to the model's context and to the journal the room is read out of, and
+// neither can be edited afterwards — so the page a rewrite replaces is still
+// sitting in the context, and a thread with two pages in front of it answers
+// from whichever one it happens to read. That is the worst kind of wrong answer
+// available in this room: fluent, specific, and about a draft that no longer
+// exists.
+//
+// It cannot be removed, so it is SUPERSEDED IN WORDS, which is a thing a model
+// does act on: the sentence names the earlier copies, says they no longer
+// describe this harness, and points at the one below it.
+func harnessPageSuperseded(encoded []byte) string {
+	return "The page has been REWRITTEN, and every earlier copy of it in this thread is superseded: none of them describes this harness any more. Ignore them. This is the page as it stands, and as it will be saved:\n\n" +
+		string(encoded) +
+		"\n\nAnswer questions about this harness from THIS page. Do not quote it back as JSON — say what it does in words."
 }
 
 // harnessPageThread is the page as the room shows it: the card, and what has and
@@ -658,6 +990,23 @@ func harnessPageThread(page subharness.Harness) string {
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nNothing is saved yet — the card is up, and it is saved only if it is approved.")
+	return out.String()
+}
+
+// harnessPageRewritten is the page as the room shows it after a rewrite: the
+// same card, drawn by the same renderer, and one sentence saying that this is the
+// second thing to stand in this spot.
+//
+// IT NAMES THE CHANGE AS THEIRS. A person who asked for something and is handed
+// a card wants to know that the card is the answer to what they asked, and a
+// room that redrew the card in silence would read as the design having started
+// over by itself.
+func harnessPageRewritten(page subharness.Harness) string {
+	var out strings.Builder
+	out.WriteString("The page is written again, with your change in it.\n\n```\n")
+	out.WriteString(subharness.Card(page))
+	out.WriteString("\n```")
+	out.WriteString("\n\nStill nothing is saved — the card is up again, and it is saved only if it is approved.")
 	return out.String()
 }
 

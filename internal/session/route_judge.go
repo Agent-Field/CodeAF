@@ -392,8 +392,13 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
-		title:      clip(firstLine(verdict.Goal), hintLimit),
-		summary:    verdict.Why,
+		title:   clip(firstLine(verdict.Goal), hintLimit),
+		summary: verdict.Why,
+		// THE PERSON'S OWN MESSAGE RIDES ALONG, as it does on every other door
+		// into the graph (task_brief.go). It matters most here: this goal was
+		// written by a judge that read their turn and summarised it, so the node
+		// would otherwise open on a summary of a summary.
+		request:    a.taskRequest(),
 		brief:      verdict.Goal,
 		acceptance: "the goal above is met, and the report says what was done and how it was checked",
 		model:      a.resolveTaskModel("").model,

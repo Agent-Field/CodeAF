@@ -101,6 +101,33 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	a.touch()
 }
 
+// withdrawHarnessCard takes a design card back to the LIVE form it wore while
+// the page was first being written, because that is what is happening again: the
+// person asked for a change, the designer is at work on it, progress is about to
+// start arriving, and one finished page follows.
+//
+// IT IS ONE CARD FOR THE WHOLE DESIGN and never a second one. A design has one
+// id and one block in the feed (session's harness_task.go mints one number for
+// the node and the question both), so a rewrite is that block going back to
+// being live rather than a new card under the old one — which would leave two
+// pages on screen, one of them answerable and wrong.
+//
+// The person's own words go on the row as the hint, because the one thing worth
+// reading while a rewrite is in flight is what was asked for.
+func (a *app) withdrawHarnessCard(ev session.Event) {
+	c, i := a.harnessCardOf(ev.ID)
+	if c == nil {
+		return
+	}
+	c.page, c.state, c.thought = nil, "", ""
+	c.phase, c.hint = "rewriting", firstLineOf(ev.Text)
+	c.attempt, c.attempts, c.bytes, c.stalled = 0, 0, 0, false
+	c.began, c.ended = time.Now(), time.Time{}
+	a.entries[i].stale = true
+	a.follow()
+	a.touch()
+}
+
 func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string {
 	if c == nil {
 		return nil
@@ -166,7 +193,7 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 		}
 		rows = append(rows, boxLine("thought for "+taskSpanWord(end.Sub(c.began)), inner))
 	}
-	actions := "[enter] save   [e] improve   [esc] drop"
+	actions := harnessCardActions
 	if c.state != "" {
 		actions = c.state
 	}
@@ -274,6 +301,25 @@ func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {
 	return true
 }
 
+// resolveHarnessCard is the one place a design is answered from, whichever door
+// the answer came through — this card's keys, its clickable columns, or the
+// approval row pinned in the design's own room (roomapproval.go).
+//
+// ── WHAT `e` USED TO DO, AND WHY IT DOES NOT ANY MORE ──
+//
+// `e` was labelled "improve" and it DROPPED THE DESIGN. It called ResolveHarness
+// with false — the same call the discard key makes — and then put "Improve
+// harness X: " in the message box, so that asking for a change quietly destroyed
+// the page you were asking about and started a second design from scratch,
+// minutes of model work and a name that would land as a second version. Nothing
+// on screen said so. A person who pressed it and then changed their mind had
+// nothing left to go back to.
+//
+// It is a DOOR now. The design stays exactly where it is, still waiting, and the
+// key walks into its room — which is the place a change is actually made:
+// saying what is wrong there hands the page back to the designer and it is
+// rewritten and put in front of you again (session's revise_design). The state
+// is not set, because nothing was resolved.
 func (a *app) resolveHarnessCard(c *harnessCard, action string) {
 	if action == "save" {
 		if a.agent != nil {
@@ -288,14 +334,57 @@ func (a *app) resolveHarnessCard(c *harnessCard, action string) {
 		c.state = "dropped"
 	}
 	if action == "improve" {
-		if a.agent != nil {
-			a.agent.ResolveHarness(c.id, false, "")
-		}
-		a.input.setText("Improve harness " + c.page.Id.Name + ": ")
-		c.state = "improvement requested"
+		a.openHarnessRoom(c)
 	}
 	a.touch()
 }
+
+// openHarnessRoom walks into the design's own room and points the box at it.
+//
+// THE ROOM IS THE ONLY PLACE THIS CAN GO. A change to a page is a sentence the
+// design's THREAD has to read — it is the thing holding the page, and the only
+// thing on this surface that can hand it back to the designer — and the message
+// box talks to a thread only from inside its room. Prefilling the main box would
+// send the sentence to the conversation, which would answer it with prose about
+// a design it is not part of.
+//
+// A DESIGN WITH NO NODE HAS NO ROOM, and that is a real case rather than a
+// defensive one: a surface talking to an older engine gets a card with no task
+// on it (harness.go's [designTaskWord] says the same). It says so in one dim line
+// and leaves the card exactly as it was, because the card is still answerable.
+func (a *app) openHarnessRoom(c *harnessCard) {
+	if c.task == 0 || a.tasks[c.task] == nil {
+		a.note(harnessNoRoomWord)
+		return
+	}
+	title := ""
+	if node := a.tasks[c.task]; node != nil {
+		title = node.label
+	}
+	a.openRoom(c.task, title)
+}
+
+// harnessNoRoomWord is what `e` says when there is no room to open: the honest
+// version of "this build cannot do that", naming the door that still works.
+const harnessNoRoomWord = "this design has no room to open — answer the card here"
+
+// The card's action row, in three pieces, so that the columns a press is
+// resolved against are MEASURED off the row that was drawn rather than guessed
+// at beside it. They were two hardcoded numbers, and they were already a cell or
+// two out of step with the words they were meant to sit under.
+//
+// THE MIDDLE ONE READS "change it" AND NOT "improve", because that is what it
+// does now: it opens the design's room, where saying what is wrong hands the
+// page back to the designer ([app.resolveHarnessCard] tells the whole story of
+// what that key used to do instead).
+const (
+	harnessCardSave   = "[enter] save"
+	harnessCardChange = "[e] change it"
+	harnessCardDrop   = "[esc] drop"
+	harnessCardGap    = "   "
+)
+
+const harnessCardActions = harnessCardSave + harnessCardGap + harnessCardChange + harnessCardGap + harnessCardDrop
 
 func (a *app) harnessCardPress(i, x int) {
 	if i < 0 || i >= len(a.entries) {
@@ -305,11 +394,15 @@ func (a *app) harnessCardPress(i, x int) {
 	if c == nil || c.page == nil || c.state != "" {
 		return
 	}
-	if x < 15 {
+	// Each answer owns its own words and the gap that follows them, which is the
+	// offer row's rule (harness.go's recordHarnessTaps): a press just past a word
+	// is a person aiming at it.
+	switch changeAt := len(harnessCardSave + harnessCardGap); {
+	case x < changeAt:
 		a.resolveHarnessCard(c, "save")
-	} else if x < 30 {
+	case x < changeAt+len(harnessCardChange+harnessCardGap):
 		a.resolveHarnessCard(c, "improve")
-	} else {
+	default:
 		a.resolveHarnessCard(c, "drop")
 	}
 }

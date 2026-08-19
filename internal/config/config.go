@@ -105,11 +105,35 @@ const (
 	// new work needs the user's word. Zero disables the rail.
 	DefaultDailyBudgetUSD = 20.0
 
-	preferredImageModel  = "krea/krea-2-medium-turbo"
-	preferredSpeechModel = "hexgrad/kokoro-82m"
-	fallbackSpeechModel  = "openai/gpt-4o-mini-tts"
-	preferredMusicModel  = "google/lyria-3-clip-preview"
-	preferredVideoModel  = "bytedance/seedance-1-5-pro"
+	preferredImageModel = "krea/krea-2-medium-turbo"
+
+	// preferredSpeechModel is the voice the speech slot reaches for first. A
+	// constant called "preferred" must be the one actually preferred, so this
+	// name moves whenever the choice does rather than the lists reordering
+	// around a stale one.
+	preferredSpeechModel = "fish-audio/s1"
+
+	// kokoroSpeechModel and hostedSpeechModel are the pair the speech slot ran
+	// on before Fish Audio S1 led it, kept underneath it for a catalog that
+	// does not advertise S1. They deliberately rank differently in the two
+	// lists that read them: [Config.ResolveSpeechModel] keeps Kokoro ahead
+	// because it is the cheap voice that is always there, while
+	// [bestMediaPreferences] keeps the hosted OpenAI voice ahead because the
+	// word "best" has asked to be spent on.
+	kokoroSpeechModel = "hexgrad/kokoro-82m"
+	hostedSpeechModel = "openai/gpt-4o-mini-tts"
+
+	// preferredMusicModel and fallbackMusicModel are the two Lyria 3 rows. Pro
+	// leads; the clip row stays under it because a catalog that advertises only
+	// the shorter one should still be able to make music.
+	preferredMusicModel = "google/lyria-3-pro-preview"
+	fallbackMusicModel  = "google/lyria-3-clip-preview"
+
+	// preferredVideoModel and fallbackVideoModel are the two Seedance rows, the
+	// newer generation first and the one this build shipped with underneath it.
+	preferredVideoModel = "bytedance/seedance-2.0-mini"
+	fallbackVideoModel  = "bytedance/seedance-1-5-pro"
+
 	preferredVisionModel = "qwen/qwen3.5-vl-32b-instruct"
 
 	// preferredPerceptionModel is the remembered name for the two slots that
@@ -325,27 +349,30 @@ func (c Config) ResolveImageModel(models *catalog.Catalog) string {
 	return resolveOutputModel(models, "image", preferredImageModel)
 }
 
-// ResolveSpeechModel prefers Kokoro, then OpenAI mini TTS when each is
-// advertised, then the first speech-output model.
+// ResolveSpeechModel prefers Fish Audio S1, then Kokoro, then OpenAI mini TTS
+// as each is advertised, then the first speech-output model. The person's own
+// saved row wins over all of it: a default is only a default.
 func (c Config) ResolveSpeechModel(models *catalog.Catalog) string {
 	if configured := strings.TrimSpace(c.SpeechModel); configured != "" {
 		return configured
 	}
-	return resolveOutputModel(models, "speech", preferredSpeechModel, fallbackSpeechModel)
+	return resolveOutputModel(models, "speech", preferredSpeechModel, kokoroSpeechModel, hostedSpeechModel)
 }
 
-// ResolveMusicModel prefers Lyria when advertised, then the first music/audio
-// model that is not recognizably a TTS model. Unlike speech and image, the
-// verified Lyria endpoint is also the final built-in fallback when discovery
-// has no music row at all.
+// ResolveMusicModel prefers Lyria 3 Pro, then the Lyria 3 clip row, then the
+// first music/audio model that is not recognizably a TTS model. Unlike speech
+// and image, a verified Lyria endpoint is also the final built-in fallback when
+// discovery has no music row at all.
 func (c Config) ResolveMusicModel(models *catalog.Catalog) string {
 	if configured := strings.TrimSpace(c.MusicModel); configured != "" {
 		return configured
 	}
 	candidates := ModelCandidates(models, "music")
-	for _, candidate := range candidates {
-		if candidate.ID == preferredMusicModel {
-			return candidate.ID
+	for _, preferred := range []string{preferredMusicModel, fallbackMusicModel} {
+		for _, candidate := range candidates {
+			if candidate.ID == preferred {
+				return candidate.ID
+			}
 		}
 	}
 	if len(candidates) > 0 {
@@ -432,13 +459,13 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 	}
 }
 
-// ResolveVideoModel prefers Seedance when advertised, then the catalog's
-// first exact video-output model.
+// ResolveVideoModel prefers Seedance 2.0 Mini, then Seedance 1.5 Pro as each is
+// advertised, then the catalog's first exact video-output model.
 func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 	if configured := strings.TrimSpace(c.VideoModel); configured != "" {
 		return configured
 	}
-	return resolveOutputModel(models, "video", preferredVideoModel)
+	return resolveOutputModel(models, "video", preferredVideoModel, fallbackVideoModel)
 }
 
 // ResolveVisionModel applies the inspection-proxy order at the moment a leaf

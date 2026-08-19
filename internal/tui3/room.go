@@ -64,6 +64,16 @@ import (
 // What a room still owns is what a room IS: which node, where the reader is in
 // it, and the two doors — steering in, esc out.
 //
+// WITH ONE THING THE CONVERSATION DOES THAT A ROOM MUST NOT: FOLD THE WORK
+// AWAY. Out in the thread a finished turn's machinery collapses to
+// "▸ worked · 10 tool calls · ctrl+e", because the person asked a question and
+// what they were owed is the answer. In here that same rule ate the page: a
+// node's life is one long turn ending in a report, so the moment it stopped
+// running everything it had said and done went behind the chip and the only
+// thing left was the report — the exact thing somebody opens a room to see past.
+// [taskRoom.deck] therefore says [deck.showsWork], and workfold.go states the
+// law where the chips are derived.
+//
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
 // [taskRoomAgent] is a SECOND interface rather than three more methods on
@@ -181,7 +191,13 @@ func (r *taskRoom) deck() deck {
 	if r.lane != nil && !r.done {
 		running = r.turn
 	}
-	return deck{entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, runningTurn: running}
+	// showsWork is the room's whole reason for existing, said to the renderer:
+	// this page is the machinery, so none of it collapses into a chip
+	// (workfold.go's [app.deckFolds]).
+	return deck{
+		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen,
+		showsWork: true, runningTurn: running,
+	}
 }
 
 // The words the room says of itself.
@@ -358,6 +374,41 @@ func waitRoom(ch <-chan session.Event, gen int) tea.Cmd {
 // roomOpen reports whether the body region is a room right now. Everything that
 // asks a geometric question about the transcript asks this first.
 func (a *app) roomOpen() bool { return a.room != nil }
+
+// roomStandingOn reports whether this node's row is the door to the page that is
+// on screen right now — "you are in here", asked of one row.
+//
+// IT IS THE ONE ANSWER BOTH LISTS OF THE WORK READ. The strip marks the chip of
+// the room a person is standing in (taskstrip.go) and the roster now marks the
+// row (task.go's [app.railRows]), and a surface where the tab bar and the column
+// could disagree about which door you went through would be a surface with two
+// answers to a question that has one.
+//
+// A RUN'S PAGE IS NOT A NODE'S, and it is matched by the door rather than by the
+// id: [app.openOrchRoom] builds its room with id zero on purpose, so everything
+// keyed on the id reads zero and marks nothing. What a run's rows carry instead
+// is the run they belong to and, on a child, the node inside it — the same pair
+// [app.railPress] opens the page with — so the row that lights is the row whose
+// press would land exactly where the reader already is.
+//
+// Nothing at all while no room is open, which is the emptiness law said about a
+// highlight: a mark for "where you are" on a surface you have not gone anywhere
+// on is a mark that means nothing.
+func (a *app) roomStandingOn(node *taskNode) bool {
+	if a.room == nil || node == nil {
+		return false
+	}
+	if run := a.orchOf(); run != nil {
+		if node.run == "" || node.run != run.id {
+			return false
+		}
+		// The run's page opens on the graph and descends into one node's card, so
+		// the row standing for the page is the root while no card is open and the
+		// child whose name the card carries once one is (roomorch.go).
+		return node.node == run.card
+	}
+	return node.id != 0 && a.room.id == node.id
+}
 
 // openRoomFor opens the room of the node with this id, or closes it when it is
 // already the room on screen. It is what BOTH doors resolve to — the rail click
@@ -747,6 +798,16 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		a.roomCloseLive()
 		a.roomSettleCompaction(firstNonEmpty(ev.Hint, "compacted"))
 
+	case session.EventTurnDone:
+		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
+		// [taskCatchup] takes as the signal to drop what it was holding. The
+		// block the node was writing is therefore over, and settling it here is
+		// what stops the NEXT step's first word from being appended to the last
+		// step's last paragraph. A design felt this hardest: its draft and the
+		// revision the review pass writes are two replies on one lane, and
+		// without this they arrived as one unbroken wall of JSON.
+		a.roomCloseLive()
+
 	case session.EventError:
 		a.roomNote("error: " + errText(ev.Err))
 	}
@@ -1086,6 +1147,25 @@ func (a *app) roomAppend(e entry) {
 	a.roomTouched()
 }
 
+// roomSaid is [app.said] over the room's own transcript: the person's line goes
+// in below the answer that is still streaming rather than cutting it in two.
+// The rule is the deck's, not the conversation's, which is why the room gets it
+// for free — see [app.said] for the defect and the reasoning.
+func (a *app) roomSaid(e entry) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	live := room.live
+	room.entries = append(room.entries, e)
+	if live < 0 || live >= len(room.entries)-1 || room.entries[live].kind != entryAssistant {
+		room.live = -1
+	} else {
+		room.live = live
+	}
+	a.roomTouched()
+}
+
 // roomTouched drops the room's cached rows and keeps a reader at the live edge
 // where they were already at it. It is [app.follow]'s law, applied to the room's
 // own offset.
@@ -1161,9 +1241,8 @@ func (a *app) steer() tea.Cmd {
 	// folds. The chips are not spent here — a room's box sends words, and the tray
 	// belongs to the conversation.
 	a.roomCollapseThought()
-	a.roomCloseLive()
 	room.turn++
-	a.roomAppend(entry{kind: entryUser, text: line, turn: room.turn})
+	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn})
 	return a.edited()
 }
 
@@ -1398,6 +1477,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// to outrank the key that raised it. Everything above still outranks both.
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
+	}
+	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
+	// right order for the one moment both are on screen: the guard is a question
+	// raised by a sentence the person just tried to send, and it has to be
+	// answered before anything else in the room means anything. These two take
+	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
+	// keys would make the box it points at unusable (roomapproval.go).
+	if a.roomApprovalKey(msg) {
+		return nil, true
 	}
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
@@ -1698,6 +1786,13 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
+	// AND THE LAST LINE IS THE COLUMN'S DOOR, for the same reason one rung up: a
+	// line that names ctrl+g and cannot be clicked is an affordance for one of the
+	// two hands (task.go's [railStowHint]).
+	if line.stow {
+		a.railStow(true)
+		return nil, true
+	}
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true
@@ -1841,6 +1936,36 @@ func (a *app) roomHead(width int) string {
 		return line
 	}
 	return a.pal.accent(fit(left, width))
+}
+
+// roomBackPress answers a press on the pinned header, and reports whether it
+// took it. The header IS the way out for the pointer.
+//
+// THE WHOLE ROW IS THE TARGET, not just the "esc/← main" at its right end. The
+// row is one line tall and about nine cells of it are the microcopy; asking a
+// person to land a pointer on those nine is asking them to aim at a label, and
+// the two things that share this row — the trail and the way out — are both
+// about leaving. The ✕ is the exception and it is claimed one rung earlier
+// (stop.go's [app.stopMarkPress]), because ending work and leaving the page you
+// were watching it on are opposite gestures and the expensive one wins the cells
+// it is drawn on.
+//
+// THE KIN ROWS UNDER IT ARE NOT PART OF THIS. They are dim telemetry about the
+// node's family ([app.roomKinRows]), and a press on a fact is not a press on a
+// door — it does nothing, exactly as a press on any other row that answers to
+// nothing does ([app.press]).
+//
+// It is read from the frame's OWN row numbering — the header is the first row of
+// a room's frame, always, because [app.view] draws it first and the geometry
+// charges [app.headHeight] for it — rather than through [app.chromeAt], which
+// resolves the block at the BOTTOM of the window and has never had a row up here
+// to answer for.
+func (a *app) roomBackPress(y int) bool {
+	if !a.roomOpen() || a.headHeight() == 0 || y != 0 {
+		return false
+	}
+	a.closeRoom()
+	return true
 }
 
 // roomHeadWord is the header's left: the node's mark, the trail, and the three
@@ -2365,7 +2490,16 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room == nil || len(rows) == 0 || !a.input.empty() || a.pick.open || a.awaitingTask() {
 		return rows
 	}
+	// THE SEGMENT IN FRONT OF THE PROMPT ALREADY NAMES THE NODE ([app.roomLead]),
+	// so the placeholder stops naming it: `⠙ Ship the port › Steer Ship the port…`
+	// is one name read twice on one line. Where the frame is too narrow for the
+	// segment the placeholder goes back to carrying the name itself, because
+	// something on the row has to.
+	lead := a.roomLead(width)
 	lane := roomSteerLane + a.room.title + roomSteerBack
+	if lead != "" {
+		lane = roomSteerHere + roomSteerBack
+	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
 		// the sentence goes to the PLANNER, which reads it on its next call
@@ -2377,8 +2511,83 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room.done {
 		lane = roomFinishedWord
 	}
-	room := width - ansi.StringWidth(prompt)
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
-	out[0] = a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
+	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
 	return out
+}
+
+// ── THE COMPOSER SAYS WHERE THE WORDS GO ────────────────────────────────────
+//
+//	⠙ Ship the port › fix the flake in the loader
+//
+// A ROOM USED TO STOP SAYING ANYTHING THE MOMENT YOU TYPED. The placeholder
+// named the node — and a placeholder is the one thing in a box that disappears
+// the instant somebody uses it, so the row that said "these words are going to a
+// worktree somewhere else" said it only to people who had not started. Everything
+// else on the frame that knew was somewhere the eye was not: the header at the
+// top, the legend under the transcript, the status line at the bottom.
+//
+// So the box itself carries the room, as one segment in front of its prompt: the
+// node's state cell and the node's name, lifted off the page on the selection
+// tint and painted in the state's own hue ([app.taskStateInk] — the hue the
+// roster paints the same node's glyph with, so the row that is banded in the
+// column and the name in front of the caret are the same colour for the same
+// reason). It is where a person's eye already is, it is there whether the box is
+// empty or full, and it is gone the moment there is no room — the emptiness law:
+// there is no segment in the conversation, not a dim one and not an empty one.
+//
+// IT IS A SEGMENT AND NOT A ROW. A row above the box would be a row taken off
+// the transcript on every frame of every room, for a fact three cells can carry.
+const (
+	// roomLeadCap is the most of a node's name the segment spends, and it is the
+	// strip's cap said again for the same reason: past about three words a title
+	// stops identifying the work and starts being a sentence.
+	roomLeadCap = stripTitleCap
+	// roomLeadWordFloor is the least of a name worth drawing. Under this the
+	// segment is dropped whole rather than shown as an ellipsis with a letter in
+	// front of it, and the placeholder goes back to naming the node.
+	roomLeadWordFloor = 6
+	// roomLeadTyping is how much of the box the segment may never take: what is
+	// left has to be a box somebody can see a sentence in.
+	roomLeadTyping = 24
+	// roomLeadPad is the air inside the segment, one cell each side, so the tint
+	// reads as a chip rather than as a highlighted word.
+	roomLeadPad = " "
+	// roomSteerHere is the placeholder where the segment is already carrying the
+	// name: what the box does, without saying the node twice.
+	roomSteerHere = "Steer this task"
+)
+
+// roomLead is the composer's room segment, painted, or "" when there is no room
+// open or no width to spend on one. width is the box's own width — what
+// [app.inputBlock] is laying out into — because the segment is charged to the
+// box and to nothing else.
+func (a *app) roomLead(width int) string {
+	if a.room == nil {
+		return ""
+	}
+	node := a.roomNode()
+	glyph := a.roomMark(node)
+	// The box as it would be without a segment, less what the segment's own
+	// furniture costs: two pads, the glyph, and the space after it.
+	space := width - ansi.StringWidth(prompt) - roomLeadTyping -
+		ansi.StringWidth(glyph) - 1 - 2*ansi.StringWidth(roomLeadPad)
+	if space > roomLeadCap {
+		space = roomLeadCap
+	}
+	if space < roomLeadWordFloor {
+		return ""
+	}
+	title := fit(strings.TrimSpace(a.room.title), space)
+	if title == "" {
+		return ""
+	}
+	// A run's page has no node and so no state to be in; its segment is dim,
+	// which is what this surface says with when nobody has published anything.
+	ink := a.pal.dim
+	if node != nil {
+		ink = a.taskStateInk(node)
+	}
+	return a.pal.tint(roomLeadPad+glyph+" "+title+roomLeadPad, ink)
 }

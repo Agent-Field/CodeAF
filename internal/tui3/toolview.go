@@ -159,6 +159,19 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
 	phone := layoutTier(width) == tierPhone
 	if !e.open || phone {
+		// THE PICTURE IS THE OTHER BLOCK NOBODY ASKS FOR, and it hangs at the
+		// far end of the same argument. The live preview shows a change BEFORE
+		// it lands because that is the moment it is worth something; a picture
+		// shows AFTER, because that is the only moment it exists — and in both
+		// cases the row on its own cannot say the thing the person wants. It
+		// takes the tier's cap for the tier's reason (imagepreview.go's
+		// [app.pictureThumb]).
+		if picture, drawn := a.pictureThumb(e, room, previewCap(phone)); drawn {
+			for _, line := range picture {
+				out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
+			}
+			return out
+		}
 		head, body, more := a.previewBody(e, room, previewCap(phone))
 		if head == "" {
 			return out
@@ -1215,6 +1228,42 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		}
 		body, more := a.cap(e, said, bashWindow)
 		return append(head, body...), more
+	case "generate_image":
+		// THE PICTURE IS THE WHOLE ANSWER, and the line under it already says
+		// everything this call's result says — where the file is and how big it
+		// is. Printing the result underneath as well would be the expansion
+		// answering one question twice (imagepreview.go).
+		if picture, drawn := a.pictureRows(e, width); drawn {
+			return picture, 0
+		}
+		// AND WHERE NO PICTURE CAN BE DRAWN, THE PATH STILL GOES DOWN WHOLE.
+		// This is the terminal that reached sixteen colours, or the file this
+		// program cannot decode, and it is exactly the case where a person needs
+		// to leave and open the file themselves — so the one thing the fallback
+		// must not do is truncate the only string that would let them.
+		if rows, more, known := a.pictureWords(e, width); known {
+			return rows, more
+		}
+	case "view_image":
+		// A LOOK HAS TWO HALVES and they are both worth the rows: the picture,
+		// so a person can see what was looked at, and under it what the looking
+		// model said about it — which is the only thing this call actually
+		// returned, and the reason it was made.
+		if picture, drawn := a.pictureRows(e, width); drawn {
+			said := a.plainRows(resultText(e.detail.Output), width)
+			if len(said) == 0 {
+				return picture, 0
+			}
+			body, more := a.cap(e, said, listWindow)
+			return append(picture, body...), more
+		}
+		// The undrawable half is replaced by the path and the answer is kept:
+		// what the looking model said is this call's actual result, and a person
+		// who cannot see the picture needs the file's whole name more than
+		// anyone (see the twin above).
+		if rows, more, known := a.pictureWords(e, width); known {
+			return rows, more
+		}
 	case "grep", "find", "ls":
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}

@@ -380,7 +380,11 @@ func (a *app) stripLabel(node *taskNode, width int) (string, int) {
 func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
 	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + stripPadCols
 	chip := stripPad + glyph + " " + a.stripTitle(node, title) + stripPad
-	if a.room != nil && a.room.id == node.id {
+	// WHICH ROW IS THE PAGE YOU ARE ON IS ASKED IN ONE PLACE (room.go's
+	// [app.roomStandingOn]), because the roster marks the same fact with the same
+	// band and a tab bar that disagreed with the column beside it would be two
+	// answers to a question with one.
+	if a.roomStandingOn(node) {
 		chip = a.pal.band(chip, cols)
 	}
 	return chip, cols
@@ -417,7 +421,7 @@ func (a *app) stripPausedGlyph() string {
 // drawn ABOVE the page it is a tab bar for.
 func (a *app) stripTitle(node *taskNode, title string) string {
 	switch {
-	case a.room != nil && a.room.id == node.id:
+	case a.roomStandingOn(node):
 		return a.pal.bold(a.pal.accent(title))
 	case node.state == session.TaskRunning:
 		return a.pal.ink(title)

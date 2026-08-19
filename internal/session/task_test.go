@@ -180,10 +180,11 @@ func verdictFromEvidence(marker, verified, refuted string) step {
 // proposeCall is the model asking for one task, with the mark in the brief.
 func proposeCall(title, brief string) step {
 	arguments, _ := json.Marshal(taskArguments{
-		Title:      title,
-		Summary:    "two lines the person reads",
-		Brief:      brief + "\n" + taskBriefMark,
-		Acceptance: "the file is there",
+		Title:       title,
+		Summary:     "two lines the person reads",
+		Brief:       brief + "\n" + taskBriefMark,
+		Deliverable: "the file, at the path named in the brief",
+		Acceptance:  "the file is there",
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
@@ -731,19 +732,27 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 		t.Fatalf("report = %q, want the node's own last words", notice.Report)
 	}
 
-	// The node was asked with the brief and the acceptance, and never with the
-	// conversation: the brief is its whole world.
+	// The node was asked with the opening message and nothing else: the person's
+	// own words, the work, what to produce and what done means (task_brief.go).
+	// THE CONVERSATION ITSELF STILL DOES NOT TRAVEL — the summary the person was
+	// shown on the card stays in the conversation, and so does everything else
+	// said in the turn.
 	asked := completer.childAsked()
 	if len(asked) == 0 {
 		t.Fatal("the node never reached the provider")
 	}
 	instruction := messageText(asked[len(asked)-1])
-	if !strings.Contains(instruction, "write hello.txt containing hi") ||
-		!strings.Contains(instruction, "Acceptance: the file is there") {
-		t.Fatalf("the node was asked %q", instruction)
+	for _, want := range []string{
+		briefAskHeading, "add a greeting",
+		"write hello.txt containing hi",
+		briefDoneHeading, "the file is there",
+	} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("the node was asked %q, missing %q", instruction, want)
+		}
 	}
 	for _, message := range asked {
-		if strings.Contains(messageText(message), "add a greeting") {
+		if strings.Contains(messageText(message), "two lines the person reads") {
 			t.Fatal("the conversation leaked into the node's context")
 		}
 	}
@@ -996,11 +1005,14 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	// THE EVIDENCE LEADS, AND THE MACHINERY IS NOT THERE. The state says done;
-	// what the report adds is what was run and what was seen (task_audit.go's
-	// vocabulary law).
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
-		t.Fatalf("the evidence does not lead the report: %q", notice.Report)
+	// THE WORK'S OWN ACCOUNT LEADS, AND THE MACHINERY IS NOT THERE. The state
+	// says done; what the report adds under the account is what was run and what
+	// was seen (task_audit.go's vocabulary law).
+	if !strings.HasPrefix(notice.Report, "Wrote greet.go and greet_test.go.") {
+		t.Fatalf("the node's own account does not lead the report: %q", notice.Report)
+	}
+	if !strings.Contains(notice.Report, "go test ./... ok") {
+		t.Fatalf("the evidence was lost from the report: %q", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "Wrote greet.go") {
 		t.Fatalf("the node's own words were lost from the report: %q", notice.Report)
@@ -1243,7 +1255,7 @@ func TestAuditRetryRecoversAVerdict(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q — the retry's verdict was not read", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+	if !strings.Contains(notice.Report, "go test ./... ok") {
 		t.Fatalf("report = %q, want the second attempt's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
@@ -1415,7 +1427,7 @@ func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
 	}
 	notice := awaitTaskState(t, updates, 1, TaskDone)
 
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+	if !strings.Contains(notice.Report, "go test ./... ok") {
 		t.Fatalf("report = %q, want the re-audit's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
@@ -1612,7 +1624,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 				func(context.Context, []ai.Message) (*ai.Response, error) {
 					arguments, _ := json.Marshal(taskArguments{
 						Title: "Research", Summary: "s", Brief: "research\n" + taskBriefMark,
-						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+						Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 					})
 					return toolResponse("call-task", "propose_task", string(arguments)), nil
 				},
@@ -1659,7 +1671,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 				func(context.Context, []ai.Message) (*ai.Response, error) {
 					arguments, _ := json.Marshal(taskArguments{
 						Title: "Read", Summary: "s", Brief: "read\n" + taskBriefMark,
-						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+						Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 					})
 					return toolResponse("call-task", "propose_task", string(arguments)), nil
 				},
@@ -1708,14 +1720,9 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 // build it started, recalls its own state, or runs a command that only inspects
 // is working; what the counter kills is the same call again, changing nothing.
 func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
-	// Not a repository, deliberately: worktreeDirt answers "" forever here, so
-	// every bash below is judged by novelty alone — which is exactly the case
-	// that used to count every look at the world as a stall.
-	dir := t.TempDir()
 	seen := map[string]bool{}
-	var dirt string
 	step := func(tool, args string) bool {
-		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args}, seen, dir, &dirt)
+		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args}, seen)
 	}
 
 	for _, call := range []struct{ tool, args string }{
@@ -1728,6 +1735,15 @@ func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
 		{"web_fetch", `{"url":"https://example.com"}`},
 		{"jobs", `{"id":1}`},
 		{"recall", `{}`},
+		{"view_image", `{"path":"marketing/linkedin.png"}`},
+		{"manual", `{"question":"what does /cost show"}`},
+		{"tasks", `{}`},
+		{"settings", `{}`},
+		{"list_harnesses", `{}`},
+		{"services", `{}`},
+		{"gmail_search", `{"query":"invoice"}`},
+		{"gmail_read", `{"id":"abc"}`},
+		{"calendar_list", `{}`},
 		{"bash", `{"command":"go test ./..."}`},
 		{"bash", `{"command":"git log -1"}`},
 	} {
@@ -1744,10 +1760,103 @@ func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
 	if step("read", `{"path":"a.go"}`) {
 		t.Fatal("the same file twice counted as progress")
 	}
-	// A hand that only writes is counted as the diff it is, one branch up — it
-	// must not also be spendable here as a fresh target.
-	if step("edit", `{"path":"a.go"}`) || step("write", `{"path":"b.go"}`) {
-		t.Fatal("a mutation counted as knowledge")
+	// LOOKING AT THE SAME PICTURE AGAIN IS THE SPIN, exactly as re-reading the
+	// same file is. Novelty is the whole test, for every hand on this half.
+	if step("view_image", `{"path":"marketing/linkedin.png"}`) {
+		t.Fatal("the same picture twice counted as progress")
+	}
+	// A hand that saves a file is counted as the file it saved, one branch up —
+	// it must not also be spendable here as a fresh target.
+	for _, saving := range []struct{ tool, args string }{
+		{"edit", `{"path":"a.go"}`},
+		{"write", `{"path":"b.go"}`},
+		{"generate_image", `{"prompt":"a blueprint","path":"marketing/x.png"}`},
+		{"generate_video", `{"prompt":"a reel","path":"marketing/x.mp4"}`},
+		{"speak", `{"text":"hello","path":"voice.wav"}`},
+	} {
+		if step(saving.tool, saving.args) {
+			t.Fatalf("%s counted as knowledge", saving.tool)
+		}
+	}
+	// And the node's own bookkeeping is neither half.
+	for _, own := range []string{"note", "forget", "track", "commit", "change_setting"} {
+		if step(own, `{}`) {
+			t.Fatalf("%s counted as knowledge", own)
+		}
+	}
+}
+
+// A HAND THAT SAVES A FILE IS PROGRESS, AND THE FILE IT SAVED IS THE PERSON'S.
+// generate_image, generate_video and speak all put a real file on disk at a path
+// the call names, and a counter that only knew edit and write read a minute of
+// real picture-making as six steps of nothing — which is the run this test is
+// written from.
+func TestTheProgressCounterCountsEveryHandThatSavesAFile(t *testing.T) {
+	dir := t.TempDir()
+	for _, call := range []struct{ tool, args, want string }{
+		{"write", `{"path":"notes.md"}`, "notes.md"},
+		{"edit", `{"path":"main.go"}`, "main.go"},
+		{"generate_image", `{"prompt":"blueprint","path":"marketing/linkedin.png"}`, "marketing/linkedin.png"},
+		{"generate_video", `{"prompt":"reel","path":"marketing/teaser.mp4"}`, "marketing/teaser.mp4"},
+		{"speak", `{"text":"hello","path":"voice/intro.wav"}`, "voice/intro.wav"},
+	} {
+		path, saved := changedPath(Event{Kind: EventToolEnd, Tool: call.tool, Args: call.args}, dir)
+		if !saved {
+			t.Fatalf("%s did not read as a saved file", call.tool)
+		}
+		if path != call.want {
+			t.Fatalf("%s saved %q, want %q", call.tool, path, call.want)
+		}
+	}
+	// Looking at a picture is not saving one.
+	if _, saved := changedPath(Event{Kind: EventToolEnd, Tool: "view_image", Args: `{"path":"marketing/linkedin.png"}`}, dir); saved {
+		t.Fatal("view_image read as a saved file")
+	}
+}
+
+// THE WORKTREE IS THE BACKSTOP UNDER BOTH LISTS: a hand nobody classified is
+// still progress on any step that left something behind. And the fingerprint has
+// to see a SECOND new file in a folder that was already new — the exact case a
+// node making two pictures in one marketing/ folder hits.
+func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-b", "main"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "root"},
+	} {
+		if out, err := git(dir, args...); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	var dirt string
+	// The first look is the baseline and moves the fingerprint off "".
+	worktreeMoved(dir, &dirt)
+	if worktreeMoved(dir, &dirt) {
+		t.Fatal("a step that touched nothing moved the fingerprint")
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, "marketing"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"linkedin.png", "twitter.png"} {
+		if err := os.WriteFile(filepath.Join(dir, "marketing", name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !worktreeMoved(dir, &dirt) {
+			t.Fatalf("%s did not move the fingerprint", name)
+		}
+	}
+
+	// The harness's own droppings are not the node's work: a background job
+	// writing its log every second must not make every step look like progress.
+	if err := os.MkdirAll(filepath.Join(dir, aforgeDroppings, "jobs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, aforgeDroppings, "jobs", "1.log"), []byte("building"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if worktreeMoved(dir, &dirt) {
+		t.Fatal("a job log counted as the node's own work")
 	}
 }
 
@@ -1767,7 +1876,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			name: "no progress",
 			arguments: taskArguments{
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
-				Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+				Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 			},
 			want: "stopped: 3 steps without progress",
 		},
@@ -1775,7 +1884,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			name: "the step budget",
 			arguments: taskArguments{
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
-				Acceptance: "a", NoProgress: 50, MaxSteps: 2,
+				Deliverable: "d", Acceptance: "a", NoProgress: 50, MaxSteps: 2,
 			},
 			want: "stopped at 2-step checkpoint: still circling",
 		},
@@ -1854,7 +1963,7 @@ func TestTaskThresholdsDefaultAndOverride(t *testing.T) {
 	// And a negative one is a mistake said out loud rather than a default
 	// quietly substituted.
 	arguments, _ := json.Marshal(taskArguments{
-		Title: "t", Summary: "s", Brief: "b", Acceptance: "a", MaxSteps: -1,
+		Title: "t", Summary: "s", Brief: "b", Deliverable: "d", Acceptance: "a", MaxSteps: -1,
 	})
 	if _, problem := parseTaskArguments(arguments); !strings.Contains(problem, "max_steps cannot be negative") {
 		t.Fatalf("a negative max_steps was accepted: %q", problem)
@@ -1892,7 +2001,7 @@ func TestTaskSpawnSwapsANoToolsModelBeforeItsFirstCall(t *testing.T) {
 
 func TestStepCheckpointExtendsFourTimesThenLands(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	arguments, _ := json.Marshal(taskArguments{Title: "Long", Summary: "s", Brief: "keep going\n" + taskBriefMark, Acceptance: "a", MaxSteps: 1, NoProgress: 20})
+	arguments, _ := json.Marshal(taskArguments{Title: "Long", Summary: "s", Brief: "keep going\n" + taskBriefMark, Deliverable: "d", Acceptance: "a", MaxSteps: 1, NoProgress: 20})
 	spin := []step{
 		lsCall("one"), lsCall("two"), lsCall("three"), lsCall("four"), lsCall("five"),
 		finalText("the active turn drained"),

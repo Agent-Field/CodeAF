@@ -226,7 +226,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	if a.harnessCardKey(msg) {
-		return nil
+		// `e` on that card walks into the design's room now (harnesscard.go), so
+		// whatever door it parked is handed on here: a room whose lane was never
+		// started is a page that never updates.
+		return a.takeRoomPump()
 	}
 
 	// The settings panel is the fullscreen overlay, and it is modal for the same
@@ -398,6 +401,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 		a.interrupt()
+		// AND ESC WITH A MESSAGE WAITING SENDS IT NOW (park.go). Stopping the
+		// answer is nearly all of it: the interrupt above closes the stream, and
+		// the close is exactly where a parked message goes (app.go's
+		// streamClosedMsg). This is the other case — a message parked against a
+		// turn that has ALREADY ended, which has no close coming for it and would
+		// otherwise sit above the box until the person typed something else.
+		if a.state != stateWorking {
+			return tea.Batch(cmd, a.sendParked())
+		}
 		return cmd
 
 	case "enter":
@@ -490,6 +502,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.input.up()
 			a.touch()
 			return nil
+		}
+		// A MESSAGE WAITING FOR THE ANSWER IS READ BEFORE THE HISTORY, and it has
+		// to be: enter remembers everything it parks, so the newest history line
+		// and the newest parked message are the same words — and a ↑ that walked
+		// the history would put those words in the box while ALSO leaving them
+		// parked, which is one message on screen twice and two turns spent on it.
+		// Read here, the block is taken back and the sentence is yours again
+		// (park.go).
+		if a.input.empty() && !a.recalling() && a.recallParked() {
+			return a.edited()
 		}
 		if a.recallBack() {
 			return nil
@@ -667,6 +689,16 @@ func (a *app) enter() tea.Cmd {
 	// thing — is the sentence with its pointer blocks under it (taskmention.go).
 	// A line with no mentions in it comes back untouched.
 	line = a.expandTaskMentions(line)
+	// AND A MESSAGE TYPED WHILE AN ANSWER IS STILL COMING WAITS FOR IT (park.go).
+	// It is not sent, it is not spliced into the reply that is streaming, and it
+	// is not lost: it is held in its own block above the box until the answer is
+	// finished, where esc can send it early and ↑ or a click can pull it back to
+	// be edited. Everything above this line — a slash command, a picked harness —
+	// still happens at once, because those are things said to THIS SURFACE rather
+	// than to the model.
+	if a.parking() {
+		return a.park(line)
+	}
 	if held {
 		return a.submitImages(line)
 	}
@@ -701,16 +733,16 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		return a.rewindBar(width), 0, 0
 	}
 	if a.pick.open {
-		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint)
+		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint, "")
 	}
 	if a.memPanel.open {
 		if a.memPanel.edit != nil {
-			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint)
+			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint, "")
 		}
-		return draftBlock(&a.memPanel.filter, a.pal, width, 1, memoryFilterHint)
+		return draftBlock(&a.memPanel.filter, a.pal, width, 1, memoryFilterHint, "")
 	}
 	if a.roster.open {
-		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint)
+		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
 	}
 	// AND THE DELIVERABLES PICKER TAKES IT ON THE SAME TERMS, for whichever of
 	// its two boxes is open: the filter, and the destination box over a row that
@@ -719,9 +751,9 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// that has taken the keyboard.
 	if a.shelf.open {
 		if dest := a.shelf.dest; dest != nil {
-			return draftBlock(&dest.box, a.pal, width, 1, filesCopyHint)
+			return draftBlock(&dest.box, a.pal, width, 1, filesCopyHint, "")
 		}
-		return draftBlock(&a.shelf.filter, a.pal, width, 1, filesHint)
+		return draftBlock(&a.shelf.filter, a.pal, width, 1, filesHint, "")
 	}
 	// AND THE CONNECTIONS PANEL TAKES IT ON THE SAME TERMS, for whichever of its
 	// two boxes is open: the filter, once the catalog is long enough to be
@@ -734,7 +766,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 			return keyBoxLines(entry, a.pal, width, 0)
 		}
 		if a.connPanel.filtering {
-			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint)
+			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
 		}
 	}
 	// The box may not take the frame. Two rows are spoken for whatever happens
@@ -747,7 +779,11 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if rows < 1 {
 		rows = 1
 	}
-	block, caretX, caretRow := draftBlock(&a.input, a.pal, width, rows, "")
+	// AND THE BOX SAYS WHICH ROOM IT IS TYPING INTO, as a segment in front of its
+	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the
+	// filter boxes above stand in this position while an overlay has the keyboard,
+	// and none of them sends a word anywhere.
+	block, caretX, caretRow := draftBlock(&a.input, a.pal, width, rows, "", a.roomLead(width))
 	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
 	// (attach.go). It is one row above the draft, so it is one row of this
 	// block: every geometric question below the conversation already goes
@@ -765,7 +801,12 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 // rows takes those rows from the transcript and from nothing else.
 func (a *app) inputHeight() int {
 	width, _ := a.size()
-	rows, _, _ := a.inputBlock(width)
+	// THE BOX IS ASKED AT THE WIDTH THE FRAME LAYS IT OUT AT, which is the frame
+	// less the one cell it is inset by (view.go's [inputPad]). Measured a cell
+	// wider, a draft that wraps to three rows on screen could be counted as two —
+	// and rows the geometry did not subtract are rows [app.frameOut] then loses
+	// off the TOP of the window, which is where the room's header is.
+	rows, _, _ := a.inputBlock(width - len(inputPad))
 	return len(rows)
 }
 
@@ -786,8 +827,16 @@ func (a *app) inputHeight() int {
 // hint is the placeholder shown while the editor is empty, and the picker's
 // filter box is why it exists — the overlay explains itself in the box a person
 // is already looking at instead of spending a row on a legend.
-func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]string, int, int) {
-	room := width - ansi.StringWidth(prompt)
+//
+// lead is an already-painted segment drawn in FRONT of the prompt, and "" for
+// every box but the main draft standing in a room (room.go's [app.roomLead]).
+// Its width is charged to the box the way the prompt's is — the wrap, the
+// continuation indent and the caret's column all count through the same number —
+// because a lead the layout drew and the caret arithmetic did not know about
+// would put the terminal's cursor several cells left of the letter it is on.
+func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) ([]string, int, int) {
+	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt)
+	room := width - head
 	if room < 4 {
 		room = 4
 	}
@@ -795,7 +844,7 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 		maxRows = 1
 	}
 	if len(e.value) == 0 && hint != "" {
-		return []string{pal.dim(prompt) + pal.dim(fit(hint, room))}, ansi.StringWidth(prompt), 0
+		return []string{lead + pal.dim(prompt) + pal.dim(fit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
@@ -816,19 +865,31 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 	end := min(top+maxRows, len(segments))
 
 	out := make([]string, 0, end-top)
+	// Every row after the first is indented to where the text starts, segment
+	// included: a continuation that began under the segment would be a wrapped
+	// sentence with a step in its left margin.
+	under := strings.Repeat(" ", head)
 	for i := top; i < end; i++ {
-		lead := "  "
+		row0 := under
 		switch {
 		case i == 0 && opening:
-			lead = pal.dim(prompt)
+			row0 = lead + pal.dim(prompt)
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
 			// same two cells, so the rows do not shift under the caret.
-			lead = pal.dim(glyphMore + " ")
+			row0 = under[:head-ansi.StringWidth(prompt)] + pal.dim(glyphMore+" ")
 		}
-		out = append(out, lead+pal.ink(string(e.value[segments[i].from:segments[i].to])))
+		// A RECOGNIZED SLASH COMMAND IS CHIPPED AS IT IS TYPED (slashchip.go).
+		// The boundary question is asked of the DRAFT and not of the row,
+		// because a row is a soft-wrapped slice of it: [wrapLine] breaks after a
+		// space where it can, but a word longer than the box breaks mid-word, and
+		// a row that opens in the middle of "cmd/aforge" does not open a token.
+		at := segments[i].from
+		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
+		row := string(e.value[at:segments[i].to])
+		out = append(out, row0+paintCommands(row, pal, pal.ink, boundary))
 	}
-	return out, ansi.StringWidth(prompt) + caretColumn, caretRow - top
+	return out, head + caretColumn, caretRow - top
 }
 
 // segment is one soft-wrapped display row of the draft, as rune offsets into

@@ -34,7 +34,9 @@ A task is the same agent you talk to, with the same tools, in a quieter place.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
-document engine. It inherits **not the transcript** — the brief is its whole world. The
+document engine. It inherits **not the transcript** — one assembled brief is its whole
+world, and your own message is the first part of it (below, under *What the task actually
+reads*). The
 one thing it is given of what aforge remembers about you is the handful of lines its own
 brief needs: the conversation asks the router once, against that brief, and puts the
 answer at the top of the task's instructions (what-i-remember). The task itself never
@@ -71,6 +73,13 @@ running task. Its step-by-step log is the job log, at
 When a task lands, its **report** is its final assistant message, cut to the first **3
 non-empty lines**, each clipped to **300 characters**.
 
+A task is told to make those lines the **substance** of the work — what it found or made,
+the key findings, the decisions it took, with every file named by its full path — and not
+the evidence trail. "`git diff` shows a staged new file", test output, staging and branch
+status and step counts are proof it did the work, and they stay in the task's journal.
+On a finished task the report leads with the task's own account, and what the second look
+checked it on stands under that.
+
 The landing note arrives at a step boundary, exactly like a background job's exit. Its
 first line carries the task's transcript URI:
 
@@ -83,7 +92,8 @@ where the branch went:
 
 - `its branch task/… merged into yours`
 - `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
-- `it was stopped; its branch task/… was kept`
+- `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
+- `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
 
 The task's own tool rows never enter the chat. They go to its journal and its room only.
@@ -94,6 +104,25 @@ the identity `aforge <aforge@localhost>`, then merged into your branch with
 `git merge --no-edit`. The merge is attempted whatever your tree looks like — a dirty
 checkout is normal. On success the worktree is removed and the branch is deleted. Two
 tasks finishing at once are serialized, so a merge is never lost.
+
+## What aforge says in the chat when a task lands, and the full path to the file
+
+Nobody typed the landing note, so aforge answers it as if you had asked for the work
+directly: what it writes next is **the answer itself** — the findings, the summary of what
+was made, what it changes.
+
+The card the landing writes into the conversation already says the task finished, how long
+it took, how many files it touched and where the branch went, so aforge does not say that
+again, and it does not grade the deliverable. "In good shape", "solid", "genuinely non-trivial" are sentences *about* the
+work in place of the work, and so is narrating what it did to get there.
+
+When the report is too thin to answer from, aforge reads the deliverable and answers out of
+what is in it. The message is the answer; the file is the deep dive.
+
+**Every file aforge names you is named by its full absolute path** — after a task and
+everywhere else in the conversation. A relative path like `research/notes.md` is one you
+would have to work out a root for, and a task that ran in its own copy of the repository
+makes even that a guess.
 
 ## How long a task gets before it is stopped
 
@@ -106,6 +135,13 @@ happens next. Working toward the brief: the task gets another hour, up to five i
 land now — one final turn to write the deliverable from what it already has — and only
 then is it stopped, with the threshold and the evidence in the report.
 
+**What the landing turn may still do.** It keeps only the tools that SAVE something:
+`write`, `edit`, and whichever media verbs the task had — `generate_image`, `speak`,
+`generate_music`, `generate_video`. Everything else comes off, and the instruction names
+exactly the hands it kept, so a task whose deliverable is a picture or a piece of audio can
+still produce it. Reading, searching and running commands are gone for that turn: it is a
+turn for finishing, not for one more look.
+
 **Five minutes for a check.** Each second look at finished work is bounded at 5 minutes.
 It hangs off the task's own clock, so `jobs kill` ends it too. A check that burned its
 whole five minutes is not retried.
@@ -115,17 +151,77 @@ There are two step limits as well, and they work the same way — checkpoints, n
 | Limit | Per checkpoint | Backstop | Report when it finally stops |
 | --- | --- | --- | --- |
 | `max_steps` — finished tool calls | 200 | 1000 (200 × 5) | `stopped: 200 steps and no finish` |
-| `no_progress` — calls in a row that change and teach nothing | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
+| `no_progress` — calls in a row that teach nothing, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
 
 At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
 to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
-writes up what it has — so nothing is ever lost mid-flight.
+writes up what it has — so nothing is ever lost mid-flight. And a task stopped this way is
+still checked against its acceptance afterwards: if the work holds it lands finished and
+merges, and the `stopped:` line never reaches you.
 
-The `no_progress` counter resets on a successful `edit` or `write`, on a read-only call at
-a target the task has not aimed at before (`read`, `read_document`, `ls`, `grep`, `find`,
-`web_search`, `web_fetch`, `jobs`, `recall` — a failed one still counts as learning), and
-on a `bash` that either left new changes in the worktree or ran a command not run before.
-`note`, `forget`, `track`, `commit` and `generate_image` are deliberately not progress.
+## What counts as progress, and what gets a task stopped as stuck
+
+The `no_progress` counter resets on any one of three things, and only fires when a step is
+none of them:
+
+**It saved a file.** A successful `edit`, `write`, `generate_image`, `generate_video` or
+`speak` — every hand that puts a file on disk at a path the call names. Making a picture is
+working; a task asked for two marketing images that generates them, looks at them and
+generates them again has never called `edit` in its life, and is not stuck.
+
+**It changed the worktree.** Any step at all — whatever tool it was — that left the task's
+working copy different from how the step before it found it. This is the backstop under
+everything else, so a tool nobody classified still counts when it actually produced
+something. Job logs under `.aforge-v3` are excluded: the harness's own droppings are not
+the task's work.
+
+**It learned something.** A read-only call aimed at a target the task has not aimed at
+before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,
+`recall`, `view_image`, `manual`, `tasks`, `settings`, `list_harnesses`, `services`,
+`gmail_read`, `gmail_search`, `calendar_list` — or a `bash` running a command not run
+before. A failed one still counts as learning: finding out that something does not work is
+finding something out.
+
+So what actually fires the counter is **the same call again, changing nothing and teaching
+nothing** — the same search six times, the same failing edit retried, a command already
+run. `note`, `forget`, `track`, `commit` and `change_setting` are deliberately not
+progress: a task writing its own memory again has not learned anything.
+
+Failure matters for saving and not for learning. A `generate_image` that came back with an
+API error saved no file, so a task calling it repeatedly and getting the same error is
+stuck and is stopped — which is what the counter is for.
+
+Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
+checked against its acceptance, and when the check passes it lands finished and merges with
+the `stopped:` line gone. The section below is that whole rule.
+
+## A task stopped as stuck that had already finished its work
+
+Being stopped is a statement about the **trajectory**, never about the deliverable. One of
+these really happened: a task wrote all six of the stories it was asked for, spent six steps
+re-reading them to be sure, and was stopped with `stopped: 6 steps without progress` — the
+same target twice is exactly the spin the counter is for. Its own landing turn then said the
+six files were written and the work was done. You saw ✗ failed and a kept branch next to a
+report saying it had finished.
+
+So a stopped task is still judged on its work. After the landing turn writes up what it has,
+the same check a task that finished on its own gets is run — the same acceptance, the same
+worktree, the same read-only checker.
+
+**If the work holds:** the task lands **finished**, its branch **merges** into yours, and
+`stopped: 6 steps without progress` is nowhere in what you read. The report is the task's own
+account of the work with what it was checked on under it, exactly as any finished task's is.
+A limit that fired is not news about a deliverable that is sitting there.
+
+**If it does not hold, or there was nobody to ask:** nothing changes. The report leads with
+the limit that fired, the task's own last words stand under it, the branch is kept with the
+work committed onto it, and nothing merges.
+
+**One look, and no correction round.** A stopped task gets a single check — never the
+`task.repair_rounds` worker a task that finished on its own can earn, because a second worker
+in the worktree is paying twice for the run the limit has just ended. With `task.audit` off,
+or with no acceptance to judge against, there is nobody to ask and the task simply stays
+stopped.
 
 ## How aforge knows a task really finished
 
@@ -193,10 +289,13 @@ Every task ends in exactly one of three states, and the words are the same every
 read them.
 
 **Finished.** `task 7 finished: <title>`. The second look held. The branch merges into
-yours, and the report leads with the evidence, alone — no lead word at all.
+yours, and the report leads with the task's own account of the work, with what it was
+checked on under it — no lead word at all.
 
-**Failed.** `task 7 failed: <title>`. Somebody looked and made a finding, or a limit
-fired. The branch is kept. Anything waiting on it fails with it.
+**Failed.** `task 7 failed: <title>`. Somebody looked and made a finding — or a limit fired
+and the work did not hold when it was checked afterwards. The branch is kept. Anything
+waiting on it fails with it. A limit firing on its own is no longer enough: work that was
+stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
@@ -217,6 +316,11 @@ tries in a row got nothing, the first line is prefixed
 On every ending except a clean merge, the branch is **kept and named**. This is true
 without exception:
 
+- a task **stopped at a step limit or for lack of progress** whose work did not hold keeps
+  its branch — and what it made is **committed onto that branch** before it lands, so
+  `git merge task/…` really brings the files over. The landing note names them under
+  `changed:` and offers the merge. (If the check passes, that task merges instead and there
+  is no branch left to offer.);
 - a task that ran out of time keeps its branch;
 - a task you killed with `jobs kill` keeps its branch, and the partial work with it;
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
@@ -237,7 +341,8 @@ in the checkpoint on disk, and in the project's index of landed work.
 A task can name `depends_on` — the ids of tasks that must finish first. When it starts,
 its brief is given their reports, under the line
 `What the work before you learned:` and then, per prerequisite,
-`<title> (task N):` and the report.
+`<title> (task N):` and the report. That lands inside the `THE WORK` part of what the task
+reads, below the model's brief.
 
 What happens depends on how the earlier task landed:
 
@@ -364,13 +469,20 @@ When a session comes back:
 
 - tasks that were **done**, **failed**, **needing your look** or **queued** come back
   exactly as they were, with their leavings intact;
-- a task that was **running** comes back **failed** and marked interrupted, with a report
-  saying where its work is:
-  - `session ended mid-run; branch task/… kept` — plus `, its worktree is at <dir>` when the
+- a task that was **running** comes back **queued** and marked interrupted, and it is
+  resumed once — a process exit pauses work, it does not make a finding about it. Its
+  report says where its work is:
+  - `paused — it resumes; branch task/… kept` — plus `, its worktree is at <dir>` when the
     directory is still there. The branch is checked in the repository first;
-  - `session ended mid-run; its branch task/… is no longer in the repository`;
-  - `session ended mid-run; it had not got as far as a working copy`;
-  - `session ended mid-run; it worked directly in the workspace, so whatever it wrote is in your tree`;
+  - `paused — its previous branch task/… is gone, so it resumes in a fresh working copy`;
+  - `paused — it resumes`, when it had not got as far as a working copy;
+  - `paused — it resumes; whatever it wrote is in your tree`, when it worked directly in
+    the workspace;
+- **a sub-harness design that was still being written is the exception: it does not
+  resume.** It comes back **failed**, saying `the design did not finish before aforge
+  closed; nothing was saved`, and it is never handed to an ordinary worker. Nothing reaches
+  the harness registry until you approve the card, so an unfinished design left nothing
+  behind to pick up — ask for it again and it is designed from the start;
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
 
@@ -381,9 +493,14 @@ one:
 recovered task graph: 2 done · 1 interrupted (branch task/fix-it-9c1a2f kept) · 1 waiting
 ```
 
-The counts are done, failed, needing a look, interrupted and waiting. The branch clause
-reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes that
-were never delivered appear underneath.
+The counts are done, failed, needing a look, interrupted, designs that did not finish, and
+waiting. A design's own clause is `1 design did not finish (nothing saved)`. The branch
+clause reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes
+that were never delivered appear underneath.
+
+**An adaptive run is not a task and does not come back at all** — it has no checkpoint.
+What comes back is its row in the project's list, closed with `incomplete — aforge closed
+while this was still running`. See *Adaptive runs*.
 
 A completion is announced **exactly once across lives** — a resumed session does not
 re-tell the model about work it already read about.
@@ -453,45 +570,108 @@ Endings are checked in a fixed order, and the first match wins:
 | --- | --- | --- |
 | 1 | No working copy could be made | `could not prepare a working copy: <err>` |
 | 2 | The worker would not start | `could not start the task: <err>` |
-| 3 | A step limit fired | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
+| 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
-| 5b | The session closed or detached | paused — it resumes, it is not failed |
+| 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
 | 6 | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
 
+Row 3 is checked before it is written down: a task that hit a limit is judged against its
+acceptance one more time, and if the work holds it lands **done** at row 10 instead, merged,
+with no `stopped:` line anywhere in the report.
+
 In rows 3 to 7 the task's **own last words are kept underneath** the one-line reason, and
-the branch is kept.
+the branch is kept — with the work committed onto it. A task that was stopped mid-flight
+still hands over the files it produced: they are listed under `changed:` and the branch is
+offered for you to merge. What is never done for you is the merge itself, because only work
+that was checked reaches your branch.
 
 What you read on a failure is `task 7 failed: <title>`, the report, the changed files, and
 the line saying the branch was kept. Anything waiting on that task fails with it — the
 cascade walks one layer per scheduling pass.
+
+**This table is about tasks that do work in a working copy.** A `harness` task — a
+sub-harness being designed — has none of that machinery and its own short list of endings
+instead: it can run out of time only while the page is being *written*, and a card left
+unanswered settles it **done** rather than failed. Ask the manual about designing a harness
+for that list.
 
 ## What propose_task needs from you
 
 `propose_task` is how the model moves a self-contained piece of work out of the
 conversation. You cannot call it yourself — you ask for the work, and the model grooms it.
 
-Four arguments are **required**:
+Five arguments are **required**:
 
 | Argument | What it is |
 | --- | --- |
 | `title` | One line naming the work, as you would say it |
 | `summary` | Two or three lines you read to decide whether to redirect it |
-| `brief` | The task's **whole** context. The task never sees the conversation |
+| `brief` | The work itself: files, symbols, conventions, what has been tried |
+| `deliverable` | What must **exist** when it is over, and where: the file and its path, the branch, the answer and its shape |
 | `acceptance` | The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear |
 
-What the task is actually asked is `brief` + `"\n\nAcceptance: "` + `acceptance`. The same
-`acceptance` string is also what the second look judges against — one text, two readers.
-So a vague acceptance costs twice.
+The same `acceptance` string is what the second look judges against — one text, two
+readers. So a vague acceptance costs twice.
 
 A missing argument comes back as an ordinary result, never an error:
-`Invalid arguments: title is required`, and the same sentence for `summary`, `brief` and
-`acceptance`, in that order. Unparseable JSON answers `Invalid arguments: ` and the parse
-error.
+`Invalid arguments: title is required`, and the same sentence for `summary`, `brief`,
+`deliverable` and `acceptance`, in that order. Unparseable JSON answers
+`Invalid arguments: ` and the parse error.
+
+There is a sixth part the model is **not** asked for and cannot leave out: your own
+message. See the next section.
+
+## What the task actually reads — does it see what I said?
+
+Yes. Your own message travels with the work, word for word.
+
+A task's first and only message is assembled by aforge from four parts, under headings, in
+this order:
+
+```
+WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS
+This is the message this work came out of. Where anything below reads
+differently from it, their words are what was asked for.
+
+<what you typed, verbatim>
+
+THE WORK
+<the model's brief, plus what any task it waits on learned>
+
+WHAT TO PRODUCE
+<the deliverable>
+
+DONE WHEN
+<the acceptance>
+```
+
+The first part is taken by aforge from the conversation — the message that was in front of
+the model when it proposed the work, or the newest thing you typed into that turn if you
+steered it. The model never writes that part and cannot edit it. Nothing else from the
+conversation travels: the task does not see the discussion around your message, and it
+cannot ask you anything once it starts.
+
+**A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
+separate deliverable, so it reads as your words, the work and a done-condition. A task
+restored from a checkpoint written before this existed has no verbatim part at all.
+
+**For a `/task` the THE WORK part is your brief after shaping**, not a model's paraphrase of
+a conversation: your sentence with the constraints and decisions written around it, from the
+pass described on the *work that runs on its own* page under *Why my task's brief is longer
+than what I typed*. Where shaping could not run, the two parts are the same sentence and it
+is printed once — under your own heading, with no THE WORK at all.
+
+Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task that was
+handed a shortened version of what you said can see that it was.
+
+A task the model hands out from **inside** another task inherits the same words: there is
+nobody in a worktree to type a new message, so the sentence that started the family is what
+every task under it reads.
 
 Once a task is admitted, its brief and its acceptance are **frozen**. Nothing changes them
 after that — not steering, not a correction round. Steering is talk to the worker, not a
@@ -515,9 +695,10 @@ and only then a stop with `stopped: 200 steps and no finish`, the number being t
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
 
-**`no_progress`** — how many tool calls in a row may teach nothing and change nothing
-before the task is stopped as spinning. Default **6**. On the limit the report is
-`stopped: 6 steps without progress`. A negative value answers
+**`no_progress`** — how many tool calls in a row may teach nothing, save nothing and leave
+nothing new in the worktree before the task is stopped as spinning. Default **6**. On the
+limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
+the task made is committed onto its kept branch. A negative value answers
 `Invalid arguments: no_progress cannot be negative`.
 
 Both step limits are recorded in the checkpoint, so they survive a restart along with the

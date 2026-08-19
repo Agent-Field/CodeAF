@@ -5,11 +5,43 @@
 aforge draws one screen in a fixed order every frame. From the top: the pinned room
 header (only while a task room is open), the task strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
-sub-harness offer, the steer guard, the follow-up row, another gap, the draft box where
-you type, any open list (picker, menu, completion), and the status line last.
+sub-harness offer, the steer guard, the follow-up row, any message waiting for the
+answer to finish, another gap, the draft box where you type, any open list (picker,
+menu, completion), and the status line last.
+
+Beside the conversation, on the right, the task roster's column — the right-hand bar,
+sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
+once this session has any tasks. `ctrl+g` closes it and opens it again, remembered
+between sessions, and the column's own last line says so: `ctrl+g — hide`. With it
+closed the conversation is laid out at the full width of the terminal, running work
+still draws the strip along the top, and the legend's hint slot reads `ctrl+g tasks`.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
+
+## The box says which room you are typing into
+
+While a task room is open the draft box carries the room in front of its own `› `: the
+task's state glyph and its name, on the tinted background a selected row wears, in the
+hue of what that task is doing — the same hue the roster paints its glyph with. So the
+line you are typing on says where the words are going, and it says it whether the box is
+empty or full.
+
+```
+ ⠋ Ship the port › fix the flake in the loader
+```
+
+- It is a **segment, not a row** — it costs the conversation nothing and the caret is
+  counted through it, so the cursor is where the letter is.
+- Continuation rows of a wrapped draft line up under the text, past the segment.
+- The name is cut to at most 18 cells. On a frame with too few columns to leave a box
+  worth typing in, the segment is dropped and the box's placeholder names the task
+  instead.
+- In the main conversation there is **no segment at all** — not a dim one, not an empty
+  one. There is nowhere else the words could be going.
+
+The same task is marked twice more while you are in it: its row in the roster wears the
+same tint, and its chip on the task strip does too.
 
 The rule above the input is the only horizontal line this surface draws. There are no
 borders anywhere else. The draft box is inset one cell.
@@ -76,8 +108,14 @@ and is never cut along with the path (`devbox:~/code/app`).
 The right is a hint slot. It says `/ commands` when nothing else needs it, and names
 the keys that work right now when a state has keys of its own — for example
 `y allow · n deny · a always` while a question is up, `esc interrupt` while a turn is
-running, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
+running, `esc stops and sends` while a message of yours is waiting for the answer to
+finish, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
 to `/ commands`.
+
+One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
+when you have closed the task column and this session has run something. It is the
+whole of what the frame says about a roster that is not on screen, and it says nothing
+at all when nothing has been run.
 
 While a question is waiting, the whole legend goes violet.
 
@@ -87,7 +125,10 @@ then the plain rule. Below width **70** the branch and the hint slot are dropped
 outright.
 
 While a task room is open the left says exactly `room · esc/←← main`, and the path and
-branch are not drawn.
+branch are not drawn. The pinned header at the top of the frame says the same thing in
+its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
+you are back in the conversation. Clicking the page itself does not leave a room — a
+press on empty space does nothing here as it does everywhere.
 
 ## The status line at the bottom
 
@@ -289,6 +330,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
+| no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
 | welcome box | not drawn below height 12 or width 40 |
@@ -422,6 +464,54 @@ whole block is rendered at once.
 The offer to open a wide table is only drawn on the settled render. A half-arrived table
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
+
+## My message appeared in the middle of the reply — a message never lands mid-stream
+
+It cannot any more. A message of yours is never drawn inside a streaming answer, never
+splits a reply into two blocks, and is never interleaved with the paragraph being
+written. The rule holds in the conversation and in a task room's own page alike:
+whatever is still streaming stays one contiguous block, and your line goes **after** it.
+
+There was a defect here. Pressing `enter` while an answer was streaming used to cut the
+reply in two and wedge your sentence between the halves, so it read as though the model
+had quoted you mid-thought. Two things fixed it. Your line now always goes below the
+block that is still being written, whatever put it there — and plain `enter` no longer
+sends into a running answer at all: it **waits**. See "A message you typed while the
+answer was still coming" below.
+
+## A message you typed while the answer was still coming (the waiting block)
+
+Press `enter` while a turn is running and your message is **held**, not sent. It is
+drawn in its own block directly above the message box — under everything that has
+happened, above the box you typed it in — in your own accent hue, with the same `›`
+glyph your messages wear in the conversation. Under it sits one dim line:
+
+```
+› do much more of a deep research please
+  waits for this answer · esc stops and sends · ↑ or click to edit
+```
+
+The dim line trims from the right on a narrow terminal: the last piece goes first, then
+the middle, and the narrowest frame keeps `waits for this answer` alone. With more than
+one message waiting the first piece is counted — `2 wait for this answer` — and with
+exactly one it is not counted at all.
+
+What happens to it:
+
+- **When the answer finishes**, it sends itself as an ordinary new turn and appears in
+  the conversation as a normal message of yours. Several waiting messages go **one per
+  finished turn**, oldest first, in the order you typed them.
+- **`esc`** stops the answer and sends it immediately.
+- **`↑` over an empty box**, or a **click on the block**, takes it back into the box to
+  be edited. `enter` then holds the edited sentence again.
+- The box is cleared the moment you press `enter`, so you can keep typing. Attachments
+  in the tray go with the held message and come back on the tray if you take it back.
+- If the conversation is replaced under it — `/new`, opening a session from the welcome
+  box — the waiting messages are dropped and aforge says so: `1 waiting message dropped`
+  or `N waiting messages dropped`.
+
+While something is waiting, the hint slot in the legend reads `esc stops and sends`
+instead of `esc interrupt`.
 
 ## Markdown at phone width
 
@@ -654,8 +744,34 @@ until its result lands, because until then nothing here knows whether it worked.
 A call with no timeout gets no countdown, no bound and no colour — chrome implying a
 deadline would be inventing one. A foreground `bash` always has one: a `timeout` that is
 missing, null or zero counts down against the 120-second default the command will really
-die on, never a number nothing is going to enforce. A background `bash` has no bound, because it runs as a
-job. A turn that ended with a call unresolved stops every clock.
+die on, never a number nothing is going to enforce. A background `bash` has no bound,
+because it runs as a job. A turn that ended with a call unresolved stops every clock, and
+it stays stopped:
+the row takes the dim `·` mark at the moment the turn ends and keeps it through every
+turn after, so an abandoned call can never start spinning again.
+
+## Why does a tool row still say running, or seem stuck
+
+Three different things look the same and only one of them is a problem.
+
+**It is genuinely still running.** A call's row spins until its result arrives, and some
+calls take minutes: `view_image` asks another model about the picture and is bounded at
+**10 minutes**; `generate_image`, `generate_video` and `speak` are whole renders. The
+count-up beside the spinner is the honest answer to "how long have I been waiting".
+
+**Its batch has not finished.** When the model asks for several calls at once they all
+start together and they all report back together — the results arrive after the **last**
+one of them returns. So a fast call sitting beside a slow sibling spins for as long as
+the slow one takes. Two `view_image` calls in one message settle as a pair, and both
+settle: neither is waiting on the other's row.
+
+**The turn ended around it.** An interrupt, a lost connection, or an attempt the session
+retried can leave a call with no result coming. That row stops where it is, keeps a dim
+`·`, and shows no duration — nobody measured one. It is not marked failed, because
+nobody watched what became of it.
+
+If a row is spinning and the state word at the bottom says `idle`, that is a bug worth
+reporting: nothing spins on an idle session.
 
 ## What happens when the countdown runs out
 
@@ -685,6 +801,8 @@ What you get, per tool, each with its own line cap:
 | `read` | the returned chunk | 30 rows |
 | `bash` | the command whole and highlighted, uncapped, then the output; `exit N` in the bad hue at the foot when it failed | output 30 rows |
 | `grep`, `find`, `ls` | the listing | 30 rows |
+| `generate_image` | the picture itself, in colour, then its whole absolute path — or, where no picture can be drawn, that path alone | picture 20 rows |
+| `view_image` | the picture itself, then what the looking model said | answer 30 rows |
 | anything else | the arguments, then the output | 30 rows |
 
 Rows truncate rather than wrap — "first 30 lines" has to mean thirty rows on screen or
@@ -706,6 +824,70 @@ once execution begins. The header changes, the rows do not, so nobody reads the 
 diff twice. It is capped at **12** rows, or **4** at phone width, with the remainder
 offered as `… N more lines`. There is no preview for `bash` (the command is already on
 its own line in full) or `read`.
+
+## Seeing the image itself in the terminal, in colour
+
+**You do not have to do anything.** The moment a `generate_image` or `view_image` call
+finishes, the picture is drawn under its row, in colour — no click, no key, no flag. It
+is there in the conversation as you read it, and it is there in a task's room too.
+
+It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
+top colour and its bottom one, which is how a terminal shows a photograph with nothing
+but colour codes. No image protocol is involved and nothing is written outside the
+frame, so the picture survives every repaint, scrolls with the conversation, and works
+over ssh and inside tmux the same as anywhere else.
+
+The picture under a row is a **thumbnail**: at most **12 rows** tall, or **4** at phone
+width — the same ceiling the live preview takes, because a block nobody asked for should
+not take the screen from the conversation it appeared in. It carries no heading, no
+border and no caption. Nothing is held back behind a `… N more lines` foot either: the
+whole picture is drawn into however many rows it has, because half a picture is not half
+an answer.
+
+**Open the row for the bigger look** — click it, or select it with `↑`/`↓` and press
+`enter`. There the picture is drawn again at up to **20 rows**, and under it, dim, one
+line: **the file's whole absolute path**, then its size in pixels and on disk —
+`/…/harbour.png · 1024×768 · 1.4 MB`. At phone width the same gesture opens the call
+over the whole frame. A `view_image` expansion also keeps what the looking model said,
+under the picture.
+
+The picture keeps its own shape and is **never enlarged** past its real pixel size: a
+16-pixel icon is drawn 16 cells across, because blowing it up would be sixty columns of
+blur claiming to be detail.
+
+**png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
+
+A picture is **decoded once and kept**, so a row you scroll past, a row you leave open
+and a row that repaints ten times a second all cost the same after the first frame.
+Resize the terminal, switch your theme, or overwrite the file on disk and it is drawn
+again — those are the only three things that make it re-read anything.
+
+## When the image preview is not drawn — why don't I see the image, and where did my generated picture go?
+
+If a row shows only words — something like
+`/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
+picture could be drawn, and **that line is the answer instead**: it names the file
+**whole and absolute**, so you can open it yourself from anywhere.
+
+The reasons, in the order they are worth checking:
+
+- **Your terminal is below 256 colours**, or colour is off. The sixteen ANSI colours are
+  your own theme, and a photograph painted out of them would be a lie about both.
+- **Your terminal cannot draw box-drawing characters** — no UTF-8 locale, or no `TERM`
+  at all. The half block is the whole technique.
+- **Screen-reader mode**, where rows of block characters read aloud are rows of nothing.
+- **The row is under 8 columns wide.**
+- **The call has not finished.** A picture is drawn when the file exists, and
+  `generate_image` writes the file last.
+- **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
+  four types** — a `svg`, a `tiff`, a `pdf`.
+
+In every one of those the row is **exactly what it would have been** — its result line,
+or what the looking model said — and never an error. Opening the row in those cases
+gives you the file's whole absolute path on its own rows, wrapped rather than cut,
+because a path with an ellipsis in it cannot be clicked, copied or pasted.
+
+Where the files themselves land is on the "making pictures, audio and video" page.
 
 ## Opening a tool call on a phone-width screen
 
@@ -756,8 +938,9 @@ Four rungs, detected once from what your terminal says it can do:
   tint.
 - **NoColor** — no escape sequences at all, weight included.
 
-Backgrounds — the hover band and the selection band — are drawn only at ANSI256 and
-above. There is no weight that means "this row".
+Backgrounds — the hover band, the selection band, and the chip behind a recognized slash
+command — are drawn only at ANSI256 and above. There is no weight that means "this row",
+so a slash command falls back to bold and a hovered row to nothing.
 
 If a colour on this surface could be described as "bright", it is wrong.
 
@@ -779,6 +962,12 @@ whole value is that seeing it anywhere means one thing.
 Hue carries identity; weight carries markdown. Your message is accent whole behind its
 own glyph, and nothing the model writes is ever painted accent. On a 16-colour terminal
 that accent degrades to bold, which is the only marker left there.
+
+One thing inside your own words is painted differently: a slash command aforge
+recognizes — `/task`, `/compact`, `/clear` — wears a **chip**, the selection band's tint
+behind the letters of the command, in the message box and in the sent message alike. A
+background is not a role on this surface, so a lifted run of cells reads as "this is not
+prose" wherever it turns up. Nothing the model writes is ever chipped.
 
 Six mid-tone hues form a separate identity ring, spent on exactly one cell: the glyph at
 the head of a task row. No role ever paints that column, so a ring hue cannot be misread
@@ -851,7 +1040,9 @@ is appended in dim. It is suppressed entirely while text is actively streaming, 
 any tool call is spinning, and while a sub-harness run has a step on the row under it
 (see *Saved shapes of work*) — two answers to "is this alive?" is one too many. It says
 "still working" and never "retrying": this screen does not know whether the session is
-retrying, only that the stream has been silent.
+retrying, only that the stream has been silent. When the reply has not started at all —
+a request is out and nothing has come back — the more specific waiting line below
+replaces this suffix instead of sitting beside it.
 
 **The compaction mark.** A compaction is drawn while it runs and left as a rule once it
 lands, so the conversation never silently loses its middle. Running, it reads
@@ -859,6 +1050,46 @@ lands, so the conversation never silently loses its middle. Running, it reads
 spinners, dim, with a count-up. Settled, it becomes a centred rule:
 `───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
 second. It is never painted the question hue, because nobody is being asked anything.
+
+## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
+
+Between you pressing enter and the model's first word there is a gap, and it is sometimes
+long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
+as at second fifty, so past a few seconds it starts saying what it is waiting on.
+
+For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
+clock. Past 4 seconds it grows a dim tail naming the model and counting up:
+
+```
+  ··· waiting for kimi-k3 · 12s
+```
+
+Past **30 seconds** it says the plain fact outright:
+
+```
+  ··· waiting for kimi-k3 · 47s · nothing has come back yet
+```
+
+The model is its **basename**, the way the status deck's chip spells it — `kimi-k3`, not
+`moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
+
+**What it claims, and what it does not.** It claims only that a request went out and the
+stream has said nothing since. It never says "retrying", "the network is slow", or "the
+model is thinking" — this screen cannot see the wire and does not pretend to. So
+`waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
+it is still there and still waiting, which is the one thing a bare ellipsis could not tell
+you apart from a hung program.
+
+**Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
+painting; a clock that has stopped means it is not. Nothing here kills the request on your
+behalf and there is no cancel-and-ask-again — the wait runs until the answer starts, the
+session's own retries resolve it, or you stop it. `esc` interrupts the turn.
+
+**It never runs under a tool call.** A tool that is executing has its own spinner and its
+own count-up, and the ellipsis stands down for it entirely. This clock is only for the
+window between a request going out and the stream first speaking, so after a three-minute
+`go test` the request that follows starts the clock at zero rather than inheriting the
+call's runtime.
 
 ## The dim line under a finished turn
 
@@ -901,6 +1132,12 @@ A hovered conversation row gets a background band padded to the full width. A ho
 fold line brightens its arrow. A hovered table foot, and the jump-to-latest chip, go
 **accent** rather than taking a background — a highlighted rectangle would be the one
 boxed thing on a surface with no boxes.
+
+**Selected beats hovered.** A row that is already the thing you are looking at — the
+roster row and the strip chip of the room you are standing in, the cursor row of an
+open list — wears the selection band, which is the hover background one step louder,
+and the pointer moving over it changes nothing. The two cannot both be drawn, and "you
+are here" is the one still true when the pointer leaves.
 
 There is no hover at all in the screen-reader tier. Terminals below ANSI256 get no hover
 background either, because there is no weight that means "under the pointer".

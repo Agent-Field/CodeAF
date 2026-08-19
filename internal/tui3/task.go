@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -1833,6 +1834,31 @@ const (
 	railNarrowHint = "w · click seam — narrow"
 )
 
+// The column's own door, and the two lines that name it.
+//
+// THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. ctrl+t is the
+// roster's ([app.railKey]) and every other letter this surface could reach for
+// is a chord the message box already answers — ctrl+a, ctrl+e, ctrl+b, ctrl+f,
+// ctrl+u and ctrl+w are the readline edits a person types without looking, and
+// taking one of those for a sidebar would be a keystroke that deleted a word the
+// first time somebody meant it. ctrl+g is readline's abort, which this surface
+// has always spelled esc, so nothing is lost by binding it.
+const (
+	railStowKey = "ctrl+g"
+	// railStowHint is the last line of the column, and unlike the widen offer
+	// above it, it is drawn WHENEVER THE COLUMN IS. The widen tier is contextual —
+	// a cut title earns the offer — but the way out of a column is the one thing a
+	// person cannot discover by hovering, cannot reach from the keyboard they have
+	// not been handed, and will look for at exactly the moment they have decided
+	// they are done with it. One dim row at the bottom is the whole cost.
+	railStowHint = railStowKey + " — hide"
+	// railBackHint is the other half, and it lives in the legend's hint slot while
+	// the column is away and this session has run anything (render.go's
+	// [app.hintWord]). It is the shape of that slot's other lines: the key, then
+	// what it reaches.
+	railBackHint = railStowKey + " tasks"
+)
+
 // railGroup is what a node is DOING, which is the only thing the roster sorts
 // by. The order of these constants IS the order of the column.
 type railGroup uint8
@@ -1907,6 +1933,16 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 func (a *app) railGroupOf(node *taskNode) railGroup {
 	switch node.state {
 	case session.TaskRunning:
+		// EXCEPT FOR THE ONE PIECE OF RUNNING WORK THAT IS NOT RUNNING. A harness
+		// design at "awaiting your look" has finished everything a machine can do
+		// for it: the page is written and the only remaining step is somebody
+		// saying whether to keep it ([taskAwaitsPerson]). Counted as running it
+		// made the roster's foot say "1 running" about a card that had been sitting
+		// on screen for ten minutes waiting on the person reading that line — and
+		// left the tally that exists to say "something needs you" saying nothing.
+		if taskAwaitsPerson(node) {
+			return railAttention
+		}
 		return railRunning
 	case session.TaskUnverified:
 		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
@@ -1937,6 +1973,31 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 // sitting somewhere a person can go and get. A node that ran in the person's own
 // tree, or one that ended before there was ever a branch, wears no name here and
 // has left nothing behind — so it is not undelivered, it is simply over.
+// taskAwaitsPerson reports whether this node's only remaining step is a
+// PERSON'S. It is the other half of [taskUndelivered]: both name work the
+// machine has finished and cannot take further, and both belong in the tally
+// that says how many things need somebody.
+//
+// TODAY IT IS EXACTLY ONE THING, and it is written narrowly on purpose. A
+// harness design holds its node open while its card waits to be answered, which
+// is right — the work genuinely is not over, the room has to stay open, the stop
+// has to keep working — but its STATE is the machinery's word for it, and the
+// state is `running` for the same span in which nothing is running. The phase is
+// the honest fact, so the phase is what this asks, against the engine's own
+// constant (session's HarnessPhaseAsking): the string is spelled once, over
+// there, because a second copy of it here is the copy that would drift.
+//
+// It is deliberately not a general "is the phase a waiting one" test. Phases are
+// a kind's own vocabulary and only this kind has one; a surface that guessed at
+// the meaning of phases it had never been told about would file the next kind's
+// rows wrong the day it landed.
+func taskAwaitsPerson(node *taskNode) bool {
+	return node != nil &&
+		node.kind == session.TaskKindHarness &&
+		node.state == session.TaskRunning &&
+		node.doing == session.HarnessPhaseAsking
+}
+
 func taskUndelivered(node *taskNode) bool {
 	switch node.merge {
 	case mergeWordConflicted, mergeWordAborted:
@@ -2307,11 +2368,17 @@ func (a *app) railColumns(width int) int {
 
 // railShowing reports whether the frame has a roster on it right now.
 //
-// ONE NODE RAISES IT AND NOTHING PUTS IT AWAY but /new. The old rail left when
-// the last live node landed, which was honest about presence and wrong about a
-// roster: the column is now the session's record of its own work, and a record
-// that vanished the moment the work finished would be a record of nothing.
+// ONE NODE RAISES IT AND NOTHING PUTS IT AWAY but /new — and the person
+// ([app.railStow]). The old rail left when the last live node landed, which was
+// honest about presence and wrong about a roster: the column is now the
+// session's record of its own work, and a record that vanished the moment the
+// work finished would be a record of nothing. What it is NOT is a column
+// somebody has to live with: ctrl+g takes it off the frame, the conversation
+// takes back the columns, and the answer is remembered for the next session.
 func (a *app) railShowing() bool {
+	if a.railAway {
+		return false
+	}
 	width, _ := a.size()
 	if a.railColumns(width) == 0 {
 		return false
@@ -2342,7 +2409,7 @@ func (a *app) railAvail() bool { return len(a.taskOrder) > 0 }
 // frame does with the request is a question about its width. One state cannot
 // disagree with itself about whether the roster is up.
 func (a *app) railFull() bool {
-	if !a.railHold || !a.railAvail() {
+	if !a.railHold || !a.railAvail() || a.railAway {
 		return false
 	}
 	width, _ := a.size()
@@ -2405,6 +2472,11 @@ type railLine struct {
 	// hint says this line is the footer's widen offer, which is pressable and
 	// belongs to no entry.
 	hint bool
+	// stow says this line is the footer's last one, the column's own door
+	// ([railStowHint]). It is a second flag rather than a kind on the line above
+	// because both can be drawn at once and a press has to tell them apart: one
+	// changes the column's width and the other takes it off the frame.
+	stow bool
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2458,10 +2530,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// ([app.railFootRows]).
 	a.railCramped = false
 	lines := a.railLines(entries, room)
-	foot, hint := a.railFootRows(room, height)
+	foot, hint, door := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
-		body, foot, hint = height, nil, -1
+		body, foot, hint, door = height, nil, -1, -1
 	}
 
 	// The cursor the window follows is the focused entry's first line, and the
@@ -2486,7 +2558,7 @@ func (a *app) railView(height int) ([]railLine, int) {
 		out = append(out, railLine{entry: -1})
 	}
 	for i, text := range foot {
-		out = append(out, railLine{text: text, entry: -1, hint: i == hint})
+		out = append(out, railLine{text: text, entry: -1, hint: i == hint, stow: i == door})
 	}
 	return out, focus
 }
@@ -2526,12 +2598,37 @@ func (a *app) railRows(height int) []string {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text
-		// EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers to a
-		// click — the whole row is that node's door (hover.go's own law). It is
-		// applied here rather than inside the row's render for the reason the
+		// THE ROW WHOSE DOOR YOU WALKED THROUGH WEARS THE SELECTION BAND, which is
+		// what makes this column a map of where you are rather than a list of what
+		// exists: a person standing inside a node's page could read the page's own
+		// header for its name, and then had to read it, because nothing in the
+		// roster beside it said which of these rows they were behind.
+		//
+		// It is [palette.band] and not a new mark — the same background the strip
+		// puts on the chip of the room a person is standing in (taskstrip.go's
+		// [app.stripChip]), and the same one every selected row on this surface
+		// wears (palette.go). It covers EVERY line of the entry, not just its head:
+		// a node's row is two lines tall when it has something to say under its
+		// title, and a band on half of it would read as a row cut in two.
+		//
+		// AND EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers
+		// to a click — the whole row is that node's door (hover.go's own law). It
+		// is applied here rather than inside the row's render for the reason the
 		// transcript applies it in its layout pass: one place knows where the
 		// pointer is, and no renderer has to remember it exists.
-		if line.entry >= 0 && line.entry < len(entries) && a.hoveringRail(entries[line.entry].node) {
+		//
+		// SELECTED OUTRANKS HOVERED, which is the law the overlay's rows already
+		// state: the two backgrounds cannot nest — each closes with SGR 49 — and
+		// of the two facts, "you are in here" is the one that is still true when
+		// the pointer moves away.
+		var node *taskNode
+		if line.entry >= 0 && line.entry < len(entries) {
+			node = entries[line.entry].node
+		}
+		switch {
+		case a.roomStandingOn(node):
+			text = a.pal.band(text, room)
+		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
 		}
 		out[i] = lead + text
@@ -2636,6 +2733,15 @@ func (a *app) railTake(hold bool) {
 	if hold && !a.railAvail() {
 		return
 	}
+	if hold {
+		// ASKING FOR THE ROSTER IS ASKING FOR IT TO BE THERE. ctrl+t on a frame
+		// whose column has been put away, and the strip's own +N door, are both
+		// requests for the whole list — and a request that moved a cursor inside a
+		// column nobody can see would be the key doing nothing at all. So the
+		// column comes back first, on the same terms as any other way of bringing
+		// it back: remembered.
+		a.railStow(false)
+	}
 	a.railHold = hold
 	if hold {
 		if entries := a.railEntries(); railFocusAt(entries, a.railWhere) < 0 && len(entries) > 0 {
@@ -2658,6 +2764,10 @@ func (a *app) railTake(hold bool) {
 // relied on because those keys are that file's: the door, the question the
 // SESSION is blocked on, the three modal overlays and the two typed lists all
 // outrank a map of work.
+//
+// TWO KEYS ARE READ WITHOUT THE HOLD, and they are the two that are about the
+// roster rather than inside it: ctrl+t, which asks for it, and ctrl+g, which
+// takes the column off the frame and puts it back ([app.railStow]).
 func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch {
@@ -2665,6 +2775,24 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.sheet.open, a.pick.open, a.copy.on, a.welcome.open,
 		a.menu.open, a.comp.open:
 		return nil, false
+	}
+	if key == railStowKey {
+		// THE ONE KEY THAT ANSWERS WITH THE COLUMN ITSELF. It is read before the
+		// hold below because it is true in both postures — a column that is up goes
+		// away, a column that is away comes back — and it is the only key on this
+		// map a person may press without having asked for the roster first.
+		//
+		// IT ONLY ACTS ON A ROSTER THAT IS ON THE FRAME, or on one it has already
+		// taken off. With no tasks at all — or under [railSlimFloor], where there is
+		// no column to close and nobody has raised the overlay — it falls through
+		// untouched, exactly as ctrl+t does. A keystroke that silently moved a state
+		// nothing is drawing is a keystroke a person cannot tell they pressed, and
+		// this one would move it into the NEXT session as well.
+		if !a.railAvail() || !(a.railStanding() || a.railAway) {
+			return nil, false
+		}
+		a.railStow(!a.railAway)
+		return nil, true
 	}
 	if key == "ctrl+t" {
 		// ONE KEY AT EVERY WIDTH. With a column on the frame it hands the roster
@@ -2789,6 +2917,49 @@ func (a *app) railWiden(wide bool) {
 	a.touch()
 }
 
+// railStow puts the column away, or brings it back. It is what ctrl+g does, what
+// the footer's last line does when it is pressed, and what any request for the
+// roster does on its way in ([app.railTake]).
+//
+// THE COLUMN IS THIRTY COLUMNS OF SOMEBODY ELSE'S PARAGRAPH. Every other tier
+// this file offers is a negotiation with the frame's width — full, slim, gone
+// under the breakpoint, wide on request — and none of them could answer the one
+// thing a person actually says about a sidebar, which is "not now". So this is
+// the person's own answer and it OUTRANKS the width tiers and the roster's own
+// "one node raises it" rule alike: put away, the column stays away through
+// landings, through new work, and into the next session.
+//
+// WHAT IS NOT ALLOWED IS WORK GOING QUIET. The column is the whole of what a
+// session says about itself, so closing it hands the job back to the two
+// surfaces that were written for a frame with no column on it: the strip above
+// the conversation, which draws a chip per RUNNING node and stands itself up the
+// moment this one stands down (taskstrip.go's [app.stripShowing]), and the
+// legend's hint slot, which names the key back while there is anything to come
+// back to (render.go's [railBackHint]). Neither says a word about a session that
+// has run nothing, which is the emptiness law and also the truth.
+//
+// THE CHOICE IS WRITTEN TO DISK EVERY TIME IT MOVES, and A FAILED WRITE IS
+// DROPPED, exactly as consent.go's is: the column has already moved on screen by
+// the time this runs, and an unwritable profile directory must not become a
+// terminal that cannot close its own sidebar. What it costs is that the next
+// session opens where the last one was told to, which is the behaviour of a
+// session that has never been told anything.
+func (a *app) railStow(away bool) {
+	if a.railAway == away {
+		return
+	}
+	a.railAway = away
+	if away {
+		// THE KEYBOARD GOES BACK TO THE DRAFT WITH THE COLUMN. A hold left standing
+		// on a roster that is not drawn is six keys taken from the box by a list
+		// nobody can see, and [app.railFull] would raise the overlay the moment the
+		// frame narrowed.
+		a.railHold = false
+	}
+	_ = config.SaveTaskColumn(a.profileDir, !away)
+	a.touch()
+}
+
 // railEnter is the one activating key, and every row is a node now: it opens
 // that node's room. Folding has its own two keys, which is what took the
 // overload off this one.
@@ -2849,9 +3020,16 @@ const railFootMax = 3
 // permanent "w widens" is chrome charged to every session that never grew a
 // tree. It reports which of its lines that offer landed on, or -1, because the
 // line is pressable and the press has to know where it was drawn.
-func (a *app) railFootRows(width, height int) ([]string, int) {
+//
+// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). That one is NOT
+// contextual and the difference is worth stating, because the two lines look
+// alike: widening is an offer the column makes about itself when a title is
+// being cut, and hiding is the answer to "I do not want this here", which a
+// person can want at any moment and can find no other way. It is reported the
+// same way and for the same reason — it is pressed as often as it is typed.
+func (a *app) railFootRows(width, height int) ([]string, int, int) {
 	if width < 8 || height < 4 {
-		return nil, -1
+		return nil, -1, -1
 	}
 	var segs []string
 	if a.cost > 0 {
@@ -2871,8 +3049,13 @@ func (a *app) railFootRows(width, height int) ([]string, int) {
 		hintText = railNarrowHint
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
-	if len(segs) == 0 && !offer {
-		return nil, -1
+	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
+	// roster is an overlay a person raised with ctrl+t and drops with esc
+	// ([app.railFull]), and a second way out named at the bottom of it would be
+	// two exits from a room with one.
+	stow := !a.railFull() && ansi.StringWidth(railStowHint) <= width
+	if len(segs) == 0 && !offer && !stow {
+		return nil, -1, -1
 	}
 	// The footer never takes more than a third of the column: a roster that is
 	// mostly its own summary has stopped being a roster.
@@ -2893,7 +3076,14 @@ func (a *app) railFootRows(width, height int) ([]string, int) {
 		hint = len(out)
 		out = append(out, a.pal.dim(hintText))
 	}
-	return out, hint
+	// The door goes UNDER the width offer, at the very bottom of the column, which
+	// is where a person looks for the way out of anything.
+	door := -1
+	if stow && len(out)+1 < height {
+		door = len(out)
+		out = append(out, a.pal.dim(railStowHint))
+	}
+	return out, hint, door
 }
 
 // railOffersResize reports whether the footer should name the handle. A cut
@@ -3235,8 +3425,19 @@ func railModelWord(node *taskNode) string {
 // railTitle paints an already-fitted title. The cut happens at the call site
 // because that is where the id's cells are measured out of it ([app.railNodeRows]):
 // a title fitted here and trimmed there would be a row measured twice.
+//
+// THE ROOM A PERSON IS STANDING IN LEADS THE COLUMN, in the accent and bold —
+// which is the strip's own law for the same fact said one row up
+// (taskstrip.go's [app.stripTitle]), because the strip and the roster are the
+// two lists of the same work and a person who learned the mark on one has
+// learned it on the other. It is the TEXT half of that mark; the row's band is
+// the other ([app.railRows]), and this half is the one a sixteen-colour
+// terminal still gets.
 func (a *app) railTitle(node *taskNode, title string) string {
-	if node.state == session.TaskRunning {
+	switch {
+	case a.roomStandingOn(node):
+		return a.pal.bold(a.pal.accent(title))
+	case node.state == session.TaskRunning:
 		return a.pal.ink(title)
 	}
 	return a.pal.muted(title)
@@ -3700,7 +3901,17 @@ func (a *app) railWaits(node *taskNode) string {
 // reach here. There, a quiet line IS the success and the row stays on screen; a
 // rail row is a presence that disappears when the work comes home, so the tick
 // is not decoration on a permanent row — it is the last thing the row says.
+// It is the CELL and the HUE asked separately and put back together, because the
+// hue is needed on its own: the composer's room segment says the name of the task
+// you are typing to in the state's own colour (room.go's [app.roomLead]), and a
+// second table of which state is which colour would be a segment that disagreed
+// with the glyph beside the same name in the roster.
 func (a *app) railGlyph(node *taskNode) string {
+	return a.taskStateInk(node)(a.taskStateMark(node))
+}
+
+// taskStateMark is a node's state in one cell, UNPAINTED.
+func (a *app) taskStateMark(node *taskNode) string {
 	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
 	// does: a node a person stopped settles as `failed` on the wire, because
 	// nothing merged, and drawing it with the failure's cross would report a
@@ -3708,21 +3919,54 @@ func (a *app) railGlyph(node *taskNode) string {
 	if mark, stopped := a.stoppedGlyph(node); stopped {
 		return mark
 	}
+	// AND NOTHING SPINS WHILE IT IS WAITING ON YOU. A spinner is this surface's
+	// one promise that something is happening this instant, and a design at
+	// "awaiting your look" is the one running row where nothing is
+	// ([taskAwaitsPerson]). It wears the same ? the other kind of finished-and-
+	// waiting work wears, in the same warn hue, because it is the same ask: the
+	// machine has done its part and the next move is yours.
+	if taskAwaitsPerson(node) {
+		return glyphUnverified
+	}
 	switch node.state {
 	case session.TaskDone:
-		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+		return a.linearMark(glyphDone, glyphDoneASCII)
 	case session.TaskFailed:
-		return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+		return a.linearMark(glyphBad, glyphBadASCII)
 	case session.TaskUnverified:
-		return a.pal.warn(glyphUnverified)
+		return glyphUnverified
 	case session.TaskRunning:
 		if a.linear {
-			return a.pal.accent(glyphRunASCII)
+			return glyphRunASCII
 		}
-		return a.pal.accent(tokens.Spinner(a.paints / spinnerStep))
+		return tokens.Spinner(a.paints / spinnerStep)
 	default:
-		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+}
+
+// taskStateInk is the hue that state is said in — the paint half of
+// [app.railGlyph], in the order the glyph half decides its cell so the two can
+// never fall out of step. Anything that says a node's name in the colour of what
+// it is doing asks this: the roster's glyph, and the composer's room segment.
+func (a *app) taskStateInk(node *taskNode) func(string) string {
+	if _, stopped := a.stoppedGlyph(node); stopped {
+		return a.pal.dim
+	}
+	if taskAwaitsPerson(node) {
+		return a.pal.warn
+	}
+	switch node.state {
+	case session.TaskDone:
+		return a.pal.muted
+	case session.TaskFailed:
+		return a.pal.bad
+	case session.TaskUnverified:
+		return a.pal.warn
+	case session.TaskRunning:
+		return a.pal.accent
+	}
+	return a.pal.dim
 }
 
 // glyphDone marks a node that landed. See [app.railGlyph] for why this surface
@@ -3992,8 +4236,13 @@ func (a *app) tasksAnimating() bool {
 	// running nodes and not about the list's length — otherwise a session that
 	// finished its work an hour ago would still be repainting a spinner-less
 	// column thirty times a second.
+	//
+	// AND A DESIGN WAITING ON YOU IS A STILL PICTURE TOO, for the same reason
+	// exactly: its row wears the ? rather than the spinner now
+	// ([taskAwaitsPerson]), so a card that sits unanswered over lunch is no
+	// longer an hour of repaints for a row that never changes.
 	for _, node := range a.tasks {
-		if node != nil && node.state == session.TaskRunning {
+		if node != nil && node.state == session.TaskRunning && !taskAwaitsPerson(node) {
 			return true
 		}
 	}
@@ -4021,6 +4270,11 @@ func (a *app) dropTasks() {
 	a.railWhere = railSpot{}
 	a.railHold = false
 	a.railWide, a.railCramped = false, false
+	// [app.railAway] STAYS. It is the one fact in this block that is not about
+	// these nodes: a person who put the column away said something about their
+	// screen, not about the conversation they have just replaced, and standing it
+	// back up on /new would be the surface undoing a preference it had already
+	// written to disk.
 	// THE WATCHERS GO TOO, and the generation is bumped so an event already in
 	// flight on one of their lanes cannot write a current tool into the session
 	// that replaced them (see [taskPilot]).
@@ -4043,8 +4297,14 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	if !a.awaitingTask() || len(rows) == 0 || !a.input.empty() || a.pick.open {
 		return rows
 	}
-	room := width - ansi.StringWidth(prompt)
+	// THE ROOM SEGMENT SURVIVES THIS ROW, because the row it is replacing was laid
+	// out with the segment in front of it: rebuilding row zero without it would
+	// leave the caret's column counted through a lead the frame had stopped
+	// drawing (room.go's [app.roomLead]). It is "" whenever no room is open, which
+	// is every frame a proposal is normally answered on.
+	lead := a.roomLead(width)
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
-	out[0] = a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
+	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
 }
