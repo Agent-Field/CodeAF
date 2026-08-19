@@ -857,6 +857,23 @@ one order:
 3. the best model the catalog advertises that publishes the capability;
 4. a name this build remembers.
 
+Steps 3 and 4 read one preference list per kind of media, strongest first, and these are
+the names at the head of each list — what an `automatic` row actually gets:
+
+| kind | default |
+| --- | --- |
+| draws | `krea/krea-2-medium-turbo` |
+| speaks | `fish-audio/s1` |
+| composes | `google/lyria-3-pro-preview` |
+| films | `bytedance/seedance-2.0-mini` |
+| looks at an image | `qwen/qwen3.5-vl-32b-instruct` |
+
+Each list has older names under its leader — `hexgrad/kokoro-82m` and
+`openai/gpt-4o-mini-tts` under speech, `google/lyria-3-clip-preview` under music,
+`bytedance/seedance-1-5-pro` under video — used when your catalog does not advertise the
+leader. **These are defaults, not choices made for you**: a row you set, or the matching
+environment variable, wins over every one of them and is never overwritten.
+
 **Every step is checked against what the catalog says the model can do.** A row or a pin
 naming a model that cannot do the job is skipped and the next step is used, so a model that
 was renamed degrades to a working one instead of failing at the provider. If nothing on the

@@ -197,8 +197,8 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 
 	for _, test := range []struct{ modality, want string }{
 		{"image", "krea/krea-2-medium-turbo"},
-		{"speech", "openai/gpt-4o-mini-tts"},
-		{"video", "bytedance/seedance-1-5-pro"},
+		{"speech", "fish-audio/s1"},
+		{"video", "bytedance/seedance-2.0-mini"},
 	} {
 		if got := resolve(test.modality); got != test.want {
 			t.Fatalf("%s on an offline catalog resolved to %q, want %q", test.modality, got, test.want)
