@@ -167,6 +167,252 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	}
 }
 
+// ── the landing, and what is still owed to the work ─────────────────────────
+//
+// These three are written from a SECOND real run. A node was asked for six
+// stories; it wrote all six, then spent six steps re-reading them to satisfy
+// itself, and the counter stopped it — correctly, because the same target twice
+// IS the spin. Its landing turn said "The six files are already written…
+// Done — Chapter 1… The files are the deliverable", the six files were on disk,
+// and the person got ✗ failed and a kept branch next to a report saying it had
+// finished. The threshold had never been a statement about the deliverable, and
+// the harness was reading it as one ([Agent.landStopped]).
+
+// spinLane answers the node's own lane by what is already in its context: it
+// produces its deliverable if it has one, then aims at the SAME target over and
+// over — the exact spin the counter exists to catch — and answers the LAND NOW
+// turn with its own account of the work.
+//
+// It is written this way rather than positionally for [nodeLane]'s reason: the
+// harness's own title call speaks on this lane too, and a script that counted
+// turns would be asserting the order those happen to fall in.
+//
+// THE SPIN IS FINITE. The counter cancels the run, and the cancel is a message
+// to a real model — this fake never reads one — so the lane stops calling tools
+// of its own accord once the threshold has had every step it needs. What follows
+// is the LAND NOW turn, which is the whole reason these tests exist.
+const spinReads = 5
+
+func spinLane(turns int, produce func() *ai.Response, landed string) []step {
+	steps := make([]step, turns)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if len(messages) > 0 && strings.Contains(messageText(messages[0]), "name this session") {
+				return textResponse("the spinning task"), nil
+			}
+			calls := 0
+			for _, message := range messages {
+				if strings.Contains(messageText(message), "LAND NOW") {
+					return textResponse(landed), nil
+				}
+				if message.Role == "tool" {
+					calls++
+				}
+			}
+			if produce != nil {
+				if calls == 0 {
+					return produce(), nil
+				}
+				calls--
+			}
+			if calls >= spinReads {
+				return textResponse("still looking it over."), nil
+			}
+			// One target, read again and again: no new file, no new dirt, nothing
+			// learned. The first of these is still a fresh target and still counts
+			// as progress; every one after it is the stall.
+			return toolResponse(fmt.Sprintf("call-look-%d", calls), "read", `{"path":"go.mod"}`), nil
+		}
+	}
+	return steps
+}
+
+// spinningTask is the propose call for a node that will be stopped for spinning:
+// a threshold low enough to fire inside a scripted run, and a real acceptance,
+// because the acceptance is the whole thing a landed node is now judged against.
+func spinningTask(t *testing.T, acceptance string) step {
+	t.Helper()
+	arguments, err := json.Marshal(taskArguments{
+		Title: "Write the greeting", Summary: "two lines the person reads",
+		Brief:       "write greet.go, then check it\n" + taskBriefMark,
+		Deliverable: "greet.go at the root of the worktree",
+		Acceptance:  acceptance,
+		NoProgress:  3, MaxSteps: 30,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse("call-task", "propose_task", string(arguments)), nil
+	}
+}
+
+// A LANDED NODE THAT ACTUALLY FINISHED ITS WORK IS DONE. It writes the file the
+// acceptance asks for, spins on re-reading it until the counter cancels the run,
+// and lands. The check it gets is the one an ordinary finishing node gets — and
+// because the work holds, the node settles done, its branch comes home, and the
+// counter's sentence is nowhere in what the person reads. The report belongs to
+// the deliverable, not to the threshold that interrupted the re-reading.
+func TestALandedNodeWhoseWorkHoldsSettlesDoneAndMerges(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{spinningTask(t, "greet.go exists at the root of the worktree"), finalText("handed off")},
+		child: spinLane(16, func() *ai.Response {
+			return writeResponse("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n")
+		}, "greet.go is already written and checked. I'll stop looping and deliver.\nDone — greet.go holds the greeting."),
+		// The checker does its real job: it looks at the staged tree and answers on
+		// what it saw, so VERIFIED here means the file really is there.
+		audit: []step{
+			bashCall("call-look", "git status --porcelain"),
+			verdictFromEvidence("greet.go",
+				"VERIFIED — git status --porcelain shows greet.go staged",
+				"REFUTED — git status --porcelain shows no greet.go"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "write the greeting"))
+
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, want done — the work was there (report %q)", notice.State, notice.Report)
+	}
+	if notice.Merge != mergeMerged {
+		t.Fatalf("merge = %q, want merged — checked work comes home", notice.Merge)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "greet.go")); err != nil {
+		t.Fatalf("greet.go is not on the person's branch: %v", err)
+	}
+	// THE COUNTER IS NOT THE NEWS. Nothing a person reads mentions the threshold
+	// on work that was checked and merged.
+	if strings.Contains(notice.Report, "without progress") || strings.Contains(notice.Report, "stopped") {
+		t.Fatalf("report = %q, want the threshold's sentence gone from work that holds", notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "greet.go is already written") {
+		t.Fatalf("report = %q, want the work's own account first", notice.Report)
+	}
+	if !containsString(notice.Changed, "greet.go") {
+		t.Fatalf("changed = %v, want it to name greet.go", notice.Changed)
+	}
+}
+
+// AND A LANDED NODE WHOSE WORK DOES NOT HOLD KEEPS TODAY'S ENDING. It wrote a
+// real file and it is not the file that was asked for; the checker says so; the
+// node stays stopped, the threshold leads the report, the branch is kept with
+// the work committed on it, and nothing reaches the person's tree.
+func TestALandedNodeWhoseWorkDoesNotHoldStaysStoppedWithItsBranchKept(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{spinningTask(t, "greet.go exists at the root of the worktree"), finalText("handed off")},
+		child: spinLane(16, func() *ai.Response {
+			return writeResponse("call-notes", "notes.md", "# what I was thinking about\n")
+		}, "I wrote up my notes. Done, I think."),
+		audit: []step{
+			bashCall("call-look", "git status --porcelain"),
+			verdictFromEvidence("greet.go",
+				"VERIFIED — git status --porcelain shows greet.go staged",
+				"REFUTED — git status --porcelain shows notes.md and no greet.go"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "write the greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskFailed {
+		t.Fatalf("state = %q, want failed — the work is not what was asked for (report %q)", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "stopped: 3 steps without progress") {
+		t.Fatalf("report = %q, want the threshold that fired to lead", notice.Report)
+	}
+	if notice.Merge != mergeAborted {
+		t.Fatalf("merge = %q, want the branch kept rather than merged", notice.Merge)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "notes.md")); err == nil {
+		t.Fatal("work that did not hold reached the person's tree")
+	}
+	// The branch the report names holds what the node made, exactly as before.
+	listed, err := git(repo, "ls-tree", "-r", "--name-only", notice.Branch)
+	if err != nil {
+		t.Fatalf("git ls-tree: %v\n%s", err, listed)
+	}
+	if !strings.Contains(listed, "notes.md") {
+		t.Fatalf("branch %s holds:\n%s\nwant notes.md kept on it", notice.Branch, listed)
+	}
+	// AND THE ENDING IS HONEST ON PURPOSE RATHER THAN BY ACCIDENT: somebody did
+	// look at this work before it was left on its branch.
+	if len(completer.auditAsked()) == 0 {
+		t.Fatal("the landed work was never checked")
+	}
+}
+
+// AND THE ORDINARY STUCK NODE IS UNTOUCHED BY ANY OF THIS. It read the same
+// thing four times, made nothing, and said so. It lands exactly where it always
+// landed: stopped, failed, its branch kept and empty, nothing merged.
+func TestAStuckNodeWithNothingToShowLandsStoppedAsBefore(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{spinningTask(t, "greet.go exists at the root of the worktree"), finalText("handed off")},
+		child:  spinLane(16, nil, "I could not work out what to write and have nothing to hand over."),
+		audit: []step{
+			bashCall("call-look", "git status --porcelain"),
+			verdictFromEvidence("greet.go",
+				"VERIFIED — git status --porcelain shows greet.go staged",
+				"REFUTED — the worktree is empty: nothing was written"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "write the greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskFailed {
+		t.Fatalf("state = %q, want failed (report %q)", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "stopped: 3 steps without progress") {
+		t.Fatalf("report = %q, want the threshold that fired to lead", notice.Report)
+	}
+	if notice.Merge != mergeAborted {
+		t.Fatalf("merge = %q, want nothing merged", notice.Merge)
+	}
+	if len(notice.Changed) != 0 {
+		t.Fatalf("changed = %v, want nothing named for a node that made nothing", notice.Changed)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "greet.go")); err == nil {
+		t.Fatal("a node that wrote nothing put something on the person's branch")
+	}
+}
+
 func containsString(list []string, want string) bool {
 	for _, item := range list {
 		if item == want {
