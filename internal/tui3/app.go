@@ -1533,6 +1533,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND THE ROOM'S HEADER IS READ DIRECTLY UNDER THE ✕ THAT RIDES IT, which
+			// is the pointer's share of the way out: the row says "esc/← main", and a
+			// row that named the exits and did nothing when it was pressed would be the
+			// one dead cell on the page (room.go's [app.roomBackPress]).
+			//
+			// It is read HERE, above the strip and the rail, because the header spans
+			// the whole window while both of those claim columns of it — the rail takes
+			// every press in its own columns whether or not a row was under it, so a
+			// header read after it would be dead at exactly the end where the words are
+			// printed.
+			if a.roomBackPress(msg.Mouse().Y) {
+				return a, nil
+			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
 			// WHOLE window and the rail claims every press in its own columns
 			// whether or not one landed on a row (room.go) — asked the other way
@@ -3040,28 +3053,26 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// is asked anything: its rows are chips and links and a gate rather than
 	// blocks, so a press on one is resolved by column against the targets the
 	// layout recorded (roomorch.go). A press that hits none of them falls through
-	// untouched, which keeps the empty parts of the page the way out of the room.
+	// untouched and then does nothing at all, which is what the empty parts of
+	// any page on this surface do.
 	if a.orchOpen() && a.orchPress(x, y) {
 		return
 	}
 	r, ok := a.rowAt(y)
 	if !ok {
-		// A CLICK ON NOTHING IS THE WAY OUT OF A ROOM. Every interactive row on a
-		// node's page now does what the same row does in the conversation, so the
-		// gesture that leaves cannot be "press the body" any more — it is pressing
-		// the part of the body that answers to nothing, which is the same empty
-		// space esc is for. The rail was offered this click first and did not want
-		// it (room.go).
+		// A CLICK ON NOTHING IS NOTHING, IN A ROOM AS MUCH AS IN THE CONVERSATION.
+		// It used to be the way out of a room — press the part of the body that
+		// answers to nothing and the page closed behind you — and that made every
+		// miss inside a node's page a door: a person reading a transcript who
+		// clicked on a blank row, or on the gap beside a paragraph, was thrown back
+		// to the conversation without having asked for anything. Empty space is not
+		// a gesture on this surface, and a page you are standing in is the last
+		// place it should become one.
 		//
-		// THE PINNED HEADER IS PART OF THAT SPACE, which is why the test starts at
-		// the top of the FRAME rather than at [app.bodyTop]: the header's right end
-		// says "esc/←← main", and a row naming the way out that did nothing when it
-		// was pressed would be the one dead cell on the page.
-		if a.roomOpen() {
-			if top := a.bodyTop(); top >= 0 && y >= 0 && y < top+a.viewHeight() {
-				a.closeRoom()
-			}
-		}
+		// THE WAY OUT IS UNCHANGED AND IT IS NAMED WHERE IT ALWAYS WAS: esc and ←,
+		// on the legend at the foot of the frame and on the pinned header at the
+		// top of it — and that header row is pressable in its own right
+		// ([app.roomBackPress]), which is the pointer's share of the same exit.
 		return
 	}
 	// A TASK LINK IS THE ONE TARGET INSIDE A ROW, so it is resolved before the
@@ -3092,12 +3103,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleThought(r.entry)
 		return
 	}
-	if r.hit == hitNone && a.roomOpen() {
-		// A row with nothing behind it, on a page: the same empty space as above.
-		a.closeRoom()
-		return
-	}
 	switch r.hit {
+	case hitNone:
+		// A ROW WITH NOTHING BEHIND IT — a paragraph, a blank, a rule. It does
+		// nothing here whether the body is the conversation or a node's page, which
+		// is the same law the miss above states: this surface has no empty-space
+		// gesture, and the way out of a room is esc, ← and the pinned header.
 	case hitTool:
 		a.openTool(r.entry)
 	case hitFold:

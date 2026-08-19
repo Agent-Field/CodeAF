@@ -19,6 +19,30 @@ still draws the strip along the top, and the legend's hint slot reads `ctrl+g ta
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
+## The box says which room you are typing into
+
+While a task room is open the draft box carries the room in front of its own `› `: the
+task's state glyph and its name, on the tinted background a selected row wears, in the
+hue of what that task is doing — the same hue the roster paints its glyph with. So the
+line you are typing on says where the words are going, and it says it whether the box is
+empty or full.
+
+```
+ ⠋ Ship the port › fix the flake in the loader
+```
+
+- It is a **segment, not a row** — it costs the conversation nothing and the caret is
+  counted through it, so the cursor is where the letter is.
+- Continuation rows of a wrapped draft line up under the text, past the segment.
+- The name is cut to at most 18 cells. On a frame with too few columns to leave a box
+  worth typing in, the segment is dropped and the box's placeholder names the task
+  instead.
+- In the main conversation there is **no segment at all** — not a dim one, not an empty
+  one. There is nowhere else the words could be going.
+
+The same task is marked twice more while you are in it: its row in the roster wears the
+same tint, and its chip on the task strip does too.
+
 The rule above the input is the only horizontal line this surface draws. There are no
 borders anywhere else. The draft box is inset one cell.
 
@@ -101,7 +125,10 @@ then the plain rule. Below width **70** the branch and the hint slot are dropped
 outright.
 
 While a task room is open the left says exactly `room · esc/←← main`, and the path and
-branch are not drawn.
+branch are not drawn. The pinned header at the top of the frame says the same thing in
+its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
+you are back in the conversation. Clicking the page itself does not leave a room — a
+press on empty space does nothing here as it does everywhere.
 
 ## The status line at the bottom
 
@@ -1089,6 +1116,12 @@ A hovered conversation row gets a background band padded to the full width. A ho
 fold line brightens its arrow. A hovered table foot, and the jump-to-latest chip, go
 **accent** rather than taking a background — a highlighted rectangle would be the one
 boxed thing on a surface with no boxes.
+
+**Selected beats hovered.** A row that is already the thing you are looking at — the
+roster row and the strip chip of the room you are standing in, the cursor row of an
+open list — wears the selection band, which is the hover background one step louder,
+and the pointer moving over it changes nothing. The two cannot both be drawn, and "you
+are here" is the one still true when the pointer leaves.
 
 There is no hover at all in the screen-reader tier. Terminals below ANSI256 get no hover
 background either, because there is no weight that means "under the pointer".

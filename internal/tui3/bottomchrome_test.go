@@ -292,7 +292,7 @@ func TestTheDraftBlockAnchorsAtTheTop(t *testing.T) {
 	e.setText(strings.Join(lines[:draftRows], "\n"))
 
 	// Exactly at the cap: every line is on screen, the first with its prompt.
-	rows, _, caretRow := draftBlock(e, pal, 20, draftRows, "")
+	rows, _, caretRow := draftBlock(e, pal, 20, draftRows, "", "")
 	if len(rows) != draftRows {
 		t.Fatalf("a draft at the cap drew %d rows: %q", len(rows), rows)
 	}
@@ -306,7 +306,7 @@ func TestTheDraftBlockAnchorsAtTheTop(t *testing.T) {
 	// Over the cap with the caret at the END: the window follows the caret, which
 	// is the only thing that makes it scroll at all.
 	e.setText(strings.Join(lines, "\n"))
-	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "")
+	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "", "")
 	if len(rows) != draftRows || caretRow != draftRows-1 {
 		t.Fatalf("a scrolled draft drew %d rows with the caret on %d", len(rows), caretRow)
 	}
@@ -320,7 +320,7 @@ func TestTheDraftBlockAnchorsAtTheTop(t *testing.T) {
 	// Over the cap with the caret back at the TOP: the block is anchored there,
 	// prompt and all. This is the case that used to show the draft's tail.
 	e.cursor = 0
-	rows, caretX, caretRow := draftBlock(e, pal, 20, draftRows, "")
+	rows, caretX, caretRow := draftBlock(e, pal, 20, draftRows, "", "")
 	if got := plain(rows[0]); got != "› a" {
 		t.Fatalf("the first row is %q — the block is still bottom-anchored", got)
 	}
@@ -331,7 +331,7 @@ func TestTheDraftBlockAnchorsAtTheTop(t *testing.T) {
 	// And in the MIDDLE, still inside the cap: nothing scrolls, so the prompt is
 	// still the first row and the caret is where the person put it.
 	e.cursor = 6 // "a\nb\nc\nd" — the fourth line
-	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "")
+	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "", "")
 	if got := plain(rows[0]); got != "› a" {
 		t.Fatalf("the first row is %q — the window moved without being pushed", got)
 	}
@@ -342,7 +342,7 @@ func TestTheDraftBlockAnchorsAtTheTop(t *testing.T) {
 	// Past the cap, the window scrolls by exactly as much as it must: the caret
 	// is on the block's LAST row and never off it.
 	e.cursor = len(e.value) - 2 // the ninth line
-	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "")
+	rows, _, caretRow = draftBlock(e, pal, 20, draftRows, "", "")
 	if caretRow != draftRows-1 {
 		t.Fatalf("the caret is on row %d of %d", caretRow, len(rows))
 	}

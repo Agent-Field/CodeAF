@@ -234,7 +234,7 @@ func TestALineWiderThanTheBoxWrapsAtAWordAndKeepsTheCaret(t *testing.T) {
 	e := &editor{}
 	e.setText("abcdefghij klmnopqrstuvwx") // 25 runes, a box 18 wide
 
-	rows, caretX, caretRow := draftBlock(e, pal, 20, draftRows, "")
+	rows, caretX, caretRow := draftBlock(e, pal, 20, draftRows, "", "")
 	if len(rows) != 2 {
 		t.Fatalf("the line drew %d rows:\n%q", len(rows), rows)
 	}
@@ -250,13 +250,13 @@ func TestALineWiderThanTheBoxWrapsAtAWordAndKeepsTheCaret(t *testing.T) {
 
 	// The caret walks back onto the first row with the text.
 	e.cursor = 3
-	_, caretX, caretRow = draftBlock(e, pal, 20, draftRows, "")
+	_, caretX, caretRow = draftBlock(e, pal, 20, draftRows, "", "")
 	if caretRow != 0 || caretX != 5 {
 		t.Fatalf("the caret is at %d,%d, want 5,0", caretX, caretRow)
 	}
 
 	// An empty draft is one row with the caret against the prompt.
-	rows, caretX, caretRow = draftBlock(&editor{}, pal, 20, draftRows, "")
+	rows, caretX, caretRow = draftBlock(&editor{}, pal, 20, draftRows, "", "")
 	if len(rows) != 1 || caretX != 2 || caretRow != 0 {
 		t.Fatalf("an empty box drew %d rows with the caret at %d,%d", len(rows), caretX, caretRow)
 	}
