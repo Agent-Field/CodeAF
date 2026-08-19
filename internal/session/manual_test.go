@@ -31,6 +31,38 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	}
 }
 
+// AND THE BELT A CONVERSATION CARRIES IS NOT THE ONLY BELT IN THIS BINARY.
+//
+// A sub-harness design's thread is an agent with one tool the conversation does
+// not have — revise_design, which is how the person's "make it also run the
+// linter" reaches the designer (harness_task.go). It hangs off a door wired from
+// the node rather than off anything in a plain Config, so the gate above builds a
+// belt without it and would let it ship with no page: green, and wrong in exactly
+// the way that gate exists to catch.
+//
+// It is a question people ask in the words the tool is named in — "can I change a
+// design", "how do I revise it" — so the page has to be reachable, and the belt
+// has to be checked where the tool actually lives.
+func TestTheManualMentionsTheDesignThreadsOwnTool(t *testing.T) {
+	agent := &Agent{config: Config{
+		Workspace:    t.TempDir(),
+		ProfileDir:   t.TempDir(),
+		reviseDesign: func(string) error { return nil },
+	}}
+	found := false
+	for _, tool := range agent.belt() {
+		if !manual.Chat().Mentions(tool.Name) {
+			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
+		}
+		if tool.Name == "revise_design" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("an agent holding a design's revision door was not given the verb for it")
+	}
+}
+
 // The manual tool answers out of the CHAT's pages and must never reach the
 // resident's. Both corpora ship in this binary, and a chat that answered from
 // the wrong one would describe a product the person is not using — fluently,

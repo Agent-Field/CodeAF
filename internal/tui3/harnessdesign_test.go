@@ -59,7 +59,7 @@ func TestHarnessProgressCollapsesIntoFeedCard(t *testing.T) {
 	p := designedPage()
 	a.designEvent(session.Event{Kind: session.EventHarnessDesignDone, ID: 7, Harness: &p})
 	got := plain(frame(a))
-	for _, want := range []string{"harness designed", "research-helper", "[plan]──▶[fetch]──▶[verify]", "every claim cites a source", "[e] improve"} {
+	for _, want := range []string{"harness designed", "research-helper", "[plan]──▶[fetch]──▶[verify]", "every claim cites a source", harnessCardChange} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card is missing %q:\n%s", want, got)
 		}
@@ -239,11 +239,12 @@ func TestASessionWithNoDesignerOpensNoLane(t *testing.T) {
 	}
 }
 
-func TestHarnessCardKeysSaveImproveAndDrop(t *testing.T) {
+// THE TWO KEYS THAT ANSWER, and each of them answers what it says.
+func TestHarnessCardKeysSaveAndDrop(t *testing.T) {
 	for _, tc := range []struct {
 		key, word string
 		run       bool
-	}{{"enter", "saved as research-helper v1", true}, {"e", "improvement requested", false}, {"esc", "dropped", false}} {
+	}{{"enter", "saved as research-helper v1", true}, {"esc", "dropped", false}} {
 		t.Run(tc.key, func(t *testing.T) {
 			agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
 			a := newTestApp(agent)
@@ -258,10 +259,65 @@ func TestHarnessCardKeysSaveImproveAndDrop(t *testing.T) {
 			if len(agent.answers) != 1 || agent.answers[0].run != tc.run {
 				t.Fatalf("answer %+v", agent.answers)
 			}
-			if tc.key == "e" && !strings.Contains(a.input.String(), "Improve harness research-helper") {
-				t.Fatalf("draft %q", a.input.String())
-			}
 		})
+	}
+}
+
+// AND `e` DESTROYS NOTHING, which is the whole of what changed about it.
+//
+// It was labelled "improve" and it called ResolveHarness with FALSE — the same
+// call the discard key makes — and then prefilled the message box, so asking for
+// a change silently threw away the page you were asking about. It is a door into
+// the design's own room now (harnesscard.go), which is where a change is
+// actually made, and the card is left exactly as it was: unanswered, on screen,
+// still answerable.
+func TestAskingToChangeADesignNeverDropsIt(t *testing.T) {
+	agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(agent)
+	p := designedPage()
+	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+	a.sel = len(a.entries) - 1
+	a.harnessCardKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	c := a.entries[a.sel].harness
+	if len(agent.answers) != 0 {
+		t.Fatalf("a key that only asks for a change answered the card: %+v", agent.answers)
+	}
+	if c.state != "" {
+		t.Fatalf("the card settled on a key that settles nothing: %q", c.state)
+	}
+	if strings.Contains(a.input.String(), "Improve harness") {
+		t.Fatalf("the prefill that stood in for a rewrite is still here: %q", a.input.String())
+	}
+}
+
+// designingRoomAgent is a designer that also has rooms, which is the shape a
+// real session has: `e` walks into the design's room, and a surface whose agent
+// had never heard of one could not be asked to.
+type designingRoomAgent struct {
+	*roomFake
+	answers []harnessAnswer
+	lane    chan session.Event
+}
+
+func (d *designingRoomAgent) ResolveHarness(id uint64, run bool, model string) {
+	d.answers = append(d.answers, harnessAnswer{id: id, run: run, model: model})
+}
+func (d *designingRoomAgent) HarnessDesigns() <-chan session.Event { return d.lane }
+
+// AND IT WALKS INTO THE ROOM when the design has one, because that is where the
+// thread holding the page is listening.
+func TestAskingToChangeADesignOpensItsRoom(t *testing.T) {
+	a := newTestApp(&designingRoomAgent{roomFake: &roomFake{
+		taskFake: &taskFake{fakeAgent: &fakeAgent{model: "m"}},
+		lanes:    map[uint64]chan session.Event{},
+	}})
+	a.tasks = map[uint64]*taskNode{4: {id: 4, title: "design helper", label: "harness · helper"}}
+	p := designedPage()
+	a.finishHarnessCard(session.Event{ID: 4, Harness: &p, Task: &session.TaskNotice{ID: 4}})
+	a.sel = len(a.entries) - 1
+	a.harnessCardKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if a.room == nil || a.room.id != 4 {
+		t.Fatalf("the design's room did not open: %+v", a.room)
 	}
 }
 

@@ -351,6 +351,12 @@ type TaskNode struct {
 	// journal is where this node's transcript was written, recorded when its
 	// child agent was built. It is the node's history, and it outlives the room.
 	journal string
+	// revise is the lane a DESIGN's thread asks for its page to be rewritten on,
+	// and nil on every other kind of node — which is what keeps the revise_design
+	// verb off every other thread's belt (harness_task.go's reviseDoor states the
+	// whole arrangement). It is minted once, before the thread agent is built,
+	// and it is read by exactly one goroutine: the design loop parked on the card.
+	revise chan string
 	// doing is the PHASE a node of a named kind is in, in that kind's own plain
 	// words — "designing", "awaiting your look" — and "" for an ordinary task,
 	// which has no phases and whose state word is the whole truth about it
@@ -2694,7 +2700,14 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// running at all — the page is written, the card is up, and the person is
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
-		roomThread:     node.kind == TaskKindHarness,
+		roomThread: node.kind == TaskKindHarness,
+		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
+		// reason: a belt is assembled once, when the agent is constructed
+		// (agent.go), so a door handed over after this call would be a verb the
+		// model is never told it has. It is nil for every other node — the node
+		// has no revision lane to close over — which is what keeps revise_design
+		// off every other belt (harness_task.go's reviseDoor).
+		reviseDesign:   node.reviseDoor(),
 		SupportsImages: parent.SupportsImages,
 		RolesSource:    parent.RolesSource,
 		SearchProvider: parent.SearchProvider,

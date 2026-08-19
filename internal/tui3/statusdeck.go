@@ -5,8 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PHONE'S STATUS DECK ─────────────────────────────────────────────────
@@ -263,10 +261,17 @@ func (a *app) deckAmbient(width int) (string, string) {
 
 // deckRunning is how many child agents are working right now — the roster's own
 // running group, counted rather than listed (task.go's [railRunning]).
+//
+// IT ASKS THE ROSTER'S OWN QUESTION and does not re-derive one from the state,
+// which is what it used to do. A design waiting on somebody to answer its card is
+// `running` on the wire for as long as that card is up, and this line said so —
+// "⏺ 1 running", pinned to the status row, about a page that had been sitting
+// still on screen since before the person went for coffee (task.go's
+// [taskAwaitsPerson] states the whole case).
 func (a *app) deckRunning() int {
 	n := 0
 	for _, id := range a.taskOrder {
-		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
+		if node := a.tasks[id]; node != nil && a.railGroupOf(node) == railRunning {
 			n++
 		}
 	}

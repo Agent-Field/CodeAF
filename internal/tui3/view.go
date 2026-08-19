@@ -103,6 +103,10 @@ const (
 	// arrangement one rung further down: one pressable row, answered by keyboard
 	// or by pointer (harness.go).
 	chromeHarnessAsk
+	// chromeRoomApproval is the answers row of the design approval block pinned
+	// inside a design's own room (roomapproval.go). Only the second row of that
+	// block carries this kind, because it is the only one that answers.
+	chromeRoomApproval
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -411,6 +415,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.harnessAskRows(width) {
 		add(line, a.harnessMark(i))
 	}
+	// AND A DESIGN ROOM'S APPROVAL ROW UNDER THAT (roomapproval.go). It is the
+	// same shape of thing one rung quieter still, and it STACKS rather than
+	// sharing: the three blocks above are questions the SESSION is blocked on,
+	// which own the keyboard while they are up, and this one is a standing
+	// question in a room the person is also talking in — so it can be on screen
+	// under any of them, and it takes only its own two chords.
+	for i, line := range a.roomApprovalRows(width) {
+		add(line, a.roomApprovalMark(i))
+	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
 	// to send them (room.go). The two can never be up together — a question the
@@ -559,8 +572,8 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
-		a.connectAskHeight() + a.harnessAskHeight() + a.guardHeight() + a.followHeight() +
-		a.welcomeHeight()
+		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
+		a.followHeight() + a.welcomeHeight()
 	if gap := a.breathingRows(); gap > 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}

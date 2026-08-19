@@ -716,6 +716,12 @@ type app struct {
 	// answers were last drawn, which is the bargain the two blocks above it make.
 	harnessAsks []harnessAsk
 	harnessTaps []harnessTap
+	// roomApprovalTaps is where the design approval row's two chords were last
+	// drawn, on exactly the terms harnessTaps is kept: the spans are written by
+	// the layout and read by the pointer, so a press can never answer about a row
+	// drawn on an earlier frame (roomapproval.go). There is no queue beside it —
+	// a room stands in front of one design and no more.
+	roomApprovalTaps []roomApprovalTap
 	// harnessStep is the step a running sub-harness last finished, as one line
 	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
 	// is replaced in place: the run's report carries the whole trail, and a step
@@ -1469,6 +1475,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE HARNESS OFFER LAST OF THE THREE, drawn last and read last
 			// (harness.go).
 			if a.harnessPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			// AND A DESIGN ROOM'S APPROVAL ROW UNDER ALL THREE, drawn under them
+			// and read under them (roomapproval.go). It is the same answer the
+			// card in the conversation takes, offered where the person is standing.
+			if a.roomApprovalPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// AND THE TWO REGISTRY PANELS TAKE EVERY PRESS WHILE THEY ARE UP,
@@ -3066,6 +3078,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleDoneAt(r.entry)
 	case hitHarness:
 		a.harnessCardPress(r.entry, x)
+		// The middle column of that card opens the design's ROOM now
+		// (harnesscard.go), so whatever door it parked has to be handed on — a
+		// room whose lane was never started is a page that never updates.
+		cmd = a.takeRoomPump()
 	case hitChoice, hitModel:
 		// Both rows were offered this click before the body and took it (see
 		// [app.choicePress]); reaching here means the pointer was in a column no

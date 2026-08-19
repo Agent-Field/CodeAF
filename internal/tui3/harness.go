@@ -268,6 +268,12 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.progressHarnessRoom(ev)
 	case session.EventHarnessDesignDone:
 		a.askHarnessDesign(ev)
+	case session.EventHarnessDesignRevising:
+		// THE CARD COMES DOWN because the page on it is about to stop existing:
+		// the person said what was wrong with it and the designer is rewriting it
+		// (session's EventHarnessDesignRevising). Left standing it would be a save
+		// key over a draft that has been replaced.
+		a.withdrawHarnessCard(ev)
 	}
 	return tea.Batch(waitDesign(a.designLane, a.designGen), a.wake())
 }

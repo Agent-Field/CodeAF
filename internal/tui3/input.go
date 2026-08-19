@@ -226,7 +226,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	if a.harnessCardKey(msg) {
-		return nil
+		// `e` on that card walks into the design's room now (harnesscard.go), so
+		// whatever door it parked is handed on here: a room whose lane was never
+		// started is a page that never updates.
+		return a.takeRoomPump()
 	}
 
 	// The settings panel is the fullscreen overlay, and it is modal for the same

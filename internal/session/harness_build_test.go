@@ -245,7 +245,7 @@ func TestADesignRunsAsATaskWithAPhaseOnIt(t *testing.T) {
 	// over.
 	close(held)
 	done := designDone(t, lane)
-	waitForPhase(t, node, harnessPhaseAsking)
+	waitForPhase(t, node, HarnessPhaseAsking)
 	agent.ResolveHarness(done.ID, false, "")
 	designOutcome(t, agent)
 }
@@ -282,7 +282,7 @@ func TestASteeredLineIsAnsweredInTheDesignRoom(t *testing.T) {
 
 	done := designDone(t, lane)
 	node := designNode(t, agent)
-	waitForPhase(t, node, harnessPhaseAsking)
+	waitForPhase(t, node, HarnessPhaseAsking)
 
 	// Subscribed BEFORE the line is sent: the room replays nothing, so a watcher
 	// that joined afterwards would be watching for an answer already given.
@@ -348,7 +348,7 @@ func TestAWrittenPageOutlivesTheDesignsWindow(t *testing.T) {
 
 	done := designDone(t, lane)
 	node := designNode(t, agent)
-	waitForPhase(t, node, harnessPhaseAsking)
+	waitForPhase(t, node, HarnessPhaseAsking)
 
 	// Well past the window the writing had, which is the whole point: the person
 	// went away and came back, and the card is still theirs to answer.
@@ -413,7 +413,7 @@ func TestACardNobodyAnsweredSaysThePageWasWritten(t *testing.T) {
 
 	designDone(t, lane)
 	node := designNode(t, agent)
-	waitForPhase(t, node, harnessPhaseAsking)
+	waitForPhase(t, node, HarnessPhaseAsking)
 	agent.Close()
 
 	report := designOutcome(t, agent)
