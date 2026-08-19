@@ -648,10 +648,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// a question the person asked before the one they just typed.
 			//
 			// unanswered is the half of that drain nobody has replied to: a note
-			// the SESSION authored — a task landing — that arrived after this
-			// turn's last request went out, so the model never saw it. It is in
-			// the transcript now and nothing is going to speak about it, which is
-			// exactly the silence the wake below exists to end.
+			// the SESSION authored — a task landing — or A SENTENCE THE PERSON
+			// TYPED, either of which arrived after this turn's last request went
+			// out, so the model never saw it. It is in the transcript now and
+			// nothing is going to speak about it, which is exactly the silence
+			// the wake below exists to end.
 			_, unanswered := a.drainSteeringLocked()
 			a.running = false
 			a.cancel = nil
@@ -671,10 +672,18 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
 			} else if completed && unanswered && a.wakeLocked() {
-				// A TASK LANDED IN THE LAST SECONDS OF THIS TURN. Its note is in
-				// the transcript, unread by any request, so the answer the person
-				// is owed needs one more turn — started here, with no new message,
+				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
+				// note, or the person typing while the answer was still
+				// streaming: steering lands at a STEP boundary, and a turn whose
+				// last request has already gone out has no next step, so the line
+				// is in the transcript, unread by any request. The answer they are
+				// owed needs one more turn — started here, with no new message,
 				// because the thing to answer is already recorded.
+				//
+				// WITHOUT THIS THE PERSON'S OWN SENTENCE WAS THE THING THAT WENT
+				// UNANSWERED. It reached the journal in their own words, the
+				// surface drew it, and the session went idle — which reads from
+				// the outside as a message the model never received.
 				//
 				// It is gated on `completed` for the reason the follow-up drain is
 				// (see [Agent.nextFollowUpLocked]): a drain must never resurrect a
@@ -1129,7 +1138,7 @@ func (a *Agent) drainSteering() int {
 func (a *Agent) drainSteeringLocked() (int, bool) {
 	queued := a.steering
 	a.steering = nil
-	woke := false
+	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
 		// A STEERING MESSAGE IS STILL THE PERSON ASKING. It arrives mid-turn and
@@ -1137,9 +1146,20 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 		// the newest thing they typed is what a proposal made after this drain
 		// quotes (task_brief.go).
 		a.rememberAskLocked(message)
-		woke = woke || message.wake
+		// AND IT IS STILL THE PERSON WAITING. Two kinds of line here are owed a
+		// sentence: a wake note, which is work the harness did that nobody
+		// watched, and a message with no `authored` mark — which is the person
+		// themselves, typing, and there is no third thing that can be. An AMBIENT
+		// note is the one line that is owed nothing ([Agent.enqueueAmbientNote]):
+		// context nobody asked for, and starting a turn to speak about it would
+		// be the session talking to itself out loud.
+		//
+		// This answer only means anything at the turn's END — see the caller —
+		// and it is what keeps a sentence typed in the last seconds of a turn
+		// from landing in the transcript with nobody ever asked about it.
+		owed = owed || message.wake || !message.authored
 	}
-	return len(queued), woke
+	return len(queued), owed
 }
 
 // enqueueSteering puts one line the SESSION authored — a task node landing
