@@ -119,6 +119,13 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	named := strings.TrimSpace(model)
 	source, session := a.config.RolesSource, a.model
 	a.mu.Unlock()
+	// THE PERSON'S OWN MESSAGE, TAKEN HERE AND NOT ASKED FOR. Whatever door
+	// started this run — the tool on the belt, the anchored cue, /task — the
+	// sentence that caused it is the newest thing the person typed, and this is
+	// the last moment anybody has it: from here the run is a goal, a planner and
+	// a fleet of workers that have never met them. It reaches the planner above
+	// the goal and every node above its own (task_brief.go).
+	request := a.taskRequest()
 
 	// The id is the run's number written out. Both spellings name one run: the
 	// events carry the number, because [Event.ID] is what every question lane
@@ -136,8 +143,14 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// resolved once here, so neither half has to ask again.
 	plannerCall := orchestrateRoleCall(source, roles.RolePlanner, named, session)
 	plannerModel := plannerCall.model
-	planner := &orchestratePlanner{agent: a, call: plannerCall}
-	worker := &orchestrateExec{agent: a, call: orchestrateRoleCall(source, roles.RoleWorker, named, session), id: id}
+	planner := &orchestratePlanner{agent: a, call: plannerCall, request: request}
+	worker := &orchestrateExec{
+		agent:   a,
+		call:    orchestrateRoleCall(source, roles.RoleWorker, named, session),
+		id:      id,
+		request: request,
+		goal:    goal,
+	}
 	// THE RUN TAKES A ROW ON THE ROSTER BEFORE ITS FIRST NODE DOES, so that the
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
@@ -594,6 +607,10 @@ type orchestratePlanner struct {
 	agent *Agent
 	orch  *orchestrate.Orchestrator
 	call  roleRequest
+	// request is the person's own message, verbatim, carried from the moment the
+	// run was asked for. The planner reads it above the goal so that a paraphrase
+	// cannot quietly become the requirement (see [renderOrchestrateView]).
+	request string
 }
 
 // Plan is one call, salvaged, with the ONE repair turn this pipeline allows —
@@ -603,7 +620,7 @@ type orchestratePlanner struct {
 func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (orchestrate.Amendment, error) {
 	return p.think(ctx, []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
-		textMessage("user", renderOrchestrateView(view)),
+		textMessage("user", renderOrchestrateView(view, p.request)),
 	})
 }
 
@@ -614,7 +631,7 @@ func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (o
 func (p *orchestratePlanner) Repair(ctx context.Context, view orchestrate.View, why string) (orchestrate.Amendment, error) {
 	return p.think(ctx, []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
-		textMessage("user", renderOrchestrateView(view)),
+		textMessage("user", renderOrchestrateView(view, p.request)),
 		textMessage("user", "Your last amendment was REFUSED: "+why+
 			"\n\nAnswer again with one amendment that does not do that. {} is a fine answer."),
 	})
@@ -687,10 +704,23 @@ func orchestrateCost(response *ai.Response, model string) float64 {
 // planner reading its steering out of a serialized struct is a planner one
 // escape away from ignoring it.
 //
-// The order is the argument: the goal, then what the person has said since
-// (which outranks the plan), then facts, then the frontier, then the money.
-func renderOrchestrateView(view orchestrate.View) string {
+// The order is the argument: the person's own request, then the goal groomed
+// out of it, then what they have said since (which outranks the plan), then
+// facts, then the frontier, then the money.
+//
+// THE REQUEST IS FIRST AND IT IS VERBATIM. The goal is one model's account of
+// what somebody asked for, and the planner's whole job is to cut that account
+// into nodes — so a requirement the account dropped is a requirement no node
+// will ever carry. Their sentence is captured by the code that started the run
+// ([Agent.RunOrchestrate]) and put where the paraphrase can be checked against
+// it. It is empty for a run nobody typed — a resumed one, a scripted one — and
+// then this section is simply absent (task_brief.go states the emptiness law
+// these briefs are written to).
+func renderOrchestrateView(view orchestrate.View, request string) string {
 	var out strings.Builder
+	if request = strings.TrimSpace(request); request != "" {
+		fmt.Fprintf(&out, "%s\n%s\n\n%s\n\n", briefAskHeading, briefAskRule, clip(request, briefAskLimit))
+	}
 	fmt.Fprintf(&out, "THE GOAL:\n%s\n", view.Goal)
 	if len(view.Steer) > 0 {
 		out.WriteString("\nWHAT THE PERSON HAS SAID SINCE (this outranks your plan):\n")
@@ -821,6 +851,14 @@ type orchestrateExec struct {
 	agent *Agent
 	call  roleRequest
 	id    string
+	// request is the person's own message and goal is what the run was asked to
+	// do. Both ride onto EVERY node's brief ([orchestrateBrief]), because a node
+	// is handed one small piece of a job it can otherwise see nothing of: the
+	// planner cut that piece out of its own reading of the goal, and a node that
+	// cannot see what the whole thing was for cannot notice when the cut lost
+	// something. They are bounded on the way in — see [orchestrateRootBrief].
+	request string
+	goal    string
 }
 
 // Exec runs one node and hands back its digest.
@@ -846,7 +884,7 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 	// a lane back to and no sub-tasks to wait for — this executor is the
 	// scheduler for its own graph — so the holder is nil and runTaskChild's
 	// waiting half never runs (task_run.go).
-	changed, stopped, runErr := runTaskChild(ctx, child, nil, orchestrateBrief(node, deps, shared),
+	changed, stopped, runErr := runTaskChild(ctx, child, nil, orchestrateBrief(e.root(), node, deps, shared),
 		dir, taskLimits{maxSteps: orchestrateMaxSteps, noProgress: orchestrateNoProgress}, nil, io.Discard)
 
 	cost := e.spend(child)
@@ -996,14 +1034,55 @@ func (e *orchestrateExec) spend(child *Agent) float64 {
 	return orchestrate.MeterCall(used.Input, used.Output, e.call.model)
 }
 
-// orchestrateBrief is a node's whole world: its goal, what its prerequisites
-// found, and the two bounds it is running under.
+// orchestrateRootBriefLimit bounds the goal's half of what every node is told.
+// The person's ask is bounded separately and more generously (briefAskLimit in
+// task_brief.go) because it is the part nothing else in the run carries; a goal
+// longer than this has already been cut into nodes, and each node's own goal is
+// the part of it that node has to act on.
+const orchestrateRootBriefLimit = 2000
+
+// root is what every node of this run reads before its own goal: the person's
+// request in their own words, then the goal the run was started with. It is
+// composed once per node rather than kept, because it is two short strings and
+// a run's nodes are minutes apart.
+func (e *orchestrateExec) root() string {
+	return orchestrateRootBrief(e.request, e.goal)
+}
+
+// orchestrateRootBrief lays the run's own contract out in the same voice a
+// task's opening message uses (task_brief.go), so that a person who reads one
+// node's thread and one task's thread is reading the same document twice.
+//
+// A RUN HAS NO SEPARATE DELIVERABLE OR DONE-CONDITION and this is where that
+// shows: a run's goal is also its title on the roster and in the room header
+// (roomorch.go draws it as one line), so the contract lives INSIDE the goal the
+// model writes rather than in fields beside it, and run_adaptive's schema is
+// what asks for it there. Everything else about the layout is decided in
+// [composeBrief] and not here.
+func orchestrateRootBrief(request, goal string) string {
+	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "")
+}
+
+// orchestrateBrief is a node's whole world: what the run as a whole was asked
+// for, then its own goal, what its prerequisites found, and the two bounds it is
+// running under.
 //
 // UPSTREAM ARRIVES AS DIGESTS AND NOTHING ELSE. A node that could read its
 // prerequisite's artifact would be a node whose context grows with the run,
 // which is the shape this design exists to refuse.
-func orchestrateBrief(node orchestrate.Node, deps []orchestrate.NodeStatus, shared bool) string {
+//
+// THE ROOT ARRIVES BOUNDED, for that same reason and it is the reason the root
+// is not simply pasted in: it rides in front of every node of the run, so a
+// generous copy would be paid for once per node ([orchestrateRootBrief] does the
+// bounding). What it buys is the one thing a node could not otherwise have — the
+// person's actual words. A planner writes each node's goal out of its own
+// reading of the run, and a node holding only that reading has no way to notice
+// a requirement the reading dropped.
+func orchestrateBrief(root string, node orchestrate.Node, deps []orchestrate.NodeStatus, shared bool) string {
 	var out strings.Builder
+	if root = strings.TrimSpace(root); root != "" {
+		out.WriteString(root + "\n\nYOUR PART OF IT, and the whole of what you are answerable for:\n")
+	}
 	out.WriteString(node.Goal)
 	if len(deps) > 0 {
 		out.WriteString("\n\nWHAT THE WORK BEFORE YOU FOUND:\n")

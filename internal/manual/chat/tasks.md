@@ -3,8 +3,10 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works from a written brief alone — it never sees the
-conversation — in its own copy of the repository, and it reports back when it lands.
+conversation carries on. It works in its own copy of the repository and reports back when
+it lands. It never sees the conversation: what it reads is one written brief — your own
+message, word for word, then the work, what to produce and what done means. How that is
+assembled is on the *how tasks run* page, under *What the task actually reads*.
 
 You can ask for the work in words, and the model grooms it and calls its `propose_task`
 tool. You then get a card asking whether the work should go. The

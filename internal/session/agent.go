@@ -607,6 +607,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// AND THE PERSON'S OWN WORDS ARE KEPT, so that work this turn hands off can
+	// carry the sentence that asked for it rather than a paraphrase of it
+	// (task_brief.go). A woken turn opens with nothing and changes nothing here.
+	a.rememberAskLocked(user)
 	var events <-chan Event
 	if watcher != nil {
 		hub.adopt(watcher)
@@ -1117,6 +1121,11 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 	woke := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
+		// A STEERING MESSAGE IS STILL THE PERSON ASKING. It arrives mid-turn and
+		// is often the correction the work about to be handed off must carry, so
+		// the newest thing they typed is what a proposal made after this drain
+		// quotes (task_brief.go).
+		a.rememberAskLocked(message)
 		woke = woke || message.wake
 	}
 	return len(queued), woke

@@ -34,7 +34,9 @@ A task is the same agent you talk to, with the same tools, in a quieter place.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
-document engine. It inherits **not the transcript** — the brief is its whole world. The
+document engine. It inherits **not the transcript** — one assembled brief is its whole
+world, and your own message is the first part of it (below, under *What the task actually
+reads*). The
 one thing it is given of what aforge remembers about you is the handful of lines its own
 brief needs: the conversation asks the router once, against that brief, and puts the
 answer at the top of the task's instructions (what-i-remember). The task itself never
@@ -267,7 +269,8 @@ in the checkpoint on disk, and in the project's index of landed work.
 A task can name `depends_on` — the ids of tasks that must finish first. When it starts,
 its brief is given their reports, under the line
 `What the work before you learned:` and then, per prerequisite,
-`<title> (task N):` and the report.
+`<title> (task N):` and the report. That lands inside the `THE WORK` part of what the task
+reads, below the model's brief.
 
 What happens depends on how the earlier task landed:
 
@@ -514,23 +517,68 @@ for that list.
 `propose_task` is how the model moves a self-contained piece of work out of the
 conversation. You cannot call it yourself — you ask for the work, and the model grooms it.
 
-Four arguments are **required**:
+Five arguments are **required**:
 
 | Argument | What it is |
 | --- | --- |
 | `title` | One line naming the work, as you would say it |
 | `summary` | Two or three lines you read to decide whether to redirect it |
-| `brief` | The task's **whole** context. The task never sees the conversation |
+| `brief` | The work itself: files, symbols, conventions, what has been tried |
+| `deliverable` | What must **exist** when it is over, and where: the file and its path, the branch, the answer and its shape |
 | `acceptance` | The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear |
 
-What the task is actually asked is `brief` + `"\n\nAcceptance: "` + `acceptance`. The same
-`acceptance` string is also what the second look judges against — one text, two readers.
-So a vague acceptance costs twice.
+The same `acceptance` string is what the second look judges against — one text, two
+readers. So a vague acceptance costs twice.
 
 A missing argument comes back as an ordinary result, never an error:
-`Invalid arguments: title is required`, and the same sentence for `summary`, `brief` and
-`acceptance`, in that order. Unparseable JSON answers `Invalid arguments: ` and the parse
-error.
+`Invalid arguments: title is required`, and the same sentence for `summary`, `brief`,
+`deliverable` and `acceptance`, in that order. Unparseable JSON answers
+`Invalid arguments: ` and the parse error.
+
+There is a sixth part the model is **not** asked for and cannot leave out: your own
+message. See the next section.
+
+## What the task actually reads — does it see what I said?
+
+Yes. Your own message travels with the work, word for word.
+
+A task's first and only message is assembled by aforge from four parts, under headings, in
+this order:
+
+```
+WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS
+This is the message this work came out of. Where anything below reads
+differently from it, their words are what was asked for.
+
+<what you typed, verbatim>
+
+THE WORK
+<the model's brief, plus what any task it waits on learned>
+
+WHAT TO PRODUCE
+<the deliverable>
+
+DONE WHEN
+<the acceptance>
+```
+
+The first part is taken by aforge from the conversation — the message that was in front of
+the model when it proposed the work, or the newest thing you typed into that turn if you
+steered it. The model never writes that part and cannot edit it. Nothing else from the
+conversation travels: the task does not see the discussion around your message, and it
+cannot ask you anything once it starts.
+
+**A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has
+no separate deliverable and no model paraphrase, so it reads as your words and a
+done-condition. A task restored from a checkpoint written before this existed has no
+verbatim part at all.
+
+Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task that was
+handed a shortened version of what you said can see that it was.
+
+A task the model hands out from **inside** another task inherits the same words: there is
+nobody in a worktree to type a new message, so the sentence that started the family is what
+every task under it reads.
 
 Once a task is admitted, its brief and its acceptance are **frozen**. Nothing changes them
 after that — not steering, not a correction round. Steering is talk to the worker, not a

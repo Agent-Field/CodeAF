@@ -15,11 +15,12 @@ import (
 // proposeModelCall is task_test.go's proposeCall with a model on it.
 func proposeModelCall(title, model string) step {
 	arguments, _ := json.Marshal(taskArguments{
-		Title:      title,
-		Summary:    "two lines the person reads",
-		Brief:      "the whole brief\n" + taskBriefMark,
-		Acceptance: "the file is there",
-		Model:      model,
+		Title:       title,
+		Summary:     "two lines the person reads",
+		Brief:       "the whole brief\n" + taskBriefMark,
+		Deliverable: "d",
+		Acceptance:  "the file is there",
+		Model:       model,
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
