@@ -39,7 +39,7 @@ func TestAPictureMakingNodeIsNotStoppedForLackOfProgress(t *testing.T) {
 	}
 	arguments, _ := json.Marshal(taskArguments{
 		Title: "Paint", Summary: "s", Brief: "paint two of them\n" + taskBriefMark,
-		Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+		Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 	})
 
 	// Four paintings in a row, each at its own path, then the node's own words.

@@ -42,8 +42,12 @@ func (a *Agent) StartTask(_ context.Context, brief string) (uint64, string, erro
 	title := taskPersonTitle(brief)
 	graph := a.graph()
 	id := graph.reserve()
+	// THE PERSON'S WORDS ARE BOTH HALVES HERE, and that is not a duplication: on
+	// this path nobody paraphrased anything, so the request IS the work and
+	// [composeBrief] prints it once, under the heading that says whose words they
+	// are (task_brief.go).
 	graph.admit(id, taskSpec{
-		title: title, summary: firstLine(brief), brief: brief,
+		title: title, summary: firstLine(brief), request: brief, brief: brief,
 		acceptance: "Complete the brief and report the result and checks run.",
 	})
 	return id, title, nil
@@ -58,6 +62,11 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) 
 		return "", "", errors.New("an adaptive task needs a brief")
 	}
 	title := taskPersonTitle(brief)
+	// THE PERSON TYPED THIS, so it is what the run's planner and every one of its
+	// nodes will be shown as the request (task_brief.go). Without this line the
+	// run would carry whatever was last said in the CHAT, which on this path is
+	// some other conversation entirely — the brief came in through a command.
+	a.rememberAsk(brief)
 	goal := brief
 	if plannerHint = strings.TrimSpace(plannerHint); plannerHint != "" {
 		goal += "\n\nPossible parallel parts: " + plannerHint

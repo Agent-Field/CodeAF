@@ -677,7 +677,7 @@ func TestWriteScopeBindsTheHandsThatKnowTheirPath(t *testing.T) {
 // ── the small parts ─────────────────────────────────────────────────────────
 
 func TestOrchestrateBriefCarriesTheDigestsAndTheBound(t *testing.T) {
-	brief := orchestrateBrief(
+	brief := orchestrateBrief("",
 		orchestrate.Node{ID: "n3", Goal: "write the migration note", WriteScope: []string{"docs"}},
 		[]orchestrate.NodeStatus{{Node: orchestrate.Node{ID: "n1"}, Digest: "the old client is used in four files"}},
 		true)
@@ -686,9 +686,75 @@ func TestOrchestrateBriefCarriesTheDigestsAndTheBound(t *testing.T) {
 			t.Fatalf("the brief is missing %q:\n%s", want, brief)
 		}
 	}
-	read := orchestrateBrief(orchestrate.Node{ID: "n1", Goal: "find out"}, nil, true)
+	read := orchestrateBrief("", orchestrate.Node{ID: "n1", Goal: "find out"}, nil, true)
 	if !strings.Contains(read, "READ-ONLY") {
 		t.Fatalf("a node with no scope is told it writes nothing:\n%s", read)
+	}
+}
+
+// EVERY NODE OF A RUN READS THE PERSON'S OWN WORDS, then the run's goal, then
+// its own part. A planner writes each node's goal out of its own reading of the
+// run, so a node that could see only that reading has no way to notice a
+// requirement the reading dropped — which is exactly what happened when a run
+// fanned out eight children that all did the same paraphrased job.
+func TestEveryRunNodeIsToldWhatThePersonAskedForAndWhatTheRunIsFor(t *testing.T) {
+	worker := &orchestrateExec{
+		request: "audit every package for the old pricing constant and write it up in docs/pricing.md",
+		goal:    "sweep the repo for hard-coded prices and produce one page",
+	}
+	brief := orchestrateBrief(worker.root(),
+		orchestrate.Node{ID: "n2", Goal: "check internal/billing", WriteScope: []string{"docs"}}, nil, true)
+
+	for _, want := range []string{
+		briefAskHeading,
+		"audit every package for the old pricing constant and write it up in docs/pricing.md",
+		briefWorkHeading,
+		"sweep the repo for hard-coded prices and produce one page",
+		"YOUR PART OF IT",
+		"check internal/billing",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("a run node's brief is missing %q:\n%s", want, brief)
+		}
+	}
+	// THE ORDER IS THE CONTRACT: their words, then the run, then this node's
+	// piece. A node that met its own goal first would read the rest as footnotes.
+	ask := strings.Index(brief, briefAskHeading)
+	run := strings.Index(brief, "sweep the repo for hard-coded prices")
+	part := strings.Index(brief, "check internal/billing")
+	if !(ask < run && run < part) {
+		t.Fatalf("the sections are out of order (ask %d, run %d, part %d):\n%s", ask, run, part, brief)
+	}
+}
+
+// A RUN NOBODY TYPED — one a test scripted, one resumed — has no request, and
+// gets no heading over nothing. The run's goal still reaches its nodes.
+func TestARunWithNoPersonBehindItGetsNoEmptyHeading(t *testing.T) {
+	worker := &orchestrateExec{goal: "sweep the repo for hard-coded prices"}
+	brief := orchestrateBrief(worker.root(), orchestrate.Node{ID: "n1", Goal: "check billing"}, nil, true)
+	if strings.Contains(brief, briefAskHeading) {
+		t.Fatalf("a run nobody asked for quotes somebody:\n%s", brief)
+	}
+	if !strings.Contains(brief, "sweep the repo for hard-coded prices") {
+		t.Fatalf("the run's goal never reached its node:\n%s", brief)
+	}
+}
+
+// THE PLANNER READS THEIR WORDS ABOVE THE GOAL, because the planner is where a
+// paraphrase becomes a set of node goals.
+func TestThePlannerSeesThePersonsOwnWordsAboveTheGoal(t *testing.T) {
+	view := renderOrchestrateView(orchestrate.View{Goal: "sweep the repo for hard-coded prices"},
+		"audit every package for the old pricing constant")
+	ask := strings.Index(view, briefAskHeading)
+	goal := strings.Index(view, "THE GOAL:")
+	if ask < 0 || goal < 0 || ask > goal {
+		t.Fatalf("the request is not above the goal (ask %d, goal %d):\n%s", ask, goal, view)
+	}
+	if !strings.Contains(view, "audit every package for the old pricing constant") {
+		t.Fatalf("the planner never sees what was asked for:\n%s", view)
+	}
+	if bare := renderOrchestrateView(orchestrate.View{Goal: "sweep"}, ""); strings.Contains(bare, briefAskHeading) {
+		t.Fatalf("a run nobody typed quotes somebody:\n%s", bare)
 	}
 }
 
