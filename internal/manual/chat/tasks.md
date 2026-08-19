@@ -414,6 +414,32 @@ The task's elapsed clock freezes while you stand in its room. That number exists
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
 
+## Seeing the whole conversation inside a task — a room never folds its work away
+
+**A room shows everything the task said and did, and it stays shown.** Out in the main
+thread a finished turn's machinery collapses into one chip —
+`▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
+you asked and the answer you got. **That never happens inside a room.** A task's whole life
+is one long stretch of work ending in a report, so a chip there would hide the entire page
+and leave you the report you already had. There is no `▸ worked` line in a room, nothing to
+click open, and the `ui.work` setting does not reach one.
+
+So a room you walk into — a running task, a task that has landed, a piece of a recursive
+task, a harness being designed — reads top to bottom as the discussion it was: the
+instruction it was given, its prose between calls, its thinking blocks, every tool call with
+its arguments and result, anything you steered into it, and the report at the end. A landed
+task's room is the whole transcript, not the summary.
+
+Two bounded things do still hold something back, and both name themselves and open:
+
+- a **thinking block** shows three lines until you press `ctrl+e` or click it —
+  `⠿ thought for 6s · 148 tok · ctrl+e`;
+- a run of **more than three tool calls in a row** shows the last three above a line reading
+  `9 earlier tool calls · ctrl+o`; `ctrl+o`, or a click on that line, unfolds the run.
+
+Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
+there is no work chip for it to mean instead.
+
 ## Who started this task, and what it handed out
 
 Standing inside a task, the pinned lines under the focus header say where it sits in the
