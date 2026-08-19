@@ -44,7 +44,7 @@ func TestACutOffDesignSkipsTheRepairTurn(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	_, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	_, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err == nil {
 		t.Fatal("a design that never closed its object was accepted")
 	}
@@ -71,7 +71,7 @@ func TestACutOffDesignIsAskedForASmallerOne(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	page, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err != nil {
 		t.Fatalf("the second attempt should have landed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestARefusedDesignIsHandedTheValidatorsSentence(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	if _, _, err := agent.designPage(context.Background(), "anything", "test/model"); err != nil {
+	if _, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{}); err != nil {
 		t.Fatalf("the repaired design was refused too: %v", err)
 	}
 	second := completer.request(1)
@@ -138,7 +138,7 @@ func TestADesignThatKeepsBreakingTheLawStops(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	_, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	_, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err == nil {
 		t.Fatal("a page that never validated was accepted")
 	}
@@ -162,7 +162,7 @@ func TestAFencedDesignCostsNoSecondCall(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	page, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err != nil {
 		t.Fatalf("a fenced envelope was refused: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestAReviewThatDropsANodeIsNotThrownAwayByTheDraftsOwnTable(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	page, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err != nil {
 		t.Fatalf("the design failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestAReviewThatContradictsTheSurvivingTableIsStillRefused(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	page, _, err := agent.designPage(context.Background(), "anything", "test/model")
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
 	if err != nil {
 		t.Fatalf("the design failed: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestADesignThatThoughtItselfEmptyIsToldThat(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
-	if _, _, err := agent.designPage(context.Background(), "anything", "test/model"); err != nil {
+	if _, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{}); err != nil {
 		t.Fatalf("the second attempt should have landed: %v", err)
 	}
 	second := completer.request(1)

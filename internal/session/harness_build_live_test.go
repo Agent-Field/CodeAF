@@ -113,7 +113,9 @@ func oneLiveDesign(t *testing.T, agent *Agent, goal, model string) {
 	for tries := 0; ; tries++ {
 		at := time.Now()
 		var raw string
-		draft, page, raw, err = agent.designHarnessOnce(ctx, history, model)
+		// The seat is empty: this rig has no node, so there is no room to stream
+		// into and no journal to keep the reply in — the log below is the record.
+		draft, page, raw, err = agent.designHarnessOnce(ctx, history, model, goal, tries+1, designSeat{})
 		if err == nil {
 			t.Logf("attempt %d ACCEPTED in %s", tries+1, time.Since(at).Round(time.Millisecond))
 			cues = draft.Cues
