@@ -34,7 +34,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
@@ -130,7 +129,11 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	}
 
 	absolute := resolveInWorkspace(path, a.config.Workspace)
-	shown := filepath.ToSlash(path)
+	// EVERY REFUSAL BELOW NAMES THE FILE WHOLE ([picturePathInResult]), not as
+	// the caller happened to spell it. A relative path echoed back says which
+	// string was passed and not which file was opened, and this line is the only
+	// thing a terminal that cannot draw the picture has to go on.
+	shown := picturePathInResult(absolute)
 
 	// The type and the size are image.go's own checks, called rather than
 	// copied: a picture accepted at this door and refused at the attachment door

@@ -361,9 +361,11 @@ kind is a separate answer, so drawing may be there while filming is not.
 
 Each saves a file and answers with its path — never the media itself — and each
 costs real money, a video most of all. A path is all that goes into the
-conversation, but **you can see a picture without leaving the terminal**: open
-the `generate_image` row and the image is drawn in the expansion, in colour, with
-its path and size beneath.
+conversation, but **you see a picture without leaving the terminal and without
+asking**: the moment `generate_image` finishes, the image is drawn under its row
+in colour. Open the row for a bigger look and the file's whole absolute path
+beneath it. A picture's path is absolute precisely so that a terminal which
+cannot draw still leaves you something you can open.
 
 **All four work in tasks, in adaptive runs and inside saved harnesses too**, not
 only here. The page "making pictures, audio and video" has the arguments, the
@@ -389,10 +391,12 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call. **You can see it too**: open the `view_image` row and the picture is
-drawn in the expansion, in colour, above what the looking model said.
+single call. **You see it too**: the picture is drawn under the `view_image` row
+in colour as soon as the call finishes, and opening the row shows it bigger with
+what the looking model said beneath.
 
-Refusals, in its own words:
+Refusals, in its own words. The last three name the picture by its **whole
+absolute path**, however you spelled it in the call:
 
 - Not one of the four types:
   `shot.tiff is not an image this surface can send — png, jpeg, webp and gif are`

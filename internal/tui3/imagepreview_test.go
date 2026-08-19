@@ -183,7 +183,7 @@ func TestThePictureIsAbsentWhereItCannotBeDrawn(t *testing.T) {
 		{name: "too narrow", pal: newPalette(tokens.TrueColor, false), cols: 4},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if preview := renderPicture(c.pal, path, size, c.cols); preview.ok {
+			if preview := renderPicture(c.pal, path, size, c.cols, pictureRowsMax); preview.ok {
 				t.Fatalf("a picture was drawn: %q", preview.rows)
 			}
 		})
@@ -215,10 +215,10 @@ func TestAnUnreadableFileDrawsNothingRatherThanAnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	pal := newPalette(tokens.TrueColor, false)
-	if preview := renderPicture(pal, lying, 17, 40); preview.ok {
+	if preview := renderPicture(pal, lying, 17, 40, pictureRowsMax); preview.ok {
 		t.Fatal("a text file was drawn as a picture")
 	}
-	if preview := renderPicture(pal, filepath.Join(dir, "gone.png"), 100, 40); preview.ok {
+	if preview := renderPicture(pal, filepath.Join(dir, "gone.png"), 100, 40, pictureRowsMax); preview.ok {
 		t.Fatal("a missing file was drawn as a picture")
 	}
 }
@@ -288,6 +288,19 @@ func pictureApp(t *testing.T, batches ...[]session.Event) (*app, string) {
 	a.workspace = dir
 	runTurn(t, a, agent, "draw me a harbour")
 	return a, path
+}
+
+// paintedRows counts the rows of one block that carry a picture. The half block
+// is the whole technique, so a row with one in it is a row of picture and a
+// block with none in it drew nothing.
+func paintedRows(rows []string) int {
+	n := 0
+	for _, r := range rows {
+		if strings.Contains(r, halfBlock) {
+			n++
+		}
+	}
+	return n
 }
 
 // stemless joins the expansion's rows with the rail taken off, which is how a

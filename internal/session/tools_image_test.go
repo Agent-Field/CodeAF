@@ -146,10 +146,17 @@ func TestGenerateImageSavesTheBytesAndReturnsPathAndDimensions(t *testing.T) {
 		t.Fatalf("the saved file is %d bytes, want the %d the provider sent", len(written), len(picture))
 	}
 
-	// The result names the path and the size the file actually has.
-	wantPath := ".aforge-v3/images/" + name
+	// The result names the path WHOLE — absolute, from the root — and the size
+	// the file actually has. The path is the one thing on this line a person
+	// still has when their terminal cannot draw the picture (tui3's
+	// imagepreview.go), and a path relative to a directory they are not standing
+	// in is a path they cannot open.
+	wantPath := filepath.ToSlash(filepath.Join(directory, name))
+	if !filepath.IsAbs(wantPath) {
+		t.Fatalf("the test's own expected path %q is not absolute", wantPath)
+	}
 	if !strings.Contains(result, wantPath) {
-		t.Fatalf("result %q does not carry the path %q", result, wantPath)
+		t.Fatalf("result %q does not carry the whole path %q", result, wantPath)
 	}
 	if !strings.Contains(result, "40×30") {
 		t.Fatalf("result %q does not carry the dimensions", result)
@@ -164,8 +171,14 @@ func TestGenerateImageSavesTheBytesAndReturnsPathAndDimensions(t *testing.T) {
 	if strings.Contains(result, encoded) || strings.Contains(result, encoded[:32]) {
 		t.Fatal("the tool result carries the image bytes")
 	}
-	if len(result) > 200 {
-		t.Fatalf("result is %d bytes, far past a line naming a file: %q", len(result), result)
+	// The ceiling is measured AROUND the path rather than over the whole line,
+	// because the path is now absolute and how long that is belongs to whoever
+	// ran the test, not to this tool. What is being pinned is that the result is
+	// a SENTENCE ABOUT a file — a name, a shape, a size, a model — and never the
+	// file's contents.
+	if words := len(result) - len(wantPath); words > 100 {
+		t.Fatalf("result carries %d bytes beyond the path, far past a line naming a file: %q",
+			words, result)
 	}
 
 	// The request is one png, on the configured model.
