@@ -379,7 +379,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | what the body draws | the conversation | that task's transcript |
 | what `enter` does | sends to the model | **steers the task** |
 | box placeholder | the draft prompt | `Steer <title>… (esc: main)` |
-| pinned top line | none | the focus header |
+| pinned top line | none | the focus header, and the family lines under it |
 | legend word | the workspace path and branch | `room · esc/←← main` |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the model picker | inert — the picker moves the conversation |
@@ -388,11 +388,14 @@ writes one note in the conversation: `room unavailable — this session has no t
 | attachments | the tray sends pictures | a room's box sends words only |
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
 
-The focus header is one accent line pinned at the top:
+The focus header is an accent line pinned at the top:
 `─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─`. It carries
 the state glyph, a trail that always names `main` as the root, then the state word, the
 clock, the spend and the model — each dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
+
+Under it, dim and indented, come up to three more pinned lines saying where this task sits
+in its family — see *Who started this task, and what it handed out*.
 
 ## Reading a task's room, and its frozen clock
 
@@ -410,6 +413,42 @@ the conversation was scrolled up loses that scroll.
 The task's elapsed clock freezes while you stand in its room. That number exists to ask
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
+
+## Who started this task, and what it handed out
+
+Standing inside a task, the pinned lines under the focus header say where it sits in the
+family — who asked for the work, what the work handed out, and what it is still behind.
+They are dim, indented two cells under the trail, and each one is simply absent when there
+is nothing to say:
+
+```
+─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
+  part of: Ship the port
+  spawned: Cut the goldens — queued · Wire the seam — running
+```
+
+- **`part of: <title>`** names the task that handed this work out — the parent. A task
+  nobody spawned draws no such line, so its absence means *this is a top-level task*. A
+  parent this session has had no update for is left unsaid rather than named as a bare id.
+- **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
+  the session met them. The state is the same word the roster uses: `queued`, `working`,
+  `finishing`, `waiting`, `done`, `failed`, `stopped`, `needs your look`. A piece that is
+  itself queued behind another piece says only `queued` here; open its own room to see what
+  it is behind.
+- **what this task waits on** is on the accent line itself, as its state word:
+  `waits: <title>` names the prerequisites that have not finished. It is there rather than
+  on a line of its own so the header never says the same thing twice.
+
+Nothing new is being tracked for these lines — they are the roster's own tree, read from
+the one node you are standing in, said in words because the tree shape is not on screen
+here.
+
+Limits, so you know when the page is not telling you everything: at most **three** lines,
+wrapped on their spaces and cut there, because they are charged to the transcript
+underneath them. They stand down entirely on a terminal shorter than **16 rows** or
+narrower than **12 columns**, where the header itself is already fighting for room. An
+adaptive run's page draws none of them: the graph with its edges is already on screen
+there.
 
 ## Opening a task in the middle of its work — what the room shows
 
@@ -497,7 +536,10 @@ Where they show up:
 - **the roster** draws the whole family together, with each piece joined to its parent by
   tree connectors and carrying its own id and state.
 - **the parent's room** shows the `propose_task` calls as they are made, and the parent's
-  own words when the reports come back.
+  own words when the reports come back — and its pinned header lists each piece by name
+  with the state it is in (*Who started this task, and what it handed out*).
+- **the piece's own room** says `part of: <the parent's title>` under its header, so a task
+  you walked into knows it is a piece of something.
 
 Each piece works in a copy of the repository taken from its **parent's** copy, and its
 branch merges back into the parent's — so a family's work comes home as the parent's work,
