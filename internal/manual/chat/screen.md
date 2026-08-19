@@ -19,6 +19,30 @@ still draws the strip along the top, and the legend's hint slot reads `ctrl+g ta
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
+## The box says which room you are typing into
+
+While a task room is open the draft box carries the room in front of its own `› `: the
+task's state glyph and its name, on the tinted background a selected row wears, in the
+hue of what that task is doing — the same hue the roster paints its glyph with. So the
+line you are typing on says where the words are going, and it says it whether the box is
+empty or full.
+
+```
+ ⠋ Ship the port › fix the flake in the loader
+```
+
+- It is a **segment, not a row** — it costs the conversation nothing and the caret is
+  counted through it, so the cursor is where the letter is.
+- Continuation rows of a wrapped draft line up under the text, past the segment.
+- The name is cut to at most 18 cells. On a frame with too few columns to leave a box
+  worth typing in, the segment is dropped and the box's placeholder names the task
+  instead.
+- In the main conversation there is **no segment at all** — not a dim one, not an empty
+  one. There is nowhere else the words could be going.
+
+The same task is marked twice more while you are in it: its row in the roster wears the
+same tint, and its chip on the task strip does too.
+
 The rule above the input is the only horizontal line this surface draws. There are no
 borders anywhere else. The draft box is inset one cell.
 

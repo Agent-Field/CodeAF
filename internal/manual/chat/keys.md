@@ -199,9 +199,19 @@ multi-line editor rather than a single-line field.
 - A longer message scrolls **inside** the box, following the caret. The rows scrolled
   past are marked with an ellipsis in the same two cells the `› ` occupies, so
   nothing shifts under your caret.
-- Continuation rows are indented two cells to sit under the text. Soft wrapping
+- Continuation rows are indented to sit under the text. Soft wrapping
   breaks at the last space before the edge, and mid-word only when the line offers no
   space.
+
+**Inside a task's room the box wears a segment in front of its `› `**, naming the work
+your words are going to: the task's state glyph and its name, on the same tinted
+background a selected row wears, in the hue that task's state is drawn in everywhere
+else — accent while it runs, the warn colour while it needs your look, muted once it is
+done, the bad hue when it failed, dim when it is queued or you stopped it. It is there
+whether the box is empty or full, which is the point: the placeholder that used to say
+this disappeared the moment you started typing. The name is cut to at most 18 cells; on
+a frame too narrow to spend the cells, the segment is dropped and the placeholder goes
+back to naming the task itself. There is no segment at all in the main conversation.
 
 A **slash command you type into the box is highlighted as you type it** — `/task`,
 `/compact`, `/clear` get a tinted background behind the word, so a real command looks

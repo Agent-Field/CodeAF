@@ -3901,7 +3901,17 @@ func (a *app) railWaits(node *taskNode) string {
 // reach here. There, a quiet line IS the success and the row stays on screen; a
 // rail row is a presence that disappears when the work comes home, so the tick
 // is not decoration on a permanent row — it is the last thing the row says.
+// It is the CELL and the HUE asked separately and put back together, because the
+// hue is needed on its own: the composer's room segment says the name of the task
+// you are typing to in the state's own colour (room.go's [app.roomLead]), and a
+// second table of which state is which colour would be a segment that disagreed
+// with the glyph beside the same name in the roster.
 func (a *app) railGlyph(node *taskNode) string {
+	return a.taskStateInk(node)(a.taskStateMark(node))
+}
+
+// taskStateMark is a node's state in one cell, UNPAINTED.
+func (a *app) taskStateMark(node *taskNode) string {
 	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
 	// does: a node a person stopped settles as `failed` on the wire, because
 	// nothing merged, and drawing it with the failure's cross would report a
@@ -3916,23 +3926,47 @@ func (a *app) railGlyph(node *taskNode) string {
 	// waiting work wears, in the same warn hue, because it is the same ask: the
 	// machine has done its part and the next move is yours.
 	if taskAwaitsPerson(node) {
-		return a.pal.warn(glyphUnverified)
+		return glyphUnverified
 	}
 	switch node.state {
 	case session.TaskDone:
-		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+		return a.linearMark(glyphDone, glyphDoneASCII)
 	case session.TaskFailed:
-		return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+		return a.linearMark(glyphBad, glyphBadASCII)
 	case session.TaskUnverified:
-		return a.pal.warn(glyphUnverified)
+		return glyphUnverified
 	case session.TaskRunning:
 		if a.linear {
-			return a.pal.accent(glyphRunASCII)
+			return glyphRunASCII
 		}
-		return a.pal.accent(tokens.Spinner(a.paints / spinnerStep))
+		return tokens.Spinner(a.paints / spinnerStep)
 	default:
-		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+}
+
+// taskStateInk is the hue that state is said in — the paint half of
+// [app.railGlyph], in the order the glyph half decides its cell so the two can
+// never fall out of step. Anything that says a node's name in the colour of what
+// it is doing asks this: the roster's glyph, and the composer's room segment.
+func (a *app) taskStateInk(node *taskNode) func(string) string {
+	if _, stopped := a.stoppedGlyph(node); stopped {
+		return a.pal.dim
+	}
+	if taskAwaitsPerson(node) {
+		return a.pal.warn
+	}
+	switch node.state {
+	case session.TaskDone:
+		return a.pal.muted
+	case session.TaskFailed:
+		return a.pal.bad
+	case session.TaskUnverified:
+		return a.pal.warn
+	case session.TaskRunning:
+		return a.pal.accent
+	}
+	return a.pal.dim
 }
 
 // glyphDone marks a node that landed. See [app.railGlyph] for why this surface
@@ -4263,8 +4297,14 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	if !a.awaitingTask() || len(rows) == 0 || !a.input.empty() || a.pick.open {
 		return rows
 	}
-	room := width - ansi.StringWidth(prompt)
+	// THE ROOM SEGMENT SURVIVES THIS ROW, because the row it is replacing was laid
+	// out with the segment in front of it: rebuilding row zero without it would
+	// leave the caret's column counted through a lead the frame had stopped
+	// drawing (room.go's [app.roomLead]). It is "" whenever no room is open, which
+	// is every frame a proposal is normally answered on.
+	lead := a.roomLead(width)
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
-	out[0] = a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
+	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
 }

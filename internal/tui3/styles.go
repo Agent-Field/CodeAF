@@ -679,12 +679,23 @@ func (p palette) band(s string, width int) string {
 // Below the 256 rung there is no background to draw and what is left is the
 // accent's own weight: a command reads as bold where it cannot read as a tinted
 // run, which is the same trade the person's own words already make (render.go).
-func (p palette) chip(s string) string {
+func (p palette) chip(s string) string { return p.tint(s, p.accent) }
+
+// tint is [palette.chip] with the ink NAMED rather than assumed: the same lifted
+// run of cells, in whichever hue the caller is already saying this thing in.
+//
+// The one caller that needs it is the composer's room segment (room.go's
+// [app.roomLead]), which wears the state hue of the task it names — the hue the
+// roster paints the same node's glyph with — because a chip that said "you are
+// typing to this" in a seventh colour would be a chip whose colour meant
+// nothing. Below the 256 rung the background is dropped and the ink is what is
+// left, which is the trade [palette.chip] already makes.
+func (p palette) tint(s string, ink func(string) string) string {
 	if s == "" {
 		return s
 	}
 	// Width zero, so [palette.background] pads nothing.
-	return p.background(p.accent(s), 0, p.ramp.band)
+	return p.background(ink(s), 0, p.ramp.band)
 }
 
 // background is the one place this file draws a background: the row padded to
