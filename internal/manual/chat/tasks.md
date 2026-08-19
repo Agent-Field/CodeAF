@@ -257,6 +257,8 @@ The strip is one row under the pinned header — a tab bar of doors into live wo
 It appears only while something is running, and goes away the moment nothing is. It needs a
 frame at least 24 columns wide and 6 rows tall. It is the narrow-frame door: wherever the
 roster stands — as the right column or open over the whole frame — the strip stands down.
+A column you closed with `ctrl+g` is a roster standing down, so the strip comes back and
+running work stays reachable.
 
 Order: running first, then work that needs you, then idle. Parked and finished work never
 appear on it — the strip is the live set, the roster is the history.
@@ -280,8 +282,9 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 ## The roster: the column of all the work
 
 The roster is a column on the right holding every task this session has admitted, not just
-the live ones. It is the session's record of its own work. Nothing puts it away except
-`/new`.
+the live ones. It is the session's record of its own work. Work finishing never puts it
+away. Two things do: `/new`, which takes the tasks with it, and `ctrl+g`, which closes the
+column and leaves the work exactly where it was. The bottom line of the column says so.
 
 It appears as soon as one task exists, at a frame width of 100 columns or more — 30 columns
 wide from 120 up, a slim 24 columns from 100 to 119. Under 100 columns there is no column,
@@ -312,6 +315,37 @@ At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `1 need you · 3 r
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
 
+Under those, always, one more dim line: `ctrl+g — hide`. It is the column's own door, and
+it is a button as well as a key — click that line and the column goes away.
+
+## Hiding the task column: closing the right sidebar, panel or task bar
+
+`ctrl+g` closes the column of tasks on the right and gives its 30 columns back to the
+conversation. Press it again and the column comes back with the current state of the
+work in it, including anything that started or finished while it was gone — nothing here
+is a snapshot; the column is redrawn from the tasks every frame. The `ctrl+g — hide` line
+at the bottom of the column is the same door for the pointer: click it and it closes.
+
+The choice is remembered. It is written to your profile the moment the column moves, as
+the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
+Display tab as **task column**. A change made in the panel lands the next time aforge
+starts; `ctrl+g` acts immediately and wins for this session.
+
+With the column closed, work is still visible:
+
+- Anything **running** draws the task strip along the top — `⠙ Fix nil-map · ◆ Auth tests
+  · +2` — because the strip stands up wherever the roster stands down. Click a chip for
+  that task's room, or the `+N` for the whole roster.
+- The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
+  this session has any tasks at all, running or not. A session that has run nothing says
+  nothing there — there is no column to miss.
+- `ctrl+t` still works: asking for the roster brings the column back and gives it the
+  keyboard in one press.
+
+`ctrl+g` does nothing, and is not swallowed, when there is no roster on the frame to
+close: no tasks at all, or a frame under 100 columns where nothing has raised the
+roster over the body.
+
 ## Using the roster from the keyboard
 
 `ctrl+t` hands the keyboard to the roster. It is asked for, never taken: the draft is the
@@ -325,10 +359,12 @@ rest state, so a person who starts typing is typing, not navigating.
 | `enter` | open the task's room |
 | `w` | toggle the wider 46-column tree |
 | `esc` or `ctrl+t` | give the keyboard back |
+| `ctrl+g` | close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
-When depth has forced a title to be cut, the footer adds `w · widen for the tree`; that
-hint is clickable as well as available from the keyboard.
+When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
+`w · click seam — narrow` once it is wide); that hint is clickable as well as available
+from the keyboard, and so is the `ctrl+g — hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
