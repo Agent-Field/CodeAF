@@ -200,6 +200,22 @@ type taskRecord struct {
 	// number a person can read, not a Go-shaped string.
 	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
 
+	// CostUSD and the four token counts are the node's BILL: what every agent it
+	// took — the worker, each repair round, the auditor, a design thread — spent
+	// between them ([Agent.foldTaskUsage]). The dollars are the price somebody
+	// published at the time; the tokens are what actually happened, which is why
+	// both are kept and neither is derived from the other.
+	//
+	// Every one of them is absent from a checkpoint written before a node
+	// carried a bill, which resumes as zero — the same thing an unpriced model
+	// leaves behind, and the same thing every surface here already draws as
+	// nothing rather than as "$0.00".
+	CostUSD    float64 `json:"costUsd,omitempty"`
+	Input      int     `json:"input,omitempty"`
+	Output     int     `json:"output,omitempty"`
+	CacheRead  int     `json:"cacheRead,omitempty"`
+	CacheWrite int     `json:"cacheWrite,omitempty"`
+
 	// Noted says this node's completion note has been handed to the steering
 	// lane. It is what stops a resumed session re-announcing work the transcript
 	// already carries.
@@ -368,6 +384,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		MaxSteps:    n.spec.maxSteps,
 		NoProgress:  n.spec.noProgress,
 		ElapsedMS:   elapsed.Milliseconds(),
+		CostUSD:     n.cost,
+		Input:       n.input,
+		Output:      n.output,
+		CacheRead:   n.cacheRead,
+		CacheWrite:  n.cacheWrite,
 		Noted:       n.noted,
 		Interrupted: n.interrupted,
 		Kind:        n.kind,
@@ -720,6 +741,11 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		worktree:    record.Worktree,
 		merge:       record.Merge,
 		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
+		cost:        record.CostUSD,
+		input:       record.Input,
+		output:      record.Output,
+		cacheRead:   record.CacheRead,
+		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
 		interrupted: record.Interrupted,
 	}

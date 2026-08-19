@@ -41,6 +41,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -87,6 +88,12 @@ When in doubt, ASK. Answer with the single word and nothing else.`
 // It rides the TURN's context, so Interrupt ends a pending guardian call on the
 // same beat it ends everything else, and the blocked tool refuses the way an
 // interrupted consent question already refuses.
+// guardianAnswerWindow is how long the stand-in gets to say one word. It is
+// generous for the answer and short for the wait: the call it is holding up has
+// no question on screen behind it, so every second past this one is a turn that
+// looks hung to the person watching it.
+const guardianAnswerWindow = 10 * time.Second
+
 func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) bool {
 	if !a.config.Guardian {
 		return false
@@ -113,11 +120,22 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 		return false
 	}
 
+	// AND IT CARRIES ITS OWN DEADLINE. This call is made INSIDE the tool batch,
+	// with no card on screen and nothing for the person to answer: a guardian
+	// model that stalls is a bash call blocked behind a question nobody was
+	// asked, under a status line that says "working". The turn's context alone
+	// bounds nothing — the provider's HTTP client is built with no timeout — so
+	// a stall would last until somebody interrupted the turn. A one-word answer
+	// does not need ten seconds; a guardian that cannot manage one in that time
+	// falls through below exactly as a refusal does, and the person is asked.
+	judgeCtx, done := context.WithTimeout(ctx, guardianAnswerWindow)
+	defer done()
+
 	// WithoutStream for the reason the title and the compaction summary use it:
 	// this is bookkeeping about the conversation, not something anybody said, and
 	// left on the turn's stream it would type a word into the room.
 	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
+		provider.WithoutStream(judgeCtx),
 		[]ai.Message{
 			textMessage("system", guardianPrompt),
 			textMessage("user", guardianQuestion(call, decision)),
@@ -129,7 +147,7 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// The person pays for it, so it is folded into the session's auxiliary usage
 	// — the same pocket the title and the summary come out of, and for the same
 	// reason it is not charged to the turn: no turn asked for it.
-	a.addAuxiliaryUsage(response)
+	a.addAuxiliaryUsage(response, judge, 1)
 
 	if !guardianSaysAllow(response.Text()) {
 		return false

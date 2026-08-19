@@ -453,9 +453,14 @@ Three places.
 It holds the id counter and, per task in admission order: id, title, summary, brief,
 acceptance, depends_on, state, report, the task's own claim, changed files, branch,
 worktree, merge outcome, model, `max_steps`, `no_progress`, elapsed, and whether it has
-been noted or was interrupted. Cost is deliberately **not** in it — a rehydrated figure
-would be a number nobody could point at a request for. The assembled brief is not in it
-either; it is rebuilt from the prerequisites' reports when a task starts.
+been noted or was interrupted.
+
+**What each node cost is in it too** — the money, tokens in and out, cache read and cache
+write — so a conversation reopened tomorrow still shows what every task spent. Nothing is
+invented on the way back in: each figure was written down when the node settled, and the
+requests behind it are the `usage` lines in that node's own task transcript, which you can
+open and read. The assembled brief is not in it; it is rebuilt from the prerequisites'
+reports when a task starts.
 
 It is written after **every** transition, atomically, never only at exit. On load it is
 schema-checked, and **any** violation drops the file whole and starts the session with no
@@ -471,9 +476,16 @@ anyway.
 ```
 
 Append-only, one row per landed task: id, name, label, title, status, the first sentence
-of the outcome, file count, cost, duration, when it ended, the session id, and two URIs —
-where the work is and where the transcript is. Never the content: it is an index, not an
-archive. A read keeps the newest 2000 rows.
+of the outcome, file count, cost, the model it ran on, its tokens in and out as one sum,
+duration, when it ended, the session id, and two URIs — where the work is and where the
+transcript is. Never the content: it is an index, not an archive. A read keeps the newest
+2000 rows.
+
+An adaptive run writes **two** rows for the run itself: one when it starts, saying only
+that it is running, and one when it ends, carrying the whole tank it spent, the planner's
+model and how it finished. Rows are never edited — the newest row for an id is the one
+that counts — so the closing row's cost minus its nodes' costs is what the planning and
+the closing write-up cost on their own.
 
 **Task transcripts**, which are real, resumable session files you can open with `read`:
 

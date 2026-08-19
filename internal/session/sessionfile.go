@@ -133,7 +133,37 @@ type sessionEntry struct {
 	// reader having to rewrite the file: the replay takes the LAST title line.
 	Title string `json:"title,omitempty"`
 
+	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
+	// and it is on its own line rather than on the assistant message that ended
+	// the turn: a turn is several requests and several messages, and hanging the
+	// bill on one of them would be a number that is true of the line above it and
+	// of nothing else. Absent from every line that is not a seal, and from every
+	// file written before it existed.
+	Usage *journalUsage `json:"usage,omitempty"`
+
 	Timestamp string `json:"timestamp"`
+}
+
+// journalUsage is one turn's accounting as the journal holds it.
+//
+// Duration is milliseconds and not a time.Duration because a time.Duration
+// marshals as bare nanoseconds, and this is a file a person reads.
+//
+// Aux marks a line that was NOT a step of the conversation: the title call, a
+// memory reflex, a rendered picture, a folded task node. The distinction is
+// what lets a replay rebuild both counters the live session keeps — Calls
+// counts every request to the provider, Turns only the ones a turn of the
+// person's made (see [Agent.addAuxiliaryUsage]).
+type journalUsage struct {
+	Model      string  `json:"model,omitempty"`
+	Input      int     `json:"input,omitempty"`
+	Output     int     `json:"output,omitempty"`
+	CacheRead  int     `json:"cacheRead,omitempty"`
+	CacheWrite int     `json:"cacheWrite,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
+	Calls      int     `json:"calls,omitempty"`
+	DurationMS int64   `json:"durationMs,omitempty"`
+	Aux        bool    `json:"aux,omitempty"`
 }
 
 // journalPartImage names the one non-text part a person's message can carry
@@ -256,6 +286,25 @@ type sessionFile struct {
 	// line, so the journal is what a surface asks (see [sessionEntry.Note] and
 	// [shapeEntries]).
 	notes map[string]bool
+
+	// restored is what this conversation had already spent when the file was
+	// opened: the SUM of its usage lines, replayed once and never updated after.
+	// It is the file's answer to "what did this cost before today", and the agent
+	// seeds its own running total from it at construction (agent.go). Nothing
+	// stores a second copy of the total — the lines are the record, and this is
+	// the one pass that adds them up.
+	restored Usage
+}
+
+// RestoredUsage is what the conversation in this file had spent before it was
+// opened, and the zero Usage for a file that is new or holds no usage lines.
+func (s *sessionFile) RestoredUsage() Usage {
+	if s == nil {
+		return Usage{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.restored
 }
 
 // Title is the name this file was opened holding, empty when it has none.
@@ -487,6 +536,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, []ai.Message, e
 	journal.id = replayed.id
 	journal.images = replayed.images
 	journal.notes = replayed.notes
+	journal.restored = replayed.usage
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -560,6 +610,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		title    string
 		id       string
 		lines    int
+		spent    Usage
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -648,6 +699,28 @@ func replaySessionFile(path string) (replayedSession, error) {
 				continue
 			}
 			messages = messages[:len(messages)-entry.Dropped]
+		case "usage":
+			// EVERY line is added, and none is ever taken back. This is the one
+			// arm that accumulates rather than rebuilds: a compaction below
+			// replaces the message window, and money spent before it stays spent.
+			if entry.Usage == nil {
+				continue
+			}
+			used := entry.Usage
+			spent.Input += used.Input
+			spent.Output += used.Output
+			spent.CacheRead += used.CacheRead
+			spent.CacheWrite += used.CacheWrite
+			spent.CostUSD += used.CostUSD
+			spent.Duration += time.Duration(used.DurationMS) * time.Millisecond
+			spent.Calls += used.Calls
+			// Turns counts the conversation's own steps and nothing else, which
+			// is the law the live counters keep ([Agent.addUsage] bumps it,
+			// [Agent.addAuxiliaryUsage] deliberately does not). The aux mark on
+			// the line is what lets a replay keep the same distinction.
+			if !used.Aux {
+				spent.Turns += used.Calls
+			}
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in.
@@ -657,7 +730,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	return replayedSession{
 		messages: repairTranscript(messages),
@@ -665,6 +738,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		id:       id,
 		images:   images,
 		notes:    notes,
+		usage:    spent,
 		existed:  lines > 0,
 	}, nil
 }
@@ -771,7 +845,11 @@ type replayedSession struct {
 	images map[string]string
 	// notes is which of those messages the session wrote itself, keyed by
 	// [noteKey] — the index [sessionFile.notes] is opened holding.
-	notes   map[string]bool
+	notes map[string]bool
+	// usage is the SUM of the file's usage lines — what this conversation has
+	// spent across every process that ever held it. Summed rather than stored,
+	// so the total cannot drift from the lines it is made of.
+	usage   Usage
 	existed bool
 }
 
@@ -1011,6 +1089,46 @@ func (s *sessionFile) appendTitle(title string) {
 	s.title = title
 	s.mu.Unlock()
 	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
+}
+
+// appendUsage journals what one seal cost: the turn's own figures, or one
+// auxiliary call's beside it.
+//
+// It is the file's half of the one-source-of-truth law. The session total is
+// the SUM of these lines and is stored nowhere else, so a resumed conversation
+// knows what it spent by adding them up (see [replaySessionFile]) rather than
+// by trusting a number some earlier process wrote down.
+//
+// A SEAL THAT SPENT NOTHING WRITES NOTHING. An instantly-cancelled turn, and
+// the zero-token seals the harness, an orchestrated run and the image turn send
+// because their spend went through the auxiliary door, all leave no row — the
+// emptiness law applied to the file.
+//
+// The NIL RECEIVER writes nothing, for the reason [sessionFile.isNote] answers
+// false: a memory-only session has no journal, and the caller should not have
+// to test for a file before sealing a turn.
+func (s *sessionFile) appendUsage(used Usage, model string, aux bool) {
+	if s == nil {
+		return
+	}
+	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
+		return
+	}
+	s.writeLine(sessionEntry{
+		Type: "usage",
+		Usage: &journalUsage{
+			Model:      strings.TrimSpace(model),
+			Input:      used.Input,
+			Output:     used.Output,
+			CacheRead:  used.CacheRead,
+			CacheWrite: used.CacheWrite,
+			CostUSD:    used.CostUSD,
+			Calls:      used.Calls,
+			DurationMS: used.Duration.Milliseconds(),
+			Aux:        aux,
+		},
+		Timestamp: stamp(),
+	})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

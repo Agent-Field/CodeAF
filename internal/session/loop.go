@@ -314,7 +314,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// so a leftover lands ahead of the next Submit's message.
 		if ctx.Err() != nil {
 			a.keepPartial(partial)
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
+			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
 
@@ -329,7 +329,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// stays in the transcript and the turn ends normally.
 			if ctx.Err() != nil {
 				a.keepPartial(partial)
-				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
+				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 				return false
 			}
 			// Overflow is the one error with an answer other than reporting
@@ -347,7 +347,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// error leaves the same record an interrupt does and the surface
 			// gets the turn's duration with the reason.
 			a.keepPartial(partial)
-			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started)})
+			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
 
@@ -389,7 +389,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// is sealed so that the card lives exactly as long as the turn does —
 			// which is how every other question this loop can raise behaves.
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
+			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
 			// a stream to land on (title.go).
@@ -471,13 +471,26 @@ func (a *Agent) keepPartial(partial *partialBuffer) {
 	a.record(textMessage("assistant", text))
 }
 
-// sealTurn stamps the turn's wall duration and folds it into the session
-// total.
-func (a *Agent) sealTurn(turn Usage, started time.Time) Usage {
+// sealTurn stamps the turn's wall duration, folds it into the session total,
+// and writes the turn down.
+//
+// THIS IS THE ONE PLACE A TURN'S COST REACHES THE JOURNAL, and it is here
+// because every turn shape in the package ends through it: the loop above, the
+// harness turn, the orchestrated turn and the image turn, on the answering path
+// and on both failing ones. A write anywhere else would be a turn shape that
+// silently kept no record.
+//
+// The model is the CALLER'S rather than a.model, for the reason runTurn latches
+// it: a mid-turn /model swap must not be attributed backwards to work another
+// model did. The write happens with a.mu released — the file takes its own lock
+// (see [sessionFile.writeLine]) — and a turn that spent nothing writes no line
+// at all (see [sessionFile.appendUsage]).
+func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	turn.Duration = time.Since(started)
 	a.mu.Lock()
 	a.usage.Duration += turn.Duration
 	a.mu.Unlock()
+	a.file.appendUsage(turn, model, false)
 	return turn
 }
 
@@ -953,7 +966,23 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// citizen's rewrite is what runs — and the TOOL is the one dispatch already
 		// found, because the name is what got us here.
 		args := json.RawMessage(running.Function.Arguments)
+		started := time.Now()
 		text, isError, err := tool.Execute(ctx, args)
+		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
+		// yet — it goes out with the batch, in call order, because that is the
+		// order the transcript is written in — but the fact that this call is
+		// OVER, and what it cost, is known here and is stale by the time the
+		// slowest sibling returns. Sent from inside the execution so the early
+		// start (warmBatch.consider) is measured the same way the batch is.
+		if hub != nil {
+			hub.send(Event{
+				Kind:   EventToolFinished,
+				Tool:   call.Function.Name,
+				Args:   argsText(call),
+				CallID: call.ID,
+				Took:   time.Since(started),
+			})
+		}
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, matching pi's thrown-Error semantics.
@@ -1201,6 +1230,11 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 	// has been all day.
 	turn.CacheRead += usage.CacheReadTokens()
 	turn.CacheWrite += usage.CacheCreationTokens()
+	// Calls counts THIS request, and every other one the session makes. It is
+	// the honest denominator Turns cannot be: Turns is the conversation's own
+	// steps by law, and an auxiliary call is not one of them (see
+	// [Agent.addAuxiliaryUsage]).
+	turn.Calls++
 	if usage.Cost != nil {
 		turn.CostUSD += *usage.Cost
 	}
@@ -1216,6 +1250,7 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 	a.usage.CacheRead += usage.CacheReadTokens()
 	a.usage.CacheWrite += usage.CacheCreationTokens()
 	a.usage.Turns++
+	a.usage.Calls++
 	if usage.Cost != nil {
 		a.usage.CostUSD += *usage.Cost
 	}
@@ -1667,7 +1702,7 @@ func approxTokens(tokens int) string {
 }
 
 // addAuxiliaryUsage folds one auxiliary call — the session title (title.go), a
-// memory reflex (memory.go) — into the SESSION total only.
+// memory reflex (memory.go) — into the SESSION total only, and writes it down.
 //
 // The person pays for it, so it cannot be free; but no turn asked for it, and
 // charging it to the turn that happened to cross the threshold would make one
@@ -1675,21 +1710,46 @@ func approxTokens(tokens int) string {
 // left alone for the same reason — this is bookkeeping, not a step of the
 // conversation — and contextTokens too: an auxiliary call runs against its own
 // two-message context, which says nothing about this session's.
-func (a *Agent) addAuxiliaryUsage(response *ai.Response) {
+//
+// The model is the caller's because only the caller knows it: every one of
+// these runs on a model of its own — the namer, the guardian, the reflex, the
+// seer, a whole child agent — and a.model is the model the CONVERSATION is on,
+// which is precisely the one that did not do this work. calls is how many
+// provider requests the figures cover: one for an ordinary auxiliary call, and
+// a whole child's tally when a task node is folded in ([Agent.foldTaskUsage]).
+//
+// The line is journaled with aux set, so a replay can add it to the session's
+// spend without counting it as a step of the conversation ([journalUsage]). A
+// call that reports no usage at all still folds — into nothing — and writes no
+// line, by the same emptiness law the turn seal keeps.
+func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int) {
 	if response == nil || response.Usage == nil {
 		return
 	}
 	usage := response.Usage
+	aux := Usage{
+		Input:      usage.PromptTokens,
+		Output:     usage.CompletionTokens,
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		Calls:      calls,
+	}
+	if usage.Cost != nil {
+		aux.CostUSD = *usage.Cost
+	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.usage.Input += usage.PromptTokens
-	a.usage.Output += usage.CompletionTokens
+	a.usage.Input += aux.Input
+	a.usage.Output += aux.Output
 	// The cache figures follow the tokens they belong to. An auxiliary call is
 	// paid for out of the same pocket, so leaving them out would make the
 	// session's cached share a fraction of only part of its input.
-	a.usage.CacheRead += usage.CacheReadTokens()
-	a.usage.CacheWrite += usage.CacheCreationTokens()
-	if usage.Cost != nil {
-		a.usage.CostUSD += *usage.Cost
-	}
+	a.usage.CacheRead += aux.CacheRead
+	a.usage.CacheWrite += aux.CacheWrite
+	a.usage.CostUSD += aux.CostUSD
+	a.usage.Calls += aux.Calls
+	a.mu.Unlock()
+	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
+	// file has its own, and holding the agent's across a disk write would put
+	// every reader of the session's totals behind it.
+	a.file.appendUsage(aux, model, true)
 }

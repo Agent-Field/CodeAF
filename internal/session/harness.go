@@ -108,7 +108,7 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 	if err != nil {
 		// The turn died under the question — an interrupt, a closed agent. The
 		// turn ends the way every interrupted turn ends, and nothing ran.
-		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
+		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
 		return true, false
 	}
 	if !answer.run {
@@ -145,11 +145,15 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 	// existed a person watching had the harness's name and then silence. The
 	// send is synchronous with the walk, which is exactly what makes the row on
 	// screen the step that is actually finishing.
-	report, err := a.config.RunHarness(runCtx, entry.Name, route.Turn.Text, model, func(step subharness.Trail) {
+	report, spent, err := a.config.RunHarness(runCtx, entry.Name, route.Turn.Text, model, func(step subharness.Trail) {
 		hub.send(Event{Kind: EventHarnessStep, ID: runID, Text: entry.Name, Step: &step})
 	})
+	// CHARGED BEFORE IT IS READ, and on both roads out of here: a run that made
+	// twenty calls and then failed to be reported is a run somebody paid for
+	// twenty calls of.
+	a.foldHarnessUsage(spent, model)
 	if err != nil {
-		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started)})
+		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started, a.Model())})
 		return true, false
 	}
 	// The report is the turn's answer, so it is recorded as one. A harness whose
@@ -160,12 +164,69 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 		a.record(ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: report}}})
 		hub.send(Event{Kind: EventTextDelta, Text: report})
 	}
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{Turns: 1}, started)})
+	// THE SEAL IS ZERO-TOKEN AND THAT IS NOT AN OVERSIGHT: what the run spent
+	// went through the auxiliary door above ([Agent.foldHarnessUsage]), which is
+	// the same shape the image turn keeps (image.go). Counting it here as well
+	// would bill the person twice for one run.
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{Turns: 1}, started, a.Model())})
 	// And the name, on the same terms the ordinary turn takes it (title.go): a
 	// session whose first turn was a harness run is still a session with a
 	// subject.
 	a.maybeTitle(ctx, hub)
 	return true, true
+}
+
+// foldHarnessUsage charges what a run spent to the session that asked for it.
+//
+// IT GOES THROUGH THE AUXILIARY DOOR AND THE TURN SEAL STAYS ZERO-TOKEN. The
+// figures did not come from this conversation's own transcript — a run has its
+// own provider client, its own messages, its own belt and often its own model
+// (cmd/aforge's chatv3_harness.go) — so folding them into the turn would
+// attribute a context this session never held to the context it is about to
+// send, which is the number compaction is decided on. What a person is actually
+// owed is the money and the request count, and that is exactly what
+// [Agent.addAuxiliaryUsage] takes: session total, spend rail, /cost and the
+// status line, without touching Turns or contextTokens.
+//
+// It also settles an asymmetry that was plainly wrong: DESIGNING a harness has
+// always been billed to the session (harness_build.go), and until this fold
+// existed RUNNING one — dozens of calls, minutes of work — was free to every
+// cost surface in the program.
+//
+// THE MODEL IS THE RUN'S OWN, in the order of who knows best: what the provider
+// reported the calls answered on, then the model the turn asked the run to
+// ride, and finally this conversation's — a run that named nothing is built on
+// the model the session launched with. A run whose nodes pinned models of their
+// own reports no single model (subharness's usage.go), and falls through here to
+// the one the turn asked for rather than to a name half its calls would deny.
+//
+// A RUN THE PROVIDER SAID NOTHING ABOUT FOLDS NOTHING. Zero tokens and no cost
+// is "the provider did not say", not "the run was free", and the auxiliary door
+// keeps that same silence for every other errand whose response carried no
+// accounting at all.
+func (a *Agent) foldHarnessUsage(spent subharness.Usage, model string) {
+	if !spent.Reported() {
+		return
+	}
+	if spent.Model != "" {
+		model = spent.Model
+	}
+	if model == "" {
+		model = a.Model()
+	}
+	used := &ai.Usage{
+		PromptTokens:             spent.Input,
+		CompletionTokens:         spent.Output,
+		CacheReadInputTokens:     spent.CacheRead,
+		CacheCreationInputTokens: spent.CacheWrite,
+	}
+	// The cost is attached only when the provider gave one. A pointer to zero
+	// and no pointer at all are the same arithmetic here, but they are not the
+	// same claim, and this struct is read elsewhere as the provider's own words.
+	if spent.CostUSD > 0 {
+		used.Cost = &spent.CostUSD
+	}
+	a.addAuxiliaryUsage(&ai.Response{Usage: used}, model, spent.Calls)
 }
 
 // harnessRoute is one turn matched against one registry.

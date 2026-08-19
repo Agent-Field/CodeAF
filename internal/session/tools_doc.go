@@ -337,7 +337,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		// person's ran on that endpoint (the same treatment the title, the
 		// compaction summary and a generated picture get).
 		if response != nil {
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage})
+			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 		}
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %s", rung, oneLineReason(err.Error())))

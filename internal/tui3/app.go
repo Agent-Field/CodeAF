@@ -232,6 +232,18 @@ type entry struct {
 	// settled collapses a thinking block and open expands it again.
 	began, ended time.Time
 
+	// ran is what THIS call's own work took, measured where it ran and reported
+	// the instant it was over (session.EventToolFinished). It is zero on every
+	// row that has not had that news yet, and on every kind but entryTool.
+	//
+	// It exists because began-to-ended is the BATCH's span, not the call's: the
+	// calls of one batch start together and their results are delivered together
+	// after the last of them returns, so a five-millisecond `cd` beside a
+	// fifty-second build spun under a climbing clock and then wrote fifty
+	// seconds on its own row. When this is set it is the row's figure and the
+	// row's clock stops (toolview.go's [elapsedWord], [app.countClock]).
+	ran time.Duration
+
 	// latched says THE PERSON decided this block's expansion, rather than the
 	// stream deciding it for them (thinking.go). It exists because a reasoning
 	// block is the one thing on this surface whose open/closed state is written
@@ -478,8 +490,9 @@ type app struct {
 	cacheRead   int
 	cacheWrite  int
 	// cacheSaved is what those reads have been WORTH, in dollars, summed over
-	// every turn that had a published price pair to compute it from (see
-	// [app.cacheNote], which is the one place it grows). It is what turns the
+	// every turn whose model published BOTH a prompt price and a cache-read
+	// price to work the difference out from (see [app.cacheNote], which is the
+	// one place it grows). It is what turns the
 	// warm share from a statistic into a fact about the bill: the percentage is
 	// the hit RATE, this is what the rate MEANT.
 	//
@@ -2000,6 +2013,8 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	case session.EventToolBegin:
 		a.beginTool(ev)
 
+	case session.EventToolFinished:
+		a.finishTool(ev)
 	case session.EventToolEnd:
 		a.closeTool(ev, toolOK, "")
 
@@ -2581,6 +2596,44 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 	}
 }
 
+// finishTool stops one row's clock at ITS OWN finish and writes what the call
+// took (session.EventToolFinished).
+//
+// It closes nothing. The row keeps its spinner and its live status until the
+// result arrives with the batch, because until then the surface genuinely does
+// not know whether the call succeeded — what it knows, and what this writes, is
+// that this call is no longer the reason anybody is waiting.
+//
+// The pairing is [app.claimAnnounced]'s rule, one state later: the payload
+// first and the tool name only after, because a batch of three bash calls
+// finishing in any order pairs by name alone onto whichever row was drawn
+// first, and the two identical calls where the rules disagree are the same work
+// either way. A row that already has its figure is never taken twice.
+func (a *app) finishTool(ev session.Event) {
+	if ev.Took <= 0 {
+		return
+	}
+	fallback := -1
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || !e.status.live() || e.ran > 0 || e.tool != ev.Tool {
+			continue
+		}
+		if ev.Args != "" && e.detail.Args == ev.Args {
+			fallback = i
+			break
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	if fallback < 0 {
+		return
+	}
+	a.entries[fallback].ran = ev.Took
+	a.touch()
+}
+
 // settleCompaction stops the compaction row's clock: the LAST one still running
 // takes the finished hint and the end time, and turns into the rule.
 //
@@ -2649,7 +2702,18 @@ func (a *app) submit(text string) tea.Cmd {
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
 	a.closeLive()
-	a.turn++
+	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
+	// about the transcript rather than about the burn window: a plain enter with
+	// a turn already streaming is a message spliced into THAT turn, queued by the
+	// session and drained at its next step boundary (internal/session's loop.go).
+	//
+	// Bumping the number here aged out every row of the turn still running —
+	// [app.running] asks only about the current turn — so the surface drew
+	// "··· still working" underneath calls that were visibly working. The rows
+	// have to belong to the turn they are part of.
+	if a.stream == nil {
+		a.turn++
+	}
 	// A new turn drops the selection: the calls it was pointing into belong to
 	// the turn before this one, and a cursor left on them would answer enter
 	// with somebody else's history.
@@ -3938,6 +4002,11 @@ func (a *app) ctxCrowded() bool { return a.ctxHeat() >= ctxNear }
 // published a prompt price — an id off the built-ins, a cache written before the
 // prices were kept, one of OpenRouter's own routers — and a caller must then
 // show the tokens alone rather than a saving computed from zero.
+//
+// THE BOOL IS ABOUT THE PROMPT PRICE ONLY. A caller working out what a cache
+// read SAVED needs the pair and must check CacheReadPrice itself, at its own
+// site: a row with a prompt price and no cache-read price is common and true is
+// the right answer here, because the prompt price it publishes is real.
 func (a *app) priceFor(id string) (Model, bool) {
 	id = strings.TrimSpace(id)
 	for _, model := range a.modelList() {
@@ -3962,12 +4031,19 @@ func (a *app) priceFor(id string) (Model, bool) {
 // the cache actually bought. Without a published price pair the line degrades to
 // the token count, because "9.8k cached" is a true thing this surface knows and
 // "saved $0.0000" is not.
+//
+// BOTH PRICES OR NO MONEY, and the second half of that guard is not decoration.
+// Around two rows in five publish a prompt price and no cache-read price at all
+// (internal/catalog's CacheReadPrice: "zero is the provider did not say", and a
+// cache read is never free) — and treating that absence as a zero books the
+// WHOLE prompt price as a saving, which is this surface claiming the cache made
+// those tokens free. The token count alone is what it actually knows.
 func (a *app) cacheNote(u session.Usage) {
 	if u.CacheRead <= 0 {
 		return
 	}
 	line := "⟲ " + tokenWord(u.CacheRead) + " cached"
-	if model, known := a.priceFor(a.model); known {
+	if model, known := a.priceFor(a.model); known && model.CacheReadPrice > 0 {
 		if saved := float64(u.CacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
 			// The same figure, twice: once for this turn, and once into the
 			// session's running total behind the status line's warm share. It is

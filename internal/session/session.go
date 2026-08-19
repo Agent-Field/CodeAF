@@ -308,6 +308,24 @@ const (
 	// [Agent.ResolveOrchestrate] — top up, finish with what we have, or stop —
 	// and until that answer the run sits in its Paused state, resumable.
 	EventOrchestratePause
+	// EventToolFinished says ONE call's own work is over, the instant it is
+	// over, and carries how long that call took in Took.
+	//
+	// It is a CLOCK EVENT and nothing else: the result is not in it, and the row
+	// is not closed by it. The result still arrives as EventToolEnd or
+	// EventToolFailed, after the whole batch has finished, in call order — the
+	// order the transcript is written in.
+	//
+	// It exists because those two moments are not the same moment. A batch's
+	// calls run together and finish in any order, so a `cd` that took five
+	// milliseconds sat under a spinner and a climbing clock until the slowest
+	// call beside it returned, and then claimed that whole span as its own
+	// duration. The row was reading the BATCH's clock. This is the call's own,
+	// measured where it ran (loop.go's executeTool), so a surface can stop the
+	// row's clock and state the figure the call actually cost.
+	//
+	// A surface that ignores this kind is exactly what it was.
+	EventToolFinished
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -374,6 +392,12 @@ type Event struct {
 	//
 	// A surface may show it, cut it, or ignore it. Nothing may unmarshal it.
 	ArgsText string
+
+	// Took is how long ONE tool call's own work took, on EventToolFinished and
+	// zero on every other kind. It is measured around the tool's execution and
+	// around nothing else: not the wait for a consent question, and not the wait
+	// for the rest of the batch.
+	Took time.Duration
 
 	// Bytes is how much of a forming call's arguments has arrived. It is the
 	// length of ArgsText, carried as its own field so a surface can show progress
@@ -492,6 +516,18 @@ type Usage struct {
 	CostUSD  float64
 	Duration time.Duration
 	Turns    int
+
+	// Calls is EVERY request this session made to a provider — the turn's own
+	// steps and the auxiliary calls beside them: the namer, the guardian, a
+	// memory reflex, a look at a picture, a whole child agent folded in.
+	//
+	// It is a second counter rather than a wider Turns because Turns has a law
+	// of its own that other code is written against: it counts steps of the
+	// CONVERSATION, so a turn that used three tools reads as one turn with
+	// three steps and the title call that followed it reads as nothing. Calls is
+	// the honest denominator for "how many requests did this cost me", which is
+	// a different question and the one a person asking about the bill is asking.
+	Calls int
 
 	// CacheRead and CacheWrite are the provider's prompt-cache accounting:
 	// tokens served from a warm prefix, and tokens written into one. Both are
@@ -758,7 +794,16 @@ type Config struct {
 	// calls it without checking; a runner with nothing to report simply never
 	// does. Calling it BLOCKS the run for as long as the send takes, which is
 	// why what is behind it is one hub send and nothing else.
-	RunHarness func(ctx context.Context, name, text, model string, step func(subharness.Trail)) (string, error)
+	//
+	// The [subharness.Usage] is WHAT THE RUN COST, summed over every model call
+	// it made, and it is returned rather than left to the engine because the
+	// person paying for it is sitting in this conversation: a run bills through
+	// the auxiliary door and lands in /cost, on the status line and against the
+	// spend rail (harness.go). A runner that cannot account for its calls
+	// returns the zero value, which is a run this session does not claim was
+	// free — it is a run nobody reported a price for, and the emptiness law
+	// says to show nothing rather than a zero.
+	RunHarness func(ctx context.Context, name, text, model string, step func(subharness.Trail)) (string, subharness.Usage, error)
 
 	// HarnessStore is where a harness this conversation DESIGNS is written, and
 	// it is the same registry Harnesses was read out of (harness_build.go). The

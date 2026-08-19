@@ -241,18 +241,21 @@ func TestAReviewThatContradictsTheSurvivingTableIsStillRefused(t *testing.T) {
 // below has to be big enough for.
 const harnessSlowestAttempt = 100 * time.Second
 
-// THE WINDOW IS FOR THE PERSON, NOT FOR THE WRITING, and this is what keeps it
-// that way. It bounds the whole job — every attempt, the review, and the wait
-// for an answer to the card — so a ladder that grew a rung or a model that got
-// slower could quietly leave nobody any time to answer. A card that expires
-// while somebody is reading it is the failure this pins.
-func TestTheDesignWindowIsMostlyForThePerson(t *testing.T) {
+// THE WINDOW BOUNDS THE WRITING AND NOTHING ELSE, and this is what keeps it
+// roomy enough to be a backstop rather than a deadline. It covers every attempt
+// the ladder allows and the review pass, and it is cut the moment the page
+// exists (harness_task.go's designHarnessNode); the wait for an answer to the
+// card runs under no clock at all. So the failure this pins is a ladder that
+// grew a rung, or a model that got slower, quietly turning the backstop into
+// the thing that decides whether a design finishes — a page killed mid-sentence
+// on a slow morning.
+func TestTheDesignWindowIsRoomyEnoughForEveryAttempt(t *testing.T) {
 	// Every attempt the ladder allows, plus the review pass, all at the slowest
 	// measured pace.
 	writing := time.Duration(harnessDesignRetries+2) * harnessSlowestAttempt
 	if writing >= harnessDesignWindow/2 {
-		t.Fatalf("the writing can take %s of a %s window, so the person is left %s to answer the card",
-			writing, harnessDesignWindow, harnessDesignWindow-writing)
+		t.Fatalf("the writing can take %s of a %s window, which is a deadline and not a backstop",
+			writing, harnessDesignWindow)
 	}
 }
 

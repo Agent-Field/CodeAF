@@ -99,7 +99,7 @@ func (a *Agent) maybeTitle(ctx context.Context, hub *eventHub) {
 	if err != nil || response == nil {
 		return
 	}
-	a.addAuxiliaryUsage(response)
+	a.addAuxiliaryUsage(response, named, 1)
 
 	title := cleanTitle(response.Text())
 	if title == "" {

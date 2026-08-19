@@ -192,7 +192,7 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 	// pocket rather than a turn's: no turn asked for a video at this price, and
 	// the turn that submitted it probably ended minutes ago (tools_image.go
 	// states the law).
-	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage})
+	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
 	path, err := a.mediaDestination(asked, request.Prompt, videoExtension,
 		VideoDir(a.config.Place, a.config.Workspace))

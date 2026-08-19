@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────
@@ -347,6 +349,50 @@ func TestBashTimeoutTooLarge(t *testing.T) {
 	}
 	if !strings.Contains(text, "Invalid timeout: maximum is") {
 		t.Errorf("got %q", text)
+	}
+}
+
+// escapingChild is a shell fragment that starts a background process in its OWN
+// process group while still holding the command's stdout. It is the shape of the
+// fault the WaitDelay defence exists for: a daemon that re-parents, or anything
+// that calls setsid, is out of reach of the timeout's process-group kill and
+// keeps the write end of the output pipe open behind it.
+//
+// It is looked up rather than written literally because there is no portable
+// setsid binary — macOS ships none — and a machine with neither interpreter
+// cannot stage the fault at all, which is a skip and not a failure.
+func escapingChild(t *testing.T) string {
+	t.Helper()
+	if perl, err := exec.LookPath("perl"); err == nil {
+		return perl + ` -e 'use POSIX qw(setsid); setsid(); sleep 10;' &`
+	}
+	if python, err := exec.LookPath("python3"); err == nil {
+		return python + ` -c 'import os, time; os.setsid(); time.sleep(10)' &`
+	}
+	t.Skip("no interpreter here can start a process in its own process group")
+	return ""
+}
+
+// A STUCK CALL COSTS ITS TIMEOUT, NEVER THE RUN. Killing the shell at the
+// timeout is not enough on its own: Wait blocks until every holder of the
+// output pipe's write end is gone, and a grandchild that escaped the process
+// group holds it for as long as it lives — so the call, the batch it is in, and
+// the turn behind that all waited on a process nobody could reach.
+func TestBashReturnsAtItsTimeoutWhileAGrandchildStillHoldsThePipe(t *testing.T) {
+	dir := t.TempDir()
+	tools := Tools(dir)
+	command := escapingChild(t) + " sleep 10"
+	started := time.Now()
+	text, isErr := runTool(t, tools[1], map[string]any{"command": command, "timeout": 1})
+	elapsed := time.Since(started)
+	if !isErr || !strings.Contains(text, "Command timed out after 1 seconds") {
+		t.Fatalf("expected the timeout result, got isError=%v %q", isErr, text)
+	}
+	// One second of timeout, three of WaitDelay, and the rest is slack for a
+	// loaded machine. The grandchild lives ten, which is what this would have
+	// cost — and did cost — before the defence.
+	if elapsed > 8*time.Second {
+		t.Fatalf("the call took %s: it waited on the grandchild, not on its own timeout", elapsed)
 	}
 }
 

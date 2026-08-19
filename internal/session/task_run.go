@@ -278,11 +278,28 @@ type TaskNode struct {
 	// node outlives its child and a surface asking a landed node what it cost
 	// has nobody else to ask.
 	//
-	// It is NOT in the checkpoint: a resumed graph is a graph whose child agents
-	// are gone, and a figure rehydrated from a file would be the only number on
-	// the task index nobody could point at a request for. It reaches the project
-	// index (task_index.go) and the node's own notice on the way past.
+	// IT IS IN THE CHECKPOINT (task_store.go), and it is a figure somebody can
+	// point at. The argument against keeping it used to be that a resumed graph
+	// is a graph whose child agents are gone, so a number rehydrated from a file
+	// would be the only one on the task index nobody could point at a request
+	// for. That dissolved when every agent started journaling a `usage` line per
+	// call (sessionfile.go): the node's own transcript now holds the lines this
+	// total is the sum of, and a person who doubts the figure can open them. It
+	// reaches the project index (task_index.go) and the node's own notice on the
+	// way past.
 	cost float64
+	// input, output, cacheRead and cacheWrite are that same accumulation in
+	// TOKENS, folded in beside the dollars and kept on the checkpoint with them.
+	//
+	// They are held rather than derived because a price is a claim about a
+	// moment — what the model charged when the call was made — while the tokens
+	// are what happened. A node priced by a provider that later changes its
+	// rates, or run on a model nobody published a price for at all, still has
+	// these; a bill kept in money alone could never be worked out again.
+	input      int
+	output     int
+	cacheRead  int
+	cacheWrite int
 	// noted says this node's completion note has been handed to the steering
 	// lane, and it is what stops a resumed session announcing finished work
 	// twice (task_store.go).
@@ -1207,7 +1224,8 @@ func (n *TaskNode) workClaim(report string) string {
 	return n.claim
 }
 
-// addSpend charges one agent's cost to the node.
+// addSpend charges one agent's whole bill to the node: the dollars and the four
+// token counts behind them.
 //
 // It ADDS rather than sets, because a node is more than one agent: the worker,
 // and the auditor that judges it (task_audit.go). The person asked for a task,
@@ -1215,15 +1233,24 @@ func (n *TaskNode) workClaim(report string) string {
 // whole node cost — which is the same pocket [Agent.foldTaskUsage] charges the
 // session from.
 //
-// Zero is left alone rather than written: a provider that reported no price is
-// not a node that was free, and a row saying "$0.00" would be this build stating
-// a figure nobody gave it.
-func (n *TaskNode) addSpend(cost float64) {
-	if n == nil || cost <= 0 {
+// The money is guarded and the tokens are not, and the asymmetry is the point.
+// Zero dollars is left alone rather than written: a provider that reported no
+// price is not a node that was free, and a row saying "$0.00" would be this
+// build stating a figure nobody gave it. Tokens have no such problem — a call
+// that nobody priced still read and wrote a countable number of them, and those
+// are exactly what makes an unpriced node re-pricable later.
+func (n *TaskNode) addSpend(used Usage) {
+	if n == nil {
 		return
 	}
 	n.graph.mu.Lock()
-	n.cost += cost
+	if used.CostUSD > 0 {
+		n.cost += used.CostUSD
+	}
+	n.input += used.Input
+	n.output += used.Output
+	n.cacheRead += used.CacheRead
+	n.cacheWrite += used.CacheWrite
 	n.graph.mu.Unlock()
 }
 
@@ -1353,10 +1380,18 @@ func (n *TaskNode) notice() TaskNotice {
 
 // spend is what this node has cost so far, in dollars.
 //
-// A RUNNING NODE IS ASKED ITS CHILD; a landed one reports the figure accumulated
-// as each of its agents was folded into the session's ([Agent.foldTaskUsage]).
-// The two are the same number at two moments, and the freeze is what keeps it
-// after the child agent has been closed and the room emptied.
+// IT IS THE FROZEN FIGURE PLUS THE LIVE CHILD, and both halves are real at the
+// same time: a node accumulates n.cost as each of its agents is folded in and
+// closed ([Agent.foldTaskUsage]) — an auditor, a repair, a design thread — while
+// the worker that is still running has not been folded into anything yet. Adding
+// them is what stops the first fold from freezing the node's price for the rest
+// of its life, which is what reading n.cost alone once it was non-zero did.
+//
+// The fold-then-close instant can show the same money twice, for as long as it
+// takes the line after the fold to close the child. It converges on the next
+// notice and it is not worth a lock: this is a figure a surface draws, and a
+// price that is briefly high and then right is a better trade than every reader
+// of it queueing behind the graph.
 //
 // Zero means "nobody has published a price", which is what an unpriced model and
 // a node that has not started both look like from here — and a surface that
@@ -1365,11 +1400,8 @@ func (n *TaskNode) spend() float64 {
 	n.graph.mu.Lock()
 	room, frozen := n.room, n.cost
 	n.graph.mu.Unlock()
-	if frozen > 0 {
-		return frozen
-	}
 	if child := room.speaker(); child != nil {
-		return child.Usage().CostUSD
+		return frozen + child.Usage().CostUSD
 	}
 	return frozen
 }
@@ -2518,18 +2550,26 @@ func firstLines(text string, n int) string {
 // what it cost, because the line after this one closes it.
 func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	used := child.Usage()
-	node.addSpend(used.CostUSD)
+	// The node keeps the WHOLE tally, not just the money. One widening here
+	// covers every fold there is — the worker, each repair round, the auditor,
+	// a harness design thread — because all of them arrive through this door.
+	node.addSpend(used)
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
 	cost := used.CostUSD
+	// The CHILD's model and the child's OWN call count, not one call and not the
+	// conversation's model: a node that ran forty steps on a small model is forty
+	// requests to that model, and folding it in as a single call on the model the
+	// person is chatting to would put a number in the session's books that never
+	// happened.
 	a.addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
-	}})
+	}}, child.Model(), used.Calls)
 }
 
 // ── the child agent ─────────────────────────────────────────────────────────

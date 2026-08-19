@@ -135,6 +135,18 @@ type TaskIndexEntry struct {
 	FilesChanged int `json:"filesChanged"`
 	// Cost is what the node spent, in dollars, or 0 when nobody could say.
 	Cost float64 `json:"cost,omitempty"`
+	// Model is what the node ran on, and empty when it simply took the
+	// conversation's. It is here because the file that carries the COST is the
+	// file that has to be able to answer "at what rate": the id lives on the
+	// checkpoint and in the node journal's header too, and a row without it made
+	// re-pricing a landed task a three-file join.
+	Model string `json:"model,omitempty"`
+	// Tokens is input plus output, as ONE sum. The index carries citations, and
+	// the four-way split — with the cache share in it — lives in the journal
+	// this row's TranscriptURI names; a row that spelled out all four would be
+	// the thing this index refuses to be. Zero means nobody counted, never that
+	// the work was free.
+	Tokens int `json:"tokens,omitempty"`
 	// DurationMS is how long it ran.
 	DurationMS int64 `json:"durationMs,omitempty"`
 	// EndedAt is when it landed, and it is zero for a row merged in live. Every
@@ -551,7 +563,13 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// The FROZEN figure, read straight off the node: this runs with the graph
 		// held and [TaskNode.spend] takes that lock itself. A row for a node still
 		// running carries no price, which is what it has always carried.
-		Cost:          n.cost,
+		Cost: n.cost,
+		// The model the node was ADMITTED on, which is the model its bill was
+		// run up at, and empty when it took the conversation's. Tokens is the
+		// same frozen tally as the cost beside it, summed to the one figure a
+		// citation carries.
+		Model:         n.spec.model,
+		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
 		SessionID:     session,
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),

@@ -35,9 +35,14 @@ func harnessAgent(t *testing.T, completer Completer, run func(name, text, model 
 		// the session's own seam for it, exactly as a task's `model` is
 		// (taskmodel.go).
 		config.TaskModels = func() []string { return testModels }
-		config.RunHarness = func(_ context.Context, name, text, model string, _ func(subharness.Trail)) (string, error) {
+		config.RunHarness = func(_ context.Context, name, text, model string, _ func(subharness.Trail)) (string, subharness.Usage, error) {
 			atomic.AddInt32(&ran, 1)
-			return run(name, text, model)
+			report, err := run(name, text, model)
+			// These runs report no spend: what a run costs has its own test
+			// below ([TestAHarnessRunsSpendFoldsIntoTheSessionTotal]), and a
+			// stub that quietly billed every other case in this file would
+			// make the money look like a side effect of asking.
+			return report, subharness.Usage{}, err
 		}
 	})
 	return agent, &ran
@@ -177,12 +182,14 @@ func TestHarnessSilentWhenUnwired(t *testing.T) {
 		}, false},
 		{"runner but no registry", func(c *Config) {
 			c.AskConsent = true
-			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) { return "", nil }
+			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+				return "", subharness.Usage{}, nil
+			}
 		}, false},
 		{"wired, but nobody is watching", func(c *Config) {
 			c.Harnesses = []subharness.Entry{researchEntry}
-			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) {
-				return "", errors.New("a headless run must never be asked")
+			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+				return "", subharness.Usage{}, errors.New("a headless run must never be asked")
 			}
 		}, false},
 	}
@@ -355,11 +362,11 @@ func TestHarnessRunReportsEachStepAsItLands(t *testing.T) {
 		config.AskConsent = true
 		config.Harnesses = []subharness.Entry{researchEntry}
 		config.TaskModels = func() []string { return testModels }
-		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, error) {
+		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 			for _, one := range steps {
 				step(one)
 			}
-			return "the report", nil
+			return "the report", subharness.Usage{}, nil
 		}
 	})
 
@@ -421,9 +428,9 @@ func TestHarnessRunStepsAreNeverRecorded(t *testing.T) {
 		config.AskConsent = true
 		config.Harnesses = []subharness.Entry{researchEntry}
 		config.TaskModels = func() []string { return testModels }
-		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, error) {
+		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 			step(subharness.Trail{Step: 1, Id: "gather", Kind: subharness.KindAgentLoop, Out: "a step nobody keeps"})
-			return "the report", nil
+			return "the report", subharness.Usage{}, nil
 		}
 	})
 
@@ -439,5 +446,95 @@ func TestHarnessRunStepsAreNeverRecorded(t *testing.T) {
 				t.Fatalf("a live step was recorded into the transcript: %q", part.Text)
 			}
 		}
+	}
+}
+
+// ── WHAT A RUN COST ─────────────────────────────────────────────────────────
+
+// A RUN IS THE PERSON'S MONEY AND IT REACHES THE SESSION'S OWN TOTAL. Designing
+// a harness has always been billed to the conversation that asked for it
+// (harness_build.go); until the runner's ledger came back beside its report,
+// RUNNING one — dozens of calls, minutes of work — was free to /cost, to the
+// status line and to the spend rail. It folds through the auxiliary door, so
+// the turn's own seal stays zero-token: the run's context was never this
+// conversation's, and Turns counts steps of the conversation.
+func TestAHarnessRunsSpendFoldsIntoTheSessionTotal(t *testing.T) {
+	completer := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = true
+		config.Harnesses = []subharness.Entry{researchEntry}
+		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+			return "the report", subharness.Usage{
+				Model:      "run/model",
+				Calls:      7,
+				Input:      900,
+				Output:     120,
+				CacheRead:  400,
+				CacheWrite: 50,
+				CostUSD:    0.42,
+			}, nil
+		}
+	})
+
+	events, err := agent.Submit(context.Background(), harnessTurn)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	var done Usage
+	for _, event := range drainAnsweringHarness(t, agent, events, true) {
+		if event.Kind == EventTurnDone {
+			done = event.Usage
+		}
+	}
+
+	session := agent.Usage()
+	if session.Input != 900 || session.Output != 120 || session.CacheRead != 400 || session.CacheWrite != 50 {
+		t.Fatalf("session usage = %+v, want the run's own tokens", session)
+	}
+	if session.CostUSD != 0.42 {
+		t.Fatalf("session cost = %v, want the run's $0.42", session.CostUSD)
+	}
+	// Calls is the honest denominator for "how many requests did this cost me",
+	// and a run is many.
+	if session.Calls != 7 {
+		t.Fatalf("session Calls = %d, want the run's seven requests", session.Calls)
+	}
+	if session.Turns != 0 {
+		t.Fatalf("session Turns = %d; a harness run is not a step of the conversation", session.Turns)
+	}
+	if done.Input != 0 || done.Output != 0 || done.CostUSD != 0 {
+		t.Fatalf("the turn reported %+v, want nothing — the run billed through the auxiliary door", done)
+	}
+	if done.Turns != 1 {
+		t.Fatalf("the turn reported %d turns, want the one the person took", done.Turns)
+	}
+	if completer.requests() != 0 {
+		t.Fatalf("the provider was called %d times; the harness took the turn", completer.requests())
+	}
+}
+
+// A RUN NOBODY PRICED IS NOT A RUN THAT WAS FREE. An endpoint that publishes no
+// accounting leaves every figure zero, and folding that would have this build
+// claim a price nobody gave it — the emptiness law, kept at the door rather
+// than at the surface that draws it.
+func TestAHarnessRunNobodyPricedAddsNothingToTheSessionTotal(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+		config.Harnesses = []subharness.Entry{researchEntry}
+		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+			// Calls without figures is exactly what a quiet provider looks like
+			// from here: the requests happened and nobody said what they cost.
+			return "the report", subharness.Usage{Calls: 4}, nil
+		}
+	})
+
+	events, err := agent.Submit(context.Background(), harnessTurn)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	drainAnsweringHarness(t, agent, events, true)
+
+	if session := agent.Usage(); session.CostUSD != 0 || session.Input != 0 || session.Calls != 0 {
+		t.Fatalf("session usage = %+v, want nothing from a run nobody priced", session)
 	}
 }

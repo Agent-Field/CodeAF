@@ -139,7 +139,7 @@ func (a *Agent) generateMusicTool(client MediaGenerator, model string) bare.Tool
 			}
 			// Paid for before it is saved, on the session's pocket and no turn's
 			// — tools_image.go states the reason.
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage})
+			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
 			path, err := a.mediaDestination(parsed.Path, prompt, musicFileExtension(response.Format),
 				MusicDir(a.config.Place, a.config.Workspace))
