@@ -1799,13 +1799,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// threshold that fired.
 	case stopped != "":
 		fmt.Fprintf(log, "%s\n", stopped)
-		// A THRESHOLD IS NOT A REASON TO LOSE THE WORK. The landing turn has
-		// already run and whatever the node made is on disk; keptWork puts it on
-		// the node's branch and hands back the names, so the person is told what
-		// exists and where instead of being told only that it stopped.
-		merge, changed := keptWork(tree, node.title(), changed)
-		node.finish(withReport(stopped, report), changed, tree.branch, merge)
-		return TaskFailed
+		// A THRESHOLD IS NOT A REASON TO LOSE THE WORK, and it is not a finding
+		// about it either. The landing turn has already run and whatever the node
+		// made is on disk, so the work is judged before anything is written down
+		// about it ([Agent.landStopped]).
+		return a.landStopped(ctx, node, tree, changed, report, stopped, log)
 	case ctx.Err() != nil:
 		if node.wasStopped() {
 			merge, changed := keptWork(tree, node.title(), changed)
@@ -1886,6 +1884,70 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// says it a second time in the harness's own vocabulary.
 	node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merge)
 	return TaskDone
+}
+
+// landStopped settles a node whose threshold fired — and it is where a landing
+// stopped being a verdict about the deliverable.
+//
+// A THRESHOLD IS A STATEMENT ABOUT THE TRAJECTORY, NEVER ABOUT THE WORK. The
+// counter in [runTaskChild] kills a node that aimed at the same target twice; it
+// has no idea whether the files being re-read are the finished job. Both were
+// true at once in the wild: a node wrote all six of the stories it was asked
+// for, spent six steps re-reading them to satisfy itself, and was stopped for
+// spinning — correctly, the same target twice IS the spin. Its landing turn then
+// said "The six files are already written… Done — Chapter 1… The files are the
+// deliverable", the six files were on disk, and the person was shown ✗ failed
+// and a kept branch next to a report saying the work was done. Before this,
+// every landing skipped the gate below, so a node stopped at a threshold could
+// never be verified, never merged, and could only read as a failure.
+//
+// SO THE WORK IS STILL JUDGED. The node gets the same check an ordinary
+// finishing node gets — one pass of [Agent.auditNode] against the same frozen
+// acceptance, in the same worktree, staged the same way — and when it holds the
+// node lands exactly as a finishing node lands: done, merged, and the threshold's
+// sentence gone from the report. That last part is the point of the whole repair.
+// The first line of a landed report is what the settle card quotes and what the
+// project's index keeps, and "stopped: 6 steps without progress" standing over
+// work that was checked and merged would be the counter taking the headline off
+// the deliverable.
+//
+// ONE PASS, AND NO REPAIR ROUND: that is the bound. Ordinary verification may
+// send work back for another go ([Agent.auditWithRepair], task.repair_rounds);
+// this may not — a repair round is another full worker in the worktree, and
+// handing one to a node that was just stopped for burning steps is paying twice
+// for the run the threshold ended. What remains is what the ladder already bounds
+// on its own: a nudge, at most one fresh checker, and five minutes apiece
+// (task_audit.go's auditNode).
+//
+// AND IT IS ASKED ONLY WHEN THERE IS SOMETHING TO ASK. No acceptance is nothing
+// to judge against, the audit row switched off is nobody to ask, and a node whose
+// context is already cut has been killed rather than landed — each of those goes
+// straight to the ending below without spending a checker.
+//
+// EVERY OTHER ANSWER KEEPS TODAY'S HONEST ENDING: the report leads with the
+// threshold that fired and the node's own last words stand under it, the branch
+// is committed and kept ([keptWork]), and nothing merges. The threshold stays the
+// lead there because it is still the most specific thing anyone knows — the work
+// did not hold AND the run was cut short — and a person who is being offered a
+// branch rather than a merge needs to know why in the first line.
+func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, log io.Writer) TaskState {
+	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
+		verdict := a.auditNode(ctx, node, tree, changed, report, log)
+		if verdict.verified && ctx.Err() == nil {
+			merge, detail := tree.comeHome(node.title())
+			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
+			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
+			// leads, what it was checked on stands under it, and nothing anywhere in
+			// it mentions the counter — the run was interrupted, the deliverable was
+			// not (see [Agent.workTaskNode]'s finishing line, which this mirrors).
+			node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merge)
+			return TaskDone
+		}
+		fmt.Fprintf(log, "landed work was not accepted: %s\n", verdict.report())
+	}
+	merge, changed := keptWork(tree, node.title(), changed)
+	node.finish(withReport(stopped, report), changed, tree.branch, merge)
+	return TaskFailed
 }
 
 // resumeTree reuses the durable working copy after a process interruption.
