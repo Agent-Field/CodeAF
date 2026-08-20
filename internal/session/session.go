@@ -1164,6 +1164,18 @@ type Agent struct {
 	// and never written after, so it needs no lock either.
 	cacheKey string
 
+	// presence is this session's liveness file (taskpresence.go): the small
+	// crash-safe claim, refreshed on a heartbeat, that lets ANOTHER window say
+	// this session is running right now and whether it needs its person. It is
+	// nil for every agent that keeps none — a memory-only conversation, the
+	// legacy flat layout, and every task node's agent.
+	//
+	// It is written once by [Agent.startPresence] inside the constructor, before
+	// the agent is reachable, and never again — so it is read without a lock, on
+	// the terms [Agent.id] and [Agent.cacheKey] are. That matters: its nudge is
+	// called from seams that are already holding mu.
+	presence *presenceDesk
+
 	// jobs is the background-command registry (jobs.go): the processes bash
 	// started with background:true, alive across turns until Close.
 	//
