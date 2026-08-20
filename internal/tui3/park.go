@@ -191,13 +191,23 @@ func (a *app) parkedRows(width int) []string {
 		return nil
 	}
 	out := make([]string, 0, len(a.parks)+1)
-	for _, p := range a.parks {
+	for at, p := range a.parks {
+		// THE WHOLE MESSAGE LIGHTS, NOT THE ROW THE POINTER IS ON. The press pulls
+		// that message back into the box whole ([app.parkPress]), so what a person is
+		// about to act on is the block and not the line — and a sentence that wrapped
+		// over three rows with one of them banded would read as three things
+		// (hover.go: the set that lights is the set the press acts on).
+		hot := a.hoveringParked(at)
 		for i, line := range wrap(userLine(p.text, p.chips, a.pal), width-2) {
 			lead := "  "
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			out = append(out, lead+a.pal.accent(line))
+			text := lead + a.pal.accent(line)
+			if hot {
+				text = a.hoverRow(text, width)
+			}
+			out = append(out, text)
 		}
 	}
 	return append(out, a.pal.dim(fit("  "+parkedWord(len(a.parks), width-2), width)))

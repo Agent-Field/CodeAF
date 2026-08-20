@@ -3444,6 +3444,22 @@ func (a *app) linkPress(x int, r row) bool {
 	return false
 }
 
+// linkHoverAt is which reference of this row's BLOCK the pointer is over, and -1
+// for none. It is the ordinal rather than the position on the row for the reason
+// [taskLink.ord] carries one (markdown.go), and it is the same test [app.linkPress]
+// makes so the words that light are the words that open something.
+func (a *app) linkHoverAt(x int, r row) int {
+	if len(r.links) == 0 || a.welcome.open {
+		return -1
+	}
+	for _, link := range r.links {
+		if link.span.holds(x) {
+			return link.ord
+		}
+	}
+	return -1
+}
+
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports
 // whether it took the click.
 //

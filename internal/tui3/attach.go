@@ -203,12 +203,28 @@ func (a *app) chipStrip(width int) string {
 	painted := make([]string, 0, len(cells)+len(labels))
 	for at, cell := range cells {
 		if at == 0 {
+			// THE POINTER LIGHTS ONE THING ON THIS ROW, never the row. Every cell up
+			// here takes something off the message being written and each takes off a
+			// different thing, so a band across the tray would offer to drop the
+			// picture beside the one a person is aiming at (hover.go's law). The band
+			// goes round exactly the cell's own cells, which is what [palette.hover]
+			// does when it is given no width to pad to.
+			if a.hoveringChip(trayHarnessChip) {
+				painted = append(painted, a.pal.hover(a.pal.ink(cell), 0))
+				continue
+			}
 			painted = append(painted, a.pal.ink(cell))
 			continue
 		}
+		// The hint after it says what to do next; it is a sentence and comes off
+		// nothing, so it does not light.
 		painted = append(painted, a.pal.dim(cell))
 	}
-	for _, label := range labels {
+	for i, label := range labels {
+		if a.hoveringChip(i) {
+			painted = append(painted, a.pal.hover(a.pal.dim(label), 0))
+			continue
+		}
 		painted = append(painted, a.pal.dim(label))
 	}
 	return fit(strings.Join(painted, chipGap), width)
@@ -235,15 +251,46 @@ func chipAt(labels []string, x int) int {
 // input block starts. The tray is that block's first row (input.go), so it is
 // the input block's start and nothing else has to be known.
 func (a *app) chipPress(x, y int) bool {
+	at, ok := a.chipTrayTarget(x, y)
+	if !ok {
+		return false
+	}
+	if at == trayHarnessChip {
+		a.dropHarnessChip()
+		return true
+	}
+	a.removeChip(at)
+	return true
+}
+
+// trayHarnessChip is what [app.chipTrayTarget] answers for the picked harness's
+// own cell, which is not one of [app.chips] and has a different thing done to it.
+const trayHarnessChip = -1
+
+// chipTrayTarget resolves a pointer on the tray to the one thing it is over, and
+// reports whether it was over anything at all.
+//
+// It is ONE function because the press and the pointer must never be able to
+// disagree about which picture a cell belongs to: what lights is what comes off
+// (hover.go's law). The row is located through [app.chrome] rather than from a
+// count of its own, for the reason view.go states about every geometric question
+// on this surface — the frame, the hit-testing and the height ask one function
+// where the input block starts, and the tray is that block's first row (input.go).
+//
+// THE FIELD TEST IS FIRST AND IT IS WHAT KEEPS THIS CHEAP. A motion arrives once
+// per cell the pointer crosses and nearly every session has nothing on the tray
+// at all, so the frames that carry one are the only frames that pay for the
+// chrome this rebuilds.
+func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	cells := a.harnessTrayCells()
 	if (len(a.chips) == 0 && len(cells) == 0) || a.sheet.open || a.pick.open {
-		return false
+		return 0, false
 	}
 	width, height := a.size()
 	rows, _, _, _ := a.chrome(width)
 	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
 	if at < 0 || y != height-len(rows)+at {
-		return false
+		return 0, false
 	}
 	column := x - len(inputPad)
 	// THE HARNESS CELL IS ASKED FIRST BECAUSE IT IS DRAWN FIRST, and the
@@ -252,17 +299,15 @@ func (a *app) chipPress(x, y int) bool {
 	// cannot disagree (harnesspick.go).
 	if len(cells) > 0 {
 		if chipAt(cells, column) == 0 {
-			a.dropHarnessChip()
-			return true
+			return trayHarnessChip, true
 		}
 		column -= harnessTrayWidth(cells)
 	}
 	i := chipAt(chipLabels(a.chips, a.pal), column)
 	if i < 0 {
-		return false
+		return 0, false
 	}
-	a.removeChip(i)
-	return true
+	return i, true
 }
 
 // ── sending them ────────────────────────────────────────────────────────────

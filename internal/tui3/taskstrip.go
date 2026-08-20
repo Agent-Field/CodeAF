@@ -293,6 +293,13 @@ func (a *app) stripRowText(width int, nodes []*taskNode) string {
 	if name, running := a.runningHarness(); running {
 		lead, leadCols = a.harnessChip(name)
 		a.stripHarn = hudSpan{from: 0, to: leadCols}
+		// THE POINTER LIGHTS THE CHIP AND NOT THE ROW, here and on every chip
+		// beside it ([app.stripChip] says why). The band is drawn round exactly the
+		// cells the chip occupies, which is what [palette.hover] does when it is
+		// given no width to pad to.
+		if a.hoveringStripHarness() {
+			lead = a.pal.hover(lead, 0)
+		}
 	}
 	if len(nodes) == 0 {
 		return lead
@@ -354,7 +361,16 @@ func (a *app) stripRowText(width int, nodes []*taskNode) string {
 		word := stripMoreWord(rest)
 		out.WriteString(stripGap)
 		at += stripGapCols
-		out.WriteString(a.pal.dim(word))
+		// THE COUNT BRIGHTENS RATHER THAN BANDING, which is the model segment's own
+		// answer to the same shape (render.go's [app.paintIdentity]): it is two
+		// characters at the end of a line and not a chip, and a highlighted rectangle
+		// round them would be the one boxed thing on a row of tabs. One step up from
+		// the dim it rests in.
+		if a.hoveringStripMore() {
+			out.WriteString(a.pal.accent(word))
+		} else {
+			out.WriteString(a.pal.dim(word))
+		}
 		a.stripMore = hudSpan{from: at, to: at + ansi.StringWidth(word)}
 	}
 	return out.String()
@@ -396,6 +412,23 @@ func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
 	// answers to a question with one.
 	if a.roomStandingOn(node) {
 		chip = a.pal.band(chip, cols)
+		return chip, cols
+	}
+	// AND THE POINTER LIGHTS ONE CHIP, NEVER THE ROW. Three doors share this line
+	// and each goes somewhere else, so a band across all of it would say "you can
+	// press here" about two rooms nobody is aiming at (hover.go's law, and
+	// tasksettle.go's answers row before it). The band is drawn round exactly the
+	// chip's own cells — padding included, because the padding is inside
+	// [stripSpan] and a person may press it — which is what [palette.hover] does
+	// when it is given no width to pad to.
+	//
+	// THE OPEN CHIP IS LEFT ALONE, and that is the two marks not fighting rather
+	// than the hover being forgotten: [palette.band] is [palette.hover] one step
+	// louder, the two are backgrounds and backgrounds cannot nest, and of the two
+	// facts "this is the page you are on" is the one still true when the pointer
+	// moves away.
+	if a.hoveringStrip(node) {
+		chip = a.pal.hover(chip, 0)
 	}
 	return chip, cols
 }
@@ -478,4 +511,41 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 		a.railTake(true)
 	}
 	return nil, true
+}
+
+// stripHoverAt is [app.stripPress]'s own hit-test with nothing done about it:
+// what the pointer is over on this row, and false when it is not over the row at
+// all.
+//
+// THE ROW IS ASKED BEFORE IT IS LAID OUT, which is the one place this parts
+// company with the press. A press happens once and can afford to build the row
+// to answer; a motion arrives once per CELL the pointer crosses, and laying the
+// strip out on every one of them would be the whole session paying for a row
+// that is three chips wide (hover.go's ceiling). The y test is a subtraction, and
+// past it the layout is the same layout the press does — which is what keeps the
+// set that lights and the set that answers one set.
+//
+// A PRESS BETWEEN TWO CHIPS IS SWALLOWED AND NOTHING LIGHTS THERE, and the two
+// are not in disagreement: the row eats the miss so it cannot fall through to the
+// conversation, and a gap that brightened would be claiming to be a door.
+func (a *app) stripHoverAt(x, y int) (hoverAt, bool) {
+	if a.sheet.open || a.copy.on || a.welcome.open || y != a.headHeight() {
+		return hoverAt{}, false
+	}
+	width, _ := a.size()
+	if len(a.stripRows(width)) == 0 {
+		return hoverAt{}, false
+	}
+	if a.stripHarn.holds(x) {
+		return hoverAt{kind: hoverStripHarness}, true
+	}
+	for _, chip := range a.stripSpans {
+		if chip.span.holds(x) {
+			return hoverAt{kind: hoverStrip, id: chip.id}, true
+		}
+	}
+	if a.stripMore.holds(x) {
+		return hoverAt{kind: hoverStripMore}, true
+	}
+	return hoverAt{}, false
 }

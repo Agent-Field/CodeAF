@@ -785,17 +785,27 @@ type connectCard struct {
 // mode can reach it and it reaches it as the frame drew it: two rows, indented,
 // with the address split across them. Here it is one link, whole.
 func (a *app) connectLinkPress(i int) (tea.Cmd, bool) {
-	es := a.bodyDeck().entries
-	if i < 0 || i >= len(es) || es[i].kind != entryConnect {
+	if !a.connectLinkable(i) {
 		return nil, false
 	}
-	card := es[i].conn
-	if card == nil || card.state != connectWaiting || card.link == "" {
-		return nil, false
-	}
+	card := a.bodyDeck().entries[i].conn
 	card.copied = true
 	a.touch()
 	return tea.Raw(osc52(card.link, a.tmux)), true
+}
+
+// connectLinkable reports whether this block is a sign-in still waiting, with an
+// address worth taking. It is the whole of [app.connectLinkPress]'s condition,
+// asked on its own so the pointer can light exactly what a press would act on —
+// and so a card that has SETTLED, which has nothing left to copy, stays as dark
+// as any other report in the transcript (hover.go's law).
+func (a *app) connectLinkable(i int) bool {
+	es := a.bodyDeck().entries
+	if i < 0 || i >= len(es) || es[i].kind != entryConnect {
+		return false
+	}
+	card := es[i].conn
+	return card != nil && card.state == connectWaiting && card.link != ""
 }
 
 // connectAuth takes one session.EventConnectAuth: the sign-in has started, and

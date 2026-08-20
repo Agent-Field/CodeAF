@@ -258,7 +258,7 @@ func TestTheTaskPassStillReadsARowThatCarriesALink(t *testing.T) {
 	if !strings.Contains(linked, "\x1b]8;;file://"+root) {
 		t.Fatalf("the path was not linked: %q", linked)
 	}
-	out, links := linkifyTasks(linked, pal, func(uint64) (string, bool) { return "a title", true })
+	out, links := linkifyTasks(linked, pal, func(uint64) (string, bool) { return "a title", true }, -1)
 	if len(links) != 1 {
 		t.Fatalf("%d task links, want 1: %q", len(links), out)
 	}
