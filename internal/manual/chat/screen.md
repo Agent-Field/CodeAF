@@ -107,12 +107,23 @@ is cut to its initial, and the last segment is never abbreviated — plus the gi
 with a `*` when the tree is dirty. On a remote session the machine's name is prefixed
 and is never cut along with the path (`devbox:~/code/app`).
 
-The right is a hint slot. It says `/ commands` when nothing else needs it, and names
-the keys that work right now when a state has keys of its own — for example
-`y allow · n deny · a always` while a question is up, `esc interrupt` while a turn is
-running, `esc stops and sends` while a message of yours is waiting for the answer to
-finish, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
-to `/ commands`.
+The right is a hint slot. It names the keys that work right now when a state has keys of
+its own — for example `y allow · n deny · a always` while a question is up,
+`esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
+waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+
+**At rest it carries the two doors out of the conversation.** With an empty box and
+somewhere else on the machine to go, it reads exactly:
+
+```
+space space home · / commands
+```
+
+Pressing the space bar twice on an empty box opens the home screen, and clicking those
+words does the same; `/` opens the command list. The home half is dropped when there is
+nowhere else to go, leaving just `/ commands`, and the whole slot gives way the moment you
+type or a state above claims it. It costs no row either way — this line is on the frame
+regardless.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`

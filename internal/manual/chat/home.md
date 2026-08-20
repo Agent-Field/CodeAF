@@ -73,18 +73,35 @@ spoke in it. The glyphs: `▲` it is stopped waiting on you, `●` something is 
 work was left unfinished, `○` at rest. On a terminal that cannot draw them they are `!`,
 `*`, `o` and `-`.
 
+The left list stays deliberately calm — every row is dim except the one the cursor is on,
+which takes the highlight. The one exception is `waiting on you`, which is brought up out
+of the dim wherever it appears, because a screen whose whole job is triage cannot render
+its most urgent fact in the same grey as an age.
+
 Inside a project the order is **what wants you first**: sessions stopped on a question,
 then ones with work running, then ones with work left unfinished, then the rest by when
 you last spoke. Quiet ones past the first four collapse into one dim line,
 `…3 more, quiet since 2d`.
 
-**On the right** is whatever the cursor is on: its name, its project and workspace path,
-whether a window has it open, a short list of the work it ran, what it spent, and the last
-thing said in it. Under 76 columns the right column is dropped and the list takes the
-frame.
+**On the right** is a preview of whatever the cursor is on, and it is read top to bottom
+as bands separated by blank lines — no rules and no borders anywhere:
 
-Nothing that is zero is drawn. A chat that ran no tasks says nothing about tasks; one that
-spent nothing says nothing about spending.
+1. the conversation's **name**, the brightest text on the screen and the same treatment the
+   highlighted row on the left wears, so the eye travels between them;
+2. one dim line of **where it is** — project · path;
+3. what it is **doing right now**, and — if it is stopped on a question — that question, in
+   full;
+4. the **work it ran**: up to four tasks, each with what it came to underneath;
+5. the **last thing said** in it;
+6. a dim line of **facts**: `spent $1.25 · 34k tokens · last active 12m`.
+
+A frame too short for all of that drops bands from the bottom — the facts go first — and
+never touches the name. Under 80 columns the right column is dropped entirely and the list
+takes the whole frame, because an index you can read beats a preview you cannot.
+
+Nothing that is zero is drawn, anywhere. A chat that ran no tasks says nothing about tasks;
+one that spent nothing says nothing about spending; a facts line with no facts is not
+drawn at all.
 
 ## Switch between sessions — enter on home
 
@@ -103,10 +120,11 @@ what makes `enter` the calm keystroke on a launch: the cursor starts on that ver
 The foot line reads exactly:
 
 ```
-type start something new · @ find · enter open
+type to search or start something new · ↑↓ pick · enter open
 ```
 
-and the line under it says what the keyboard does: `↑↓ move · enter open · esc close`.
+and the line under it says what the keyboard does, which changes with what the cursor is
+on — at rest, `↑↓ move · enter open · esc close`.
 
 ## What home will not do yet — opening another project's work
 
@@ -124,48 +142,135 @@ around inside one project of it.
 So: home is the honest answer to "what have I been doing everywhere". It is not yet the
 answer to "put me in that other project without changing terminals".
 
-## Find an old chat from anywhere — the @ box on home
+## Searching from home — find an old chat from anywhere
 
-Type `@` on home and the left column becomes a search over **everything on the machine**,
-headings dropped, best match first. Each row then carries its project name on the right
-instead of its age.
+**Just type.** There is no prefix and no mode: the box at the foot of home searches every
+project on the machine as you type, live, and narrows the list in place.
 
-It ranks over the name and the project together, on the same ladder the model picker uses:
-a prefix beats a substring beats letters found in order. So three characters of something
-you did last week finds it.
+It matches four things, and the first that scores highest wins the row: the conversation's
+name, the project it is in, the titles of the tasks it ran, and **what those tasks came
+to** — the one-sentence outcome in the project's record. That last one is the closest thing
+to remembering something by what happened rather than by what it was called: typing
+`postgres` finds the conversation whose task outcome mentions the connection pool, even
+though nothing in its name does.
 
-`enter` opens the highlighted row, under the same rule as everywhere else on home — this
-project's rows open, others say `elsewhere`. The hint line reads
-`type to search every conversation · enter open · esc clear`, and `enter open · esc clear`
-once you have typed something.
+Matching a project's name keeps every conversation in it.
 
-A filter that matches nothing draws `no conversation matches`.
+Ranking is match quality first — a whole word beats a name that starts with what you typed,
+which beats a word inside it, which beats the letters appearing in order. Then two things
+break ties: a conversation **waiting on you** comes above a cold one it ties with, whatever
+their ages, and after that the more recent one wins.
 
-`esc` clears the box and leaves you on home. A second `esc` closes home.
+`↑`/`↓` walk the matches, `enter` opens the highlighted one. `esc` clears the box; a second
+`esc` closes home.
 
-## Start something new from home — just type
+## Can home search by meaning — semantic search
 
-Anything you type on home that does not begin with `@` goes into the box at the foot, and
-`enter` **closes home, opens a fresh session in this project, and sends what you typed as
-its first message.** No picker, no folder to choose, nothing declared before there is
-anything to declare it about.
+**No, and it is not going to.** Home's search is lexical and local — it matches the words
+you type against names, task titles and outcomes already in memory, and answers inside a
+keystroke with nothing loaded and no model called.
 
-While something is in the box, the hint reads
-`enter starts a new conversation here and sends this · esc clear`.
+Two things cover what a meaning-search would have been for:
 
-It is `/new` followed by your sentence, so everything `/new` does applies: the running turn
-is interrupted, a fresh session file is opened, and the transcript, the task column and any
-pending offers all belong to the chat that just closed. On a surface with no fresh-session
-seam it refuses in `/new`'s own words, `/new is unavailable here`.
+- **The row that offers to start a conversation never goes away.** A query that matches
+  nothing still reads `start a new conversation: "…"`, so the worst case of a search that
+  missed is that your words become the first message of a new chat — which is very often
+  what you wanted.
+- **Ask the chat instead.** It has a `tasks` tool over the whole project record and you can
+  ask it in sentences: *"what was that thing where we fixed the flaky auth test?"* Home is
+  the fast layer; the conversation is the thoughtful one.
 
-`esc` clears the box without sending it.
+## Start something new from home — typing does both at once
+
+Whatever you type is **two things at the same moment**: a new conversation waiting to be
+sent, and a live query over the machine. You do not choose between them before you start
+typing.
+
+The top row of the list is the action row — `start a new conversation: "…"` with your words
+quoted back — and **the cursor rests there by default**. So typing and pressing `enter`
+starts a fresh conversation in this project and sends what you typed, exactly as it always
+has, however many matches are on screen.
+
+One `↓` steps off that row onto the matches, and then you are picking from the list:
+`enter` opens the highlighted conversation instead. The cursor stays where you put it while
+you keep typing. `↑` walks back up to the action row.
+
+The hint under the box says which of the two `enter` currently means:
+`enter starts a new conversation and sends this · ↓ pick a match · esc clear`, or
+`enter open · ↑ back to starting a new conversation · esc clear`.
+
+Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
+does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
+`/new is unavailable here`.
+
+## How do I see the collapsed sessions — …13 more
+
+A project shows its first four conversations and folds the rest into one dim line,
+`…13 more, quiet since 1d`, with a `▸` in front of it.
+
+**That line is a door.** Put the cursor on it and press `enter` or `→` and the project opens
+in place; the line becomes `▾ …13 fewer`, and `enter` or `←` folds it away again. `←` on any
+conversation inside an opened project folds it too. Clicking the line toggles it in one
+press. It is the same fold gesture the task column uses, with the same two marks.
+
+**And searching sees straight through it.** While anything is typed the collapse is not
+applied at all — every match is drawn wherever it lives, including rows that were behind
+the fold. A search that could not see what it hides would be a search lying about the
+machine.
+
+Projects you open by hand stay open while home is up, including across a refresh.
+
+## How do I get back to the dashboard — press space twice
+
+**From inside any conversation, press the space bar twice with an empty message box.**
+That is the way back to home.
+
+There is no `ctrl+` chord for it: every `ctrl+<letter>` this surface has is already taken,
+and `esc` was not available either — on an idle conversation it already arms rewind and
+already sends a message you parked, and a third meaning on one key is how a surface stops
+being predictable. What was left is the one keystroke that reliably means nothing: a
+message that starts with two spaces is a message nobody meant to send that way.
+
+**The first space types itself, plainly.** There is no pending state and no ghost
+character. It is the *second* space, arriving to find a box holding exactly one space, that
+takes both away and opens home. So a space you actually wanted is never eaten: space then
+`x` leaves ` x` alone, because the gesture only fires on a space and only when a single
+space is all there is.
+
+It works with a turn running. Home takes the frame the way the settings panel does, and the
+answer goes on streaming underneath — `esc` puts you back in it, still running.
+
+Two things it will not do: it does nothing when the box already has words in it, and it
+does nothing on a machine with nowhere else to go.
+
+## What does pressing space twice do — the home door at the foot of a conversation
+
+When the box is empty and there is somewhere else to go, the dim line between the
+conversation and the box reads exactly:
+
+```
+space space home · / commands
+```
+
+That is the whole advertisement. It costs no extra row — it is the hint slot that line
+already carried — and it **vanishes the moment you type anything**, because it is a door
+and not decoration. It also goes while a turn is running, where the same slot has something
+more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
+advertised.
+
+**You can click it.** A press on the words `space space home` opens home; a press on the
+rule beside them is a press on a rule.
+
+It does not appear at all on a machine whose only conversation is the one you are in — the
+same rule that keeps home from greeting a first run. A door that is drawn is a door that
+goes somewhere.
 
 ## Is there a key for home?
 
-**No. `/home` is the only way in.** Every `ctrl+<letter>` this surface could use is
-already taken, and the chords that were left — `ctrl+.` and the `alt+` letters — arrive in
-some terminals and silently do nothing in others. A key that works on one machine and not
-the next is worse than a command that works everywhere, so none was bound.
+`/home` opens it, and **space twice on an empty box** goes there from inside a conversation
+— see the two sections above. There is no `ctrl+` chord: every one of them is taken, and
+the chords that were left (`ctrl+.` and the `alt+` letters) arrive in some terminals and do
+nothing at all in others.
 
 ## Why a session says it needs you — waiting on you
 

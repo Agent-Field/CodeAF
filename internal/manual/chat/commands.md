@@ -594,10 +594,17 @@ right half shows the line it is stopped on. Quiet
 conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
 right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
 
-`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from. Typing
-anything starts a new conversation in this project and sends it on `enter`; typing `@`
-searches every conversation on the machine instead. The foot reads exactly
-`type start something new · @ find · enter open`.
+`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
+**Typing does two things at once**: what you type is a new conversation waiting to be sent
+AND a live search over every project on the machine. The top row — `start a new
+conversation: "…"` — holds the cursor, so type-and-enter still starts a chat; one `↓` steps
+onto the matches and `enter` opens one instead. The foot reads exactly
+`type to search or start something new · ↑↓ pick · enter open`.
+
+Search matches conversation names, project names, task titles and **what tasks came to** —
+the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
+folds its quiet conversations into `…13 more, quiet since 1d`; that line is a door (`enter`
+or `→` opens it, `←` folds it), and searching sees through the fold.
 
 **The limit, plainly: `enter` opens conversations of the project this window is in.**
 Other projects are shown with a dim `elsewhere` on their heading, and enter on one of

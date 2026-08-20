@@ -479,25 +479,48 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 
 ## Keys on home, and is there a shortcut for it
 
-**There is no key for home. `/home` is the only way to open it.** Every `ctrl+<letter>`
-this surface could use is already taken, and the chords that were left — `ctrl+.` and the
-`alt+` letters — arrive in some terminals and do nothing at all in others, so none was
-bound rather than shipping a key that works on one machine and not the next.
+**Press the space bar twice with an empty message box.** That is the way back to home from
+inside a conversation, and `/home` opens it too.
 
-Once it is open (`/home`): `esc` clears the box if anything is in it, and closes home
-otherwise · `up`/`ctrl+p` and `down`/`ctrl+n` walk the conversations, stepping over the
-project headings · `pgup`/`pgdown` jump four · `enter` opens the conversation under the
-cursor, or — with something typed in the box — starts a new conversation here and sends it
-· `backspace`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f` edit the box ·
-**anything else you type goes into the box**, and a leading `@` turns it into a search over
-every conversation on the machine.
+There is no `ctrl+` chord: every `ctrl+<letter>` this surface could use is already taken,
+and the chords that were left — `ctrl+.` and the `alt+` letters — arrive in some terminals
+and do nothing at all in others. `esc` was not available either: on an idle conversation it
+already arms rewind and already sends a message you parked with `ctrl+q`, and a third
+meaning on one key in that state is how a surface stops being predictable.
 
-With the mouse: a click puts the cursor on a row, and a second click on that same row
-opens it.
+**The first space types itself.** The second one, finding a box holding exactly one space,
+takes both away and opens home — so a leading space you actually wanted is never eaten
+(space then `x` leaves ` x`). It does nothing when the box has words in it, nothing on a
+machine with nowhere else to go, and it is not a paste: text pasted with two leading spaces
+is two spaces.
+
+It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
+back in it.
+
+When the box is empty and there is somewhere to go, the legend line above the box says so:
+`space space home · / commands`. Clicking those words opens home. It vanishes as soon as
+you type.
+
+Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
+`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
+`pgup`/`pgdown` jump four · `enter` acts on the row under the cursor · `backspace`,
+`ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · **anything else you type goes into the
+box**, which searches the whole machine and offers to start a new conversation at the same
+time.
+
+`→` and `←` are the fold's, the way they are in the task column: on a project's
+`…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
+`←` on a conversation inside an opened project folds that project too. Anywhere else they
+move the caret in the box.
+
+With the mouse: a click puts the cursor on a row and a second click on that row opens it;
+a click on a `…13 more` line toggles it in one press.
 
 The top line carries `esc close` on the right. The foot reads exactly
-`type start something new · @ find · enter open`, and the line under it
-`↑↓ move · enter open · esc close`.
+`type to search or start something new · ↑↓ pick · enter open`, and the line under it
+changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
+`enter starts a new conversation and sends this · ↓ pick a match · esc clear` on the action
+row, and `enter or → show them · esc close` on a folded project.
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it.

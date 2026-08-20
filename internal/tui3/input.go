@@ -631,6 +631,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,
+	// at the very bottom of the router, because it must lose to every other
+	// meaning a space could have on this surface — inside a paste bracket, in a
+	// filter box, in copy mode, in any overlay — and because the first of the
+	// two spaces has already typed itself perfectly ordinarily one keystroke
+	// ago, through the line below.
+	if a.homeGesture(msg) {
+		a.input.reset()
+		return tea.Batch(a.edited(), a.openHome())
+	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.
 		//

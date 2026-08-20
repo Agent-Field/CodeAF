@@ -132,6 +132,10 @@ const (
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
 	chromeJump
+	// chromeLegend is the rule between the transcript and the box. Its right
+	// end carries the hint slot, and the one thing in that slot a person can
+	// press is the door home (home.go's [app.homeDoorPress]).
+	chromeLegend
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -402,7 +406,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// THE RULE IS A LEGEND NOW: the same one line, with where you are written
 		// into it (render.go). It degrades back to the plain rule on a frame with
 		// no room for a label.
-		add(a.legend(width), chromeRow{})
+		add(a.legend(width), chromeRow{kind: chromeLegend})
 	}
 	for i, line := range a.consentRows(width) {
 		// The offer is the second row of the block, and it is the only row of it
