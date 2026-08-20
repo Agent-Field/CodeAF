@@ -96,6 +96,23 @@ func oscSafeURI(uri string) bool {
 	return true
 }
 
+// linkOpen is the sequence that starts an anchor, or the empty string when the
+// link may not be written — which is the caller's signal to draw plain text and
+// emit no [linkClose] either. A dangling opener is the one failure mode of OSC 8
+// that a person actually sees: everything after it, to the end of the screen,
+// becomes one link.
+func linkOpen(uri string) string {
+	if !oscSafeURI(uri) {
+		return ""
+	}
+	return ansi.SetHyperlink(uri)
+}
+
+// linkClose ends an anchor. It is a function rather than a constant so that the
+// two halves of a link are spelled by the same package, and a caller can never
+// close with bytes that do not match what opened.
+func linkClose() string { return ansi.ResetHyperlink() }
+
 // linkify wraps a label as a hyperlink to uri, and returns the label untouched
 // when the sequence would not be safe.
 //
@@ -103,8 +120,9 @@ func oscSafeURI(uri string) bool {
 // to a width does not have to measure again — which is the whole reason this is
 // applied last, to text the layout has finished with.
 func linkify(label, uri string) string {
-	if label == "" || !oscSafeURI(uri) {
+	open := linkOpen(uri)
+	if label == "" || open == "" {
 		return label
 	}
-	return ansi.SetHyperlink(uri) + label + ansi.ResetHyperlink()
+	return open + label + linkClose()
 }

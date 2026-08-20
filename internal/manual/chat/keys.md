@@ -680,6 +680,13 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context.
 
+**A file path is a different kind of target.** Everything numbered above is a click
+aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
+`write` row, under a picture — is a **terminal hyperlink**, so your terminal answers it,
+usually on **cmd+click** (ctrl+click on Linux). The underline is how you can tell it
+works. See "click a file path to open it" on the "what is on the screen" page for which
+terminals open one and what is deliberately not linked.
+
 **A click on empty space does nothing, anywhere** — there is no empty-space gesture on
 this surface, and that includes inside a room: a press on a blank row of a task's page
 is not the way out and never closes it. The way out of a room is `esc`, `←`, or a press
@@ -792,8 +799,10 @@ selection, not the primary one.
 
 **An image drawn in an expansion copies as what it is on screen** — rows of `▀`, with
 the colour stripped, which is no use to anybody. Take the dim line under it instead:
-it is the picture's whole absolute path, and it is a hyperlink in terminals that make
-one.
+it is the picture's whole absolute path. It is also a link you can click, the same as
+every other real file path on this screen — see "click a file path to open it" on the
+"what is on the screen" page. What copy mode gives you is the plain path, with the link
+stripped off it.
 
 ## Chords that mean more than one thing
 
