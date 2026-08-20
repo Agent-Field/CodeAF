@@ -173,3 +173,59 @@ func TestRecentDatesAStamplessFileFromTheFilesystem(t *testing.T) {
 		t.Fatal("a row with no age is a row a picker cannot order")
 	}
 }
+
+// ── THE LAST THING THE AGENT SAID ───────────────────────────────────────────
+
+// A NODE'S REPORT IS ITS FINAL ASSISTANT MESSAGE, and [PeekReport] is how a
+// surface holding one row of the project's record follows that row's transcript
+// address to the whole of it. [TaskIndexEntry.Outcome] is the same message's
+// first sentence, cut — one source, read twice.
+func TestPeekReportIsTheLastThingTheAgentSaid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	writeTranscript(t, path,
+		peekHeader,
+		peekAsked,
+		`{"type":"message","role":"assistant","content":"looking at the grammar first"}`,
+		`{"type":"message","role":"assistant","content":"Ported the parser.\nThe suite passes."}`,
+	)
+	said, ok := PeekReport(path)
+	if !ok {
+		t.Fatal("a journal with an answer in it read back nothing")
+	}
+	if said != "Ported the parser.\nThe suite passes." {
+		t.Fatalf("the report reads %q", said)
+	}
+}
+
+// A JOURNAL WITH NOTHING SAID IN IT ANSWERS FALSE, and so does one that is not
+// there — a surface that drew an empty quotation would be claiming the task
+// finished without a word.
+func TestPeekReportRefusesAJournalWithNoAnswerInIt(t *testing.T) {
+	dir := t.TempDir()
+	quiet := filepath.Join(dir, "quiet.jsonl")
+	writeTranscript(t, quiet, peekHeader, peekAsked)
+	if said, ok := PeekReport(quiet); ok {
+		t.Fatalf("a journal nobody answered in read back %q", said)
+	}
+	if _, ok := PeekReport(filepath.Join(dir, "never-written.jsonl")); ok {
+		t.Fatal("a journal that is not there read back a report")
+	}
+}
+
+// AND IT IS BOUNDED. The report is a page or two; a journal line somebody pasted
+// a whole file into is not a thing a card scrolls through.
+func TestPeekReportIsBounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "huge.jsonl")
+	writeTranscript(t, path, peekHeader, peekAsked,
+		`{"type":"message","role":"assistant","content":"`+strings.Repeat("a", reportPeekMax*2)+`"}`)
+	said, ok := PeekReport(path)
+	if !ok {
+		t.Fatal("a long answer read back nothing")
+	}
+	if len(said) > reportPeekMax+len("…") {
+		t.Fatalf("the report came back %d bytes long", len(said))
+	}
+	if !strings.HasSuffix(said, "…") {
+		t.Fatal("a report that was cut does not say so")
+	}
+}

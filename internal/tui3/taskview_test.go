@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -285,11 +287,12 @@ func TestEnterOnTheTaskPageOpensThatTasksRoom(t *testing.T) {
 	}
 }
 
-// enter ON WORK ANOTHER CONVERSATION RAN WRITES ITS NAME INTO THE MESSAGE BOX,
-// because there is no room to open: a room is a live lane onto a node in THIS
-// session's graph, and that session is closed. The mention is the door that
-// already exists for reaching old work (taskmention.go).
-func TestEnterOnAnEarlierConversationsTaskWritesTheMention(t *testing.T) {
+// enter ON WORK ANOTHER CONVERSATION RAN GOES INSIDE IT, because there is no
+// room to open: a room is a live lane onto a node in THIS session's graph, and
+// that session is closed. What it opens instead is the card — everything the
+// project wrote down about that piece of work, over the same page, with the list
+// still underneath (taskrecord.go).
+func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
@@ -299,19 +302,183 @@ func TestEnterOnAnEarlierConversationsTaskWritesTheMention(t *testing.T) {
 	}
 	// THE FOOT SAYS WHICH DOOR enter IS. A page that promised a room over work
 	// that has none would be lying about its own key.
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetMentionKeys) {
+	if text := taskSheetText(a); !strings.Contains(text, taskSheetInsideKeys) {
 		t.Fatalf("the foot promises a room over a task that has none:\n%s", text)
 	}
+
+	drive(t, a, key("enter"))
+	if !a.taskSheet.open || !a.taskSheet.detailOn {
+		t.Fatalf("enter did not go inside: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	}
+	card := taskSheetText(a)
+	for _, want := range []string{"Port the parser", "done", "it came home clean", taskCardKeys} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card does not say %q:\n%s", want, card)
+		}
+	}
+
+	// esc BACKS OUT ONE LAYER: the list, not the conversation.
+	drive(t, a, key("esc"))
+	if !a.taskSheet.open || a.taskSheet.detailOn {
+		t.Fatalf("esc did not come back to the list: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
+	}
+	drive(t, a, key("esc"))
+	if a.taskSheet.open {
+		t.Fatal("the second esc did not close the page")
+	}
+}
+
+// AND THE MENTION SURVIVES ON `m`, in the card's own foot. It could not stay on
+// enter and it could not move to a letter on the LIST — every printable key
+// there is the filter — so it lives on the one page here that is read rather
+// than typed at.
+func TestMFromInsideAnOldTaskStillWritesTheMention(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+	}
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open on a project with only a record")
+	}
+	drive(t, a, key("enter"))
 
 	// A half-written sentence is KEPT: the name is appended to it, because the box
 	// is where the person was part-way through saying what the name was for.
 	a.input.setText("what happened in")
-	drive(t, a, key("enter"))
+	drive(t, a, key("m"))
 	if a.taskSheet.open {
 		t.Fatal("writing the mention left the page up")
 	}
 	if got := string(a.input.value); got != "what happened in @port-the-parser " {
 		t.Fatalf("the draft reads %q", got)
+	}
+}
+
+// THE CARD SAYS WHAT THE RECORD KNOWS AND NOTHING IT DOES NOT. A row that spent
+// nothing has no money line, one that wrote nothing has no file count — the
+// emptiness law reaching every line of a card whose whole content is optional.
+func TestTheRecordCardDrawsOnlyTheFactsItHas(t *testing.T) {
+	a, _, _ := taskApp(t)
+	rich := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
+	rich.Model, rich.Cost, rich.Tokens, rich.FilesChanged = "anthropic/claude-sonnet-4.5", 0.42, 12000, 3
+	rich.ArtifactURI = "git:task/port-the-parser-9c1a2f"
+	bare := pastTask("11", "mix-the-audio", "Mix the audio", 2*time.Hour)
+	bare.Outcome = ""
+	a.comp.tasks = []session.TaskIndexEntry{rich, bare}
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open")
+	}
+
+	drive(t, a, key("enter"))
+	card := taskSheetText(a)
+	for _, want := range []string{
+		"anthropic/claude-sonnet-4.5", "$0.42", "12k tok", "3 files changed",
+		taskCardBranchWord + " · task/port-the-parser-9c1a2f",
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card does not say %q:\n%s", want, card)
+		}
+	}
+	drive(t, a, key("esc"))
+
+	// And the row that knows none of those says none of them, rather than $0.00,
+	// 0 tok and a count of nothing.
+	drive(t, a, key("down"))
+	drive(t, a, key("enter"))
+	card = taskSheetText(a)
+	for _, never := range []string{"$0.00", "0 tok", "0 files changed", taskCardBranchWord, taskCardTreeWord} {
+		if strings.Contains(card, never) {
+			t.Fatalf("the card wrote %q about a task nothing is known about:\n%s", never, card)
+		}
+	}
+}
+
+// THE LAST THING THE TASK SAID IS READ OFF ITS OWN JOURNAL, which is what the
+// row's transcript address was carried for: the outcome above it is that
+// message's first sentence and nothing more (session's PeekReport).
+func TestTheRecordCardShowsWhatTheTaskSaidAtTheEnd(t *testing.T) {
+	a, _, _ := taskApp(t)
+	journal := filepath.Join(t.TempDir(), "20260819-120133_9.jsonl")
+	lines := []string{
+		`{"type":"message","role":"user","content":"port the parser"}`,
+		`{"type":"message","role":"assistant","content":"looking at the grammar first"}`,
+		`{"type":"message","role":"assistant","content":"Ported the parser and the suite passes.\nNothing else was touched."}`,
+	}
+	if err := os.WriteFile(journal, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
+	entry.TranscriptURI = "file://" + journal
+	a.comp.tasks = []session.TaskIndexEntry{entry}
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open")
+	}
+
+	// The read is a command off the loop, which is what [drive] runs for us.
+	drive(t, a, key("enter"))
+	if a.taskSheet.tail != mustPeekReport(t, journal) {
+		t.Fatalf("the card read back %q", a.taskSheet.tail)
+	}
+	card := taskSheetText(a)
+	for _, want := range []string{
+		taskCardTailHead, "Ported the parser and the suite passes.", "Nothing else was touched.",
+		taskCardTranscriptWord,
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card does not say %q:\n%s", want, card)
+		}
+	}
+	// It is the LAST thing said and not everything said.
+	if strings.Contains(card, "looking at the grammar first") {
+		t.Fatalf("the card printed the whole transcript:\n%s", card)
+	}
+}
+
+// mustPeekReport reads a node's journal the way the card's own command does.
+func mustPeekReport(t *testing.T, path string) string {
+	t.Helper()
+	tail, ok := session.PeekReport(path)
+	if !ok {
+		t.Fatalf("nothing was read back out of %s", path)
+	}
+	return tail
+}
+
+// A ROW WHOSE TRANSCRIPT IS GONE SAYS SO. The path is printed on the band above,
+// so silence under it would read as a card that gave up half way.
+func TestTheRecordCardSaysWhenTheTranscriptIsGone(t *testing.T) {
+	a, _, _ := taskApp(t)
+	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
+	entry.TranscriptURI = "file://" + filepath.Join(t.TempDir(), "never-written.jsonl")
+	a.comp.tasks = []session.TaskIndexEntry{entry}
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open")
+	}
+	drive(t, a, key("enter"))
+	a.taskSheet.tailRead = true
+	if card := taskSheetText(a); !strings.Contains(card, taskCardTailGone) {
+		t.Fatalf("the card said nothing about a transcript that is not there:\n%s", card)
+	}
+}
+
+// A TASK THIS SESSION IS HOLDING STILL OPENS ITS ROOM. Only work from a
+// conversation that is closed opens the card.
+func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
+	// roomApp's one node is 7, and it is the only family here.
+	a, _, _ := roomApp(t)
+	a.profileDir = t.TempDir()
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+	}
+	rosterText(a, a.viewHeight())
+
+	drive(t, a, ctrlT())
+	drive(t, a, key("enter"))
+	if a.room == nil || a.room.id != 7 {
+		t.Fatalf("enter on a live row did not open its room: %+v", a.room)
+	}
+	if a.taskSheet.detailOn {
+		t.Fatal("a live row opened the record card")
 	}
 }
 
@@ -704,13 +871,12 @@ func TestAnEmptySessionShowsTheProjectsRecordRatherThanTheEmptyWord(t *testing.T
 	}
 }
 
-// THE RECORD ROWS ARE DOORS ONTO THE MENTION. They were a note once — readable,
-// unpressable, with the page as the only place to act on them — and a row a
-// person can read and cannot press is a row they press anyway. There is no room
-// behind work another conversation ran, so what the door opens is the name in
-// your message, which is exactly what enter on the page's own `earlier` rows has
-// always done.
-func TestTheColumnsRecordRowsAreDoorsOntoTheMention(t *testing.T) {
+// THE RECORD ROWS ARE DOORS INSIDE THE WORK. They were a note once — readable,
+// unpressable — and then they were doors onto the mention, which answered the
+// wrong question: pressing a row of finished work means "show me what this did".
+// There is no room behind work another conversation ran, so what the door opens
+// is the card, which is exactly what enter on the page's own `earlier` rows does.
+func TestTheColumnsRecordRowsAreDoorsInside(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
@@ -742,18 +908,27 @@ func TestTheColumnsRecordRowsAreDoorsOntoTheMention(t *testing.T) {
 		t.Fatalf("the pointer over a record row lit nothing: %+v", a.hot)
 	}
 
-	// AND A PRESS WRITES THE MENTION on the first press — no room, because there
-	// is none to open — and the half-written sentence in the box is kept.
-	a.input.setText("what happened in")
+	// AND A PRESS GOES INSIDE on the first press — no room, because there is none
+	// to open — and the card names the task that was pressed.
 	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
 		t.Fatal("a press on a record row fell through the column")
 	}
 	if a.room != nil {
 		t.Fatal("a record row opened a room for work that has none")
 	}
-	if got := string(a.input.value); got != "what happened in @port-the-parser " {
-		t.Fatalf("the draft reads %q", got)
+	if !a.taskSheet.open || !a.taskSheet.detailOn {
+		t.Fatalf("the press did not go inside: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
 	}
+	if card := taskSheetText(a); !strings.Contains(card, "Port the parser") {
+		t.Fatalf("the card is about something else:\n%s", card)
+	}
+	// esc comes back to the list, which is parked on the row that was pressed —
+	// the page is where the record lives, so the way back out is into it.
+	drive(t, a, key("esc"))
+	if item, ok := a.taskSheetCurrent(); !ok || item.entry == nil || item.entry.Name != "port-the-parser" {
+		t.Fatalf("the list did not come back on the row that was pressed: %+v", item)
+	}
+	a.closeTaskSheet()
 	// The press moved the cursor with it, so the keyboard picks up where the hand
 	// left off.
 	if a.railWhere.past != railPastKey(a.railPast[0]) {
@@ -797,11 +972,12 @@ func TestTheRostersCursorWalksIntoTheRecordAndBackOut(t *testing.T) {
 	if a.railWhere.past != railPastKey(a.railPast[len(a.railPast)-1]) {
 		t.Fatalf("the walk did not clamp on the last record row: %+v", a.railWhere)
 	}
-	// enter on it is the mention, exactly as the page's own record rows are.
+	// enter on it goes inside, exactly as the page's own record rows do.
 	drive(t, a, key("enter"))
-	if got := string(a.input.value); got != "@mix-the-audio " {
-		t.Fatalf("enter on a record row wrote %q", got)
+	if !a.taskSheet.detailOn || a.taskSheet.detail.Name != "mix-the-audio" {
+		t.Fatalf("enter on a record row opened %+v", a.taskSheet.detail)
 	}
+	a.closeTaskSheet()
 	// And back up out of the record onto this session's work.
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("up"))
@@ -829,8 +1005,8 @@ func TestCtrlTHoldsAColumnMadeOnlyOfTheRecord(t *testing.T) {
 		t.Fatalf("ctrl+t parked the cursor at %+v", a.railWhere)
 	}
 	drive(t, a, key("enter"))
-	if got := string(a.input.value); got != "@port-the-parser " {
-		t.Fatalf("enter wrote %q", got)
+	if !a.taskSheet.detailOn || a.taskSheet.detail.Name != "port-the-parser" {
+		t.Fatalf("enter opened %+v", a.taskSheet.detail)
 	}
 }
 

@@ -204,9 +204,20 @@ const (
 	// stop hiding it is a dead end somebody hits and gives up at.
 	homeQuiet
 	// homeAction is "start a new conversation", drawn only while something is
-	// typed and always at the very top. It is a cursor stop and it is where the
-	// cursor RESTS by default, which is what keeps type-and-enter meaning
-	// exactly what it meant before the box could also search.
+	// typed and always at the very BOTTOM of the list. It is a cursor stop and
+	// it is where the cursor RESTS by default, which is what keeps type-and-enter
+	// meaning exactly what it meant before the box could also search.
+	//
+	// IT USED TO LEAD THE LIST, AND THAT SPLIT A PERSON'S ATTENTION IN TWO. The
+	// characters appear in the box at the FOOT of the frame, and the row that
+	// says what enter will do with them stood at the TOP — so typing made the eye
+	// jump between the two far ends of the screen, and the cursor was up at one
+	// end while the caret blinked at the other. Everything about typing now
+	// clusters at the foot: the box, the row directly above it, and the hint line
+	// under it, with the matches growing UPWARD above them. It is the drop-up the
+	// command list and the "@" list already are (render.go's overlay), which is
+	// what this screen should have been from the start — a list that rises out of
+	// the thing you are typing into.
 	homeAction
 	// homeBlank is the empty line between projects.
 	homeBlank
@@ -507,6 +518,11 @@ func (h *homeView) build() {
 	if h.searching() {
 		h.picked = h.picked && h.pointable(previous.Transcript)
 		if !h.picked {
+			// AND THE ACTION ROW IS AT THE BOTTOM NOW, so resting on it is no
+			// longer the same thing as resting at the top of the list ([homeAction]
+			// says why it moved). It is found rather than counted to: how many rows
+			// a query left above it is not a number this function knows.
+			h.pointAction()
 			return
 		}
 	}
@@ -515,14 +531,31 @@ func (h *homeView) build() {
 	}
 }
 
+// pointAction puts the cursor on "start a new conversation", which is the last
+// line of the list whenever there is one at all.
+func (h *homeView) pointAction() {
+	for at, line := range h.lines {
+		if line.kind == homeAction {
+			h.cursor = at
+			return
+		}
+	}
+}
+
+// dropUp reports whether the list is drawn as a DROP-UP: its bottom row against
+// the box at the foot, and the matches rising above it.
+//
+// It is exactly "something is typed", because that is exactly when the action
+// row exists ([homeView.buildWorld]) and exactly when a person is looking at the
+// box rather than reading down a roster. With nothing typed, home is a screen
+// somebody is browsing and the list hangs from the top like every other list
+// here.
+func (h *homeView) dropUp() bool { return h.searching() }
+
 // buildWorld is the column: projects as dim headings with their conversations
 // under them, filtered and ranked by whatever is in the box.
 func (h *homeView) buildWorld() {
 	query := h.query()
-	if query != "" {
-		// The action row leads, always, and is what the cursor opens on.
-		h.lines = append(h.lines, homeLine{kind: homeAction})
-	}
 	type ranked struct {
 		project session.Project
 		rows    []session.SessionRow
@@ -585,6 +618,18 @@ func (h *homeView) buildWorld() {
 			})
 		}
 	}
+	if query == "" {
+		return
+	}
+	// THE ACTION ROW CLOSES THE LIST, directly above the box the words were typed
+	// into ([homeAction] says why it is not at the top any more). It is separated
+	// from the matches by the same blank line that separates two projects,
+	// because it is not one of them: everything above it exists, and it is the
+	// one row that is a thing that does not.
+	if len(h.lines) > 0 {
+		h.lines = append(h.lines, homeLine{kind: homeBlank})
+	}
+	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
 
 // split decides what a project shows and what it whispers: everything with work
@@ -1423,7 +1468,20 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	if len(a.home.lines) == 0 {
 		left, right = left+right+2, 0
 	}
-	column := a.homeList(left, room, pal)
+	// THE DROP-UP LIFTS THE LIST AND LEAVES THE CARD WHERE IT IS. While something
+	// is typed the left column hangs from the BOTTOM of the region so that its
+	// last row — the action row — lands against the box at the foot
+	// ([homeAction]).
+	//
+	// THE DETAIL COLUMN IS NOT LIFTED WITH IT, and that is deliberate rather than
+	// an oversight. It is a CARD about the row under the cursor, assembled to fill
+	// the height it is given and dropping whole bands from the bottom when it
+	// cannot ([homeBands]) — so lifting it would not move it down the screen, it
+	// would take the outcome, the last line said and the arithmetic off the card
+	// entirely and leave a title floating in the middle of the frame. The list is
+	// the thing typing is about; the card beside it reads top down, as a card does.
+	lift := a.homeLift(room)
+	column := a.homeList(left, room-lift, pal)
 	var detail []string
 	if right > 0 {
 		detail = a.homeDetail(right, room, pal)
@@ -1431,8 +1489,8 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	drawn := make([]homeDrawn, 0, room)
 	for i := 0; i < room; i++ {
 		text, hit := "", -1
-		if i < len(column) {
-			text, hit = column[i].text, column[i].hit
+		if at := i - lift; at >= 0 && at < len(column) {
+			text, hit = column[at].text, column[at].hit
 		}
 		if right > 0 && i < len(detail) && detail[i] != "" {
 			// THE GUTTER IS PADDED ON EVERY ROW, whether or not the left column
@@ -1448,6 +1506,24 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 		drawn = append(drawn, homeDrawn{text: text, hit: hit})
 	}
 	return drawn
+}
+
+// homeLift is how many blank rows sit ABOVE the body, which is what makes the
+// list a drop-up: the shorter the list, the further down the region it starts,
+// so its last row always lands against the foot.
+//
+// It is zero for a list nobody is typing at ([homeView.dropUp]) and zero for a
+// list longer than the region, where the window is already full and
+// [listTop] has bottom-anchored it by following a cursor that starts on the last
+// row.
+func (a *app) homeLift(room int) int {
+	if !a.home.dropUp() {
+		return 0
+	}
+	if lift := room - len(a.home.lines); lift > 0 {
+		return lift
+	}
+	return 0
 }
 
 // homeList is the left column: the window of lines the cursor is inside.
@@ -1882,18 +1958,15 @@ func homeTaskLine(entry session.TaskIndexEntry, row session.SessionRow, now time
 // it has out, and a row it does not name is work that was under way when the
 // window went — `incomplete`, the same word the interrupted-task outcome uses,
 // and not a claim that something is happening.
+//
+// THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
+// (taskview.go), which the task page's own record rows and the record card both
+// answer through — one vocabulary, so a task called `needs your look` on this
+// screen is not called something else on the next one. What belongs to home is
+// the LIVENESS QUESTION: this screen judges a row against the conversation that
+// wrote it, and the task page judges it against the windows that are open.
 func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
-	switch {
-	case entry.Live() && row.Runs(entry):
-		return "running"
-	case entry.Live():
-		return "incomplete"
-	case entry.Status == string(session.TaskFailed):
-		return "failed"
-	case entry.Status == string(session.TaskUnverified):
-		return "needs your look"
-	}
-	return "done"
+	return taskStateWord(entry, row.Runs(entry))
 }
 
 // homeLast is the last thing said in a conversation, read once per conversation
@@ -1922,14 +1995,19 @@ func (a *app) homeHint() string {
 	switch {
 	case line.kind == homeAction:
 		// The two readings of the box, both said, because both are true of what
-		// is on screen right now: enter sends it, ↓ walks into what it found.
-		return "enter starts a new conversation and sends this · ↓ pick a match · esc clear"
+		// is on screen right now: enter sends it, ↑ walks into what it found.
+		//
+		// THE ARROW IS ↑ BECAUSE THE MATCHES ARE ABOVE. The action row is the last
+		// line of the list, against the box ([homeAction]), so walking into the
+		// results is walking up the screen — and a hint naming the other arrow
+		// would be this line lying about the next keystroke.
+		return "enter starts a new conversation and sends this · ↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
 		return "enter or ← fold them away · esc close"
 	case a.home.searching():
-		return "enter open · ↑ back to starting a new conversation · esc clear"
+		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
 	return "↑↓ move · enter open · esc close"
 }

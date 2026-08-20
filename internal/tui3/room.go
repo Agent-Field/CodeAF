@@ -1852,6 +1852,15 @@ func (a *app) goHome() {
 // are not, because those are drawn by somebody else and answer for themselves
 // (view.go's [app.topHeight]).
 func (a *app) railPress(x, y int) (tea.Cmd, bool) {
+	// THE CLOSED COLUMN'S EDGE IS THE FIRST THING ASKED, and it is the whole of
+	// what that strip does: a press anywhere on it brings the roster back, which
+	// is exactly ctrl+g (task.go's [railGripCols] says why the strip is there).
+	// It is asked before [app.railAt] because that question is about a column
+	// which, in this state, is not on the frame at all.
+	if a.railGripAt(x, y) {
+		a.railStow(false)
+		return nil, true
+	}
 	if !a.railAt(x, y) {
 		return nil, false
 	}
@@ -1889,15 +1898,14 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.railWiden(!a.railWide)
 		return nil, true
 	}
-	// A ROW OF THE PROJECT'S RECORD IS A DOOR ONTO THE MENTION, and a press walks
+	// A ROW OF THE PROJECT'S RECORD IS A DOOR ONTO THE CARD — the history page
+	// standing inside that piece of work (taskrecord.go) — and a press walks
 	// through it on the FIRST press, which is what every row of this column has
-	// always done (taskview.go's [app.railRecordLines] says why the door is the
-	// mention and not a room). The cursor moves with it, so the keyboard picks up
-	// where the hand left off — the same bargain a press on a node row makes.
+	// always done. The cursor moves with it, so the keyboard picks up where the
+	// hand left off — the same bargain a press on a node row makes.
 	if line.record != nil {
 		a.railWhere = railSpotOfPast(line.record)
-		a.mentionTask(line.record)
-		return nil, true
+		return a.openTaskRecord(line.record), true
 	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {

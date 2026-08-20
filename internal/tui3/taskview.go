@@ -144,8 +144,16 @@ func taskAwayNote(name string) string {
 
 // The two lines at the foot, which are what this page offers each hand.
 const (
-	taskSheetRoomKeys    = "esc close · ↑↓ move · enter opens its room"
-	taskSheetMentionKeys = "esc close · ↑↓ move · enter puts it in your message"
+	taskSheetRoomKeys = "esc close · ↑↓ move · enter opens its room"
+	// taskSheetInsideKeys is the foot over a row of the project's record, and it
+	// promises what enter now does: it GOES INSIDE that task — the card carrying
+	// what the work came to, what it cost, where it left its changes and the last
+	// thing it said (taskrecord.go).
+	//
+	// It used to read "enter puts it in your message", which was the truth about a
+	// key answering the wrong question. The mention is still one keystroke away
+	// and the card's own foot names it.
+	taskSheetInsideKeys = "esc close · ↑↓ move · enter goes inside it"
 	// taskSheetFilterWord opens the line that says what was typed, and
 	// taskSheetFilterNone is what that line adds when the query has taken every
 	// row off the page. A filtered page with nothing on it and nothing said is a
@@ -191,6 +199,30 @@ type taskSheet struct {
 	// ctrl+w are edits a person's hands already know, and a second implementation
 	// of them would be a second set of bugs in them.
 	query editor
+
+	// detail is the row of the project's record this page is standing INSIDE,
+	// and detailOn is what says it is (taskrecord.go). Together they are the
+	// page's second MODE rather than a second page: the list is still underneath,
+	// esc backs out to it, and the chord still closes the lot.
+	//
+	// IT IS A COPY AND NOT A POINTER, which is where it parts company with
+	// [taskSheetItem.entry]. That one points into the snapshot because it is
+	// rebuilt from it thirty times a second; this one outlives a reload — the
+	// snapshot is replaced whole whenever a node lands (taskmention.go's
+	// [app.tasksLoaded]) — and a card is a reading of one finished piece of work
+	// rather than a live view of a row.
+	detail   session.TaskIndexEntry
+	detailOn bool
+	// detailTop is the card's own scroll. The report under it is as long as the
+	// node made it, and the card is read rather than walked, so an offset is the
+	// only thing that moves ([clampTop], expand.go).
+	detailTop int
+	// tail is the last thing the node said, read off its journal once when the
+	// card opened, and tailRead says the read has happened — an empty tail with
+	// tailRead false is a read still in flight, and one with tailRead true is a
+	// journal that had nothing in it.
+	tail     string
+	tailRead bool
 }
 
 // taskSheetItem is one row of the page: a heading, a node of the tree, or one
@@ -745,6 +777,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 
 	defer a.touch()
+	// THE CARD IS A MODE OF THIS PAGE AND IT TAKES THE KEYS FIRST. It is drawn
+	// over the list, so every key while it is up belongs to it — including esc,
+	// which backs out one layer to the list rather than closing the page
+	// (taskrecord.go).
+	if a.taskSheet.detailOn {
+		return a.taskCardKey(key), true
+	}
 	switch key {
 	case "esc":
 		// esc BACKS OUT ONE LAYER AT A TIME, which is the settings panel's own
@@ -865,10 +904,15 @@ func (a *app) taskSheetCurrent() (taskSheetItem, bool) {
 //
 // WORK ANOTHER CONVERSATION RAN HAS NO ROOM, and it never will: a room is a live
 // lane onto a node this session's graph is holding, and that conversation closed.
-// What it has instead is the door the "@" list already built — the task's name in
-// your message, which mints a pointer block carrying its outcome, its branch and
-// its transcript when you send (taskmention.go). So enter writes the mention,
-// which is the same errand arriving through the same machinery.
+// What it has instead is the CARD (taskrecord.go) — everything the project wrote
+// down about that piece of work and the last thing the node itself said, drawn
+// over this page with the list still underneath.
+//
+// IT USED TO WRITE A MENTION HERE, and that was answering the wrong question.
+// Pressing a row of finished work means "show me what this did"; the mention
+// points the MODEL at it, which is a different errand and one a person had to
+// write a sentence around and pay a turn for. The mention did not go away — it
+// is `m` on the card, named in the card's own foot.
 func (a *app) taskSheetEnter() tea.Cmd {
 	item, ok := a.taskSheetCurrent()
 	if !ok {
@@ -879,8 +923,7 @@ func (a *app) taskSheetEnter() tea.Cmd {
 		node = a.taskSheetNodeFor(item.entry)
 	}
 	if node == nil {
-		a.taskSheetMention(item.entry)
-		return nil
+		return a.taskSheetInside(item.entry)
 	}
 	a.closeTaskSheet()
 	if node.run != "" {
@@ -891,16 +934,18 @@ func (a *app) taskSheetEnter() tea.Cmd {
 	return a.takeRoomPump()
 }
 
-// taskSheetMention writes the name into the draft and leaves. The writing is
-// [app.mentionTask] — the column's record rows do the same thing from the same
-// place — and what belongs to the page is the LEAVING: you came here to find a
-// task, and the box you were sent back to is where the sentence is.
-func (a *app) taskSheetMention(entry *session.TaskIndexEntry) {
-	if entry == nil || strings.TrimSpace(entry.Name)+strings.TrimSpace(entry.ID) == "" {
-		return
+// taskSheetInside opens the card over one row of the record: the page stays up
+// and the list stays underneath, which is the whole of what makes this a MODE
+// rather than a fourth fullscreen surface (taskrecord.go says why).
+//
+// It reads the journal off the loop, which is the command it hands back.
+func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
+	if entry == nil {
+		return nil
 	}
-	a.closeTaskSheet()
-	a.mentionTask(entry)
+	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
+	a.taskSheet.detailTop, a.taskSheet.tail, a.taskSheet.tailRead = 0, "", false
+	return a.readTaskTail(*entry)
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -927,6 +972,10 @@ type taskSheetHit struct {
 // these rows open a page onto work, which is the gesture the roster's column has
 // always answered on the first press.
 func (a *app) taskSheetPress(y int) tea.Cmd {
+	if a.taskSheet.detailOn {
+		a.taskCardPress(y)
+		return nil
+	}
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	if y < 0 || y >= len(hits) || hits[y].kind != taskSheetHitRow {
@@ -939,6 +988,16 @@ func (a *app) taskSheetPress(y int) tea.Cmd {
 // taskSheetHover records which row the pointer is over, repainting only when the
 // answer changed (hover.go's rule, applied to this page).
 func (a *app) taskSheetHover(y int) {
+	if a.taskSheet.detailOn {
+		// THE CARD HAS NOTHING TO LIGHT. Its edges are the way back and its body
+		// is read; a hover step over a paragraph would be the surface offering a
+		// door that is not there (hover.go's own law).
+		if a.hot != (hoverAt{}) {
+			a.hot = hoverAt{}
+			a.touch()
+		}
+		return
+	}
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	next := hoverAt{}
@@ -955,7 +1014,16 @@ func (a *app) taskSheetHover(y int) {
 // taskSheetScroll is the wheel: it walks the cursor rather than an offset of its
 // own, which is the status sheet's bargain ([app.deckMove]) and the roster's
 // ([app.railView] follows the focus). One place decides where the window is.
-func (a *app) taskSheetScroll(delta int) { a.taskSheetMove(delta) }
+func (a *app) taskSheetScroll(delta int) {
+	// INSIDE THE CARD THE WHEEL IS THE CARD'S. There is no cursor in there to
+	// walk — the report is read down — so it moves the offset, which is the tool
+	// detail's own bargain ([app.expandScroll]).
+	if a.taskSheet.detailOn {
+		a.taskCardScroll(delta)
+		return
+	}
+	a.taskSheetMove(delta)
+}
 
 // ── the frame ───────────────────────────────────────────────────────────────
 
@@ -970,6 +1038,18 @@ func (a *app) taskSheetScroll(delta int) { a.taskSheetMove(delta) }
 // is typed into. It is returned all the same so the page plugs into view.go's
 // [app.frame] beside the two sheets that do.
 func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, int) {
+	// THE CARD IS DRAWN INSTEAD OF THE LIST, not over the top of it. It is a mode
+	// of this page and it takes the whole of the page's frame, so the rows below
+	// are not built at all while it is up — and the hits it returns are its own,
+	// mapped through here so that view.go plugs into one function either way
+	// (taskrecord.go).
+	// It answers NO HITS OF ITS OWN. The card's rows are resolved against the
+	// card's own frame ([app.taskCardPress]), and a list hit reported for a row
+	// the list did not draw is exactly how a click opens the wrong task.
+	if a.taskSheet.detailOn {
+		lines, _, caretX, caretY := a.taskCardFrame(width, height)
+		return lines, nil, caretX, caretY
+	}
 	pal := a.pal
 	lines := make([]string, 0, height)
 	hits := make([]taskSheetHit, 0, height)
@@ -1118,7 +1198,7 @@ func (a *app) taskSheetKeysLine() string {
 	case item.node != nil, a.taskSheetNodeFor(item.entry) != nil:
 		return taskSheetRoomKeys
 	}
-	return taskSheetMentionKeys
+	return taskSheetInsideKeys
 }
 
 // taskSheetItemRows draws one row of the page, selection and hover included.
@@ -1298,6 +1378,33 @@ func taskRecordNote(entry session.TaskIndexEntry, runs bool) string {
 		return taskRecordStoppedWord
 	}
 	return taskNoteWord(entry)
+}
+
+// taskStateWord is WHAT ONE ROW OF THE RECORD IS, in a person's words: the
+// state the work came home in, or the judgement about a claim of running.
+//
+// IT IS ONE FUNCTION BECAUSE THREE SURFACES SAY IT. Home's task lines
+// ([homeTaskWord]), the record card's first line ([app.taskCardWhenLine],
+// taskrecord.go) and this file's own tail all answer the same question about the
+// same row, and three spellings of "needs your look" is three chances for two
+// screens to disagree about one finished task.
+//
+// The vocabulary is the surface's and not the engine's: `needs your look` where
+// the code says TaskUnverified (task.go states that law at [taskUnverifiedWord]),
+// and `incomplete` for a claim of running with nothing behind it — which is not
+// a judgement about the work, only the fact that the window went.
+func taskStateWord(entry session.TaskIndexEntry, runs bool) string {
+	switch {
+	case entry.Live() && runs:
+		return taskRecordRunsWord
+	case entry.Live():
+		return taskRecordStoppedWord
+	case entry.Status == string(session.TaskFailed):
+		return doneFailWord
+	case entry.Status == string(session.TaskUnverified):
+		return taskUnverifiedWord
+	}
+	return doneWord
 }
 
 // taskSheetAwayRow is one piece of work another window has out: the state it is

@@ -375,6 +375,9 @@ one dim line, `no tasks yet`; in a directory whose earlier sessions ran tasks, t
 `earlier` rows stand there instead of the label. Under 100 columns there is no column, and
 `ctrl+t` opens the same roster over the body instead once this session has tasks.
 
+Closed with `ctrl+g`, the column leaves a two-column edge at the right of the frame that
+opens it again on a click — see *The task bar disappeared* below.
+
 The roster is a forest. Each root task is followed by its whole family, with children
 joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
 urgent member: needs you, running, idle, parked, then done. There are no state-group
@@ -462,12 +465,15 @@ earlier
   running is ever pushed off to make room.
 - **They are doors, like every other row of the column.** `ctrl+t` and `↑`/`↓` walk into
   them — the cursor carries on down past this session's last task — the pointer lights the
-  row under it, and `enter` or a click **writes that task's name into your message box** as
-  `@its-name`, keeping whatever you had half-written. Sending it mints the pointer block
-  carrying that task's outcome, its branch and its transcript.
+  row under it, and `enter` or a click **goes inside that task**: the full-screen card
+  carrying what the work came to, what it cost, where it left its changes and the last
+  thing it said. `esc` comes back out to the list. See *Going inside an old task* below.
 - **What they do not open is a room.** A room is a live lane onto a task in *this* session's
-  work, and these belong to another conversation — so the mention is the door, which is
+  work, and these belong to another conversation — so the card is the door, which is
   exactly what `enter` does on the task page's own `earlier` rows.
+- **To put one in your message instead**, press `m` from inside the card. That writes
+  `@its-name` into your message box, keeping whatever you had half-written; sending it
+  mints the pointer block carrying that task's outcome, its branch and its transcript.
 - Being dulled is a claim about the *work* — this is the record, not what is happening —
   and never about whether the row answers. The one row down here that is **not** dulled is
   the one another open window is still running.
@@ -485,11 +491,14 @@ directory.
 
 ## Hiding the task column: closing the right sidebar, panel or task bar
 
-`ctrl+g` closes the column of tasks on the right and gives its 30 columns back to the
+`ctrl+g` closes the column of tasks on the right and gives its columns back to the
 conversation. Press it again and the column comes back with the current state of the
 work in it, including anything that started or finished while it was gone — nothing here
 is a snapshot; the column is redrawn from the tasks every frame. The `ctrl+g — hide` line
 at the bottom of the column is the same door for the pointer: click it and it closes.
+
+**A closed column leaves a thin edge behind, and clicking it opens the column again** —
+see *The task bar disappeared* below.
 
 The choice is remembered. It is written to your profile the moment the column moves, as
 the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
@@ -511,6 +520,35 @@ With the column closed, work is still visible:
 empty column is still a column to close, and so is one standing on the project's record
 alone. It does nothing, and is not swallowed, only when there is no roster on the frame at
 all: a frame under 100 columns where nothing has raised the roster over the body.
+
+## The task bar disappeared — how do I get the task column back
+
+A closed column does not vanish without a trace. It leaves a **thin edge two columns wide
+down the right of the frame**, with a dim `‹` handle at the middle of it:
+
+```
+ …and the parser suite passes now.                                       ‹
+```
+
+**Click anywhere on that edge and the column comes back** — the whole strip is the door,
+not just the handle, so there is nothing to aim at. It is the same act as `ctrl+g`, which
+still works and is still the key.
+
+- Under the pointer the handle brightens, which is how everything pressable on this screen
+  says so.
+- **One cell above the handle says what the work is doing**, while there is anything worth
+  saying: `▲` in the question colour when a task is waiting on you, `●` in the accent when
+  something is running. Nothing at all otherwise — a session with nothing running and
+  nothing waiting leaves the edge silent, and so does one that has run no work.
+- The edge costs the conversation two columns, exactly as the column it stands for costs it
+  its own width. The text re-wraps; nothing is ever drawn underneath it.
+- **On a frame narrower than 100 columns there is no edge**, because there is no column at
+  that width to bring back. The roster still opens over the whole frame with `ctrl+t`.
+- The keyboard is unchanged. The edge is for the hand that does not type chords; `ctrl+g`
+  is for the one that does.
+
+The legend above the message box also carries `ctrl+g tasks` while the column is away and
+this session has run something.
 
 ## Using the roster from the keyboard
 
@@ -539,9 +577,10 @@ earlier one — `ctrl+t` falls through rather than being swallowed.
 
 **The walk runs into the `earlier` rows.** `↓` past this session's last task steps into
 the project's record at the foot of the column, `↑` comes back out, and `enter` down there
-writes that task's name into your message instead of opening a room, because work another
-conversation ran has no room to open. On a column that is *only* record — a directory you
-worked in last week, opened fresh — `ctrl+t` parks the cursor on the first of those rows.
+**goes inside that task** instead of opening a room, because work another conversation ran
+has no room to open — see *Going inside an old task* above. On a column that is *only*
+record — a directory you worked in last week, opened fresh — `ctrl+t` parks the cursor on
+the first of those rows.
 
 The cursor follows the task, not the row, when families reorder or fold around it.
 
@@ -664,7 +703,7 @@ for a reason you cannot see.
 | `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the section words and over another window's rows |
 | `pgup` `pgdown` | move twelve rows |
 | `home` `end` | first row, last row |
-| `enter` | open it — see below |
+| `enter` | open it — a room, or inside the record card; see below |
 | any printable key | type into the filter |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -679,12 +718,10 @@ going to get:
   `earlier` that this conversation ran — opens its room, exactly as `enter` on the roster
   does. The foot reads `esc close · ↑↓ move · enter opens its room`.
 - A task **another conversation ran** has no room to open: a room is a live lane onto a task
-  in this session's work, and that session is closed. `enter` writes its name into your
-  message box instead — `@fix-the-nil-map-crash` — which is the door that already exists for
-  reaching old work: sending it mints the pointer block carrying that task's outcome, its
-  branch and its transcript. The foot reads
-  `esc close · ↑↓ move · enter puts it in your message`. Your half-written sentence is kept;
-  the name is appended to it.
+  in this session's work, and that session is closed. `enter` **goes inside it** instead —
+  the card of everything the project wrote down about that piece of work, over the same
+  page, with this list still underneath. The foot reads
+  `esc close · ↑↓ move · enter goes inside it`. See *Going inside an old task* below.
 - A task **running in another window right now** takes no cursor at all: `↑`/`↓` step over
   it and `enter` does nothing, because it has neither a room here nor a landed row for a
   mention to point at. On a page whose only rows are those, the foot reads
@@ -693,6 +730,61 @@ going to get:
 Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
+
+## Going inside an old task — see what a past task did, read a finished task's report
+
+`enter` on any `earlier` row — on the task page, or on the dulled record rows at the bottom
+of the task column — **goes inside that task**. A click does the same on the first press.
+What opens is a full-screen card over the same page, with the list still underneath:
+
+```
+ Fix the nil-map crash                                              esc back
+ ─────────────────────────────────────────────────────────────────────────────
+ done · landed 3h ago · ran 4m12s
+
+ Added the guard and the regression test; the parser suite passes.
+
+ anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
+ 3 files changed
+
+ worktree · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
+ transcript · ~/.aforge/v3/projects/-tmp-alpha/aaaa…/tasks/20260819-120133_7.jsonl
+
+ what it said at the end
+ Added a nil check in parseRow before the map write, and a regression test that
+ fails without it. The parser suite passes: 84 tests, 0 failures.
+ ─────────────────────────────────────────────────────────────────────────────
+ esc back · ↑↓ scroll · m puts it in your message
+```
+
+Top to bottom: the title; the state it came home in, when it landed and how long it ran;
+the outcome sentence; what it ran on and what it spent; how many files it changed; where it
+left the work and where the story is; and then **the last thing the task itself said** —
+the whole report, read off that task's own journal, of which the outcome above is the first
+sentence.
+
+- **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
+  money line, one that wrote nothing has no file count, one still claiming to be running
+  has no clock. Nothing here appears as a zero.
+- **The two addresses are clickable where they still exist.** The transcript is a real file
+  on this disk and opens in your editor on a click; a worktree that has since been merged
+  and pruned is printed as plain text, because a link that opens nothing is worse than no
+  link. A task whose worktree is gone says `branch` and the branch name instead — that is a
+  name inside your repository, not a place on the disk, so it is never a link.
+- **`esc` backs out to the list**, one layer at a time, with the cursor still on the row you
+  came in on. A second `esc` closes the page. `ctrl+.` closes the whole page from inside.
+- **`↑`/`↓` scroll the card**, `pgup`/`pgdown` a screenful, `home`/`end` the ends. A long
+  report is read down rather than cut.
+- **`m` puts the task in your message** — `@its-name`, appended to whatever you had
+  half-written — and closes the page. That is where the mention gesture lives now: `enter`
+  used to write it, and `enter` goes inside instead.
+- If the row names a transcript that is **not on this disk any more** — a session folder you
+  deleted, work that happened on another machine — the card says
+  `its transcript is not on this disk any more` where the report would have been.
+
+A task **this** session ran opens its room instead, which is the live thing: the roster's
+`enter`, a strip chip and a `task 7` link all land there. Only work from a conversation that
+is closed opens the card.
 
 ## The "view more" line at the bottom of the task column
 
