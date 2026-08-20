@@ -230,7 +230,7 @@ func TestThePathUnderThePictureIsNeverCut(t *testing.T) {
 	preview := imagePreview{width: 1024, height: 768, bytes: 1536, ok: true}
 	path := "/tmp/lab/.aforge-v3/images/harbour.png"
 
-	one := picturePathLine(pal, path, preview, 70)
+	one := picturePathLine(linker{pal: pal, on: true}, path, preview, 70)
 	if len(one) != 1 {
 		t.Fatalf("wide frame drew %d lines, want one: %q", len(one), one)
 	}
@@ -238,7 +238,7 @@ func TestThePathUnderThePictureIsNeverCut(t *testing.T) {
 		t.Fatalf("line = %q", got)
 	}
 
-	two := picturePathLine(pal, path, preview, len(path)+2)
+	two := picturePathLine(linker{pal: pal, on: true}, path, preview, len(path)+2)
 	if len(two) != 2 || plain(two[0]) != path {
 		t.Fatalf("a frame with room for the path alone = %q", two)
 	}
@@ -246,7 +246,7 @@ func TestThePathUnderThePictureIsNeverCut(t *testing.T) {
 		t.Fatalf("the facts moved to their own line as %q", plain(two[1]))
 	}
 
-	narrow := picturePathLine(pal, path, preview, 20)
+	narrow := picturePathLine(linker{pal: pal, on: true}, path, preview, 20)
 	joined := ""
 	for _, line := range narrow[:len(narrow)-1] {
 		joined += plain(line)
@@ -263,7 +263,7 @@ func TestThePathUnderThePictureIsNeverCut(t *testing.T) {
 func TestThePathUnderThePictureIsAHyperlink(t *testing.T) {
 	pal := newPalette(tokens.TrueColor, false)
 	path := "/tmp/lab/harbour.png"
-	line := picturePathLine(pal, path, imagePreview{width: 8, height: 8, bytes: 90, ok: true}, 70)[0]
+	line := picturePathLine(linker{pal: pal, on: true}, path, imagePreview{width: 8, height: 8, bytes: 90, ok: true}, 70)[0]
 	if !strings.Contains(line, "\x1b]8;;file://"+path) {
 		t.Fatalf("no file link in %q", line)
 	}

@@ -197,6 +197,12 @@ The second half of the list, with the exact sentence each one says.
     designer is not offered at all over `--host` and aforge says it cannot build one from
     here. Running a harness that already exists is unaffected.
 
+13. **File paths are not clickable.** In a local session every real path on screen is a
+    hyperlink you can cmd+click. Here the files are on the far machine and the only
+    thing your terminal could open is a path of the same name on this one — so no path
+    is a link over `--host`. They are drawn in full instead, and `/status` names them
+    the way you would have to name them to reach them: `devbox:/srv/app/session.jsonl`.
+
 ## Connecting an account over --host
 
 `/connect` is off over a connection. The panel writes to this machine's account store

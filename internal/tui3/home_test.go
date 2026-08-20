@@ -1592,3 +1592,61 @@ func TestTheOtherDoorsAlsoStopDumpingThePath(t *testing.T) {
 		}
 	}
 }
+
+// HOME NAMES OTHER PEOPLE'S DIRECTORIES, AND THEY ARE DOORS (pathlink.go).
+//
+// Home is the one surface whose whole subject is work that is somewhere else,
+// so the place band under a conversation's name is the fastest route to the
+// project it belongs to. It is a full-frame surface and does not pass through
+// the conversation's row pass, which is why the link is hung here by hand.
+func TestHomeLinksTheProjectDirectoryItNames(t *testing.T) {
+	lab := newHomeLab(t)
+	// A workspace that is REALLY THERE, because a path that is not found on
+	// disk is drawn plain and this test would then be asserting nothing.
+	workspace := t.TempDir()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the picker", workspace, time.Now())
+
+	a := lab.app(mine)
+	// Whether a link is written at all is read off TERM at construction, and
+	// TERM belongs to whoever ran the tests.
+	a.pathLinks = true
+	a.openHome()
+
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	frame := strings.Join(lines, "\n")
+	if !strings.Contains(frame, "\x1b]8;;"+fileURI(workspace)) {
+		t.Fatalf("home's place band is not a door to %q:\n%s", workspace, ansi.Strip(frame))
+	}
+	// AND THE SCREEN IS THE SAME SCREEN. A link occupies no cells, so nothing
+	// home drew has moved.
+	a.pathLinks = false
+	plain, _, _, _ := a.homeFrame(width, height)
+	if got, want := ansi.Strip(frame), ansi.Strip(strings.Join(plain, "\n")); got != want {
+		t.Fatalf("the link changed what home says:\n got %q\nwant %q", got, want)
+	}
+	for i := range lines {
+		if ansi.StringWidth(lines[i]) != ansi.StringWidth(plain[i]) {
+			t.Fatalf("row %d changed width when linked", i)
+		}
+	}
+}
+
+// A directory that is not on this disk is named and not linked — the honesty
+// rule, on the one surface that routinely names places this machine has never
+// had (a project recorded on another machine, a folder since deleted).
+func TestHomeDoesNotLinkAProjectThatIsGone(t *testing.T) {
+	lab := newHomeLab(t)
+	gone := filepath.Join(t.TempDir(), "deleted-since")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the picker", gone, time.Now())
+
+	a := lab.app(mine)
+	a.pathLinks = true
+	a.openHome()
+
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	if frame := strings.Join(lines, "\n"); strings.Contains(frame, "\x1b]8;;") {
+		t.Fatalf("home linked a directory that is not there:\n%s", frame)
+	}
+}
