@@ -103,17 +103,23 @@ the conversation.
 
 ## The line above the message box (the legend)
 
-The rule that separates the conversation from your own business has the place written
-into it, like the legend on a fieldset:
+The rule that separates the conversation from your own business has this conversation's
+name written into it, like the legend on a fieldset:
 
 ```
-─ ~/s/aforge-v2 · chat-v3-task* ────────── / commands ─
+─ porting the parser · chat-v3-task* ────────── / commands ─
 ```
 
-The left is the workspace path abbreviated fish-style — home becomes `~`, every parent
-is cut to its initial, and the last segment is never abbreviated — plus the git branch,
-with a `*` when the tree is dirty. On a remote session the machine's name is prefixed
-and is never cut along with the path (`devbox:~/code/app`).
+The left is **the name this conversation gave itself** after your first exchange, then
+the git branch, with a `*` when the tree has uncommitted work. On a session running over
+`--host` the machine leads them both — `devbox · porting the parser` — with `·` between,
+not the colon a path gets.
+
+**Before the name exists, that slot is empty.** A session names itself once the first
+exchange finishes, so a brand-new conversation's legend reads just `─ chat-v3-task* ───`.
+It never says "untitled" and never puts anything in the gap. In a directory that is not a
+git repository there is no branch either, and the left end of the line is simply blank
+rule.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
@@ -147,18 +153,43 @@ at all when nothing has been run.
 
 While a question is waiting, the whole legend goes violet.
 
-As the terminal narrows the legend gives things up in order: hints first, then the
-branch, then the path shortens from `~/s/aforge-v2` to `…/aforge-v2` to `aforge-v2`,
-then the plain rule. Below width **70** the branch and the hint slot are dropped
-outright.
+As the terminal narrows the legend gives things up in order. A long name is **cut with
+an ellipsis** rather than dropped, so the branch and the hint slot keep their cells; when
+even a cut name would have fewer than 12 cells the hint slot is spent on it first, and
+only then is the name dropped and the branch left standing alone. Below width **70** the
+branch and the hint slot are dropped outright and the name is the last thing on the line
+— it is the one fact you cannot read off the shell prompt behind this pane. With nothing
+true to put at either end the line is the plain rule it always was.
 
 While a task room is open the left says exactly `room · esc/←← main` — and exactly
 `room · esc your line back` while a history walk is on, since for those keystrokes `esc`
-gives your own draft back before the room's own `esc` gets the key. The path and the
-branch are not drawn either way. The pinned header at the top of the frame says the same
+gives your own draft back before the room's own `esc` gets the key. The name and the
+branch are not drawn either way; the task's own title is on the status line below, which
+a room renames. The pinned header at the top of the frame says the same
 thing in its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
 you are back in the conversation. Clicking the page itself does not leave a room — a
 press on empty space does nothing here as it does everywhere.
+
+## Which folder am I in — where the workspace path and the git branch are shown
+
+The line above the message box used to carry the folder. It carries this conversation's
+name now, so the workspace path lives in two places, and both say it in full:
+
+- **`/status`** (aliases `/info`, `/context`) prints a `place` line — the whole path,
+  then ` · ` and the branch with its `*` if the tree is dirty. On a remote session the
+  machine is in front of it: `devbox:/srv/code/app`.
+- **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
+  with the path abbreviated fish-style (`~/s/aforge-v2`) because a sheet row is one line.
+
+The **branch** is also on the legend, right after the conversation's name —
+`porting the parser · chat-v3-task*` — so a glance at the line above the box tells you
+which branch you are working on without opening anything. There is no branch on a
+session running over `--host`: the git probe would read *this* machine's repository at
+the other one's path, so nothing is shown rather than something possibly wrong.
+
+If the answer is just the word `aforge`, this conversation has no project — it was
+started somewhere with nothing to borrow, and works in a directory of its own. `/status`
+prints where that actually is.
 
 ## The status line at the bottom
 
@@ -361,7 +392,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | --- | --- |
 | session delta (`Σ +128 −14`) drawn at all | width 120 |
 | telemetry may wrap to its own row | below width 100 |
-| legend loses branch and hint slot; no context sparkline | below width 70 |
+| legend loses branch and hint slot, keeping the conversation's name; no context sparkline | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |

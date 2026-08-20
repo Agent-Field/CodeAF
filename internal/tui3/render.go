@@ -834,8 +834,8 @@ func (a *app) compactRow(e *entry, width int) string {
 //
 // THE PRODUCT NAME IS GONE from this line. It was here for the screenshot —
 // a terminal photograph that names everything except the program — and the
-// legend above it now carries the workspace path, which identifies a pane far
-// better than a word that is the same in every one of them.
+// identity cluster below carries the conversation's own name, which identifies
+// a pane far better than a word that is the same in every one of them.
 //
 // The two rows are drawn by [app.legend] (the input's top border) and
 // [app.statusRows] (the status row, which becomes two rows on a narrow frame).
@@ -849,8 +849,8 @@ const (
 	// gap between the clusters is what separates them, and a gap of one cell is
 	// not a gap.
 	hudWrap = 100
-	// hudTight is the narrow floor: the legend keeps its path and loses its
-	// branch, the hints go, and the sparkline goes with them.
+	// hudTight is the narrow floor: the legend keeps the conversation's name and
+	// loses its branch, the hints go, and the sparkline goes with them.
 	hudTight = 70
 )
 
@@ -1797,22 +1797,37 @@ func (a *app) stateWord() (string, string) {
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
 
-// ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE PLACE IN IT ────────────────
+// ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────
 //
 // The rule above the input was one unbroken line whose only job was to say
 // "below this is your business". It still says that, and it now carries the two
-// facts that belong to the BOX rather than to the conversation, in the shape a
-// form has used for fifty years — a fieldset legend, the label sitting in the
-// border itself:
+// facts that identify the conversation you are typing into, in the shape a form
+// has used for fifty years — a fieldset legend, the label sitting in the border
+// itself:
 //
-//	─ ~/s/aforge-v2 · chat-v3-task* ──────────────── @ files · / commands ─
+//	─ porting the parser · chat-v3-task* ─────────── / commands ─
 //
-// LEFT IS WHERE YOU ARE. The path is fish-abbreviated: the home directory
-// becomes "~" and every parent is cut to its initial, because the parents are
-// how you got there and the last segment is where you are. The last segment is
-// NEVER abbreviated — a legend that says "~/s/a-v2" has spent its cells telling
-// you nothing. The branch follows it with a "*" when the tree is dirty, which
-// is the one bit of git state a person acts on without asking for more.
+// LEFT IS WHICH CONVERSATION THIS IS. It was the workspace path for a long
+// time, and a path is the one fact on this frame a person already has: they
+// typed the cd that got them here, the shell prompt behind this pane still says
+// it, and every other pane they have open says the same abbreviated three
+// letters. What they cannot recover from anywhere is WHICH of their
+// conversations this pane is — so the session's own name leads, the name it
+// gave itself from its first exchange (internal/session's title.go), read back
+// as words by [app.sessionName]. The branch follows it with a "*" when the tree
+// is dirty, which is the one bit of git state a person acts on without asking
+// for more.
+//
+// THE PATH IS MOVED, NOT LOST. /status prints it in full, and the phone tier's
+// sheet carries it under "place" with the branch beside it (statusdeck.go's
+// [app.deckItems]). A path is a thing a person copies into another program,
+// which is something you do from a note and not from a border.
+//
+// AN UNNAMED SESSION SAYS NOTHING WHERE THE NAME WOULD GO. The name lands one
+// turn in, and THE EMPTINESS LAW governs the gap before it: the legend reads
+// `─ chat-v3-task* ───` and never "untitled", never a placeholder. A session
+// with neither a name nor a branch leaves the left end empty and the line is
+// the plain rule it always was, with the hints still on its right.
 //
 // RIGHT IS WHAT THIS BOX ANSWERS TO. The affordance of the input line itself —
 // "/ commands" — and it is here rather than in the status line for the reason it
@@ -1822,8 +1837,11 @@ const waitingWord = "waiting · your call"
 // cheatsheet beside a live prompt is a cheatsheet nobody reads.
 //
 // The narrow ladder drops in the order of what a person can recover elsewhere:
-// the microcopy first (the keys still work), then the branch (the shell prompt
-// behind this one says it), then the path abbreviates harder. The last thing
+// the microcopy first (the keys still work whether or not they are printed),
+// then the branch (the shell prompt behind this one says it) — and THE NAME IS
+// CUT RATHER THAN DROPPED. It is the only thing on this line that can be eighty
+// cells long (session's titleLimit), so it is what gives cells back, one
+// ellipsis at a time, while the branch and the hints keep theirs. The last thing
 // standing is the rule it always was.
 
 // microcopy is the input's own affordance, and the legend's default right.
@@ -1853,20 +1871,21 @@ func (a *app) legend(width int) string {
 	if a.asking() || a.awaitingTask() {
 		paint = a.pal.ask
 	}
-	// THE LADDER, in the order of what a person can recover elsewhere: the
-	// microcopy first (the keys still work whether or not they are printed),
-	// then the branch (the shell prompt behind this pane says it), and only then
-	// is the path itself cut — one strength at a time, and never its last
-	// segment.
-	attempts := []struct {
-		left, right string
-	}{
-		{a.legendLeft(width, 0), a.legendRight(width)},
-		{a.legendLeft(width, 0), ""},
-		{a.legendPath(0), ""},
-		{a.legendPath(1), ""},
-		{a.legendPath(2), ""},
+	// THE LADDER, in the order of what a person can recover elsewhere. Each rung
+	// is told its own room, because the left label is now BUILT to fit rather
+	// than measured and rejected: the name is cut to whatever the frame leaves
+	// it, and only when there is not even [legendNameFloor] worth of cells for it
+	// is the hint slot spent instead — the keys it names keep working unprinted,
+	// and which conversation this is is not written anywhere else on a frame
+	// this narrow. A rung whose name did not survive is skipped rather than
+	// drawn, which is what puts the hints on the block before the name.
+	right := a.legendRight(width)
+	attempts := make([]struct{ left, right string }, 0, 2)
+	if left, named := a.legendLeft(width, legendRoom(width, right)); named {
+		attempts = append(attempts, struct{ left, right string }{left, right})
 	}
+	bare, _ := a.legendLeft(width, legendRoom(width, ""))
+	attempts = append(attempts, struct{ left, right string }{bare, ""})
 	for _, attempt := range attempts {
 		if line, ok := a.legendLine(attempt.left, attempt.right, width, paint); ok {
 			return line
@@ -1875,17 +1894,53 @@ func (a *app) legend(width int) string {
 	return a.rule(width)
 }
 
+// legendGap is the shortest run of rule the two labels will leave between them.
+//
+// It is three rather than one because a name can now fill this line on its own:
+// a label cut to the last cell leaves `… · chat-v3-task* ─ / commands ─`, where
+// the single dash reads as two labels that collided rather than as a border
+// with two labels set into it. Three cells is the least that still reads as a
+// rule, and it is bought from the name, which is the thing that had too much to
+// say in the first place.
+const legendGap = 3
+
+// legendRoom is how many cells one attempt leaves for its left label: the
+// width, less the border's own two cells at the head, the space that separates
+// the label from the fill, the gap, and the right label's tail.
+//
+// It is the arithmetic of [app.legendLine] read forwards instead of backwards,
+// and it lives here because the left label now has to be BUILT to a budget
+// rather than merely measured against one. Two functions computing the same
+// number would drift; this is the one that computes it.
+func legendRoom(width int, right string) int {
+	tail := 0
+	if right != "" {
+		tail = ansi.StringWidth(right) + 3
+	}
+	return width - 3 - legendGap - tail
+}
+
 // legendLine lays one attempt out, and reports whether it fitted. The label
 // sits one cell inside the border on each side, which is what makes it read as
 // a legend rather than as text that collided with a rule.
+//
+// AN EMPTY LEFT IS A LINE, NOT A FAILURE. A session that has not named itself
+// in a directory that is not a repository has nothing true to put at that end
+// (the emptiness law), and the hint slot at the other end is the newcomer's
+// only pointer at "/" — so the border draws from the frame's edge and the keys
+// keep their place. Only an attempt with nothing at EITHER end is refused, and
+// what answers that is the plain rule.
 func (a *app) legendLine(left, right string, width int, paint func(string) string) (string, bool) {
-	head := "─ " + left + " "
+	head := "─"
+	if left != "" {
+		head = "─ " + left + " "
+	}
 	tail := ""
 	if right != "" {
 		tail = " " + right + " ─"
 	}
 	fill := width - ansi.StringWidth(head) - ansi.StringWidth(tail)
-	if left == "" || fill < 1 {
+	if (left == "" && right == "") || fill < 1 {
 		return "", false
 	}
 	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
@@ -1895,61 +1950,149 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	// which is what makes the span its own answer to "was it drawn".
 	a.homeDoor = hudSpan{}
 	if strings.HasPrefix(right, homeDoorWord) {
-		at := 2 + ansi.StringWidth(left) + 1 + fill + 1
+		at := ansi.StringWidth(head) + fill + 1
 		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
 	}
-	line := a.pal.dim("─ ") + paint(left) + a.pal.dim(" "+strings.Repeat("─", fill))
+	line := a.pal.dim("─")
+	if left != "" {
+		line = a.pal.dim("─ ") + paint(left) + a.pal.dim(" ")
+	}
+	line += a.pal.dim(strings.Repeat("─", fill))
 	if tail != "" {
 		line += a.pal.dim(" ") + a.pal.dim(right) + a.pal.dim(" ─")
 	}
 	return line, true
 }
 
-// legendLeft is the place: the path, and the branch when there is one and the
-// frame is not tight.
-func (a *app) legendLeft(width, hard int) string {
-	// THE PLACE IS THE ROOM while one is open, and the branch goes with the path:
-	// neither is a fact about the page on screen, and the one thing a person in
-	// here needs from this slot is the key that gets them out (room.go).
+// legendNameFloor is the fewest cells worth spending on a cut name. Below it
+// the name is dropped entirely and the branch stands alone, because "po…" names
+// no conversation — it is an ellipsis wearing two letters, and the cells it took
+// said less than the branch they were taken from.
+const legendNameFloor = 12
+
+// branchWord is the branch as every surface writes it: its name, and a "*" when
+// the tree has uncommitted work. An unknown branch is the empty string, which
+// the emptiness law then draws as nothing wherever this is spent.
+//
+// It is one function because it is printed twice — here in the border and in the
+// status sheet's "place" row (statusdeck.go) — and a dirty mark that appeared in
+// one of those and not the other would be a person's answer to "is this tree
+// clean" depending on which line they happened to read.
+func (a *app) branchWord() string {
+	if a.branch == "" {
+		return ""
+	}
+	if a.branchDirty {
+		return a.branch + "*"
+	}
+	return a.branch
+}
+
+// legendLeft is which conversation this is, cut to the cells it was given: the
+// session's own name, the branch it is being written on, and — on a session
+// running elsewhere — the machine in front of both.
+//
+// THE MACHINE KEEPS ITS PLACE NOW THAT THE PATH HAS LOST ITS OWN. host.go's law
+// is that a connection is shown as the place and nowhere else, and this end of
+// the legend is that place: `devbox · porting the parser`. It is written as a
+// SEGMENT rather than with the path's colon, because `devbox:` in front of a
+// sentence of English is scp syntax pointed at something nobody can copy. It is
+// never cut, for the reason the path never cut it either — which machine is the
+// half of the answer a person cannot reconstruct from anything else on screen.
+//
+// THE TIGHT FRAME KEEPS ONE FACT, and it is the name: the branch is on the shell
+// prompt behind this pane and the name is nowhere else on a frame this narrow.
+// A session with no name yet is the exception that proves it — the branch stands
+// alone at every width rather than leave the border with nothing in it.
+//
+// The second answer is whether THE NAME SURVIVED the cut, which is what lets
+// [app.legend] spend the hint slot on it before giving it up: a label that had
+// to drop the name is a label worth re-asking for with more room. A label with
+// no name to lose — a session that has not spoken yet, a room — answers true,
+// because there is nothing more room could buy it.
+func (a *app) legendLeft(width, room int) (string, bool) {
+	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
+	// the path: none of them is a fact about the page on screen, and the one
+	// thing a person in here needs from this slot is the key that gets them out
+	// (room.go). The task's own title is on the status row two lines down, where
+	// a room renames the identity cluster ([app.identityParts]).
 	if a.roomOpen() {
 		// AND WHILE A HISTORY WALK IS ON IT SAYS WHAT ESC ACTUALLY DOES, which for
 		// those few keystrokes is not "main": the walk is dismissed first and the
 		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
-			return roomLegendRecallWord
+			return roomLegendRecallWord, true
 		}
-		return roomLegendWord
+		return roomLegendWord, true
 	}
-	path := a.legendPath(hard)
-	if a.branch == "" || width < hudTight {
-		return path
+	name := a.sessionName()
+	if room < 1 {
+		return "", name == ""
 	}
-	branch := a.branch
-	if a.branchDirty {
-		branch += "*"
+	branch := a.branchWord()
+	if width < hudTight && name != "" {
+		branch = ""
 	}
-	return path + " · " + branch
+	// The fixed half is everything the frame may not cut. Only the name gives
+	// cells back, so it is measured against what the rest has already spent.
+	fixed := a.host
+	if branch != "" {
+		fixed = dotted(fixed, branch)
+	}
+	if name == "" {
+		return fit(fixed, room), true
+	}
+	spare := room - ansi.StringWidth(fixed)
+	if fixed != "" {
+		spare -= ansi.StringWidth(legendJoin)
+	}
+	if spare < legendNameFloor {
+		return fit(fixed, room), false
+	}
+	return dotted(a.host, fit(name, spare), branch), true
 }
 
-// legendPath is the workspace, abbreviated at one of three strengths — and, on
+// legendJoin is the separator between the legend's facts, and dotted threads any
+// number of them onto it while skipping the ones that are not there — which is
+// the emptiness law spelled as a function, since a missing branch must leave no
+// dangling "·" behind it.
+const legendJoin = " · "
+
+func dotted(parts ...string) string {
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, legendJoin)
+}
+
+// placePath is the workspace, abbreviated at one of three strengths — and, on
 // a session that is running on another machine, the machine's name in front of
 // it: `devbox:~/code/app`.
 //
-// THE HOST IS NOT CUT WITH THE PATH. The three strengths exist so the legend can
-// keep saying where you are on a narrow frame, and on a remote session WHICH
-// MACHINE is the half of that answer a person cannot reconstruct from anything
-// else on the screen — the path they might recognize, the host they would have
-// to remember. So the abbreviation eats the path and leaves the name. The home
-// abbreviation is still this machine's home, which is why a remote path rarely
-// collapses to `~`: it is the far machine's home and nobody here knows it.
-func (a *app) legendPath(hard int) string {
+// IT IS NO LONGER ON THE LEGEND. The border under the conversation now says
+// which conversation it is, and the path it used to say is on the status sheet's
+// "place" row and in /status (statusdeck.go, statusnote.go), which is where a
+// path a person copies belongs. The three strengths are kept because the sheet
+// is a forty-four-column page.
+//
+// THE HOST IS NOT CUT WITH THE PATH. On a remote session WHICH MACHINE is the
+// half of the answer a person cannot reconstruct from anything else — the path
+// they might recognize, the host they would have to remember. So the
+// abbreviation eats the path and leaves the name. The home abbreviation is still
+// this machine's home, which is why a remote path rarely collapses to `~`: it is
+// the far machine's home and nobody here knows it.
+func (a *app) placePath(hard int) string {
 	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.tilde, hard)))
 }
 
 // legendRight is the hint slot: the state's own keys when it has any, the
 // input's two affordances when it does not, and nothing at all on a tight
-// frame — where the cells are worth more to the path than to a reminder.
+// frame — where the cells are worth more to the conversation's name than to a
+// reminder.
 func (a *app) legendRight(width int) string {
 	if width < hudTight {
 		return ""
