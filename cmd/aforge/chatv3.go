@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,6 +206,22 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// writer here is the same launch this door has always made.
 	wire, closeWire := v3Wire()
 	defer closeWire()
+
+	// Anything written to the standard logger while the surface owns the
+	// terminal tears straight through the frame as a raw row — a checkpoint
+	// warning or a media fallback lands spliced into whatever the person is
+	// typing. Same fix as the v2 door, for the same reason: the logger goes to
+	// a file beside the profile for the surface's whole lifetime, and comes
+	// back to stderr on the way out. A profile that cannot take the file keeps
+	// stderr — a lost frame is better than a lost warning.
+	if logFile, logErr := os.OpenFile(filepath.Join(settings.ProfileDir, "chat.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
+		log.SetOutput(logFile)
+		defer func() {
+			log.SetOutput(os.Stderr)
+			_ = logFile.Close()
+		}()
+	}
 
 	return tui3.Run(context.Background(), tui3.Options{
 		Agent:  agent,
