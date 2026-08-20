@@ -59,29 +59,23 @@ Once you are in a conversation, `/home` opens the screen whenever you want it.
 Two columns, no borders.
 
 **On the left**, each project is a dim heading — the last part of its folder, or `~` for
-your home directory — with one line per session under it. **The whole column sits at the
-bottom of the frame**, against the box you type into:
+your home directory — with one line per session under it. **With nothing typed the list
+hangs from the top of the frame**, as a page you are reading should:
 
 ```
-  gitlab-mirror
-  ○ Log Rotation                                    2 tasks · 20d
-
+  aforge-v2                          Pricing Research
+  ▲ Pricing Research  4m
+  ● Port the Picker  12m             aforge-v2 · ~/src/aforge-v2
+  ○ Import Cleanup    3h
+  ▸ …3 more, quiet…                  open in another window · waiting on you
+                                     can I run: rm -rf build/
   pricing-api
-  ▲ Pricing Research                            waiting on you · 4m
-  ○ Import Cleanup                                    3 tasks · 3h
-
-  aforge-v2
-  ● Port the Resume Picker                         2 running · 12m
-  ▸ …3 more, quiet since 2d
-  ○ Fixing the Home Screen                                     now
- ──────────────────────────────────────────────────────────────────
- type to search or start something new · ↑↓ pick · enter open
- ↑↓ move · enter open · esc close
+  ○ Log Rotation     20d             done  Port the Picker            2h
+                                       the roster resumes cleanly
 ```
 
-`Fixing the Home Screen` there is the conversation this window is in — the bottom row, with
-the cursor on it. The preview of whatever the cursor is on is drawn in a second column to
-the right of all this, and it reads top-down; only the list is anchored to the foot.
+Projects are ordered by the one you spoke in most recently. The cursor opens on the
+conversation this window is in, and the preview on the right follows it.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
 spoke in it — or `another window` where another terminal is sitting on that conversation
@@ -102,9 +96,7 @@ you last spoke. Quiet ones past the first four collapse into one dim line,
 ## The pane on the right of home — the preview of the session under the cursor
 
 **On the right** is a preview of whatever the cursor is on, and it is read top to bottom
-as bands separated by blank lines — no rules and no borders anywhere. It is **not** anchored
-to the foot the way the list beside it is: a card is assembled downward from its title, and
-lifting it would take the facts off the bottom rather than move it down the screen.
+as bands separated by blank lines — no rules and no borders anywhere:
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    highlighted row on the left wears, so the eye travels between them;
@@ -117,6 +109,18 @@ lifting it would take the facts off the bottom rather than move it down the scre
 5. the **last thing said** in it;
 6. a dim line of **facts**: `spent $1.25 · 34k tokens · last active 12m`.
 
+**It is there in both of home's shapes** and it never moves: when the list becomes a
+drop-up under your typing the card stays exactly where it is, because a card is assembled
+downward from its title and lifting it would take the facts off the bottom rather than move
+it down the screen.
+
+**It follows the cursor through a search as well.** Walking `↑`/`↓` through filtered matches
+switches the card to each one, so you are choosing between conversations by what they are
+rather than by name alone. It goes **empty** — nothing drawn at all — when the cursor is on
+something that is not a conversation: a project's `…13 more` line, or the
+`start a new conversation` row, which has nothing to preview because that chat does not
+exist yet.
+
 A frame too short for all of that drops bands from the bottom — the facts go first — and
 never touches the name. Under 80 columns the right column is dropped entirely and the list
 takes the whole frame, because an index you can read beats a preview you cannot.
@@ -125,39 +129,31 @@ Nothing that is zero is drawn, anywhere. A chat that ran no tasks says nothing a
 one that spent nothing says nothing about spending; a facts line with no facts is not
 drawn at all.
 
-## Why is the list at the bottom of home — home is a drop-up
+## Why did the list jump to the bottom when I typed — home's two shapes
 
-**Home is anchored at the foot, always** — with something typed and with nothing typed.
-The bottom row of the list sits directly above the box, the rows stack **upward** from
-there, and the cursor starts on that bottom row. Your eye and your hands are already at
-the box; a cursor up in the top-left corner would be your attention in two places at once.
+Home has **two panes and two shapes**, and only the left pane changes shape.
 
-Because the list is anchored at the bottom, **the order is turned over** so the things
-that matter are nearest your hand:
+**With nothing typed it is a dashboard.** The list hangs from the top of the frame, the
+cursor sits on the conversation this window is in, and the preview card is beside it. That
+is what home is for: one page of everything the machine holds, read top to bottom.
 
-- **The bottom row is the conversation this window is in.** It is pinned to the end of its
-  own project, it is where the cursor rests, and `enter` on it just steps back into the
-  chat — so pressing `enter` the moment home opens does the calm thing. It is never one of
-  the four its project shows before collapsing, and it is never hidden behind
-  `…3 more`.
-- **Your project is the bottom section**, because that is where you are standing.
-- **Other projects stack above it, oldest at the top.** Age increases as you go away from
-  the box: just above you is whatever you touched most recently, and the project nobody has
-  spoken in for a month is at the very top.
-- **A project's heading stays above its rows.** Sections stack upward; the rows inside one
-  read downward, because a project name drawn under its own conversations reads
-  upside-down.
+**The moment you type a character the list becomes a drop-up.** It lifts so that its last
+row — the action row, `start a new conversation: "…"` — lands directly above the box you
+are typing into, and the matches rise above it. Everything to do with typing is then one
+cluster at the foot: your words, the row saying what `enter` will do with them, and the
+hint under it. Clearing the box puts the dashboard back.
 
-`↑` walks away from the box into older, colder rows. `↓` walks back toward it. On a short
-frame the rows that fall off are the ones at the top — the coldest — and the row the cursor
-is on never does.
+**So the cursor does move between the two**, from up in the list to the foot and back.
+That is deliberate. It was tried the other way — anchored at the bottom in both shapes so
+the cursor never moved — and the cost was the dashboard itself: most of a frame of empty
+space with a clump of rows against the box. One keystroke of re-anchoring is cheaper than
+that.
 
-**Typing changes nothing about the shape.** The action row appears in exactly the position
-the bottom row already occupied, so the cursor does not move a single line when you type
-your first character. See *Start something new from home*.
-
-Searching is the one thing that re-orders the column: while anything is typed the list is
-ranked by how well each row answers what you typed, best first — see *Searching from home*.
+**The right pane never moves and never changes shape.** It previews whatever the cursor is
+on, in both shapes, and it is read downward from the conversation's name. It goes empty
+only when the cursor is on something that is not a conversation — a project's
+`…13 more` line, or the `start a new conversation` row, which is a chat that does not
+exist yet and so has nothing to preview.
 
 ## Switch between sessions — enter on home
 
@@ -256,10 +252,16 @@ their ages, and after that the more recent one wins.
 `↑`/`↓` walk the matches, `enter` opens the highlighted one. `esc` clears the box; a second
 `esc` closes home.
 
-**The matches grow upward out of the box.** The list is anchored to the bottom of the frame
-whether or not you are typing, so everything to do with typing — what you typed, the row
-that says what `enter` will do with it, and the hint under it — is one cluster at the foot,
-and `↑` walks from there into the results. See *Start something new from home* below.
+**The matches grow upward out of the box.** While anything is typed the list is anchored to
+the bottom of the frame so that everything to do with typing — what you typed, the row that
+says what `enter` will do with it, and the hint under it — is one cluster at the foot, and
+`↑` walks from there into the results. See *Start something new from home* below.
+
+**The preview keeps up.** As `↑`/`↓` move through the matches the right-hand card switches
+to whichever one the cursor is on — its project and path, what it is doing, the work it ran
+and the last thing said in it — so you can tell two similarly named conversations apart
+without opening either. On the `start a new conversation` row the card is empty, because
+there is no conversation there yet.
 
 ## Can home search by meaning — semantic search
 
@@ -283,11 +285,10 @@ Whatever you type is **two things at the same moment**: a new conversation waiti
 sent, and a live query over the machine. You do not choose between them before you start
 typing.
 
-**Everything about typing sits together at the bottom of the screen.** The list is already
-a drop-up before you touch a key; typing swaps what its **last** row is. That row becomes
-the action row — `start a new conversation: "…"` with your words quoted back — sitting
-directly above the box you are typing into, on **exactly the screen row** the cursor was
-already on. Nothing jumps.
+**Everything about typing sits together at the bottom of the screen.** The moment you type
+a character the list becomes a drop-up: the matches rise from the foot, and the **last** row
+of the list is the action row — `start a new conversation: "…"` with your words quoted
+back — sitting directly above the box you are typing into.
 
 ```
  …
@@ -313,9 +314,9 @@ The hint under the box says which of the two `enter` currently means:
 `enter starts a new conversation and sends this · ↑ pick a match · esc clear`, or
 `enter open · ↓ back to starting a new conversation · esc clear`.
 
-With **nothing** typed there is no action row. Its place is taken by the conversation this
-window is in, at the same position and with the cursor on it — see *Why is the list at the
-bottom of home*.
+With **nothing** typed there is no action row, and the list goes back to hanging from the
+top of the frame the way a page you are reading should — see *Why did the list jump to the
+bottom when I typed*.
 
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
@@ -324,9 +325,7 @@ does applies. On a surface with no fresh-session seam it refuses in `/new`'s own
 ## How do I see the collapsed sessions — …13 more
 
 A project shows its first four conversations and folds the rest into one dim line,
-`…13 more, quiet since 1d`, with a `▸` in front of it. **The conversation this window is in
-is never one of the four and never behind the fold** — it is pinned to the bottom of the
-column, against the box, whatever its age.
+`…13 more, quiet since 1d`, with a `▸` in front of it.
 
 **That line is a door.** Put the cursor on it and press `enter` or `→` and the project opens
 in place; the line becomes `▾ …13 fewer`, and `enter` or `←` folds it away again. `←` on any
