@@ -108,9 +108,9 @@ func resolveToCwd(path, cwd string) string {
 
 // normalizePath mirrors pi's normalizePath with normalizeUnicodeSpaces and
 // stripAtPrefix options: unicode spaces → regular space, strip leading @,
-// expand ~.
+// expand ~ — plus one rule of this program's own, [stripFileScheme].
 func normalizePath(path string) string {
-	normalized := unicodeSpaces.Replace(path)
+	normalized := stripFileScheme(unicodeSpaces.Replace(path))
 	if strings.HasPrefix(normalized, "@") {
 		normalized = normalized[1:]
 	}
@@ -124,6 +124,43 @@ func normalizePath(path string) string {
 		}
 	}
 	return normalized
+}
+
+// stripFileScheme turns a file:// URI back into the path inside it, and leaves
+// everything else exactly as it was.
+//
+// THIS PROGRAM HANDS THE MODEL file:// URIs AND THEN TELLS IT TO READ THEM. A
+// row of the project's task record carries its transcript and its artifact as
+// URIs rather than bare paths, because one of the two is sometimes a branch and
+// a reader should not have to guess which kind of thing it is holding
+// (internal/session/task_index.go's taskURI); the "@" pointer block spells them
+// the same way. So "read the transcript URI" — which is the whole of how a
+// question about work that already ran gets answered — arrives here as
+// `file:///…/tasks/20260819-120133_7.jsonl`, which is not an absolute path, gets
+// joined to the working directory, and fails on a file nobody named. The scheme
+// comes off at the one door every path tool already passes through, so the
+// address this program PRINTS is the address its own tools ACCEPT.
+//
+// NOTHING IS PERCENT-DECODED. Those URIs are minted by concatenation and were
+// never encoded, so a `%` in them is a `%` in the filename; decoding would
+// corrupt exactly the paths this exists to open.
+func stripFileScheme(path string) string {
+	const scheme = "file://"
+	if len(path) < len(scheme) || !strings.EqualFold(path[:len(scheme)], scheme) {
+		return path
+	}
+	rest := path[len(scheme):]
+	// file://localhost/… is the same file as file:///…; any other authority
+	// names another machine, and this program has no hands there — so it is left
+	// spelled as it was, to fail as the path it is rather than silently reading
+	// something local.
+	if trimmed := strings.TrimPrefix(rest, "localhost"); strings.HasPrefix(trimmed, "/") {
+		return trimmed
+	}
+	if !strings.HasPrefix(rest, "/") {
+		return path
+	}
+	return rest
 }
 
 // unicodeSpaces replaces the same set pi's paths.js does: U+00A0,
