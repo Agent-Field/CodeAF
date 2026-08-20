@@ -261,8 +261,21 @@ type TaskNode struct {
 	// is where it worked, and it is kept for one reader only: a recovery that has
 	// to tell the person where an interrupted node's half-finished work is
 	// (task_store.go).
-	report   string
-	changed  []string
+	report  string
+	changed []string
+	// wrote is every path this node has written SO FAR, in the order it first
+	// wrote them and capped at [taskFilesLimit]. It is the LIVE half of changed,
+	// which does not exist until the node lands: a node writes for eleven minutes
+	// and only then says what it wrote, and by that time the one thing another
+	// window could have done about it — not open the same file — is over.
+	//
+	// So this is held up in the session's presence file ([Agent.presenceTasks])
+	// while the work is happening, refreshed by the ordinary heartbeat.
+	//
+	// IT IS A FACT AND NOT AN INTENT. A path is added when a saving call has come
+	// back successful and never because the node said it meant to write
+	// something, which is the same bar changed is held to.
+	wrote    []string
 	branch   string
 	worktree string
 	merge    string
@@ -1122,6 +1135,39 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	// what a person needs after a kill is the merge outcome and the branch name,
 	// and those are written here.
 	n.graph.checkpoint()
+}
+
+// noteWrote records that this node has just written a path, so that this
+// session's presence can say so while the work is still going.
+//
+// IT DEDUPES AGAINST THE NODE'S OWN LIST and not against the run's, because a
+// repair round is a second run over ONE node and both runs' paths are that one
+// node's ([alsoChanged] makes the same argument about the leavings).
+//
+// It takes the graph's lock, which is the lock [Agent.presenceTasks] reads the
+// list under, so a heartbeat never sees half an append.
+func (n *TaskNode) noteWrote(path string) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if len(n.wrote) >= taskFilesLimit {
+		// PAST THE CAP THE TAIL IS DROPPED, exactly as a landed row's list is
+		// ([taskFileCitations]). Nothing here carries a count beside the list, so
+		// stopping cannot make anything say a false number.
+		return
+	}
+	for _, seen := range n.wrote {
+		if seen == path {
+			return
+		}
+	}
+	n.wrote = append(n.wrote, path)
 }
 
 // leavings is what a landed node left behind: what it said, what it wrote, and
@@ -2282,6 +2328,10 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				if saved && !seen[path] {
 					seen[path] = true
 					changed = append(changed, path)
+					// SAID OUT LOUD THE MOMENT IT IS TRUE. The node's leavings are
+					// written once at the end; this is the same fact told while
+					// another window could still act on it.
+					node.noteWrote(path)
 				}
 				switch {
 				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
@@ -2344,6 +2394,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 					if path, wrote := changedPath(event, dir); wrote && !seen[path] {
 						seen[path] = true
 						changed = append(changed, path)
+						node.noteWrote(path)
 					}
 				}
 			}
