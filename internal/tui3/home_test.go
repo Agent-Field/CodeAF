@@ -62,6 +62,31 @@ func (l *homeLab) session(bucket, id, title, workspace string, spoke time.Time) 
 	return transcript
 }
 
+// presence writes one session's presence.json — what a live conversation says
+// about itself. The shape is [session.SessionPresence]'s own, written here as
+// the file rather than through the heartbeat, because these tests are about
+// what a READER makes of a file it finds on disk.
+func (l *homeLab) presence(bucket, id string, state session.PresenceState, reason string, at time.Time, out ...session.PresenceTask) {
+	l.t.Helper()
+	dir := filepath.Join(l.project(bucket), id)
+	raw, err := json.Marshal(map[string]any{
+		"schema":       1,
+		"sessionId":    id,
+		"workspace":    "/tmp/alpha",
+		"pid":          4242,
+		"updatedAt":    at.Format(time.RFC3339Nano),
+		"state":        string(state),
+		"reason":       reason,
+		"runningTasks": out,
+	})
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "presence.json"), append(raw, '\n'), 0o600); err != nil {
+		l.t.Fatal(err)
+	}
+}
+
 // task appends one row to a bucket's index.
 func (l *homeLab) task(bucket string, entry session.TaskIndexEntry) {
 	l.t.Helper()
@@ -223,6 +248,161 @@ func TestHomeWillNotCallAStaleRowRunning(t *testing.T) {
 	}
 	if strings.Contains(text, "1 running") {
 		t.Fatalf("home drew a stale row as running:\n%s", text)
+	}
+}
+
+// A session that says it is alive AND names the node it has out is the only
+// case in which home will draw the word `running`.
+func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	// The running one is a SECOND window's conversation, which is the case this
+	// screen exists for — this window cannot see that turn any other way.
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now.Add(-2*time.Hour))
+	lab.session("-tmp-alpha", "aaaa000000000002", "the long one", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "7", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
+		Status: string(session.TaskRunning), SessionID: "aaaa000000000002",
+	})
+	lab.presence("-tmp-alpha", "aaaa000000000002", session.PresenceWorking, "", now,
+		session.PresenceTask{ID: "7", Title: "Port the thing", State: "running", StartedAt: now.Add(-time.Minute)})
+
+	a := lab.app(mine)
+	a.openHome()
+	row := a.home.focused()
+	if !row.Live {
+		t.Fatal("a session that refreshed its presence a moment ago is not live")
+	}
+	if row.Tasks.Running != 1 || row.Tasks.Incomplete != 0 {
+		t.Fatalf("rolled up %d running / %d incomplete, want 1 / 0", row.Tasks.Running, row.Tasks.Incomplete)
+	}
+	text := homeText(a)
+	for _, want := range []string{"1 running", "running Port the thing", "open in another window · working"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("home does not say %q:\n%s", want, text)
+		}
+	}
+}
+
+// A live session that does NOT name the node is the case the presence file was
+// built for: the work is over or was abandoned, whatever the index still says.
+func TestHomeCallsARowIncompleteWhenTheLiveSessionDoesNotNameIt(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the long one", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "7", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
+		Status: string(session.TaskRunning), SessionID: "aaaa000000000001",
+	})
+	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceIdle, "", now)
+
+	a := lab.app(mine)
+	a.openHome()
+	row := a.home.focused()
+	if row.Tasks.Running != 0 || row.Tasks.Incomplete != 1 {
+		t.Fatalf("rolled up %d running / %d incomplete, want 0 / 1", row.Tasks.Running, row.Tasks.Incomplete)
+	}
+	if !strings.Contains(homeText(a), "incomplete") {
+		t.Fatalf("home does not say the work is incomplete:\n%s", homeText(a))
+	}
+}
+
+// THE AGE IS THE WHOLE OF THE CLAIM. A presence file nobody has refreshed is
+// not believed, and the row falls back to what it would have said without one.
+func TestHomeDoesNotBelieveAStalePresence(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the long one", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "7", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
+		Status: string(session.TaskRunning), SessionID: "aaaa000000000001",
+	})
+	// A minute old is four times the window a reader believes.
+	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceWorking, "", now.Add(-time.Minute),
+		session.PresenceTask{ID: "7", Title: "Port the thing", State: "running"})
+
+	a := lab.app(mine)
+	a.openHome()
+	row := a.home.focused()
+	if row.Live {
+		t.Fatal("home believed a presence nobody had refreshed for a minute")
+	}
+	if row.Tasks.Running != 0 || row.Tasks.Incomplete != 1 {
+		t.Fatalf("rolled up %d running / %d incomplete, want 0 / 1", row.Tasks.Running, row.Tasks.Incomplete)
+	}
+	if strings.Contains(homeText(a), "working") {
+		t.Fatalf("home drew a dead window as working:\n%s", homeText(a))
+	}
+}
+
+// The most valuable row on the screen: a session stopped on a question wears
+// the triangle, says so, sorts above everything, and shows what it is stuck on.
+func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	// The one that needs somebody is the OLDEST, so recency alone would sink it.
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest chat", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "middle of the road", "/tmp/alpha", now.Add(-time.Hour))
+	lab.session("-tmp-alpha", "aaaa000000000003", "pricing research", "/tmp/alpha", now.Add(-6*time.Hour))
+	lab.presence("-tmp-alpha", "aaaa000000000003", session.PresenceWaiting, "can I run: rm -rf build/", now)
+
+	a := lab.app(mine)
+	a.openHome()
+
+	world := a.home.world
+	if len(world.Projects) != 1 {
+		t.Fatalf("read %d projects, want 1", len(world.Projects))
+	}
+	first := world.Projects[0].Sessions[0]
+	if !first.NeedsPerson() {
+		t.Fatalf("the first row is %q, which is not the one waiting on somebody", first.Title)
+	}
+	if world.Projects[0].NeedsPerson() != 1 {
+		t.Fatalf("the project counted %d rows needing somebody, want 1", world.Projects[0].NeedsPerson())
+	}
+	if first.Reason() != "can I run: rm -rf build/" {
+		t.Fatalf("the row is stopped on %q", first.Reason())
+	}
+
+	text := homeText(a)
+	if !strings.Contains(text, homeAskGlyph+" Pricing Research") {
+		t.Fatalf("the row does not wear the triangle:\n%s", text)
+	}
+	if !strings.Contains(text, string(session.PresenceWaiting)) {
+		t.Fatalf("the row does not say it is waiting on you:\n%s", text)
+	}
+	// The cursor opens on the first row, so the detail shows the question.
+	if !strings.Contains(text, "can I run: rm -rf build/") {
+		t.Fatalf("the detail does not show what it is stopped on:\n%s", text)
+	}
+	// And it really is drawn above the newer, idle rows.
+	ask := strings.Index(text, "Pricing Research")
+	newest := strings.Index(text, "The Newest Chat")
+	if ask < 0 || newest < 0 || ask > newest {
+		t.Fatalf("the row that needs somebody is not above the newer ones:\n%s", text)
+	}
+}
+
+// A session that has gone quiet stops asking. Nothing on home may keep somebody
+// on the hook for a window that is not there any more.
+func TestHomeStopsSayingNeedsYouWhenTheWindowIsGone(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest chat", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000003", "pricing research", "/tmp/alpha", now.Add(-6*time.Hour))
+	lab.presence("-tmp-alpha", "aaaa000000000003", session.PresenceWaiting, "can I run: rm -rf build/", now.Add(-time.Minute))
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, project := range a.home.world.Projects {
+		for _, row := range project.Sessions {
+			if row.NeedsPerson() {
+				t.Fatalf("%q still claims to need somebody an hour after its window went", row.Title)
+			}
+		}
+	}
+	if strings.Contains(homeText(a), string(session.PresenceWaiting)) {
+		t.Fatalf("home is still asking for a window that is gone:\n%s", homeText(a))
 	}
 }
 

@@ -30,9 +30,12 @@ import (
 //
 //   - TRIAGE. The left column is every project as a dim heading with its
 //     conversations under it, ordered by what is happening rather than by what
-//     is newest ([session.World] does that ordering). Quiet rows past the first
-//     few collapse to one dim line, because density here is omission and never
-//     compression.
+//     is newest ([session.World] does that ordering). A conversation stopped on
+//     a question wears `▲` and sits at the top of its project, which is the
+//     single most valuable row this screen can draw — it is the one thing that
+//     costs a keystroke to unblock and can otherwise sit unnoticed for a day.
+//     Quiet rows past the first few collapse to one dim line, because density
+//     here is omission and never compression.
 //   - RECALL. `@` turns the same column into a search over every conversation
 //     on the machine, ranked by [tokenScore] — the same ladder the model picker
 //     and the resume picker rank with, so three characters find a chat from
@@ -108,12 +111,19 @@ const homeMinDetail = 76
 
 // The glyphs a conversation wears in the left column. They say what is
 // HAPPENING and nothing else — there is no state here that a person has to be
-// taught, only "moving", "stopped mid-way" and "at rest".
+// taught, only "wants you", "moving", "stopped mid-way" and "at rest".
+//
+// THE TRIANGLE IS THE ONLY ONE THAT POINTS AT ANYTHING. The other three are
+// round and read as weather; a conversation stopped on a question is the one
+// row on this screen that is asking for a hand, and it gets the one shape that
+// looks like it is asking.
 const (
+	homeAskGlyph   = "▲"
 	homeLiveGlyph  = "●"
 	homeStuckGlyph = "◌"
 	homeIdleGlyph  = "○"
 
+	homeAskASCII   = "!"
 	homeLiveASCII  = "*"
 	homeStuckASCII = "o"
 	homeIdleASCII  = "-"
@@ -882,6 +892,13 @@ func homeQuietWord(line homeLine, now time.Time) string {
 func homeNote(row session.SessionRow, now time.Time) string {
 	var parts []string
 	switch {
+	case row.NeedsPerson():
+		// THE CONVERSATION'S OWN WORD, not a second one meaning the same thing.
+		// `waiting on you` is what the presence file says (taskpresence.go's
+		// [session.PresenceWaiting]) and what the task column already says of a
+		// card that is holding; a third spelling here would be a third thing to
+		// keep in step.
+		parts = append(parts, string(session.PresenceWaiting))
 	case row.Tasks.Running > 0:
 		parts = append(parts, itoa(row.Tasks.Running)+" running")
 	case row.Tasks.Incomplete > 0:
@@ -895,10 +912,20 @@ func homeNote(row session.SessionRow, now time.Time) string {
 	return strings.Join(parts, " · ")
 }
 
-// homeGlyph is what a conversation's state looks like: moving, stopped
-// mid-way, or at rest.
+// homeGlyph is what a conversation's state looks like: wanting somebody,
+// moving, stopped mid-way, or at rest.
+//
+// The order is [session.sortSessions]'s order, and it has to be: the glyph and
+// the row's position are one claim made twice, and a row sorted to the top of
+// its project under a glyph that says "at rest" is the screen arguing with
+// itself.
 func homeGlyph(row session.SessionRow, ascii bool) string {
 	switch {
+	case row.NeedsPerson():
+		if ascii {
+			return homeAskASCII
+		}
+		return homeAskGlyph
 	case row.Tasks.Running > 0:
 		if ascii {
 			return homeLiveASCII
@@ -940,6 +967,18 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	if word := a.homeHolding(row); word != "" {
 		lines = append(lines, pal.dim(fit(word, width)))
 	}
+	// THE QUESTION IT IS STOPPED ON IS THE ONE THING ON THIS PANE THAT IS NOT
+	// DIM. Everything else here is a fact about what happened; this is a thing
+	// somebody has to do, and it is the whole reason the row sorted to the top
+	// of its project. It draws nothing at all when the conversation gave no
+	// words for what it is waiting on (the emptiness law, and
+	// [session.SessionPresence.Reason]'s own instruction).
+	if reason := row.Reason(); reason != "" {
+		lines = append(lines, "")
+		for _, wrapped := range wrap(reason, width) {
+			lines = append(lines, pal.ink(wrapped))
+		}
+	}
 
 	if len(row.Tasks.Rows) > 0 {
 		lines = append(lines, "")
@@ -948,7 +987,7 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 			shown = shown[:homeTaskRows]
 		}
 		for _, entry := range shown {
-			lines = append(lines, homeTaskLine(entry, row.Open, a.home.world.Read, width, pal))
+			lines = append(lines, homeTaskLine(entry, row, a.home.world.Read, width, pal))
 		}
 	}
 	// Spend only when there is spend to name — see [homeNote].
@@ -967,27 +1006,38 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	return lines
 }
 
-// homeHolding says whether a window has this conversation open right now, and
-// says nothing at all when none does.
+// homeHolding says whether a window has this conversation open right now and
+// what it is doing, and says nothing at all when nobody has it.
 //
-// It is the kernel's answer and not a file's (session's world.go): a journal
-// somebody is holding is a journal under an flock, and every other way of
-// asking — a stamp, a pid file, a status written down — is a claim that
-// outlives the process that made it.
+// TWO FACTS, AND THE SECOND IS THE CONVERSATION'S OWN. That a window holds the
+// journal is the kernel's answer, taken as a lock asked as a question; what it
+// is DOING is the conversation saying so in its presence file, believed only
+// while it keeps saying it (session's world.go). A window open under a build
+// too old to say gets the first half and no second, which is exactly as much as
+// is known about it.
 func (a *app) homeHolding(row session.SessionRow) string {
+	word := ""
 	switch {
 	case row.Transcript == a.file:
-		return "open here"
-	case row.Open:
-		return "open in another window"
+		word = "open here"
+	case row.Open || row.Live:
+		word = "open in another window"
+	default:
+		return ""
 	}
-	return ""
+	// `idle` is the ordinary state of an open conversation and adding it would
+	// put a word on every row that carries no news (the emptiness law applied to
+	// a state rather than to a number).
+	if doing := row.Doing(); doing != "" && doing != string(session.PresenceIdle) {
+		word += " · " + doing
+	}
+	return word
 }
 
 // homeTaskLine is one piece of work in the detail column: what it came to, what
 // it was, and when.
-func homeTaskLine(entry session.TaskIndexEntry, open bool, now time.Time, width int, pal palette) string {
-	word := homeTaskWord(entry, open)
+func homeTaskLine(entry session.TaskIndexEntry, row session.SessionRow, now time.Time, width int, pal palette) string {
+	word := homeTaskWord(entry, row)
 	age := sinceAt(entry.EndedAt, now)
 	label := entry.Label
 	if label == "" {
@@ -1012,17 +1062,19 @@ func homeTaskLine(entry session.TaskIndexEntry, open bool, now time.Time, width 
 	return line
 }
 
-// homeTaskWord is what one row of the index is called on screen, and it is the
-// ONE place this surface refuses to repeat a file's claim of liveness.
+// homeTaskWord is what one row of the index is called on screen, and it says
+// `running` only where the count in [session.TaskRollup] said so — the two are
+// the same judgement and it is made once, in session's world.go, not twice.
 //
 // A task takes its row when it starts and the index is append-only, so a
 // machine that lost power leaves rows saying `running` for as long as the file
-// exists. A row like that, in a conversation nobody is holding, is work that was
-// under way when the window went — which is `incomplete`, the same word the
-// interrupted-task outcome uses, and not a claim that something is happening.
-func homeTaskWord(entry session.TaskIndexEntry, open bool) string {
+// exists. What settles it is the conversation itself: a live one names the nodes
+// it has out, and a row it does not name is work that was under way when the
+// window went — `incomplete`, the same word the interrupted-task outcome uses,
+// and not a claim that something is happening.
+func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 	switch {
-	case entry.Live() && open:
+	case entry.Live() && row.Runs(entry):
 		return "running"
 	case entry.Live():
 		return "incomplete"

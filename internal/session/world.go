@@ -9,20 +9,37 @@
 //
 // It is a READ AND NOTHING ELSE. Nothing here creates a directory, writes a
 // file, takes a lock it keeps, or opens a journal for replay. The whole layer is
-// three system calls per session — a directory read, meta.json, and one flock
-// asked as a question — over files that already exist, so it can be run on a
-// keystroke and again on a tick without being a thing anybody has to budget for.
+// four system calls per session — a directory read, meta.json, presence.json,
+// and one flock asked as a question — over files that already exist, so it can
+// be run on a keystroke and again on a tick without being a thing anybody has
+// to budget for.
 //
 // Two laws shape what it answers with:
 //
 //   - A LIVE-LOOKING ROW IS NOT A LIVE ROW. The project's index is append-only
 //     and a task takes its row when it starts; a machine that lost power, or an
 //     aforge that was killed, leaves rows on disk that say `running` forever.
-//     So this layer never repeats a file's claim of liveness. It asks the kernel
-//     who is holding the journal ([InUse], the same flock the sweep asks) and a
-//     running row belongs to a session nobody is holding is reported as
-//     [TaskRollup.Incomplete] — the word the interrupted-task outcome already
-//     uses — rather than as work in flight.
+//     So this layer never repeats a file's claim of liveness. It asks the
+//     SESSION, through the presence file it refreshes every few seconds
+//     (taskpresence.go): a `running` index row counts as running only when a
+//     FRESH presence row for that conversation names that very node, and every
+//     other live-looking row is [TaskRollup.Incomplete] — the word the
+//     interrupted-task outcome already uses.
+//
+//     A session with no presence at all is a conversation held open by a build
+//     older than that file, and there the old rule still stands: the kernel is
+//     asked who holds the journal ([InUse], the same flock the sweep asks) and
+//     its rows are believed. That is not a second law, it is the same one with
+//     less to go on — presence says which nodes a session has out, the lock says
+//     only that somebody has the session, and a reader uses the best answer it
+//     was given rather than pretending to the better one.
+//
+//   - NOBODY HAS TO GO LOOKING FOR "THIS ONE NEEDS ME". A conversation stopped
+//     on a question says so in its presence file ([SessionPresence.NeedsPerson])
+//     with the one line it is stopped on, and that is the single most valuable
+//     fact this layer carries: it is what puts a row at the top of its project
+//     ([sortSessions]) instead of leaving it to sink under every idle chat
+//     somebody opened since.
 //   - THE BUCKET NAME IS NOT A PROJECT NAME. The directory under v3/projects is
 //     a workspace path with its separators replaced by dashes, and that encoding
 //     is one-way on purpose (cmd/aforge's chatv3_layout.go: decoding it would be
@@ -117,6 +134,20 @@ func (p Project) Running() int {
 	return count
 }
 
+// NeedsPerson is how many of this project's conversations are stopped waiting
+// on somebody. It is the one count worth putting on a heading: everything else
+// a project can say is about work that is moving or work that is over, and this
+// is the number that means "come back here".
+func (p Project) NeedsPerson() int {
+	count := 0
+	for _, row := range p.Sessions {
+		if row.NeedsPerson() {
+			count++
+		}
+	}
+	return count
+}
+
 // SessionRow is one conversation as the world sees it: its identity from
 // meta.json, whether a window is holding it right now, and what the project's
 // index says it ran.
@@ -149,8 +180,74 @@ type SessionRow struct {
 	// Open reports that a window is holding this journal AT THIS INSTANT. It is
 	// the kernel's answer and not a file's claim — see this file's header.
 	Open bool
+	// Presence is what the conversation SAYS it is doing, and Live whether it
+	// said so recently enough to be believed ([SessionPresence.Fresh]). The
+	// pair is deliberately not collapsed into one nullable value: a surface asks
+	// "is this alive" far more often than it asks what the claim was, and Live
+	// is the whole of that question.
+	//
+	// A live conversation and an OPEN one are not the same fact. Open is a lock
+	// held; Live is a session refreshing a file and naming what it has out. A
+	// build older than presence.json is open and not live, which is exactly the
+	// case this layer degrades for rather than lies about.
+	Presence SessionPresence
+	Live     bool
 	// Tasks is what the project's index says this session ran.
 	Tasks TaskRollup
+}
+
+// NeedsPerson reports that this conversation is stopped waiting on somebody. It
+// answers false for a conversation that is not live at all, because a claim
+// nobody has refreshed is not a claim about now — a window killed while a
+// question was on screen is not still asking it.
+func (r SessionRow) NeedsPerson() bool { return r.Live && r.Presence.NeedsPerson() }
+
+// Doing is the word the conversation uses for itself — `working`, `waiting on
+// you`, `idle` — and "" for one that is not live.
+//
+// IT IS THE PRESENCE FILE'S OWN WORD AND NOT A TRANSLATION OF IT. The states
+// are already written in the words a person would use (taskpresence.go), and a
+// surface mapping them to a second vocabulary would be the one place the two
+// could come to disagree about what a session is doing.
+func (r SessionRow) Doing() string {
+	if !r.Live {
+		return ""
+	}
+	return string(r.Presence.State)
+}
+
+// Reason is the one line behind a question this conversation is stopped on, and
+// "" whenever there is not one — which a surface draws as nothing at all rather
+// than as a placeholder.
+func (r SessionRow) Reason() string {
+	if !r.NeedsPerson() {
+		return ""
+	}
+	return strings.TrimSpace(r.Presence.Reason)
+}
+
+// Runs reports whether one row of the project's index is work that is HAPPENING
+// rather than work the file merely remembers starting.
+//
+// IT IS THE ONE PLACE THAT JUDGEMENT IS MADE. [rollUp] counts with it and every
+// surface drawing a word beside a row asks it, so a screen can never say
+// `running` on a row the count called incomplete. See this file's header for
+// the rule itself; the ladder is: a live conversation's own list of what it has
+// out, then — for a conversation too old to keep one — the lock.
+func (r SessionRow) Runs(entry TaskIndexEntry) bool {
+	if !entry.Live() {
+		return false
+	}
+	if r.Live {
+		want := strings.TrimSpace(entry.ID)
+		for _, task := range r.Presence.RunningTasks {
+			if strings.TrimSpace(task.ID) == want {
+				return true
+			}
+		}
+		return false
+	}
+	return r.Open
 }
 
 // TaskRollup is one session's share of its project's index, counted.
@@ -158,12 +255,14 @@ type TaskRollup struct {
 	// Rows are this session's entries, newest first, exactly as
 	// [ReadTaskIndex] returned them.
 	Rows []TaskIndexEntry
-	// Running is work the index calls running or queued IN A SESSION SOMEBODY IS
-	// HOLDING — the only rows this layer will call live.
+	// Running is work the index calls running or queued AND THE SESSION ITSELF
+	// STILL NAMES as out — the only rows this layer will call live. See
+	// [rollUp], which is the one place that judgement is made.
 	Running int
-	// Incomplete is the same rows in a session nobody is holding: work that was
-	// under way when the window went. The word is the one the interrupted-task
-	// outcome already uses, because it is the same fact.
+	// Incomplete is every other live-looking row: work that was under way when
+	// the window went, or that the conversation no longer counts among what it
+	// has out. The word is the one the interrupted-task outcome already uses,
+	// because it is the same fact.
 	Incomplete int
 	// Done and Failed are the landed rows, counted by what they came to.
 	Done   int
@@ -209,7 +308,7 @@ func readWorld(root string, now time.Time) World {
 		if !bucket.IsDir() {
 			continue
 		}
-		project, ok := readProject(filepath.Join(root, bucket.Name()), bucket.Name())
+		project, ok := readProject(filepath.Join(root, bucket.Name()), bucket.Name(), now)
 		if !ok {
 			continue
 		}
@@ -229,7 +328,7 @@ func readWorld(root string, now time.Time) World {
 // conversation anybody ever spoke in — an encoded directory left behind by a
 // launch that opened and closed is not a project, and a section header over no
 // rows is a heading that says nothing.
-func readProject(dir, bucket string) (Project, bool) {
+func readProject(dir, bucket string, now time.Time) (Project, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return Project{}, false
@@ -251,14 +350,14 @@ func readProject(dir, bucket string) (Project, bool) {
 		if !entry.IsDir() {
 			continue
 		}
-		row, ok := readSessionRow(filepath.Join(dir, entry.Name()), entry.Name())
+		row, ok := readSessionRow(filepath.Join(dir, entry.Name()), entry.Name(), now)
 		if !ok {
 			continue
 		}
 		if project.Path == "" {
 			project.Path = projectPath(row)
 		}
-		row.Tasks = rollUp(byTask[row.ID], row.Open)
+		row.Tasks = rollUp(byTask[row.ID], row)
 		project.Sessions = append(project.Sessions, row)
 	}
 	if len(project.Sessions) == 0 {
@@ -284,7 +383,7 @@ func readProject(dir, bucket string) (Project, bool) {
 // or unreadable is kept, for the reason the sweep keeps it: a session that
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
-func readSessionRow(dir, id string) (SessionRow, bool) {
+func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	place := Place{Dir: dir}
 	transcript := place.Transcript()
 	info, err := os.Stat(transcript)
@@ -300,6 +399,11 @@ func readSessionRow(dir, id string) (SessionRow, bool) {
 	if at.IsZero() {
 		at = info.ModTime()
 	}
+	// What the conversation says about itself, believed only if it said so
+	// recently ([ReadSessionPresence] applies the window; nothing here second-
+	// guesses it). A conversation that is not live answers the zero presence,
+	// and every reader of this row asks Live before it asks anything else.
+	presence, live := ReadSessionPresence(dir, now)
 	return SessionRow{
 		ID:         id,
 		Dir:        dir,
@@ -311,17 +415,30 @@ func readSessionRow(dir, id string) (SessionRow, bool) {
 		At:         at,
 		Created:    meta.Created,
 		Open:       InUse(transcript),
+		Presence:   presence,
+		Live:       live,
 	}, true
 }
 
 // rollUp counts one session's rows, and it is the ONE place a running row is
-// judged. See this file's header: a row saying `running` is a row saying what
-// was true when it was written, and only the lock says what is true now.
-func rollUp(rows []TaskIndexEntry, open bool) TaskRollup {
+// judged. See this file's header: a row saying `running` says what was true
+// when it was appended, and the conversation itself says what is true now.
+//
+// THE JOIN IS ON (SessionID, ID), which is the pair both files spell the same
+// way on purpose — [PresenceTask.ID] carries [TaskIndexEntry.ID]'s own
+// spelling. A node the index calls running and the live conversation still
+// names among what it has out is running. A node the LIVE conversation does not
+// name is finished, abandoned or was never resumed, and it is incomplete
+// whatever the index's oldest word for it was.
+//
+// The fallback is the second half of the header's first law: a session with no
+// fresh presence is one held by a build that does not write the file, and there
+// the lock is the best answer there is.
+func rollUp(rows []TaskIndexEntry, held SessionRow) TaskRollup {
 	rollup := TaskRollup{Rows: rows}
 	for _, row := range rows {
 		switch {
-		case row.Live() && open:
+		case held.Runs(row):
 			rollup.Running++
 		case row.Live():
 			rollup.Incomplete++
@@ -380,22 +497,31 @@ func projectName(path, bucket string) string {
 // said in the terms this layer can see (the rail's [railGroup] ranks nodes;
 // this ranks conversations):
 //
-//	work in flight        somebody is holding it and something is running
-//	work left running     rows that never landed, in a session nobody holds
+//	needs somebody        the conversation is stopped on a question
+//	work in flight        it is alive and something is out
+//	work left running     rows that never landed, in a conversation nobody holds
 //	everything else       by when the person last spoke, newest first
 //
-// The middle rung is the one worth having. A session whose window went while a
-// task was under way is the row a person most wants to find again, and by
-// recency alone it sinks under every idle chat they opened since.
+// THE TOP RUNG IS THE WHOLE POINT OF THE ORDER. A conversation waiting on an
+// answer costs nothing to give and blocks everything behind it, and it is the
+// one row that can sit at the bottom of a recency list for a day without
+// anybody noticing — which is precisely why it goes first and why the presence
+// file exists at all (taskpresence.go).
+//
+// The third rung is the one worth having under it: a conversation whose window
+// went while a task was under way is the row a person most wants to find again,
+// and by recency alone it sinks under every idle chat they opened since.
 func sortSessions(rows []SessionRow) {
 	rank := func(row SessionRow) int {
 		switch {
-		case row.Tasks.Running > 0:
+		case row.NeedsPerson():
 			return 0
-		case row.Tasks.Incomplete > 0:
+		case row.Tasks.Running > 0:
 			return 1
-		default:
+		case row.Tasks.Incomplete > 0:
 			return 2
+		default:
+			return 3
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
