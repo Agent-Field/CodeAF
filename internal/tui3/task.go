@@ -1905,8 +1905,27 @@ const (
 	// railGripGlyph is the handle. It points LEFT because that is the way the
 	// column comes back — over the conversation, from the right edge — and it is
 	// the one shape on this surface that means "there is more this way".
-	railGripGlyph      = "‹"
+	//
+	// IT USED TO BE `‹` IN THE DIM, AND NOBODY COULD SEE IT. The report was
+	// exactly that — "the arrow does not even seem it is there" — and both halves
+	// of it were true: a single-guillemet is the lightest arrow in the font, and
+	// dim is the weight this surface paints TELEMETRY at. This is not telemetry.
+	// It is the only control on the frame for a column somebody has hidden, so it
+	// takes the heavy chevron and the ordinary ink, and the hover takes it further
+	// ([app.railGripRows]). The state cell above it keeps its own hues, which are
+	// louder still and belong to the work rather than to the door.
+	railGripGlyph      = "❮"
 	railGripGlyphASCII = "<"
+	// railGripOpenGlyph is the SAME control in its other state: the chevron the
+	// column wears while it stands, pointing right because that is the way it
+	// goes. It rides the footer's own door line ([railStowHint]) rather than the
+	// seam, which is already the width handle and may not mean two things.
+	//
+	// SO THE RIGHT EDGE ALWAYS CARRIES ONE CHEVRON — `❯` to close while the column
+	// is up, `❮` to open while it is away — and the pointer can go round the whole
+	// cycle without ever being told a chord.
+	railGripOpenGlyph      = "❯"
+	railGripOpenGlyphASCII = ">"
 )
 
 // railEmptyWord is the one line a column with no work in it says
@@ -2574,14 +2593,21 @@ func (a *app) railGripRows(height int) []string {
 	for i := range out {
 		out[i] = blank
 	}
-	// UNDER THE POINTER IT BRIGHTENS, which is this surface's one way of saying a
-	// thing is pressable (hover.go's law). It is the whole strip that lights and
-	// not the cell, because it is the whole strip that answers.
-	ink := a.pal.dim
+	// THE HANDLE IS INK AND NOT DIM. Everything else this surface paints at the
+	// right edge is a report about work — a count, an age, a state — and dim is
+	// what a report is worth. A door is not a report: it is the one thing on the
+	// frame a person has to FIND, and a person who cannot find it has lost the
+	// column ([railGripGlyph] carries the report that said so).
+	//
+	// UNDER THE POINTER IT GOES FURTHER, which is this surface's one way of saying
+	// a thing is pressable (hover.go's law), and the band is laid across both
+	// cells rather than the one: it is the whole strip that answers a click, so it
+	// is the whole strip that must light.
+	mark := " " + a.pal.ink(a.linearMark(railGripGlyph, railGripGlyphASCII))
 	if a.hoveringRailGrip() {
-		ink = a.pal.accent
+		mark = a.pal.hover(" "+a.pal.accent(a.linearMark(railGripGlyph, railGripGlyphASCII)), railGripCols)
 	}
-	out[height/2] = " " + ink(a.linearMark(railGripGlyph, railGripGlyphASCII))
+	out[height/2] = mark
 	// AND ONE CELL ABOVE IT, WHAT THE WORK IS DOING — while there is anything to
 	// say. A closed column is the one state where this surface can be busy and
 	// silent about it, and one glyph is what the space allows.
@@ -2963,6 +2989,11 @@ func (a *app) railRows(height int) []string {
 		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
 		case line.record != nil && a.hoveringRailPast(line.record):
+			text = a.hoverRow(text, room)
+		case line.stow && a.hoveringRailDoor():
+			// AND THE COLUMN'S OWN DOOR TAKES IT TOO, on the terms every other
+			// pressable line here takes it on: it answers to a click, so the pointer
+			// says so ([app.railDoorLine]).
 			text = a.hoverRow(text, room)
 		}
 		out[i] = lead + text
@@ -3457,7 +3488,10 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// roster is an overlay a person raised with ctrl+t and drops with esc
 	// ([app.railFull]), and a second way out named at the bottom of it would be
 	// two exits from a room with one.
-	stow := !a.railFull() && ansi.StringWidth(railStowHint) <= width
+	// The chevron and its space are charged for here, because the door is drawn
+	// with them ([app.railDoorLine]) and a width test that measured only the words
+	// would let the mark run off the end of a narrow column.
+	stow := !a.railFull() && ansi.StringWidth(railStowHint)+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
 	// which is the emptiness law applied to an affordance rather than to a figure
 	// ([app.railOffersMore], taskview.go). A "view more" on a column that is
@@ -3501,9 +3535,43 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	door := -1
 	if stow && len(out)+1 < height {
 		door = len(out)
-		out = append(out, a.pal.dim(railStowHint))
+		out = append(out, a.railDoorLine())
 	}
 	return out, hint, door, more
+}
+
+// railDoorLine is the standing column's own door as it is drawn: the chevron
+// that closes it, and then the chord that does the same thing.
+//
+// THE CHEVRON IS THE CONTROL AND THE WORDS ARE THE LABEL, which is why they are
+// painted at two weights. `ctrl+g — hide` is a sentence telling the hand that
+// types chords what to press, and it stays dim with the rest of the footer; the
+// `❯` is what the hand that does NOT type chords presses, so it takes the ink —
+// the same split the closed edge makes at the other end of the cycle
+// ([app.railGripRows]).
+//
+// IT POINTS RIGHT AND ITS TWIN POINTS LEFT, and between them the pointer can go
+// round the whole cycle: `❯` sends the column off the right edge, `❮` brings it
+// back over the conversation. One control, two states, and neither of them a
+// chord somebody had to be told about.
+func (a *app) railDoorLine() string {
+	mark := a.linearMark(railGripOpenGlyph, railGripOpenGlyphASCII)
+	ink := a.pal.ink
+	if a.hoveringRailDoor() {
+		ink = a.pal.accent
+	}
+	return ink(mark) + " " + a.pal.dim(railStowHint)
+}
+
+// railDoorAt reports whether a pointer is on that line. It is the hover's guard,
+// and the press resolves the same fact through [railLine.stow] — one geometry
+// asked twice, because the line is found by the layout either way.
+func (a *app) railDoorAt(x, y int) bool {
+	if !a.railAt(x, y) || a.railSeamAt(x, y) {
+		return false
+	}
+	line, ok := a.railLineAt(y)
+	return ok && line.stow
 }
 
 // railOffersMore reports whether the task page would show anything this column

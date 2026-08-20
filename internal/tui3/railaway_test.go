@@ -93,6 +93,12 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	if !strings.Contains(strings.Join(rows, "\n"), railStowHint) {
 		t.Fatalf("the column drew no way out of itself:\n%s", strings.Join(rows, "\n"))
 	}
+	// AND THE CHEVRON IS ON IT, pointing the way the column goes. It is the half
+	// of that line the pointer presses, and the words are the half the keyboard
+	// reads (task.go's [app.railDoorLine]).
+	if !strings.Contains(strings.Join(rows, "\n"), railGripOpenGlyph+" "+railStowHint) {
+		t.Fatalf("the column's door carries no chevron:\n%s", strings.Join(rows, "\n"))
+	}
 	// It is the LAST line of the column: the way out of anything is at the bottom
 	// of it, under the aggregate and under the width offer alike.
 	last := ""
@@ -287,6 +293,122 @@ func TestTheClosedColumnLeavesAnEdgeYouCanClick(t *testing.T) {
 	}
 	if a.bodyWidth() != full-railCols {
 		t.Fatalf("the reopened column is not charged against the conversation: body=%d", a.bodyWidth())
+	}
+}
+
+// ── ONE CONTROL, TWO STATES, A FULL CYCLE BY MOUSE ──────────────────────────
+//
+// The report was two sentences: "the arrow does not even seem it is there", and
+// "click should rotate between expanding and closing as well for full cycle".
+// Both are about the same control. It was a dim `‹` — the lightest arrow in the
+// font at the weight this surface paints telemetry — and it only ever went one
+// way, so a person who found it could open the column with the pointer and then
+// had to be told a chord to close it again.
+
+// THE HANDLE IS INK AND NOT DIM. It is a control and not a report, and the whole
+// of what a person has to find when the column is gone.
+func TestTheClosedEdgesHandleIsInkAndNotTelemetry(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	railRun(a)
+	drive(t, a, ctrlG())
+
+	rows := a.railRows(a.viewHeight())
+	handle := ""
+	for _, row := range rows {
+		if strings.Contains(plain(row), railGripGlyph) {
+			handle = row
+		}
+	}
+	if handle == "" {
+		t.Fatalf("the edge drew no handle at all:\n%q", plain(strings.Join(rows, "\n")))
+	}
+	if !strings.Contains(handle, a.pal.ink(railGripGlyph)) {
+		t.Fatalf("the handle is not painted in ink: %q", handle)
+	}
+	if strings.Contains(handle, a.pal.dim(railGripGlyph)) {
+		t.Fatalf("the handle is still painted at telemetry weight: %q", handle)
+	}
+
+	// AND THE POINTER TAKES IT FURTHER, across both cells rather than the one:
+	// the whole strip answers a click, so the whole strip lights.
+	a.setHover(a.bodyWidth(), a.bodyTop()+a.viewHeight()/2)
+	if !a.hoveringRailGrip() {
+		t.Fatalf("the pointer over the edge lit nothing: %+v", a.hot)
+	}
+	lit := ""
+	for _, row := range a.railRows(a.viewHeight()) {
+		if strings.Contains(plain(row), railGripGlyph) {
+			lit = row
+		}
+	}
+	if lit == handle {
+		t.Fatalf("the handle did not change under the pointer: %q", lit)
+	}
+	if ansi.StringWidth(plain(lit)) != railGripCols {
+		t.Fatalf("the lit handle is %d cells wide, want %d: %q",
+			ansi.StringWidth(plain(lit)), railGripCols, plain(lit))
+	}
+}
+
+// AND THE POINTER GOES ROUND THE WHOLE CYCLE. `❯` on the standing column closes
+// it, `❮` on the edge opens it again, and neither leg needs the chord.
+func TestTheChevronClosesAndOpensTheColumnByPointerAlone(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	railRun(a)
+	if !a.railShowing() {
+		t.Fatal("a session with five nodes drew no column")
+	}
+
+	// THE OPEN LEG: the door line lights under the pointer and closes on a press.
+	door := -1
+	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
+		if line, ok := a.railLineAt(y); ok && line.stow {
+			door = y
+		}
+	}
+	if door < 0 {
+		t.Fatal("the standing column drew its door on no pressable line")
+	}
+	at := a.bodyWidth() + ansi.StringWidth(railSeam)
+	a.setHover(at, door)
+	if !a.hoveringRailDoor() {
+		t.Fatalf("the pointer over the column's door lit nothing: %+v", a.hot)
+	}
+	lit := ""
+	for _, row := range railText(a, a.viewHeight()) {
+		if strings.Contains(row, railStowHint) {
+			lit = row
+		}
+	}
+	if !strings.Contains(lit, railGripOpenGlyph) {
+		t.Fatalf("the lit door lost its chevron: %q", lit)
+	}
+	drive(t, a, tea.MouseClickMsg{X: at, Y: door, Button: tea.MouseLeft})
+	if !a.railAway || a.railShowing() {
+		t.Fatal("pressing the chevron did not close the column")
+	}
+
+	// THE CLOSED LEG: the same control, the other way.
+	if !a.railStowed() {
+		t.Fatal("the closed column left no edge to press")
+	}
+	edge := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
+	if !strings.Contains(edge, railGripGlyph) {
+		t.Fatalf("the edge carries no chevron:\n%q", edge)
+	}
+	if strings.Contains(edge, railGripOpenGlyph) {
+		t.Fatalf("the edge carries the chevron of the other state:\n%q", edge)
+	}
+	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: a.bodyTop(), Button: tea.MouseLeft})
+	if a.railAway || !a.railShowing() {
+		t.Fatal("pressing the edge did not bring the column back")
+	}
+	// AND THE RIGHT EDGE NEVER CARRIES BOTH. One control in one of two states.
+	back := plain(strings.Join(railText(a, a.viewHeight()), "\n"))
+	if strings.Contains(back, railGripGlyph) {
+		t.Fatalf("the standing column drew the closed edge's chevron:\n%q", back)
 	}
 }
 
