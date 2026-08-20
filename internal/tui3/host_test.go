@@ -31,7 +31,7 @@ func hostLab(t *testing.T) (*app, *fakeAgent) {
 	a.width, a.height = 160, 24
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.tmux, a.remote = false, false
-	a.home = "/home/dev"
+	a.tilde = "/home/dev"
 	a.entries = nil
 	a.welcome = welcome{spent: true}
 	a.touch()
@@ -74,7 +74,7 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/home/dev/src/app"})
 	a.width, a.height = 160, 24
 	a.pal = newPalette(tokens.ANSI256, false)
-	a.home = "/home/dev"
+	a.tilde = "/home/dev"
 	if a.hosted() {
 		t.Fatal("a local session thinks it is hosted")
 	}

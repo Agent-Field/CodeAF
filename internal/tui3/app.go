@@ -552,8 +552,11 @@ type app struct {
 	// a repository and the surface can be driven with no git at all. Nil is
 	// [gitHead].
 	gitProbe func(dir string) (string, bool, bool)
-	// home is what "~" abbreviates in the legend's path, read once at boot.
-	home string
+	// tilde is what "~" abbreviates in the legend's path, read once at boot.
+	// It is NOT the home surface (home.go) — this is one string, the person's
+	// home directory, and it was called `home` until a screen by that name
+	// existed.
+	tilde string
 	// approval is the tool gate's blanket posture — "prompt", "allow", "deny" —
 	// as the profile last said. It is on this surface for exactly one reason:
 	// "allow" means nothing will ever be asked, and that is the one posture a
@@ -920,8 +923,8 @@ type app struct {
 	// and the built-ins (see [app.modelList]).
 	models func() []Model
 
-	// sheet is the settings panel (settings.go): the one FULLSCREEN thing this
-	// surface draws, and the only overlay that is modal for the pointer as well
+	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
+	// surface drew, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
 	sheet sheet
 	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
@@ -937,12 +940,45 @@ type app struct {
 	expand expand
 	// taskSheet is the task page (taskview.go): the FOURTH fullscreen thing this
 	// surface draws, and the second of them that exists at EVERY width — the deck
-	// and the tool detail above it are the phone tier's alone, so this and the
-	// settings panel are the two pages a person can reach on any terminal. It
-	// holds the project's whole task record rather than this session's, which is
-	// the one question the roster's column cannot answer. Closed, it costs the
-	// frame nothing.
+	// and the tool detail above it are the phone tier's alone. It holds the
+	// project's whole task record rather than this session's, which is the one
+	// question the roster's column cannot answer. Closed, it costs the frame
+	// nothing.
 	taskSheet taskSheet
+	// home is /home (home.go): the FIFTH fullscreen thing, the third that exists
+	// at every width, and the only one of them that is not about this
+	// conversation at all. It is every project on the machine and every
+	// conversation in them, read off the disk when it opens and again on a slow
+	// tick while it is up. Closed, it costs nothing — no walk happens until
+	// somebody asks for one.
+	//
+	// SETTINGS, THE TASK PAGE AND HOME ARE MUTUALLY EXCLUSIVE. Opening any one
+	// of them closes the other two ([app.openSettings], [app.openTaskSheet],
+	// [app.openHome]), because two pages that both believe they own the frame is
+	// a frame that draws one and takes keys for the other.
+	home homeView
+	// landing and pickSession are how this launch was made: whether the door
+	// invited home onto the first frame ([app.landHome]) and whether it asked
+	// for the resume picker there instead. Both are properties of ONE launch,
+	// which is why they are read off the options and never off the profile.
+	landing     bool
+	pickSession bool
+	// homeWorth says the machine holds a conversation other than this one, so
+	// home has something to show. It is a CACHED answer to a question about the
+	// disk, refreshed whenever the world is read anyway (home.go), because the
+	// advertisement that reads it is asked on every frame and a directory walk
+	// per frame is not a thing this surface will do.
+	homeWorth bool
+	// homeDoor is where that advertisement was drawn on the last frame, for the
+	// pointer — the same arrangement the model segment and the jump chip use
+	// (render.go's [hudSpan]).
+	homeDoor hudSpan
+	// homeRoot is where that screen looks for the projects, and "" means the
+	// state root under this machine's home ([app.placesRoot]). It exists for
+	// tests, which build a projects directory in a temp dir; nothing on the door
+	// sets it, because where sessions live is internal/session's answer and a
+	// second one would be a second place for it to be wrong.
+	homeRoot string
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1099,6 +1135,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
+		landing:          opts.Landing,
+		pickSession:      opts.PickSession,
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,
@@ -1155,7 +1193,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		a.home = home
+		a.tilde = home
 	}
 	// The gate's posture is read at boot and re-read at every turn end
 	// ([app.settle]): a person who opens the settings panel and turns the asking
@@ -1225,6 +1263,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	if opts.PickSession {
 		a.openResume()
 	}
+	// AND HOME IS DECIDED AFTER BOTH, for the picker's own reason and one more.
+	// It reads the surface it opens over — which conversation this window is in,
+	// so the cursor can open on it — and it must be able to see that the picker
+	// already took the frame, because a launch gets one greeting (home.go).
+	a.landHome()
 	return a
 }
 
@@ -1252,12 +1295,18 @@ func (a *app) Init() tea.Cmd {
 	// so ([app.railOffersMore]), and that question is asked on the first frame. It
 	// is one small file, read off the loop, and the read marks itself done — a
 	// session that never grows a task never reads it twice.
+	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks()}
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(),
-			a.watchDesigns(), a.watchRuns(), a.loadTasks())
+		standing = append(standing, a.wake())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
-		a.watchRuns(), a.loadTasks())
+	// AND HOME'S OWN CLOCK, when home is the first frame. It is not the paint
+	// clock — home is a still page and asks for a beat every few seconds rather
+	// than thirty a second (home.go's [homeEvery]) — so it is started here
+	// beside the standing lanes rather than folded into the wake above.
+	if a.home.open {
+		standing = append(standing, homeTick())
+	}
+	return tea.Batch(standing...)
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1416,6 +1465,21 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		// And home, on the same terms as both of those (home.go). It is claimed
+		// HERE and not left to fall through, because a wheel that reached the
+		// conversation from a screen drawn over the top of it would scroll
+		// something nobody can see — and put them back on a transcript that has
+		// silently moved when esc gives the frame back.
+		if a.home.open {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.home.move(-3)
+			case tea.MouseWheelDown:
+				a.home.move(3)
+			}
+			a.touch()
+			return a, nil
+		}
 		// And the status sheet, which is the same claim about the same kind of
 		// surface (statusdeck.go). The wheel walks its cursor rather than an
 		// offset of its own: the list is short enough that a scroll and a
@@ -1485,12 +1549,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.sheet.open {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
-			// The task page is modal for the pointer at the same rung and for the
-			// same reason: it is the whole screen, so a press that fell through to
-			// the conversation underneath would open a tool call nobody can see
-			// (taskview.go).
+			// The task page and home are modal for the pointer at the same rung and
+			// for the same reason: each is the whole screen, so a press that fell
+			// through to the conversation underneath would open a tool call nobody
+			// can see (taskview.go, home.go).
 			if a.taskSheet.open {
 				return a, a.taskSheetPress(msg.Mouse().Y)
+			}
+			if a.home.open {
+				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// The status sheet is modal for the pointer at the same rung and for
 			// the same reason: it is the whole screen, and a press outside its
@@ -1573,6 +1640,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// surface is not a gesture (jumpchip.go).
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
+			}
+			// AND THE DOOR HOME IS THE THIRD, in the hint slot at the right end
+			// of the legend. Column-aware for the same reason again: the rest of
+			// that rule is a rule, and pressing a rule means nothing (home.go).
+			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
@@ -1662,6 +1735,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.taskSheet.open {
 			a.taskSheetHover(msg.Mouse().Y)
+			return a, nil
+		}
+		if a.home.open {
+			a.homeHover(msg.Mouse().Y)
 			return a, nil
 		}
 		if a.deckShowing() {
@@ -1762,6 +1839,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.roomResolveUnfinished()
 		a.roomTouched()
 		return a, a.wake()
+
+	case homeTickMsg:
+		// HOME IS LIVE, and this is the whole of how: read the folders again,
+		// then ask for one more beat. It rides its own clock rather than the
+		// paint clock for the reason home.go's [homeEvery] gives (home.go).
+		return a, a.homeBeat()
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -2065,6 +2148,10 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// blocked on must not be behind a sheet somebody opened to read a diff.
 		a.closeSettings()
 		a.closeExpand()
+		// AND HOME, for the same reason in the same words: it is the whole
+		// screen, and a session blocked on an answer behind it would be a
+		// question nobody can see to answer (home.go).
+		a.closeHome()
 		a.askConsent(ev)
 
 	case session.EventConnectAsk:
@@ -3475,6 +3562,13 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openSettings()
 		return nil
 
+	case "home":
+		// The one command on this surface that is not about this conversation.
+		// It has no argument form: the screen IS the way of naming what you
+		// want, and a command that took a project name would be asking a person
+		// to remember what home exists to show them (home.go).
+		return a.openHome()
+
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
 		// is /connections, on the table's row): a person asking what they have
@@ -3601,6 +3695,12 @@ func (a *app) slash(line string) tea.Cmd {
 	}
 }
 
+// newUnavailableWord is what /new says where no fresh-session seam was wired —
+// a headless frame, or a launcher that did not supply one. It is a constant
+// because home's door opens a new conversation through this same seam and has
+// to refuse in the same words when it is not there (home.go).
+const newUnavailableWord = "/new is unavailable here"
+
 // renew closes this conversation and opens the next one on the same config.
 // The transcript is cleared because it belongs to the agent that just closed:
 // a fresh session file with the old conversation still on screen would be the
@@ -3609,7 +3709,7 @@ func (a *app) slash(line string) tea.Cmd {
 // standing task subscription (task.go).
 func (a *app) renew() tea.Cmd {
 	if a.fresh == nil {
-		a.note("/new is unavailable here")
+		a.note(newUnavailableWord)
 		return nil
 	}
 	if a.state == stateWorking {

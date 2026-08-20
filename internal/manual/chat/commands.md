@@ -147,6 +147,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
+| `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/rewind` | `/undo`, `/back` | — | enters rewind mode (also esc esc) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
@@ -564,12 +565,71 @@ Refusals, exactly as written:
 resuming is unavailable here
 No sessions yet — start one with aforge chat
 already here · <name>
+open in another window — go there, or start a new conversation here
 resume failed: <error>
 close failed: <error>
 ```
 
+The fourth is a conversation another window is holding open — **no file path is printed**,
+and nothing is closed: the conversation you are in is still there. `resume failed:` is now
+only for the rest, which are rare.
+
 `already here` is enter on the row you are on; nothing is closed. A directory with no
 conversations never opens the picker at all — a modal list with no rows would be a trap.
+
+**`/resume` lists this directory's conversations only.** For every project on the machine
+at once, and every conversation in all of them, the command is `/home`.
+
+## /home — every project on this machine
+
+`/home` opens a fullscreen screen of **every project on this machine and every
+conversation in them**, which is the one thing `/resume` cannot show you: `/resume` is
+"which conversation, here", and this is "what is there at all".
+
+**It is also what a bare `aforge` opens on.** The conversation the launch picked is loaded
+underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
+conversation — drops into it. Home stays out of the way when you named a conversation
+(`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
+conversation is the one already open. There is no welcome box when home greets you.
+
+There is no argument form and no key chord — `/home` is the only way in. Projects are dim
+headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
+`◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
+spoke in it. A conversation stopped on a question sorts to the top of its project and the
+right half shows the line it is stopped on. Quiet
+conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
+right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
+
+`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
+**Typing does two things at once**: what you type is a new conversation waiting to be sent
+AND a live search over every project on the machine. The top row — `start a new
+conversation: "…"` — holds the cursor, so type-and-enter still starts a chat; one `↓` steps
+onto the matches and `enter` opens one instead. The foot reads exactly
+`type to search or start something new · ↑↓ pick · enter open`.
+
+Search matches conversation names, project names, task titles and **what tasks came to** —
+the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
+folds its quiet conversations into `…13 more, quiet since 1d`; that line is a door (`enter`
+or `→` opens it, `←` folds it), and searching sees through the fold.
+
+**The limit, plainly: `enter` opens conversations of the project this window is in.**
+Other projects are shown with a dim `elsewhere` on their heading, and enter on one of
+their rows says `elsewhere · <that project's path>` rather than opening it — a window's
+permissions, crew and spend ceiling all came from the workspace it launched in, and
+carrying a conversation across without them is not something aforge will do quietly.
+
+Refusals, exactly as written:
+
+```
+home shows this machine's projects, and this session is on another
+nothing here yet — say something and this fills up
+no conversation matches
+/new is unavailable here
+```
+
+The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
+session is on the other end. The last is what the typing-to-start box says where no
+fresh-session seam exists.
 
 ## /permissions — what runs without asking
 
@@ -777,8 +837,10 @@ surface from `/connect`, not a second copy of it.
 
 ## The settings panel — /settings, /set, /config
 
-`/settings` (or `/set`, `/config`, or ctrl+,) opens the one fullscreen thing this surface
-draws: a tab bar over the aforge settings, plus a tab of connected accounts.
+`/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
+aforge settings, plus a tab of connected accounts. It was the first of the three fullscreen
+pages here — the others are `/history` (the task page, ctrl+.) and `/home` — and **only one
+of the three is ever up at a time**: opening any one closes the other two.
 
 Moving in it:
 

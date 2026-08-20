@@ -551,9 +551,9 @@ have closed, is either one quiet line down there or nowhere at all until you ope
 started. The page is also reached from the `ctrl+. — view more` line at the bottom of the
 task column.
 
-The page takes the whole frame, the way the settings panel does. `esc` closes it. Only one
-of the two is ever up: opening this closes the settings panel, and opening the settings
-panel closes this.
+The page takes the whole frame, the way the settings panel does. `esc` closes it. Three
+pages here take the frame — the settings panel, this one, and `/home` — and **only one of
+them is ever up**: opening any one closes the other two.
 
 It has two sections.
 

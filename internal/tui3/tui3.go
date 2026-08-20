@@ -374,6 +374,22 @@ type Options struct {
 	// field here rather than a settings row.
 	PickSession bool
 
+	// Landing says this launch is a person opening aforge with no particular
+	// conversation in mind, and that home may therefore greet them
+	// (home.go's [app.landHome]).
+	//
+	// IT IS AN OPT-IN AND THAT IS THE POINT. Every door that is not a person
+	// sitting down at a full terminal — `--once`, the headless frame, a test,
+	// anything over `--host` — leaves it false and gets no home by saying
+	// nothing, rather than by each of them remembering to switch one off. The
+	// one door that sets it is `aforge` and `aforge chat` with no --session and
+	// no --once (cmd/aforge's chatv3.go).
+	//
+	// A person who NAMED a conversation is not landing: `--session <path>` and
+	// `aforge resume` both mean "that one", and a menu over the thing somebody
+	// just asked for by name is the door second-guessing them.
+	Landing bool
+
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says
 	// it still says — the difference is that it says all of it in words and

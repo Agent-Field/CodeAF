@@ -132,6 +132,10 @@ const (
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
 	chromeJump
+	// chromeLegend is the rule between the transcript and the box. Its right
+	// end carries the hint slot, and the one thing in that slot a person can
+	// press is the door home (home.go's [app.homeDoorPress]).
+	chromeLegend
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -188,7 +192,7 @@ func (a *app) View() tea.View {
 // frame is the whole screen and where the caret sits in it.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
-	// The settings panel is the one thing on this surface that takes the whole
+	// The settings panel is the first thing on this surface that takes the whole
 	// frame, and it takes it WHOLE: no conversation above it, no input line
 	// under it, nothing of the frame below showing through at the edges
 	// (settings.go). A sheet drawn into a viewport is a sheet you read past.
@@ -200,17 +204,27 @@ func (a *app) frame() (string, int, int) {
 	// reason: it is the project's whole record of its own work — the running tree
 	// and the flat list of everything before it — and a record read past a
 	// conversation is a record nobody finishes reading (taskview.go).
-	//
-	// THE SETTINGS PANEL IS READ FIRST AND IT WINS, though the two can never
-	// actually be open together: opening either closes the other
-	// ([app.openTaskSheet], [app.openSettings]). The order is written down anyway,
-	// because an invariant that is only true while nobody makes a mistake is an
-	// invariant that draws a blank frame the day somebody does.
 	if a.taskSheet.open {
 		lines, _, caretX, caretY := a.taskSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND THE STATUS SHEET IS THE THIRD, on the phone tier only: the deck's two
+	// AND HOME TAKES IT ON THE SAME TERMS (home.go). It is the whole machine's
+	// work rather than this conversation's, so there is nothing of this window
+	// worth showing around the edges of it — and the conversation is exactly
+	// where esc puts you back.
+	if a.home.open {
+		lines, _, caretX, caretY := a.homeFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	// THE ORDER OF THOSE THREE IS SETTINGS, THEN THE TASK PAGE, THEN HOME —
+	// oldest surface first, which is also the order settings.go tells the story
+	// in. No two of them can actually be open at once: opening any one closes the
+	// other two ([app.openSettings], [app.openTaskSheet], [app.openHome]). The
+	// order is written down anyway, because an invariant that is only true while
+	// nobody makes a mistake is an invariant that draws a blank frame the day
+	// somebody does.
+	//
+	// AND THE STATUS SHEET IS THE FOURTH, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame
 	// whole for the reason the panel does — a sheet drawn into a viewport that
@@ -408,7 +422,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// THE RULE IS A LEGEND NOW: the same one line, with where you are written
 		// into it (render.go). It degrades back to the plain rule on a frame with
 		// no room for a label.
-		add(a.legend(width), chromeRow{})
+		add(a.legend(width), chromeRow{kind: chromeLegend})
 	}
 	for i, line := range a.consentRows(width) {
 		// The offer is the second row of the block, and it is the only row of it

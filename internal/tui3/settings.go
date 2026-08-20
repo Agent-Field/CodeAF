@@ -14,10 +14,14 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the two fullscreen
-// pages this surface draws at every width. The second is the task page
-// (taskview.go's [taskSheet]), which ctrl+. opens; the status deck and the tool
-// detail take the frame as well, but only at [tierPhone].
+// THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the three fullscreen
+// pages this surface draws at every width, and the one the other two are
+// modelled on. The second is the task page (taskview.go's [taskSheet]), which
+// ctrl+. opens; the third is home (home.go's [homeView]), which /home and a
+// double space open. The phone tier's status deck (statusdeck.go) and tool
+// detail (expand.go) take the frame as well, but only at [tierPhone]. All of
+// them take the frame WHOLE, and this file is where the grammar for doing that
+// was written down.
 //
 // It is omp's INTERACTIONS sheet over aforge's own registry, and the whole of
 // what this file adds to that registry is a UI SKIN: which tab a row belongs
@@ -36,12 +40,14 @@ import (
 //   - The panel is MODAL and fullscreen. A settings sheet is not something you
 //     read the conversation past, and the alternative — a bottom-anchored list
 //     of twenty-eight rows — would have taken the frame anyway while pretending
-//     not to. It was once the ONLY thing on this surface that was modal and
-//     fullscreen; the task page is now the other, and the two are mutually
-//     exclusive by construction — opening either closes the other
-//     ([app.openSettings] and [app.openTaskSheet] each say so), because two
-//     pages that both believe they own the frame is a frame that draws one and
-//     takes keys for the other.
+//     not to. It was the ONLY such thing for a while and is not any more; the
+//     rule it established is that a surface which takes the frame takes it
+//     WHOLE, keyboard and pointer with it, and every fullscreen surface since
+//     has been written to it. THE THREE ARE MUTUALLY EXCLUSIVE BY CONSTRUCTION:
+//     opening any one of settings, the task page or home closes the other two
+//     ([app.openSettings], [app.openTaskSheet] and [app.openHome] each say so),
+//     because two pages that both believe they own the frame is a frame that
+//     draws one and takes keys for the other.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
 //     (<workspace>/.aforge-v3/config.json) is deliberately not writable from here:
@@ -808,12 +814,7 @@ func (a *app) openSettings() {
 	if a.hosted() {
 		a.note(settingsRemoteWord)
 	}
-	// THE OTHER FULLSCREEN PAGE STANDS DOWN, which is the other half of the law
-	// [app.openTaskSheet] states: only one of the two may believe it owns the
-	// frame, and view.go draws this one first.
-	if a.taskSheet.open {
-		a.closeTaskSheet()
-	}
+	a.standDownFullscreen()
 	a.sheet = sheet{
 		open:         true,
 		registry:     a.registry(),
@@ -829,6 +830,33 @@ func (a *app) openSettings() {
 func (a *app) closeSettings() {
 	a.sheet = sheet{}
 	a.touch()
+}
+
+// standDownFullscreen closes every page that takes the frame at every width, so
+// that the one about to open is alone in believing it owns it.
+//
+// THE LAW IS THAT THE THREE ARE MUTUALLY EXCLUSIVE: the settings panel, the task
+// page (taskview.go) and home (home.go) each take the frame WHOLE — keyboard and
+// pointer with it — and view.go's [app.frame] can only draw one, so a second one
+// opened underneath would take the keys of a page nobody can see. Every open path
+// calls this FIRST and none of them tests for the others itself, because three
+// pages each remembering to close two others is six places for the rule to be
+// forgotten in, and the day one is is the day a person stacks home over the task
+// page and finds esc goes to the wrong screen.
+//
+// The phone tier's status deck and tool detail are deliberately not here: they
+// take the frame only at [tierPhone] and are dismissed by their own keys, and a
+// panel opened over one of them is a panel a person asked for while it was up.
+func (a *app) standDownFullscreen() {
+	if a.sheet.open {
+		a.closeSettings()
+	}
+	if a.taskSheet.open {
+		a.closeTaskSheet()
+	}
+	if a.home.open {
+		a.closeHome()
+	}
 }
 
 func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) != "" }
