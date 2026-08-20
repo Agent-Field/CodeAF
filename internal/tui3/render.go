@@ -497,10 +497,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			// command either.
 			out = append(out, lead+paintCommands(line, a.pal, a.pal.accent, true))
 		}
-		return out
+		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
+		// one here is not typed at all: an `@task` mention leaves a footnote
+		// block naming the node's transcript, and that block is the fastest way
+		// into what a task actually did.
+		return a.linkPaths(out)
 
 	case entryAssistant:
-		return a.assistantRows(i, e, width)
+		return a.linkPaths(a.assistantRows(i, e, width))
 
 	case entryThinking:
 		return a.thoughtRows(e, width, a.hoveringEntry(i))
@@ -530,7 +534,12 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			}
 			out = append(out, a.pal.dim(lead+line))
 		}
-		return out
+		// A NOTE IS WHERE THIS SURFACE NAMES ITS OWN FILES, and it names them in
+		// full on purpose (statusnote.go): /status's `file`, /help's `session ·`,
+		// `exported · …`, `resumed …`, `new session · …`. Every one of them is a
+		// path somebody was going to select and paste somewhere, which is the
+		// same sentence as "somebody was going to open it".
+		return a.linkPaths(out)
 	}
 	return nil
 }

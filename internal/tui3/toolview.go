@@ -1040,11 +1040,17 @@ func (a *app) paintTarget(e *entry, target string) string {
 		return a.pal.accent(pattern) + a.pal.dim(" "+where)
 
 	case "read", "edit", "write":
+		// AND THE TARGET IS THE DOOR ITSELF (pathlink.go). This is the one path
+		// on the row that aforge resolved rather than found — it came out of the
+		// call's own arguments — so it is exactly the kind of path that may be
+		// linked, and the shown text may be an ellipsis or a bare basename
+		// without the click losing the file.
+		name := argString(argsOf(e.detail.Args), "path")
 		path, rest, found := strings.Cut(target, " ")
 		if !found {
-			return a.pal.ink(target)
+			return a.pathLink(name, a.pal.ink(target))
 		}
-		return a.pal.ink(path) + a.pal.dim(" "+rest)
+		return a.pathLink(name, a.pal.ink(path)) + a.pal.dim(" "+rest)
 	}
 	return a.pal.ink(target)
 }
@@ -1324,7 +1330,10 @@ func (a *app) diffRows(e *entry, width int) []string {
 	}
 	out := make([]string, 0, 16)
 	if path := argString(fields, "path"); path != "" {
-		out = append(out, a.pal.dim(fit(path, width)))
+		// The file the hunks below belong to, and a door into it — the link is
+		// applied to the FITTED text, after the width was measured, which is
+		// this file's rule for every escape sequence it writes.
+		out = append(out, a.pal.dim(a.pathLink(path, fit(path, width))))
 	}
 	for _, pair := range pairs {
 		ops := diffOps(splitLines(pair.old), splitLines(pair.new))

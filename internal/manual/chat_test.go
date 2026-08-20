@@ -159,6 +159,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I see the picture you made without opening the row",
 			"making-pictures-audio-and-video"},
 		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
+
+		// The eighth wave, written from the complaint that produced the
+		// feature: file paths in a reply looked like text, cmd-click caught
+		// half of a wrapped one, and nothing said they were clickable at all.
+		// A person meets this holding a mouse, so the words are the ones they
+		// would say out loud.
+		{"can I click a file path to open it", "screen"},
+		{"how do I open a file from the chat", "screen"},
+		{"why is a path underlined", "screen"},
+		{"cmd click on a file name does nothing", "screen"},
+		{"why is this file path not clickable", "screen"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
