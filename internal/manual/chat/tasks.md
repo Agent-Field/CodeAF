@@ -396,20 +396,23 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 
 ## The roster: the column of all the work
 
-The roster is a column on the right holding every task this session has admitted, not just
-the live ones, and under them a short dulled note of what the *project* has run — for the
-tasks *other* sessions ran, the page `/history` opens is the one that has them whole. Work
-finishing never puts it away, and neither does `/new` — that takes this session's tasks with
-it and leaves the column standing, with the project's record still under it. One thing
-closes it: `ctrl+g`, which takes the column off the frame and leaves the work exactly where
-it was. The bottom line of the column says so.
+The roster is a column on the right holding every task **this conversation** has admitted,
+not just the live ones — and nothing else. Tasks *other* sessions ran are not on it; the
+page `/history` opens is the one that has them, and one dim line at the foot of the column,
+`ctrl+. — earlier`, is the door onto it. Work finishing never puts the column away, and
+neither does `/new` — that takes this session's tasks with it and leaves the column
+standing, with the door onto the project's record still at its foot. One thing closes it:
+`ctrl+g`, which takes the column off the frame and leaves the work exactly where it was.
+The bottom line of the column says so.
 
 The column is permanent: it stands from the session's first frame, before any task exists,
 at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
-from 100 to 119. Work fills it rather than raising it. With nothing in it at all it carries
-one dim line, `no tasks yet`; in a directory whose earlier sessions ran tasks, those dulled
-`earlier` rows stand there instead of the label. Under 100 columns there is no column, and
-`ctrl+t` opens the same roster over the body instead once this session has tasks.
+from 100 to 119. Work fills it rather than raising it. A conversation that has run nothing
+carries one dim line, `no tasks yet`, **whatever the project has behind it** — the label is
+about this conversation, and in a directory whose earlier sessions ran tasks the door
+`ctrl+. — earlier` sits at the foot of the column under it. Under 100 columns there is no
+column, and `ctrl+t` opens the same roster over the body instead once this session has
+tasks.
 
 Closed with `ctrl+g`, the column leaves a two-column edge at the right of the frame that
 opens it again on a click — see *The task bar disappeared* below.
@@ -462,8 +465,8 @@ what the keyboard reads.
 
 **Work that is running never scrolls off it.** Families are already ordered so that
 anything running or waiting on you leads the column, and those rows are also *pinned*: when
-you walk the cursor down into a long record, everything under the running head scrolls and
-the running head stays where it is. The pin gives way only on a column with more running
+you walk the cursor down into a long list of finished work, everything under the running
+head scrolls and the running head stays where it is. The pin gives way only on a column with more running
 work than it has rows, where it keeps one row back for everything else — a session that big
 is read on the task page instead.
 
@@ -473,59 +476,43 @@ line are dim, and the room you are standing in is the one row in the accent. Not
 hidden by this — the column is a record and keeps everything — but a glance at it lands on
 what is moving.
 
-## The `earlier` rows at the bottom of the column: old tasks from previous sessions
+## Old tasks from previous sessions are not on the column — the `ctrl+. — earlier` door
 
-Under this session's own work — and under a blank line — the column carries a short,
-dulled note of what the **project** has run, headed with the same word the task page uses.
-On a conversation that has run nothing they are the top of the column, with no blank above
-them, and they stand **instead of** the `no tasks yet` label rather than under it:
+**The column is this conversation's work and nothing else.** No rows of earlier sessions'
+tasks are drawn under it. What sits at the foot of the column instead, whenever the project
+has a record this conversation never ran, is one dim line:
 
 ```
-earlier
-✓ ⧉ Port the parser              2d
-✓ ⧉ Sweep the call sites         3h
+ctrl+. — earlier
 ```
 
-- **At most six rows**, newest first, and only tasks **this session is not already
-  showing**: a task of your own, running or landed, is on the column above in its own
-  family and is never repeated down here.
-- Each row is one line — a state glyph, the mention mark `⧉`, the title muted, and how long
-  ago it landed dim. No tree, no id, no detail lines.
-- **A row that says `running` is drawn as running only while something is.** The record is
-  written once and never corrected, so a task that was under way when its window closed
-  would go on claiming `running` forever. What settles it is that window: while it is still
-  open and still holds the task, the row is undulled and reads `running`; when nothing is
-  behind the claim any more the glyph becomes a dot `·` and the row reads `incomplete`.
-  `incomplete` is not a judgement about the work — nobody looked at it and nobody failed
-  it — it means the window went and nothing finished it.
-- **They never take a row from live work.** They are filled into whatever the session's own
-  rows left over, so a column busy with running tasks carries none of them, and nothing
-  running is ever pushed off to make room.
-- **They are doors, like every other row of the column.** `ctrl+t` and `↑`/`↓` walk into
-  them — the cursor carries on down past this session's last task — the pointer lights the
-  row under it, and `enter` or a click **goes inside that task**: the full-screen card
-  carrying what the work came to, what it cost, where it left its changes and the last
-  thing it said. `esc` comes back out to the list. See *Going inside an old task* below.
-- **What they do not open is a room.** A room is a live lane onto a task in *this* session's
-  work, and these belong to another conversation — so the card is the door, which is
-  exactly what `enter` does on the task page's own `earlier` rows.
-- **To put one in your message instead**, press `m` from inside the card. That writes
-  `@its-name` into your message box, keeping whatever you had half-written; sending it
-  mints the pointer block carrying that task's outcome, its branch and its transcript.
-- Being dulled is a claim about the *work* — this is the record, not what is happening —
-  and never about whether the row answers. The one row down here that is **not** dulled is
-  the one another open window is still running.
-- **The column shows no other window's ordinary work**, only the rows the project's file
-  holds. An ordinary task writes nothing into that file until it lands, so a task somebody
-  started in the window next door five minutes ago is not down here — `/history` is where
-  it is.
-- For more than the six, or to filter them and read their outcomes: press `ctrl+.`, type
-  `/history`, or click the `ctrl+. — view more` line at the bottom of the column.
+- **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
+  task page opens with every task the project has ever run on it — running work at the top,
+  a flat `earlier` list under it, newest first. `/history` is the same page.
+- **It says what is behind it.** With a record behind it the line reads `ctrl+. — earlier`;
+  with no record, on a column that has merely folded a family away, the same line reads
+  `ctrl+. — view more`. There is only ever one such line.
+- **It is drawn only when there is something behind it**, and never as `0 earlier` or any
+  other count of nothing.
+- **A task of your own is not behind it twice.** A task this conversation ran, running or
+  landed, is on the column above in its own family; the door is offered for work this
+  session never ran, and for a family the column has folded.
+- It is dim, like the totals above it, and it is a button as well as a key.
 
-In a project with a record but no tasks of its own yet — a directory you worked in last
-week, opened fresh — the column is these rows and the footer alone. The `no tasks yet`
-label is only for a column with genuinely nothing behind it: a new session in a new
-directory.
+**The column used to footnote the record** — up to six dulled `earlier` rows under this
+session's work, walkable with `↓`, each opening a card. They are gone. Six rows out of a
+record that runs to two thousand is a sample; they stood where the column's own
+`no tasks yet` label goes; and the cursor walked out of this conversation's work into
+another one's without the column ever saying it had. Everything they offered is on the
+other side of the door, whole: every row, the filter, the cards, and `m` for the mention.
+
+**Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
+home (`/home`, or space twice on an empty box). The chat can also read the whole project
+record for you with its `tasks` tool — just ask.
+
+**Running work in another aforge window** is on no surface but the task page. An ordinary
+task writes nothing into the project's file until it lands, so the window next door is the
+only place that work can be read from, and `/history` is the page that reads it.
 
 ## Hiding the task column: closing the right sidebar, panel or task bar
 
@@ -557,8 +544,7 @@ With the column closed, work is still visible:
   keyboard in one press.
 
 `ctrl+g` works whether or not the session has tasks — the column stands empty, so an
-empty column is still a column to close, and so is one standing on the project's record
-alone. It does nothing, and is not swallowed, only when there is no roster on the frame at
+empty column is still a column to close. It does nothing, and is not swallowed, only when there is no roster on the frame at
 all: a frame under 100 columns where nothing has raised the roster over the body.
 
 ## The task bar disappeared — how do I get the task column back
@@ -616,16 +602,17 @@ When depth has forced a title to be cut, the footer adds `w · click seam — wi
 from the keyboard, and so is the `❯ ctrl+g — hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
-confirmation, a permission question, a task proposal, or any overlay is up, and with
-nothing on the column at all — no tasks of this session's **and** no record from an
-earlier one — `ctrl+t` falls through rather than being swallowed.
+confirmation, a permission question, a task proposal, or any overlay is up, and with no
+tasks of **this conversation's** on the column, `ctrl+t` falls through rather than being
+swallowed — including in a directory whose earlier sessions ran plenty. There are no rows
+down there to put a cursor on; the door `ctrl+. — earlier` at the foot of the column is how
+that work is reached.
 
-**The walk runs into the `earlier` rows.** `↓` past this session's last task steps into
-the project's record at the foot of the column, `↑` comes back out, and `enter` down there
-**goes inside that task** instead of opening a room, because work another conversation ran
-has no room to open — see *Going inside an old task* above. On a column that is *only*
-record — a directory you worked in last week, opened fresh — `ctrl+t` parks the cursor on
-the first of those rows.
+**The walk stops at this conversation's last task.** `↓` clamps there rather than carrying
+on into the project's record, and `enter` on any row of this column opens that task's
+**room**. It used to walk into six dulled `earlier` rows below, which meant holding `↓` took
+you out of this conversation's work and into another one's; old work is walked on the task
+page now (`ctrl+.`), where `enter` goes inside its card.
 
 The cursor follows the task, not the row, when families reorder or fold around it.
 
@@ -635,17 +622,18 @@ cell or the root's `▸ +N` badge to toggle the family; click its title to open 
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
 
-## Seeing every task: task history, old and past tasks, work from other sessions
+## Seeing every task: task history, old and past tasks, what we did last week, work from other sessions
 
 `/history`, or `ctrl+.`, opens a full-screen page holding **every task this project has ever
 run** — this conversation's and every conversation's before it. It is the answer the roster
-cannot give: the column beside the conversation is built from *this session's* work, plus at
-most six dulled note rows of everything else, so a task you ran last week, in a session you
-have closed, is either one quiet line down there or nowhere at all until you open this.
+cannot give: the column beside the conversation is built from *this session's* work and
+nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
+screen until you open this.
 
 **There is no `/tasks` command.** `/task <brief>` starts work; `/history` shows what was
-started. The page is also reached from the `ctrl+. — view more` line at the bottom of the
-task column.
+started. The page is also reached from the one dim door line at the bottom of the task
+column — `ctrl+. — earlier`, or `ctrl+. — view more` where the column has merely folded a
+family away.
 
 The page takes the whole frame, the way the settings panel does. `esc` closes it. Three
 pages here take the frame — the settings panel, this one, and `/home` — and **only one of
@@ -778,8 +766,10 @@ cursor.
 
 ## Going inside an old task — see what a past task did, read a finished task's report
 
-`enter` on any `earlier` row — on the task page, or on the dulled record rows at the bottom
-of the task column — **goes inside that task**. A click does the same on the first press.
+`enter` on any `earlier` row of the task page (`ctrl+.`, `/history`) **goes inside that
+task**. A click does the same on the first press. The task column carries no rows of old
+work — its `ctrl+. — earlier` line is the door onto this page — so the page is where every
+old task is opened.
 What opens is a full-screen card over the same page, with the list still underneath:
 
 ```
@@ -831,30 +821,30 @@ A task **this** session ran opens its room instead, which is the live thing: the
 `enter`, a strip chip and a `task 7` link all land there. Only work from a conversation that
 is closed opens the card.
 
-## The "view more" line at the bottom of the task column
+## The one door line at the bottom of the task column: `ctrl+. — earlier`, `view more`
 
 When there is more work than the column is showing, the roster's footer grows one more dim
 line above `❯ ctrl+g — hide`:
 
 ```
-ctrl+. — view more
+ctrl+. — earlier
 ```
 
 Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
 as it was — the page is somewhere you go and come back from, not a state the column enters.
 
-**It appears only when there is genuinely more**, which is one of exactly two things:
+**There is exactly one such line, never two**, and the words on it say what is behind it:
 
-- a family is **folded**, so the column is standing one row for work it is not drawing; or
-- the project's record holds tasks **this session never ran** — work from an earlier
-  conversation, or from a window still open beside this one. The column notes at most six
-  of those; this line is how you reach the ones it cut, and how you reach the running work
-  of other windows, which the column does not carry at all.
+- `ctrl+. — earlier` when the project's record holds tasks **this session never ran** —
+  work from an earlier conversation, or from a window still open beside this one. This is
+  the common case: any directory you have worked in before has one.
+- `ctrl+. — view more` when the only thing held back is a **folded** family, so the column
+  is standing one row for work it is not drawing, and there is no earlier work to promise.
 
 A landed task of this session's, already drawn on the column, does not earn the line: it
 would be offering to show you what you are looking at. So a first-ever session in a fresh
-directory, with nothing folded and no record behind it, has no `view more` line, and that
-is not a bug.
+directory, with nothing folded and no record behind it, has no door line at all, and that
+is not a bug. It is never drawn as a count of nothing.
 
 ## Walking into a task's room
 

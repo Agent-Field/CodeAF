@@ -121,13 +121,12 @@ func TestARowClaimingToRunMovesWhenNobodyIsBehindIt(t *testing.T) {
 	}
 }
 
-// AND THE COLUMN DRAWS THE SAME JUDGEMENT, because the page's record row and the
-// column's are the same function. A screen that said `running` in one place and
-// `incomplete` in the other would be the surface arguing with itself.
-//
-// The title is short on purpose: the column is thirty cells beside a paragraph,
-// and a test whose claim depends on a long title fitting is a test about width.
-func TestTheColumnMarksARecordRowTheSameWayThePageDoes(t *testing.T) {
+// AND THE COLUMN DRAWS NONE OF IT. The judgement about a row that claims to be
+// running belongs to the page, because the page is the only surface that draws
+// the project's record at all now: the column is this conversation's work
+// (taskview.go). A row another window is holding is on no row of this column
+// whatever it says about itself.
+func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 	a, agent, _ := awayApp(t)
 	a.comp.tasks = []session.TaskIndexEntry{
 		theirTask("3", "the-other-window", "Port it", string(session.TaskRunning)),
@@ -136,23 +135,22 @@ func TestTheColumnMarksARecordRowTheSameWayThePageDoes(t *testing.T) {
 		window("the-other-window", session.PresenceTask{
 			ID: "3", Title: "Port it", State: string(session.TaskRunning)}))
 
-	row, ok := railRowFor(a, 20, "Port it")
-	if !ok {
-		t.Fatalf("another window's running work is on no row of the column:\n%s",
-			strings.Join(railText(a, 20), "\n"))
+	if row, ok := railRowFor(a, 20, "Port it"); ok {
+		t.Fatalf("another window's work is on a row of this conversation's column: %q", row)
 	}
-	if !strings.Contains(row, taskRecordRunsWord) {
-		t.Fatalf("the column does not say the row is running:\n%s", row)
+	// What the column carries instead is the door onto the page that has it.
+	if rail := strings.Join(railText(a, 20), "\n"); !strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("the column offered no door onto the record:\n%s", rail)
 	}
-
+	// And it stays off the column when nobody is holding it either: a row that
+	// claims to be running with nothing behind it is still not this conversation's
+	// work, and the page is where that judgement is drawn.
 	agent.away, a.away = session.Elsewhere{}, elsewhereCache{}
-	row, ok = railRowFor(a, 20, "Port it")
-	if !ok {
-		t.Fatalf("a row nobody is running vanished off the column instead of saying so:\n%s",
-			strings.Join(railText(a, 20), "\n"))
+	if row, ok := railRowFor(a, 20, "Port it"); ok {
+		t.Fatalf("a row nobody is running turned up on the column: %q", row)
 	}
-	if !strings.Contains(row, taskRecordStoppedWord) {
-		t.Fatalf("the column does not say the row is %q:\n%s", taskRecordStoppedWord, row)
+	if row := awayRowWith(t, taskSheetText(a), "Port it"); !strings.Contains(row, taskRecordStoppedWord) {
+		t.Fatalf("the page does not say the row is %q:\n%s", taskRecordStoppedWord, row)
 	}
 }
 
