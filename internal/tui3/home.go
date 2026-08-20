@@ -219,9 +219,10 @@ const (
 	// what this screen should have been from the start — a list that rises out of
 	// the thing you are typing into.
 	//
-	// AND IT IS ONLY HALF THE SHAPE. The other half is [homeView.buildWorld]'s
-	// anchor row, which holds the same position with nothing typed at all — see
-	// the block above it for why home is a drop-up resting or typing.
+	// IT IS ALSO THE ONLY THING THAT MOVES THE LIST. With nothing typed home is
+	// a dashboard hanging from the top of its region and this row does not exist;
+	// the first character brings it into being at the foot and lifts the list to
+	// meet it (the block above [homeView.buildWorld] states both halves).
 	homeAction
 	// homeBlank is the empty line between projects.
 	homeBlank
@@ -288,11 +289,6 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
-	// here is the transcript THIS window is in, and it is what the bottom of the
-	// column is anchored on ([homeView.buildWorld]). It is held beside the bucket
-	// rather than reached for through the app because the build is the view's own
-	// work and a row's position must not depend on which caller is drawing it.
-	here string
 	// last caches the tail of a conversation's journal by transcript path.
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
@@ -350,7 +346,6 @@ func (a *app) openHome() tea.Cmd {
 		open:     true,
 		world:    session.ReadWorld(a.placesRoot()),
 		bucket:   homeBucketOf(a.file),
-		here:     a.file,
 		hover:    -1,
 		last:     map[string]session.Summary{},
 		expanded: map[string]bool{},
@@ -414,7 +409,6 @@ func (a *app) landHome() {
 		open:     true,
 		world:    world,
 		bucket:   homeBucketOf(a.file),
-		here:     a.file,
 		hover:    -1,
 		last:     map[string]session.Summary{},
 		expanded: map[string]bool{},
@@ -536,13 +530,6 @@ func (h *homeView) build() {
 			h.pointAction()
 			return
 		}
-	} else {
-		// AT REST THE CURSOR RESTS ON THE FOOT ROW, which is the same screen row
-		// the action row takes the moment anything is typed. That is what makes
-		// rest and typing ONE geometry rather than two: the cursor does not move
-		// when the first character lands, because there is nowhere for it to move
-		// to (the block above [homeView.buildWorld] states the law).
-		h.pointFoot()
 	}
 	if previous.Transcript != "" {
 		h.point(previous.Transcript)
@@ -560,63 +547,57 @@ func (h *homeView) pointAction() {
 	}
 }
 
-// pointFoot puts the cursor on the LAST line a cursor may rest on, which is the
-// row against the box.
+// dropUp reports whether the list is drawn as a DROP-UP: its bottom row against
+// the box at the foot, and the matches rising above it.
 //
-// With a conversation of this window's own on the list that row is the anchor
-// ([homeView.buildWorld] pins it there); on a machine where this window's
-// conversation is not on the list at all — a session with nothing recorded yet —
-// it is simply the bottom of the bottom project, which is still the row nearest
-// the hand.
-func (h *homeView) pointFoot() {
-	for at := len(h.lines) - 1; at >= 0; at-- {
-		if h.lines[at].stop() {
-			h.cursor = at
-			return
-		}
-	}
-}
+// It is exactly "something is typed", because that is exactly when the action
+// row exists ([homeView.buildWorld]) and exactly when a person is looking at the
+// box rather than reading down a roster. With nothing typed home is a dashboard
+// somebody is reading, and it hangs from the top like every other list here.
+func (h *homeView) dropUp() bool { return h.searching() }
 
 // buildWorld is the column: projects as dim headings with their conversations
 // under them, filtered and ranked by whatever is in the box.
 //
-// ── HOME IS A DROP-UP, RESTING OR TYPING ────────────────────────────────────
+// ── A DASHBOARD AT REST, A DROP-UP WHILE TYPING ─────────────────────────────
 //
-// The list used to hang from the top with nothing typed and lift itself against
-// the box the moment a character landed, and those were TWO SHAPES for one
-// screen. The resting one put the cursor at the top left — on this window's own
-// conversation, up in the corner — while the eye and the hands were at the foot
-// where the box is, which is exactly the split [homeAction] was moved to the
-// bottom to end. Typing then jumped the cursor the height of the frame.
+// THESE ARE TWO SHAPES ON PURPOSE, and the wave that made them one had to be
+// taken back out. What it did was anchor the list at the foot in both states so
+// the cursor never moved between them — and what that cost was the screen
+// itself: a machine with a handful of conversations drew most of a frame of
+// nothing with a clump of rows against the box, and the preview card beside it
+// went blank the moment the cursor's row was not a conversation. Home IS the
+// dashboard. The drop-up is what typing needs, and it is worth exactly one
+// keystroke of re-anchoring and not one row of the dashboard.
 //
-// So the column is anchored at the foot always ([homeLift]), and the ORDER
-// INVERTS to match, because an anchored list whose first row is its most
-// important one puts everything that matters furthest from the hand:
+// AT REST home hangs from the TOP of its region:
 //
-//   - THE BOTTOM ROW IS THE DEFAULT, in both states and at the same screen row.
-//     With something typed it is "start a new conversation"; with nothing typed
-//     it is THE CONVERSATION THIS WINDOW IS IN, pinned to the end of its own
-//     project. Both are what enter does if you press it without moving, and
-//     neither moves when the other appears.
-//   - SECTIONS STACK WARMEST-DOWN. This window's project is nearest the box
-//     because that is where you are standing; the rest of the world rises above
-//     it in the world's own order REVERSED — and the world orders projects by
-//     when somebody last spoke in one ([session.Project.At]), so the turn reads
-//     as AGE INCREASING AWAY FROM THE BOX. Nearest the hand is where you are and
-//     what you touched last; furthest up is the month-old project. A short frame
-//     therefore loses the coldest rows first, which is [listTop] bottom-anchoring
-//     around a cursor that starts at the end.
-//     WHAT WANTS A PERSON IS NOT MOVED BY ANY OF THIS: a conversation stopped on
-//     a question still leads its own project ([session.sortSessions]), so it is
-//     the top row of its section wherever that section landed.
-//   - A HEADING STAYS ABOVE ITS ROWS. Sections stack upward; the rows inside one
-//     do not, because a project's name drawn UNDER its conversations reads
-//     upside-down, and a section is small enough to be taken in whole.
+//   - Projects in the world's own order — most recently spoken in first
+//     ([session.Project.At]) — each a heading with its conversations under it,
+//     and inside a project what wants you first ([session.sortSessions]).
+//   - The cursor opens on the conversation THIS WINDOW IS IN, and the preview
+//     card on the right follows it.
+//   - Nothing is lifted, so the frame reads top-down as a page of everything
+//     this machine holds, which is the one thing this surface is for.
 //
-// A QUERY IS RANKED AND NOT STACKED. What is typed orders the column by how well
-// each row answers it ([homeRank]), which is an order the person asked for — so
-// the ranking stands and only the anchor stands down: the row the cursor would
-// have rested on is a match like any other while there is a query to match.
+// WHILE SOMETHING IS TYPED it becomes a drop-up: the action row is appended as
+// the list's last line, [homeLift] pushes the whole column down so that row
+// lands against the box, and the matches rise above it ([homeAction] carries
+// the defect that bought that). Clearing the box puts the dashboard back.
+//
+// AND THE CONVERSATION THIS WINDOW IS IN MAY NOT BE ON THE LIST AT ALL. A
+// session folder nobody has spoken in yet is not a row the world reports
+// (session's readSessionRow drops one whose meta names it but records no
+// message), and a launch that home GREETS is exactly that folder — so
+// [homeView.point] finds nothing to point at and the cursor stays where
+// [homeView.clamp] left it, on the first conversation of the first project.
+// That is the honest place for it, and the thing that matters is that it is a
+// CONVERSATION: the card beside it is drawn from the row under the cursor and
+// draws nothing for a heading, a fold line or the action row, so a cursor
+// resting anywhere but a conversation is a resting home with half its screen
+// empty. That is precisely what shipped, and
+// [TestAFreshLaunchStillRestsOnAConversationWithItsCard] is the pin that keeps
+// it from shipping twice.
 func (h *homeView) buildWorld() {
 	query := h.query()
 	type ranked struct {
@@ -657,23 +638,6 @@ func (h *homeView) buildWorld() {
 		// And the project holding the best row leads, so the thing somebody is
 		// hunting is near the top of the screen rather than under four headings.
 		sort.SliceStable(found, func(i, j int) bool { return found[i].score > found[j].score })
-	} else {
-		// THE COLD END GOES UP. The world hands its projects over newest-spoken-in
-		// first (session's world.go), which is the right order read downward and
-		// the wrong one against a box at the foot — so it is turned over, and this
-		// window's own project is lifted out of the turn and put last whatever its
-		// age, because "where you are" outranks "what is recent" for the one row
-		// the hand is already on.
-		stacked := make([]ranked, 0, len(found))
-		var standing []ranked
-		for i := len(found) - 1; i >= 0; i-- {
-			if h.mine(found[i].project.Dir) {
-				standing = append(standing, found[i])
-				continue
-			}
-			stacked = append(stacked, found[i])
-		}
-		found = append(stacked, standing...)
 	}
 	for _, hit := range found {
 		if len(h.lines) > 0 {
@@ -682,15 +646,7 @@ func (h *homeView) buildWorld() {
 		h.lines = append(h.lines, homeLine{
 			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
 		})
-		// THE ANCHOR IS TAKEN OUT OF THE PROJECT AND PUT BACK AT ITS END. It is
-		// this window's own conversation, it is the row the cursor rests on, and
-		// the whole point of the drop-up is that it lands against the box — so it
-		// is drawn last, and it is never one of the rows the collapse may swallow.
-		rows, anchor := hit.rows, session.SessionRow{}
-		if query == "" && h.mine(hit.project.Dir) {
-			rows, anchor = homeAnchor(hit.rows, h.here)
-		}
-		shown, quiet, since := h.split(hit.project, rows, query)
+		shown, quiet, since := h.split(hit.project, hit.rows, query)
 		for _, row := range shown {
 			h.lines = append(h.lines, homeLine{
 				kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: row,
@@ -703,11 +659,6 @@ func (h *homeView) buildWorld() {
 			h.lines = append(h.lines, homeLine{
 				kind: homeQuiet, project: hit.project.Name, dir: hit.project.Dir,
 				quiet: quiet, since: since, folded: !h.expanded[hit.project.Dir],
-			})
-		}
-		if anchor.Transcript != "" {
-			h.lines = append(h.lines, homeLine{
-				kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: anchor,
 			})
 		}
 	}
@@ -728,12 +679,6 @@ func (h *homeView) buildWorld() {
 // split decides what a project shows and what it whispers: everything with work
 // running or work left unfinished, then enough of the rest to reach
 // [homeShown], and the remainder counted with the newest of their stamps.
-//
-// THE ANCHOR IS NOT ONE OF THE FOUR. This window's own conversation has already
-// been lifted out by the time these rows arrive ([homeAnchor]), so the count is
-// over the OTHER conversations in the project — which is what a person means by
-// "show me four of them" when the fifth is the one they are sitting in, and it
-// is what keeps the row against the box from ever being a row the fold ate.
 //
 // TWO THINGS OPEN IT ALL THE WAY. A project somebody expanded by hand stays
 // expanded ([homeView.expanded]), and — the one that matters — A SEARCH IS
@@ -761,38 +706,6 @@ func (h *homeView) split(project session.Project, rows []session.SessionRow, que
 		return rows, quiet, since
 	}
 	return shown, quiet, since
-}
-
-// mine reports whether a bucket directory is the one THIS window is standing in.
-// It is the same comparison [app.homeOpens] makes about a row, asked of a
-// project — one spelling of "here", so the section that sits against the box is
-// the same section whose rows enter can actually open.
-func (h *homeView) mine(dir string) bool {
-	return h.bucket != "" && filepath.Clean(dir) == h.bucket
-}
-
-// homeAnchor lifts this window's own conversation out of a project's rows and
-// hands it back separately, so the caller can draw it last.
-//
-// It answers the rows UNTOUCHED and a zero row when the conversation is not in
-// this project at all — a window whose journal has nothing recorded yet, or one
-// standing somewhere the world does not list. There is no invented row for that
-// case: the bottom of the column is then simply the bottom of the bottom
-// project, which is the honest answer and still the row against the box.
-func homeAnchor(rows []session.SessionRow, here string) ([]session.SessionRow, session.SessionRow) {
-	if strings.TrimSpace(here) == "" {
-		return rows, session.SessionRow{}
-	}
-	for i, row := range rows {
-		if row.Transcript != here {
-			continue
-		}
-		rest := make([]session.SessionRow, 0, len(rows)-1)
-		rest = append(rest, rows[:i]...)
-		rest = append(rest, rows[i+1:]...)
-		return rest, row
-	}
-	return rows, session.SessionRow{}
 }
 
 // query is what is in the box, folded for matching. It is the SAME text the
@@ -1316,7 +1229,7 @@ func (a *app) homeOpens(line homeLine) bool {
 	if a.resume == nil {
 		return false
 	}
-	return a.home.mine(line.dir)
+	return a.home.bucket != "" && filepath.Clean(line.dir) == a.home.bucket
 }
 
 // homeWhere is where a person has to be to open a row, in the words they would
@@ -1599,16 +1512,18 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	if len(a.home.lines) == 0 {
 		left, right = left+right+2, 0
 	}
-	// THE DROP-UP LIFTS THE LIST AND LEAVES THE CARD WHERE IT IS. The left column
-	// hangs from the BOTTOM of the region so that its last row lands against the
-	// box at the foot — the action row while something is typed, this window's own
-	// conversation while nothing is (the block above [homeView.buildWorld]).
+	// THE DROP-UP LIFTS THE LIST AND LEAVES THE CARD WHERE IT IS. While something
+	// is typed the left column hangs from the BOTTOM of the region so that its
+	// last row — the action row — lands against the box at the foot
+	// ([homeAction]). At rest it hangs from the top, because at rest this is a
+	// page somebody is reading rather than a thing they are typing at (the block
+	// above [homeView.buildWorld]).
 	//
 	// THE LIFT IS MEASURED FROM WHAT WAS DRAWN and not from how many lines the
 	// column holds, which is what keeps a machine with no conversations on it
 	// honest: that case draws ONE line out of a list of NONE, and a lift counted
-	// off the list would have pushed the only sentence on the screen off the
-	// bottom of it.
+	// off the list would push the only sentence on the screen off the bottom of
+	// it.
 	//
 	// THE DETAIL COLUMN IS NOT LIFTED WITH IT, and that is deliberate rather than
 	// an oversight. It is a CARD about the row under the cursor, assembled to fill
@@ -1618,7 +1533,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// entirely and leave a title floating in the middle of the frame. The list is
 	// the thing typing is about; the card beside it reads top down, as a card does.
 	column := a.homeList(left, room, pal)
-	lift := homeLift(len(column), room)
+	lift := a.homeLift(len(column), room)
 	var detail []string
 	if right > 0 {
 		detail = a.homeDetail(right, room, pal)
@@ -1649,14 +1564,14 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 // list a drop-up: the shorter the list, the further down the region it starts,
 // so its last row always lands against the foot.
 //
-// IT IS UNCONDITIONAL, and that is the whole of the change this shape was worth.
-// It used to be spent only while something was typed, which made a resting home
-// and a typing home two different screens and moved the cursor the height of the
-// frame between them. It is zero only when the column already fills the region —
-// where the window is full and [listTop] has bottom-anchored it by following a
-// cursor that starts on the last row, so the coldest rows are the ones off the
-// top.
-func homeLift(drawn, room int) int {
+// It is zero for a list nobody is typing at ([homeView.dropUp]) — the resting
+// dashboard hangs from the top — and zero again for a list longer than the
+// region, where the window is already full and [listTop] has bottom-anchored it
+// by following a cursor that starts on the last row.
+func (a *app) homeLift(drawn, room int) int {
+	if !a.home.dropUp() {
+		return 0
+	}
 	if lift := room - drawn; lift > 0 {
 		return lift
 	}
@@ -1873,12 +1788,25 @@ func homeName(row session.SessionRow) string {
 //   - A FLOOR ON WHAT SURVIVES. A short frame drops bands FROM THE BOTTOM, so
 //     the facts go first and the title never goes at all. A pane that truncated
 //     its own title would be a preview that cannot say what it is previewing.
+//
+// THERE ARE ALWAYS TWO PANES, and only the LEFT one changes shape with the state
+// of the box. The card follows the focused row through every keystroke of a
+// filter exactly as it does at rest — a person walking ↑ through matches is
+// choosing between conversations, and choosing between them by name alone is what
+// the card exists to stop. It is the LIST that becomes a drop-up while typing
+// ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	line, ok := a.home.focusedLine()
 	if !ok || line.kind != homeSession {
 		// The action row and a folded tail are not things with a detail; the
 		// column stays empty rather than keeping the last conversation's up,
 		// which would be the pane answering for a row nobody is on.
+		//
+		// THE ACTION ROW IS THE EMPTINESS LAW AT ITS PLAINEST. "start a new
+		// conversation" is a chat that DOES NOT EXIST YET, so there is nothing
+		// true to preview about it — and a card left standing from the last match
+		// somebody walked past would be the pane describing a row the cursor is
+		// not on any more.
 		return nil
 	}
 	row := line.row

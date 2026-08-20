@@ -545,13 +545,15 @@ changes with what the cursor is on — `↑↓ move · enter open · esc close` 
 `enter starts a new conversation and sends this · ↑ pick a match · esc clear` on the action
 row, and `enter or → show them · esc close` on a folded project.
 
-**The list is a drop-up, typed at or not.** It is anchored at the foot of the frame: the
-bottom row sits directly above the box and the rows stack upward, oldest project at the top.
-The cursor starts on that bottom row — with nothing typed it is the conversation this window
-is in, and the moment you type it becomes the action row
-`start a new conversation: "…"`, in the same screen position, so **the cursor does not move
-when you type your first character**. `↑` walks up and away from the box; `↓` walks back
-down to it.
+**With nothing typed the list hangs from the top** and the cursor is on the conversation
+this window is in, with the preview card beside it. **While anything is typed the list is a
+drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
+directly above the box, and the matches rise above it; the cursor starts on the action row,
+so `↑` walks up into the results and `↓` walks back down to it. Clearing the box puts the
+list back at the top.
+
+The right-hand preview is there in both shapes and never moves. It follows the cursor
+through a filter too, and is empty while the cursor is on the action row.
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it.
