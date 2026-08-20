@@ -339,7 +339,8 @@ A blank line sits under the chips, separating them from the first line of conver
 It is part of the strip and leaves with it.
 
 Order: running first, then work that needs you, then idle. Parked and finished work never
-appear on it — the strip is the live set, the roster is the history.
+appear on it — the strip is the live set, the roster is this session's whole record, and
+`/tasks` is the project's, across every session.
 
 A chip carries one glyph and the name cut to 18 cells, and nothing else: no clock, no
 spend, no tool name, no tree connector, no cursor mark, and no stop button. The room you
@@ -360,10 +361,11 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 ## The roster: the column of all the work
 
 The roster is a column on the right holding every task this session has admitted, not just
-the live ones. It is the session's record of its own work. Work finishing never puts it
-away, and neither does `/new` — that takes the tasks with it and leaves the column standing
-empty again. One thing closes it: `ctrl+g`, which takes the column off the frame and leaves
-the work exactly where it was. The bottom line of the column says so.
+the live ones. It is the session's record of its own work — for the tasks *other* sessions
+in this project ran, the page `/tasks` opens is the one that has them. Work finishing never
+puts it away, and neither does `/new` — that takes the tasks with it and leaves the column
+standing empty again. One thing closes it: `ctrl+g`, which takes the column off the frame
+and leaves the work exactly where it was. The bottom line of the column says so.
 
 The column is permanent: it stands from the session's first frame, before any task exists,
 at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
@@ -407,6 +409,19 @@ figures are left out entirely, because zero means "nobody published a price", ne
 
 Under those, always, one more dim line: `ctrl+g — hide`. It is the column's own door, and
 it is a button as well as a key — click that line and the column goes away.
+
+**Work that is running never scrolls off it.** Families are already ordered so that
+anything running or waiting on you leads the column, and those rows are also *pinned*: when
+you walk the cursor down into a long record, everything under the running head scrolls and
+the running head stays where it is. The pin gives way only on a column with more running
+work than it has rows, where it keeps one row back for everything else — a session that big
+is read on the task page instead.
+
+**Non-running rows are drawn quieter.** A running task's name is in the ordinary text
+colour; idle, parked and finished names are muted, the tree connectors and every detail
+line are dim, and the room you are standing in is the one row in the accent. Nothing is
+hidden by this — the column is a record and keeps everything — but a glance at it lands on
+what is moving.
 
 ## Hiding the task column: closing the right sidebar, panel or task bar
 
@@ -468,6 +483,92 @@ the glyph cell reveals its disclosure triangle (`▾` open, `▸` folded). Click
 cell or the root's `▸ +N` badge to toggle the family; click its title to open the room.
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
+
+## Seeing every task: task history, old and past tasks, work from other sessions
+
+`/tasks`, or `ctrl+.`, opens a full-screen page holding **every task this project has ever
+run** — this conversation's and every conversation's before it. It is the answer the roster
+cannot give: the column beside the conversation is built from *this session's* work alone,
+so a task you ran last week, in a session you have closed, is not on it and never was.
+
+The page takes the whole frame, the way the settings panel does. `esc` closes it. Only one
+of the two is ever up: opening this closes the settings panel, and opening the settings
+panel closes this.
+
+It has two sections.
+
+- **`running`** — the tree. Every family with anything still going, drawn whole and never
+  folded, with the same connectors the column uses. Each row carries more than the column
+  has room for: what the task is doing right now, and under it its clock, its tokens, its
+  spend and its model. A family's finished members are drawn with it, so the shape makes
+  sense.
+- **`earlier`** — a flat list, newest first, of everything the project has finished. No
+  tree, one line each: a state glyph, the mention mark `⧉`, the title, and how long ago it
+  landed. These are the same rows the `@` list offers, so a task looks the same in both
+  places. Work this session is already showing under `running` is not repeated here.
+
+At the bottom: one dim line counting what is on the page, such as `3 running · 148 earlier`
+— a section with nothing in it is not counted at all — and under it the keys.
+
+**`/tasks` on a project that has never run one says `no tasks yet — /task <brief> starts
+one`** and opens nothing. `ctrl+.` there does nothing at all rather than raising an empty
+page.
+
+The list is as long as the project's record is — internal to aforge that record keeps the
+most recent 2000 tasks — and the page scrolls rather than cutting it.
+
+## Keys and clicks on the task page
+
+| key | what it does |
+| --- | --- |
+| `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the section words |
+| `pgup` `pgdown` | move twelve rows |
+| `home` `end` | first row, last row |
+| `enter` | open it — see below |
+| `esc` or `ctrl+.` | close the page |
+
+Every other key is swallowed: the page is the whole screen, so there is nothing underneath
+for a key to type into. `ctrl+c` still works and still means what it always means.
+
+**What `enter` opens depends on the row**, and the last line of the page says which you are
+going to get:
+
+- A task **this session is holding** — anything under `running`, and anything under
+  `earlier` that this conversation ran — opens its room, exactly as `enter` on the roster
+  does. The foot reads `esc close · ↑↓ move · enter opens its room`.
+- A task **another conversation ran** has no room to open: a room is a live lane onto a task
+  in this session's work, and that session is closed. `enter` writes its name into your
+  message box instead — `@fix-the-nil-map-crash` — which is the door that already exists for
+  reaching old work: sending it mints the pointer block carrying that task's outcome, its
+  branch and its transcript. The foot reads
+  `esc close · ↑↓ move · enter puts it in your message`. Your half-written sentence is kept;
+  the name is appended to it.
+
+Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
+it does not change them. The row under the pointer takes the hover step. The wheel walks the
+cursor.
+
+## The "view more" line at the bottom of the task column
+
+When there is more work than the column is showing, the roster's footer grows one more dim
+line above `ctrl+g — hide`:
+
+```
+ctrl+. — view more
+```
+
+Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
+as it was — the page is somewhere you go and come back from, not a state the column enters.
+
+**It appears only when there is genuinely more**, which is one of exactly two things:
+
+- a family is **folded**, so the column is standing one row for work it is not drawing; or
+- the project's record holds tasks **this session never ran** — work from an earlier
+  conversation, which the column cannot show at all.
+
+A landed task of this session's, already drawn on the column, does not earn the line: it
+would be offering to show you what you are looking at. So a first-ever session with nothing
+folded has no `view more` line, and that is not a bug.
 
 ## Walking into a task's room
 

@@ -154,9 +154,14 @@ func (a *app) refreshTasks() tea.Cmd {
 		a.comp.tasksStale = true
 		return nil
 	}
-	if !a.comp.open {
-		// Nobody is looking. The next "@" pays for the read, which is the same
-		// deal the first one made.
+	if !a.comp.open && !a.taskSheet.open {
+		// Nobody is looking. The next "@" — or the next time the task page is
+		// opened — pays for the read, which is the same deal the first one made.
+		// THE PAGE IS ON THIS LIST BECAUSE IT IS THE ONE READER THAT STAYS OPEN
+		// ACROSS A LANDING: the "@" list is dismissed by the keystroke after it,
+		// while somebody can sit on the task page watching a node finish, and a page
+		// that kept drawing it under "running" after it landed would be the record
+		// disagreeing with the column beside it (taskview.go).
 		return nil
 	}
 	return a.loadTasks()

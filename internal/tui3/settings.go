@@ -14,8 +14,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// THE SETTINGS PANEL: /settings, or ctrl+, — the one fullscreen thing this
-// surface draws.
+// THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the two fullscreen
+// pages this surface draws at every width. The second is the task page
+// (taskview.go's [taskSheet]), which ctrl+. opens; the status deck and the tool
+// detail take the frame as well, but only at [tierPhone].
 //
 // It is omp's INTERACTIONS sheet over aforge's own registry, and the whole of
 // what this file adds to that registry is a UI SKIN: which tab a row belongs
@@ -31,11 +33,15 @@ import (
 //     nobody could reach, so chrome_test.go fails the build when a registry key
 //     has no [settingMeta]. A new setting lands as one registry row plus one
 //     line in [settingUI], which is the same trade omp makes.
-//   - The panel is MODAL and fullscreen, and it is the only thing on this
-//     surface that is. A settings sheet is not something you read the
-//     conversation past, and the alternative — a bottom-anchored list of
-//     twenty-eight rows — would have taken the frame anyway while pretending
-//     not to.
+//   - The panel is MODAL and fullscreen. A settings sheet is not something you
+//     read the conversation past, and the alternative — a bottom-anchored list
+//     of twenty-eight rows — would have taken the frame anyway while pretending
+//     not to. It was once the ONLY thing on this surface that was modal and
+//     fullscreen; the task page is now the other, and the two are mutually
+//     exclusive by construction — opening either closes the other
+//     ([app.openSettings] and [app.openTaskSheet] each say so), because two
+//     pages that both believe they own the frame is a frame that draws one and
+//     takes keys for the other.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
 //     (<workspace>/.aforge-v3/config.json) is deliberately not writable from here:
@@ -801,6 +807,12 @@ func (a *app) openSettings() {
 	// would let somebody turn a gate off and watch it stay on (host.go).
 	if a.hosted() {
 		a.note(settingsRemoteWord)
+	}
+	// THE OTHER FULLSCREEN PAGE STANDS DOWN, which is the other half of the law
+	// [app.openTaskSheet] states: only one of the two may believe it owns the
+	// frame, and view.go draws this one first.
+	if a.taskSheet.open {
+		a.closeTaskSheet()
 	}
 	a.sheet = sheet{
 		open:         true,
