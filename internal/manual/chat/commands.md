@@ -754,6 +754,11 @@ its room, and a task another conversation ran goes into your message box as
 `@its-name` — that conversation is closed, so there is no room to open, and the mention is
 what carries its outcome and its transcript to the model when you send.
 
+Its `running` section also carries **a row for each task every other aforge window open on
+this directory has out right now**, marked `another window` on the right. Those rows take
+no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
+a mention to point at. They are how you find out that the directory is busy somewhere else.
+
 On a project that has never run a task it says `no tasks yet — /task <brief> starts one`
 and opens nothing. The tasks pages describe the page in full.
 

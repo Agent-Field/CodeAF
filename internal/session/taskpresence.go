@@ -202,6 +202,34 @@ type SessionPresence struct {
 // disagree with the word next to it on the same row.
 func (p SessionPresence) NeedsPerson() bool { return p.State == PresenceWaiting }
 
+// Holds reports whether this session names one node id among the work it has
+// out at this instant.
+//
+// IT IS THE JOIN, AND IT IS WRITTEN ONCE. Two surfaces now ask the same question
+// of a presence row — the home page, through [SessionRow.Runs], and a session's
+// own roster and history page, through [Elsewhere.Runs] — and a second loop
+// spelling the same comparison is the second place the two could come to
+// disagree about whether a task is running. The id is trimmed on both sides
+// because it is a handle a person types and a file records, not a number
+// anything does arithmetic on ([TaskIndexEntry.ID]).
+//
+// A CALLER MUST ALREADY HAVE DECIDED THIS ROW IS FRESH. Nothing here looks at
+// the clock: [ReadSessionPresence] refuses a stale file outright, so a row that
+// reached a caller is a row inside the window, and asking again here would be a
+// second freshness rule to keep in step with the first.
+func (p SessionPresence) Holds(id string) bool {
+	want := strings.TrimSpace(id)
+	if want == "" {
+		return false
+	}
+	for _, task := range p.RunningTasks {
+		if strings.TrimSpace(task.ID) == want {
+			return true
+		}
+	}
+	return false
+}
+
 // Fresh reports whether this claim is still worth believing at now — see the
 // second law in this file's header.
 func (p SessionPresence) Fresh(now time.Time) bool {

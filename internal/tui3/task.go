@@ -3364,14 +3364,19 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 // railOffersMore reports whether the task page would show anything this column
 // is not ([taskSheet], taskview.go).
 //
-// TWO THINGS EARN THE OFFER AND NOTHING ELSE DOES. A folded family is work the
+// THREE THINGS EARN THE OFFER AND NOTHING ELSE DOES. A folded family is work the
 // column is deliberately standing one row for, and the page draws every family
-// whole; and the project's record is work THIS SESSION NEVER RAN, which the
-// column can only ever footnote — at most [railRecordMax] rows of it, dulled,
-// answering to nothing ([app.railRecordLines], taskview.go). A landed node of
-// this session's, drawn on the column and listed again on the page, earns
-// nothing: that is the same row said twice, and a line offering to show you what
-// you are already looking at is chrome.
+// whole; the project's record is work THIS SESSION NEVER RAN, which the column
+// can only ever footnote — at most [railRecordMax] rows of it, dulled
+// ([app.railRecordLines], taskview.go); and ANOTHER WINDOW ON THIS PROJECT
+// HAVING WORK OUT, which the column cannot show at all. That third one is the
+// strongest case there is for this line: an ordinary task writes no row into the
+// project's file until it lands, so a person whose second aforge is busy has
+// nothing on their column to hint that anything exists — and the page they
+// cannot guess at is the only place it is. A landed node of this session's,
+// drawn on the column and listed again on the page, earns nothing: that is the
+// same row said twice, and a line offering to show you what you are already
+// looking at is chrome.
 //
 // THE RECORD EARNS IT EVEN WHEN EVERY ROW OF IT IS ON THE COLUMN, and that is
 // not a contradiction of the sentence above. Those rows are a NOTE — there is no

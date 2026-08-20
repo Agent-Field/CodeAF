@@ -330,7 +330,10 @@ incomplete — aforge closed while this was still running
 
 So a run can never sit in the list saying "running" hours after anything was running it.
 Only *this* session's rows are closed that way; a run in another window you still have open
-is left alone. Each node's transcript stays on disk at
+is left alone. And you do not have to wait for that session to be reopened to know: on the
+task column and on `/history`, a row saying `running` is **drawn** as running only while the
+window that started it is open and still holds it — otherwise it reads `incomplete`
+straight away, whatever the file still says. Each node's transcript stays on disk at
 `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
 did get done is still readable.
 
