@@ -545,11 +545,13 @@ changes with what the cursor is on — `↑↓ move · enter open · esc close` 
 `enter starts a new conversation and sends this · ↑ pick a match · esc clear` on the action
 row, and `enter or → show them · esc close` on a folded project.
 
-**While anything is typed the list is a drop-up.** The action row —
-`start a new conversation: "…"` — is the LAST row of the list, directly above the box, and
-the matches rise above it; the cursor starts on the action row, so `↑` walks up into the
-results and `↓` walks back down to it. With nothing typed there is no action row and the
-list hangs from the top.
+**The list is a drop-up, typed at or not.** It is anchored at the foot of the frame: the
+bottom row sits directly above the box and the rows stack upward, oldest project at the top.
+The cursor starts on that bottom row — with nothing typed it is the conversation this window
+is in, and the moment you type it becomes the action row
+`start a new conversation: "…"`, in the same screen position, so **the cursor does not move
+when you type your first character**. `↑` walks up and away from the box; `↓` walks back
+down to it.
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it.
@@ -575,9 +577,11 @@ here you do not have to ask for the roster first to use. Closing it hands the ke
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
 session opens the way you left it, and `ctrl+t` counts as asking for the column back.
 
-**A closed column leaves a two-column edge down the right of the frame with a dim `‹` in
-it, and clicking anywhere on that edge opens the column again.** The key is unchanged; the
-edge is there so the column is not a thing you have to already know a chord to get back.
+**A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
+drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
+`❯ ctrl+g — hide` line while the column stands closes it** — one chevron control, two
+states, so the pointer can go both ways. The key is unchanged; the chevron is there so the
+column is not a thing you have to already know a chord to get back.
 The key falls through and does nothing only when there is no roster on the frame to
 close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands there saying `no tasks yet`, or carrying the

@@ -15,7 +15,7 @@ from the session's very first frame, before any tasks exist. Work fills the colu
 rather than raising it. Empty it says one dim line — `no tasks yet` — unless the
 project has a record from earlier sessions, in which case those dulled `earlier` rows
 stand there instead. `ctrl+g` closes it and opens it again, remembered between
-sessions, and the column's own last line says so: `ctrl+g — hide`. With it closed the
+sessions, and the column's own last line says so: `❯ ctrl+g — hide`. With it closed the
 conversation is laid out at the full width of the terminal, running work still draws
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
@@ -1162,26 +1162,39 @@ you` — and then up to three more dim lines, each of which is a button as well 
 ```
 ctrl+. — view more
 w · click seam — widen
-ctrl+g — hide
+❯ ctrl+g — hide
 ```
 
 `ctrl+. — view more` is drawn only when the full-screen task page (`/history`) has
 something this column cannot give: a folded family, or work an earlier session ran.
 `w · click seam — widen` appears only while a title is actually being cut by its own
-indent. `ctrl+g — hide` is always there.
+indent. `❯ ctrl+g — hide` is always there, and its `❯` is drawn in ink rather than dim
+because it is the control the pointer presses — the words beside it are the label for the
+hand that types chords.
 
-## The right edge when the task column is closed
+## The right edge: the chevron that opens and closes the task column
 
-Closing the column with `ctrl+g` leaves **two columns down the right of the frame** with a
-dim `‹` handle at the middle of them. It is the closed column's own edge, and the whole of
-it is a door: click anywhere on it and the column comes back. Under the pointer the handle
-brightens.
+**The right edge always carries one chevron, and clicking it goes both ways.**
 
-One cell above the handle carries what the work is doing while there is anything to carry —
-`▲` in the question colour for a task waiting on you, `●` in the accent for something
-running, and nothing at all otherwise. The edge costs the conversation its two columns, so
-the text re-wraps around it and nothing is ever drawn underneath. Under 100 columns there
-is no edge, because at that width there is no column to bring back.
+- While the column **stands**, its last footer line reads `❯ ctrl+g — hide`. The `❯` is
+  drawn in ordinary ink, not dim, because it is a control and not a reading; the words
+  beside it stay dim. Click the line and the column closes.
+- While the column is **away**, what is left is **two columns down the right of the frame**
+  with a `❮` handle at the middle of them, also in ink. The whole strip is a door: click
+  anywhere on it and the column comes back.
+
+So one control in two states — `❯` to close, `❮` to open — and the pointer can go round the
+whole cycle without touching the keyboard. `ctrl+g` does the same thing from the keyboard
+and still works either way. Under the pointer the chevron brightens further and its line
+takes a background, which is how everything pressable on this screen says so. On a terminal
+that cannot draw them the two chevrons are `>` and `<`.
+
+One cell above the closed edge's handle carries what the work is doing while there is
+anything to carry — `▲` in the question colour for a task waiting on you, `●` in the accent
+for something running, and nothing at all otherwise. Those keep their own colours; they are
+about the work, not about the door. The edge costs the conversation its two columns, so the
+text re-wraps around it and nothing is ever drawn underneath. Under 100 columns there is no
+edge, because at that width there is no column to bring back.
 
 ## Light terminals, and why there is no theme setting
 

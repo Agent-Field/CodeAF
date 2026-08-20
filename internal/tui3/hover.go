@@ -100,6 +100,11 @@ const (
 	// there to be an area of: everything that asks about the rail's rows would
 	// answer about a column that is not on the frame.
 	hoverRailGrip
+	// hoverRailDoor is the STANDING column's own door — the footer line carrying
+	// the `❯` and `ctrl+g — hide` (task.go's [railStowHint]). It is the other half
+	// of [hoverRailGrip]: one control in two states, so the right edge lights the
+	// same way whether the column is up or away.
+	hoverRailDoor
 	// hoverRailPast is one row of the PROJECT'S RECORD at the foot of the column
 	// (taskview.go's [app.railRecordLines]), and index is its place in the rows
 	// the layout drew. It is a kind of its own rather than a [hoverRail] because
@@ -210,6 +215,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	}
 	if a.railSeamAt(x, y) {
 		return hoverAt{kind: hoverRailSeam}
+	}
+	// AND THE STANDING COLUMN'S OWN DOOR, which is asked before the rows for the
+	// reason the seam is: it is a line of the footer and belongs to no node, so a
+	// question about which node is under the pointer would answer about the empty
+	// space beside it (task.go's [app.railDoorAt]).
+	if a.railDoorAt(x, y) {
+		return hoverAt{kind: hoverRailDoor}
 	}
 	if node := a.railHoverNode(x, y); node != nil {
 		return hoverAt{kind: hoverRail, id: node.id}
@@ -340,6 +352,10 @@ func (a *app) hoveringRailSeam() bool { return a.hot.kind == hoverRailSeam }
 
 // hoveringRailGrip reports whether the pointer is over the closed column's edge.
 func (a *app) hoveringRailGrip() bool { return a.hot.kind == hoverRailGrip }
+
+// hoveringRailDoor reports whether the pointer is over the standing column's own
+// door line, which is the same control in its other state.
+func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {
