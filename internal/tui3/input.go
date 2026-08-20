@@ -359,6 +359,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.armQuit()
 	}
 
+	// THE REWIND TIMELINE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S
+	// REASON: it takes the whole frame, so there is nothing under it a key could
+	// mean anything to, and every printable key belongs to its search
+	// (rewindsheet.go). It is read here rather than up beside the panel because
+	// ctrl+c is read directly above and stays the door — a page a person cannot
+	// quit out of is a page nobody should be able to open over a conversation they
+	// are about to cut.
+	if cmd, taken := a.rewindSheetKey(msg); taken {
+		return cmd
+	}
+
 	// THE TASK PAGE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S REASON: it
 	// is the whole screen, so there is nothing under it a key could mean anything
 	// to (taskview.go). It is read HERE rather than up beside the panel because

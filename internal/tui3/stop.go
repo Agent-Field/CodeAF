@@ -324,7 +324,7 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
 		a.sheet.open, a.taskSheet.open, a.deckShowing(), a.pick.open, a.roster.open,
-		a.copy.on, a.welcome.open, a.menu.open, a.comp.open, a.rew.on:
+		a.copy.on, a.welcome.open, a.menu.open, a.comp.open, a.rew.on, a.rewSheet.open:
 		return nil, false
 	}
 	if a.stopping() {

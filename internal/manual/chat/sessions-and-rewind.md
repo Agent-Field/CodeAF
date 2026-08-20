@@ -5,24 +5,92 @@
 Rewind cuts the conversation back to an earlier point and drops everything after it. Use it
 when you phrased something badly and want to say it again better.
 
-Two doors, and they do the same thing:
+**There are two tiers, and they answer two different questions.**
 
-| Way in | What you do |
+| Way in | What you get |
 | --- | --- |
-| The gesture | `esc`, then `esc` again within half a second |
-| The command | `/rewind` (aliases `/undo`, `/back`) |
+| `esc`, then `esc` again within half a second | The **quick** inline mode: a cut line drawn through the transcript already on screen |
+| `/rewind` (aliases `/undo`, `/back`) | The **rewind timeline**: the whole conversation as a fullscreen list, with a search and a preview |
+| `tab`, from inside the inline mode | Lifts the inline mode into the timeline, carrying the cut you had already chosen |
 
 The first `esc` keeps its ordinary meaning — mid-turn it interrupts, at rest it does nothing
 — and also arms rewind. The arming window is **500ms**. While it is warm, the hint slot says
 exactly `esc again to rewind`. A stray `esc` after the window has lapsed changes nothing.
-The command row for `/rewind` reads `take back a message · esc esc`.
+The command row for `/rewind` reads `go back to an earlier point · esc esc takes back the last`.
 
-Once you are in, the whole transcript on screen becomes the picker. A line is drawn across
-it, everything below the line is washed out, and that washed-out part is what the cut will
-drop.
+Both tiers use the same `⟲` glyph, the same "drops N turns" arithmetic, the same cut, and
+do the same things afterwards. Which one to reach for: `esc esc` for "not that, let me say
+it again", `/rewind` for "take us back to before we started down this road".
 
 Rewind edits what the model has been told. It does not undo work that was done. Read the
 section on what rewind does not undo before you rely on it.
+
+## Seeing the whole conversation — the rewind timeline
+
+`/rewind` opens a fullscreen page listing the **whole** conversation, oldest first. This is
+the one that can reach turns the inline mode cannot: the inline mode picks out of the
+transcript drawn on screen, and a resumed conversation only draws its last **40** entries,
+so anything older than that is unreachable from `esc esc` and reachable here.
+
+What is on it:
+
+- The head: `⟲ rewind — pick where the conversation goes back to`, with `esc close` at the
+  right.
+- A **preview** of the point you are on — your message in full, wrapped, up to **3** rows,
+  with `… N more lines` if it runs longer. A step point shows the row the cut begins at
+  instead.
+- The list. One row per thing: your messages marked `›`, the model's replies as their first
+  line under them, and each tool call as a dim `[read: internal/parse/lex.go]`.
+- The foot: `⟲ drops 2 turns — everything below the pick is let go`, then the keys.
+
+Everything from the pick down is drawn **dim**, and it moves as you move, so the page is
+always showing what the next rewind would let go.
+
+**It works on a `--host` session too.** The list, the points and the cut all travel over
+the wire, so a conversation you are driving on another machine rewinds exactly like a local
+one. A dead connection lands in the foot as an ordinary refusal, with the page still up.
+
+## The keys on the rewind timeline, and searching your messages
+
+| Key | What it does |
+| --- | --- |
+| `↑` / `↓` | Move between points |
+| `pgup` / `pgdown` | Twelve rows at a time |
+| `home` / `end` | The oldest point, the newest |
+| any letter | Searches — see below |
+| `enter` | Places the pick; pressing it again on that same point does the rewind |
+| `esc` | Clears the search first, closes the page second |
+| mouse | Click a row to place the pick, click the placed point again to rewind; the wheel moves the cursor |
+
+**Enter is two-stage on purpose.** The first `enter` places the pick and the foot changes to
+`esc close · ↑↓ move · enter again rewinds here`; the second `enter` on that same point makes
+the cut. Moving the cursor takes the placement back, so a destructive key never sits waiting
+under a row you have walked away from.
+
+**Typing searches.** Every printable key goes into a search over what you said, the model's
+replies and the tool calls' arguments — so `lex.go` finds the turn that edited it. The foot
+shows `search · lex.go`, and adds ` · nothing matches` when the search has emptied the page.
+`backspace`, `ctrl+u` and `ctrl+w` edit it. `esc` clears it before it closes anything. Any
+row a search kept can be picked, whether it is a message, a reply or a call.
+
+**What a turn cost.** A turn that used tools carries a dim tally after its words, like
+`4 tools · 2 files`. `files` counts the distinct paths that turn's `write` and `edit` calls
+named. A turn that called nothing says nothing at all — not `0 tools`. There are no
+timestamps and no costs on these rows, because the transcript this page is built from does
+not keep them, and aforge will not invent them.
+
+## Jumping to an old message from far back in the conversation
+
+Open `/rewind`, type a word you remember from the message, and press `enter` twice. That is
+the whole route. The search reaches the entire conversation, not just the part drawn on
+screen, which is why `esc esc` is the wrong tool for anything older than the last screenful.
+
+`tab` inside the inline mode does the same thing without retyping the command: it lifts you
+onto the timeline with the cut you had already chosen, and your half-written draft comes
+with you. The inline mode's own legend names the key.
+
+If the cut is refused, the page stays up with the engine's sentence in the foot, and the
+same `enter` retries it a moment later.
 
 ## What rewind does NOT undo — your files stay changed
 
@@ -76,18 +144,21 @@ One quirk worth knowing: a background job's completion line rides on your side o
 conversation, so a rewind taken right after one drops the note, and a second rewind drops
 the turn. The screen shows what was removed, so you can see this happen.
 
-## Moving the cut line, and what the screen says
+## Moving the cut line in the quick inline mode, and what the screen says
 
-In rewind mode the keys are:
+This is the `esc` `esc` mode — the transcript on screen with a line drawn through it. The
+keys are:
 
 | Key | What it does |
 | --- | --- |
 | `↑` / `↓` | Walk whole turns |
 | `←` / `→` | Step through the points inside the current turn |
 | `enter` | Commit the cut |
+| `tab` | Lift into the rewind timeline, carrying this cut |
 | `esc` | Leave with nothing changed |
 
-The mode bar prints exactly `↑↓ turns · ←→ steps · enter rewind · esc back`.
+The mode bar prints exactly
+`↑↓ turns · ←→ steps · enter rewind · tab the whole conversation · esc back`.
 
 The cut opens on the last thing you said — the newest turn point — or on the newest point of
 any kind when there is no turn point at all. `←`/`→` are bounded by the current turn, so a
@@ -115,6 +186,9 @@ dim — accents, diff colours and all — because "all of this goes" is the true
 
 ## What happens when you press enter on a rewind
 
+This is the same for both tiers — the inline mode's `enter` and the timeline's second
+`enter` land in one place.
+
 In order: the drop count is taken, the cut is made, the drawn conversation is thrown away
 and rebuilt from the session's own transcript (the same path a resume uses), and one dim
 note is added reading `⟲ rewound · 2 turns`.
@@ -128,16 +202,20 @@ Then the draft box is filled for you:
 Everything keyed to a position in the old conversation — the selection, the pointer, the
 folds, the live block — is dropped in the same breath.
 
-If the cut is refused, the mode stays up and the refusal is printed in the bar, so you can
-press `enter` again a moment later.
+If the cut is refused, the mode — or the timeline — stays up and the refusal is printed
+where its own feedback goes, so you can press `enter` again a moment later.
 
 Files, commands and git state are untouched by all of this. Only the conversation changes.
 
 ## When rewind refuses or does nothing
 
 **"nothing to rewind".** The hint slot shows exactly `nothing to rewind` for **2.5 seconds**
-when the mode cannot open at all — the session has no rewind ability, or there is no legal
-place to cut.
+when neither tier can open at all — the session has no rewind ability, or there is no legal
+place to cut. `/rewind` will not raise an empty timeline.
+
+**`/rewind` opens nothing at all** in six states, silently: the timeline is already open, the
+inline mode is already on, copy mode is on, a task room is open, the settings panel is open,
+or the task rail is full. The commands page lists them.
 
 **`esc` `esc` does nothing.** `esc` will not arm rewind when something else on the surface
 holds the keyboard. That is: the settings sheet, the deck, the expand view, the model

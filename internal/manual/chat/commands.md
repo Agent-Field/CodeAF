@@ -148,7 +148,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/rewind` | `/undo`, `/back` | — | enters rewind mode (also esc esc) |
+| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/memory` | — | — | opens the memory panel |
@@ -246,28 +246,32 @@ compact failed: <error>
 
 `/compact` has no argument form and no alias.
 
-## /rewind — take back a message
+## /rewind — go back to an earlier point in the conversation
 
-`/rewind` (or `/undo`, `/back`) enters rewind mode, where ↑↓ pick a point in the
-conversation to cut back to. The keyboard gesture for the same thing is esc esc; the
-command exists because a gesture nobody can see is a gesture nobody finds.
+`/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
+whole conversation, oldest first, that you pick a point out of. It is the deliberate way
+in. The quick way is esc esc, which draws a cut line through the transcript on screen
+instead of opening anything — see the sessions and rewind page for both.
 
-The cut opens at the last thing **you** said; everything older is one ↑ away. Your draft
-is stashed and restored when you leave. The mode bar's legend reads
-`↑↓ turns · ←→ steps · enter rewind · esc back`, and the cut line is labelled
-`rewind here`. The sessions and rewind page covers what the cut actually does.
+The command row reads `go back to an earlier point · esc esc takes back the last`.
 
-**Be warned: `/rewind` silently does nothing in five states.** No message, no mode bar,
+On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
+second `enter` on that same point does the rewind, `esc` clears the search and then
+closes the page. The head reads `⟲ rewind — pick where the conversation goes back to`
+and the foot reads `⟲ drops 2 turns — everything below the pick is let go`.
+
+**Be warned: `/rewind` silently does nothing in six states.** No message, no page,
 nothing at all happens when:
 
-- rewind mode is already on,
+- the rewind timeline is already open,
+- the inline rewind mode is already on,
 - copy mode is on,
 - a task room is open,
 - the settings panel is open,
 - the task rail is full.
 
-Each of those draws over the row the mode bar needs, so the command is dropped rather
-than half-drawn. If `/rewind` seems to do nothing, one of those five is why.
+Each of those already owns the frame or the row the rewind needs, so the command is
+dropped rather than half-drawn. If `/rewind` seems to do nothing, one of those six is why.
 
 With no rewind points, or no agent that can rewind, it does answer, exactly:
 

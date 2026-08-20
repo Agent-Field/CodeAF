@@ -21,11 +21,11 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
 
-Three things take the whole frame instead of sharing it, at every width: the settings
-panel (`ctrl+,`), the task page (`ctrl+.`, or `/history`), and home (`/home`, or space
-twice on an empty box). While any of them is up nothing else is drawn — no conversation,
-no box, no status line — and `esc` gives the frame back. **Only one of the three is ever
-up:** opening any one closes the other two.
+Four things take the whole frame instead of sharing it, at every width: the settings
+panel (`ctrl+,`), the task page (`ctrl+.`, or `/history`), home (`/home`, or space
+twice on an empty box), and the rewind timeline (`/rewind`). While any of them is up
+nothing else is drawn — no conversation, no box, no status line — and `esc` gives the
+frame back. **Only one of the four is ever up:** opening any one closes the other three.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.

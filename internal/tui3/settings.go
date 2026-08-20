@@ -845,14 +845,15 @@ func (a *app) closeSettings() {
 // standDownFullscreen closes every page that takes the frame at every width, so
 // that the one about to open is alone in believing it owns it.
 //
-// THE LAW IS THAT THE THREE ARE MUTUALLY EXCLUSIVE: the settings panel, the task
-// page (taskview.go) and home (home.go) each take the frame WHOLE — keyboard and
-// pointer with it — and view.go's [app.frame] can only draw one, so a second one
-// opened underneath would take the keys of a page nobody can see. Every open path
-// calls this FIRST and none of them tests for the others itself, because three
-// pages each remembering to close two others is six places for the rule to be
-// forgotten in, and the day one is is the day a person stacks home over the task
-// page and finds esc goes to the wrong screen.
+// THE LAW IS THAT THE FOUR ARE MUTUALLY EXCLUSIVE: the settings panel, the task
+// page (taskview.go), home (home.go) and the rewind timeline (rewindsheet.go)
+// each take the frame WHOLE — keyboard and pointer with it — and view.go's
+// [app.frame] can only draw one, so a second one opened underneath would take the
+// keys of a page nobody can see. Every open path calls this FIRST and none of
+// them tests for the others itself, because four pages each remembering to close
+// three others is twelve places for the rule to be forgotten in, and the day one
+// is is the day a person stacks home over the task page and finds esc goes to the
+// wrong screen.
 //
 // The phone tier's status deck and tool detail are deliberately not here: they
 // take the frame only at [tierPhone] and are dismissed by their own keys, and a
@@ -866,6 +867,13 @@ func (a *app) standDownFullscreen() {
 	}
 	if a.home.open {
 		a.closeHome()
+	}
+	// AND THE REWIND TIMELINE, which joined the law rather than being an exception
+	// to it (rewindsheet.go). It goes RESTORING the draft it is holding, because
+	// the sentence it stashed on the way in belongs to the person and not to the
+	// page that took it.
+	if a.rewSheet.open {
+		a.closeRewindSheet(true)
 	}
 }
 

@@ -205,7 +205,9 @@ func TestEnterRewindDrawsTheCutLineAndTheModeBar(t *testing.T) {
 	for _, want := range []string{
 		"⟲ rewind here",  // the cut line's label
 		"⟲ drops 1 turn", // the bar's left half
-		"↑↓ turns · ←→ steps · enter rewind · esc back", // and its right
+		// and its right — including the door onto the timeline, which is the one
+		// thing this mode cannot do for itself (rewindsheet.go).
+		"↑↓ turns · ←→ steps · enter rewind · tab the whole conversation · esc back",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the rewind frame is missing %q:\n%s", want, got)

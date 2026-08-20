@@ -142,6 +142,14 @@ const (
 	// right for a tool call and wrong for a paragraph, where the pressable thing
 	// is three words at the end of a table.
 	hoverTable
+	// hoverRewindSheet is one row of the rewind timeline; index is its row in that
+	// page's list (rewindsheet.go). It is a kind of its own rather than another
+	// [hoverRewind] because that one is an index into the POINTS the inline mode
+	// is walking and this is an index into a list of transcript rows, and the two
+	// are numbered out of different things — a pointer that left one surface with
+	// a hover on item nine would light somebody else's row the moment the other
+	// opened.
+	hoverRewindSheet
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
