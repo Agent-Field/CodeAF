@@ -117,6 +117,33 @@ func (l *homeLab) app(standing string) *app {
 	return a
 }
 
+// launch drives the first frame the way [newApp] does: the welcome box is
+// decided, then the landing over it, in that order and against this lab's
+// projects rather than against the machine the suite is running on.
+//
+// It stops short of calling [newApp] itself for one reason: the root home reads
+// is a field set after construction (home.go's [app.placesRoot]), so a real
+// constructor here would walk the developer's own ~/.aforge before the test
+// could point it anywhere. [TestALaunchThatNamedASessionIsNotGreeted] covers
+// the one line this skips.
+func (l *homeLab) launch(standing string, landing bool) *app {
+	l.t.Helper()
+	a := l.app(standing)
+	a.landing = landing
+	a.entries = nil
+	a.welcome = welcome{}
+	a.openWelcome()
+	a.landHome()
+	return a
+}
+
+// mustFrame is the whole screen, whatever is on it — home, or the conversation
+// under it once home has gone.
+func mustFrame(a *app) string {
+	frame, _, _ := a.frame()
+	return frame
+}
+
 // homeText is the frame as one string, with the paint stripped so an assertion
 // is about words rather than about escape sequences.
 func homeText(a *app) string {
@@ -269,6 +296,9 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
+	// The cursor opens on the conversation this window is in, so the running one
+	// — which is the SECOND window's — is stepped onto here.
+	a.home.point(filepath.Join(lab.project("-tmp-alpha"), "aaaa000000000002", "transcript.jsonl"))
 	row := a.home.focused()
 	if !row.Live {
 		t.Fatal("a session that refreshed its presence a moment ago is not live")
@@ -371,15 +401,24 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	if !strings.Contains(text, string(session.PresenceWaiting)) {
 		t.Fatalf("the row does not say it is waiting on you:\n%s", text)
 	}
-	// The cursor opens on the first row, so the detail shows the question.
-	if !strings.Contains(text, "can I run: rm -rf build/") {
-		t.Fatalf("the detail does not show what it is stopped on:\n%s", text)
+	// The cursor opens on the conversation THIS window is in, so the question is
+	// one keystroke up rather than already on screen.
+	a.home.point(first.Transcript)
+	if detail := homeText(a); !strings.Contains(detail, "can I run: rm -rf build/") {
+		t.Fatalf("the detail does not show what it is stopped on:\n%s", detail)
 	}
-	// And it really is drawn above the newer, idle rows.
-	ask := strings.Index(text, "Pricing Research")
-	newest := strings.Index(text, "The Newest Chat")
-	if ask < 0 || newest < 0 || ask > newest {
-		t.Fatalf("the row that needs somebody is not above the newer ones:\n%s", text)
+	// And it really is the first ROW of the column — asserted on the lines the
+	// left column is built from rather than on where the words land in the
+	// frame, because the detail pane repeats the focused conversation's name and
+	// a search over the whole screen would find that copy first.
+	var order []string
+	for _, line := range a.home.lines {
+		if line.kind == homeSession {
+			order = append(order, homeName(line.row))
+		}
+	}
+	if len(order) != 3 || order[0] != "Pricing Research" {
+		t.Fatalf("the column reads %v, want the waiting one first", order)
 	}
 }
 
@@ -555,6 +594,145 @@ func TestHomeBeatStopsWhenHomeCloses(t *testing.T) {
 	a.closeHome()
 	if cmd := a.homeBeat(); cmd != nil {
 		t.Fatal("a beat kept the clock turning after home closed")
+	}
+}
+
+// ── the landing ─────────────────────────────────────────────────────────────
+
+// A person opening aforge on a machine they have worked on is greeted by home,
+// with the conversation the door picked loaded underneath it.
+func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
+
+	a := lab.launch(mine, true)
+	if !a.home.open {
+		t.Fatal("a bare launch did not open on home")
+	}
+	frame, _, _ := a.frame()
+	if !strings.Contains(ansi.Strip(frame), "esc close") {
+		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
+	}
+	// AND THE CURSOR IS ON THE CONVERSATION THAT IS LOADED UNDERNEATH, so the
+	// cheapest keystroke on the screen is the calm one.
+	if got := a.home.focused().Transcript; got != mine {
+		t.Fatalf("the cursor opened on %q, want the conversation this window is in", got)
+	}
+}
+
+// THE EMPTINESS LAW, APPLIED TO A WHOLE SURFACE. A machine whose only
+// conversation is the one this launch opened has nothing home could say.
+func TestAFirstRunGoesStraightToTheChat(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
+
+	a := lab.launch(mine, true)
+	if a.home.open {
+		t.Fatal("home greeted a machine with nowhere else to go")
+	}
+	// And the welcome box is untouched: a first run gets the greeting it always
+	// got.
+	if !a.welcome.open {
+		t.Fatal("the welcome box did not open on a launch home stayed out of")
+	}
+}
+
+// A machine with no conversations at all is the same case one step earlier.
+func TestAnEmptyMachineGoesStraightToTheChat(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.launch("", true)
+	if a.home.open {
+		t.Fatal("home greeted a machine with nothing on it")
+	}
+}
+
+// Naming a conversation means that conversation. The door does not set Landing
+// for --session or for the picker, and the surface does not second-guess it.
+func TestALaunchThatNamedASessionIsNotGreeted(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I named", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "some other chat", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.launch(mine, false)
+	if a.home.open {
+		t.Fatal("home greeted a launch that named its conversation")
+	}
+
+	// And `aforge resume` is already greeting them with its picker.
+	a = lab.app(mine)
+	a.landing, a.pickSession = true, true
+	a.landHome()
+	if a.home.open {
+		t.Fatal("home opened behind the resume picker — a launch gets one greeting")
+	}
+}
+
+// Two greeters is one too many: home lists every conversation the box would
+// have, so the box retires without drawing and never comes back.
+func TestTheWelcomeBoxRetiresWhenHomeLands(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
+
+	a := lab.launch(mine, true)
+	if a.welcome.open {
+		t.Fatal("the welcome box is open underneath home")
+	}
+	if !a.welcome.spent {
+		t.Fatal("the welcome box was hidden rather than retired, so it can come back")
+	}
+	a.homeKey(key("esc"))
+	if a.home.open {
+		t.Fatal("esc did not leave home")
+	}
+	if a.welcome.open {
+		t.Fatalf("the welcome box appeared after home closed:\n%s", ansi.Strip(mustFrame(a)))
+	}
+	if strings.Contains(ansi.Strip(mustFrame(a)), "recent sessions") {
+		t.Fatalf("the box drew itself behind home:\n%s", ansi.Strip(mustFrame(a)))
+	}
+}
+
+// esc drops into the conversation that was loaded underneath all along.
+func TestEscFromTheLandingLandsInTheSession(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
+
+	a := lab.launch(mine, true)
+	a.homeKey(key("esc"))
+	if a.home.open {
+		t.Fatal("esc did not close the landing")
+	}
+	if a.file != mine {
+		t.Fatalf("esc changed the conversation to %q", a.file)
+	}
+}
+
+// enter on the row the window is already in is the same door, and it says
+// nothing on the way through: the conversation is what happens next.
+func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
+
+	a := lab.launch(mine, true)
+	before := len(a.entries)
+	a.homeEnter()
+	if a.home.open {
+		t.Fatal("enter on the conversation this window is in did not close home")
+	}
+	if a.file != mine {
+		t.Fatalf("enter reopened %q instead of stepping into the one already loaded", a.file)
+	}
+	if len(a.entries) != before {
+		t.Fatalf("enter narrated the door it walked through: %v", a.entries[before:])
 	}
 }
 

@@ -298,6 +298,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			return agent, nil
 		},
 		PickSession: pickSession,
+		// WHETHER HOME GREETS THIS LAUNCH. It is a person opening aforge with no
+		// particular conversation in mind: no --session, no picker asked for,
+		// and — by the time this line runs — no --once, which returned above.
+		// The surface applies the rest of the law, including the one condition
+		// that is about the machine rather than the command line: a machine with
+		// nowhere else to go is not greeted (tui3's home.go [app.landHome]).
+		//
+		// The --host door does not set it at all: the projects under this
+		// process belong to the wrong machine, and home refuses over --host for
+		// exactly that reason.
+		Landing: strings.TrimSpace(*file) == "" && !pickSession,
 		// The accounts panel, and the sign-in a pressed row starts. It is the
 		// SAME manager the belt reaches through (cfg.Connect), so an account
 		// connected on the panel is connected for the model in the same breath
