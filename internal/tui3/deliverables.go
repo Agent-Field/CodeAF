@@ -421,7 +421,7 @@ func (a *app) openFiles() {
 	}
 	a.closeLists()
 	a.dismissWelcome()
-	a.shelf.start(list, a.home)
+	a.shelf.start(list, a.tilde)
 	if a.hosted() {
 		a.note(filesRemoteWord)
 	}
@@ -555,7 +555,7 @@ func (a *app) filesCopyKey(msg tea.KeyPressMsg) tea.Cmd {
 // did not open — not which executable was missing.
 func (a *app) openDeliverable(path string) {
 	if err := processOpener(path); err != nil {
-		a.note(filesOpenFailedWord + shortPath(path, a.home, 0))
+		a.note(filesOpenFailedWord + shortPath(path, a.tilde, 0))
 	}
 }
 
@@ -592,7 +592,7 @@ func (a *app) copyDeliverable(row deliverable, where string) tea.Cmd {
 // copiedFile is the copy's one line in the conversation. It is /export's three
 // answers, because it is the same three answers.
 func (a *app) copiedFile(msg copiedMsg) {
-	short := shortPath(msg.path, a.home, 0)
+	short := shortPath(msg.path, a.tilde, 0)
 	switch {
 	case msg.err == nil:
 		a.note(filesCopiedWord + short)

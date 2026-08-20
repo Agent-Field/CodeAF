@@ -14,8 +14,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// THE SETTINGS PANEL: /settings, or ctrl+, — the one fullscreen thing this
-// surface draws.
+// THE SETTINGS PANEL: /settings, or ctrl+, — the first fullscreen thing this
+// surface drew, and the one every other one is modelled on. The phone tier's
+// status sheet (statusdeck.go) and tool detail (expand.go) came next, and
+// /home (home.go) after them; all four take the frame WHOLE, and this file is
+// where the grammar for doing that was written down.
 //
 // It is omp's INTERACTIONS sheet over aforge's own registry, and the whole of
 // what this file adds to that registry is a UI SKIN: which tab a row belongs
@@ -31,11 +34,13 @@ import (
 //     nobody could reach, so chrome_test.go fails the build when a registry key
 //     has no [settingMeta]. A new setting lands as one registry row plus one
 //     line in [settingUI], which is the same trade omp makes.
-//   - The panel is MODAL and fullscreen, and it is the only thing on this
-//     surface that is. A settings sheet is not something you read the
-//     conversation past, and the alternative — a bottom-anchored list of
-//     twenty-eight rows — would have taken the frame anyway while pretending
-//     not to.
+//   - The panel is MODAL and fullscreen. A settings sheet is not something you
+//     read the conversation past, and the alternative — a bottom-anchored list
+//     of twenty-eight rows — would have taken the frame anyway while pretending
+//     not to. It was the ONLY such thing for a while, and is not any more: the
+//     rule it established is that a surface which takes the frame takes it
+//     whole, keyboard and pointer with it, and every fullscreen surface since
+//     has been written to it.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
 //     (<workspace>/.aforge-v3/config.json) is deliberately not writable from here:

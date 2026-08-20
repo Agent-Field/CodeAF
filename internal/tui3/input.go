@@ -240,6 +240,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// And home is modal at the same rung and for the same reason: it takes the
+	// whole frame, so there is nothing under it a key could mean anything to.
+	// Every printable key belongs to it — typing on home is how a conversation
+	// starts (home.go).
+	if a.home.open && msg.String() != "ctrl+c" {
+		return a.homeKey(msg)
+	}
+
 	// And the phone tier's status sheet is modal at the same rung and for the
 	// same reason: it is the whole screen, so there is nothing under it to send a
 	// key to (statusdeck.go).
