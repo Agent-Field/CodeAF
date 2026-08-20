@@ -668,11 +668,20 @@ type taskLink struct {
 	span  hudSpan
 	id    uint64
 	title string
+	// ord is this reference's place among the ones its BLOCK drew, counted across
+	// every row the block wrapped over. It is written by the layout that numbered
+	// them (render.go's [app.deckRows]) and read by the pointer, which holds a
+	// hover as (block, ordinal): a paragraph re-wraps when the frame is dragged,
+	// so a hover stored as "the second link on screen row nine" would follow the
+	// wrap instead of following the words.
+	ord int
 }
 
 // linkTasks is the pass bound to this surface's own task index. It is called
 // once per rendered row of model prose (render.go's [app.deckRows]).
-func (a *app) linkTasks(text string) (string, []taskLink) {
+//
+// hot is which of THIS ROW's references the pointer is on, and -1 for none.
+func (a *app) linkTasks(text string, hot int) (string, []taskLink) {
 	if text == "" || len(a.tasks) == 0 {
 		return text, nil
 	}
@@ -682,7 +691,7 @@ func (a *app) linkTasks(text string) (string, []taskLink) {
 			return "", false
 		}
 		return node.title, true
-	})
+	}, hot)
 }
 
 // linkifyTasks is that pass, whole: one painted row in, the same row with its
@@ -691,7 +700,7 @@ func (a *app) linkTasks(text string) (string, []taskLink) {
 // It returns the row UNTOUCHED whenever it has nothing to say, which is almost
 // every row — the cheap check is first, and it is a substring scan for the one
 // word every shape in the grammar has to carry.
-func linkifyTasks(text string, pal palette, look func(uint64) (string, bool)) (string, []taskLink) {
+func linkifyTasks(text string, pal palette, look func(uint64) (string, bool), hot int) (string, []taskLink) {
 	if !hasTaskWord(text) {
 		return text, nil
 	}
@@ -717,7 +726,7 @@ func linkifyTasks(text string, pal palette, look func(uint64) (string, bool)) (s
 	if len(kept) == 0 {
 		return text, nil
 	}
-	return paintLinks(text, flat, kept, pal)
+	return paintLinks(text, flat, kept, pal, hot)
 }
 
 // ── the grammar ─────────────────────────────────────────────────────────────
@@ -928,7 +937,9 @@ func flatten(text string) (string, []bool) {
 // underline flag, re-emitted after the link closes, because this surface's paint
 // closes with SGR 39 rather than a full reset and a link that swallowed the
 // paragraph's colour would be the loudest bug on the screen.
-func paintLinks(text, flat string, refs []taskRef, pal palette) (string, []taskLink) {
+// hot is which of refs the pointer is on, and -1 for none. That one is inked a
+// step brighter and nothing else about the row changes — see [taskLinkHotInk].
+func paintLinks(text, flat string, refs []taskRef, pal palette, hot int) (string, []taskLink) {
 	var (
 		out   strings.Builder
 		links []taskLink
@@ -942,6 +953,9 @@ func paintLinks(text, flat string, refs []taskRef, pal palette) (string, []taskL
 		if next < len(refs) && at == refs[next].from {
 			ref := refs[next]
 			inked := taskLinkInk(pal, flat[ref.from:ref.to])
+			if next == hot {
+				inked = taskLinkHotInk(pal, flat[ref.from:ref.to])
+			}
 			restore := ""
 			if inked != flat[ref.from:ref.to] {
 				// Only a row that was actually painted needs its paint put back;
@@ -1019,6 +1033,22 @@ func paintLinks(text, flat string, refs []taskRef, pal palette) (string, []taskL
 // holds because a person's message is accent WHOLE and behind its own glyph: a
 // nine-cell underlined run mid-paragraph reads as a button, not as a turn.
 func taskLinkInk(pal palette, s string) string { return pal.underline(pal.accent(s)) }
+
+// taskLinkHotInk is the same reference with the pointer on it: the underline
+// stays and the hue takes one step up, accent to ink.
+//
+// IT IS A BRIGHTENING AND NOT A BACKGROUND BAND, which is the model segment's
+// own decision for the model segment's own reason (render.go's
+// [app.paintIdentity]): a reference is two or three words inside somebody's
+// sentence, not a row of a list, and a highlighted rectangle in the middle of a
+// paragraph would be the one boxed thing on a surface with no boxes. It is also
+// the only step that survives every terminal this surface draws on — a background
+// is dropped below the 256-colour rung, and the hue is not.
+//
+// The reference is repainted rather than wrapped, because these hues are raw SGR
+// with an explicit reset and a colour inside a colour ends at the inner one's
+// reset ([paintLinks] restores what was around it either way).
+func taskLinkHotInk(pal palette, s string) string { return pal.underline(pal.ink(s)) }
 
 // escLen is the length of the escape sequence at s[i], or zero where there is
 // none. Two forms are recognized, because two forms are written:

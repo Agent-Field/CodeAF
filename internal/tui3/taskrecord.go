@@ -88,12 +88,21 @@ type taskCardHit uint8
 
 const (
 	taskCardHitNone taskCardHit = iota
-	// taskCardHitBack is the head and the foot, which are both the way back to
-	// the list — the tool detail's own bargain ([expandHitClose], expand.go),
-	// because a card with no close button to aim at has to make its edges mean
-	// something.
-	taskCardHitBack
+	// taskCardHitHead is the title and the blank under it, and taskCardHitFoot
+	// the keys line at the bottom. Both are the way back to the list — the tool
+	// detail's own bargain ([expandHitClose], expand.go), because a card with no
+	// close button to aim at has to make its edges mean something.
+	//
+	// THEY ARE TWO VALUES AND NOT ONE BECAUSE THE POINTER LIGHTS THEM. A hover is
+	// about the thing under the hand, and the head and the foot are at opposite
+	// ends of the screen: one value would brighten both edges of the card whichever
+	// of them a person was reaching for (hover.go's [hoverTaskCard]).
+	taskCardHitHead
+	taskCardHitFoot
 )
+
+// back reports whether a row of the card is the way back to the list.
+func (h taskCardHit) back() bool { return h == taskCardHitHead || h == taskCardHitFoot }
 
 // ── opening, and reading the journal ────────────────────────────────────────
 
@@ -284,12 +293,23 @@ func (a *app) taskCardScroll(delta int) {
 // taskCardPress resolves a click on the card. Its edges are the way back and
 // its body is read, which is [app.expandPress]'s own shape.
 func (a *app) taskCardPress(y int) {
-	width, height := a.size()
-	_, hits, _, _ := a.taskCardFrame(width, height)
-	if y < 0 || y >= len(hits) || hits[y] != taskCardHitBack {
+	if _, ok := a.taskCardHitAt(y); !ok {
 		return
 	}
 	a.closeTaskRecord()
+}
+
+// taskCardHitAt is that hit-test with nothing done about it: which of the card's
+// two edges the pointer is over, and false where it is over the body. The
+// pointer asks it so the edge under the hand can light on exactly the rows a
+// click would act on (hover.go's law).
+func (a *app) taskCardHitAt(y int) (taskCardHit, bool) {
+	width, height := a.size()
+	_, hits, _, _ := a.taskCardFrame(width, height)
+	if y < 0 || y >= len(hits) || !hits[y].back() {
+		return taskCardHitNone, false
+	}
+	return hits[y], true
 }
 
 // ── the frame ───────────────────────────────────────────────────────────────
@@ -308,13 +328,27 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	lines := make([]string, 0, height)
 	hits := make([]taskCardHit, 0, height)
 	add := func(text string, hit taskCardHit) {
+		// THE EDGE UNDER THE POINTER LIGHTS, AND ONLY THE EDGE. The card's two ends
+		// are the way back and everything between them is read, so a hover step over
+		// a paragraph would be the surface offering a door that is not there
+		// (hover.go's law) — and both rows of the head light together, because the
+		// blank under the title is part of the same target and a person aiming at it
+		// deserves to see how far it reaches.
+		if hit.back() && a.hoveringTaskCard(int(hit)) {
+			if text == "" {
+				// An empty row has nothing for [palette.background] to paint, so it is
+				// handed the one cell the padding grows out from.
+				text = " "
+			}
+			text = a.hoverRow(text, width)
+		}
 		lines = append(lines, text)
 		hits = append(hits, hit)
 	}
 
 	entry := a.taskSheet.detail
-	add(a.taskCardTitle(width, entry), taskCardHitBack)
-	add("", taskCardHitBack)
+	add(a.taskCardTitle(width, entry), taskCardHitHead)
+	add("", taskCardHitHead)
 	add(pal.dim(rule(width)), taskCardHitNone)
 
 	head := len(lines)
@@ -338,7 +372,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
-	add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitBack)
+	add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitFoot)
 
 	// A terminal too short for the whole card keeps its head and its foot: what
 	// this is, and how to leave. It is [app.taskSheetFrame]'s own trim.

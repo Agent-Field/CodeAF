@@ -337,6 +337,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		if e.kind == entryTask {
 			hit = hitTask
 		}
+		// THE BLOCK'S REFERENCES ARE NUMBERED ACROSS ITS ROWS, and the count is
+		// reset here because the pointer holds a link as (block, ordinal): a
+		// paragraph re-wraps when the frame is dragged, so an ordinal counted per
+		// screen row would name a different phrase after a resize (markdown.go's
+		// [taskLink]).
+		links := 0
 		for n, text := range rows {
 			at := hit
 			if e.kind == entryTask && e.card != nil && !e.card.settled() {
@@ -355,7 +361,19 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// lands on is decided by a wrap this pass must not have an opinion
 			// about.
 			if e.kind == entryAssistant {
-				drawn.text, drawn.links = a.linkTasks(text)
+				// AND THE ONE THE POINTER IS ON IS INKED BY THE SAME PASS. It cannot be
+				// done afterwards: the row that comes back is styled text, and a hue
+				// spliced into it by column would have to redo the escape bookkeeping
+				// [paintLinks] is already doing (markdown.go).
+				hot := -1
+				if at := a.hoveringLink(i); at >= 0 {
+					hot = at - links
+				}
+				drawn.text, drawn.links = a.linkTasks(text, hot)
+				for j := range drawn.links {
+					drawn.links[j].ord = links + j
+				}
+				links += len(drawn.links)
 				// AND THE TABLE FEET ARE READ BACK OFF THE BLOCK, keyed by the row
 				// they landed on. They are not derived here for the reason the links
 				// above them are derived here: a foot's columns are decided by the

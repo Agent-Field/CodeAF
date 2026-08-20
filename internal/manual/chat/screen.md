@@ -1379,13 +1379,26 @@ There is no setting for this and no round-trip probe. It is read once and never 
 
 ## When a row brightens under the pointer
 
-The row under the mouse pointer brightens. It is the last pass over a finished list of
-rows, so nothing else has to know about it.
+Everything you can press answers the pointer before you press it, and nothing else
+reacts. That is the whole rule: **if it lights, clicking it does something.**
 
-A hovered conversation row gets a background band padded to the full width. A hovered
-fold line brightens its arrow. A hovered table foot, and the jump-to-latest chip, go
-**accent** rather than taking a background — a highlighted rectangle would be the one
-boxed thing on a surface with no boxes.
+**Things that own a whole row take a background band** across the width — a tool call and
+its expansion, the `N earlier tool calls` fold, a thinking block, a proposal or a landed
+card, a sign-in still waiting for the browser, a roster row, a message parked above the
+box, a room's pinned header, a row of any open list or page, the task record card's title
+and its keys line, and either row of the phone status deck.
+
+**Things that share a line light only their own cells.** A chip on the task strip, a
+picture on the tray above the box, one of the four answers on a landed card, one of the
+two answers on the stop card, a chip or a link on an adaptive run's page: the one under
+the pointer lights and its neighbours stay dark. The gap between two chips lights nothing
+— it is a place to miss, not a door.
+
+**A few words inside a sentence brighten instead.** A task reference in a reply goes from
+accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
+table's foot, the jump-to-latest chip, the `✕` on a room's header and the model's name at
+the foot of the frame all go one step up in ink. A highlighted rectangle mid-paragraph
+would be the one boxed thing on a surface with no boxes.
 
 **Selected beats hovered.** A row that is already the thing you are looking at — the
 roster row and the strip chip of the room you are standing in, the cursor row of an
@@ -1393,8 +1406,13 @@ open list — wears the selection band, which is the hover background one step l
 and the pointer moving over it changes nothing. The two cannot both be drawn, and "you
 are here" is the one still true when the pointer leaves.
 
+Nothing else lights: empty space, a paragraph, a dim telemetry line, the hint beside a
+picked harness, the body of the task record card, and the phone's tool detail sheet,
+which has no pointer targets at all.
+
 There is no hover at all in the screen-reader tier. Terminals below ANSI256 get no hover
-background either, because there is no weight that means "under the pointer".
+background either, because there is no weight that means "under the pointer" — the ink
+steps above still show there.
 
 The mouse is aforge's by default for the whole session, which is what makes the click
 targets on this screen work. `ctrl+s` hands the pointer back to the terminal so you can

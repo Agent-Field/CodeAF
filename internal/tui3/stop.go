@@ -419,11 +419,22 @@ func (a *app) stopRows(width int) []string {
 		lead := a.orchLead(i == card.pick)
 		text := lead + "[" + word + "]"
 		cols := ansi.StringWidth(text)
+		painted := a.pal.ask(text)
 		if i == card.pick {
-			line += a.pal.askBold(text)
-		} else {
-			line += a.pal.ask(text)
+			painted = a.pal.askBold(text)
 		}
+		// THE POINTER LIGHTS THE ANSWER AND NOT THE ROW, which is the settle row's
+		// own answer to the same shape (tasksettle.go): two presses share this line
+		// and they are the two ends of one decision, so a band across all of it would
+		// promise "stop it" under a hand reaching for "keep going". The band goes
+		// round exactly the answer's cells, OVER whatever ink it already wears —
+		// weight says where the keyboard is and the background says where the pointer
+		// is, and two channels stay legible together where two shades of one would
+		// not.
+		if a.hoveringStopAnswer(i) {
+			painted = a.pal.hover(painted, 0)
+		}
+		line += painted
 		card.spans = append(card.spans, hudSpan{from: at, to: at + cols})
 		at += cols
 	}
@@ -489,7 +500,26 @@ func (a *app) stopCardPress(x, y int) bool {
 // the body, and it occupies three columns at the far right where neither of them
 // draws anything (taskstrip.go's chips are left-aligned).
 func (a *app) stopMarkPress(x, y int) bool {
-	if !a.roomOpen() || !a.roomStop.holds(x) {
+	if !a.stopMarkAt(x, y) {
+		return false
+	}
+	a.raiseStop(a.stopHere())
+	return true
+}
+
+// stopMarkAt is that hit-test with nothing done about it, so the pointer can ask
+// the same question the press asks and the mark can brighten on exactly the
+// cells a click would act on (hover.go's law).
+//
+// THE HIT BOX IS THE PRESS'S OWN, three rows tall at the phone tier included.
+// A hover that answered for one row while a press answered for three would be a
+// control that stops looking pressable at the exact cell a thumb was aiming for.
+//
+// It reports nothing while the card is already up, which is [app.stopPress]'s own
+// branch stated here: the card has taken the question, and a ✕ that lit under the
+// pointer would offer to raise a card that is on the screen.
+func (a *app) stopMarkAt(x, y int) bool {
+	if !a.roomOpen() || a.stopping() || !a.roomStop.holds(x) {
 		return false
 	}
 	width, _ := a.size()
@@ -500,12 +530,7 @@ func (a *app) stopMarkPress(x, y int) bool {
 	if y < 0 || y >= rows {
 		return false
 	}
-	target := a.stopHere()
-	if target.empty() {
-		return false
-	}
-	a.raiseStop(target)
-	return true
+	return !a.stopHere().empty()
 }
 
 // stopTouchRows is how tall the ✕'s hit box is where a finger is the pointer.
