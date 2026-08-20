@@ -65,12 +65,12 @@ hangs from the top of the frame**, as a page you are reading should:
 ```
   aforge-v2                          Pricing Research
   ▲ Pricing Research  4m
-  ● Port the Picker  12m             aforge-v2 · ~/src/aforge-v2
-  ○ Import Cleanup    3h
+  ⠋ Port the Picker  12m             aforge-v2 · ~/src/aforge-v2
+  ✓ Import Cleanup    3h
   ▸ …3 more, quiet…                  open in another window · waiting on you
                                      can I run: rm -rf build/
   pricing-api
-  ○ Log Rotation     20d             done  Port the Picker            2h
+  ○ Log Rotation     20d             ✓ Port the Picker              2h
                                        the roster resumes cleanly
 ```
 
@@ -79,9 +79,11 @@ conversation this window is in, and the preview on the right follows it.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
 spoke in it — or `another window` where another terminal is sitting on that conversation
-and this one therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting on you, `●` something is running, `◌`
-work was left unfinished, `○` at rest. On a terminal that cannot draw them they are `!`,
-`*`, `o` and `-`.
+and this one therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
+on you, a **turning spinner** where something is running this instant, `◌` work was left
+unfinished, `✓` work landed since you last looked (see *What landed while I was away*),
+`○` at rest. In screen-reader (linear) mode nothing animates and they are `!`, `*`, `o`,
+`+` and `-`.
 
 The left list stays deliberately calm — every row is dim except the one the cursor is on,
 which takes the highlight. The one exception is `waiting on you`, which is brought up out
@@ -95,8 +97,9 @@ you last spoke. Quiet ones past the first four collapse into one dim line,
 
 ## The pane on the right of home — the preview of the session under the cursor
 
-**On the right** is a preview of whatever the cursor is on, and it is read top to bottom
-as bands separated by blank lines — no rules and no borders anywhere:
+**On the right** is a preview of whatever the cursor is on, read top to bottom as bands
+separated by blank lines — no rules and no borders anywhere. The first three bands are
+always the same:
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    highlighted row on the left wears, so the eye travels between them;
@@ -104,10 +107,22 @@ as bands separated by blank lines — no rules and no borders anywhere:
    (ctrl+click on Linux) and the project's folder opens, in the terminals that make
    hyperlinks. A folder that is no longer on this disk is named and not linked;
 3. what it is **doing right now**, and — if it is stopped on a question — that question, in
-   full;
-4. the **work it ran**: up to four tasks, each with what it came to underneath;
-5. the **last thing said** in it;
-6. a dim line of **facts**: `spent $1.25 · 34k tokens · last active 12m`.
+   full.
+
+**Then the card takes the shape of the session's state.** A session with **work running**
+leads with the work, alive: each task wears the same one-cell state mark the rest of aforge
+uses — a turning spinner while it runs, `◌` queued or left unfinished, `✗` failed, `?`
+finished and needs your look, `✓` landed — with a count-up on the right of a running row
+saying how long it has been going, and a **task's subtasks indented under it while any of
+the family runs**. The last thing said trails underneath.
+
+A **quiet session** leads with **the last thing said** — where you left off — and then
+its record: up to four tasks, each with **what it came to** in a sentence underneath.
+Nothing in a quiet card moves.
+
+Last comes a dim line of **facts**: `touched 12 files · spent $1.25 · 34k tokens · last
+active 12m`. The file count is everything this conversation's tasks wrote; a task count
+(`7 tasks`) appears in front only when there were more than the card could show.
 
 **It is there in both of home's shapes** and it never moves: when the list becomes a
 drop-up under your typing the card stays exactly where it is, because a card is assembled
@@ -421,6 +436,26 @@ taken (`ctrl+.` is the task page, `/history`), and the chords that were left —
 letters — arrive in some terminals and do nothing at all in others. The double space is
 the chord home has instead.
 
+## What landed while I was away — the ✓ and "since you last looked"
+
+Home remembers when you last closed it, and marks what finished after that. A resting
+session whose tasks landed while you were not looking wears `✓` instead of `○`, its line
+reads `2 landed` where the task count would be, and its card captions those rows with a
+dim `since you last looked` — their ticks lit up out of the grey. That is the whole
+mechanism: no notification, no badge, no list of unread things. You open home and the
+ticks show you where work accumulated.
+
+The marks are measured from the moment home was last **closed** — looking at the screen
+is what counts as seeing, so nothing is marked seen the instant it appears. They hold
+while the screen is open (a refresh does not silently unmark the news between two
+glances), and closing home writes the new mark for next time.
+
+Three honest edges: the very first time home opens there is no "last time", so nothing is
+marked rather than everything; work that lands in **the conversation this window is in**
+is never marked, because you watched it happen; and if aforge is killed with home open,
+the same work is simply marked as news once more on the next open — repeating news is the
+safe direction to fail in.
+
 ## Why a session says it needs you — waiting on you
 
 A session that has asked you something and can go no further writes that down, and home is
@@ -451,7 +486,7 @@ Home never repeats that claim. **It asks the session itself.** A live session sa
 loud, every few seconds, which task nodes it currently has out; a `running` row is drawn
 as `running` only when the session that ran it is still alive and still names that node.
 Every other live-looking row is `incomplete` — work that was under way when the window
-went — and the same rule decides the glyph: `◌`, not `●`.
+went — and the same rule decides the glyph: `◌`, never the spinner.
 
 A session too old to keep that file, but whose journal a window is holding, falls back to
 the older answer: the lock is asked, and its rows are believed. That is the same rule with
@@ -478,6 +513,12 @@ Yes, every few seconds, by reading the folders again. A task landing in another 
 work somebody starts in a second terminal, or a session stopping to ask a question all
 show up without you doing anything. There is no file watcher and nothing runs when the
 screen is closed.
+
+And while any row has work running, home is **visibly alive**: the spinner on that row and
+on its card turns continuously, and a running task's count-up climbs, exactly as they do
+in the conversation that owns the work. The moment nothing on screen is running the page
+falls still again — a home full of finished work animates nothing. In screen-reader
+(linear) mode nothing ever animates.
 
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto
