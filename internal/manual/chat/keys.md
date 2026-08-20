@@ -548,9 +548,10 @@ row, and `enter or → show them · esc close` on a folded project.
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
 this window is in, with the preview card beside it. **While anything is typed the list is a
 drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
-directly above the box, and the matches rise above it; the cursor starts on the action row,
-so `↑` walks up into the results and `↓` walks back down to it. Clearing the box puts the
-list back at the top.
+directly above the box, and the matches rise above it **best one first**; the cursor starts
+on the action row, so one `↑` lands on the strongest match, further `↑` walks into weaker
+ones, and `↓` walks back down toward the box. Clearing the box puts the list back at the
+top.
 
 The right-hand preview is there in both shapes and never moves. It follows the cursor
 through a filter too, and is empty while the cursor is on the action row.
