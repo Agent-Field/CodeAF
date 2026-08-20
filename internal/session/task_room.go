@@ -10,12 +10,14 @@ package session
 // going the wrong way, and until now the only thing they could do about it was
 // kill it and propose the corrected task again.
 //
-// A room is three doors on one running node, and no more:
+// A room is four doors on one running node, and no more:
 //
 //   - [Agent.WatchTask] — the LIVE stream of the child agent's own events, as
 //     they happen: its deltas, its tool calls beginning and ending, its errors.
 //   - [Agent.SteerTask] — the person's words into the child's steering lane,
 //     the same lane a background job's exit note rides (agent.go).
+//   - [Agent.RetargetTask] — the person's EXPLICIT pick of another model for
+//     this node, from its next turn on.
 //   - [Agent.TaskJournal] — the path to the node's whole transcript on disk.
 //
 // ── LIVE AND HISTORY ARE TWO LANES, FOR DECISION 19's OWN REASON ──
@@ -49,6 +51,22 @@ package session
 // child's side. If the objective itself was wrong, the answer is still a new
 // proposal, and that is the person exercising authority rather than editing a
 // target mid-flight.
+//
+// ── THE ONE FIELD A ROOM DOES MOVE, AND WHY IT IS NOT THE SAME HOLE ──
+//
+// [Agent.RetargetTask] writes `spec.model`, and nothing else in the spec is
+// writable from anywhere. The freeze it relaxes was never a freeze against the
+// PERSON: it is a freeze against IMPLICIT DRIFT — a `/model` in the
+// conversation silently moving work that was handed over before the switch,
+// which is what task_person.go's StartTask exists to stop. An explicit pick
+// made while standing in this node's room is the opposite of drift. It names
+// one node, it is made by the person looking at that node's own page, and
+// nothing else in the session moves with it.
+//
+// WHAT IS STILL FROZEN IS THE GOAL. `spec.brief` and `spec.acceptance` are what
+// the work is graded against, so moving them mid-run would verify nothing;
+// which model does the work is not part of that contract, any more than which
+// model answered a turn is part of what a person asked for.
 
 import (
 	"errors"
@@ -87,6 +105,79 @@ func (a *Agent) SteerTask(id uint64, text string) error {
 		return fmt.Errorf("task %d has no worker to talk to yet", id)
 	}
 	child.enqueueSteering(text)
+	return nil
+}
+
+// RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
+// Unknown id, a node that is not running, and a word no model here answers to are
+// each an error naming which.
+//
+// IT IS THE SANCTIONED EXCEPTION TO THE FREEZE, and the header of this file says
+// why in full: the id is settled at admission so that a `/model` in the
+// conversation cannot move work nobody chose it for, and a person standing in
+// this node's room choosing a model for THIS node is not that. The conversation
+// stays on its own model, every other node stays on its own, and a task admitted
+// after this one still takes the ordinary ladder — `task.model` from settings,
+// else the conversation's ([Agent.defaultTaskModel]).
+//
+// A SETTLED NODE IS REFUSED IN THE SAME WORDS EVERY OTHER ROOM DOOR REFUSES ONE:
+// `task 7 is done, not running`. There is nothing left to move it onto — the run
+// is over, the child agent is closed, the report is written — and the model on a
+// landed row is a fact about what happened, which a person may read and must not
+// be able to edit.
+//
+// THE WORD RESOLVES THROUGH ADMISSION'S OWN LADDER (taskmodel.go), so a room and
+// a proposal cannot disagree about what "opus 5" means. A word that fits more
+// than one model is a QUESTION and this door has nobody to ask — the shortlist is
+// a thing a proposal card carries, and there is no card here — so it comes back
+// as the same refusal a too-vague proposal gets, naming the candidates. The
+// surface's own door never raises it: its picker offers concrete catalog ids, so
+// every word that reaches here from a room is already exactly one model.
+//
+// THE SWITCH LANDS ON THE NEXT TURN, and that is [Agent.SetModel]'s own contract
+// rather than a second mechanism: a turn in flight latched its model once at the
+// start (loop.go), so the call the node is making right now finishes on the model
+// it began on and the one after it is on the new one. That is the correct
+// behaviour and not a limitation — killing a request in flight to change models
+// would throw away work the person is paying for and has already waited for.
+func (a *Agent) RetargetTask(id uint64, model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return errors.New("no model to move to")
+	}
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	if state := node.stateNow(); state != TaskRunning {
+		return fmt.Errorf("task %d is %s, not running", id, state)
+	}
+	choice := a.resolveTaskModel(model)
+	switch {
+	case choice.problem != "":
+		return errors.New(choice.problem)
+	case len(choice.options) > 0:
+		return errors.New(taskModelVague(model, choice.options))
+	}
+	node.retarget(choice.model)
+	// The child is told directly as well as through the spec, because the two
+	// answer for two different moments. A node whose worker is already up reads
+	// its model off the agent, so the agent has to be moved; a node that is
+	// RUNNING but whose worker is still being prepared has no agent yet, and
+	// [Agent.newTaskAgent] will read the spec this just wrote. Neither is a
+	// fallback for the other — the ordinary case is the first, and the second is
+	// the only reason a nil child here is silence rather than the error
+	// [Agent.SteerTask] returns for it: there is nobody to talk to, but there is
+	// something to change, and it has just been changed.
+	if child := node.openRoom().speaker(); child != nil {
+		child.SetModel(choice.model)
+	}
+	// The checkpoint is what makes the pick survive the session, exactly as the
+	// admitted id does (task_store.go writes spec.model), and the update is what
+	// makes every row saying the old id say the new one: the roster, the room's
+	// own status line, the card this node lands as.
+	node.graph.checkpoint()
+	a.emitTaskUpdate(node.notice())
 	return nil
 }
 

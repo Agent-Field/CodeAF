@@ -317,3 +317,26 @@ func taskModelVague(word string, some []string) string {
 }
 
 func quoteModel(word string) string { return `"` + strings.TrimSpace(word) + `"` }
+
+// ── the rescue's own sentence ───────────────────────────────────────────────
+
+// taskModelRescueSays is the middle of [taskModelRescueNote], and it is the
+// whole of what recognising one costs: a note that carries it was written by the
+// tool-use rescue and by nothing else on this belt.
+const taskModelRescueSays = " has no tools; using "
+
+// taskModelRescueNote is the one line a node's row carries while the tool-use
+// rescue is the reason it is not on the model it was admitted with
+// (task_run.go's [Agent.newTaskAgent]). It is spelled ONCE because two readers
+// need it: the one that writes it, and [TaskNode.retarget], which has to know
+// its own machinery's sentence in order to take it back down.
+func taskModelRescueNote(model, fallback string) string {
+	return "model " + model + taskModelRescueSays + fallback
+}
+
+// isTaskModelRescueNote reports whether a node's `mend` line is the rescue's
+// rather than a repair round's. A repair says what gap it is closing, in the
+// work's own words; only this one is about a model.
+func isTaskModelRescueNote(note string) bool {
+	return strings.HasPrefix(note, "model ") && strings.Contains(note, taskModelRescueSays)
+}

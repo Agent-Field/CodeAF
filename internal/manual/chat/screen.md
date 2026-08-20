@@ -181,11 +181,16 @@ When the endpoint that answered is not already named by the model id, the segmen
 ` · via deepinfra · 92 tok/s`. That goes silent after **10 minutes** rather than quoting
 a stale rate.
 
-Pressing the model segment opens the model picker.
+Pressing the model segment opens the model picker, and it brightens under the pointer to
+say so.
 
-While a task **room** is open the cluster renames itself to the room chip and the
-room's model, and that model becomes an inert fact, not a door — the picker moves the
-conversation's model, not the room's. One `esc` restores both.
+While a task **room** is open the cluster renames itself to the room chip and the room's
+model — `task <model>` — and **pressing it moves that task**, not the conversation: the
+same picker opens aimed at that node, and the task switches from its next turn onward. One
+`esc` restores both the name and the door. Where the pick could not land the name is drawn
+and simply does not react: a task that has finished, failed, been stopped or needs your
+look, one that has not started, an adaptive run's page, or a node inside a run. The tasks
+page says the whole of it under "Changing the model for one task while it is running".
 
 Below width **100** the telemetry may take a row of its own, still right-aligned, and
 only when the two clusters would otherwise collide — a short session still fits on one
