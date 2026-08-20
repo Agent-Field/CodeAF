@@ -468,8 +468,9 @@ first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` ed
 both sections at once and is shown at the foot as `filter · port`. Its foot reads
 `esc close · ↑↓ move · enter opens its room`, or
 `esc close · ↑↓ move · enter puts it in your message` on a task another conversation ran,
-which has no room to open, or `esc clears the filter · ↑↓ move · enter opens the row` while
-you are typing one. Clicking a row acts on the first press; the wheel walks the
+which has no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
+at all — which is a page holding only work running in other aforge windows — or
+`esc clears the filter · ↑↓ move · enter opens the row` while you are typing one. Clicking a row acts on the first press; the wheel walks the
 cursor. The tasks pages describe what is on it.
 
 **Connections panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·

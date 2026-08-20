@@ -239,13 +239,10 @@ func (r SessionRow) Runs(entry TaskIndexEntry) bool {
 		return false
 	}
 	if r.Live {
-		want := strings.TrimSpace(entry.ID)
-		for _, task := range r.Presence.RunningTasks {
-			if strings.TrimSpace(task.ID) == want {
-				return true
-			}
-		}
-		return false
+		// The join itself is [SessionPresence.Holds], which a session's own
+		// surfaces ask through [Elsewhere.Runs] as well — one comparison, so the
+		// home page and the roster can never disagree about whether a node is out.
+		return r.Presence.Holds(entry.ID)
 	}
 	return r.Open
 }

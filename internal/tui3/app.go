@@ -862,6 +862,13 @@ type app struct {
 	// by what this session's own work left over, and a walk that recomputed it
 	// would be walking rows the frame has not drawn.
 	railPast []*session.TaskIndexEntry
+	// away is the last reading of what the project's OTHER windows have out
+	// right now, and when it was taken (taskview.go's [app.refreshElsewhere]).
+	// It is a CACHE and not a subscription: the reading is a readdir and a
+	// handful of small files, which is cheap on a clock and ruinous on a frame,
+	// so it is refreshed on the paint clock while something on screen is drawing
+	// it and held between times.
+	away elsewhereCache
 
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
@@ -1968,6 +1975,14 @@ func (a *app) paint() tea.Cmd {
 	}
 	if a.dueEvery(usageEvery) {
 		a.refreshUsage()
+	}
+	// WHAT THE OTHER WINDOWS HAVE OUT IS RE-READ HERE, and only while something
+	// on the frame is drawing it: the roster's record rows say `running` or
+	// `incomplete` off that reading, and the history page draws a row per piece
+	// of work another window is holding (taskview.go's [app.refreshElsewhere],
+	// which keeps its own short window so this clock cannot outpace the disk).
+	if a.railStanding() || a.taskSheet.open {
+		a.refreshElsewhere()
 	}
 	a.promoteMarkdown()
 	// The welcome box's one-shot animation is the second and last reason this

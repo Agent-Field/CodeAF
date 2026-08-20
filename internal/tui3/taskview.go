@@ -3,6 +3,7 @@ package tui3
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -39,6 +40,12 @@ import (
 //     finished, newest first, one line each: a person reading history is looking
 //     for a name, and a tree of four hundred landed nodes is a shape nobody is
 //     reading.
+//   - `running` IS THE DIRECTORY'S AND NOT THIS WINDOW'S. Under the tree it
+//     carries a row per piece of work every OTHER aforge window open on this
+//     project has out, with the window named on the right — the one place in this
+//     program a person can see that the directory is busy somewhere else. The
+//     roster's column stays this session's own; see the block above
+//     [elsewhereEvery] for why the split falls there.
 //   - IT READS THE SAME SNAPSHOT THE "@" LIST READS ([app.comp].tasks, loaded by
 //     [app.loadTasks]). One read, one cache, one answer to "what has this project
 //     run" — a page that fetched its own copy would be a second answer with its
@@ -93,6 +100,48 @@ const (
 	taskSheetEmpty = "no tasks yet — /task <brief> starts one"
 )
 
+// The two words a row of the project's RECORD says about a claim of running,
+// and the one that names the window a piece of work belongs to.
+//
+// THE RECORD IS A FILE AND THE FILE CANNOT CORRECT ITSELF. A row takes the word
+// `running` when the work starts and nothing rewrites it, so a window that was
+// killed, or a laptop that shut, leaves rows claiming a present that ended hours
+// ago (internal/session's world.go states the law and taskelsewhere.go applies
+// it here). What settles the claim is the window that made it: while that window
+// is open and still names the node among the work it has out, the row is
+// running; the moment it is not, the row is a record of work nobody finished.
+const (
+	// taskRecordRunsWord goes on a row another window is still holding. It is the
+	// same word the sections and the column's tally already spend
+	// ([taskSheetNowHead]), because it is the same fact.
+	taskRecordRunsWord = taskSheetNowHead
+	// taskRecordStoppedWord goes on a row that claims to be running with nobody
+	// running it. It is `incomplete` — the word the interrupted-task outcome
+	// itself uses (session's taskInterruptedOutcome), the word the home page
+	// puts on the same fact, and NOT a claim about the work: nobody looked at it
+	// and nobody judged it, it simply stopped.
+	taskRecordStoppedWord = "incomplete"
+	// taskAwayWord names the place a piece of work is happening when the place
+	// is not this window. It is what a row says when the other window never
+	// settled on a title; a window that HAS one says both, because the name is
+	// how a person tells two other windows apart.
+	taskAwayWord = "another window"
+)
+
+// taskAwayNote is the dim tail on a row of another window's work: where it is
+// happening, and — when that window has settled on a name — what it is called.
+//
+// THE EMPTINESS LAW DECIDES THE SHAPE. A window nothing has named has no name,
+// and a tail reading "another window · " with nothing after it would be a
+// separator standing in for a fact. So the name is added or it is not, and the
+// row is honest either way.
+func taskAwayNote(name string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		return taskAwayWord
+	}
+	return taskAwayWord + railSep + name
+}
+
 // The two lines at the foot, which are what this page offers each hand.
 const (
 	taskSheetRoomKeys    = "esc close · ↑↓ move · enter opens its room"
@@ -107,6 +156,12 @@ const (
 	// esc means the filter first and the page second, and a foot that went on
 	// promising to close would be lying about the next keystroke.
 	taskSheetFilterKeys = "esc clears the filter · ↑↓ move · enter opens the row"
+	// taskSheetReadKeys is the foot for a page with nothing under the cursor to
+	// act on, which is a page whose only rows are another window's work. It
+	// PROMISES NOTHING ABOUT enter, because enter does nothing there — a foot
+	// still offering a room over work this window cannot open would be the page
+	// lying about its own door.
+	taskSheetReadKeys = "esc close · ↑↓ move"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when
@@ -163,9 +218,164 @@ type taskSheetItem struct {
 	// edited (taskmention.go's [app.tasksLoaded]), so a pointer taken here is
 	// still a pointer at something true.
 	entry *session.TaskIndexEntry
+	// away is the third kind of row: one piece of work ANOTHER window on this
+	// project has out at this instant, which is neither a node of this session's
+	// graph nor a row of the file ([app.taskSheetAwayRows] says why it is both
+	// drawn and unpressable). It points into the slice the frame built for the
+	// same reason [taskSheetItem.entry] does.
+	away *session.ElsewhereTask
 }
 
 func (i taskSheetItem) heading() bool { return i.head != "" }
+
+// pick reports whether the CURSOR may stand on this row.
+//
+// IT IS NOT THE OPPOSITE OF [taskSheetItem.heading], and that is the whole
+// reason it exists. A section's word answers nothing because it is a rule; a row
+// of another window's work answers nothing for a different reason — there is no
+// door onto it from here ([app.taskSheetAwayRows] says why) — and a cursor that
+// could stand on one would be a cursor promising enter something it cannot do.
+func (i taskSheetItem) pick() bool { return i.head == "" && i.away == nil }
+
+// ── what the other windows have out ─────────────────────────────────────────
+
+// THE PROJECT IS BIGGER THAN THIS WINDOW, and until now this surface could not
+// say so.
+//
+// A person with two aforge windows open on one directory would start a task in
+// the first, look at the second, and find no trace of it anywhere: not in the
+// column, not on this page, not in the "@" list. The reason is in
+// internal/session's taskelsewhere.go — an ordinary task writes NO row into the
+// project's index until it lands, so there is nothing on disk for a second
+// window to read — and the fix is the presence file every live session already
+// keeps, which says what that session has out at this instant.
+//
+// TWO THINGS COME OUT OF ONE READING, and they are drawn in two different places
+// for one reason: the roster's tree is THIS SESSION'S work and stays that way
+// ([app.railEntries] walks [app.taskOrder] and nothing else), because a tree
+// with another window's nodes hanging off it would be a shape that claims a
+// parentage nothing has. So:
+//
+//   - THE HISTORY PAGE'S `running` SECTION gains a flat row per piece of work
+//     another window is holding, under this session's own tree, each with the
+//     window it belongs to on the right.
+//   - EVERY RECORD ROW, on this page and in the column alike, gets its claim of
+//     running judged against the same reading ([app.recordRuns]).
+
+// elsewhereEvery is how long ONE reading of the other windows is held before
+// another is taken.
+//
+// THREE SECONDS, AND IT IS A CADENCE RATHER THAN A CACHE SIZE. The reading is a
+// directory read plus two small files per window, which is nothing on a clock
+// and thirty times a second on a frame — and the thing being read only changes
+// every [session.presenceHeartbeat] anyway, so a shorter window would buy
+// re-reads of a file nobody has rewritten. It is the ONE number: the paint clock
+// asks for a refresh while the roster or this page is on the frame and this
+// decides whether the ask reaches the disk.
+const elsewhereEvery = 3 * time.Second
+
+// elsewhereCache is one held reading and its stamp. The zero value has never
+// read anything, which is what [app.elsewhere] takes as "go and look".
+type elsewhereCache struct {
+	held session.Elsewhere
+	at   time.Time
+	read bool
+}
+
+// elsewhereAgent is the slice of [session.Agent] this file needs, asserted
+// rather than added to [Agent].
+//
+// It is optional on [taskMentionAgent]'s own terms: a surface driven by a
+// scripted agent has no project bucket and no other windows, and the honest
+// answer for one is an empty reading rather than a seam every test has to
+// implement.
+type elsewhereAgent interface {
+	// Elsewhere is what the project's OTHER windows have out right now.
+	Elsewhere() session.Elsewhere
+}
+
+// elsewhere is the reading this surface is currently drawing from. IT NEVER
+// TOUCHES THE DISK except the very first time it is asked — every later refresh
+// is the paint clock's ([app.refreshElsewhere]) — so it is safe to ask from
+// inside a layout, which is where every caller is.
+//
+// The first reading is taken on demand rather than at startup because the
+// alternative is worse than a lazy read: a surface that drew one frame before
+// its first reading would spend that frame calling another window's live work
+// `incomplete`, which is the exact lie this whole lane exists to stop telling.
+func (a *app) elsewhere() session.Elsewhere {
+	if !a.away.read {
+		a.refreshElsewhere()
+	}
+	return a.away.held
+}
+
+// refreshElsewhere takes a new reading if the held one has aged out.
+//
+// IT IS CALLED FROM THE PAINT CLOCK AND ONLY WHILE SOMETHING DRAWS IT (app.go's
+// [app.paint] gates on the roster standing or this page being open), and from
+// [app.openTaskSheet] on the way in — a page raised after ten minutes of a
+// stowed column must not answer out of a ten-minute-old reading.
+func (a *app) refreshElsewhere() {
+	if a.away.read && a.now().Sub(a.away.at) < elsewhereEvery {
+		return
+	}
+	a.away = elsewhereCache{at: a.now(), read: true}
+	agent, ok := a.agent.(elsewhereAgent)
+	if !ok {
+		return
+	}
+	a.away.held = agent.Elsewhere()
+}
+
+// recordRuns is THE judgement about one row of the project's record: is this
+// work happening, or is it a file remembering that it started?
+//
+// IT IS ASKED IN EXACTLY ONE PLACE PER SURFACE — the page's row and the column's
+// row are drawn by the same function ([app.taskSheetPastRow]) and both come
+// through here — because a screen that said `running` on a row it filed under
+// the record would be the surface arguing with itself.
+//
+// The ladder is internal/session's, in the order the better answer comes first:
+// a node THIS session's graph is holding is running because this window is the
+// authority on its own work, and any other row is running only while the window
+// that wrote it is open and still names it ([session.Elsewhere.Runs]).
+func (a *app) recordRuns(entry *session.TaskIndexEntry) bool {
+	if entry == nil || !entry.Live() {
+		return false
+	}
+	if a.taskSheetNodeFor(entry) != nil {
+		return true
+	}
+	return a.elsewhere().Runs(*entry)
+}
+
+// taskSheetAwayRows is every piece of work another window on this project has
+// out, as rows this page can draw.
+//
+// A ROW HERE IS READ AND NOT PRESSED, and that is deliberate rather than
+// unfinished. The two doors this surface has onto a piece of work are a ROOM,
+// which is a live lane onto a node in THIS session's graph, and a MENTION, which
+// mints a pointer block out of a landed row's outcome, branch and transcript
+// ([app.mentionTask]). Work running in another window has neither: no node here
+// to open, and nothing landed to point at. So the cursor steps over these rows
+// ([taskSheetItem.pick]) and they say what they are for — knowing that the
+// directory is busy, and where.
+//
+// A TASK NOTHING NAMED IS LEFT OFF. A row with no words on it says nothing a
+// person can act on, which is the same refusal [session.recordTaskIndexEntry]
+// makes about writing one.
+func (a *app) taskSheetAwayRows() []session.ElsewhereTask {
+	tasks := a.elsewhere().Tasks()
+	out := make([]session.ElsewhereTask, 0, len(tasks))
+	for _, task := range tasks {
+		if strings.TrimSpace(task.Task.Title) == "" {
+			continue
+		}
+		out = append(out, task)
+	}
+	return out
+}
 
 // ── opening and closing ─────────────────────────────────────────────────────
 
@@ -177,6 +387,12 @@ func (i taskSheetItem) heading() bool { return i.head != "" }
 // answers with nothing reads as a command that broke, and a chord that was never
 // bound in the person's mind reads as a chord that was never bound.
 func (a *app) openTaskSheet() bool {
+	// THE OTHER WINDOWS ARE RE-READ ON THE WAY IN, before the page decides
+	// whether it has anything to show — a directory whose only live work is in
+	// the window next door is a directory this page has something to say about,
+	// and answering out of a reading taken while the column was stowed would
+	// refuse to open over work that is happening right now.
+	a.refreshElsewhere()
 	if !a.taskSheetHasAnything() {
 		return false
 	}
@@ -197,8 +413,16 @@ func (a *app) closeTaskSheet() {
 }
 
 // taskSheetHasAnything reports whether there is a single row to draw.
+//
+// ANOTHER WINDOW'S WORK COUNTS. A person who opens a second aforge in a
+// directory and asks for /history before running anything themselves is asking
+// precisely because something is happening next door, and a refusal there would
+// be the page denying the one fact it was opened to report.
 func (a *app) taskSheetHasAnything() bool {
 	if len(a.taskOrder) > 0 {
+		return true
+	}
+	if len(a.taskSheetAwayRows()) > 0 {
 		return true
 	}
 	return len(a.taskSheetPast(nil)) > 0
@@ -211,21 +435,24 @@ func (a *app) taskSheetFollow() {
 	a.taskSheet.cursor = taskSheetClamp(items, a.taskSheet.cursor)
 }
 
-// taskSheetClamp is the cursor rule: never a heading, never off the end. It
-// walks forward first and then back, so a cursor that lands on a section's word
-// steps onto the first row of that section rather than off the top of the page.
+// taskSheetClamp is the cursor rule: only ever a row that answers to it
+// ([taskSheetItem.pick] — never a section's word, never another window's work),
+// and never off the end. It walks forward first and then back, so a cursor that
+// lands on a section's word steps onto the first row of that section rather than
+// off the top of the page. A page whose every row is another window's leaves the
+// cursor where it was, and [app.taskSheetCurrent] answers false for it.
 func taskSheetClamp(items []taskSheetItem, at int) int {
 	if len(items) == 0 {
 		return 0
 	}
 	at = min(max(at, 0), len(items)-1)
 	for i := at; i < len(items); i++ {
-		if !items[i].heading() {
+		if items[i].pick() {
 			return i
 		}
 	}
 	for i := at; i >= 0; i-- {
-		if !items[i].heading() {
+		if items[i].pick() {
 			return i
 		}
 	}
@@ -244,18 +471,30 @@ func taskSheetClamp(items []taskSheetItem, at int) int {
 // as though another conversation had run them.
 func (a *app) taskSheetItems() []taskSheetItem {
 	live := a.taskSheetForest()
+	away := a.taskSheetAwayRows()
 	past := a.taskSheetPast(live)
 	if needle := a.taskSheetFilter(); needle != "" {
 		live, past = taskSheetKeepLive(live, needle), taskSheetKeepPast(past, needle)
+		away = taskSheetKeepAway(away, needle)
 	}
-	out := make([]taskSheetItem, 0, len(live)+len(past)+2)
+	out := make([]taskSheetItem, 0, len(live)+len(away)+len(past)+2)
 	// A SECTION WITH NOTHING IN IT IS NOT DRAWN AT ALL, filter or no filter. It is
 	// the emptiness law: a `running` rule with a blank under it says the query
 	// found something and lost it.
-	if len(live) > 0 {
+	//
+	// ONE SECTION HOLDS BOTH KINDS OF RUNNING WORK, this session's tree and the
+	// other windows' flat rows under it, because `running` is one question and a
+	// person asking it is asking about the DIRECTORY. Which window a row belongs
+	// to is said on the row itself ([app.taskSheetAwayRow]), which is where a
+	// fact about one row belongs — a second heading would make the reader learn a
+	// section to learn a word.
+	if len(live) > 0 || len(away) > 0 {
 		out = append(out, taskSheetItem{head: taskSheetNowHead})
 		for _, e := range live {
 			out = append(out, taskSheetItem{node: e.node, stems: e.stems, root: e.root})
+		}
+		for i := range away {
+			out = append(out, taskSheetItem{away: &away[i]})
 		}
 	}
 	if len(past) > 0 {
@@ -323,6 +562,26 @@ func taskSheetKeepPast(past []*session.TaskIndexEntry, needle string) []*session
 	return out
 }
 
+// taskSheetKeepAway is the filter over the other windows' work, in the reading's
+// own order.
+//
+// IT ASKS THE TITLE AND NOTHING ELSE. The id is deliberately not matched, which
+// is where this parts company with [taskSheetNodeMatches]: ids restart with
+// every conversation (session's task_index.go says so on TaskIndexEntry.ID), so
+// "7" typed here is somebody quoting a number they read in THIS window, and
+// answering it with another window's seventh node would hand them the wrong task
+// under the right number. The window's own name is not matched either — a filter
+// is a question about work.
+func taskSheetKeepAway(away []session.ElsewhereTask, needle string) []session.ElsewhereTask {
+	out := make([]session.ElsewhereTask, 0, len(away))
+	for _, task := range away {
+		if session.TaskWordsMatch(task.Task.Title, needle) {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
 // taskSheetTyped is what every edit of the filter ends with: the list has
 // changed under the cursor, so the cursor goes back to the first row of it and
 // the window with it. A cursor left at item forty of a list that now has three
@@ -382,11 +641,19 @@ func (a *app) taskSheetPast(live []railEntry) []*session.TaskIndexEntry {
 	out := make([]*session.TaskIndexEntry, 0, len(a.comp.tasks))
 	for i := range a.comp.tasks {
 		entry := &a.comp.tasks[i]
-		if entry.Live() {
-			// EVERYTHING LIVE IS IN THE TREE. The index's live rows are read off
-			// the very graph the tree above is drawn from
-			// ([session.Agent.TaskIndex] merges them in), so a live row down here
-			// would be the same node said twice.
+		if entry.Live() && a.recordRuns(entry) {
+			// EVERYTHING THAT IS ACTUALLY RUNNING IS IN THE SECTION ABOVE. This
+			// session's own live rows are read off the very graph the tree is drawn
+			// from ([session.Agent.TaskIndex] merges them in), and another window's
+			// are drawn as its own rows beside that tree — either way a copy down
+			// here would be the same work said twice.
+			//
+			// A LIVE-LOOKING ROW THAT NOTHING IS RUNNING FALLS THROUGH ON PURPOSE.
+			// It used to be dropped here with the rest, which took a task some
+			// window was killed in the middle of off every surface this program
+			// has: the file went on saying `running`, nothing believed it, and
+			// nobody was ever told the work had stopped. It belongs in the record,
+			// which is what it is, and it says [taskRecordStoppedWord].
 			continue
 		}
 		if title, drawn := shown[taskSheetEntryID(entry.ID)]; drawn && taskSheetSameWork(title, entry) {
@@ -566,7 +833,7 @@ func (a *app) taskSheetMove(delta int) {
 				next = at
 				break
 			}
-			if !items[next].heading() {
+			if items[next].pick() {
 				break
 			}
 		}
@@ -582,7 +849,7 @@ func (a *app) taskSheetMove(delta int) {
 func (a *app) taskSheetCurrent() (taskSheetItem, bool) {
 	items := a.taskSheetItems()
 	at := taskSheetClamp(items, a.taskSheet.cursor)
-	if at < 0 || at >= len(items) || items[at].heading() {
+	if at < 0 || at >= len(items) || !items[at].pick() {
 		return taskSheetItem{}, false
 	}
 	return items[at], true
@@ -737,7 +1004,7 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	for at := a.taskSheet.top; at < len(items) && len(lines)-head < room; at++ {
 		item := items[at]
 		hit := taskSheetHit{}
-		if !item.heading() {
+		if item.pick() {
 			hit = taskSheetHit{kind: taskSheetHitRow, index: at}
 		}
 		for _, text := range a.taskSheetItemRows(item, at, width) {
@@ -847,7 +1114,7 @@ func (a *app) taskSheetKeysLine() string {
 	item, ok := a.taskSheetCurrent()
 	switch {
 	case !ok:
-		return taskSheetRoomKeys
+		return taskSheetReadKeys
 	case item.node != nil, a.taskSheetNodeFor(item.entry) != nil:
 		return taskSheetRoomKeys
 	}
@@ -867,9 +1134,12 @@ func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) []string {
 		room = 1
 	}
 	var rows []string
-	if item.node != nil {
+	switch {
+	case item.node != nil:
 		rows = a.taskSheetNodeRows(item, room)
-	} else {
+	case item.away != nil:
+		rows = []string{a.taskSheetAwayRow(*item.away, room)}
+	default:
 		rows = []string{a.taskSheetPastRow(item.entry, room)}
 	}
 	selected := at == a.taskSheet.cursor
@@ -955,9 +1225,16 @@ func (a *app) taskSheetUnderStem(item taskSheetItem) string {
 // picked a task out of the drop-up has already learned these glyphs, and the two
 // lists of the project's work must not disagree about what a finished task looks
 // like.
+//
+// A ROW THAT CLAIMS TO BE RUNNING IS DRAWN AS RUNNING ONLY WHEN IT IS. The claim
+// is the file's ([app.recordRuns] judges it), and the row says one of three
+// things: the ordinary record grammar for work that landed, the LIVE grammar —
+// undulled, in the ink a running row wears — for work another window is still
+// holding, and [taskRecordStoppedWord] for a claim nothing is behind.
 func (a *app) taskSheetPastRow(entry *session.TaskIndexEntry, width int) string {
-	label := taskRowLabel(*entry, a.pal.ascii)
-	note := taskNoteWord(*entry)
+	runs := a.recordRuns(entry)
+	label := taskRecordLabel(*entry, a.pal.ascii, runs)
+	note := taskRecordNote(*entry, runs)
 	room := width
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
@@ -966,7 +1243,83 @@ func (a *app) taskSheetPastRow(entry *session.TaskIndexEntry, width int) string 
 		room = 1
 	}
 	label = fit(label, room)
+	// THE HUE IS THE CLAIM AND THE GLYPH IS THE CLAIM: dulled means this is the
+	// record, and a row that is genuinely running is not the record. The ink is
+	// the one a running node's title wears in the column ([app.railTitle]), so a
+	// person who has watched work run recognizes it here without learning a
+	// second signal.
 	line := a.pal.muted(label)
+	if runs {
+		line = a.pal.ink(label)
+	}
+	if note != "" {
+		if pad := room - ansi.StringWidth(label) + 1; pad > 0 {
+			line += strings.Repeat(" ", pad)
+		}
+		line += a.pal.dim(note)
+	}
+	return line
+}
+
+// taskRecordLabel is [taskRowLabel] with the liveness judgement folded in.
+//
+// A ROW NOTHING IS RUNNING DOES NOT WEAR THE RUNNING GLYPH. [glyphIdle] takes
+// its place — the dot this surface already spends on a call that was still going
+// when its turn ended, chosen there for exactly the reason it is right here: a
+// frozen spinner would claim the work is alive, and a dot claims nothing.
+func taskRecordLabel(entry session.TaskIndexEntry, ascii, runs bool) string {
+	words := entry.Label
+	if words == "" {
+		words = entry.Title
+	}
+	glyph := taskStatusGlyph(entry, ascii)
+	if entry.Live() && !runs {
+		glyph = glyphIdle
+		if ascii {
+			glyph = glyphIdleASCII
+		}
+	}
+	return glyph + " " + mentionMark(ascii) + " " + words
+}
+
+// taskRecordNote is the dim tail on a record row: one word about a live-looking
+// claim, and the age for everything that landed.
+//
+// THE AGE IS NOT DRAWN FOR EITHER LIVE CASE, and that is the emptiness law
+// rather than a shortage of room. [taskNoteWord] measures a live row by
+// [session.TaskIndexEntry.DurationMS], which is written when the work LANDS —
+// so it is zero on every row that has not, and a tail reading `0s` beside a task
+// that has been going for an hour is a number worse than no number.
+func taskRecordNote(entry session.TaskIndexEntry, runs bool) string {
+	switch {
+	case entry.Live() && runs:
+		return taskRecordRunsWord
+	case entry.Live():
+		return taskRecordStoppedWord
+	}
+	return taskNoteWord(entry)
+}
+
+// taskSheetAwayRow is one piece of work another window has out: the state it is
+// in, the words it was given, and the window it is happening in.
+//
+// IT WEARS NO MENTION MARK, which every other row on this page does. The mark is
+// a promise that "@" reaches this task ([taskRowLabel] puts it on the record's
+// rows because it does), and work that has not landed has no row in the project
+// index for a mention to resolve against — so the mark would be an offer this
+// page cannot keep.
+func (a *app) taskSheetAwayRow(away session.ElsewhereTask, width int) string {
+	glyph := taskStatusGlyph(session.TaskIndexEntry{Status: away.Task.State}, a.pal.ascii)
+	note := taskAwayNote(away.Session)
+	room := width
+	if note != "" {
+		room -= ansi.StringWidth(note) + 1
+	}
+	if room < 1 {
+		room = 1
+	}
+	label := fit(glyph+" "+away.Task.Title, room)
+	line := a.pal.ink(label)
 	if note != "" {
 		if pad := room - ansi.StringWidth(label) + 1; pad > 0 {
 			line += strings.Repeat(" ", pad)
@@ -1031,15 +1384,18 @@ func (a *app) railRecord(limit int) []*session.TaskIndexEntry {
 	out := make([]*session.TaskIndexEntry, 0, min(limit, len(a.comp.tasks)))
 	for i := range a.comp.tasks {
 		entry := &a.comp.tasks[i]
-		if entry.Live() {
-			// EVERYTHING LIVE BELONGS TO THE FOREST ABOVE. The index's live rows are
-			// merged in off this session's own graph ([session.Agent.TaskIndex]), and
-			// a live row down here would be a running task drawn as history.
-			continue
-		}
 		if a.taskSheetNodeFor(entry) != nil {
+			// THIS SESSION'S OWN WORK BELONGS TO THE FOREST ABOVE. The index's live
+			// rows are merged in off this session's own graph
+			// ([session.Agent.TaskIndex]), and a copy down here would be a running
+			// task drawn as history.
 			continue
 		}
+		// A ROW ANOTHER WINDOW WROTE IS KEPT WHATEVER IT CLAIMS, and the row itself
+		// says which it is ([app.taskSheetPastRow] asks [app.recordRuns]). It used
+		// to be dropped for saying `running`, which is how a task somebody started
+		// in the window next door — and a task some window died in the middle of —
+		// came to be visible on no surface this program draws.
 		out = append(out, entry)
 		if len(out) >= limit {
 			break
@@ -1072,9 +1428,17 @@ func (a *app) railHasRecord() bool { return len(a.railRecord(1)) > 0 }
 // conversation ran, because a room is a live lane onto a node in this session's
 // graph and that session is closed.
 //
-// WHAT DOES NOT CHANGE IS THE PAINT. They stay muted-and-dim under the selection
-// band, because dulled is a claim about the WORK — this is the record, not what
-// is happening — and not a claim about whether the row answers.
+// THE PAINT IS A CLAIM ABOUT THE WORK AND NOT ABOUT THE ROW. Muted-and-dim under
+// the selection band means this is the record rather than what is happening, and
+// it says nothing about whether the row answers a key. Which is why the ONE row
+// that is not dulled down here is the one that is genuinely running: a row
+// another window on this project is still holding wears the running ink and the
+// word `running`, and a row that claims to be running with nothing behind it
+// wears a dot and the word [taskRecordStoppedWord] ([app.taskSheetPastRow]
+// draws all three). The column cannot show another window's ordinary work — that
+// work has no row in the file until it lands, so only the page can
+// ([app.taskSheetAwayRows]) — but it must never draw the rows it DOES have as
+// history when they are not.
 //
 // The rows the frame drew are kept in [app.railPast], in drawn order, because
 // how many of them fit is a fact only this layout has: the cursor and the

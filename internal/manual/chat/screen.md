@@ -1034,6 +1034,12 @@ band: that background means "this is the room you are standing in", and there is
 to stand in for work another conversation ran. The `ctrl+. — view more` line below reaches
 the rest of them.
 
+**And dulled is a claim about the work.** A row that still says `running` is drawn undulled
+and reads `running` only while the window that started it is open and still holds it;
+otherwise the glyph becomes a dot `·` and the row reads `incomplete` — the window went and
+nothing finished the work. Running work belonging to *other* windows is not on the column
+at all; `/history` carries that.
+
 The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
 you` — and then up to three more dim lines, each of which is a button as well as a key:
 

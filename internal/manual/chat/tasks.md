@@ -450,6 +450,13 @@ earlier
   family and is never repeated down here.
 - Each row is one line — a state glyph, the mention mark `⧉`, the title muted, and how long
   ago it landed dim. No tree, no id, no detail lines.
+- **A row that says `running` is drawn as running only while something is.** The record is
+  written once and never corrected, so a task that was under way when its window closed
+  would go on claiming `running` forever. What settles it is that window: while it is still
+  open and still holds the task, the row is undulled and reads `running`; when nothing is
+  behind the claim any more the glyph becomes a dot `·` and the row reads `incomplete`.
+  `incomplete` is not a judgement about the work — nobody looked at it and nobody failed
+  it — it means the window went and nothing finished it.
 - **They never take a row from live work.** They are filled into whatever the session's own
   rows left over, so a column busy with running tasks carries none of them, and nothing
   running is ever pushed off to make room.
@@ -459,10 +466,15 @@ earlier
   `@its-name`, keeping whatever you had half-written. Sending it mints the pointer block
   carrying that task's outcome, its branch and its transcript.
 - **What they do not open is a room.** A room is a live lane onto a task in *this* session's
-  work, and the conversation that ran these is closed — so the mention is the door, which
-  is exactly what `enter` does on the task page's own `earlier` rows.
+  work, and these belong to another conversation — so the mention is the door, which is
+  exactly what `enter` does on the task page's own `earlier` rows.
 - Being dulled is a claim about the *work* — this is the record, not what is happening —
-  and never about whether the row answers.
+  and never about whether the row answers. The one row down here that is **not** dulled is
+  the one another open window is still running.
+- **The column shows no other window's ordinary work**, only the rows the project's file
+  holds. An ordinary task writes nothing into that file until it lands, so a task somebody
+  started in the window next door five minutes ago is not down here — `/history` is where
+  it is.
 - For more than the six, or to filter them and read their outcomes: press `ctrl+.`, type
   `/history`, or click the `ctrl+. — view more` line at the bottom of the column.
 
@@ -561,21 +573,60 @@ It has two sections.
   folded, with the same connectors the column uses. Each row carries more than the column
   has room for: what the task is doing right now, and under it its clock, its tokens, its
   spend and its model. A family's finished members are drawn with it, so the shape makes
-  sense.
+  sense. **Under the tree, one flat row for each piece of work every *other* aforge window
+  open on this directory has out**, each saying `another window` on the right — see
+  *Work running in another aforge window* below.
 - **`earlier`** — a flat list, newest first, of everything the project has finished. No
   tree, one line each: a state glyph, the mention mark `⧉`, the title, and how long ago it
   landed. These are the same rows the `@` list offers, so a task looks the same in both
-  places. Work this session is already showing under `running` is not repeated here.
+  places. Work already shown under `running` — this session's, or another window's — is not
+  repeated here. A row that still claims `running` with no window behind it lands here
+  reading `incomplete`.
 
 At the bottom: one dim line counting what is on the page, such as `3 running · 148 earlier`
 — a section with nothing in it is not counted at all — and under it the keys.
 
 **`/history` on a project that has never run one says `no tasks yet — /task <brief> starts
 one`** and opens nothing. `ctrl+.` there does nothing at all rather than raising an empty
-page.
+page. A session that has run nothing itself **does** open the page when another window on
+the same directory is running something — that is the one fact it was opened to report.
 
 The list is as long as the project's record is — internal to aforge that record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.
+
+## Work running in another aforge window — a task started in my other terminal
+
+Two aforge windows open on one directory can see each other's running work, and `/history`
+is where they see it. Under this session's own `running` tree the page draws **one flat row
+for every task each other window has out right now**:
+
+```
+running
+▸ Sweep the call sites                              another window · Fix the nil-map crash
+◌ Port the parser                                   another window
+```
+
+- The right-hand note is dim and says `another window`, followed by that window's own name
+  when it has settled on one. A window nothing has named says only `another window`.
+- The row's glyph is the task's own state, so `▸` is running and `◌` is queued behind
+  something.
+- **These rows are read, not pressed.** The cursor steps straight over them, `enter` does
+  nothing, and there is no mention mark `⧉` on them: a room is a live lane onto a task in
+  *this* session's work, and a `@` mention resolves against work that has **landed** — a
+  task still running in another window is neither. Go to that window to act on it. On a
+  page whose only rows are another window's, the foot reads `esc close · ↑↓ move` rather
+  than promising a door.
+- They **leave on their own** when that window closes or finishes the work. Nothing
+  announces it; the row simply stops being drawn within a few seconds.
+- The **column** never carries these. The roster beside the conversation is this session's
+  own work, and a tree with another window's tasks hanging off it would be claiming a
+  parentage that does not exist.
+- The page re-reads what the other windows are doing every few seconds while it or the
+  column is on screen, and on the way in.
+
+If a task you started in another terminal is on **no** row here, that window has closed.
+Its work stopped with it, and the project's record will say `incomplete` against whatever
+it had started.
 
 ## Searching the task page: type to filter, find an old task by name
 
@@ -592,8 +643,11 @@ for a reason you cannot see.
 - It matches a task's **title**, its **id** (typed exactly: `7` finds task 7 and nothing
   else), its **name** as the `@` list spells it, and its **outcome**. Letters in order are
   enough — `prsr` finds `Port the parser`.
-- **Both sections are filtered.** A section with no match is not drawn at all, heading and
-  all, so a filter that only matches old work leaves the `earlier` list alone on the page.
+- **Both sections are filtered**, another window's rows included — those match on their
+  **title only**, never on an id, because ids restart with every conversation and `7` typed
+  here is a number you read in *this* window. A section with no match is not drawn at all,
+  heading and all, so a filter that only matches old work leaves the `earlier` list alone on
+  the page.
 - The `running` section goes **flat** while a filter is on: a tree with rows taken out of
   the middle is a tree whose connectors point at nothing, and someone searching is looking
   for a name.
@@ -607,7 +661,7 @@ for a reason you cannot see.
 
 | key | what it does |
 | --- | --- |
-| `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the section words |
+| `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the section words and over another window's rows |
 | `pgup` `pgdown` | move twelve rows |
 | `home` `end` | first row, last row |
 | `enter` | open it — see below |
@@ -631,6 +685,10 @@ going to get:
   branch and its transcript. The foot reads
   `esc close · ↑↓ move · enter puts it in your message`. Your half-written sentence is kept;
   the name is appended to it.
+- A task **running in another window right now** takes no cursor at all: `↑`/`↓` step over
+  it and `enter` does nothing, because it has neither a room here nor a landed row for a
+  mention to point at. On a page whose only rows are those, the foot reads
+  `esc close · ↑↓ move`.
 
 Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
@@ -652,8 +710,9 @@ as it was — the page is somewhere you go and come back from, not a state the c
 
 - a family is **folded**, so the column is standing one row for work it is not drawing; or
 - the project's record holds tasks **this session never ran** — work from an earlier
-  conversation. The column notes at most six of those, dulled, with no cursor and no door;
-  this line is how you reach the ones it cut and how you act on the ones it drew.
+  conversation, or from a window still open beside this one. The column notes at most six
+  of those; this line is how you reach the ones it cut, and how you reach the running work
+  of other windows, which the column does not carry at all.
 
 A landed task of this session's, already drawn on the column, does not earn the line: it
 would be offering to show you what you are looking at. So a first-ever session in a fresh
