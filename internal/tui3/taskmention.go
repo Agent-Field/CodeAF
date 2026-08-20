@@ -163,14 +163,15 @@ func (a *app) refreshTasks() tea.Cmd {
 		// that kept drawing it under "running" after it landed would be the record
 		// disagreeing with the column beside it (taskview.go).
 		//
-		// AND THE COLUMN IS ON IT FOR THE SAME REASON, ONE STEP FURTHER: it carries
-		// the project's record under its own rows now ([app.railRecord]) and the
-		// column is PERMANENT ([app.railShowing]), so it is the reader that never
-		// looks away. A node that lands in THIS session moves from the column's
-		// forest into that record, and a snapshot nobody re-read would draw it in
-		// both. What still stands the read down is the column being gone rather
-		// than idle — put away with ctrl+g, or under [railSlimFloor] — which is
-		// exactly the case where nothing on the frame is showing the record.
+		// AND THE COLUMN IS ON IT BECAUSE IT ASKS THE SNAPSHOT A QUESTION EVERY
+		// FRAME: does this project have a record behind it, which is what decides
+		// whether the foot of the column carries the door onto the task page
+		// ([app.railHasRecord], taskview.go). The column is PERMANENT
+		// ([app.railShowing]), so it is the reader that never looks away — and the
+		// answer moves under it, because a node that lands in THIS session writes a
+		// row of the file it is already drawing in its own forest. What still stands
+		// the read down is the column being gone rather than idle — put away with
+		// ctrl+g, or under [railSlimFloor].
 		return nil
 	}
 	return a.loadTasks()

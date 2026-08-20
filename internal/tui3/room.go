@@ -1885,9 +1885,9 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.railStow(true)
 		return nil, true
 	}
-	// AND THE "view more" LINE IS THE THIRD OF THEM, on the same terms: it names a
-	// chord, so it has to answer to the hand that does not type chords
-	// ([taskSheetMoreHint], taskview.go). It leaves the column exactly as it is —
+	// AND THE DOOR ONTO THE TASK PAGE IS THE THIRD OF THEM, on the same terms: it
+	// names a chord, so it has to answer to the hand that does not type chords
+	// ([taskSheetPastHint], taskview.go). It leaves the column exactly as it is —
 	// the page is a place you go and come back from, not a state the column
 	// enters.
 	if line.more {
@@ -1897,15 +1897,6 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true
-	}
-	// A ROW OF THE PROJECT'S RECORD IS A DOOR ONTO THE CARD — the history page
-	// standing inside that piece of work (taskrecord.go) — and a press walks
-	// through it on the FIRST press, which is what every row of this column has
-	// always done. The cursor moves with it, so the keyboard picks up where the
-	// hand left off — the same bargain a press on a node row makes.
-	if line.record != nil {
-		a.railWhere = railSpotOfPast(line.record)
-		return a.openTaskRecord(line.record), true
 	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {
@@ -1968,24 +1959,6 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 		return nil
 	}
 	return a.railNodeAt(y)
-}
-
-// railHoverPast is which row of the PROJECT'S RECORD the pointer is over, as an
-// index into the rows the layout drew ([app.railPast], taskview.go), or -1.
-func (a *app) railHoverPast(x, y int) int {
-	if !a.railAt(x, y) {
-		return -1
-	}
-	line, ok := a.railLineAt(y)
-	if !ok || line.record == nil {
-		return -1
-	}
-	for i, entry := range a.railPast {
-		if entry == line.record {
-			return i
-		}
-	}
-	return -1
 }
 
 // ── THE FOCUS HEADER ────────────────────────────────────────────────────────

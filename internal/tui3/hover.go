@@ -31,8 +31,6 @@ package tui3
 // the sort of thing that grows a little at a time until a pointer moved over a
 // link is a surface that stutters.
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
-
 // hoverKind is what the pointer is over.
 type hoverKind uint8
 
@@ -105,13 +103,11 @@ const (
 	// of [hoverRailGrip]: one control in two states, so the right edge lights the
 	// same way whether the column is up or away.
 	hoverRailDoor
-	// hoverRailPast is one row of the PROJECT'S RECORD at the foot of the column
-	// (taskview.go's [app.railRecordLines]), and index is its place in the rows
-	// the layout drew. It is a kind of its own rather than a [hoverRail] because
-	// those rows carry no node — the id they have belongs to a conversation that
-	// is closed, and ids restart with every one of them, so an id is not a name
-	// this file could hold them by.
-	hoverRailPast
+	// hoverRailMore is the footer's OTHER door — the one line that leaves the
+	// column for the task page (taskview.go's [taskSheetPastHint]). It is a kind
+	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
+	// something different from every other line of the footer.
+	hoverRailMore
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -226,11 +222,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if node := a.railHoverNode(x, y); node != nil {
 		return hoverAt{kind: hoverRail, id: node.id}
 	}
-	// AND THE RECORD ROWS UNDER THEM, which answer to a click for the mention
-	// (taskview.go). They are asked here, between the nodes and the column's own
-	// empty space, because that is where they are drawn.
-	if at := a.railHoverPast(x, y); at >= 0 {
-		return hoverAt{kind: hoverRailPast, index: at}
+	// AND THE FOOTER'S DOOR ONTO THE TASK PAGE, which is asked on the same terms
+	// as the two above: it is a line of the footer, it belongs to no node, and it
+	// answers to a click (task.go's [app.railMoreAt]).
+	if a.railMoreAt(x, y) {
+		return hoverAt{kind: hoverRailMore}
 	}
 	if a.railAt(x, y) {
 		return hoverAt{kind: hoverRailArea}
@@ -327,21 +323,14 @@ func (a *app) hoveringRail(node *taskNode) bool {
 	return node != nil && a.hot.kind == hoverRail && a.hot.id == node.id
 }
 
-// hoveringRailPast reports whether the pointer is on this row of the project's
-// record at the foot of the column. It is asked by IDENTITY and answered against
-// the drawn list, so a record that has shifted under a stale hover lights
-// nothing rather than lighting the row that took its place.
-func (a *app) hoveringRailPast(entry *session.TaskIndexEntry) bool {
-	if entry == nil || a.hot.kind != hoverRailPast {
-		return false
-	}
-	return a.railPastAt(a.hot.index) == entry
-}
+// hoveringRailMore reports whether the pointer is over the footer's door onto
+// the task page.
+func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailPast:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore:
 		return true
 	}
 	return false
