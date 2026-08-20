@@ -1213,7 +1213,11 @@ func (n *TaskNode) claimSettle(what string) error {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if n.state != TaskUnverified {
-		return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide", n.id, n.state)
+		// THE SENTINEL RIDES THIS ONE TOO (task_audit.go's [ErrTaskDecided]).
+		// Losing the race here means the same thing it means at the door: the
+		// question is gone, and a surface holding a card about it needs to know
+		// that rather than to keep asking.
+		return settledAlready(n.id, n.state)
 	}
 	if n.settling != "" {
 		return fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
@@ -1462,7 +1466,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	note := taskNote(notice, taskURI(node.journalPath()))
+	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy())
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -1538,7 +1542,48 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 // model can hand it over — or read it — without first going looking for the
 // row. Empty for a node whose journal this session no longer knows, and then
 // the line simply ends after the title.
-func taskNote(notice TaskNotice, transcript string) string {
+//
+// THE SETTLE POLICY CHANGES ONE CLAUSE AND NOTHING ELSE ([settleClause]). Under
+// `ask` the note is informational — the person has the decision on the card in
+// front of them, and the model's job is to say what it thinks. Under `auto` the
+// same note becomes an instruction to read the work and settle it. Every other
+// line of every other landing is identical either way, because the policy is
+// about who decides and not about what happened.
+// settlePolicy is this agent's standing answer to "who decides a landing nobody
+// could check" (task_contract.go's [TaskSettle]). A blank row reads as asking,
+// which is the default and the only safe reading of a caller that said nothing.
+func (a *Agent) settlePolicy() TaskSettle { return settleOrAsk(a.config.TaskSettle) }
+
+// The two sentences a landing nobody could check ends with, and which one is
+// written is the whole of what `task.settle` changes.
+//
+// BOTH SAY THE SAME FACTS FIRST — neither done nor failed, branch kept,
+// dependents waiting — because those are true whoever decides. What differs is
+// the LAST clause: under ask it hands the model an address it may pass on, and
+// under auto it hands the model a job.
+//
+// The verbs are interpolated from [TaskResolutions] and never spelled here, so
+// the note can never offer a word the tool's own schema would reject.
+const (
+	settleAskLead  = "\nit is neither done nor failed, its branch is kept, and anything waiting on it waits until somebody decides: tasks id "
+	settleAutoLead = "\nit is neither done nor failed, its branch is kept, and anything waiting on it waits until you decide. Read the report above and the work itself — the transcript, the diff on its branch — and then settle it yourself with tasks id "
+	// settleAutoTail is the escape the auto note must always leave open. A policy
+	// that says "decide" with no way to say "I cannot" is a policy that produces
+	// a confident guess about work nobody read.
+	settleAutoTail = ". Only ask the person when you genuinely cannot tell from the evidence, and then say what you would need to see."
+	settleAskTail  = "\nthe person can also answer this on the card in front of them; say what you think and leave the choice with them unless they ask you to make it."
+)
+
+// settleClause is the tail of an unverified landing note, under one policy.
+func settleClause(id uint64, settle TaskSettle) string {
+	address := strconv.FormatUint(id, 10) + " resolve " + TaskResolveVerbs()
+	if settle == TaskSettleAuto {
+		return settleAutoLead + address + settleAutoTail
+	}
+	return settleAskLead + address + settleAskTail
+}
+
+func taskNote(notice TaskNotice, transcript string, settle TaskSettle) string {
 	var note strings.Builder
 	verb := "finished"
 	switch {
@@ -1565,8 +1610,7 @@ func taskNote(notice TaskNotice, transcript string) string {
 		note.WriteString("\n" + notice.Report)
 	}
 	if notice.State == TaskUnverified {
-		note.WriteString("\nit is neither done nor failed, its branch is kept, and anything waiting on it waits until somebody decides: tasks id " +
-			strconv.FormatUint(notice.ID, 10) + " resolve accept|reaudit|refute")
+		note.WriteString(settleClause(notice.ID, settle))
 	}
 	// AN INCOMPLETE LANDING IS AN INVITATION, NOT A DEAD END. The work was sent
 	// back as many times as it was allowed and what is still missing is written
@@ -1703,6 +1747,49 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// ran out of time.
 	node.graph.stopChildren(node.id)
 	node.graph.complete(node, state)
+	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
+	// [TaskGraph.stopChildren] deliberately leaves settled children alone, and a
+	// child that landed needing a look IS settled — so before this it simply sat
+	// there, its one landing note delivered to a parent agent that has now
+	// finished reading anything.
+	a.bubbleUnverifiedChildren(node)
+}
+
+// bubbleUnverifiedChildren hands a settled parent's still-undecided sub-tasks
+// UP one level, so that a decision nobody took does not die with the node that
+// was going to take it.
+//
+// THE HIERARCHY LAW, STATED FROM THE ENGINE'S SIDE: inside a family the PARENT
+// is the decider. A child's landing note goes to the parent node's own agent
+// ([Agent.deliverTaskNote]), which runs with the `tasks` tool and can read the
+// diff, so while the parent is alive there is nothing for a person to do and
+// nothing that should be put in front of them. The moment the parent settles
+// that stops being true: the child is now work waiting on a decider who does
+// not exist, and the only honest place for it is one level up — the
+// grandparent's agent if there is one, and the person's conversation if there
+// is not, which is exactly the routing [Agent.deliverTaskNote] already does for
+// the PARENT's own news.
+//
+// It re-uses the child's own landing note rather than inventing a second
+// sentence, and leads it with why it is being said again: a person reading two
+// identical lines an hour apart has no way to tell which one is the one that
+// still needs them.
+func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
+	for _, kid := range node.graph.children(node.id) {
+		if kid.stateNow() != TaskUnverified {
+			continue
+		}
+		notice := kid.notice()
+		note := orphanLead(node) + "\n" +
+			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy())
+		a.deliverTaskNote(node, note)
+	}
+}
+
+// orphanLead says why a landing that was already reported is being reported
+// again, in the plain words the rest of these notes are written in.
+func orphanLead(parent *TaskNode) string {
+	return "task " + strconv.FormatUint(parent.id, 10) + " has finished, and a piece of work it handed out is still waiting on somebody to decide:"
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed
@@ -2843,9 +2930,15 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		tasker:    tasker,
-		taskID:    nodeID,
-		taskDepth: depth,
+		// And so does who decides a landing nobody could check. A parent node's
+		// own agent is the reader of its children's landing notes, so a family
+		// running under a different `task.settle` than the conversation would tell
+		// a parent to hand a decision to a person it cannot reach (task_contract.go's
+		// [TaskSettle]).
+		TaskSettle: parent.TaskSettle,
+		tasker:     tasker,
+		taskID:     nodeID,
+		taskDepth:  depth,
 	}, client)
 }
 

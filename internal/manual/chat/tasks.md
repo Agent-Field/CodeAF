@@ -340,7 +340,9 @@ first sentence, quoted because they are its words and not aforge's.
   not work that needs you: by the time you see the word it is news, not a decision.
 - **`needs your look`** — a `?` in the warn hue. Its family rises above running work on
   the roster. The `?` is deliberately neither a tick nor a cross: it claims neither a
-  finding nor a judgement nobody made.
+  finding nor a judgement nobody made. This card carries two more rows —
+  `finished, but nobody has checked it — your call` and the choices under it — unless you
+  have set `task.settle` to `auto`, in which case aforge is deciding and the card is quiet.
 
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
@@ -1313,7 +1315,7 @@ and what the task made is committed onto that branch before it lands — so the 
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
 
-## Answering a task that needs your look
+## Why is the task waiting for me — finished but needs your look
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds.
 It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
@@ -1323,18 +1325,82 @@ its row reads `finished — look it over`.
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
-**There is no key or click that settles it.** Unlike stopping, this one is done by saying so
-in the conversation — "accept task 7", "that one isn't finished", "have another look at
-task 7". The model holds the door through its `tasks` tool.
+The landing card then asks, in as many words, and offers the answers under it:
 
-When it is settled, the task re-settles into `done` or `failed` — a state it has not been
-in — so a second landing card is drawn. The decision is an event, and the card is the record
-of it.
+```
+finished, but nobody has checked it — your call
+[a] accept · [l] look again · [n] not right · [d] decide these for me
+```
+
+Every one of the four is a key **and** a click. The keys work on the **selected** card — walk
+to it with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
+into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
+row does nothing rather than expanding the card under your hand.
+
+## What accept, look again and not right each do
+
+- **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
+  exactly as checked work does, and everything queued behind it unblocks. The report leads
+  `you looked at this yourself and took it as done`.
+- **`[l] look again`** — a fresh check runs against the same working copy. It answers on its
+  own, minutes later, and until it does the task **still** needs a look: what goes away is
+  the choices, not the state. If `check task work` is off there is no checker to ask, so
+  this answer cannot be taken; the card keeps its choices and says
+  `that one could not be taken — try another`. The same line appears for any answer that
+  could not be spent — a working copy that has gone, for instance.
+- **`[n] not right`** — you looked and it is not finished. The task fails, its branch is
+  kept, its previous report is kept under the refusal, and its dependents fail with it. The
+  report leads `incomplete — you looked at this yourself and said so`.
+- **`[d] decide these for me`** — the escape hatch, described in the next section.
+
+**Answered means the choices are gone, not greyed.** The two rows are replaced by one dim
+line saying what you did: `you took this as done`, `sent back to be checked again`,
+`you said it is not finished`, or `already answered` when somebody got there first — the
+model's own settling, a re-check that finally answered, another window.
+
+The card's own head is **not** rewritten — it is the record of how the work came home, kept
+branch and all. What follows is: the task re-settles into `done` or `failed`, a state it has
+not been in, so a **second** landing card is drawn saying what became of the work. The
+transcript then reads as what happened: this landed needing a look → you took it as done →
+`task 7 done · merged`.
+
+**You can also just say so.** "accept task 7", "that one isn't finished", "have another look
+at task 7" all work: aforge holds the same door through its `tasks` tool, and whichever of
+the two is used first wins. The other finds the question already gone and says `already
+answered` rather than raising an error.
 
 The `need you` footer count covers only work that will not move without you: a landing
 nobody could judge, and finished work still sitting on a branch that never came home.
 Work that ran in your own tree, or that ended before there was a branch, is not
 undelivered — it is over, and its settled family starts folded.
+
+## Can aforge decide on its own — stop asking me about tasks that need a look
+
+Yes. The setting is **`task.settle`**, in `/settings` under Session as
+`who settles work that needs a look`, and it takes two words:
+
+| Value | What happens when a task lands needing a look |
+| --- | --- |
+| `ask` | **the default** — you decide. The card offers the four choices above, and aforge says what it thinks and leaves the choice with you |
+| `auto` | aforge decides. It is told to read the report and the work itself — the transcript, the diff on the branch — and settle the task, and to come back to you only when it genuinely cannot tell |
+
+Under `auto` the card draws **no** choices while aforge is deciding; it shows the outcome
+once the task re-settles, like any other landing. Which of the two a card follows is fixed
+when it lands, so changing the row does not reach back and take the choices off a card that
+was already asking.
+
+**`[d] decide these for me` is the same switch, pressed where the annoyance is.** It flips
+`task.settle` to `auto` for good **and** hands the card you are looking at to aforge on the
+way past — it does not settle it for you, it asks aforge to. The card then reads
+`handed to the chat — it decides these from now on · saved`, and the ` · saved` is only there
+when the preference actually reached your profile.
+
+Neither value takes anything away. Under `auto` you can still say "actually that one isn't
+finished"; under `ask` you can still say "you decide this one". The row changes **who is
+asked first**, and nothing else about the landing: either way the task is neither done nor
+failed until somebody answers, its branch is kept, and anything waiting on it waits.
+
+To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
 
 ## Stopping an adaptive run
 

@@ -191,6 +191,16 @@ var settingUI = map[string]settingMeta{
 		about: "each task's work is checked over before it merges. " +
 			"Off merges on the task's own word.",
 	},
+	// And under the check, the row that says what happens when the check came
+	// back with nothing. It reads as a question about WHO — you, or the chat —
+	// because that is the thing a person is deciding here; the state it is about
+	// is spelled the way the card and the roster spell it, "needs your look",
+	// rather than as the machinery that could not answer.
+	config.KeyTaskSettle: {
+		tab: tabSession, label: "who settles work that needs a look", widget: widgetCycle,
+		about: "ask puts it on the landed card for you. auto lets the chat read the " +
+			"work and decide, and ask you only when it cannot tell.",
+	},
 	config.KeyMemoryEnabled: {
 		tab: tabSession, label: "memory", widget: widgetCycle,
 		about: "a few things are carried from one conversation to the next. " +

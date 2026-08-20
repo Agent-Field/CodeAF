@@ -316,6 +316,14 @@ The sentences you may see when nobody could say are written plainly:
 tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
+The last line of that landing is the only thing the `task.settle` setting changes. With it
+on `ask` — the default — the note says the task waits until somebody decides and offers
+`tasks id 7 resolve accept|reaudit|refute`, and tells aforge to say what it thinks and leave
+the choice with you; the four choices on the landed card are the door. With it on `auto` the
+same note tells aforge to read the report and the work and settle the task itself, and to
+come back to you only when it genuinely cannot tell. Everything else in the landing is
+identical either way.
+
 ## Nothing is thrown away
 
 On every ending except a clean merge, the branch is **kept and named**. This is true
@@ -364,6 +372,26 @@ move them on its own until you decide what to do with the task in front of them.
 
 Dependencies can only point backwards — ids ascend — and that is enforced when a session's
 work is reloaded from disk.
+
+## A task's own sub-tasks are its problem — only the top of a family asks you
+
+A task that hands part of its work out is the one that reads those pieces back. A sub-task's
+landing report goes to **its parent task's own worker**, not to this conversation — that
+worker has the `tasks` tool, the diff and the brief, and it is the only reader that can fold
+the piece into the whole. So while a parent is still working, a sub-task of it that needs a
+look is **not** put in front of you: the roster does not file that family under `needs you`,
+and a folded family row does not wear the `?` its own head is already holding.
+
+That flips the moment the parent lands. A sub-task still waiting on a decision when its
+parent settles has nobody left reading its news, so it is handed up one level — to the
+grandparent's worker if there is one, and to this conversation if there is not — with the
+line `task 4 has finished, and a piece of work it handed out is still waiting on somebody to
+decide:` and then the sub-task's own landing under it. Its row then rises to `needs you` on
+the roster like any other work that will not move without you.
+
+What this means in practice: **the demand you see is the top of the family, once.** You are
+never asked about six pieces of one job while the job is still running, and nothing quietly
+rots underneath a task that went home.
 
 ## Choosing which model a task runs on
 

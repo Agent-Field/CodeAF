@@ -91,6 +91,31 @@ type taskDone struct {
 	// open says the full context is showing, behind the same expand mechanic
 	// every other card on this surface is behind.
 	open bool
+	// decided is the receipt the card wears once its question has been answered
+	// from this surface, and it is empty for every card that was never asking
+	// (tasksettle.go). It is a STRING and not a bool because what the row says is
+	// what the person did — "you took this as done", "sent back to be checked
+	// again" — and a card that recorded only that it had been answered would have
+	// to reconstruct the sentence from a state the engine has since moved past.
+	decided string
+	// asks says the choices belong on THIS card, and it is frozen at landing from
+	// the person's `task.settle` row (tasksettle.go). Under `auto` the engine has
+	// already handed this decision to the model, so a card that drew four choices
+	// would be asking a question somebody else is answering — and reading the row
+	// at draw time instead would mean a policy flipped mid-afternoon retroactively
+	// took the choices off a card that was genuinely asking.
+	asks bool
+	// trouble is the one dim line a card carries when an answer could NOT be
+	// spent and the question is therefore still standing — no checker to look
+	// again with, a working copy that has gone. It is separate from [decided]
+	// because the two are opposite facts about the same press: one says the
+	// question is over, the other says it is not (tasksettle.go).
+	trouble string
+	// chips are the pressable columns of the answers row, written by the layout
+	// that drew it and read by the pointer. They are recorded here for the reason
+	// the proposal's own choices are (task.go's spans): a hit-test that measured
+	// the row itself would be measuring a row this frame may not have drawn.
+	chips []settleChip
 }
 
 // The card's words.
@@ -159,6 +184,9 @@ func (a *app) landedCard(node *taskNode) {
 		model:      node.model,
 		cost:       node.spent(),
 	}
+	// WHO IS BEING ASKED IS SETTLED HERE, ONCE, from the row the engine wrote this
+	// node's landing note under (tasksettle.go's [app.settlePolicyAsks]).
+	card.asks = card.unverified && a.settlePolicyAsks()
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -247,6 +275,10 @@ func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 		for _, text := range a.doneRows(card, width, a.selected(i)) {
 			out = append(out, row{text: text, entry: i, hit: hitDone})
 		}
+		// AND THE DECISION UNDER THE FACTS, which is the order somebody reads in:
+		// what happened, what it came to, what is behind it, and only then the
+		// answers (tasksettle.go).
+		out = a.settleRows(out, card, i, width, 0)
 	}
 	return out
 }
@@ -518,6 +550,12 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 		for _, text := range a.doneDetail(card, width-2) {
 			out = append(out, row{text: "  " + text, entry: i, hit: hitDone})
 		}
+		// A BATCH DOES NOT SWALLOW A QUESTION. A rollup exists to stop three
+		// landings saying the word "task" three times, and a node inside one that
+		// is waiting on a decision is the one thing in a batch that is not merely
+		// news — so its answers row is drawn on its own row, indented with the rest
+		// of the batch (tasksettle.go).
+		out = a.settleRows(out, card, i, width, 2)
 	}
 	if last >= 0 {
 		if card := d.entries[last].done; card != nil && !card.open {

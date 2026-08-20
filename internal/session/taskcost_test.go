@@ -109,7 +109,7 @@ func TestACheckpointWrittenBeforeTasksCarriedABillStillLoadsAndResumes(t *testin
 		node.finish("the reconciler is fixed", nil, "", mergeInPlace)
 		node.graph.complete(node, TaskDone)
 	}
-	recovery := graph.rehydrate(document, t.TempDir())
+	recovery := graph.rehydrate(document, t.TempDir(), TaskSettleAsk)
 	if recovery.done != 1 || recovery.waiting != 1 {
 		t.Fatalf("recovery counted %+v, want one finished node and one still waiting", recovery)
 	}
@@ -153,7 +153,7 @@ func TestALandedNodesCheckpointCarriesItsCostAndItsTokens(t *testing.T) {
 	document := readCheckpoint(t, checkpoint)
 	graph := newTaskGraph()
 	graph.run = func(*TaskNode) {}
-	graph.rehydrate(document, t.TempDir())
+	graph.rehydrate(document, t.TempDir(), TaskSettleAsk)
 	node := graph.node(id)
 	if node == nil {
 		t.Fatalf("node %d did not come back", id)

@@ -2024,6 +2024,18 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		// only thing that moves it is a person deciding. It is named here rather
 		// than left to the merge test below, which would file a node whose branch
 		// went nowhere under "done".
+		//
+		// EXCEPT INSIDE A FAMILY WHOSE HEAD IS STILL WORKING ([app.taskParentDeciding]).
+		// A sub-task's landing note goes to its PARENT'S agent and not to the
+		// person (session's deliverTaskNote), so while the parent is alive the
+		// decision already has a decider — and a column that put "needs you" over
+		// a family the machine is still working through would be asking somebody
+		// to do a job that is being done. It becomes theirs the moment the parent
+		// settles, and the engine says so on the same lane every other landing
+		// rides (session's bubbleUnverifiedChildren).
+		if a.taskParentDeciding(node) {
+			return railDone
+		}
 		return railAttention
 	case session.TaskQueued:
 		if a.railWaits(node) != "" {
@@ -2070,6 +2082,35 @@ func taskAwaitsPerson(node *taskNode) bool {
 		node.kind == session.TaskKindHarness &&
 		node.state == session.TaskRunning &&
 		node.doing == session.HarnessPhaseAsking
+}
+
+// taskParentDeciding reports whether the node above this one is STILL WORKING,
+// and is therefore the one being asked about work under it that nobody could
+// check.
+//
+// ATTENTION SURFACES AT THE ROOT AND NOWHERE ELSE. The engine routes a
+// sub-task's landing note to its parent node's own agent, which has the `tasks`
+// tool and the diff and every reason to answer it (session's deliverTaskNote);
+// what a person is owed is the top of the family, once. So this is asked about
+// exactly one thing — is the parent unsettled — and everything else answers
+// "no": a node with no parent is a root and is the person's, a node whose parent
+// this session has never heard of has nobody above it that could decide, and a
+// node whose parent has landed has been orphaned and is the person's again.
+//
+// It is deliberately not a walk up the whole family. The immediate parent is the
+// only node that is ever handed this child's news, so a grandparent's state says
+// nothing about whether anybody is reading it.
+func (a *app) taskParentDeciding(node *taskNode) bool {
+	if node == nil || node.parent == "" {
+		return false
+	}
+	for _, up := range a.tasks {
+		if stripKey(up) != node.parent {
+			continue
+		}
+		return up.state == session.TaskRunning || up.state == session.TaskQueued
+	}
+	return false
 }
 
 func taskUndelivered(node *taskNode) bool {
@@ -3900,9 +3941,18 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 // railGlyphRank orders the states by how loud they are on one cell: something
 // waiting on a person, then something running, then something that did not come
 // off, then something not started, then work that is over.
+// A CHILD WHOSE PARENT IS STILL WORKING DOES NOT MAKE THE FOLDED ROW A DEMAND,
+// which is [app.railGroupOf]'s law said on one cell: the parent is the one being
+// asked, so a family drawn as its root alone must wear the root's own news and
+// not a question its own head is already holding.
 func (a *app) railGlyphRank(node *taskNode) int {
 	switch {
-	case node.Paused(), node.state == session.TaskUnverified, taskUndelivered(node):
+	case node.Paused(), taskUndelivered(node):
+		return 0
+	case node.state == session.TaskUnverified:
+		if a.taskParentDeciding(node) {
+			return 4
+		}
 		return 0
 	case node.state == session.TaskRunning:
 		return 1

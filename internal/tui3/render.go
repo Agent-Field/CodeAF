@@ -44,6 +44,12 @@ const (
 	// blocks answer the same gestures with different things — one is a question
 	// that can still be answered, the other is a record that cannot.
 	hitDone
+	// hitSettle is a landed card's ANSWERS row: the choices a task that finished
+	// with nobody able to check it offers (tasksettle.go). It is a hit of its own
+	// rather than another hitDone because the two rows answer the same gesture
+	// with different things — one expands a record, the other decides about work
+	// — and it needs the COLUMN as well as the row, the way hitChoice does.
+	hitSettle
 	hitHarness
 	// hitChoice is the proposal's choices row, and it is the one hit on this
 	// surface that needs the COLUMN as well as the row: three answers share one
