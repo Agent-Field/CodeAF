@@ -203,6 +203,11 @@ their ages, and after that the more recent one wins.
 `↑`/`↓` walk the matches, `enter` opens the highlighted one. `esc` clears the box; a second
 `esc` closes home.
 
+**The matches grow upward out of the box.** While anything is typed, the list is anchored to
+the bottom of the frame so that everything to do with typing — what you typed, the row that
+says what `enter` will do with it, and the hint under it — is one cluster at the foot, and
+`↑` walks from there into the results. See *Start something new from home* below.
+
 ## Can home search by meaning — semantic search
 
 **No, and it is not going to.** Home's search is lexical and local — it matches the words
@@ -212,7 +217,7 @@ keystroke with nothing loaded and no model called.
 Two things cover what a meaning-search would have been for:
 
 - **The row that offers to start a conversation never goes away.** A query that matches
-  nothing still reads `start a new conversation: "…"`, so the worst case of a search that
+  nothing still reads `start a new conversation: "…"` above the box, so the worst case of a search that
   missed is that your words become the first message of a new chat — which is very often
   what you wanted.
 - **Ask the chat instead.** It has a `tasks` tool over the whole project record and you can
@@ -225,18 +230,37 @@ Whatever you type is **two things at the same moment**: a new conversation waiti
 sent, and a live query over the machine. You do not choose between them before you start
 typing.
 
-The top row of the list is the action row — `start a new conversation: "…"` with your words
-quoted back — and **the cursor rests there by default**. So typing and pressing `enter`
-starts a fresh conversation in this project and sends what you typed, exactly as it always
-has, however many matches are on screen.
+**Everything about typing sits together at the bottom of the screen.** The moment you type
+a character the list becomes a drop-up: the matches rise from the foot, and the **last** row
+of the list is the action row — `start a new conversation: "…"` with your words quoted
+back — sitting directly above the box you are typing into.
 
-One `↓` steps off that row onto the matches, and then you are picking from the list:
+```
+ …
+ alpha
+ ○ Pricing Research                                                     2h
+ ○ Pricing Sheet Import                                                 3d
+
+ + start a new conversation: "pricing"
+ ───────────────────────────────────────────────────────────────────────────
+ › pricing
+ enter starts a new conversation and sends this · ↑ pick a match · esc clear
+```
+
+**The cursor rests on the action row by default.** So typing and pressing `enter` starts a
+fresh conversation in this project and sends what you typed, exactly as it always has,
+however many matches are on screen.
+
+One `↑` steps off that row **up** into the matches, and then you are picking from the list:
 `enter` opens the highlighted conversation instead. The cursor stays where you put it while
-you keep typing. `↑` walks back up to the action row.
+you keep typing. `↓` walks back down to the action row.
 
 The hint under the box says which of the two `enter` currently means:
-`enter starts a new conversation and sends this · ↓ pick a match · esc clear`, or
-`enter open · ↑ back to starting a new conversation · esc clear`.
+`enter starts a new conversation and sends this · ↑ pick a match · esc clear`, or
+`enter open · ↓ back to starting a new conversation · esc clear`.
+
+With **nothing** typed there is no action row, and the list hangs from the top of the frame
+the way a list you are browsing should.
 
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,

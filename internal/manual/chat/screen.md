@@ -1144,10 +1144,11 @@ off.
 
 **Dulled does not mean inert.** Those rows take the cursor (`ctrl+t`, then `↓` past this
 session's last task) and the hover step like any other row of the column, and `enter` or a
-click puts that task's name in your message box. What they never take is the selection
-band: that background means "this is the room you are standing in", and there is no room
-to stand in for work another conversation ran. The `ctrl+. — view more` line below reaches
-the rest of them.
+click **goes inside that task** — the full-screen card of what the work came to, what it
+cost, where it left its changes and the last thing it said. What they never take is the
+selection band: that background means "this is the room you are standing in", and there is
+no room to stand in for work another conversation ran. The `ctrl+. — view more` line below
+reaches the rest of them.
 
 **And dulled is a claim about the work.** A row that still says `running` is drawn undulled
 and reads `running` only while the window that started it is open and still holds it;
@@ -1168,6 +1169,19 @@ ctrl+g — hide
 something this column cannot give: a folded family, or work an earlier session ran.
 `w · click seam — widen` appears only while a title is actually being cut by its own
 indent. `ctrl+g — hide` is always there.
+
+## The right edge when the task column is closed
+
+Closing the column with `ctrl+g` leaves **two columns down the right of the frame** with a
+dim `‹` handle at the middle of them. It is the closed column's own edge, and the whole of
+it is a door: click anywhere on it and the column comes back. Under the pointer the handle
+brightens.
+
+One cell above the handle carries what the work is doing while there is anything to carry —
+`▲` in the question colour for a task waiting on you, `●` in the accent for something
+running, and nothing at all otherwise. The edge costs the conversation its two columns, so
+the text re-wraps around it and nothing is ever drawn underneath. Under 100 columns there
+is no edge, because at that width there is no column to bring back.
 
 ## Light terminals, and why there is no theme setting
 
