@@ -988,3 +988,100 @@ func lastNote(t *testing.T, a *app) string {
 	t.Fatal("the surface wrote no note")
 	return ""
 }
+
+// ── the three fullscreen pages ──────────────────────────────────────────────
+
+// threePageApp is a surface where all three fullscreen pages can actually open:
+// a profile for the settings panel, a task in the record for the task page, and
+// a machine with a second conversation on it for home.
+func threePageApp(t *testing.T) *app {
+	t.Helper()
+	a, _ := sheetApp(t)
+	lab := newHomeLab(t)
+	here := lab.session("alpha", "one", "This conversation", "/tmp/alpha", time.Now())
+	lab.session("beta", "two", "Somewhere else", "/tmp/beta", time.Now().Add(-time.Hour))
+	a.homeRoot = lab.root
+	a.file = here
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("4", "port-the-parser", "Port the parser", 2*time.Hour),
+	}
+	return a
+}
+
+// ONLY ONE PAGE EVER OWNS THE FRAME. The settings panel, the task page and home
+// each take the frame WHOLE, and view.go can draw exactly one of them — so
+// opening any one has to close the other two ([app.standDownFullscreen]).
+// Without this the second page opened would take the keyboard from behind the
+// first, and esc would give the frame back to a screen nobody could see.
+func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
+	// Every ordered pair of the three, so no open path is trusted on the say-so
+	// of another one.
+	open := map[string]func(*app){
+		"the settings panel": func(a *app) { a.openSettings() },
+		"the task page":      func(a *app) { a.openTaskSheet() },
+		"home":               func(a *app) { a.openHome() },
+	}
+	up := map[string]func(*app) bool{
+		"the settings panel": func(a *app) bool { return a.sheet.open },
+		"the task page":      func(a *app) bool { return a.taskSheet.open },
+		"home":               func(a *app) bool { return a.home.open },
+	}
+	for first := range open {
+		for second := range open {
+			if first == second {
+				continue
+			}
+			t.Run(first+" then "+second, func(t *testing.T) {
+				a := threePageApp(t)
+				open[first](a)
+				if !up[first](a) {
+					t.Fatalf("%s did not open at all", first)
+				}
+				open[second](a)
+				if !up[second](a) {
+					t.Fatalf("%s did not open over %s", second, first)
+				}
+				if up[first](a) {
+					t.Fatalf("%s is still up under %s", first, second)
+				}
+				for name, showing := range up {
+					if name != second && showing(a) {
+						t.Fatalf("%s is up beside %s", name, second)
+					}
+				}
+			})
+		}
+	}
+}
+
+// AND THE FRAME AGREES WITH THE FLAGS. The exclusivity is only worth anything if
+// the screen a person is looking at is the page they just opened, so this asks
+// the frame itself rather than the fields behind it.
+func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
+	a := threePageApp(t)
+
+	a.openSettings()
+	if frame, _, _ := a.frame(); !strings.Contains(plain(frame), tabSession) {
+		t.Fatalf("the settings panel is not what the frame draws:\n%s", frame)
+	}
+	// Home over the panel: the frame must change hands, not merely add a flag.
+	a.openHome()
+	home, _, _ := a.frame()
+	if strings.Contains(plain(home), tabProviders) {
+		t.Fatalf("the settings panel is still being drawn under home:\n%s", home)
+	}
+	if !strings.Contains(plain(home), "Somewhere Else") {
+		t.Fatalf("home is not what the frame draws:\n%s", home)
+	}
+	// And the task page over home.
+	if !a.openTaskSheet() {
+		t.Fatal("the task page refused to open over home")
+	}
+	page, _, _ := a.frame()
+	if strings.Contains(plain(page), "Somewhere Else") {
+		t.Fatalf("home is still being drawn under the task page:\n%s", page)
+	}
+	if !strings.Contains(plain(page), "Port the parser") {
+		t.Fatalf("the task page is not what the frame draws:\n%s", page)
+	}
+}

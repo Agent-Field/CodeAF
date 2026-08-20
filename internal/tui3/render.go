@@ -1810,6 +1810,16 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	if left == "" || fill < 1 {
 		return "", false
 	}
+	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
+	// as the line is laid out, for the reason [app.statusPress] gives about the
+	// model segment: a column read from anywhere else is a column from the
+	// frame before this one. A right end that is not the door records nothing,
+	// which is what makes the span its own answer to "was it drawn".
+	a.homeDoor = hudSpan{}
+	if strings.HasPrefix(right, homeDoorWord) {
+		at := 2 + ansi.StringWidth(left) + 1 + fill + 1
+		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
+	}
 	line := a.pal.dim("─ ") + paint(left) + a.pal.dim(" "+strings.Repeat("─", fill))
 	if tail != "" {
 		line += a.pal.dim(" ") + a.pal.dim(right) + a.pal.dim(" ─")
@@ -1856,7 +1866,7 @@ func (a *app) legendLeft(width, hard int) string {
 // abbreviation is still this machine's home, which is why a remote path rarely
 // collapses to `~`: it is the far machine's home and nobody here knows it.
 func (a *app) legendPath(hard int) string {
-	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.home, hard)))
+	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.tilde, hard)))
 }
 
 // legendRight is the hint slot: the state's own keys when it has any, the
@@ -1868,6 +1878,14 @@ func (a *app) legendRight(width int) string {
 	}
 	if hint := a.hintWord(); hint != "" {
 		return hint
+	}
+	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
+	// other ways — the manual, /help, typing a slash — and home, until this
+	// line existed, was recoverable only by knowing it was there. So the rest
+	// state of the slot names them both, and neither costs a row: this is the
+	// legend, which is on the frame either way (home.go).
+	if a.homeDoorShowing() {
+		return homeDoorWord + " · " + microcopy
 	}
 	return microcopy
 }

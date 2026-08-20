@@ -24,10 +24,19 @@ same program.
 
 | What you type | What you get |
 | --- | --- |
-| `aforge` | the chat, picking up this directory's most recent conversation |
+| `aforge` | the home screen, over this directory's most recent conversation |
 | `aforge chat` | the same thing |
+| `aforge chat --session <path>` | that conversation, straight in, no home screen |
 | `aforge resume` | the chat, opened on the picker of earlier conversations |
 | `aforge chat --host devbox` | the chat here, the work on another machine |
+
+**The first frame is home** — every project on this machine and every conversation
+in them — with the conversation this directory would have opened loaded and ready
+underneath it. `esc`, or `enter` on the row the cursor starts on, drops into that
+conversation; everything after that is the chat exactly as it always was. Home
+stays out of the way when you name a conversation, on a `--once` or `--host` run,
+and on a machine whose only conversation is the one already open. The home page
+covers the whole of it.
 
 Run it in the directory you want it to work in. That directory is what it reads
 and writes, and it is shown in the status line so you can always tell.

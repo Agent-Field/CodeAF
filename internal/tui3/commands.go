@@ -70,6 +70,14 @@ var commands = []command{
 	{name: "new", desc: "close this session and start a fresh one", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
+	// frequency law this table is ordered by. /resume is "which conversation,
+	// here" and this is "what is there at all" — the same question one size up —
+	// but the first eight rows are the ones a person reaches for without
+	// looking, /compact is one of them, and a row inserted above it would push
+	// the daily command behind a scroll (deliverables_test.go pins exactly
+	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "home", desc: "every project and conversation on this machine"},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
@@ -613,7 +621,12 @@ func helpText(file string) string {
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
 		"→ ←            over an empty box: into a running task, and back out",
-		"← ←            home · the conversation, at the live edge",
+		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
+		// task room for the conversation; /home is a screen of every project on
+		// the machine, and one word meaning two places on the same list is a
+		// person pressing ← ← to find out where they end up.
+		"← ←            out of a task room · the conversation, at the live edge",
+		"space space    over an empty box: home · /home · esc comes back",
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",

@@ -1676,7 +1676,7 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 	a := newTestApp(agent)
 	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
-	a.home, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
+	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
 	a.branch, a.branchDirty = "chat-v3-task", true
 	a.gitProbe = func(string) (string, bool, bool) { return "chat-v3-task", true, true }
 	a.width, a.height = 200, 24
@@ -2145,7 +2145,7 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	})
 	_ = agent
 	a.width = 200
-	a.home, a.workspace = "/home/dev", "/home/dev/src/aforge-v2"
+	a.tilde, a.workspace = "/home/dev", "/home/dev/src/aforge-v2"
 	a.cost = 0.10
 	typeLine(t, a, "clean it")
 	a.cost = 0.20 // a figure that moved THIS INSTANT, and still may not glow
@@ -2190,7 +2190,7 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		{Kind: session.EventTurnDone},
 	}}}
 	a := newTestApp(agent)
-	a.home, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
+	a.tilde, a.workspace, a.place = "/home/dev", "/home/dev/src/aforge-v2", "aforge-v2"
 	a.ctxWindow = 200_000
 	a.title, a.cost = "the bottom hud wave", 1.42
 	runTurn(t, a, agent, "bump the limit")

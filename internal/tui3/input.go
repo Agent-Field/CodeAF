@@ -240,6 +240,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// And home is modal at the same rung and for the same reason: it takes the
+	// whole frame, so there is nothing under it a key could mean anything to.
+	// Every printable key belongs to it — typing on home is how a conversation
+	// starts (home.go).
+	if a.home.open && msg.String() != "ctrl+c" {
+		return a.homeKey(msg)
+	}
+
 	// And the phone tier's status sheet is modal at the same rung and for the
 	// same reason: it is the whole screen, so there is nothing under it to send a
 	// key to (statusdeck.go).
@@ -633,6 +641,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,
+	// at the very bottom of the router, because it must lose to every other
+	// meaning a space could have on this surface — inside a paste bracket, in a
+	// filter box, in copy mode, in any overlay — and because the first of the
+	// two spaces has already typed itself perfectly ordinarily one keystroke
+	// ago, through the line below.
+	if a.homeGesture(msg) {
+		a.input.reset()
+		return tea.Batch(a.edited(), a.openHome())
+	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.
 		//

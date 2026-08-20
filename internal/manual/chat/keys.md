@@ -148,6 +148,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine. Does nothing when the box has words in it, or on a machine with nowhere else to go |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -491,6 +492,54 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 
+## Keys on home, and is there a shortcut for it
+
+**Press the space bar twice with an empty message box.** That is the way back to home from
+inside a conversation, and `/home` opens it too.
+
+There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
+taken, `ctrl+.` is the task page (`/history`), and the chords that were left — the `alt+`
+letters — arrive in some terminals and do nothing at all in others. `esc` was not available either: on an idle conversation it
+already arms rewind and already sends a message you parked with `ctrl+q`, and a third
+meaning on one key in that state is how a surface stops being predictable.
+
+**The first space types itself.** The second one, finding a box holding exactly one space,
+takes both away and opens home — so a leading space you actually wanted is never eaten
+(space then `x` leaves ` x`). It does nothing when the box has words in it, nothing on a
+machine with nowhere else to go, and it is not a paste: text pasted with two leading spaces
+is two spaces.
+
+It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
+back in it.
+
+When the box is empty and there is somewhere to go, the legend line above the box says so:
+`space space home · / commands`. Clicking those words opens home. It vanishes as soon as
+you type.
+
+Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
+`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
+`pgup`/`pgdown` jump four · `enter` acts on the row under the cursor · `backspace`,
+`ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · **anything else you type goes into the
+box**, which searches the whole machine and offers to start a new conversation at the same
+time.
+
+`→` and `←` are the fold's, the way they are in the task column: on a project's
+`…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
+`←` on a conversation inside an opened project folds that project too. Anywhere else they
+move the caret in the box.
+
+With the mouse: a click puts the cursor on a row and a second click on that row opens it;
+a click on a `…13 more` line toggles it in one press.
+
+The top line carries `esc close` on the right. The foot reads exactly
+`type to search or start something new · ↑↓ pick · enter open`, and the line under it
+changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
+`enter starts a new conversation and sends this · ↓ pick a match · esc clear` on the action
+row, and `enter or → show them · esc close` on a folded project.
+
+Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
+to it.
+
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
@@ -595,9 +644,10 @@ aforge owns the pointer by default, using all-motion tracking so hover works.
 
 Only the left button acts. A press is resolved in this order:
 
-1. The settings panel, the task page, the status deck, or the phone tool sheet — each takes
-   **every** press inside its frame, padding included. On the task page a press on a row
-   opens it on the first press; a press on a section word or on empty padding does nothing.
+1. The settings panel, the task page, home, the status deck, or the phone tool sheet — each
+   takes **every** press inside its frame, padding included. On the task page a press on a
+   row opens it on the first press; a press on a section word or on empty padding does
+   nothing. On home a click puts the cursor on a row and a second click opens it.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
@@ -642,12 +692,13 @@ the linear/screen-reader tier, or in the phone tool sheet.
 ## Scrolling
 
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to copy mode, then the settings panel, then the task page, then the status deck,
-then the phone tool sheet, then the fullscreen roster, then an open room, and otherwise the
-conversation.
+routed to copy mode, then the settings panel, then the task page, then home, then the
+status deck, then the phone tool sheet, then the fullscreen roster, then an open room, and
+otherwise the conversation.
 
-On the settings panel, the task page and the fullscreen roster the wheel walks the **cursor**
-rather than a scroll offset of its own, because on those the window follows the cursor.
+On the settings panel, the task page, home and the fullscreen roster the wheel walks the
+**cursor** rather than a scroll offset of its own, because on those the window follows the
+cursor.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
 up drops out of it.

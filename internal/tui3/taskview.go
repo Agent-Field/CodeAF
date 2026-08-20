@@ -180,12 +180,11 @@ func (a *app) openTaskSheet() bool {
 	if !a.taskSheetHasAnything() {
 		return false
 	}
-	// THE OTHER FULLSCREEN PAGE STANDS DOWN. Only one of the two may believe it
-	// owns the frame: view.go draws the settings panel first, so a page opened
-	// under it would take the keyboard and never be seen.
-	if a.sheet.open {
-		a.closeSettings()
-	}
+	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and home both
+	// ([app.standDownFullscreen] states the law). Only one of the three may
+	// believe it owns the frame: view.go draws them in a fixed order, so a page
+	// opened under another would take the keyboard and never be seen.
+	a.standDownFullscreen()
 	a.taskSheet = taskSheet{open: true}
 	a.taskSheetFollow()
 	a.touch()
