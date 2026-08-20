@@ -704,10 +704,13 @@ func TestAnEmptySessionShowsTheProjectsRecordRatherThanTheEmptyWord(t *testing.T
 	}
 }
 
-// THE RECORD ROWS ANSWER TO NOTHING. There is no room behind work another
-// conversation ran, so the column notes it and the page is where it is acted on.
-// What matters here is that the cursor and the pointer never fall into them.
-func TestTheColumnsRecordRowsAreNotDoors(t *testing.T) {
+// THE RECORD ROWS ARE DOORS ONTO THE MENTION. They were a note once — readable,
+// unpressable, with the page as the only place to act on them — and a row a
+// person can read and cannot press is a row they press anyway. There is no room
+// behind work another conversation ran, so what the door opens is the name in
+// your message, which is exactly what enter on the page's own `earlier` rows has
+// always done.
+func TestTheColumnsRecordRowsAreDoorsOntoTheMention(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
@@ -719,7 +722,7 @@ func TestTheColumnsRecordRowsAreNotDoors(t *testing.T) {
 	view, _ := a.railView(height)
 	at := -1
 	for i, line := range view {
-		if line.past && strings.Contains(plain(line.text), "Port the parser") {
+		if line.record != nil && strings.Contains(plain(line.text), "Port the parser") {
 			at = i
 			break
 		}
@@ -727,25 +730,154 @@ func TestTheColumnsRecordRowsAreNotDoors(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("no record row on the column to press:\n%s", rosterText(a, height))
 	}
-	if line, ok := a.railLineAt(at + a.topHeight()); !ok || line.entry >= 0 {
-		t.Fatalf("a record row belongs to entry %d, want none", line.entry)
+	// It belongs to no ENTRY — it is not one of this session's nodes — and it
+	// carries its own row of the project's record instead.
+	if line, ok := a.railLineAt(at + a.topHeight()); !ok || line.entry >= 0 || line.record == nil {
+		t.Fatalf("a record row belongs to entry %d and carries record %v", line.entry, line.record != nil)
 	}
-	// The press belongs to the column — it never falls through to the
-	// conversation — and it opens nothing.
+
+	// THE POINTER LIGHTS IT, because it answers to a click.
+	a.setHover(a.bodyWidth()+4, at+a.topHeight())
+	if !a.hoveringRailPast(a.railPast[0]) {
+		t.Fatalf("the pointer over a record row lit nothing: %+v", a.hot)
+	}
+
+	// AND A PRESS WRITES THE MENTION on the first press — no room, because there
+	// is none to open — and the half-written sentence in the box is kept.
+	a.input.setText("what happened in")
 	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
 		t.Fatal("a press on a record row fell through the column")
 	}
-	if a.room != nil || a.taskSheet.open {
-		t.Fatal("a record row opened something")
+	if a.room != nil {
+		t.Fatal("a record row opened a room for work that has none")
 	}
+	if got := string(a.input.value); got != "what happened in @port-the-parser " {
+		t.Fatalf("the draft reads %q", got)
+	}
+	// The press moved the cursor with it, so the keyboard picks up where the hand
+	// left off.
+	if a.railWhere.past != railPastKey(a.railPast[0]) {
+		t.Fatalf("the press left the cursor at %+v", a.railWhere)
+	}
+}
 
-	// AND THE ROSTER'S CURSOR WALKS PAST THEM WITHOUT FALLING IN. They are not
-	// entries, so ctrl+t and forty downs stay on this session's one node.
+// THE CURSOR WALKS INTO THEM. One column, one walk: a cursor that stopped dead
+// at the last node, above rows a person can plainly see, would be the column
+// telling them those rows are not really there.
+func TestTheRostersCursorWalksIntoTheRecordAndBackOut(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+		pastTask("11", "mix-the-audio", "Mix the audio", 40*time.Hour),
+	}
+	// The rows the cursor walks are the rows the LAYOUT drew, so the column has to
+	// have been drawn once — which on a real frame it has, every frame.
+	rosterText(a, a.viewHeight())
+
 	drive(t, a, ctrlT())
-	for i := 0; i < 40; i++ {
+	if a.railWhere.id != 1 {
+		t.Fatalf("ctrl+t did not park the cursor on this session's node: %+v", a.railWhere)
+	}
+	drive(t, a, key("down"))
+	if a.railWhere.past != railPastKey(a.railPast[0]) {
+		t.Fatalf("down did not step into the record: %+v", a.railWhere)
+	}
+	// The marker goes with it: a seam that went blank under the cursor would say
+	// the walk had fallen off the end of the column.
+	if rail := rosterText(a, a.viewHeight()); !strings.Contains(rail, railMark+"✓ ⧉ Port the parser") &&
+		!strings.Contains(rail, railMarkASCII+"✓ ⧉ Port the parser") {
+		t.Fatalf("the cursor in the record wears no marker:\n%s", rail)
+	}
+	// It clamps at the bottom rather than wrapping, the way every list here walks.
+	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}
-	if a.railWhere.id != 1 {
-		t.Fatalf("the roster's cursor walked into the record: %+v", a.railWhere)
+	if a.railWhere.past != railPastKey(a.railPast[len(a.railPast)-1]) {
+		t.Fatalf("the walk did not clamp on the last record row: %+v", a.railWhere)
+	}
+	// enter on it is the mention, exactly as the page's own record rows are.
+	drive(t, a, key("enter"))
+	if got := string(a.input.value); got != "@mix-the-audio " {
+		t.Fatalf("enter on a record row wrote %q", got)
+	}
+	// And back up out of the record onto this session's work.
+	for i := 0; i < 20; i++ {
+		drive(t, a, key("up"))
+	}
+	if a.railWhere.id != 1 || a.railWhere.past != "" {
+		t.Fatalf("the walk did not come back out of the record: %+v", a.railWhere)
+	}
+}
+
+// AND ctrl+t WORKS ON A COLUMN THAT IS ONLY RECORD. The key hands the keyboard
+// to whatever the column has; with the record as doors, that is something.
+func TestCtrlTHoldsAColumnMadeOnlyOfTheRecord(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+	}
+	rosterText(a, a.viewHeight())
+
+	drive(t, a, ctrlT())
+	if !a.railHold {
+		t.Fatal("ctrl+t did not take a column made of the project's record")
+	}
+	if a.railWhere.past != railPastKey(a.railPast[0]) {
+		t.Fatalf("ctrl+t parked the cursor at %+v", a.railWhere)
+	}
+	drive(t, a, key("enter"))
+	if got := string(a.input.value); got != "@port-the-parser " {
+		t.Fatalf("enter wrote %q", got)
+	}
+}
+
+// ── a task is named by its title, everywhere ────────────────────────────────
+
+// A NAME ARRIVING LATE IS STILL A NAME. The de-dup that keeps one landing from
+// being drawn twice is keyed on (id, state), and it used to throw away the
+// notice that carried the TITLE when the state had not moved — so a node
+// published before its title was known was called "task 19" on the column, on
+// the strip, in its room's header and on the card that landed, for the whole of
+// its life. The id-form is what a NAMELESS node is called and never what a named
+// one is.
+func TestANodeTakesItsNameFromALaterUpdateInTheSameState(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(19, "", session.TaskRunning, session.TaskNotice{}))
+	node := a.tasks[19]
+	if node == nil {
+		t.Fatal("the untitled update admitted no node")
+	}
+	if node.title != taskIDWord(19) {
+		t.Fatalf("a node nobody has named is called %q, want %q", node.title, taskIDWord(19))
+	}
+
+	// A room opened on it while it is nameless carries the same word — and takes
+	// the real one the moment it arrives, because a header taken once at the door
+	// is the one place the id-form could outlive the naming.
+	a.openRoom(19, node.title)
+
+	a.taskUpdate(update(19, "Rebuild the quant engine", session.TaskRunning, session.TaskNotice{}))
+	if node.label != "Rebuild the quant engine" {
+		t.Fatalf("the node kept the label %q", node.label)
+	}
+	if strings.Contains(node.title, taskIDWord(19)) {
+		t.Fatalf("the row is still called %q", node.title)
+	}
+	if !strings.Contains(rosterText(a, a.viewHeight()), "Rebuild the quant") {
+		t.Fatalf("the column does not name the task:\n%s", rosterText(a, a.viewHeight()))
+	}
+	if a.room != nil && a.room.title == taskIDWord(19) {
+		t.Fatalf("the room's header kept the id-form over a node that has a name")
+	}
+
+	// AND AN EMPTY TITLE NEVER TAKES A NAME AWAY. A producer that says nothing
+	// about the name has not renamed anything — putting "task 19" back over a row
+	// that knows what it is would be the same bug from the other side.
+	a.taskUpdate(update(19, "", session.TaskRunning, session.TaskNotice{Doing: "writing the engine"}))
+	if node.label != "Rebuild the quant engine" {
+		t.Fatalf("a nameless update renamed the node to %q", node.label)
 	}
 }

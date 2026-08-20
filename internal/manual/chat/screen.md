@@ -1013,8 +1013,14 @@ the top of the column and everything under them scrolls.
 line comes the word `earlier`, dim, and under it at most six one-line rows of tasks earlier
 sessions ran — glyph, the `⧉` mention mark, the title muted, the age dim. They are filled
 into the rows the session's own list did not need, so they can never push a running task
-off, and they answer to nothing: no cursor, no hover step, no click. The `ctrl+. — view
-more` line below is the door onto them.
+off.
+
+**Dulled does not mean inert.** Those rows take the cursor (`ctrl+t`, then `↓` past this
+session's last task) and the hover step like any other row of the column, and `enter` or a
+click puts that task's name in your message box. What they never take is the selection
+band: that background means "this is the room you are standing in", and there is no room
+to stand in for work another conversation ran. The `ctrl+. — view more` line below reaches
+the rest of them.
 
 The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
 you` — and then up to three more dim lines, each of which is a button as well as a key:

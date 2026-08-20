@@ -388,7 +388,14 @@ hidden descendants.
 
 A task's row opens with two glyphs answering two questions: its state, which changes, and
 its own identity mark, which never does. Then the name, then its id as `#7`, dim, at the far
-end — and the id stands down when the name would be left under 12 cells. Under the row, at
+end — and the id stands down when the name would be left under 12 cells.
+
+**The name is the task's own title, cut to its first three words** — `Fix the nil-map`,
+`Collect the sources` — and that is the name it wears everywhere: the column, the strip
+above the conversation, its room's header, the card that lands, and the task page. A row
+reading **`task 19`** means one thing only: nothing has told aforge what that task is
+called yet. It is a name you can still say out loud, and the row takes the real one the
+moment the title arrives — including a room you already have open on it. Under the row, at
 most two more: what it is doing, what is holding it, what it waits on, or how its branch
 came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on the column.
 
@@ -446,12 +453,18 @@ earlier
 - **They never take a row from live work.** They are filled into whatever the session's own
   rows left over, so a column busy with running tasks carries none of them, and nothing
   running is ever pushed off to make room.
-- **They answer to nothing.** There is no cursor on them, hovering does not light them, and
-  clicking one does nothing at all. They are a note that says the project has a history —
-  **the task page is where you act on it**: press `ctrl+.`, type `/history`, or click the
-  `ctrl+. — view more` line that appears at the bottom of the column whenever there is a
-  record to reach. There you can filter them, read their outcomes, and press `enter` to put
-  one in your message.
+- **They are doors, like every other row of the column.** `ctrl+t` and `↑`/`↓` walk into
+  them — the cursor carries on down past this session's last task — the pointer lights the
+  row under it, and `enter` or a click **writes that task's name into your message box** as
+  `@its-name`, keeping whatever you had half-written. Sending it mints the pointer block
+  carrying that task's outcome, its branch and its transcript.
+- **What they do not open is a room.** A room is a live lane onto a task in *this* session's
+  work, and the conversation that ran these is closed — so the mention is the door, which
+  is exactly what `enter` does on the task page's own `earlier` rows.
+- Being dulled is a claim about the *work* — this is the record, not what is happening —
+  and never about whether the row answers.
+- For more than the six, or to filter them and read their outcomes: press `ctrl+.`, type
+  `/history`, or click the `ctrl+. — view more` line at the bottom of the column.
 
 In a project with a record but no tasks of its own yet — a directory you worked in last
 week, opened fresh — the column is these rows and the footer alone. The `no tasks yet`
@@ -508,11 +521,15 @@ When depth has forced a title to be cut, the footer adds `w · click seam — wi
 from the keyboard, and so is the `ctrl+g — hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
-confirmation, a permission question, a task proposal, or any overlay is up, and with no
-tasks **of this session's** `ctrl+t` falls through rather than being swallowed — the
-dulled `earlier` rows are a note and not a list you walk, so a column showing only those
-has nothing for the cursor to stand on. The task page (`ctrl+.`, `/history`) is where
-those rows are walked and opened.
+confirmation, a permission question, a task proposal, or any overlay is up, and with
+nothing on the column at all — no tasks of this session's **and** no record from an
+earlier one — `ctrl+t` falls through rather than being swallowed.
+
+**The walk runs into the `earlier` rows.** `↓` past this session's last task steps into
+the project's record at the foot of the column, `↑` comes back out, and `enter` down there
+writes that task's name into your message instead of opening a room, because work another
+conversation ran has no room to open. On a column that is *only* record — a directory you
+worked in last week, opened fresh — `ctrl+t` parks the cursor on the first of those rows.
 
 The cursor follows the task, not the row, when families reorder or fold around it.
 

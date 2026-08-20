@@ -31,6 +31,8 @@ package tui3
 // the sort of thing that grows a little at a time until a pointer moved over a
 // link is a surface that stutters.
 
+import "github.com/Agent-Field/aforge-v2/internal/session"
+
 // hoverKind is what the pointer is over.
 type hoverKind uint8
 
@@ -92,6 +94,13 @@ const (
 	// It is separate from the row behind it so the handle can light without
 	// painting that node as a door.
 	hoverRailSeam
+	// hoverRailPast is one row of the PROJECT'S RECORD at the foot of the column
+	// (taskview.go's [app.railRecordLines]), and index is its place in the rows
+	// the layout drew. It is a kind of its own rather than a [hoverRail] because
+	// those rows carry no node — the id they have belongs to a conversation that
+	// is closed, and ids restart with every one of them, so an id is not a name
+	// this file could hold them by.
+	hoverRailPast
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -192,6 +201,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if node := a.railHoverNode(x, y); node != nil {
 		return hoverAt{kind: hoverRail, id: node.id}
 	}
+	// AND THE RECORD ROWS UNDER THEM, which answer to a click for the mention
+	// (taskview.go). They are asked here, between the nodes and the column's own
+	// empty space, because that is where they are drawn.
+	if at := a.railHoverPast(x, y); at >= 0 {
+		return hoverAt{kind: hoverRailPast, index: at}
+	}
 	if a.railAt(x, y) {
 		return hoverAt{kind: hoverRailArea}
 	}
@@ -287,9 +302,24 @@ func (a *app) hoveringRail(node *taskNode) bool {
 	return node != nil && a.hot.kind == hoverRail && a.hot.id == node.id
 }
 
+// hoveringRailPast reports whether the pointer is on this row of the project's
+// record at the foot of the column. It is asked by IDENTITY and answered against
+// the drawn list, so a record that has shifted under a stale hover lights
+// nothing rather than lighting the row that took its place.
+func (a *app) hoveringRailPast(entry *session.TaskIndexEntry) bool {
+	if entry == nil || a.hot.kind != hoverRailPast {
+		return false
+	}
+	return a.railPastAt(a.hot.index) == entry
+}
+
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
-	return a.hot.kind == hoverRail || a.hot.kind == hoverRailArea || a.hot.kind == hoverRailSeam
+	switch a.hot.kind {
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailPast:
+		return true
+	}
+	return false
 }
 
 // hoveringRailSeam reports whether the pointer is over the resize handle.

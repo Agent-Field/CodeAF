@@ -852,6 +852,13 @@ type app struct {
 	railWide    bool
 	railCramped bool
 	railAway    bool
+	// railPast is the PROJECT'S RECORD rows the last layout actually drew, in
+	// drawn order (taskview.go's [app.railRecordLines]). It is written at layout
+	// and read by the cursor and the pointer, which is the bargain the glyph and
+	// badge spans already make on [railLine]: how many record rows fit is decided
+	// by what this session's own work left over, and a walk that recomputed it
+	// would be walking rows the frame has not drawn.
+	railPast []*session.TaskIndexEntry
 
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).

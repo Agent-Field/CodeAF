@@ -625,26 +625,16 @@ func (a *app) taskSheetEnter() tea.Cmd {
 	return a.takeRoomPump()
 }
 
-// taskSheetMention writes "@<slug>" into the draft and leaves.
-//
-// IT APPENDS RATHER THAN REPLACING, with one space in front of it when the
-// sentence already has words: the box is where a person was part-way through
-// saying something, and a page that emptied it to hand back a name would have
-// thrown away the sentence the name was for.
+// taskSheetMention writes the name into the draft and leaves. The writing is
+// [app.mentionTask] — the column's record rows do the same thing from the same
+// place — and what belongs to the page is the LEAVING: you came here to find a
+// task, and the box you were sent back to is where the sentence is.
 func (a *app) taskSheetMention(entry *session.TaskIndexEntry) {
-	name := strings.TrimSpace(entry.Name)
-	if name == "" {
-		name = strings.TrimSpace(entry.ID)
-	}
-	if name == "" {
+	if entry == nil || strings.TrimSpace(entry.Name)+strings.TrimSpace(entry.ID) == "" {
 		return
 	}
 	a.closeTaskSheet()
-	text := strings.TrimRight(string(a.input.value), " ")
-	if text != "" {
-		text += " "
-	}
-	a.input.setText(text + "@" + name + " ")
+	a.mentionTask(entry)
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -1073,11 +1063,24 @@ func (a *app) railHasRecord() bool { return len(a.railRecord(1)) > 0 }
 // all rather than a record row where a running one was. Nothing here can evict
 // anything.
 //
-// The rows answer to NOTHING — no cursor, no hover, no click. They are marked
-// [railLine.past] so the pointer can tell, and the door onto them is the page:
-// there is no room to open on work another conversation ran (taskview.go says
-// why), and a row that opened nothing under a finger would be worse than a row
-// that is plainly a note.
+// THE ROWS ARE DOORS. They were a note once — dulled, and unreachable by cursor
+// or pointer, with the page as the only place to act on them — and that was the
+// wrong call twice over: a row a person can read and cannot press is a row they
+// press anyway, and the thing they want from it is exactly the thing enter on
+// the page already does. So the cursor walks into them ([app.railMove]), the
+// pointer lights them, and enter or a click writes "@<slug>" into the message box
+// ([app.mentionTask]) — which is the door that EXISTS for work another
+// conversation ran, because a room is a live lane onto a node in this session's
+// graph and that session is closed.
+//
+// WHAT DOES NOT CHANGE IS THE PAINT. They stay muted-and-dim under the selection
+// band, because dulled is a claim about the WORK — this is the record, not what
+// is happening — and not a claim about whether the row answers.
+//
+// The rows the frame drew are kept in [app.railPast], in drawn order, because
+// how many of them fit is a fact only this layout has: the cursor and the
+// pointer resolve against that list, which is the same bargain the glyph and
+// badge spans make ([railLine]).
 //
 // AND THEY ARE WHAT AN EMPTY SESSION IN AN OLD PROJECT SHOWS INSTEAD OF THE
 // LABEL. The permanent column says "no tasks yet" when it has nothing
@@ -1086,6 +1089,11 @@ func (a *app) railHasRecord() bool { return len(a.railRecord(1)) > 0 }
 // of the column. Two lines saying "no tasks yet" and "earlier · Port the parser"
 // one under the other would be the column contradicting itself.
 func (a *app) railRecordLines(out []railLine, body, width int) []railLine {
+	// THE DRAWN LIST IS CLEARED BEFORE IT IS FILLED, on every frame and however
+	// early this returns. A cursor resolving against last frame's rows — after a
+	// resize, after a landing that took the leftover space — is a cursor standing
+	// on a row that is not on the screen.
+	a.railPast = a.railPast[:0]
 	left := body - len(out)
 	// A RULE WITH NOTHING UNDER IT IS NOT A SECTION. Two rows is the least this
 	// block can be: the word, and one task under it.
@@ -1106,7 +1114,80 @@ func (a *app) railRecordLines(out []railLine, body, width int) []railLine {
 	}
 	out = append(out, railLine{text: a.pal.dim(taskSheetPastHead), entry: -1, past: true})
 	for _, entry := range rows {
-		out = append(out, railLine{text: a.taskSheetPastRow(entry, width), entry: -1, past: true})
+		out = append(out, railLine{
+			text: a.taskSheetPastRow(entry, width), entry: -1, past: true, record: entry})
 	}
+	a.railPast = append(a.railPast, rows...)
 	return out
+}
+
+// railPastAt is the record row a cursor position names, or nil. It is asked of
+// the DRAWN list, so a cursor that a shrinking column has pushed off the bottom
+// answers nothing rather than answering about a row nobody can see.
+func (a *app) railPastAt(at int) *session.TaskIndexEntry {
+	if at < 0 || at >= len(a.railPast) {
+		return nil
+	}
+	return a.railPast[at]
+}
+
+// railPastIndex is where the roster's cursor is standing in the record block, or
+// -1 when it is not standing there at all.
+//
+// IT IS RESOLVED BY KEY AND NOT BY POSITION, which is [railSpot]'s own law: the
+// record shifts under the cursor whenever a node of this session's lands into it
+// or the column's leftover space changes, and an index would follow the shift
+// instead of following the work.
+func (a *app) railPastIndex() int {
+	if a.railWhere.past == "" {
+		return -1
+	}
+	for i, entry := range a.railPast {
+		if railPastKey(entry) == a.railWhere.past {
+			return i
+		}
+	}
+	return -1
+}
+
+// railPastFocus is the record row the cursor is on, or nil — and it is nil
+// unless the roster actually HOLDS the keyboard, which is [app.railFocusIndex]'s
+// own rule: a marker on a map that keys do not reach is a marker that lies about
+// what enter will do.
+func (a *app) railPastFocus() *session.TaskIndexEntry {
+	if !a.railHold {
+		return nil
+	}
+	return a.railPastAt(a.railPastIndex())
+}
+
+// mentionTask writes "@<slug>" into the draft, which is the one door work
+// another conversation ran has ever had (taskmention.go mints the pointer block
+// carrying its outcome, its branch and its transcript when the message is sent).
+//
+// IT APPENDS RATHER THAN REPLACING, with one space in front of it when the
+// sentence already has words: the box is where a person was part-way through
+// saying something, and a list that emptied it to hand back a name would have
+// thrown away the sentence the name was for.
+//
+// It is ONE function because there are now two lists that offer it — the page's
+// `earlier` rows and the column's ([app.railEnter]) — and two spellings of
+// "put this task in my message" is two ways for the same gesture to differ.
+func (a *app) mentionTask(entry *session.TaskIndexEntry) {
+	if entry == nil {
+		return
+	}
+	name := strings.TrimSpace(entry.Name)
+	if name == "" {
+		name = strings.TrimSpace(entry.ID)
+	}
+	if name == "" {
+		return
+	}
+	text := strings.TrimRight(string(a.input.value), " ")
+	if text != "" {
+		text += " "
+	}
+	a.input.setText(text + "@" + name + " ")
+	a.touch()
 }

@@ -497,6 +497,12 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
 that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
 
+The walk carries on **into the dulled `earlier` rows** at the foot of the column — the
+project's record from earlier sessions — and `enter` down there writes that task's name
+into your message box instead of opening a room, because a room is a live lane onto a task
+in *this* session's work. A click on one of those rows does the same thing on the first
+press. On a column that has only the record, `ctrl+t` parks the cursor on its first row.
+
 **`ctrl+g` closes the roster's column, and opens it again.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
