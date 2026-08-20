@@ -2153,14 +2153,13 @@ type railEntry struct {
 // fold takes a subtree out from under it, and both happen while nobody is
 // touching the keyboard. An id survives all of it, and when the node it names is
 // genuinely gone the walk clamps rather than teleporting.
-// A RECORD ROW IS NAMED BY ITS OWN KEY AND NOT BY AN ID, which is the whole of
-// what [railSpot.past] is for. Ids restart with every conversation
-// (task_index.go says so on [session.TaskIndexEntry.ID]), so "#7" names one node
-// in this session and a different one in every conversation before it — a cursor
-// stored as a bare 7 would follow the wrong work the moment the record moved.
+//
+// AN ID IS ENOUGH BECAUSE EVERY ROW OF THIS COLUMN IS THIS CONVERSATION'S. It
+// used to carry a second field for the project's record rows, which cannot be
+// named by id at all — ids restart with every conversation (task_index.go says so
+// on [session.TaskIndexEntry.ID]) — and those rows are the task page's now.
 type railSpot struct {
-	id   uint64
-	past string
+	id uint64
 }
 
 func railSpotOf(e railEntry) railSpot {
@@ -2168,19 +2167,6 @@ func railSpotOf(e railEntry) railSpot {
 		return railSpot{}
 	}
 	return railSpot{id: e.node.id}
-}
-
-// railPastKey names one row of the project's record: its conversation and its
-// id, which is the pair [session.Agent.TaskIndex] itself keys rows by.
-func railPastKey(entry *session.TaskIndexEntry) string {
-	if entry == nil {
-		return ""
-	}
-	return entry.SessionID + "/" + entry.ID
-}
-
-func railSpotOfPast(entry *session.TaskIndexEntry) railSpot {
-	return railSpot{past: railPastKey(entry)}
 }
 
 // railMembers buckets every node this session has admitted, NEWEST FIRST inside
@@ -2474,11 +2460,11 @@ func (a *app) railColumns(width int) int {
 // remembered for the next session ([app.railStow]). The width tiers keep their
 // say too — under [railSlimFloor] there is no column to stand.
 //
-// WHAT FILLS IT IS NOT ONLY THIS SESSION'S WORK. Under the forest it carries the
-// project's own record, dulled and capped ([app.railRecordLines], taskview.go),
-// so a column standing in a directory that has run forty tasks is not an empty
-// place with a label on it — and [app.railView] says which of the two an empty
-// session gets.
+// WHAT FILLS IT IS THIS CONVERSATION'S WORK AND NOTHING ELSE. It carried a
+// dulled sample of the project's record under the forest for a while and no
+// longer does (taskview.go says why); what a directory with a history behind it
+// gets instead is one dim line at the foot of the column naming the page that
+// holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
 	if a.railAway {
 		return false
@@ -2493,12 +2479,12 @@ func (a *app) railShowing() bool {
 // questions now: what the frame lends the roster is a question about columns,
 // and whether there is anything to put a cursor on is not. ctrl+t asks this one.
 //
-// THE PROJECT'S RECORD COUNTS, because those rows are doors now: the cursor
-// walks into them and enter puts one in your message ([app.railEnter],
-// taskview.go's [app.railRecordLines]). It did not count while they were a note
-// — a key that handed the keyboard to a column of things nothing could be done
-// with would have been a key that did nothing.
-func (a *app) railAvail() bool { return len(a.taskOrder) > 0 || a.railHasRecord() }
+// THE PROJECT'S RECORD DOES NOT COUNT. It is not on this column — the column is
+// this conversation's work (taskview.go) — so a ctrl+t that took the keyboard on
+// the strength of it would hand six keys to a list with no rows in it. What a
+// directory with a history behind it has is the footer's door, and that is a
+// press and a chord of its own ([taskSheetPastHint]).
+func (a *app) railAvail() bool { return len(a.taskOrder) > 0 }
 
 // railFull reports whether the roster is drawn OVER the body rather than beside
 // it — the narrow frame's answer to the same key.
@@ -2692,25 +2678,11 @@ type railLine struct {
 	// changes the column's width and the other takes it off the frame.
 	stow bool
 	// more says this line is the footer's door onto the TASK PAGE
-	// ([taskSheetMoreHint], taskview.go) — a third flag for the second one's
-	// reason: all three can be drawn at once, and a press has to know whether it
-	// was asked to widen the column, to hide it, or to leave it for a page that
-	// holds work this session never ran.
+	// ([taskSheetMoreHint] or [taskSheetPastHint], taskview.go) — a third flag for
+	// the second one's reason: all three can be drawn at once, and a press has to
+	// know whether it was asked to widen the column, to hide it, or to leave it
+	// for a page that holds work this session never ran.
 	more bool
-	// past says this line belongs to the PROJECT'S RECORD block at the foot of
-	// the column — the `earlier` word or one of the rows under it
-	// ([app.railRecordLines], taskview.go).
-	past bool
-	// record is the row's own entry, and it is what makes that row a DOOR: nil on
-	// the word above them and on every other line, and the pointer into the
-	// snapshot on each record row itself.
-	//
-	// IT IS A POINTER INTO [app.comp].tasks rather than a copy, for
-	// [taskSheetItem.entry]'s reason: the record runs to two thousand rows and
-	// this list is rebuilt on every frame. The snapshot is replaced whole rather
-	// than edited (taskmention.go's [app.tasksLoaded]), so a pointer taken here is
-	// still a pointer at something true.
-	record *session.TaskIndexEntry
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2770,13 +2742,14 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// it — a label, not a count of nothing, which is what keeps it on the right
 	// side of the emptiness law.
 	//
-	// AND "EMPTY" IS ABOUT THE WHOLE COLUMN, NOT ABOUT THIS SESSION. A directory
-	// that ran forty tasks last week has a record to show even on a conversation
-	// that has run nothing ([app.railRecordLines], taskview.go), and those rows go
-	// where this label would — because "no tasks yet" over a list of forty of them
-	// is the column contradicting itself in two adjacent lines. The label is for
-	// the column that genuinely has nothing: a new session in a new project.
-	if len(entries) == 0 && !a.railHasRecord() {
+	// AND "EMPTY" IS ABOUT THIS CONVERSATION AND NOTHING ELSE, which is what the
+	// whole column is about now. A directory that ran forty tasks last week used to
+	// put six dulled rows of them here instead of the label; that record lives on
+	// the task page, and what stands at the FOOT of this column is the one dim line
+	// that opens it ([taskSheetPastHint], taskview.go). So the label is honest in
+	// both directories: this conversation has run nothing yet, and the door under
+	// it says where the rest is.
+	if len(entries) == 0 {
 		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
 	}
 	foot, hint, door, more := a.railFootRows(room, height)
@@ -2794,18 +2767,17 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// scrolls.
 	//
 	// IT YIELDS ONE ROW, never more. A session with more live work than the column
-	// is tall would otherwise pin the whole window and leave the record with
-	// nowhere to be read; one row is not much of a record, and the honest answer to
-	// a column that has run out of room is the page the footer names
-	// ([taskSheetMoreHint], taskview.go) rather than a live row quietly dropped.
+	// is tall would otherwise pin the whole window and leave nothing to scroll; the
+	// honest answer to a column that has run out of room is the page the footer
+	// names ([taskSheetMoreHint], taskview.go) rather than a live row quietly
+	// dropped.
 	pin := 0
 	if body > 1 {
 		pin = min(a.railMovingHead(lines, entries), body-1)
 	}
 	tail := lines[pin:]
 	// The rows the WINDOW gets, which is what is left of the body once the pinned
-	// head has taken its own. It is not the column's width — that is `room`, and
-	// the record rows below are laid out at it.
+	// head has taken its own.
 	scroll := body - pin
 
 	// The cursor the window follows is the focused entry's first line, and the
@@ -2829,12 +2801,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	for i := a.railTop; i < len(tail) && len(out) < body; i++ {
 		out = append(out, tail[i])
 	}
-	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED GOES TO THE PROJECT'S RECORD,
-	// dulled, flat and capped ([app.railRecordLines], taskview.go). It is filled in
-	// HERE, after the window and before the padding, because those are exactly the
-	// rows nobody else wanted: work that is still going cannot be evicted by it, by
-	// construction rather than by a rule somebody has to keep.
-	out = a.railRecordLines(out, body, room)
+	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED IS LEFT BLANK. It used to be
+	// filled with a dulled sample of the project's record; that record is the task
+	// page's, and the foot of this column names the door onto it (taskview.go says
+	// why the sample went).
 	for len(out) < body {
 		out = append(out, railLine{entry: -1})
 	}
@@ -2936,17 +2906,10 @@ func (a *app) railRows(height int) []string {
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
-	// THE CURSOR STANDING IN THE RECORD IS THE SAME CURSOR, and it wears the same
-	// marker: a person who walked the roster's cursor down past the last node has
-	// not changed keyboards, and a seam that went blank under them would say the
-	// walk had fallen off the end of the column (taskview.go).
-	past := a.railPastFocus()
 	out := make([]string, len(view))
 	for i, line := range view {
 		lead := seam
-		switch {
-		case focus >= 0 && line.head && line.entry == focus,
-			past != nil && line.record == past:
+		if focus >= 0 && line.head && line.entry == focus {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text
@@ -2973,12 +2936,6 @@ func (a *app) railRows(height int) []string {
 		// state: the two backgrounds cannot nest — each closes with SGR 49 — and
 		// of the two facts, "you are in here" is the one that is still true when
 		// the pointer moves away.
-		//
-		// A RECORD ROW TAKES THE HOVER STEP ON THE SAME TERMS, because it answers to
-		// a click on the same terms: it is a door onto the mention, so the pointer
-		// says so. What it never takes is the BAND — that background means "this is
-		// the room you are standing in", and nobody stands in work another
-		// conversation ran.
 		var node *taskNode
 		if line.entry >= 0 && line.entry < len(entries) {
 			node = entries[line.entry].node
@@ -2988,7 +2945,10 @@ func (a *app) railRows(height int) []string {
 			text = a.pal.band(text, room)
 		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
-		case line.record != nil && a.hoveringRailPast(line.record):
+		case line.more && a.hoveringRailMore():
+			// THE DOOR ONTO THE TASK PAGE TAKES IT TOO, on the terms every other
+			// pressable line here takes it on: it answers to a click, so the pointer
+			// says so ([taskSheetPastHint], taskview.go).
 			text = a.hoverRow(text, room)
 		case line.stow && a.hoveringRailDoor():
 			// AND THE COLUMN'S OWN DOOR TAKES IT TOO, on the terms every other
@@ -3071,16 +3031,6 @@ func (a *app) railFocusIndex(entries []railEntry) int {
 	if !a.railHold || len(entries) == 0 {
 		return -1
 	}
-	// A CURSOR STANDING IN THE RECORD IS NOT STANDING ON AN ENTRY. The record rows
-	// are drawn under this session's own and walked by the same keys
-	// ([app.railMove]), but they are not families and they have no node — so the
-	// answer here is "nowhere", and the marker for them is resolved against
-	// [app.railPast] instead ([app.railRows]). Without this the fall-through below
-	// would park the entry marker on row zero while the person is plainly standing
-	// twelve rows lower.
-	if a.railWhere.past != "" {
-		return -1
-	}
 	if at := railFocusAt(entries, a.railWhere); at >= 0 {
 		return at
 	}
@@ -3119,18 +3069,12 @@ func (a *app) railTake(hold bool) {
 	}
 	a.railHold = hold
 	if hold {
-		// WHERE THE CURSOR LANDS IS THE FIRST ROW THERE IS, and on a column with no
-		// work of this session's that is the first row of the project's record: a
-		// key that asked for the roster and put the cursor nowhere would be a key
-		// that did nothing (taskview.go's [app.railPast]).
+		// WHERE THE CURSOR LANDS IS THE FIRST ROW THERE IS. The key is refused
+		// outright on a column with no rows of this session's ([app.railAvail]), so
+		// there is always one to land on.
 		entries := a.railEntries()
-		switch {
-		case railFocusAt(entries, a.railWhere) >= 0, a.railPastIndex() >= 0:
-			// The cursor is already standing on something that is still drawn.
-		case len(entries) > 0:
+		if railFocusAt(entries, a.railWhere) < 0 && len(entries) > 0 {
 			a.railWhere = railSpotOf(entries[0])
-		default:
-			a.railWhere = railSpotOfPast(a.railPastAt(0))
 		}
 	}
 	a.touch()
@@ -3231,47 +3175,28 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // The walk clamps at both ends, the way every other list on this surface does
 // ([moveCursor]).
 //
-// IT WALKS ONE LIST AND THE LIST HAS TWO HALVES: this session's entries, and
-// under them the project's record rows the layout drew ([app.railPast],
-// taskview.go). They are two different kinds of thing with two different doors
-// behind enter — a room, and a name in your message — and they are ONE walk
-// because they are one column: a cursor that stopped dead at the last node,
-// above rows a person can plainly see, would be the column telling them those
-// rows are not really there.
+// IT WALKS THIS CONVERSATION'S WORK AND NOTHING ELSE, because that is the whole
+// of what the column draws. The walk used to carry on into a dulled sample of the
+// project's record at the foot of it, which meant a person holding ↓ left this
+// conversation for another one without the column ever saying so; the record is
+// the task page's now, and the foot of the column is a door onto it rather than a
+// continuation of this list (taskview.go).
 func (a *app) railMove(delta int) {
 	entries := a.railEntries()
-	at, ok := a.railCursorAt(entries)
-	if !ok {
+	at := a.railFocusIndex(entries)
+	if at < 0 {
 		return
 	}
-	a.railCursorTo(entries, moveCursor(at, delta, len(entries)+len(a.railPast)))
+	a.railCursorTo(entries, moveCursor(at, delta, len(entries)))
 	a.touch()
 }
 
-// railCursorAt is where the cursor stands in the walked list, and whether it is
-// standing anywhere at all. Entries come first and the record rows follow them,
-// which is the order the column draws.
-func (a *app) railCursorAt(entries []railEntry) (int, bool) {
-	if at := a.railFocusIndex(entries); at >= 0 {
-		return at, true
-	}
-	if at := a.railPastIndex(); at >= 0 && a.railHold {
-		return len(entries) + at, true
-	}
-	return 0, false
-}
-
-// railCursorTo parks the cursor at one place in that list, on whichever side of
-// the seam it landed.
+// railCursorTo parks the cursor at one row of that list.
 func (a *app) railCursorTo(entries []railEntry, at int) {
-	switch {
-	case at < 0:
+	if at < 0 || at >= len(entries) {
 		return
-	case at < len(entries):
-		a.railWhere = railSpotOf(entries[at])
-	default:
-		a.railWhere = railSpotOfPast(a.railPastAt(at - len(entries)))
 	}
+	a.railWhere = railSpotOf(entries[at])
 }
 
 // railOut is →, and it is the tree grammar every file manager a person has used
@@ -3389,16 +3314,11 @@ func (a *app) railStow(away bool) {
 // A NODE THIS SESSION HOLDS OPENS ITS ROOM. Folding has its own two keys, which
 // is what took the overload off this one.
 //
-// A ROW OF THE PROJECT'S RECORD HAS NO ROOM AND NEVER WILL: a room is a live lane
-// onto a node in this session's graph, and the conversation that ran that work is
-// closed. What it has instead is the CARD — the history page standing inside that
-// row, carrying what the work came to, what it cost, where it left its changes
-// and the last thing it said (taskrecord.go). The mention it used to write is
-// `m` from in there, which is where the card's own foot says it is.
+// EVERY ROW OF THIS COLUMN IS SUCH A NODE, so that is the whole of what this key
+// does. Work an earlier conversation ran has no room and never will — a room is a
+// live lane onto a node in this session's graph — and it is reached through the
+// task page instead, where enter goes inside its card (taskrecord.go).
 func (a *app) railEnter() tea.Cmd {
-	if entry := a.railPastFocus(); entry != nil {
-		return a.openTaskRecord(entry)
-	}
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
 	if at < 0 || entries[at].node == nil {
@@ -3493,11 +3413,22 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// would let the mark run off the end of a narrow column.
 	stow := !a.railFull() && ansi.StringWidth(railStowHint)+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
-	// which is the emptiness law applied to an affordance rather than to a figure
-	// ([app.railOffersMore], taskview.go). A "view more" on a column that is
-	// already showing everything is a row that promises a page and delivers the
-	// list you were looking at.
-	view := ansi.StringWidth(taskSheetMoreHint) <= width && a.railOffersMore()
+	// which is the emptiness law applied to an affordance rather than to a figure.
+	// A door on a column that is already showing everything is a row that promises
+	// a page and delivers the list you were looking at.
+	//
+	// AND IT WEARS THE NAME OF WHAT IS BEHIND IT. A project with a record says
+	// `earlier`, because that is the section the page opens on and the word a
+	// person is looking for; a column whose only held-back thing is a family it
+	// folded says `view more`, because there is no earlier work to promise
+	// ([taskSheetPastHint] and [taskSheetMoreHint], taskview.go). It is ONE door
+	// either way — one line, one press, one page.
+	record := a.railHasRecord()
+	viewText := taskSheetMoreHint
+	if record {
+		viewText = taskSheetPastHint
+	}
+	view := ansi.StringWidth(viewText) <= width && (record || a.railFoldedAny())
 	if len(segs) == 0 && !offer && !stow && !view {
 		return nil, -1, -1, -1
 	}
@@ -3517,13 +3448,18 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	}
 	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
 	// column itself. The order is what the lines are ABOUT: the counts say what
-	// this session has, "view more" says where the rest of it is, and widening and
+	// this session has, the door says where the rest of it is, and widening and
 	// hiding are answers to "how much of my screen is this taking". A person
 	// reading the tally and wanting more finds the next line saying so.
+	//
+	// IT IS DIM, which is the same weight the tally above it wears and the
+	// footnoted record rows used to. A door onto a month of other people's
+	// afternoons is not a thing this column should raise its voice about; it is a
+	// thing it should never fail to mention.
 	more := -1
 	if view && len(out)+1 < height {
 		more = len(out)
-		out = append(out, a.pal.dim(taskSheetMoreHint))
+		out = append(out, a.pal.dim(viewText))
 	}
 	hint := -1
 	if offer && len(out)+1 < height {
@@ -3574,39 +3510,35 @@ func (a *app) railDoorAt(x, y int) bool {
 	return ok && line.stow
 }
 
-// railOffersMore reports whether the task page would show anything this column
-// is not ([taskSheet], taskview.go).
+// railFoldedAny reports whether the column is standing one row for a family it
+// has folded — which is the SECOND of the two things that earn the footer's door
+// onto the task page, the first being the project's own record
+// ([app.railHasRecord], taskview.go).
 //
-// THREE THINGS EARN THE OFFER AND NOTHING ELSE DOES. A folded family is work the
-// column is deliberately standing one row for, and the page draws every family
-// whole; the project's record is work THIS SESSION NEVER RAN, which the column
-// can only ever footnote — at most [railRecordMax] rows of it, dulled
-// ([app.railRecordLines], taskview.go); and ANOTHER WINDOW ON THIS PROJECT
-// HAVING WORK OUT, which the column cannot show at all. That third one is the
-// strongest case there is for this line: an ordinary task writes no row into the
-// project's file until it lands, so a person whose second aforge is busy has
-// nothing on their column to hint that anything exists — and the page they
-// cannot guess at is the only place it is. A landed node of this session's,
-// drawn on the column and listed again on the page, earns nothing: that is the
-// same row said twice, and a line offering to show you what you are already
-// looking at is chrome.
-//
-// THE RECORD EARNS IT EVEN WHEN EVERY ROW OF IT IS ON THE COLUMN, and that is
-// not a contradiction of the sentence above. Those rows are a NOTE — there is no
-// cursor on them, no room behind them and no mention to be had from them — so
-// this line is the only door onto the work they name, and a column that showed a
-// person six tasks and no way to reach any of them would be the whole complaint
-// this feature was built to answer.
-//
-// It short-circuits on the first row it finds, so the common answer costs one
-// comparison rather than a walk of the whole record.
-func (a *app) railOffersMore() bool {
+// A folded family is work the column is deliberately not drawing and the page
+// draws every family whole, so the door is honest. A landed node of this
+// session's, drawn on the column and listed again on the page, earns nothing:
+// that is the same row said twice, and a line offering to show you what you are
+// already looking at is chrome.
+func (a *app) railFoldedAny() bool {
 	for _, e := range a.railEntries() {
 		if e.folded {
 			return true
 		}
 	}
-	return a.railHasRecord()
+	return false
+}
+
+// railMoreAt reports whether a pointer is on the footer's door onto the task
+// page. It is the hover's guard, and the press resolves the same fact through
+// [railLine.more] — one geometry asked twice, because the line is found by the
+// layout either way ([app.railDoorAt] makes the same bargain one line down).
+func (a *app) railMoreAt(x, y int) bool {
+	if !a.railAt(x, y) || a.railSeamAt(x, y) {
+		return false
+	}
+	line, ok := a.railLineAt(y)
+	return ok && line.more
 }
 
 // railOffersResize reports whether the footer should name the handle. A cut
@@ -4814,11 +4746,6 @@ func (a *app) dropTasks() {
 	a.railWhere = railSpot{}
 	a.railHold = false
 	a.railWide, a.railCramped = false, false
-	// AND THE DRAWN RECORD ROWS GO WITH THE SNAPSHOT THEY POINT INTO
-	// (taskmention.go's [app.dropTaskMentions] runs in the same breath). They are
-	// pointers into a slice this is about to drop, and the next layout rebuilds
-	// them from the read /new arms on its way out (app.go).
-	a.railPast = nil
 	// [app.railAway] STAYS. It is the one fact in this block that is not about
 	// these nodes: a person who put the column away said something about their
 	// screen, not about the conversation they have just replaced, and standing it

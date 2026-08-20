@@ -859,13 +859,6 @@ type app struct {
 	railWide    bool
 	railCramped bool
 	railAway    bool
-	// railPast is the PROJECT'S RECORD rows the last layout actually drew, in
-	// drawn order (taskview.go's [app.railRecordLines]). It is written at layout
-	// and read by the cursor and the pointer, which is the bargain the glyph and
-	// badge spans already make on [railLine]: how many record rows fit is decided
-	// by what this session's own work left over, and a walk that recomputed it
-	// would be walking rows the frame has not drawn.
-	railPast []*session.TaskIndexEntry
 	// away is the last reading of what the project's OTHER windows have out
 	// right now, and when it was taken (taskview.go's [app.refreshElsewhere]).
 	// It is a CACHE and not a subscription: the reading is a readdir and a
@@ -1323,10 +1316,10 @@ func (a *app) Init() tea.Cmd {
 	// AND THE PROJECT'S TASK RECORD IS READ ONCE, HERE. It used to be paid for by
 	// the first "@" (taskmention.go's [app.loadTasks]), which was the right deal
 	// while the record had exactly one reader; the column now has to know whether
-	// there is more work than it is showing before it can offer the line that says
-	// so ([app.railOffersMore]), and that question is asked on the first frame. It
-	// is one small file, read off the loop, and the read marks itself done — a
-	// session that never grows a task never reads it twice.
+	// the project has a record at all before it can draw the door onto it
+	// ([app.railHasRecord], taskview.go), and that question is asked on the first
+	// frame. It is one small file, read off the loop, and the read marks itself
+	// done — a session that never grows a task never reads it twice.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks()}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
@@ -3831,9 +3824,10 @@ func (a *app) renew() tea.Cmd {
 	// AND THE PROJECT'S RECORD IS READ AGAIN ON THE WAY OUT. [app.dropTasks] takes
 	// the snapshot with the nodes, because the live rows merged into it belonged
 	// to the conversation that just ended — but the FILE is the project's and
-	// outlives every session in it, and the column carries it under whatever this
-	// new conversation goes on to do ([app.railRecord], taskview.go). Without this
-	// read a /new would empty the column of a history that is still on disk.
+	// outlives every session in it, and the foot of the column keeps its door onto
+	// it whatever this new conversation goes on to do ([app.railHasRecord],
+	// taskview.go). Without this read a /new would take the door off a column
+	// standing in a directory whose history is still on disk.
 	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
 		a.loadTasks())
 }

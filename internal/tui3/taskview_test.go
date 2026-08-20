@@ -482,19 +482,22 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 	}
 }
 
-// ── the column's own door onto the page ─────────────────────────────────────
+// ── the column's one door onto the page ─────────────────────────────────────
 
-// THE LINE IS DRAWN WHEN THERE IS WORK BEHIND IT AND NOT OTHERWISE. A "view
-// more" over a column that is already showing everything is a row that promises
-// a page and delivers the list you were looking at.
-func TestTheColumnOffersViewMoreOnlyWhenThereIsMore(t *testing.T) {
+// THE LINE IS DRAWN WHEN THERE IS WORK BEHIND IT AND NOT OTHERWISE, and it WEARS
+// THE NAME OF WHAT IS BEHIND IT. A door over a column that is already showing
+// everything is a row that promises a page and delivers the list you were
+// looking at.
+func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	// One node, nothing folded, and no record: the column is showing the whole of
 	// what there is to show.
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("the column offered more with nothing behind it:\n%s", rail)
+	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
+		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
+			t.Fatalf("the column offered %q with nothing behind it:\n%s", gone, rail)
+		}
 	}
 
 	// A landed node of THIS session's, already on the column, still earns nothing:
@@ -502,17 +505,24 @@ func TestTheColumnOffersViewMoreOnlyWhenThereIsMore(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("1", "ship-the-port", "Ship the port", time.Minute),
 	}
-	if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("the column offered more for a row it is already drawing:\n%s", rail)
+	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
+		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
+			t.Fatalf("the column offered %q for a row it is already drawing:\n%s", gone, rail)
+		}
 	}
 
-	// Work an EARLIER conversation ran is work this column cannot show at all, so
-	// the line appears.
+	// Work an EARLIER conversation ran is work this column does not show at all, so
+	// the door appears — and it says `earlier`, which is what is behind it.
 	a.comp.tasks = append(a.comp.tasks,
 		pastTask("9", "port-the-parser", "Port the parser", 40*time.Hour))
 	rail := rosterText(a, a.viewHeight())
-	if !strings.Contains(rail, taskSheetMoreHint) {
+	if !strings.Contains(rail, taskSheetPastHint) {
 		t.Fatalf("the column hid a record this session never ran:\n%s", rail)
+	}
+	// AND THERE IS EXACTLY ONE OF IT. Two lines onto one page is two doors out of
+	// a room with one.
+	if n := strings.Count(rail, taskSheetKey+" — "); n != 1 {
+		t.Fatalf("the column drew %d doors onto the page, want 1:\n%s", n, rail)
 	}
 	// IT SITS ABOVE THE COLUMN'S OWN DOOR. The way out of anything is the last
 	// line of it, and this one is a way further in.
@@ -524,7 +534,9 @@ func TestTheColumnOffersViewMoreOnlyWhenThereIsMore(t *testing.T) {
 }
 
 // A FOLDED FAMILY EARNS IT TOO, because a folded root is one row standing for
-// work the column is deliberately not drawing.
+// work the column is deliberately not drawing — and with no record behind it the
+// same line says `view more` instead, because there is no earlier work to
+// promise.
 func TestAFoldedFamilyEarnsTheViewMoreLine(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
@@ -533,50 +545,71 @@ func TestAFoldedFamilyEarnsTheViewMoreLine(t *testing.T) {
 		t.Fatalf("an open column with no record offered more:\n%s", rail)
 	}
 	a.railSetOpen(a.tasks[1], false)
-	if rail := rosterText(a, a.viewHeight()); !strings.Contains(rail, taskSheetMoreHint) {
+	rail := rosterText(a, a.viewHeight())
+	if !strings.Contains(rail, taskSheetMoreHint) {
 		t.Fatalf("a folded family did not earn the line:\n%s", rail)
+	}
+	if strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("a column with no record promised earlier work:\n%s", rail)
 	}
 }
 
 // AND THE LINE IS A BUTTON AS WELL AS A KEY. A row that names a chord and cannot
-// be pressed is an affordance for one of the two hands.
+// be pressed is an affordance for one of the two hands — and one that cannot
+// light under the pointer is a button nothing says is a button.
 func TestPressingViewMoreOpensTheTaskPage(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	railRun(a)
 	a.railSetOpen(a.tasks[1], false)
 
-	height := a.viewHeight()
-	view, _ := a.railView(height)
-	at := -1
-	for i, line := range view {
-		if line.more {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatalf("the column drew no view-more line to press:\n%s", rosterText(a, height))
-	}
+	at := railMoreLine(t, a)
 	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
 		t.Fatal("the press fell through the column")
 	}
 	if !a.taskSheet.open {
-		t.Fatal("pressing view more did not open the task page")
+		t.Fatal("pressing the door did not open the task page")
 	}
 	// The column is left exactly as it was: the page is somewhere you go and come
 	// back from, not a state the column enters.
 	if a.railAway {
 		t.Fatal("opening the page put the column away")
 	}
+	a.closeTaskSheet()
+
+	// AND IT LIGHTS UNDER THE POINTER, because a button nothing says is a button
+	// is a button for the hand that already knew. The pointer arriving anywhere on
+	// the column can put the width offer in the footer and move the rows under it,
+	// so the line is found again once the hand is inside.
+	a.setHover(a.bodyWidth()+4, at+a.topHeight())
+	at = railMoreLine(t, a)
+	a.setHover(a.bodyWidth()+4, at+a.topHeight())
+	if !a.hoveringRailMore() {
+		t.Fatalf("the pointer over the column's door onto the page lit nothing: %+v", a.hot)
+	}
+}
+
+// railMoreLine is the row of the drawn column carrying its door onto the task
+// page.
+func railMoreLine(t *testing.T, a *app) int {
+	t.Helper()
+	height := a.viewHeight()
+	view, _ := a.railView(height)
+	for i, line := range view {
+		if line.more {
+			return i
+		}
+	}
+	t.Fatalf("the column drew no door onto the page:\n%s", rosterText(a, height))
+	return -1
 }
 
 // ── the column keeps what is running ────────────────────────────────────────
 
 // WORK THAT IS RUNNING IS NEVER SCROLLED OFF THE COLUMN. The families already
 // sort so that everything moving leads; this is the other half of it — a cursor
-// walked down into the record takes the record with it and leaves the running
-// head where it is.
+// walked down through sixty landed nodes takes the window with it and leaves the
+// running head where it is.
 func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
@@ -714,13 +747,16 @@ func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
 	}
 }
 
-// ── the column carries the project's record ─────────────────────────────────
+// ── the column is this conversation's work alone ────────────────────────────
 
-// THE COLUMN NOTES WHAT THE PROJECT HAS RUN, under this session's own work and
-// dulled. It is what makes the record discoverable at all: a page reachable only
-// by a chord nobody has been told about is a page that does not exist.
-func TestTheColumnDrawsTheProjectsRecordUnderItsOwnWork(t *testing.T) {
+// THE COLUMN DRAWS NO ROW OF THE PROJECT'S RECORD. It carried a dulled sample of
+// six under this session's own work for a while; six rows out of two thousand is
+// a sample rather than a record, it stood where the column's own label goes, and
+// the roster's cursor walked out of this conversation into another one without
+// the column ever saying so. What it has instead is the door.
+func TestTheColumnDrawsNoneOfTheProjectsRecord(t *testing.T) {
 	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
@@ -728,58 +764,35 @@ func TestTheColumnDrawsTheProjectsRecordUnderItsOwnWork(t *testing.T) {
 	}
 
 	rail := rosterText(a, a.viewHeight())
-	for _, want := range []string{"Ship the port", taskSheetPastHead, "Port the parser", "Mix the audio"} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the column is missing %q:\n%s", want, rail)
+	if !strings.Contains(rail, "Ship the port") {
+		t.Fatalf("this conversation's own work is not on the column:\n%s", rail)
+	}
+	for _, gone := range []string{"Port the parser", "Mix the audio"} {
+		if strings.Contains(rail, gone) {
+			t.Fatalf("the column drew %q, which belongs to the task page:\n%s", gone, rail)
 		}
 	}
-	// THE SESSION'S OWN WORK LEADS IT. The record is a footnote under the column,
-	// not a second list beside it.
-	if strings.Index(rail, "Ship the port") > strings.Index(rail, taskSheetPastHead) {
-		t.Fatalf("the record is drawn above this session's work:\n%s", rail)
+	// AND THE DOOR STANDS IN THEIR PLACE, so the work is one press away rather
+	// than behind a chord nobody has been told about.
+	if !strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("the column dropped the record and offered no door onto it:\n%s", rail)
 	}
-	// A ROW THIS SESSION IS ALREADY SHOWING IS NOT SAID TWICE, by the page's own
-	// id-and-title rule.
-	a.comp.tasks = append(a.comp.tasks, pastTask("1", "ship-the-port", "Ship the port", time.Minute))
-	if n := strings.Count(rosterText(a, a.viewHeight()), "Ship the port"); n != 1 {
-		t.Fatalf("this session's running node is on the column %d times, want once", n)
+	// The rows the record used to take are the session's own now, whatever the
+	// column's height: a tall column draws no more of the record than a short one.
+	for _, height := range []int{9, 20, 40} {
+		text := rosterText(a, height)
+		if strings.Contains(text, "Port the parser") {
+			t.Fatalf("a %d-row column drew the record:\n%s", height, text)
+		}
 	}
 }
 
-// THE CAP IS SIX ROWS, because the column is a glance and the record runs to
-// two thousand. What is under the cap is the page's business.
-func TestTheColumnsRecordRowsAreCapped(t *testing.T) {
+// THE RECORD NEVER COSTS RUNNING WORK A ROW, which used to be a rule the layout
+// kept and is now true by construction: there is nothing of it on the column to
+// evict anything.
+func TestAColumnFullOfRunningWorkKeepsAllOfItAndStillOffersTheDoor(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	for i := 0; i < railRecordMax+4; i++ {
-		a.comp.tasks = append(a.comp.tasks,
-			pastTask(itoa(100+i), "old-"+itoa(i), "older work "+itoa(i), time.Duration(i+1)*time.Hour))
-	}
-
-	rail := rosterText(a, a.viewHeight())
-	drawn := 0
-	for i := 0; i < railRecordMax+4; i++ {
-		if strings.Contains(rail, "older work "+itoa(i)) {
-			drawn++
-		}
-	}
-	if drawn != railRecordMax {
-		t.Fatalf("the column drew %d record rows, want %d:\n%s", drawn, railRecordMax, rail)
-	}
-	// The NEWEST are the ones it keeps: the index arrives newest first.
-	if !strings.Contains(rail, "older work 0") || strings.Contains(rail, "older work 9") {
-		t.Fatalf("the column kept the wrong end of the record:\n%s", rail)
-	}
-	// And the footer says the rest is somewhere.
-	if !strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("the column cut the record and offered no door onto it:\n%s", rail)
-	}
-}
-
-// THE RECORD NEVER EVICTS LIVE WORK. It is filled into the rows the session's
-// own list did not need, so a column busy with running tasks carries none of it.
-func TestTheColumnsRecordNeverPushesOutRunningWork(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
 	for i := 1; i <= 8; i++ {
 		a.taskUpdate(update(uint64(i), "running "+itoa(i), session.TaskRunning, session.TaskNotice{}))
 	}
@@ -787,11 +800,8 @@ func TestTheColumnsRecordNeverPushesOutRunningWork(t *testing.T) {
 		pastTask("90", "port-the-parser", "Port the parser", time.Hour),
 	}
 
-	// A column with fewer rows than the running work needs: every row of the body
-	// is running work, the record has to wait for the page, and the footer says
-	// where the page is.
 	rail := rosterText(a, 9)
-	if strings.Contains(rail, "Port the parser") || strings.Contains(rail, taskSheetPastHead) {
+	if strings.Contains(rail, "Port the parser") {
 		t.Fatalf("the record took a row from running work:\n%s", rail)
 	}
 	for i := 1; i <= 5; i++ {
@@ -799,34 +809,21 @@ func TestTheColumnsRecordNeverPushesOutRunningWork(t *testing.T) {
 			t.Fatalf("running %d was evicted from the column:\n%s", i, rail)
 		}
 	}
-	if !strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("the column dropped the record and offered no door onto it:\n%s", rail)
-	}
-
-	// Given the rows for it, the same column carries both.
-	tall := rosterText(a, 20)
-	if !strings.Contains(tall, "Port the parser") {
-		t.Fatalf("a column with room to spare drew no record:\n%s", tall)
-	}
-	for i := 1; i <= 8; i++ {
-		if !strings.Contains(tall, "running "+itoa(i)) {
-			t.Fatalf("running %d is missing from a column with room:\n%s", i, tall)
-		}
+	if !strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("the column offered no door onto the record:\n%s", rail)
 	}
 }
 
-// THE EMPTY COLUMN AND THE PROJECT'S RECORD COMPOSE, and this is the law they
-// compose to: the column is permanent, so it stands either way — what changes is
-// what stands IN it. A conversation that has run nothing in a directory that has
-// shows the dulled `earlier` rows; only a column with genuinely nothing behind it
-// wears the "no tasks yet" label. Two lines saying "no tasks yet" and "earlier ·
-// Port the parser" one under the other would be the column contradicting itself.
-func TestAnEmptySessionShowsTheProjectsRecordRatherThanTheEmptyWord(t *testing.T) {
+// THE EMPTY COLUMN SAYS WHAT IT IS FOR WHATEVER THE PROJECT HAS BEHIND IT. The
+// label is about THIS CONVERSATION — it has run nothing yet — and the door under
+// it is about the project. The two are not in competition, which they were while
+// the record's rows stood where the label goes.
+func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 
 	// Nothing anywhere: the column stands, because it always does, and says what
-	// the place is for.
+	// the place is for. No door — there is nothing behind one.
 	if !a.railShowing() {
 		t.Fatal("the permanent column did not stand on an empty session")
 	}
@@ -834,162 +831,88 @@ func TestAnEmptySessionShowsTheProjectsRecordRatherThanTheEmptyWord(t *testing.T
 	if !strings.Contains(bare, railEmptyWord) {
 		t.Fatalf("an empty column did not say what it is for:\n%s", bare)
 	}
-	if strings.Contains(bare, taskSheetPastHead) {
-		t.Fatalf("an empty project drew a record it does not have:\n%s", bare)
+	for _, gone := range []string{taskSheetPastHint, taskSheetMoreHint} {
+		if strings.Contains(bare, gone) {
+			t.Fatalf("an empty project drew %q, which it does not have:\n%s", gone, bare)
+		}
 	}
 
-	// A record behind it, and the same empty session: the rows take the label's
-	// place rather than sitting under it.
+	// A record behind it, and the same empty session: the label STAYS — this
+	// conversation has still run nothing — and the door appears under it.
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
 	rail := rosterText(a, a.viewHeight())
-	for _, want := range []string{taskSheetPastHead, "Port the parser", taskSheetMoreHint} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the record-only column is missing %q:\n%s", want, rail)
-		}
+	if !strings.Contains(rail, railEmptyWord) {
+		t.Fatalf("a conversation that has run nothing stopped saying so:\n%s", rail)
 	}
-	if strings.Contains(rail, railEmptyWord) {
-		t.Fatalf("the column says it has no tasks over a record of them:\n%s", rail)
+	if !strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("the record-only column offered no door onto the record:\n%s", rail)
 	}
-	// And the record opens at the top of the column: there is nothing above it for
-	// a blank row to separate it from.
+	if strings.Contains(rail, "Port the parser") {
+		t.Fatalf("the column drew a row of the record:\n%s", rail)
+	}
+	// The label opens the column: there is nothing above it for a blank row to
+	// separate it from.
 	rows := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	if !strings.Contains(rows[0], taskSheetPastHead) {
-		t.Fatalf("the record does not open the column: %q", rows[0])
+	if !strings.Contains(rows[0], railEmptyWord) {
+		t.Fatalf("the label does not open the column: %q", rows[0])
 	}
 
-	// ctrl+g still closes a column standing on the record alone — it is thirty
+	// ctrl+g still closes a column standing on the label alone — it is thirty
 	// columns of somebody else's paragraph either way.
 	drive(t, a, key("ctrl+g"))
 	if a.railShowing() {
-		t.Fatal("ctrl+g left a record-only column standing")
+		t.Fatal("ctrl+g left an empty column standing")
 	}
 	drive(t, a, key("ctrl+g"))
 	if !a.railShowing() {
-		t.Fatal("ctrl+g did not bring the record-only column back")
+		t.Fatal("ctrl+g did not bring the empty column back")
 	}
 }
 
-// THE RECORD ROWS ARE DOORS INSIDE THE WORK. They were a note once — readable,
-// unpressable — and then they were doors onto the mention, which answered the
-// wrong question: pressing a row of finished work means "show me what this did".
-// There is no room behind work another conversation ran, so what the door opens
-// is the card, which is exactly what enter on the page's own `earlier` rows does.
-func TestTheColumnsRecordRowsAreDoorsInside(t *testing.T) {
+// THE ROSTER'S WALK STOPS AT THIS CONVERSATION'S LAST TASK. It used to carry on
+// into the record's rows, which is how a person holding ↓ left this conversation
+// for another one; the record is the task page's, and the page is where it is
+// walked.
+func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "Mix audio", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
-
-	height := a.viewHeight()
-	view, _ := a.railView(height)
-	at := -1
-	for i, line := range view {
-		if line.record != nil && strings.Contains(plain(line.text), "Port the parser") {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatalf("no record row on the column to press:\n%s", rosterText(a, height))
-	}
-	// It belongs to no ENTRY — it is not one of this session's nodes — and it
-	// carries its own row of the project's record instead.
-	if line, ok := a.railLineAt(at + a.topHeight()); !ok || line.entry >= 0 || line.record == nil {
-		t.Fatalf("a record row belongs to entry %d and carries record %v", line.entry, line.record != nil)
-	}
-
-	// THE POINTER LIGHTS IT, because it answers to a click.
-	a.setHover(a.bodyWidth()+4, at+a.topHeight())
-	if !a.hoveringRailPast(a.railPast[0]) {
-		t.Fatalf("the pointer over a record row lit nothing: %+v", a.hot)
-	}
-
-	// AND A PRESS GOES INSIDE on the first press — no room, because there is none
-	// to open — and the card names the task that was pressed.
-	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
-		t.Fatal("a press on a record row fell through the column")
-	}
-	if a.room != nil {
-		t.Fatal("a record row opened a room for work that has none")
-	}
-	if !a.taskSheet.open || !a.taskSheet.detailOn {
-		t.Fatalf("the press did not go inside: open=%v inside=%v", a.taskSheet.open, a.taskSheet.detailOn)
-	}
-	if card := taskSheetText(a); !strings.Contains(card, "Port the parser") {
-		t.Fatalf("the card is about something else:\n%s", card)
-	}
-	// esc comes back to the list, which is parked on the row that was pressed —
-	// the page is where the record lives, so the way back out is into it.
-	drive(t, a, key("esc"))
-	if item, ok := a.taskSheetCurrent(); !ok || item.entry == nil || item.entry.Name != "port-the-parser" {
-		t.Fatalf("the list did not come back on the row that was pressed: %+v", item)
-	}
-	a.closeTaskSheet()
-	// The press moved the cursor with it, so the keyboard picks up where the hand
-	// left off.
-	if a.railWhere.past != railPastKey(a.railPast[0]) {
-		t.Fatalf("the press left the cursor at %+v", a.railWhere)
-	}
-}
-
-// THE CURSOR WALKS INTO THEM. One column, one walk: a cursor that stopped dead
-// at the last node, above rows a person can plainly see, would be the column
-// telling them those rows are not really there.
-func TestTheRostersCursorWalksIntoTheRecordAndBackOut(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.profileDir = t.TempDir()
-	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	a.comp.tasks = []session.TaskIndexEntry{
-		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
-		pastTask("11", "mix-the-audio", "Mix the audio", 40*time.Hour),
-	}
-	// The rows the cursor walks are the rows the LAYOUT drew, so the column has to
-	// have been drawn once — which on a real frame it has, every frame.
 	rosterText(a, a.viewHeight())
 
 	drive(t, a, ctrlT())
 	if a.railWhere.id != 1 {
 		t.Fatalf("ctrl+t did not park the cursor on this session's node: %+v", a.railWhere)
 	}
-	drive(t, a, key("down"))
-	if a.railWhere.past != railPastKey(a.railPast[0]) {
-		t.Fatalf("down did not step into the record: %+v", a.railWhere)
-	}
-	// The marker goes with it: a seam that went blank under the cursor would say
-	// the walk had fallen off the end of the column.
-	if rail := rosterText(a, a.viewHeight()); !strings.Contains(rail, railMark+"✓ ⧉ Port the parser") &&
-		!strings.Contains(rail, railMarkASCII+"✓ ⧉ Port the parser") {
-		t.Fatalf("the cursor in the record wears no marker:\n%s", rail)
-	}
-	// It clamps at the bottom rather than wrapping, the way every list here walks.
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}
-	if a.railWhere.past != railPastKey(a.railPast[len(a.railPast)-1]) {
-		t.Fatalf("the walk did not clamp on the last record row: %+v", a.railWhere)
+	if a.railWhere.id != 2 {
+		t.Fatalf("the walk did not clamp on this conversation's last task: %+v", a.railWhere)
 	}
-	// enter on it goes inside, exactly as the page's own record rows do.
+	// AND enter DOWN THERE IS STILL A ROOM'S DOOR AND NEVER A RECORD CARD'S. Every
+	// row of this column is a node this conversation holds, so there is no row for
+	// the card to be about (the room itself is asserted where a fixture has one:
+	// TestALiveRowStillOpensItsRoomFromTheColumn).
 	drive(t, a, key("enter"))
-	if !a.taskSheet.detailOn || a.taskSheet.detail.Name != "mix-the-audio" {
-		t.Fatalf("enter on a record row opened %+v", a.taskSheet.detail)
+	if a.taskSheet.detailOn {
+		t.Fatal("a row of this conversation's work opened a record card")
 	}
-	a.closeTaskSheet()
-	// And back up out of the record onto this session's work.
-	for i := 0; i < 20; i++ {
-		drive(t, a, key("up"))
-	}
-	if a.railWhere.id != 1 || a.railWhere.past != "" {
-		t.Fatalf("the walk did not come back out of the record: %+v", a.railWhere)
+	if a.railWhere.id != 2 {
+		t.Fatalf("enter moved the cursor off this conversation's work: %+v", a.railWhere)
 	}
 }
 
-// AND ctrl+t WORKS ON A COLUMN THAT IS ONLY RECORD. The key hands the keyboard
-// to whatever the column has; with the record as doors, that is something.
-func TestCtrlTHoldsAColumnMadeOnlyOfTheRecord(t *testing.T) {
+// AND ctrl+t FALLS THROUGH ON A COLUMN MADE ONLY OF THE PROJECT'S RECORD. There
+// are no rows down there to put a cursor on any more, and a key that hands the
+// keyboard to an empty list is a key that does nothing — which is the same rule
+// ctrl+t has always had ([app.railAvail]).
+func TestCtrlTFallsThroughOnAColumnWithOnlyTheProjectsRecord(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	a.comp.tasks = []session.TaskIndexEntry{
@@ -998,15 +921,12 @@ func TestCtrlTHoldsAColumnMadeOnlyOfTheRecord(t *testing.T) {
 	rosterText(a, a.viewHeight())
 
 	drive(t, a, ctrlT())
-	if !a.railHold {
-		t.Fatal("ctrl+t did not take a column made of the project's record")
+	if a.railHold {
+		t.Fatal("ctrl+t took the keyboard for a column with no rows on it")
 	}
-	if a.railWhere.past != railPastKey(a.railPast[0]) {
-		t.Fatalf("ctrl+t parked the cursor at %+v", a.railWhere)
-	}
-	drive(t, a, key("enter"))
-	if !a.taskSheet.detailOn || a.taskSheet.detail.Name != "port-the-parser" {
-		t.Fatalf("enter opened %+v", a.taskSheet.detail)
+	// The door is still there, and it is how the record is reached.
+	if rail := rosterText(a, a.viewHeight()); !strings.Contains(rail, taskSheetPastHint) {
+		t.Fatalf("the record-only column offered no door:\n%s", rail)
 	}
 }
 
