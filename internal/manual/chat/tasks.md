@@ -904,7 +904,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top line | none | the focus header, and the family lines under it |
-| legend word | the workspace path and branch | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| legend word | the conversation's name and the branch | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the model picker | inert — the picker moves the conversation |

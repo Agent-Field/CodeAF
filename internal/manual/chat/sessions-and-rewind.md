@@ -277,6 +277,32 @@ So the box is what a **first run** sees — the launch where home has nothing to
 the only conversation on the machine is the one already on screen. That is the one case
 where the wordmark and `recent sessions` still greet you.
 
+## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
+
+The name is written by a model, once, and it is the first thing on the legend above the
+message box: `porting the parser · chat-v3-task*`.
+
+**It arrives one turn in.** As soon as your first exchange finishes, the model on the
+`title` role — small work, so a cheap one — is asked to
+`name this session in ≤8 words, lowercase, no quotes`, reading the opening question and
+answer only. That is **one call per conversation** — it is never retried, so
+a provider having a bad minute costs you a name and nothing else. Until it lands, the
+legend shows only the branch and the status line falls back to the folder's name; nothing
+says "untitled".
+
+The name is capped at **80 characters**, and a longer one is cut with an `…` on the
+legend rather than pushing the branch or the key hints off the line.
+
+**There is no command to rename a conversation.** The name lives in the transcript as its
+own appended line, and the last one wins when the file is read back — but nothing on this
+surface writes a new one. If the name is wrong, nothing about the conversation is wrong
+with it.
+
+A name that arrived from somewhere else as one welded token — `port_b_parser_fix`,
+`fix-the-nil-map` — is read back as words where it is drawn (`Port B Parser Fix`) and left
+exactly as it is in the file. A name that is plainly an id — a timestamp, a hex tail — is
+never prettied.
+
 ## /resume — opening an earlier conversation
 
 `/resume` (alias `/sessions`) opens the picker of earlier conversations in this directory.

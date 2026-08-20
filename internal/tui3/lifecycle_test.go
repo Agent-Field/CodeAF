@@ -748,6 +748,10 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 // one cell under it with one blank row above.
 func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	// Named, because the border's label is the conversation's name and an
+	// unnamed session in a directory with no repository has nothing to put in it
+	// — which is the emptiness law, and is its own test (bundle_test.go).
+	a.title = "trimming the parser"
 	typeInto(t, a, "half a sentence")
 
 	lines := strings.Split(plain(frame(a)), "\n")
@@ -767,7 +771,7 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 		t.Fatalf("the row above the draft is not blank: %q", lines[draft-1])
 	}
 	// The rule above the box is the LEGEND now (render.go): the same one line,
-	// with where you are written into the border of it.
+	// with which conversation this is written into the border of it.
 	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─ ") || !strings.Contains(rule, "───") {
 		t.Fatalf("the row above that is not the input's legend border: %q", rule)
 	}

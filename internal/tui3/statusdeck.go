@@ -415,14 +415,13 @@ func (a *app) deckItems() []deckItem {
 	}
 	add("tasks", a.deckTaskWord(), deckActNone)
 
-	place := a.legendPath(0)
-	if a.branch != "" {
-		place += " · " + a.branch
-		if a.branchDirty {
-			place += "*"
-		}
-	}
-	add("place", place, deckActNone)
+	// WHERE YOU ARE LIVES HERE NOW. The legend under the input used to carry the
+	// path and gave the slot up to the conversation's own name (render.go's
+	// [app.legendLeft]), so this row and /status are the two places the workspace
+	// is written down — which is the right home for it either way: a path is a
+	// thing a person copies into another program, and this is a page rather than
+	// a border.
+	add("place", dotted(a.placePath(0), a.branchWord()), deckActNone)
 	// The hint slot's own words, and its own fallback: the keys that work right
 	// now, or the input's two affordances when no state has any of its own
 	// ([app.legendRight]). At phone width the legend drops this slot entirely,
