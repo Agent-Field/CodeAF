@@ -206,6 +206,19 @@ const (
 	// you are, and the keys that leave. It names both of them for the reason the
 	// header does — a person's hand is either on esc or on the arrows.
 	roomLegendWord = "room · esc/←← main"
+	// roomLegendRecallWord stands in that word's place while a history walk is
+	// on, because for exactly that long esc is the WALK's key and gives the
+	// person their own draft back (recall.go's [app.recallCancel]) — the room is
+	// one keystroke further away. The legend promises what the next esc does, and
+	// a slot that kept promising "main" through a walk would be promising the
+	// keystroke after the one the person is about to press.
+	roomLegendRecallWord = "room · esc your line back"
+	// roomRecallHint and roomStopHint are the room's half of the hint slot
+	// (render.go's [app.hintWord]). Neither names esc: the legend's LEFT end is
+	// already carrying that key while a room is open, and one row saying the same
+	// thing twice is the defect the rewind mode's empty hint exists to avoid.
+	roomRecallHint = "↑↓ history"
+	roomStopHint   = "x stop"
 	// roomFinishedWord is the foot under a node that has landed.
 	roomFinishedWord = "task finished — esc to return"
 	// roomParkedWord opens the guard's line, after the node's title: what is
@@ -1232,6 +1245,15 @@ func (a *app) steer() tea.Cmd {
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
+	// A STEERED LINE IS A LINE YOU TYPED, so ↑ brings it back. It is remembered
+	// through the same door [app.enter] remembers a message through (recall.go),
+	// and for the same reason: the box in here is the box out there, and a
+	// sentence that could be recalled in the conversation but not in a room would
+	// make the room a different editor wearing the same prompt. It is remembered
+	// only once the engine has taken it — the guard above keeps the words in the
+	// box, and a recall list holding sentences that went nowhere would be a
+	// history of things that did not happen.
+	a.remember(line)
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
@@ -1501,6 +1523,14 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch msg.String() {
 	case "esc":
+		// ESC IN HERE IS THE DOOR AND IT IS NEVER A STOP — stop.go's standing law,
+		// restated at the keystroke it is about. Out in the conversation esc
+		// interrupts the running turn; the analogous act in a room is ending the
+		// node, which is not reversible and is therefore always asked first (`x`,
+		// and the card). So the two surfaces do NOT converge on this key, and the
+		// legend says which of the two meanings is live: while a room is open the
+		// hint slot never reads "esc interrupt" (render.go's [app.hintWord]).
+		//
 		// A recall walk is left first, for the reason input.go leaves it first: a
 		// state that could not be dismissed by the dismiss key is a trap, and the
 		// room is still one keystroke behind it.
@@ -1537,20 +1567,70 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "up":
-		// ↑/↓ read the room only when there is no sentence in the box, which is
-		// the same rule that decides whether they walk history or move the caret
-		// out in the conversation.
-		if a.input.empty() {
+		// ↑ MEANS IN HERE WHAT IT MEANS OUT THERE, in the same order (input.go's
+		// four meanings): inside a multi-line draft it moves the caret, at the top
+		// of the draft it walks the history of what you have typed, and only when
+		// there is no history to walk does it scroll the page.
+		//
+		// IT USED TO SCROLL FIRST, and that made the room's box a different editor
+		// from the conversation's — the one place on this surface where a sentence
+		// somebody had already typed once could not be brought back and edited. A
+		// steered line is now remembered ([app.steer]), so the walk in here reaches
+		// exactly the words the walk out there reaches.
+		//
+		// THE PAGE DID NOT LOSE A SCROLL GESTURE THAT MATTERS. pgup/pgdown page it,
+		// the wheel scrolls it (app.go's pointer routing), and ↑ still scrolls on a
+		// session with no history at all — which is the same bargain the
+		// conversation struck, where ↑ has not been a one-row scroll since the day
+		// there was anything to recall.
+		if !a.input.onFirstLine() {
+			return nil, false // the caret's, in input.go
+		}
+		if !a.recallBack() {
 			a.roomScroll(-1)
-			return nil, true
 		}
+		return nil, true
+
 	case "down":
-		if a.input.empty() {
-			a.roomScroll(1)
-			return nil, true
+		if !a.input.onLastLine() {
+			return nil, false
 		}
+		if !a.recallForward() {
+			a.roomScroll(1)
+		}
+		return nil, true
 	}
 	return nil, false
+}
+
+// roomHint is the hint slot while a room is open (render.go's [app.hintWord]),
+// and it exists because that slot used to LIE in here: with a turn running out
+// in the conversation it drew "esc interrupt" over a page where esc leaves the
+// room and interrupts nothing. A hint naming a key that does something else is
+// the one failure the slot exists to prevent.
+//
+// IT NEVER NAMES esc. The legend's left end is already carrying that key for as
+// long as a room is open ([app.legendLeft]), and a row that said it at both ends
+// would be the surface repeating itself in the one place a person reads for the
+// next keystroke.
+func (a *app) roomHint() string {
+	switch {
+	case a.guarding() || a.stopping():
+		// Both draw their own answers on their own row, directly above the box
+		// (see [app.guardRows]). This is the rewind mode's rule: a slot repeating
+		// keys that are already on screen is a slot nobody reads twice.
+		return ""
+	case a.recalling():
+		return roomRecallHint
+	case a.stopOffered():
+		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
+		// to the conversation's "esc interrupt": the work in here ends through a
+		// card and never through the dismiss key (stop.go), so this is the key a
+		// person reaching for esc actually wants. It is drawn only while there is
+		// something to stop, which is the emptiness law applied to a hint.
+		return roomStopHint
+	}
+	return ""
 }
 
 // freezeRoom hands copy mode the room's own rows. It is the same frozen viewport
