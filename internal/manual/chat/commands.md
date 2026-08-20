@@ -564,9 +564,14 @@ Refusals, exactly as written:
 resuming is unavailable here
 No sessions yet — start one with aforge chat
 already here · <name>
+open in another window — go there, or start a new conversation here
 resume failed: <error>
 close failed: <error>
 ```
+
+The fourth is a conversation another window is holding open — **no file path is printed**,
+and nothing is closed: the conversation you are in is still there. `resume failed:` is now
+only for the rest, which are rare.
 
 `already here` is enter on the row you are on; nothing is closed. A directory with no
 conversations never opens the picker at all — a modal list with no rows would be a trap.

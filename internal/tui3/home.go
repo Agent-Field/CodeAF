@@ -176,6 +176,14 @@ const (
 	// column that is not a thing that exists yet, and every other glyph here is
 	// a state something is in.
 	homeStartGlyph = "+"
+	// homeHeldWord is what the detail column says about a conversation another
+	// window is holding, and homeHeldShort is the same fact in the width the
+	// left column has for it. Two spellings of ONE thing, and the short one
+	// exists for a reason a person can see: the list column is forty-six cells
+	// wide and a row that spent twenty-two of them on this would have nothing
+	// left for the name it is about.
+	homeHeldWord  = "open in another window"
+	homeHeldShort = "another window"
 )
 
 // homeRowKind is what one line of the left column is.
@@ -1017,18 +1025,40 @@ func (a *app) homeEnter() tea.Cmd {
 	case !a.homeOpens(line):
 		h.msg = homeElsewhereWord + " · " + homeWhere(line)
 		return nil
+	case a.homeHeldNow(line.row):
+		// THE DOOR ANNOUNCES ITSELF LOCKED RATHER THAN SLAMMING. Home read the
+		// same flock the open would take, seconds ago and again just now, so it
+		// KNOWS. The resume picker reports this failure after the fact because
+		// it genuinely cannot know beforehand; home can, and a screen that
+		// offers a door it has already established goes nowhere is a screen that
+		// wastes a keystroke and a second of somebody's attention on a raw error.
+		h.msg = sessionBusyWord
+		return nil
 	}
 	chosen := Session{
 		Title: line.row.Title,
 		File:  line.row.Transcript,
 		At:    line.row.At,
 	}
+	// THE SAME DOOR THE RESUME PICKER WALKS THROUGH, not a second one: opening
+	// the chosen journal, replaying it, closing the old agent and re-subscribing
+	// the standing lanes is one arrangement, and two of them would be two things
+	// to keep in step (welcome.go's [app.openSession]).
+	//
+	// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
+	// conversation. The check above closes the window where a lock can appear
+	// down to the microseconds between the flock probe and the open — but not to
+	// nothing, so this is the same sentence again for the same fact, in the same
+	// place, and home stays open around it. A refusal on this screen belongs to
+	// this screen: notes stack in a transcript, and pressing enter twice on a
+	// locked row is exactly how somebody would find that out.
+	cmd, refusal := a.openSession(chosen)
+	if refusal != "" {
+		h.msg = refusal
+		return nil
+	}
 	a.closeHome()
-	// THE SAME DOOR THE RESUME PICKER WALKS THROUGH, not a second one: closing
-	// the agent, opening the chosen journal, replaying it and re-subscribing the
-	// standing lanes is one arrangement, and two of them would be two things to
-	// keep in step (welcome.go's [app.resumeSession]).
-	return a.resumeSession(chosen)
+	return cmd
 }
 
 // homeStart is the door: a fresh conversation in this project, carrying the
@@ -1046,6 +1076,41 @@ func (a *app) homeStart(text string) tea.Cmd {
 	a.closeHome()
 	renewed := a.renew()
 	return tea.Batch(renewed, a.submit(text))
+}
+
+// homeHeld reports whether another window is holding this conversation, from
+// THE LAST SCAN. It is what the drawing asks.
+//
+// A LABEL MAY BE A FEW SECONDS OLD; AN ACTION MAY NOT. This is read for every
+// row of every frame — and a frame is drawn on every keystroke and every mouse
+// movement — so it must not touch the disk: twenty rows times a pointer moving
+// across them is thousands of opens a second to re-learn something the scan
+// already knows and refreshes every few seconds ([homeEvery]). The keystroke
+// that actually opens a row asks the disk instead ([app.homeHeldNow]).
+//
+// The conversation THIS window is in is never held against it: we are the ones
+// holding it, and stepping into it is what enter already does there.
+func (a *app) homeHeld(row session.SessionRow) bool {
+	if row.Transcript == "" || row.Transcript == a.file {
+		return false
+	}
+	return row.Open || row.Live
+}
+
+// homeHeldNow is the same question asked of the disk, for the one moment it is
+// worth a syscall: somebody has pressed enter on the row.
+//
+// It closes the window between the last scan and this keystroke, which is where
+// the lock in the report actually appeared — a session opened in another
+// terminal after home had already drawn its row as available. What it cannot
+// close is the microseconds between this answer and the open that follows it,
+// and [app.homeEnter] carries the same sentence for that case rather than
+// pretending the race is gone.
+func (a *app) homeHeldNow(row session.SessionRow) bool {
+	if row.Transcript == "" || row.Transcript == a.file {
+		return false
+	}
+	return session.InUse(row.Transcript) || a.homeHeld(row)
 }
 
 // homeOpens reports whether THIS window can open a row. See this file's header
@@ -1271,7 +1336,13 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		}
 	}
 	if a.home.msg != "" {
-		add(" "+pal.bad(fit(a.home.msg, width-2)), -1)
+		// DIM, AND NOT THE FAULT COLOUR. Every refusal this screen has is a fact
+		// about a door — that conversation is open somewhere, that project is
+		// not this one — and none of them is anybody's mistake. It also replaces
+		// rather than stacks, being one field: pressing enter twice on a locked
+		// row says the same thing once, where a note in the conversation would
+		// have said it twice.
+		add(" "+pal.dim(fit(a.home.msg, width-2)), -1)
 	} else {
 		add(" "+pal.dim(fit(a.homeHint(), width-2)), -1)
 	}
@@ -1417,7 +1488,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		return overlayRow(homeStartGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
 	}
 	label := homeGlyph(line.row, pal.ascii) + " " + homeName(line.row)
-	note := homeNote(line.row, h.world.Read)
+	note := homeNote(line.row, a.homeHeld(line.row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -1426,15 +1497,18 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// The one exception is a row that wants somebody. `waiting on you` is
 	// brought up out of the dim, because a screen whose whole job is triage
 	// cannot render its most urgent fact in the same grey as an age.
-	return overlayRowTinted(label, note, homeNoteInk(line.row),
+	return overlayRowTinted(label, note, homeNoteInk(line.row, a.homeHeld(line.row)),
 		at == h.cursor, line.row.Transcript == a.file, at == h.hover, width, pal)
 }
 
 // homeNoteInk is how a row's trailing fact is painted. It answers nil for every
 // row that has nothing urgent to say, which is [paintNote]'s way of asking for
 // the ordinary rule.
-func homeNoteInk(row session.SessionRow) noteInk {
-	if !row.NeedsPerson() {
+func homeNoteInk(row session.SessionRow, held bool) noteInk {
+	if held || !row.NeedsPerson() {
+		// A locked row keeps the ordinary dim. It is a fact about a door, not a
+		// thing anybody has to do, and shouting it would put the loudest ink on
+		// this screen on the one row that cannot be acted on.
 		return nil
 	}
 	return func(pal palette, note string, selected bool) string {
@@ -1469,8 +1543,19 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, now time.Time) string {
+func homeNote(row session.SessionRow, held bool, now time.Time) string {
 	var parts []string
+	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
+	// rung BELOW the states, and that ordering is a fact about what the states
+	// already mean rather than a compromise over width.
+	//
+	// `waiting on you` and `N running` are read off a presence file that only a
+	// LIVE session writes (session's taskpresence.go). A row wearing either of
+	// them is therefore already saying a window has it; adding "and another
+	// window has it" would be the same fact twice, in the width the name needed.
+	// What those words cannot cover is the case in the report — a conversation
+	// somebody left sitting idle in another terminal, holding its lock and
+	// claiming nothing — and that is exactly the row this rung catches.
 	switch {
 	case row.NeedsPerson():
 		// THE CONVERSATION'S OWN WORD, not a second one meaning the same thing.
@@ -1483,6 +1568,8 @@ func homeNote(row session.SessionRow, now time.Time) string {
 		parts = append(parts, itoa(row.Tasks.Running)+" running")
 	case row.Tasks.Incomplete > 0:
 		parts = append(parts, itoa(row.Tasks.Incomplete)+" incomplete")
+	case held:
+		parts = append(parts, homeHeldShort)
 	case row.Tasks.Total() > 0:
 		parts = append(parts, itoa(row.Tasks.Total())+plural(" task", row.Tasks.Total()))
 	}
@@ -1713,7 +1800,7 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	case row.Transcript == a.file:
 		word = "open here"
 	case row.Open || row.Live:
-		word = "open in another window"
+		word = homeHeldWord
 	default:
 		return ""
 	}

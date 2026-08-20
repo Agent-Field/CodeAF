@@ -347,18 +347,26 @@ session open elsewhere — started a new one
 
 In a `--once` run the same notice goes to stderr as `<notice>: <new session file>`.
 
-**There is one place this fallback deliberately does not apply: the resume picker.** If you
-pick a conversation another window is holding open, the error is reported rather than worked
-around — *"a person who picked a conversation by name means that one"*. The surface prints
-`resume failed: ` followed by the locked-file error, which names the file:
+**There is one place this fallback deliberately does not apply: picking one by name.** If
+you pick a conversation another window is holding open — from the resume picker, the welcome
+box, or home — it is reported rather than worked around, because *"a person who picked a
+conversation by name means that one"*. Nothing is opened, and the conversation you are in is
+left exactly as it was. The sentence is:
 
 ```
-session file: /path/to/20260817-101112_a3f2.jsonl is open in another aforge
+open in another window — go there, or start a new conversation here
 ```
 
-The underlying sentence reads `session file is open in another aforge`.
+**No file path is printed.** The path is aforge's bookkeeping and not something you can act
+on; what you can act on is in the sentence.
 
-Close the other window, or start a new conversation instead.
+On **home**, that line appears in the screen's own foot and home stays open, so you can pick
+a different row straight away — and home marks such a row `another window` in the list
+*before* you press anything. See the home page.
+
+A conversation you pick that is NOT held opens normally. And the one time this can still
+surprise you is a lock taken in the instant between the screen being drawn and your
+keystroke; you get the same sentence, in the same place.
 
 A filesystem that cannot take this kind of lock at all — some network mounts — opens the
 session unlocked rather than refusing it.
