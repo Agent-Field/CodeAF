@@ -495,9 +495,27 @@ is still a column to close.
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
-copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` scroll, but only
-over an empty message box. `left` is deliberately **not** taken here — it falls
-through to the message box's back-navigation.
+copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` walk your history,
+and scroll the page one row only when there is no history to walk. `left` is
+deliberately **not** taken here — it falls through to the message box's
+back-navigation.
+
+**`up` and `down` in a room mean what they mean in the message box**, in the same order:
+inside a multi-line message they move the caret; on the first line — or over an empty box
+— they walk your own history, newest first; and only with nothing to walk do they scroll
+the page. It is the same history the main conversation walks, and **a line you steered
+into a task goes into it**, so `↑` brings back the last thing you said to the task and
+you can edit it and send it again. A line the steer guard refused is not remembered. On
+an **adaptive run's page** `↑`/`↓` over an empty box walk the graph's chips and the fuel
+gate's answers instead; type something and they walk the history from there.
+
+**`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
+interrupts the running turn; inside a room the first `esc` leaves the room and the next
+one interrupts. Ending the task itself is `x` and its card. The legend's left end always
+names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
+while a history walk is on. The hint at the legend's right end reads `x stop` while there
+is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
+inside a room, because in here that is not what the key does.
 
 **A click inside the room's page does not leave it.** A press that lands on nothing —
 a blank row, the gap beside a paragraph, the slack under a short transcript — does

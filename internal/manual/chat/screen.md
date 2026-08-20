@@ -114,6 +114,13 @@ running, `esc stops and sends` while a message of yours is waiting for the answe
 finish, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
 to `/ commands`.
 
+**Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
+— in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
+while there is work here to stop, `↑↓ history` while a history walk is on, and nothing
+otherwise. The left end of that legend is the room too: `room · esc/←← main`, or
+`room · esc your line back` for as long as a walk is on, because that is the key's real
+meaning until the walk ends.
+
 One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
 when you have closed the task column and this session has run something. It is the
 whole of what the frame says about a roster that is not on screen, and it says nothing
@@ -126,9 +133,11 @@ branch, then the path shortens from `~/s/aforge-v2` to `…/aforge-v2` to `aforg
 then the plain rule. Below width **70** the branch and the hint slot are dropped
 outright.
 
-While a task room is open the left says exactly `room · esc/←← main`, and the path and
-branch are not drawn. The pinned header at the top of the frame says the same thing in
-its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
+While a task room is open the left says exactly `room · esc/←← main` — and exactly
+`room · esc your line back` while a history walk is on, since for those keystrokes `esc`
+gives your own draft back before the room's own `esc` gets the key. The path and the
+branch are not drawn either way. The pinned header at the top of the frame says the same
+thing in its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
 you are back in the conversation. Clicking the page itself does not leave a room — a
 press on empty space does nothing here as it does everywhere.
 

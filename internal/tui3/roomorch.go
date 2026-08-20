@@ -743,6 +743,10 @@ func (a *app) orchSteer() tea.Cmd {
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
+	// A LINE STEERED AT THE PLANNER IS REMEMBERED TOO, on room.go's argument
+	// exactly: the box on this page is the box in the conversation, and ↑ has to
+	// bring back what you typed wherever you typed it (recall.go).
+	a.remember(line)
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()

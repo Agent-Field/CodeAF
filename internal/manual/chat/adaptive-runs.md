@@ -124,6 +124,15 @@ before anything started — settles as **stopped**, because nothing went wrong w
 nobody made a finding about it. The row carries the node's own spend, and a landed node's
 row carries its digest.
 
+**Each node row names the model it runs on, and it is not the planner's.** A run is
+deliberately two classes of model: the root row carries the **mastermind** class that cuts
+the goal, and every node row under it carries the **small work** class that does it — one
+careful call deciding what happens, many cheap ones doing it. So opening a node and reading
+`task <model>` at the foot of the frame is how you see your crew actually working; the run's
+own row above it will be naming something else, and that is the arrangement rather than a
+disagreement. The id is settled once, when the run starts, so a `/model` half way through
+does not move it. A run whose classes resolved nothing says nothing rather than guessing.
+
 **These rows write nothing into the conversation.** A landing card is how work *you*
 decided on reports back; a run's nodes are cut by its planner and there can be a dozen of
 them, so a card each would bury the answer under the workings of it. The run's own write-up

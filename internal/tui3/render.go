@@ -1824,6 +1824,13 @@ func (a *app) legendLeft(width, hard int) string {
 	// neither is a fact about the page on screen, and the one thing a person in
 	// here needs from this slot is the key that gets them out (room.go).
 	if a.roomOpen() {
+		// AND WHILE A HISTORY WALK IS ON IT SAYS WHAT ESC ACTUALLY DOES, which for
+		// those few keystrokes is not "main": the walk is dismissed first and the
+		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
+		// slot is here to promise the NEXT keystroke, so it has to move with it.
+		if a.recalling() {
+			return roomLegendRecallWord
+		}
 		return roomLegendWord
 	}
 	path := a.legendPath(hard)
@@ -1886,6 +1893,7 @@ func (a *app) legendRight(width int) string {
 //	a list is open        ↑↓ · enter · esc
 //	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
 //	a question is up      a allow · t always · d deny  (consent.go's own keys)
+//	a room is open        x stop, or ↑↓ history mid-walk  (room.go's [app.roomHint])
 //	a turn is running     esc interrupt
 //	the column is away    ctrl+g tasks               (task.go's [railBackHint])
 //	idle                  nothing
@@ -1987,6 +1995,14 @@ func (a *app) hintWord() string {
 		// [app.railKey]'s guard stands down; and above the running turn, because
 		// while it is held esc gives the keyboard back rather than interrupting.
 		return railHoldHint
+	case a.roomOpen():
+		// A ROOM IS READ HERE because that is where [app.roomKey] stands in the
+		// program loop (app.go): under the stop card and the roster, over
+		// everything the draft would have got. And it ranks ABOVE the two lines
+		// below for the reason this whole slot is ordered the way it is — while a
+		// room is open, esc leaves the page and does not touch the conversation's
+		// turn, so "esc interrupt" would be naming a key that is spoken for.
+		return a.roomHint()
 	case len(a.parks) > 0:
 		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
 		// more thing than it did: it stops the turn AND sends what is parked

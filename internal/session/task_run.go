@@ -376,6 +376,19 @@ type TaskNode struct {
 	// nothing has landed, and what a surface draws is the work still going with
 	// one line saying what is being finished.
 	mend string
+	// ran is the model this node is ACTUALLY running on, when that is not the one
+	// its spec froze. It is written in exactly one place — the tool-use rescue in
+	// [Agent.newTaskAgent], which swaps an incapable model for the worker tier —
+	// and it exists so that swap can be told without unfreezing the spec.
+	//
+	// THE SPEC SAYS WHAT WAS ASKED FOR AND THIS SAYS WHAT ANSWERED. Writing the
+	// fallback back into spec.model would have been the shorter fix and the wrong
+	// one: the spec is the contract, frozen at admission and checkpointed, and a
+	// contract that edits itself is not one. Without this field the swap was
+	// invisible in the other direction — [TaskNode.notice] published the rejected
+	// id while `mend` on the same card said "model X has no tools; using Y", so
+	// one row disagreed with itself about what was running.
+	ran string
 	// settling NAMES the resolution in flight over a landed node, in the plain
 	// words a second caller is told, and it is "" when nobody holds the node
 	// (task_audit.go's ResolveUnverified).
@@ -959,6 +972,18 @@ func (n *TaskNode) model() string {
 	return n.spec.model
 }
 
+// runModelLocked is the model a row about this node should NAME: the one it is
+// actually running on where a rescue swapped it, and the spec's frozen id
+// everywhere else. The caller holds the graph lock, which is why it is spelled
+// in the name — this is read from inside [TaskNode.notice], which takes that
+// lock for the whole of its work.
+func (n *TaskNode) runModelLocked() string {
+	if n.ran != "" {
+		return n.ran
+	}
+	return n.spec.model
+}
+
 // assembledBrief is the brief the node is actually working from: its own, plus
 // its prerequisites' reports.
 func (n *TaskNode) assembledBrief() string {
@@ -1379,8 +1404,11 @@ func (n *TaskNode) notice() TaskNotice {
 		Mending:   n.mend,
 		Waiting:   waiting,
 		Stopped:   n.stopped,
-		Model:     n.spec.model,
-		CostUSD:   cost,
+		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
+		// See [TaskNode.ran] for why the swap is a second field rather than an
+		// edit to the frozen spec.
+		Model:   n.runModelLocked(),
+		CostUSD: cost,
 	}
 }
 
@@ -2711,6 +2739,10 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 			}
 			node.graph.mu.Lock()
 			node.mend = "model " + model + " has no tools; using " + fallback
+			// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
+			// on: the sentence above and [TaskNode.notice]'s model are two halves of
+			// one card, and until this line they named different models.
+			node.ran = fallback
 			node.graph.mu.Unlock()
 			model = fallback
 		}
