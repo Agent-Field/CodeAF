@@ -1331,6 +1331,11 @@ func (a *app) Init() tea.Cmd {
 	// beside the standing lanes rather than folded into the wake above.
 	if a.home.open {
 		standing = append(standing, homeTick())
+		// A landing that greets over running work starts with its spinner
+		// already turning — the paint clock's ninth reason ([app.paint]).
+		if a.homeAnimating() {
+			standing = append(standing, a.wake())
+		}
 	}
 	return tea.Batch(standing...)
 }
@@ -2052,6 +2057,12 @@ func (a *app) paint() tea.Cmd {
 		// its count-up would be a still photograph for twenty-five seconds — which
 		// is exactly what they were (taskcommand.go's [preflight]).
 		a.wait.live() ||
+		// AND HOME WITH A ROW RUNNING IS THE NINTH, and the third that can be the
+		// whole of what is happening: the work is another window's, so no turn of
+		// ours runs while its spinner turns. Home is otherwise a still page on its
+		// own slow beat, and this test falling false is exactly how it goes still
+		// again (home.go's [app.homeAnimating]).
+		a.homeAnimating() ||
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).

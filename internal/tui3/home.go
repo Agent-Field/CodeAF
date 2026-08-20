@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // HOME: /home — everything this machine has worked on, in one place.
@@ -67,11 +68,12 @@ import (
 // exists for — and the collapse takes only the quiet ones underneath them.
 const homeShown = 4
 
-// homeTaskRows is how much of the focused conversation's work the detail column
-// shows. FOUR AND NOT MORE, because each one now costs two lines: the row and
-// the sentence saying what it came to. Four tasks with their outcomes answer
-// "what has this been doing" better than twelve bare labels, and the project's
-// whole history is what the index itself is for.
+// homeTaskRows is how many task FAMILIES the detail column shows — a root with
+// its children expanded while it runs, or with its outcome sentence under it
+// once it has landed ([app.homeWorkBand]). FOUR AND NOT MORE, because each one
+// costs up to two lines and four with their outcomes answer "what has this been
+// doing" better than twelve bare labels; the project's whole history is what
+// the index itself is for, and the facts footer counts what would not fit.
 const homeTaskRows = 4
 
 // homeEvery is how long between readings of the disk. Three seconds is slow
@@ -102,7 +104,36 @@ func (a *app) homeBeat() tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	// A task starting in another window arrives on this beat, and the spinner it
+	// earns needs the fast clock — woken here because this is the only moment
+	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
+	// it stop by the same test).
+	if a.homeAnimating() {
+		return tea.Batch(homeTick(), a.wake())
+	}
 	return homeTick()
+}
+
+// homeAnimating reports whether something on home is truly MOVING: a row on the
+// column with work running this instant. It is what earns the paint clock —
+// home is otherwise a still page on a three-second beat ([homeEvery]), and that
+// law holds exactly until a spinner has to keep a promise. The clock is woken
+// where home learns things ([app.openHome], [app.homeBeat]) and [app.paint]
+// keeps it turning against this same test, so the moment the last running row
+// lands or its presence goes stale the page falls still again on its own.
+//
+// The linear tier never animates ([glyphRunASCII]'s block states the law), so
+// it never earns the clock either.
+func (a *app) homeAnimating() bool {
+	if !a.home.open || a.linear {
+		return false
+	}
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Tasks.Running > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // homeMinDetail is the width below which the detail column is not drawn at all.
@@ -131,12 +162,25 @@ const homeDetailFloor = 34
 
 // The glyphs a conversation wears in the left column. They say what is
 // HAPPENING and nothing else — there is no state here that a person has to be
-// taught, only "wants you", "moving", "stopped mid-way" and "at rest".
+// taught, only "wants you", "moving", "stopped mid-way", "landed something new"
+// and "at rest".
 //
 // THE TRIANGLE IS THE ONLY ONE THAT POINTS AT ANYTHING. The other three are
 // round and read as weather; a conversation stopped on a question is the one
 // row on this screen that is asking for a hand, and it gets the one shape that
 // looks like it is asking.
+//
+// A ROW WITH WORK RUNNING SPINS. On an animating frame the ● gives way to the
+// braille spinner the rail already turns for the same fact ([app.taskStateMark],
+// task.go), because "something is happening this instant" is that vocabulary's
+// one promise — and home KNOWS it through the same presence file the counts are
+// read from, believed for the same fifteen seconds. The ● stays as the still
+// tier: the linear tier does not animate, and the rail's away rows keep it too.
+//
+// AND A ROW AT REST THAT LANDED WORK SINCE YOU LAST LOOKED WEARS THE TICK — the
+// rail's own ✓ ([glyphDone]) — instead of the empty circle, which is the whole
+// of home's "while you were away": no notification, no banner, one cell of one
+// row saying something finished here (see [homeView.seen]).
 const (
 	homeAskGlyph   = "▲"
 	homeLiveGlyph  = "●"
@@ -184,6 +228,13 @@ const (
 	// left for the name it is about.
 	homeHeldWord  = "open in another window"
 	homeHeldShort = "another window"
+	// homeLandedWord trails a count on a quiet row whose work finished since
+	// home was last closed — `2 landed · 3h` — and homeFreshWord is the dim
+	// caption the detail column hangs over those rows. Both are the delta the
+	// look stamp buys (session's look.go), said in a person's words: nothing
+	// "completed", nothing "notified", work landed while they were not looking.
+	homeLandedWord = "landed"
+	homeFreshWord  = "since you last looked"
 )
 
 // homeRowKind is what one line of the left column is.
@@ -289,6 +340,16 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
+	// seen is when home was last closed — the look stamp, read once when the
+	// screen opens (session's look.go). Work that landed after it is NEWS, and
+	// news is marked: the ✓ on a resting row, the `landed` count in its note,
+	// and the caption over the fresh rows of the card. Zero means there is no
+	// origin to measure from — a first look — and nothing at all is marked.
+	//
+	// IT DOES NOT MOVE WHILE THE SCREEN IS UP. A stamp that advanced on every
+	// rescan would unmark the news between two glances at it; the marks hold
+	// until home closes, and closing is what writes the next stamp.
+	seen time.Time
 	// last caches the tail of a conversation's journal by transcript path.
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
@@ -346,6 +407,7 @@ func (a *app) openHome() tea.Cmd {
 		open:     true,
 		world:    session.ReadWorld(a.placesRoot()),
 		bucket:   homeBucketOf(a.file),
+		seen:     session.LastLook(a.placesRoot()),
 		hover:    -1,
 		last:     map[string]session.Summary{},
 		expanded: map[string]bool{},
@@ -353,6 +415,12 @@ func (a *app) openHome() tea.Cmd {
 	a.home.build()
 	a.home.point(a.file)
 	a.touch()
+	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
+	// the spinner and the count-up are claims about this instant, and a still
+	// page cannot make them ([app.homeAnimating]).
+	if a.homeAnimating() {
+		return tea.Batch(homeTick(), a.wake())
+	}
 	return homeTick()
 }
 
@@ -409,6 +477,7 @@ func (a *app) landHome() {
 		open:     true,
 		world:    world,
 		bucket:   homeBucketOf(a.file),
+		seen:     session.LastLook(a.placesRoot()),
 		hover:    -1,
 		last:     map[string]session.Summary{},
 		expanded: map[string]bool{},
@@ -464,6 +533,13 @@ func (a *app) closeHome() {
 	// rather than left as it was at boot.
 	if len(a.home.world.Projects) > 0 {
 		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
+	}
+	// CLOSING IS THE LOOK. The stamp the next open measures news against is
+	// written here and only here — see [homeView.seen] for why not on the way
+	// in, and session's look.go for why a window that dies instead loses
+	// nothing but a repeat of the same news.
+	if a.home.open {
+		session.NoteLook(a.placesRoot(), a.now())
 	}
 	a.home = homeView{}
 	a.touch()
@@ -1672,8 +1748,8 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		}
 		return overlayRow(homeStartGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
 	}
-	label := homeGlyph(line.row, pal.ascii) + " " + homeName(line.row)
-	note := homeNote(line.row, a.homeHeld(line.row), h.world.Read)
+	label := a.homeRowGlyph(line.row) + " " + homeName(line.row)
+	note := homeNote(line.row, a.homeHeld(line.row), a.homeFresh(line.row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -1728,7 +1804,7 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held bool, now time.Time) string {
+func homeNote(row session.SessionRow, held bool, fresh int, now time.Time) string {
 	var parts []string
 	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
 	// rung BELOW the states, and that ordering is a fact about what the states
@@ -1755,6 +1831,12 @@ func homeNote(row session.SessionRow, held bool, now time.Time) string {
 		parts = append(parts, itoa(row.Tasks.Incomplete)+" incomplete")
 	case held:
 		parts = append(parts, homeHeldShort)
+	case fresh > 0:
+		// THE NEWS OUTRANKS THE TALLY AND NOTHING ELSE. `2 landed` is the count
+		// of tasks that finished since home was last closed ([homeView.seen]);
+		// a row that is asking, running, half-done or locked keeps those words,
+		// because each of them is about NOW and this one is about since.
+		parts = append(parts, itoa(fresh)+" "+homeLandedWord)
 	case row.Tasks.Total() > 0:
 		parts = append(parts, itoa(row.Tasks.Total())+plural(" task", row.Tasks.Total()))
 	}
@@ -1762,6 +1844,53 @@ func homeNote(row session.SessionRow, held bool, now time.Time) string {
 		parts = append(parts, age)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// homeRowGlyph is [homeGlyph] with the two facts only the app can add: the
+// frame count that turns a running row's spinner, and the look stamp that earns
+// a resting row the tick (the glyph block above says why each exists).
+func (a *app) homeRowGlyph(row session.SessionRow) string {
+	if row.NeedsPerson() {
+		return homeGlyph(row, a.pal.ascii)
+	}
+	if row.Tasks.Running > 0 && !a.linear {
+		return tokens.Spinner(a.paints / spinnerStep)
+	}
+	if row.Tasks.Running == 0 && row.Tasks.Incomplete == 0 && a.homeFresh(row) > 0 {
+		if a.pal.ascii {
+			return glyphDoneASCII
+		}
+		return glyphDone
+	}
+	return homeGlyph(row, a.pal.ascii)
+}
+
+// homeFresh is how many of a row's tasks landed since home was last closed, and
+// zero whenever that question has no honest answer: no stamp yet (a first look
+// has no origin), or the conversation this window is sitting in, whose landings
+// were watched happening rather than missed.
+func (a *app) homeFresh(row session.SessionRow) int {
+	if a.home.seen.IsZero() || row.Transcript == a.file {
+		return 0
+	}
+	count := 0
+	for _, entry := range row.Tasks.Rows {
+		if a.homeEntryFresh(row, entry) {
+			count++
+		}
+	}
+	return count
+}
+
+// homeEntryFresh is the same question of one task: landed, and landed after the
+// stamp. A live row is never fresh — it has not landed at all — and a landed
+// row with no end stamp compares as never-after, which is the emptiness law
+// applied to a time.
+func (a *app) homeEntryFresh(row session.SessionRow, entry session.TaskIndexEntry) bool {
+	if a.home.seen.IsZero() || row.Transcript == a.file {
+		return false
+	}
+	return !entry.Live() && entry.EndedAt.After(a.home.seen)
 }
 
 // homeGlyph is what a conversation's state looks like: wanting somebody,
@@ -1814,12 +1943,30 @@ func homeName(row session.SessionRow) string {
 //     weight of the focused row across the gutter. That pairing is the bridge:
 //     the eye leaves the highlighted row on the left and arrives at the same
 //     treatment on the right, and the two read as one thing.
-//   - BANDS SEPARATED BY BLANK LINES, in one fixed order — who it is, what it
-//     is doing, what it has done, what was last said, and the dim arithmetic
-//     underneath. Whitespace where a lesser surface would put rules.
+//   - BANDS SEPARATED BY BLANK LINES. Whitespace where a lesser surface would
+//     put rules.
 //   - A FLOOR ON WHAT SURVIVES. A short frame drops bands FROM THE BOTTOM, so
 //     the facts go first and the title never goes at all. A pane that truncated
 //     its own title would be a preview that cannot say what it is previewing.
+//
+// AND THE CARD IS SHAPED BY THE ROW'S STATE, which is the one piece of
+// hierarchy a fixed form could never give it. The card exists to answer "if I
+// press enter here, where do I land — and do I need to?", and different states
+// raise that question differently, so THE STATE'S ANSWER COMES DIRECTLY UNDER
+// THE STATE LINE:
+//
+//   - A conversation with WORK MOVING leads with the work: the family tree with
+//     its spinner turning and its count-up counting, because what it is doing
+//     right now is what you came to see. What was last said trails under it.
+//   - A QUIET conversation leads with where you left off — the last thing said
+//     — and then its LEDGER: what the work it ran came to, each task with its
+//     outcome sentence under it. Nothing is moving, so nothing pretends to be;
+//     the tasks read as a record of what this chat accomplished, which is what
+//     a finished task IS once nobody is watching it run.
+//
+// A conversation stopped on a question is the first shape with the question
+// already at the top: the state band carries `waiting on you` and the words it
+// is stopped on, in ink, before either ordering begins.
 //
 // THERE ARE ALWAYS TWO PANES, and only the LEFT one changes shape with the state
 // of the box. The card follows the focused row through every keystroke of a
@@ -1842,7 +1989,6 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 		return nil
 	}
 	row := line.row
-	now := a.home.world.Read
 
 	// The bands, in order, each already painted. The first is the title and is
 	// never dropped; the rest go from the bottom up as the frame shortens.
@@ -1878,37 +2024,43 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	}
 	bands = append(bands, state)
 
-	// THE WORK, WITH WHAT IT CAME TO. The outcome sentence is the most
-	// informative text this program holds about a finished task and nothing has
-	// ever drawn it; a row that says "done" and nothing else makes a person open
-	// the conversation to find out what "done" meant.
-	var work []string
-	shown := row.Tasks.Rows
-	if len(shown) > homeTaskRows {
-		shown = shown[:homeTaskRows]
-	}
-	for _, entry := range shown {
-		work = append(work, homeTaskLine(entry, row, now, width, pal))
-		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && width > homeOutcomeIndent+16 {
-			work = append(work, strings.Repeat(" ", homeOutcomeIndent)+
-				pal.dim(fit(outcome, width-homeOutcomeIndent)))
-		}
-	}
-	bands = append(bands, work)
-
-	if last := a.homeLast(row); last != "" {
-		var said []string
-		for _, wrapped := range wrap(last, width) {
-			said = append(said, pal.dim(wrapped))
-		}
-		bands = append(bands, said)
+	// THE STATE'S ANSWER COMES FIRST (the block above states the law): work
+	// leads while any of it is moving, where-you-left-off leads once none is.
+	work, drawn := a.homeWorkBand(row, width, pal)
+	said := a.homeSaidBand(row, width, pal)
+	if homeQuietShape(row) {
+		bands = append(bands, said, work)
+	} else {
+		bands = append(bands, work, said)
 	}
 
-	if facts := homeFacts(row, now); facts != "" {
+	if facts := homeFacts(row, drawn, a.home.world.Read); facts != "" {
 		bands = append(bands, []string{pal.dim(fit(facts, width))})
 	}
 
 	return homeBands(bands, room)
+}
+
+// homeQuietShape reports that nothing in a conversation is moving or asking —
+// the state whose card leads with where you left off and reads its tasks as a
+// ledger. Incomplete work does not take a row out of it: half-done is a fact
+// about the past, and the ◌ on the ledger row says it.
+func homeQuietShape(row session.SessionRow) bool {
+	return !row.NeedsPerson() && row.Tasks.Running == 0
+}
+
+// homeSaidBand is the last thing said in the conversation, wrapped and dim, and
+// nothing for a conversation nothing was said in.
+func (a *app) homeSaidBand(row session.SessionRow, width int, pal palette) []string {
+	last := a.homeLast(row)
+	if last == "" {
+		return nil
+	}
+	var said []string
+	for _, wrapped := range wrap(last, width) {
+		said = append(said, pal.dim(wrapped))
+	}
+	return said
 }
 
 // homeOutcomeIndent is where an outcome sentence hangs under the task it
@@ -1962,15 +2114,28 @@ func homeBandLines(bands [][]string) int {
 	return total
 }
 
-// homeFacts is the dim arithmetic under the card: what this conversation has
-// spent, what it weighed, and when it was last touched.
+// homeFacts is the dim arithmetic under the card: the weight of what this
+// conversation left behind, and when it was last touched.
 //
 // EVERY FACT IS OMITTED WHEN IT IS NOT ONE. The emptiness law is at its most
 // literal on a line like this — a footer reading "$0.00 · 0 tok · last active"
 // is three absences dressed as three facts — so each part appears only when
 // there is something to say, and a footer with nothing to say is not drawn.
-func homeFacts(row session.SessionRow, now time.Time) string {
+//
+// THE TASK COUNT APPEARS ONLY WHEN THE CARD COULD NOT SHOW THEM ALL — drawn is
+// how many rows the work band put on screen, and a count that merely restated
+// a visible list would be the absence of a fact wearing a number. The files
+// figure has no such guard because nothing else on the card carries it, and it
+// is the most physical number the index holds: tokens are what the work cost,
+// files are what it DID.
+func homeFacts(row session.SessionRow, drawn int, now time.Time) string {
 	var parts []string
+	if total := row.Tasks.Total(); total > drawn {
+		parts = append(parts, itoa(total)+plural(" task", total))
+	}
+	if files := homeFilesTouched(row); files > 0 {
+		parts = append(parts, "touched "+itoa(files)+plural(" file", files))
+	}
 	if row.Tasks.Spend > 0 {
 		parts = append(parts, "spent "+dollars(row.Tasks.Spend))
 	}
@@ -2017,53 +2182,223 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	return word
 }
 
-// homeTaskLine is one piece of work in the detail column: what it came to, what
-// it was, and when.
-func homeTaskLine(entry session.TaskIndexEntry, row session.SessionRow, now time.Time, width int, pal palette) string {
-	word := homeTaskWord(entry, row)
-	age := sinceAt(entry.EndedAt, now)
+// homeWorkLines is the most screen lines the work band may take. The band is
+// the tallest thing on the card and the only one whose height the DATA decides
+// — a live family expands, a ledger row carries its outcome — so it gets a
+// ceiling of its own on top of [homeTaskRows], or one family of ten children
+// would push the said band and the facts off every card it appeared on.
+const homeWorkLines = 9
+
+// homeWorkBand is the card's account of the work, and it is TWO DIFFERENT
+// OBJECTS wearing one shape (the block above [app.homeDetail] states the law):
+//
+//   - While the conversation is LIVE it is a roster. Families are expanded —
+//     children indented under the root that started them — because a running
+//     family's shape is the single thing a glance cannot get anywhere else;
+//     running rows turn the spinner and count up from when they started.
+//   - Once it is QUIET it is a ledger. Families fold to their root, and each
+//     root carries its outcome sentence underneath: what the work CAME TO,
+//     which is the most informative text this program holds about a finished
+//     task. Rows that landed since home was last closed sit under a dim
+//     "since you last looked" caption and wear their tick in accent.
+//
+// The state words (`running`, `done`, `incomplete`) are gone from the rows;
+// the rail's glyph vocabulary carries the same facts in one cell each
+// ([app.homeTaskGlyph]), which is what lets a row spend its width on the label
+// and the ledger spend its second line on the outcome. drawn is how many index
+// rows made it on screen, which is what the facts footer compares the total
+// against ([homeFacts]).
+func (a *app) homeWorkBand(row session.SessionRow, width int, pal palette) (band []string, drawn int) {
+	rows := row.Tasks.Rows
+	if len(rows) == 0 {
+		return nil, 0
+	}
+	ledger := homeQuietShape(row)
+
+	// The family shape, resolved once: roots in the index's own order (newest
+	// first), children gathered under the root that started them. A row whose
+	// parent is not in this session's share of the index is treated as a root,
+	// because an orphan indented under nothing would be indented under the row
+	// that happened to be drawn above it.
+	present := make(map[string]bool, len(rows))
+	for _, entry := range rows {
+		present[entry.ID] = true
+	}
+	children := map[string][]session.TaskIndexEntry{}
+	var roots []session.TaskIndexEntry
+	for _, entry := range rows {
+		parent := strings.TrimSpace(entry.Parent)
+		if parent != "" && parent != entry.ID && present[parent] {
+			children[parent] = append(children[parent], entry)
+			continue
+		}
+		roots = append(roots, entry)
+	}
+
+	// The caption goes over the whole band rather than over each fresh row: the
+	// rows say WHAT landed, the caption says why some of their ticks are lit.
+	if ledger && a.homeFresh(row) > 0 {
+		band = append(band, pal.dim(fit(homeFreshWord, width)))
+	}
+	shown := 0
+	for _, root := range roots {
+		if shown >= homeTaskRows || len(band) >= homeWorkLines {
+			break
+		}
+		band = append(band, a.homeTaskLine(root, row, 0, width, pal))
+		drawn++
+		shown++
+		kids := children[root.ID]
+		// A LIVE FAMILY IS EXPANDED AND A LANDED ONE IS FOLDED. While any of it
+		// runs, the children are the answer to "what is it doing"; once it has
+		// landed, the root's outcome answers for all of them and the children
+		// are the conversation's to retell.
+		if homeFamilyRuns(row, root, kids) {
+			for _, kid := range kids {
+				if len(band) >= homeWorkLines {
+					break
+				}
+				band = append(band, a.homeTaskLine(kid, row, homeOutcomeIndent, width, pal))
+				drawn++
+			}
+			continue
+		}
+		if !ledger {
+			continue
+		}
+		if outcome := strings.TrimSpace(root.Outcome); outcome != "" && width > homeOutcomeIndent+16 && len(band) < homeWorkLines {
+			band = append(band, strings.Repeat(" ", homeOutcomeIndent)+
+				pal.dim(fit(outcome, width-homeOutcomeIndent)))
+		}
+	}
+	return band, drawn
+}
+
+// homeFamilyRuns reports whether any node of one family is work that is
+// happening — the root or any child, judged by the one liveness rule
+// ([session.SessionRow.Runs]).
+func homeFamilyRuns(row session.SessionRow, root session.TaskIndexEntry, kids []session.TaskIndexEntry) bool {
+	if row.Runs(root) {
+		return true
+	}
+	for _, kid := range kids {
+		if row.Runs(kid) {
+			return true
+		}
+	}
+	return false
+}
+
+// homeTaskLine is one piece of work on the card: its state in one cell, the
+// words it was given, and — on the right — how long it has been running or how
+// long ago it landed.
+func (a *app) homeTaskLine(entry session.TaskIndexEntry, row session.SessionRow, indent, width int, pal palette) string {
+	glyph := a.homeTaskGlyph(entry, row)
+	tail := a.homeTaskTail(entry, row)
 	label := entry.Label
 	if label == "" {
 		label = entry.Title
 	}
-	room := width - ansi.StringWidth(word) - 1
-	if age != "" {
-		room -= ansi.StringWidth(age) + 1
+	lead := strings.Repeat(" ", indent)
+	room := width - indent - 2
+	if tail != "" {
+		room -= ansi.StringWidth(tail) + 1
 	}
 	if room < 8 {
-		return pal.dim(fit(word+" "+label, width))
+		return lead + glyph + " " + pal.muted(fit(label, width-indent-2))
 	}
 	label = fit(label, room)
-	line := pal.dim(word) + " " + pal.muted(label)
-	if age != "" {
-		gap := width - ansi.StringWidth(word) - 1 - ansi.StringWidth(label) - ansi.StringWidth(age)
+	line := lead + glyph + " " + pal.muted(label)
+	if tail != "" {
+		gap := width - indent - 2 - ansi.StringWidth(label) - ansi.StringWidth(tail)
 		if gap < 1 {
 			gap = 1
 		}
-		line += strings.Repeat(" ", gap) + pal.dim(age)
+		line += strings.Repeat(" ", gap) + pal.dim(tail)
 	}
 	return line
 }
 
-// homeTaskWord is what one row of the index is called on screen, and it says
-// `running` only where the count in [session.TaskRollup] said so — the two are
-// the same judgement and it is made once, in session's world.go, not twice.
+// homeTaskGlyph is a task's state in one painted cell, and it is the rail's own
+// vocabulary ([app.taskStateMark], task.go) asked home's liveness question: a
+// row spins only when [session.SessionRow.Runs] vouches that the session still
+// has the node out, exactly as the counts and the old state words did. So:
 //
-// A task takes its row when it starts and the index is append-only, so a
-// machine that lost power leaves rows saying `running` for as long as the file
-// exists. What settles it is the conversation itself: a live one names the nodes
-// it has out, and a row it does not name is work that was under way when the
-// window went — `incomplete`, the same word the interrupted-task outcome uses,
-// and not a claim that something is happening.
+//	⠋ (accent)  running this instant — the spinner, home's one moving part
+//	◌ (dim)     queued, or left mid-way by a window that went — nothing turns
+//	✗ (bad)     failed;  ? (warn)  finished and needs your look
+//	✓ (muted)   landed — and ACCENT when it landed since you last looked
 //
-// THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
-// (taskview.go), which the task page's own record rows and the record card both
-// answer through — one vocabulary, so a task called `needs your look` on this
-// screen is not called something else on the next one. What belongs to home is
-// the LIVENESS QUESTION: this screen judges a row against the conversation that
-// wrote it, and the task page judges it against the windows that are open.
-func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
-	return taskStateWord(entry, row.Runs(entry))
+// The one departure from the rail: a queued node and an incomplete one share
+// the empty circle here where the rail never shows incomplete at all (its rows
+// vanish when work settles). Both are "started and not turning", the left
+// column already makes the same choice ([homeStuckGlyph]), and a third mark
+// would be a state a person has to be taught.
+func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
+	pal := a.pal
+	if row.Runs(entry) && entry.Status == string(session.TaskRunning) {
+		if a.linear {
+			return pal.accent(glyphRunASCII)
+		}
+		return pal.accent(tokens.Spinner(a.paints / spinnerStep))
+	}
+	switch entry.Status {
+	case string(session.TaskRunning), string(session.TaskQueued):
+		if pal.ascii {
+			return pal.dim(glyphQueuedASCII)
+		}
+		return pal.dim(glyphQueued)
+	case string(session.TaskFailed):
+		return pal.bad(pal.badGlyph())
+	case string(session.TaskUnverified):
+		return pal.warn(glyphUnverified)
+	}
+	mark := glyphDone
+	if pal.ascii {
+		mark = glyphDoneASCII
+	}
+	if a.homeEntryFresh(row, entry) {
+		return pal.accent(mark)
+	}
+	return pal.muted(mark)
+}
+
+// homeTaskTail is the right edge of a task's row: a count-up while it runs,
+// taken from when the session's presence says the node started, and the age it
+// landed at otherwise. A running node whose start nobody recorded shows nothing
+// — the emptiness law applied to a clock.
+func (a *app) homeTaskTail(entry session.TaskIndexEntry, row session.SessionRow) string {
+	if row.Runs(entry) && entry.Status == string(session.TaskRunning) {
+		if started := homeStarted(row, entry.ID); !started.IsZero() {
+			return countUpWord(a.now().Sub(started))
+		}
+		return ""
+	}
+	return sinceAt(entry.EndedAt, a.home.world.Read)
+}
+
+// homeStarted is when one running node began, from the presence file the
+// session itself refreshes — the same file whose naming of the node is what let
+// the row spin at all.
+func homeStarted(row session.SessionRow, id string) time.Time {
+	id = strings.TrimSpace(id)
+	for _, out := range row.Presence.RunningTasks {
+		if strings.TrimSpace(out.ID) == id {
+			return out.StartedAt
+		}
+	}
+	return time.Time{}
+}
+
+// homeFilesTouched is how many files this conversation's work wrote, summed
+// across its rows. The list of which files is the transcript's; the count is
+// the card's one physical fact about the work.
+func homeFilesTouched(row session.SessionRow) int {
+	total := 0
+	for _, entry := range row.Tasks.Rows {
+		total += entry.FilesChanged
+	}
+	return total
 }
 
 // homeLast is the last thing said in a conversation, read once per conversation

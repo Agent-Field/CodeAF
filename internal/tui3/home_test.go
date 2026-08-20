@@ -308,10 +308,17 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 		t.Fatalf("rolled up %d running / %d incomplete, want 1 / 0", row.Tasks.Running, row.Tasks.Incomplete)
 	}
 	text := homeText(a)
-	for _, want := range []string{"1 running", "running Port the thing", "open in another window · working"} {
+	// The card says `running` with the spinner cell rather than the word — the
+	// rail's vocabulary, turned only because the session vouched for the node
+	// ([app.homeTaskGlyph]) — so the words asserted here are the row's count and
+	// the task's label beside that cell.
+	for _, want := range []string{"1 running", "Port the thing", "open in another window · working"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home does not say %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "incomplete") {
+		t.Fatalf("home called vouched-for work incomplete:\n%s", text)
 	}
 }
 
