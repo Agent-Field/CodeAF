@@ -40,21 +40,43 @@ func hostLab(t *testing.T) (*app, *fakeAgent) {
 
 // ── 1. THE CONNECTION IS THE PLACE ──────────────────────────────────────────
 
-func TestTheLegendNamesTheMachineInFrontOfThePath(t *testing.T) {
+func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 	a, _ := hostLab(t)
 	// The path is abbreviated exactly as a local one is — leading segments to
 	// their initials — and the machine rides in front of the result.
-	if got := a.legendPath(0); got != "devbox:/s/c/app" {
-		t.Fatalf("legendPath = %q", got)
+	if got := a.placePath(0); got != "devbox:/s/c/app" {
+		t.Fatalf("placePath = %q", got)
 	}
 	// The abbreviation eats the PATH and never the machine: which machine is the
 	// half a person cannot reconstruct from anything else on the screen.
-	if got := a.legendPath(2); got != "devbox:app" {
-		t.Fatalf("legendPath at the hardest strength = %q", got)
+	if got := a.placePath(2); got != "devbox:app" {
+		t.Fatalf("placePath at the hardest strength = %q", got)
 	}
+	// And the sheet's own place row is where a person now reads it, since the
+	// legend gave that end of itself to the conversation's name.
+	if got := deckValue(a.deckItems(), "place"); got != "devbox:/s/c/app" {
+		t.Fatalf("the sheet's place row = %q", got)
+	}
+}
+
+// TestTheLegendNamesTheMachineAsItsOwnSegment pins how a connection reaches the
+// border under the input now that the path has left it: the machine leads, and
+// it leads with the legend's own separator rather than with the path's colon.
+func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
+	a, _ := hostLab(t)
+	a.title = "porting the parser"
 	line := plain(a.legend(a.width))
-	if !strings.Contains(line, "devbox:/s/c/app") {
-		t.Fatalf("the legend line does not carry the place: %q", line)
+	if !strings.Contains(line, "devbox · porting the parser") {
+		t.Fatalf("the legend does not carry the machine and the name: %q", line)
+	}
+	if strings.Contains(line, "/s/c/app") {
+		t.Fatalf("the legend is still carrying the path: %q", line)
+	}
+	// Unnamed, the machine is still the whole of what the border can say — the
+	// branch probe is off over a connection, so there is nothing else true.
+	a.title = ""
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
+		t.Fatalf("an unnamed remote legend = %q", got)
 	}
 }
 
@@ -78,14 +100,15 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 	if a.hosted() {
 		t.Fatal("a local session thinks it is hosted")
 	}
-	if got := a.legendPath(0); got != "~/s/app" {
-		t.Fatalf("legendPath = %q — a local session must render exactly as it always did", got)
+	if got := a.placePath(0); got != "~/s/app" {
+		t.Fatalf("placePath = %q — a local session must render exactly as it always did", got)
 	}
 	if a.place != "app" {
 		t.Fatalf("place = %q", a.place)
 	}
-	if strings.Contains(plain(a.legend(a.width)), ":") {
-		t.Fatal("a local legend grew a colon")
+	a.title = "porting the parser"
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "porting the parser" {
+		t.Fatalf("a local legend = %q — no machine belongs on it", got)
 	}
 }
 
@@ -111,9 +134,22 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 	if cmd := a.probeGit(); cmd != nil {
 		t.Fatal("probeGit produced work over --host")
 	}
-	if got := a.legendLeft(a.width, 0); strings.Contains(got, "·") {
+	a.title = "porting the parser"
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · porting the parser" {
 		t.Fatalf("the legend grew a branch: %q", got)
 	}
+}
+
+// deckValue is one row of the status sheet, by its label — the sheet is where
+// the workspace path went when the legend gave its left end to the
+// conversation's name.
+func deckValue(items []deckItem, label string) string {
+	for _, item := range items {
+		if item.label == label {
+			return item.value
+		}
+	}
+	return ""
 }
 
 // ── 3. WHAT CANNOT WORK SAYS SO ─────────────────────────────────────────────

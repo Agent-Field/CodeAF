@@ -372,7 +372,8 @@ func madeNote(row deliverable, home string, width, label int) string {
 		return filesGoneWord
 	}
 	when := ago(row.at)
-	// The path is abbreviated the way the legend's is (render.go): home to "~",
+	// The path is abbreviated the way the status sheet's place is (render.go's
+	// [shortPath]): home to "~",
 	// every parent to its initial, and the file's own name whole — which is the
 	// only part of it that answers "which one is this".
 	where := shortPath(row.path, home, 0)

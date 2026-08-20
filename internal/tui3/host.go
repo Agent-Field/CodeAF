@@ -10,10 +10,15 @@ import "strings"
 // needs to know. Two things do, and they are the two halves of this file.
 //
 // THE CONNECTION IS SHOWN AS THE PLACE AND NOWHERE ELSE. The workspace is
-// written `devbox:/s/c/app` in the legend under the input, `devbox:app` in the
+// written `devbox:/s/c/app` on the status sheet's place row, `devbox:app` in the
 // status line's place segment, and `devbox:/srv/code/app` in /status — the same
 // three renderings a local session already has, each with the machine in front
-// of it ([app.legendPath], [app.place], statusnote.go). That is the whole
+// of it ([app.placePath], [app.place], statusnote.go). The legend under the
+// input says the machine too, and says it as a segment of its own —
+// `devbox · porting the parser` — because that end of the border stopped
+// carrying a path and started carrying the conversation's name, and `devbox:`
+// in front of a sentence of English is scp syntax pointed at something nobody
+// can copy (render.go's [app.legendLeft]). That is the whole
 // indicator, and it is one string rather than a segment. It sits
 // where a person already looks to answer "where am I", it costs no new rows and
 // no new segments, and it disappears completely on a local session — which is

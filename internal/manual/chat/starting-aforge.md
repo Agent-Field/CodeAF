@@ -63,8 +63,10 @@ It depends on where you started it, and there are exactly two cases.
 
 **You started it inside a project.** Aforge borrows that directory. Its tools read
 and write your repository, exactly where you are standing, and the status line
-and the legend show that directory's name — `app`, `my-site` — so you can always
-tell which project this conversation is about.
+shows that directory's name — `app`, `my-site` — until the conversation names
+itself, so you can always tell which project this conversation is about. The full
+path is on `/status` and on the status sheet, under `place`, with the git branch
+beside it.
 
 **You started it anywhere else** — your home directory, a temp folder, a
 launcher with no directory in mind. Then the conversation gets a workspace of

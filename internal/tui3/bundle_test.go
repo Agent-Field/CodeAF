@@ -1685,16 +1685,23 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 
 // ── the legend ──────────────────────────────────────────────────────────────
 
-// THE BORDER ABOVE THE INPUT IS A FIELDSET LEGEND: where you are on the left,
-// what the box answers to on the right, and rule between them.
-func TestTheLegendCarriesThePlaceAndTheInputsAffordances(t *testing.T) {
+// THE BORDER ABOVE THE INPUT IS A FIELDSET LEGEND: which conversation this is on
+// the left, what the box answers to on the right, and rule between them.
+func TestTheLegendCarriesTheConversationAndTheInputsAffordances(t *testing.T) {
 	a, _, _ := hudApp(t)
+	a.title = "porting the parser"
 
 	line := plain(a.legend(100))
-	for _, want := range []string{"~/s/aforge-v2", "chat-v3-task*", microcopy} {
+	for _, want := range []string{"porting the parser", "chat-v3-task*", microcopy} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the legend is missing %q:\n%q", want, line)
 		}
+	}
+	// THE PATH IS NOT ON IT ANY MORE. It is a fact a person already has — the
+	// shell prompt behind this pane says it — and the slot went to the one fact
+	// nothing else on the frame carries.
+	if strings.Contains(line, "aforge-v2") {
+		t.Fatalf("the legend is still carrying the workspace path: %q", line)
 	}
 	if !strings.HasPrefix(line, "─ ") || !strings.HasSuffix(line, " ─") {
 		t.Fatalf("the label is not sitting inside a border: %q", line)
@@ -1710,21 +1717,79 @@ func TestTheLegendCarriesThePlaceAndTheInputsAffordances(t *testing.T) {
 	}
 
 	// No repository, no branch — and no empty separator where one would have
-	// gone. The path is what is left, which is the fact that never fails.
+	// gone. The name is what is left.
 	a.branch = ""
 	line = plain(a.legend(100))
 	if label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─"); strings.Contains(label, "·") {
 		t.Fatalf("a workspace outside a repository still draws a separator: %q", line)
 	}
-	if !strings.Contains(line, "~/s/aforge-v2") {
-		t.Fatalf("the path went with the branch: %q", line)
+	if !strings.Contains(line, "porting the parser") {
+		t.Fatalf("the name went with the branch: %q", line)
 	}
 }
 
-// THE NARROW LADDER: the microcopy goes before the branch, and the branch goes
-// before the path is touched.
+// THE EMPTINESS LAW ON THE BORDER: a session names itself one turn in, and until
+// it has, the slot where the name goes is EMPTY — never "untitled", never the
+// workspace standing in for it.
+func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.title = ""
+
+	line := plain(a.legend(100))
+	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
+	if label != "chat-v3-task*" {
+		t.Fatalf("an unnamed session's legend label = %q, want the branch alone", label)
+	}
+	for _, banned := range []string{"untitled", "aforge-v2", "·"} {
+		if strings.Contains(label, banned) {
+			t.Fatalf("the legend invented %q for a session with no name: %q", banned, line)
+		}
+	}
+
+	// And with nothing true to say at either end, the border is the plain rule it
+	// always was — with the input's own affordance still on it, because a person
+	// who has not typed anything yet is exactly who "/ commands" is for.
+	a.branch = ""
+	line = plain(a.legend(100))
+	if !strings.Contains(line, microcopy) {
+		t.Fatalf("the hint slot went with the label: %q", line)
+	}
+	if strings.Contains(line, "─ ─") || strings.Contains(line, "  ") {
+		t.Fatalf("the empty label left a gap in the rule: %q", line)
+	}
+	if ansi.StringWidth(line) != 100 {
+		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
+	}
+}
+
+// A NAME IS THE ONE THING ON THIS LINE THAT CAN BE EIGHTY CELLS LONG (session's
+// titleLimit), so it is what gives cells back — cut with an ellipsis, while the
+// branch and the hint slot keep theirs.
+func TestALongNameIsCutBeforeTheBranchOrTheHintsAre(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.title = "porting the parser off the old tokenizer and onto the new one at last"
+
+	line := plain(a.legend(100))
+	if !strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, microcopy) {
+		t.Fatalf("the branch or the hints paid for the name: %q", line)
+	}
+	if !strings.Contains(line, glyphMore) {
+		t.Fatalf("the name was not cut: %q", line)
+	}
+	if !strings.HasPrefix(line, "─ porting the parser") {
+		t.Fatalf("the cut ate the head of the name: %q", line)
+	}
+	if ansi.StringWidth(line) != 100 {
+		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
+	}
+}
+
+// THE NARROW LADDER: the microcopy goes before the branch, and below the tight
+// floor the branch goes too — the name is the last fact standing, because it is
+// the only one a person cannot read off the pane behind this one.
 func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	a, _, _ := hudApp(t)
+	a.title = "porting the parser"
 	// The branch is long enough that the two cannot share an eighty-column frame.
 	// The microcopy is one affordance now rather than two (render.go), so the rung
 	// of the ladder where the branch stands alone is reached by a longer name
@@ -1737,7 +1802,7 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
 		t.Fatalf("a tight frame kept its furniture: %q", tight)
 	}
-	if !strings.Contains(tight, "~/s/aforge-v2") {
+	if !strings.Contains(tight, "porting the parser") {
 		t.Fatalf("the tight legend lost the one fact it is for: %q", tight)
 	}
 
@@ -1748,6 +1813,9 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	}
 	if !strings.Contains(middle, branch) {
 		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
+	}
+	if !strings.Contains(middle, "porting the parser") {
+		t.Fatalf("the name was dropped while the hints could still have paid: %q", middle)
 	}
 
 	// And a frame with no room for a label at all is the rule it always was.
@@ -2136,7 +2204,7 @@ func TestTelemetryFadesWithAgeSoStaleNumbersStopCompeting(t *testing.T) {
 // ── attention routing ───────────────────────────────────────────────────────
 
 // THE HUE BUDGET FOLLOWS THE DECISION. While a person is being asked something,
-// the state cluster and the legend's path are violet — and nothing else on the
+// the state cluster and the legend's label are violet — and nothing else on the
 // HUD is allowed to compete, the age fade included.
 func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	agent, a := wired([]session.Event{
@@ -2146,6 +2214,7 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	_ = agent
 	a.width = 200
 	a.tilde, a.workspace = "/home/dev", "/home/dev/src/aforge-v2"
+	a.title = "cleaning the build directory"
 	a.cost = 0.10
 	typeLine(t, a, "clean it")
 	a.cost = 0.20 // a figure that moved THIS INSTANT, and still may not glow
@@ -2157,8 +2226,8 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	if !strings.Contains(a.legend(120), a.pal.ask("~/s/aforge-v2")) {
-		t.Fatalf("the legend's path did not answer the question:\n%q", a.legend(120))
+	if !strings.Contains(a.legend(120), a.pal.ask("cleaning the build directory")) {
+		t.Fatalf("the legend's label did not answer the question:\n%q", a.legend(120))
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner
@@ -2215,8 +2284,8 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// telemetry cannot both fit with a barrier between them — and everything
 		// else is still on.
 		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend keeps the path alone and the meter
-		// keeps the number alone.
+		// Below the tight floor the legend keeps the conversation's name alone and
+		// the meter keeps the number alone.
 		{width: 60, delta: false, sp: false, branch: false, mic: false, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
@@ -2247,8 +2316,13 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		if has := strings.Contains(legend, microcopy); has != tc.mic {
 			t.Fatalf("at %d columns the microcopy is %v: %q", tc.width, has, legend)
 		}
-		if !strings.Contains(legend, "aforge-v2") {
-			t.Fatalf("at %d columns the legend lost the place: %q", tc.width, legend)
+		// The name is the fact this line exists for, and it is on it at every
+		// width — the path is not on it at any width any more.
+		if !strings.Contains(legend, "the bottom hud wave") {
+			t.Fatalf("at %d columns the legend lost the conversation: %q", tc.width, legend)
+		}
+		if strings.Contains(legend, "aforge-v2") {
+			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
 		}
 	}
 }
