@@ -210,6 +210,28 @@ type orchSpot struct {
 	answer     string
 }
 
+// key is this spot's identity for the pointer, and it is a STRING because an
+// orchestrate node is named "n3" rather than numbered (taskstrip.go says the same
+// about the parent seam). The pointer is held by key rather than by row for the
+// reason the roster's is held by id: this page is re-laid every poll, so a hover
+// stored as "row nine" would follow the redraw instead of following the chip
+// (hover.go's [hoverOrch]).
+//
+// The kind is spelled into it because one node's page carries several spots ABOUT
+// THAT NODE — its own chip, the run under it, its transcript — and three targets
+// sharing a key would light together on a press that opens one of them.
+func (s orchSpot) key() string {
+	switch {
+	case s.answer != "":
+		return "answer:" + s.answer
+	case s.run != "":
+		return "run:" + s.run
+	case s.transcript != "":
+		return "transcript:" + s.transcript
+	}
+	return "node:" + s.node
+}
+
 // orchPage is a page under construction: the rows, and what each row answers
 // to. The two are appended together so that a row and its targets cannot be
 // built by two different passes over the same list.
@@ -1066,31 +1088,55 @@ func (a *app) orchAscend() {
 // falls through untouched — the empty parts of this page are still the way out
 // of the room (app.go's [app.press]).
 func (a *app) orchPress(x, y int) bool {
+	spot, ok := a.orchSpotAt(x, y)
+	if !ok {
+		return false
+	}
+	switch {
+	case spot.answer != "":
+		a.orchAnswer(spot.answer)
+	case spot.run != "":
+		a.orchDescend(spot.run)
+	case spot.transcript != "":
+		a.orchOpenTranscript(spot.transcript)
+	case spot.node != "":
+		a.orchCardOpen(spot.node)
+	}
+	return true
+}
+
+// orchSpotAt is that hit-test on its own: which target of this page the pointer
+// is over. It is one function so the press and the pointer cannot disagree about
+// which chip a cell belongs to — the set that lights is the set the press acts on
+// (hover.go).
+func (a *app) orchSpotAt(x, y int) (orchSpot, bool) {
 	run := a.orchOf()
 	if run == nil {
-		return false
+		return orchSpot{}, false
 	}
 	at, ok := a.roomRowAt(y)
 	if !ok || at >= len(run.spots) {
-		return false
+		return orchSpot{}, false
 	}
 	for _, spot := range run.spots[at] {
-		if !spot.span.holds(x) {
-			continue
+		if spot.span.holds(x) {
+			return spot, true
 		}
-		switch {
-		case spot.answer != "":
-			a.orchAnswer(spot.answer)
-		case spot.run != "":
-			a.orchDescend(spot.run)
-		case spot.transcript != "":
-			a.orchOpenTranscript(spot.transcript)
-		case spot.node != "":
-			a.orchCardOpen(spot.node)
-		}
-		return true
 	}
-	return false
+	return orchSpot{}, false
+}
+
+// orchHoverAt is what the pointer is over on a run's page, by key, and false
+// where it is over nothing this page answers to.
+func (a *app) orchHoverAt(x, y int) (string, bool) {
+	if !a.orchOpen() {
+		return "", false
+	}
+	spot, ok := a.orchSpotAt(x, y)
+	if !ok {
+		return "", false
+	}
+	return spot.key(), true
 }
 
 // roomRowAt resolves a screen row to an index into the room's OWN row list, or
@@ -1147,6 +1193,7 @@ func (a *app) orchRows(width int) []row {
 	if run.transcript != "" {
 		a.orchTranscriptRows(page, width)
 		run.spots = page.spots
+		a.orchHoverPass(page, width)
 		return page.rows
 	}
 	a.orchPlannerRow(page, width)
@@ -1159,7 +1206,45 @@ func (a *app) orchRows(width int) []row {
 	a.orchEchoRows(page, width)
 	a.orchGateRows(page, width)
 	run.spots = page.spots
+	a.orchHoverPass(page, width)
 	return page.rows
+}
+
+// orchHoverPass lights whatever the pointer is over on this page, and it is the
+// last thing done to it — the same order the conversation's own pass keeps
+// (render.go's [app.hoverPass]).
+//
+// IT ANSWERS FOR THE FULL-WIDTH TARGETS AND NOTHING ELSE. A link in a card, a
+// chip drawn as a stack of rows, an answer on the gate: all of them are spans
+// from the first cell to the last, so what lights is the row and the pass can
+// paint it after the fact. The chips of a WIDE layer are narrower than the line
+// they share — several of them sit on it — so those light themselves where they
+// are painted, on exactly their own cells ([app.orchLayerFlow]). A pass that
+// banded their row would say "press here" about three nodes the pointer is not
+// on, which is the law this file's hover is written under (hover.go).
+//
+// One key can cover three consecutive rows and all three light, which is right:
+// a chip that a phone draws as a stack of rows is one object, and one press
+// opens it from any of them ([app.orchLayerList]).
+func (a *app) orchHoverPass(page *orchPage, width int) {
+	if a.linear || a.hot.kind != hoverOrch {
+		return
+	}
+	for i, spots := range page.spots {
+		for _, spot := range spots {
+			if !a.hoveringOrch(spot.key()) || spot.span.from != 0 || spot.span.to < width {
+				continue
+			}
+			text := page.rows[i].text
+			if text == "" {
+				// A phone's third row is empty and still part of the target, so it is
+				// handed the one cell [palette.background]'s padding grows out from.
+				text = " "
+			}
+			page.rows[i].text = a.hoverRow(text, width)
+			break
+		}
+	}
 }
 
 // orchGraphRows draws the layers.
@@ -1285,8 +1370,18 @@ func (a *app) orchLayerFlow(page *orchPage, layer, next []orchestrate.NodeStatus
 			line += orchChipGap
 			at += len(orchChipGap)
 		}
-		spots = append(spots, orchSpot{span: hudSpan{from: at, to: at + wide}, node: node.ID})
-		line += a.orchPaintChip(node, word, width-at)
+		spot := orchSpot{span: hudSpan{from: at, to: at + wide}, node: node.ID}
+		spots = append(spots, spot)
+		chip := a.orchPaintChip(node, word, width-at)
+		// THE CHIP LIGHTS ITSELF, because it is narrower than the line it is on:
+		// several nodes share this row, so a band across it would offer every one of
+		// them under a pointer that is on one ([app.orchHoverPass] states the split).
+		// The band goes round exactly the chip's cells, which is what
+		// [palette.hover] does when it is given no width to pad to.
+		if a.hoveringOrch(spot.key()) {
+			chip = a.pal.hover(chip, 0)
+		}
+		line += chip
 		at += wide
 	}
 	flush()

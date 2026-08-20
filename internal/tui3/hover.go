@@ -11,13 +11,24 @@ package tui3
 // that says nothing about what can be pressed.
 //
 // What reacts: a tool row and its expansion, the "N earlier tool calls" fold,
-// the "… N more lines" foot, a thinking block, the consent choices, the model's
-// name at the foot of the frame, and the rows of whichever list is open. That
-// set is not a taste — it is exactly the
-// set [app.press] and the overlays already act on, read from the same row map
+// the "… N more lines" foot, a thinking block, a sign-in still waiting, a task
+// reference inside somebody's paragraph, the consent choices, the two answers on
+// the stop card, a message parked above the box, the chips on the task strip and
+// on the tray, the room's pinned header and the ✕ riding it, the targets on an
+// adaptive run's page, the model's name at the foot of the frame, and the rows of
+// whichever list, page or card is open. That set is not a taste — it is exactly
+// the set [app.press] and the overlays already act on, read from the same row map
 // the click hit-testing reads (render.go's row.hit, and view.go's chrome
 // marks). Two definitions of "interactive" is how a surface ends up glowing at
 // a row that does nothing.
+//
+// AND IT REACTS AT THE SIZE OF THE THING, not at the size of the row it is drawn
+// on. Half of what is listed above shares its line with something else — four
+// chips on a strip, two answers on a card, three references in one sentence — so
+// a background band across the row would be the surface promising a door at every
+// cell of it. Whatever is under the pointer lights; its neighbours do not. Where
+// a target really is the whole row (a parked message, a deck row, the header) the
+// whole row lights, and that is the same rule and not an exception to it.
 //
 // The tracking is deliberately cheap. A pointer crossing the window sends one
 // motion message per cell, and each one asks where it landed and repaints only
@@ -80,9 +91,9 @@ const (
 	// wherever the nearest point at or above the pointer happens to be.
 	hoverRewind
 	// hoverJump is the jump-to-latest chip floating in the frame's breathing gap
-	// (jumpchip.go). It is one of the two hover targets on this surface that are
-	// narrower than the row they are drawn on, which is why [app.hoverTarget] is
-	// asked the COLUMN as well as the row.
+	// (jumpchip.go). It was the FIRST hover target on this surface narrower than
+	// the row it is drawn on, which is why [app.hoverTarget] is asked the COLUMN as
+	// well as the row; most of the kinds under it are narrow now too.
 	hoverJump
 	// hoverRail is a node row of the roster, and the identity it carries is the
 	// NODE's (task.go). Every row of that column is a door into a node's room, so
@@ -124,9 +135,10 @@ const (
 	hoverTaskSheet
 	// hoverStatusModel is the MODEL SEGMENT of the status row — the name of what
 	// is answering, at the foot of the frame, which is a control as well as a
-	// label (render.go's [app.identityParts]). It is the third target on this
-	// surface narrower than the row it is drawn on, and it is asked about the
-	// column for the jump chip's reason.
+	// label (render.go's [app.identityParts]). It is asked about the column for the
+	// jump chip's reason: the telemetry beside it is figures rather than controls,
+	// and a name that brightened from forty cells away would be claiming the whole
+	// row is a door.
 	//
 	// IT COVERS BOTH SUBJECTS AND NEEDS NO SECOND KIND. Out in the conversation
 	// the segment is the session's model and a press opens the picker; inside a
@@ -137,11 +149,67 @@ const (
 	hoverStatusModel
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
-	// tables. It is the other narrow target, and it is a kind of its own rather
+	// tables. It is a kind of its own rather
 	// than a hoverEntry because a hoverEntry brightens the WHOLE block — which is
 	// right for a tool call and wrong for a paragraph, where the pressable thing
 	// is three words at the end of a table.
 	hoverTable
+	// hoverStrip is one CHIP of the task strip, and the identity it carries is
+	// the NODE's for [hoverRail]'s reason (taskstrip.go): the row re-packs itself
+	// as work starts and lands, so a hover stored as "the second chip" would
+	// follow the packing instead of following the work.
+	hoverStrip
+	// hoverStripHarness is the harness chip that leads that row, whose door is the
+	// panel rather than a room (harnesspanel.go). It belongs to no node, which is
+	// why it cannot be a [hoverStrip] carrying an id.
+	hoverStripHarness
+	// hoverStripMore is the `+N` at the row's end, whose door is the whole roster
+	// (task.go's [app.railTake]). It is a third kind for the reason the second one
+	// is: three things share that line and no two of them go to the same place.
+	hoverStripMore
+	// hoverRoomBack is the room's pinned header, which is the way out for the
+	// pointer (room.go's [app.roomBackPress]). The whole row lights, because the
+	// whole row is what the press acts on.
+	hoverRoomBack
+	// hoverRoomStop is the ✕ riding the right end of that header (stop.go's
+	// [app.stopMarkPress]). It is a kind of its own and not part of the row above
+	// it because ending work and leaving the page you were watching it on are
+	// opposite gestures — so the two never light together, and the expensive one
+	// wins the cells it is drawn on.
+	hoverRoomStop
+	// hoverStopAnswer is one of the stop card's two answers; index is which
+	// (stop.go). Two presses share that row, so it is a chip and not a row for
+	// [hoverSettle]'s reason.
+	hoverStopAnswer
+	// hoverParked is one MESSAGE waiting for the answer to finish; index is its
+	// place in the queue (park.go). Every row that message wrapped over lights,
+	// because the press pulls the whole message back into the box — and the dim
+	// line under the block belongs to no message and lights not at all.
+	hoverParked
+	// hoverChip is one thing on the tray above the box; index is the picture it
+	// names, or [trayHarnessChip] for the picked harness's own cell (attach.go,
+	// harnesspick.go). A press takes that one thing off, so that one thing lights.
+	hoverChip
+	// hoverOrch is one target on an adaptive run's page, held by KEY rather than
+	// by row (roomorch.go's [orchSpot.key]): the page is re-laid every poll, so a
+	// hover stored as a row of it would follow the redraw instead of the chip. One
+	// key can cover three rows on a phone, which is right — a chip drawn as a
+	// stack of rows is one object.
+	hoverOrch
+	// hoverTaskCard is one region of the task record card; index is
+	// [taskCardHead] or [taskCardFoot] (taskrecord.go). The card's edges are the
+	// way back and its body is read, so the edges are exactly what lights.
+	hoverTaskCard
+	// hoverLink is one inline task reference inside a block of the model's prose;
+	// entry is the block and index is which of its references (markdown.go's
+	// [linkifyTasks]). It is the third narrow target in the transcript and the
+	// most crowded one — a paragraph can name four nodes — so the words under the
+	// pointer brighten and the sentence around them does not.
+	hoverLink
+	// hoverDeck is one of the phone status deck's two rows; index is which
+	// (statusdeck.go). The whole row lights because [app.deckPress] takes every
+	// press that lands on either of them.
+	hoverDeck
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -157,6 +225,11 @@ type hoverAt struct {
 	// column re-sorts its families as work moves, and a hover stored as a row of
 	// it would follow the sort instead of following the work.
 	id uint64
+	// key is the same bargain for a target an adaptive run names in ITS OWN
+	// alphabet: an orchestrate node is "n3" and not a number (roomorch.go's
+	// [orchSpot.key]), so a uint64 here would be a conversion in the adapter and a
+	// lie in the type.
+	key string
 }
 
 // setHover takes one pointer position and records what is under it.
@@ -166,12 +239,14 @@ type hoverAt struct {
 // (render.go's entryRows): a thinking block that was drawn dim yesterday would
 // otherwise stay dim under the pointer.
 //
-// IT TAKES THE COLUMN NOW AS WELL AS THE ROW. Every target this file started
-// with was a whole row wide, and the jump chip is not: it is three words at the
-// right edge of a row that is otherwise empty, and a chip that brightened
-// because the pointer was forty columns away from it would be claiming to be
-// something you could press there (jumpchip.go). Every other kind ignores x, as
-// it always did.
+// IT TAKES THE COLUMN AS WELL AS THE ROW, and most of what it resolves now needs
+// both. Every target this file started with was a whole row wide, and the jump
+// chip was the first that was not: three words at the right edge of a row that is
+// otherwise empty, and a chip that brightened because the pointer was forty
+// columns away from it would be claiming to be something you could press there
+// (jumpchip.go). The strip's chips, the tray's, a card's answers, a run's layers
+// and the references inside a paragraph are all read the same way. The kinds that
+// still ignore x are the ones whose target really is the whole row.
 func (a *app) setHover(x, y int) {
 	next := a.hoverTarget(x, y)
 	if next == a.hot {
@@ -200,9 +275,12 @@ func (a *app) setHover(x, y int) {
 	a.touch()
 }
 
-// hoverTarget resolves a screen row to what a click on it would act on. The
-// conversation is asked first and the chrome after it, in the order the frame
-// draws them.
+// hoverTarget resolves a pointer to what a click on it would act on, ASKING THE
+// SAME QUESTIONS [app.Update] ASKS OF A PRESS, IN THE SAME ORDER: the rows the
+// frame pins above the body, then the roster's column, then whichever page or
+// transcript fills the body, then the chrome below it. The order is the answer to
+// overlap — three regions can be true of one screen row — so a hover resolved
+// differently from a press is a surface that lights one thing and does another.
 func (a *app) hoverTarget(x, y int) hoverAt {
 	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
 	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is
@@ -221,6 +299,21 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			}
 		}
 		return hoverAt{}
+	}
+	// THE PINNED ROWS ABOVE THE BODY ARE ASKED FIRST OF ALL, in the order
+	// [app.Update] presses them: the ✕ on a room's header, then the header itself,
+	// then the task strip under it. All three span the WHOLE window while the
+	// roster below claims columns of it, so a question asked the other way round
+	// would answer about a rail row that is not on those lines (stop.go, room.go,
+	// taskstrip.go).
+	if a.stopMarkAt(x, y) {
+		return hoverAt{kind: hoverRoomStop}
+	}
+	if a.roomBackAt(y) {
+		return hoverAt{kind: hoverRoomBack}
+	}
+	if at, ok := a.stripHoverAt(x, y); ok {
+		return at
 	}
 	// THE ROSTER IS ASKED BEFORE THE CONVERSATION, for the reason [app.press]
 	// resolves it first: the two are drawn side by side, so which one the pointer
@@ -255,18 +348,33 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if a.railAt(x, y) {
 		return hoverAt{kind: hoverRailArea}
 	}
+	// A RUN'S PAGE ANSWERS FOR ITS OWN ROWS, before the transcript's hit-testing
+	// is asked anything, which is the order [app.press] keeps: its rows are chips
+	// and links and a gate rather than blocks, so what the pointer is over is
+	// resolved by column against the targets the layout recorded (roomorch.go).
+	if key, ok := a.orchHoverAt(x, y); ok {
+		return hoverAt{kind: hoverOrch, key: key}
+	}
 	if r, ok := a.rowAt(y); ok {
+		// A TASK REFERENCE IS THE ONE TARGET INSIDE A SENTENCE, so it is asked
+		// before the row's own answer for the reason [app.linkPress] is resolved
+		// before it: the prose it sits in has no gesture of its own, and a paragraph
+		// that lit as a whole would promise a door on every word of it (markdown.go's
+		// [linkifyTasks]).
+		if at := a.linkHoverAt(x, r); at >= 0 {
+			return hoverAt{kind: hoverLink, entry: r.entry, index: at}
+		}
 		switch {
 		case r.foot.span.holds(x):
-			// THE ONE TARGET IN THE TRANSCRIPT THAT IS NARROWER THAN ITS ROW, so it
-			// is asked about the column the way the jump chip is: the rest of the
+			// NARROWER THAN ITS ROW, so it is asked about the column the way the jump
+			// chip is: the rest of the
 			// row is the margin a table ended in, and a foot that brightened because
 			// the pointer was forty cells away from it would be claiming to be
 			// something you could press there (mdtable.go).
 			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
 		case r.hit == hitSettle:
-			// THE THIRD TARGET IN THE TRANSCRIPT THAT IS NARROWER THAN ITS ROW, and
-			// the only one with four of them on one line: which chip the pointer is
+			// NARROWER THAN ITS ROW, with four of them on one line: which chip the
+			// pointer is
 			// on is a question about the column, and a row that lit as a whole would
 			// promise that pressing anywhere on it did something (tasksettle.go).
 			if card := a.doneCardAt(r.entry); card != nil {
@@ -296,8 +404,22 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// A thinking block is clickable over its whole height (thinking.go
 			// says why), so it is hoverable over its whole height too.
 			return hoverAt{kind: hoverEntry, entry: r.entry}
+		case a.connectLinkable(r.entry):
+			// AND A SIGN-IN THAT IS STILL WAITING IS THE OTHER WHOLE-BLOCK TARGET, on
+			// exactly the same terms: the card has one thing to do — copy the address
+			// — and it does it wherever it is pressed (connect.go's
+			// [app.connectLinkPress]), so the whole card is what lights.
+			return hoverAt{kind: hoverEntry, entry: r.entry}
 		}
 		return hoverAt{}
+	}
+	// THE TRAY ABOVE THE BOX, asked where the chrome is asked and for the chrome's
+	// own cost: resolving it lays the block out, and the question is worth asking
+	// only once the pointer has left the conversation (attach.go's
+	// [app.chipTrayTarget] rejects in a field test on the frames that carry no
+	// tray, which is nearly all of them).
+	if at, ok := a.chipTrayTarget(x, y); ok {
+		return hoverAt{kind: hoverChip, index: at}
 	}
 	if mark, ok := a.chromeAt(y); ok {
 		switch mark.kind {
@@ -318,6 +440,25 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// One row again, and the same reason: the answers row is the only
 			// pressable row a design room's approval block has (roomapproval.go).
 			return hoverAt{kind: hoverRoomApproval}
+		case chromeStop:
+			// THE CARD'S TWO ANSWERS, which share one row — so which of them the
+			// pointer is on is a question about the column, and a row that lit as a
+			// whole would say "you can press here" about the answer nobody is aiming
+			// at (stop.go). The question above them is a sentence and lights not at
+			// all.
+			if a.stop == nil || mark.index != 1 {
+				return hoverAt{}
+			}
+			for at, span := range a.stop.spans {
+				if span.holds(x) {
+					return hoverAt{kind: hoverStopAnswer, index: at}
+				}
+			}
+		case chromeParked:
+			// One waiting message, whichever of its rows the pointer is on. The dim
+			// line under the block carries no mark and answers to nothing, which is
+			// what [app.parkedMark] already says (park.go).
+			return hoverAt{kind: hoverParked, index: mark.index}
 		case chromeOverlay:
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
@@ -339,6 +480,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// and then does nothing.
 			if a.copy.on || a.sheet.open || a.pick.open {
 				return hoverAt{}
+			}
+			// AT PHONE WIDTH THE ROW IS A DECK AND THE DECK ANSWERS FOR BOTH OF ITS
+			// ROWS, which is [app.statusPress]'s own branch read the other way round:
+			// every cell of those two rows opens something — the chip its picker, the
+			// rest of them the sheet — so the row under the pointer lights whole
+			// (statusdeck.go's [app.deckPress]).
+			if width, _ := a.size(); layoutTier(width) == tierPhone {
+				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
 			if mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
@@ -409,6 +558,72 @@ func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
 // hoveringStatusModel reports whether the pointer is on the status row's model
 // segment (render.go's [app.paintIdentity] is what it changes).
 func (a *app) hoveringStatusModel() bool { return a.hot.kind == hoverStatusModel }
+
+// hoveringStrip reports whether the pointer is on this node's chip of the task
+// strip (taskstrip.go's [app.stripChip] is what it changes).
+func (a *app) hoveringStrip(node *taskNode) bool {
+	return node != nil && a.hot.kind == hoverStrip && a.hot.id == node.id
+}
+
+// hoveringStripHarness reports whether the pointer is on the harness chip that
+// leads that row.
+func (a *app) hoveringStripHarness() bool { return a.hot.kind == hoverStripHarness }
+
+// hoveringStripMore reports whether the pointer is on the `+N` at its end.
+func (a *app) hoveringStripMore() bool { return a.hot.kind == hoverStripMore }
+
+// hoveringRoomBack reports whether the pointer is on the room's pinned header —
+// anywhere but the ✕, which claims its own cells.
+func (a *app) hoveringRoomBack() bool { return a.hot.kind == hoverRoomBack }
+
+// hoveringRoomStop reports whether the pointer is on that ✕.
+func (a *app) hoveringRoomStop() bool { return a.hot.kind == hoverRoomStop }
+
+// hoveringStopAnswer reports whether the pointer is on this answer of the stop
+// card.
+func (a *app) hoveringStopAnswer(at int) bool {
+	return a.hot.kind == hoverStopAnswer && a.hot.index == at
+}
+
+// hoveringParked reports whether the pointer is on this waiting message.
+func (a *app) hoveringParked(at int) bool {
+	return a.hot.kind == hoverParked && a.hot.index == at
+}
+
+// hoveringChip reports whether the pointer is on this thing on the tray —
+// [trayHarnessChip] for the picked harness, an index into [app.chips] otherwise.
+func (a *app) hoveringChip(at int) bool {
+	return a.hot.kind == hoverChip && a.hot.index == at
+}
+
+// hoveringOrch reports whether the pointer is on the run-page target this key
+// names (roomorch.go's [orchSpot.key]).
+func (a *app) hoveringOrch(key string) bool {
+	return a.hot.kind == hoverOrch && a.hot.key == key
+}
+
+// hoveringTaskCard reports whether the pointer is on this region of the task
+// record card.
+func (a *app) hoveringTaskCard(at int) bool {
+	return a.hot.kind == hoverTaskCard && a.hot.index == at
+}
+
+// hoveringLink is which task reference of this block the pointer is on, and -1
+// for none. It is asked with the ordinal the LAYOUT counted, because a block's
+// references are numbered across all the rows it wrapped over (render.go's
+// [app.deckRows]).
+func (a *app) hoveringLink(entry int) int {
+	if a.hot.kind != hoverLink || a.hot.entry != entry {
+		return -1
+	}
+	return a.hot.index
+}
+
+// hoveringDeck reports whether the pointer is on this row of the phone status
+// deck.
+func (a *app) hoveringDeck(row int) bool {
+	return a.hot.kind == hoverDeck && a.hot.index == row
+}
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {

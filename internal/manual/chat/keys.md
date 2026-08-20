@@ -775,9 +775,14 @@ is not the way out and never closes it. The way out of a room is `esc`, `←`, o
 on the pinned header that names them. **A click in copy mode acts on nothing**, because
 the rows there are a frozen snapshot.
 
-**Hover** raises the row under the pointer one step in background and brightens its
-marker. Rows that answer to nothing do not react. There is no hover in copy mode, on
-the linear/screen-reader tier, or in the phone tool sheet.
+**Hover** lights whatever the pointer is on, at the size of the thing rather than the size
+of its row: a row that is one target — a tool call, a roster row, a parked message, a
+room's header — takes a background band across the width, and something that shares its
+line — a strip chip, a picture on the tray, one answer of a card, a task reference in a
+reply — lights only its own cells, leaving its neighbours dark. Anything that answers to
+nothing does not react. There is no hover in copy mode, on the linear/screen-reader tier,
+or in the phone tool sheet. The screen page says what lights, under "When a row brightens
+under the pointer".
 
 ## Scrolling
 
