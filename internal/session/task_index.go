@@ -91,6 +91,14 @@ const (
 	// taskSearchCeiling the most any caller may ask for.
 	taskSearchLimit   = 10
 	taskSearchCeiling = 50
+	// taskFilesLimit caps how many PATHS one row — or one live claim — names.
+	// Two hundred is past what any node this build runs has ever written, and it
+	// is the point where a list of citations would become a manifest, which is
+	// the thing this index refuses to be (see the third rule in the header).
+	// Past it the TAIL IS DROPPED AND THE COUNT IS KEPT WHOLE, so a row that
+	// names two hundred files and says it wrote four hundred is telling the
+	// truth about both.
+	taskFilesLimit = 200
 )
 
 // TaskIndexEntry is one node as the project remembers it.
@@ -129,10 +137,29 @@ type TaskIndexEntry struct {
 	// Outcome is the first sentence of the node's report: what it did, or what
 	// stopped it. Empty for work that has not landed.
 	Outcome string `json:"outcome"`
-	// FilesChanged is how many files the node wrote. A count and not the list:
-	// the list is in the transcript, and a row that carried forty paths would be
-	// the thing this index refuses to be.
+	// FilesChanged is how many files the node wrote, and it is the figure every
+	// surface draws. It is also the HONEST TOTAL: Files beside it is capped at
+	// [taskFilesLimit], so a node that wrote more has a count larger than its
+	// list, and the count is what says so.
 	FilesChanged int `json:"filesChanged"`
+	// Files are those same paths, repo-relative and slash-spelled, in the order
+	// the node first wrote them, capped at [taskFilesLimit].
+	//
+	// THE COUNT IS FOR READING AND THE LIST IS FOR ASKING. This row used to carry
+	// the count alone, on the argument that the list was in the transcript — and
+	// it is, but only as prose in a journal, which is no use to the question the
+	// list is here for: "did anybody else land work in these files, and when".
+	// Answering that off the transcripts would mean opening every one of them.
+	//
+	// BOTH ARE WRITTEN FROM ONE PLACE ([taskFileCitations]) so the count and the
+	// list can never drift apart.
+	//
+	// IT IS ADDITIVE, AND ABSENCE IS UNKNOWN. Rows written before this field
+	// existed decode with none, and none does NOT mean the node touched nothing:
+	// a reader that cannot see a list must say it cannot see one rather than
+	// invent an answer (the emptiness law), which is why [LandedTouching] answers
+	// with two lists instead of one.
+	Files []string `json:"files,omitempty"`
 	// Cost is what the node spent, in dollars, or 0 when nobody could say.
 	Cost float64 `json:"cost,omitempty"`
 	// Model is what the node ran on, and empty when it simply took the
@@ -173,6 +200,25 @@ type TaskIndexEntry struct {
 	// remembering a present that ended seconds after it was recorded — which is
 	// the one thing an append-only history must not do.
 	Activity string `json:"-"`
+}
+
+// taskFileCitations is the pair a row carries about what a node wrote: the
+// paths it names, capped at [taskFilesLimit], and the honest total beside them.
+//
+// ONE SOURCE OF TRUTH. The count is derived from the list here and in no other
+// place, so no row can ever say it wrote nine files and then name ten. Where the
+// cap bites, the tail goes and the count stays whole — a truncated list beside a
+// truncated count would hide the truncation itself, and a reader would take a
+// partial answer for a complete one.
+func taskFileCitations(written []string) ([]string, int) {
+	count := len(written)
+	if count == 0 {
+		return nil, 0
+	}
+	if count > taskFilesLimit {
+		written = written[:taskFilesLimit]
+	}
+	return append([]string(nil), written...), count
 }
 
 // Live reports whether this row is a node that is still going.
@@ -551,6 +597,12 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	if elapsed == 0 && !n.started.IsZero() {
 		elapsed = time.Since(n.started)
 	}
+	// The list and the count come out of the SAME call, which is what keeps them
+	// from disagreeing (see [taskFileCitations]). They are the node's LEAVINGS
+	// and not its live tally: a row is what the work came to, and what a node has
+	// written so far while it is still running is presence's to report
+	// ([Agent.presenceTasks]), not this file's.
+	files, wrote := taskFileCitations(n.changed)
 	entry := TaskIndexEntry{
 		ID:           strconv.FormatUint(n.id, 10),
 		Parent:       taskIndexParent(n.parent),
@@ -559,7 +611,8 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		Title:        strings.TrimSpace(n.spec.title),
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
-		FilesChanged: len(n.changed),
+		FilesChanged: wrote,
+		Files:        files,
 		// The FROZEN figure, read straight off the node: this runs with the graph
 		// held and [TaskNode.spend] takes that lock itself. A row for a node still
 		// running carries no price, which is what it has always carried.
