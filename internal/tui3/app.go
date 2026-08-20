@@ -672,6 +672,10 @@ type app struct {
 	crewPick crewPicker
 	// taskPick is /task's two-row answer after the sizing call found useful parallel work.
 	taskPick taskChooser
+	// wait is the pre-flight a task command is standing in — the sizing call or
+	// the shaping call — and the moment it started (taskcommand.go). It is what
+	// turns that note's spinner and its count-up.
+	wait preflight
 	// memPanel is /memory's filterable view of the durable memory store.
 	memPanel memoryPanel
 	// memory is the store the panel reads and changes. It is optional because
@@ -2048,6 +2052,12 @@ func (a *app) paint() tea.Cmd {
 		// running while a person signs in, so without this the waiting line's
 		// spinner would be a still photograph (connect.go).
 		a.connectAnimating() ||
+		// AND A TASK COMMAND'S PRE-FLIGHT IS THE EIGHTH, and it is the second of
+		// them that can be the whole of what is happening: no turn runs while
+		// `/task` sizes and shapes a brief, and without this the wait's spinner and
+		// its count-up would be a still photograph for twenty-five seconds — which
+		// is exactly what they were (taskcommand.go's [preflight]).
+		a.wait.live() ||
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
