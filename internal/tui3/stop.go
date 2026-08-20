@@ -323,8 +323,8 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// typed lists all outrank this, exactly as they outrank the room.
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
-		a.sheet.open, a.deckShowing(), a.pick.open, a.roster.open, a.copy.on,
-		a.welcome.open, a.menu.open, a.comp.open, a.rew.on:
+		a.sheet.open, a.taskSheet.open, a.deckShowing(), a.pick.open, a.roster.open,
+		a.copy.on, a.welcome.open, a.menu.open, a.comp.open, a.rew.on:
 		return nil, false
 	}
 	if a.stopping() {

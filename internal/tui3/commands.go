@@ -135,6 +135,25 @@ var commands = []command{
 	{name: "task", args: "<brief>", desc: "start work you can walk away from"},
 	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner"},
 	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts"},
+	// AND THE PAGE THAT SHOWS WHAT THEY ALL CAME TO (taskview.go). It sits with
+	// the three rows that START work because that is the pair of errands a person
+	// has about tasks — set one going, and go and look at the ones that already
+	// did.
+	//
+	// IT IS NOT SPELLED "/tasks", AND THE NEAR-MISS IS THE REASON. The three rows
+	// above all mean GIVE AFORGE WORK, and a plural sitting among them shared four
+	// characters with every one of them: typing "/task" narrowed the list to both
+	// errands at once, so the muscle memory for starting work kept landing on a
+	// page that starts none. What a person calls this thing is the record of
+	// everything the project has run, and "history" is that word — it collides with
+	// nothing, and it is what somebody types when they cannot remember that the
+	// chord is ctrl+.
+	//
+	// No argument form: the page is a list you are shown, and it is TYPED AT once
+	// it is up ([app.taskSheetFilter]) rather than queried from the command line.
+	// That is /files' rule as well — a task is recognized by a title a model wrote,
+	// which is not a thing anybody types back correctly.
+	{name: "history", desc: "every task this project has run · ctrl+."},
 	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
 	// line at the bottom of the frame drops whatever does not fit and a phone-width
 	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
@@ -590,6 +609,7 @@ func helpText(file string) string {
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
 		"→ ←            over an empty box: into a running task, and back out",

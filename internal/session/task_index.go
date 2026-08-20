@@ -808,6 +808,49 @@ func subsequenceSpan(text, needle string) (int, bool) {
 	return last - first, true
 }
 
+// TaskMatches reports whether one row of the index answers a query at all.
+//
+// IT IS THE SAME LADDER [SearchTaskIndex] RANKS WITH, asked for the yes and not
+// for the place ([taskScore] is the one implementation of both). A reader that
+// wants the index FILTERED rather than RANKED — the task page keeps the record
+// in the order it happened and merely takes rows out of it — would otherwise
+// have to spell the ladder out a second time, and two spellings of "does this
+// task match" is two lists that disagree about which tasks exist.
+//
+// AN EMPTY QUERY MATCHES EVERYTHING, which is the other half of the bargain
+// [SearchTaskIndex] makes with one: nothing typed is not a filter that excludes
+// everything, it is no filter at all.
+func TaskMatches(entry TaskIndexEntry, query string) bool {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle == "" {
+		return true
+	}
+	_, ok := taskScore(entry, needle)
+	return ok
+}
+
+// TaskWordsMatch is the same question asked of WORDS rather than of a row: does
+// this title answer this query.
+//
+// It exists because a task that is still running in THIS conversation is a node
+// of a live graph and not a row of the file — the page filters both halves of
+// itself with one query, and a live node has a title where a row has six fields.
+// What it shares with [taskScore] is the part that is about the words: the
+// substring first, then the subsequence, so that "prsr" finds "Port the parser"
+// on both halves of the page or on neither.
+func TaskWordsMatch(text, query string) bool {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle == "" {
+		return true
+	}
+	words := strings.ToLower(strings.TrimSpace(text))
+	if strings.Contains(words, needle) {
+		return true
+	}
+	_, ok := subsequenceSpan(words, needle)
+	return ok
+}
+
 // LookupTask resolves one "@" token — a slug, or an id — against the index.
 //
 // The NEWEST match wins. Slugs are derived from titles and titles repeat: a
