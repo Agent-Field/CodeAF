@@ -147,43 +147,160 @@ func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	}
 }
 
-// THE SEGMENT IS A FACT AND NOT A DOOR while a room is open: the picker moves
-// the CONVERSATION's model, and a name that opened it while naming the TASK's
-// would swap the session's engine under a person who pressed the id they were
-// reading.
-func TestPressingATaskModelDoesNotOpenTheSessionsPicker(t *testing.T) {
-	a, _ := roomModelApp(t, "z-ai/glm-5.2")
+// THE SEGMENT IS A DOOR ONTO WHAT IT NAMES, and inside a RUNNING node's room
+// what it names is that node: the picker it opens moves that task and nothing
+// else, and the conversation's own model is untouched by it.
+func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
+	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 120, 24
 	a.touch()
 
 	// The frame is what records the columns, so it is drawn before they are read.
 	rows := strings.Split(plain(frame(a)), "\n")
-	if a.modelSpan.pressable() {
-		t.Fatalf("the room's status row recorded a press target for the task's model: %+v", a.modelSpan)
+	if !a.modelSpan.pressable() {
+		t.Fatal("a running node's room recorded no press target for its model")
 	}
-	// Press the cells the task's model is actually drawn on — the name is on
-	// screen, and this asserts that pressing it does nothing rather than that the
-	// test could not find it.
+	// The columns the render recorded are the columns the name is actually drawn
+	// on, which is what makes the press a press on the thing and not on a number.
 	line := rows[len(rows)-1]
-	at := strings.Index(line, "glm-5.2")
-	if at < 0 {
-		t.Fatalf("the task's model is not on the status row at all:\n%q", line)
+	if at := strings.Index(line, "glm-5.2"); at < 0 || !a.modelSpan.holds(at) {
+		t.Fatalf("the span %+v does not cover the task's model on the row:\n%q", a.modelSpan, line)
 	}
-	drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
-	if a.pick.open {
-		t.Fatal("pressing the task's model opened the picker over the conversation's model")
+	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	if !a.pick.open {
+		t.Fatal("pressing a running task's model opened nothing")
+	}
+	if a.pick.task != 9 {
+		t.Fatalf("the picker opened on task %d, want the room's node 9", a.pick.task)
+	}
+	// It opens ON THE NODE'S MODEL rather than the session's, so enter confirms.
+	if a.pick.current != "z-ai/glm-5.2" {
+		t.Fatalf("the picker marks %q as current, want the node's own model", a.pick.current)
 	}
 
-	// AND THE DOOR COMES BACK WITH THE NAME IT BELONGS TO. One esc later the
-	// segment is the conversation's model again, and pressing it is the picker.
+	// Choosing goes to the node's own door, and the conversation stays where it is.
+	before := a.model
+	a.pick.cursor = 0
+	chosen, _ := a.pick.choice()
+	drive(t, a, key("enter"))
+	if len(fake.retargeted) != 1 || fake.retargeted[0] != (modelPick{id: 9, model: chosen.ID}) {
+		t.Fatalf("the pick did not reach the node's door: %+v", fake.retargeted)
+	}
+	if a.model != before {
+		t.Fatalf("retargeting a task moved the conversation's model to %q", a.model)
+	}
+	// And it is written down where every other model change is.
+	want, found := "task 9 · model · "+chosen.ID, false
+	for _, e := range a.entries {
+		if e.kind == entryNote && e.text == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the retarget left no note reading %q in the conversation", want)
+	}
+}
+
+// AND OUT IN THE CONVERSATION THE SAME GESTURE IS THE SESSION'S, unchanged: one
+// esc from a room and the name on the line is the conversation's again, and
+// pressing it opens the picker with no task on it.
+func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) {
+	a, fake := roomModelApp(t, "z-ai/glm-5.2")
+	a.width, a.height = 120, 24
 	a.closeRoom()
 	_ = frame(a)
+
 	if !a.modelSpan.pressable() {
 		t.Fatal("closing the room did not give the model segment its columns back")
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("the conversation's model stopped opening the picker after a room closed")
+	}
+	if a.pick.task != 0 {
+		t.Fatalf("the conversation's picker is pointed at task %d", a.pick.task)
+	}
+	drive(t, a, key("enter"))
+	if len(fake.retargeted) != 0 {
+		t.Fatalf("choosing in the conversation's picker retargeted a task: %+v", fake.retargeted)
+	}
+}
+
+// A NODE THAT IS PAST BEING MOVED KEEPS THE NAME AND LOSES THE DOOR — absent
+// affordance, never a failing one. The engine refuses a settled node, so the
+// render records no columns and the press falls through to the row it landed on.
+func TestASettledTasksModelIsNotPressable(t *testing.T) {
+	for _, state := range []session.TaskState{
+		session.TaskDone, session.TaskFailed, session.TaskUnverified, session.TaskQueued,
+	} {
+		a, fake := roomModelApp(t, "z-ai/glm-5.2")
+		a.width, a.height = 120, 24
+		drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Ship the parser fix",
+			state, session.TaskNotice{Model: "z-ai/glm-5.2"})})
+		rows := strings.Split(plain(frame(a)), "\n")
+
+		if a.modelSpan.pressable() {
+			t.Fatalf("a %s node's model is still a press target: %+v", state, a.modelSpan)
+		}
+		// The name is still there to be read — this is a door removed, not a fact.
+		line := rows[len(rows)-1]
+		at := strings.Index(line, "glm-5.2")
+		if at < 0 {
+			t.Fatalf("a %s node stopped naming its model at all:\n%q", state, line)
+		}
+		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
+		if a.pick.open {
+			t.Fatalf("pressing a %s node's model opened the picker", state)
+		}
+		if len(fake.retargeted) != 0 {
+			t.Fatalf("pressing a %s node's model reached the door: %+v", state, fake.retargeted)
+		}
+	}
+}
+
+// THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model segment
+// is pressable at both subjects, so it lights at both — and where it is only a
+// fact, it does not.
+func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
+	a, _ := roomModelApp(t, "z-ai/glm-5.2")
+	a.width, a.height = 120, 24
+	_ = frame(a)
+
+	a.setHover(a.modelSpan.from+1, a.height-1)
+	if !a.hoveringStatusModel() {
+		t.Fatal("the running node's model segment does not light under the pointer")
+	}
+	// One cell to the left of the span is the separator, which is not a control.
+	a.setHover(a.modelSpan.from-1, a.height-1)
+	if a.hoveringStatusModel() {
+		t.Fatal("the model segment lights from outside its own columns")
+	}
+
+	// Out in the conversation, the same segment and the same light.
+	a.closeRoom()
+	_ = frame(a)
+	a.setHover(a.modelSpan.from+1, a.height-1)
+	if !a.hoveringStatusModel() {
+		t.Fatal("the conversation's model segment does not light under the pointer")
+	}
+	// And the hovered row is drawn differently from the resting one, which is what
+	// a person actually sees.
+	hot := frame(a)
+	a.dropHover()
+	if cold := frame(a); hot == cold {
+		t.Fatal("hovering the model segment changed nothing on the frame")
+	}
+
+	// A node past being moved has no span, so nothing lights over its name.
+	a2, _ := roomModelApp(t, "z-ai/glm-5.2")
+	a2.width, a2.height = 120, 24
+	drive(t, a2, streamEventMsg{gen: a2.gen, ev: update(9, "Ship the parser fix",
+		session.TaskDone, session.TaskNotice{Model: "z-ai/glm-5.2"})})
+	rows := strings.Split(plain(frame(a2)), "\n")
+	at := strings.Index(rows[len(rows)-1], "glm-5.2")
+	a2.setHover(at+1, a2.height-1)
+	if a2.hoveringStatusModel() {
+		t.Fatal("a settled node's model lights under the pointer with no door behind it")
 	}
 }
 

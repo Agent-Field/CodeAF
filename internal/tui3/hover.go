@@ -11,8 +11,9 @@ package tui3
 // that says nothing about what can be pressed.
 //
 // What reacts: a tool row and its expansion, the "N earlier tool calls" fold,
-// the "… N more lines" foot, a thinking block, the consent choices, and the
-// rows of whichever list is open. That set is not a taste — it is exactly the
+// the "… N more lines" foot, a thinking block, the consent choices, the model's
+// name at the foot of the frame, and the rows of whichever list is open. That
+// set is not a taste — it is exactly the
 // set [app.press] and the overlays already act on, read from the same row map
 // the click hit-testing reads (render.go's row.hit, and view.go's chrome
 // marks). Two definitions of "interactive" is how a surface ends up glowing at
@@ -118,6 +119,19 @@ const (
 	// pointer that left the settings panel with a hover on item nine would light
 	// the ninth task the moment this page opened.
 	hoverTaskSheet
+	// hoverStatusModel is the MODEL SEGMENT of the status row — the name of what
+	// is answering, at the foot of the frame, which is a control as well as a
+	// label (render.go's [app.identityParts]). It is the third target on this
+	// surface narrower than the row it is drawn on, and it is asked about the
+	// column for the jump chip's reason.
+	//
+	// IT COVERS BOTH SUBJECTS AND NEEDS NO SECOND KIND. Out in the conversation
+	// the segment is the session's model and a press opens the picker; inside a
+	// room it is the node's and a press retargets that node. What lights is the
+	// same span in both, because what lights is what [app.press] acts on — and
+	// where the press would do nothing, the render records no span and this
+	// answers nothing (room.go's [app.roomModelMovable]).
+	hoverStatusModel
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is the other narrow target, and it is a kind of its own rather
@@ -246,7 +260,17 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
 		case r.hit == hitFold || r.hit == hitWorkFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
-		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:
+		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
+			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
+			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is
+			// a row [app.press] already acts on. A sub-harness card opens the same
+			// way a landed task's does (harnesscard.go), and a proposal's answers
+			// and models rows are pressable along their whole width
+			// (app.go's [app.choicePress]) — so a card that lit up and then went
+			// dark the moment the pointer reached the row a person was aiming for
+			// was the surface withdrawing the affordance at the exact cell where it
+			// mattered. The whole block lights, because the block is what the press
+			// belongs to.
 			return hoverAt{kind: hoverEntry, entry: r.entry}
 		case r.entry >= 0 && r.entry < len(a.bodyDeck().entries) &&
 			a.bodyDeck().entries[r.entry].kind == entryThinking:
@@ -286,6 +310,19 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// span — the same order [app.jumpPress] and [app.statusPress] keep.
 			if a.jumpSpan.holds(x) {
 				return hoverAt{kind: hoverJump}
+			}
+		case chromeStatus:
+			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
+			// because this file's law is that the set which lights is the set the
+			// press acts on: the overlays that swallow the press first, then the
+			// identity's own row, then the columns the render recorded for the model.
+			// Any of them answering differently here would be a name that brightens
+			// and then does nothing.
+			if a.copy.on || a.sheet.open || a.pick.open {
+				return hoverAt{}
+			}
+			if mark.index == 0 && a.modelSpan.holds(x) {
+				return hoverAt{kind: hoverStatusModel}
 			}
 		}
 	}
@@ -356,6 +393,10 @@ func (a *app) hoveringRailGrip() bool { return a.hot.kind == hoverRailGrip }
 // hoveringRailDoor reports whether the pointer is over the standing column's own
 // door line, which is the same control in its other state.
 func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
+
+// hoveringStatusModel reports whether the pointer is on the status row's model
+// segment (render.go's [app.paintIdentity] is what it changes).
+func (a *app) hoveringStatusModel() bool { return a.hot.kind == hoverStatusModel }
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {
