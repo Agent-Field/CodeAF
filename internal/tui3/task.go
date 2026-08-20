@@ -1859,6 +1859,11 @@ const (
 	railBackHint = railStowKey + " tasks"
 )
 
+// railEmptyWord is the one line a column with no work in it says
+// ([app.railView]). It is a label for the place, not a report about the work —
+// which is why it is allowed where "0 running" never would be.
+const railEmptyWord = "no tasks yet"
+
 // railGroup is what a node is DOING, which is the only thing the roster sorts
 // by. The order of these constants IS the order of the column.
 type railGroup uint8
@@ -2368,22 +2373,22 @@ func (a *app) railColumns(width int) int {
 
 // railShowing reports whether the frame has a roster on it right now.
 //
-// ONE NODE RAISES IT AND NOTHING PUTS IT AWAY but /new — and the person
-// ([app.railStow]). The old rail left when the last live node landed, which was
-// honest about presence and wrong about a roster: the column is now the
-// session's record of its own work, and a record that vanished the moment the
-// work finished would be a record of nothing. What it is NOT is a column
-// somebody has to live with: ctrl+g takes it off the frame, the conversation
-// takes back the columns, and the answer is remembered for the next session.
+// THE COLUMN IS PERMANENT. It stands from the session's first frame, before any
+// work exists, and work FILLS it rather than raising it. It used to wait for
+// the first node, which made the frame a moving target: the conversation
+// re-wrapped thirty columns narrower the moment a task was admitted, and a
+// person could not learn where the column lived because it was only ever there
+// after the fact. Now the place is part of the frame, the way the status line
+// is. What it is NOT is a column somebody has to live with: ctrl+g takes it off
+// the frame, the conversation takes back the columns, and the answer is
+// remembered for the next session ([app.railStow]). The width tiers keep their
+// say too — under [railSlimFloor] there is no column to stand.
 func (a *app) railShowing() bool {
 	if a.railAway {
 		return false
 	}
 	width, _ := a.size()
-	if a.railColumns(width) == 0 {
-		return false
-	}
-	return len(a.taskOrder) > 0
+	return a.railColumns(width) > 0
 }
 
 // railAvail reports whether there is a roster to raise at all, at ANY width.
@@ -2530,6 +2535,14 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// ([app.railFootRows]).
 	a.railCramped = false
 	lines := a.railLines(entries, room)
+	// AN EMPTY COLUMN SAYS WHAT IT IS FOR. The column stands before any work
+	// exists now ([app.railShowing]), and thirty blank columns beside a paragraph
+	// read as a rendering fault rather than a place. One dim line is the whole of
+	// it — a label, not a count of nothing, which is what keeps it on the right
+	// side of the emptiness law.
+	if len(entries) == 0 {
+		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
+	}
 	foot, hint, door := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
@@ -2783,12 +2796,14 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// map a person may press without having asked for the roster first.
 		//
 		// IT ONLY ACTS ON A ROSTER THAT IS ON THE FRAME, or on one it has already
-		// taken off. With no tasks at all — or under [railSlimFloor], where there is
-		// no column to close and nobody has raised the overlay — it falls through
-		// untouched, exactly as ctrl+t does. A keystroke that silently moved a state
-		// nothing is drawing is a keystroke a person cannot tell they pressed, and
-		// this one would move it into the NEXT session as well.
-		if !a.railAvail() || !(a.railStanding() || a.railAway) {
+		// taken off. The column stands empty now ([app.railShowing]), so "on the
+		// frame" no longer needs any tasks behind it — but under [railSlimFloor],
+		// where there is no column to close and nobody has raised the overlay, it
+		// still falls through untouched, exactly as ctrl+t does. A keystroke that
+		// silently moved a state nothing is drawing is a keystroke a person cannot
+		// tell they pressed, and this one would move it into the NEXT session as
+		// well.
+		if !(a.railStanding() || a.railAway) {
 			return nil, false
 		}
 		a.railStow(!a.railAway)

@@ -121,14 +121,20 @@ func TestAClosedColumnStillSaysWhereTheWorkIs(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 
-	// THE EMPTINESS LAW FIRST: nothing has run, so the key falls through and the
-	// legend says nothing about a column nobody is missing.
+	// THE COLUMN STANDS EMPTY NOW, so the key works from the first frame — but
+	// the legend stays quiet: a standing hint about a roster of nothing is the
+	// emptiness law broken in the slot a person reads most (render.go's
+	// [app.hintWord]).
 	drive(t, a, ctrlG())
-	if a.railAway {
-		t.Fatal("ctrl+g closed a column an empty session was not drawing")
+	if !a.railAway {
+		t.Fatal("ctrl+g did not close the empty column")
 	}
 	if a.hintWord() == railBackHint {
 		t.Fatal("a session with no work at all offered the way back to a roster of nothing")
+	}
+	drive(t, a, ctrlG())
+	if a.railAway {
+		t.Fatal("ctrl+g did not bring the empty column back")
 	}
 
 	railRun(a)

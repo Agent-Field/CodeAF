@@ -11,10 +11,12 @@ menu, completion), and the status line last.
 
 Beside the conversation, on the right, the task roster's column — the right-hand bar,
 sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-once this session has any tasks. `ctrl+g` closes it and opens it again, remembered
-between sessions, and the column's own last line says so: `ctrl+g — hide`. With it
-closed the conversation is laid out at the full width of the terminal, running work
-still draws the strip along the top, and the legend's hint slot reads `ctrl+g tasks`.
+from the session's very first frame, before any tasks exist. Empty, it says one dim
+line: `no tasks yet`. Work fills the column rather than raising it. `ctrl+g` closes it
+and opens it again, remembered between sessions, and the column's own last line says
+so: `ctrl+g — hide`. With it closed the conversation is laid out at the full width of
+the terminal, running work still draws the strip along the top, and the legend's hint
+slot reads `ctrl+g tasks` once the session has tasks to come back to.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.

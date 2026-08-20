@@ -2007,8 +2007,10 @@ func (a *app) hintWord() string {
 		// AND IT IS THE HALF THE STRIP CANNOT SAY. The chips above the conversation
 		// draw what is RUNNING and nothing else, so a session whose work has all
 		// landed has a roster full of results and no sign on the frame that it is
-		// there. This is that sign. With nothing run at all it says nothing, which
-		// is the emptiness law: there is no column to miss.
+		// there. This is that sign. With nothing run at all it stays quiet — the
+		// column a person closed was empty, ctrl+g still brings it back, and a
+		// standing hint about a roster of nothing is the emptiness law broken in
+		// the one slot a person reads most.
 		return railBackHint
 	}
 	return ""

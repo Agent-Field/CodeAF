@@ -191,17 +191,6 @@ type stripSpan struct {
 // and the roster still holds every one of them — and a permanent row that says
 // "nothing is running" is a row of chrome bought with a row of conversation.
 func (a *app) stripShowing() bool {
-	// AND IT STANDS DOWN WHEREVER THE ROSTER IS STANDING, in either of the
-	// roster's two shapes (task.go's [app.railStanding]). The column beside the
-	// conversation and the overlay over it are both the whole list of this
-	// session's work, with the shape of each run in them; a tab row above either
-	// one is a row of conversation spent on an index to the thing next to it. What
-	// is left for this row is the frame the roster cannot have — under
-	// [railSlimFloor], with nobody asking for the overlay — which is the frame it
-	// was written for.
-	if a.railStanding() {
-		return false
-	}
 	width, height := a.size()
 	// The same floor the pinned header stands on (view.go's [app.headHeight]): a
 	// terminal too short for breathing room spends what it has on the
@@ -209,12 +198,26 @@ func (a *app) stripShowing() bool {
 	if width < stripFloor || height < roomyFloor {
 		return false
 	}
-	// A RUNNING SUB-HARNESS RAISES THE ROW TOO (harnesspanel.go). It is alive
-	// for minutes at a time and it is the only thing on screen that would
-	// otherwise say so — the run happens inside one tool call, so the transcript
-	// shows a single row that has not come back yet.
+	// A RUNNING SUB-HARNESS RAISES THE ROW even where the roster is standing
+	// (harnesspanel.go). It is alive for minutes at a time and it is the only
+	// thing on screen that would say so — the run happens inside one tool call,
+	// so the transcript shows a single row that has not come back yet, and the
+	// roster cannot carry it either: its rows are the session's task nodes, and
+	// a harness run is not one. The stand-down below is about not indexing a
+	// list next to the list; this chip is on no list to index.
 	if _, running := a.runningHarness(); running {
 		return true
+	}
+	// AND IT STANDS DOWN WHEREVER THE ROSTER IS STANDING, in either of the
+	// roster's two shapes (task.go's [app.railStanding]). The column beside the
+	// conversation and the overlay over it are both the whole list of this
+	// session's work, with the shape of each run in them; a tab row above either
+	// one is a row of conversation spent on an index to the thing next to it. What
+	// is left for this row is the frame the roster cannot have — under
+	// [railSlimFloor], with nobody asking for the overlay — a column somebody
+	// closed with ctrl+g, and the harness chip above.
+	if a.railStanding() {
+		return false
 	}
 	for _, id := range a.taskOrder {
 		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
@@ -254,7 +257,14 @@ func (a *app) stripNodes() []*taskNode {
 //
 // It is ROWS rather than a row because the frame adds it row by row (view.go),
 // and because a surface that returns "" for "there is no strip" and a string for
-// "there is one" is a height nobody counted. There is at most one.
+// "there is one" is a height nobody counted. There is at most one row of CHIPS —
+// and one blank row under it, which is the strip's own separation from the
+// conversation: the chips are chrome sitting directly on top of somebody's
+// paragraph, and with nothing between them the top of the transcript read as
+// the strip's second line. Whitespace is how this surface separates blocks —
+// a rule or a border under the chips is exactly what the design law refuses —
+// so the gap is a row of the strip and counted as one ([app.stripHeight]),
+// never an off-by-one the body pays for.
 func (a *app) stripRows(width int) []string {
 	a.stripSpans = nil
 	a.stripMore, a.stripHarn = hudSpan{}, hudSpan{}
@@ -262,7 +272,7 @@ func (a *app) stripRows(width int) []string {
 		return nil
 	}
 	if row := a.stripRowText(width, a.stripNodes()); row != "" {
-		return []string{row}
+		return []string{row, ""}
 	}
 	return nil
 }

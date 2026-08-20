@@ -85,7 +85,11 @@ func orchApp(t *testing.T, snap orchestrate.Snapshot) (*app, *orchFake) {
 		snaps:     map[string]orchestrate.Snapshot{"r1": snap},
 	}
 	a := newTestApp(agent)
-	a.width, a.height = 140, 30
+	// 170 columns, because the page is drawn at the BODY's width and the roster's
+	// permanent column takes thirty off it (task.go's [app.railShowing]): what
+	// these tests mean by "wide" is the 140-column page they were written
+	// against.
+	a.width, a.height = 170, 30
 	a.openOrchRoom("r1", snap.Goal)
 	a.touch()
 	if a.orchOf() == nil {
