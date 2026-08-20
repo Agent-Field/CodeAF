@@ -304,7 +304,8 @@ waiting on it fails with it. A limit firing on its own is no longer enough: work
 stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
-say. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
+say — or the work held and one of the files it wrote moved under it while it ran, which is
+its own section below. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
 waiting on it fails. The report leads
 `finished, but needs your look — ` and then what was said, or
 `finished, but needs your look — nobody could say whether it holds` when nothing was said.
@@ -324,6 +325,62 @@ the choice with you; the four choices on the landed card are the door. With it o
 same note tells aforge to read the report and the work and settle the task itself, and to
 come back to you only when it genuinely cannot tell. Everything else in the landing is
 identical either way.
+
+## Why my task needs my look when it finished fine — another window changed the same file
+
+There is a second reason `needs your look` fires, and it has nothing to do with whether the
+work is any good. **A task that finished, was checked, and passed will still stop short of
+merging if somebody else changed one of the same files while it was running.**
+
+This is the case nothing else can catch. A task opens a file, thinks for twenty minutes,
+and writes. If a change landed in that file during those twenty minutes, the work is
+correct against a world that stopped being true — and the check cannot see it, because the
+check runs inside the task's own working copy, which is a copy of the world as it was when
+the task started.
+
+So at the moment the branch would merge, the files the task **wrote** are held up against
+two things:
+
+- **what finished in them since this task started** — the project's record of landed work,
+  which now names the files behind each row's count;
+- **what other windows on this project are writing right now** — the live claims each open
+  window publishes about the paths its running work has already touched.
+
+When either overlaps, the task lands `needs your look` instead of `done`. Nothing merges,
+the branch is kept, dependents wait, and the four choices on the card are the same ones
+described in the tasks page — `accept` merges it the ordinary way once you have looked.
+
+**What the report says.** The first line names the files and, where it can, the work that
+changed them. Landed work and a window that is still going get separate sentences, because
+they are different facts:
+
+```
+finished, but needs your look — "rail permanence" changed internal/tui3/home.go while this ran
+finished, but needs your look — "drop-up nearest" is also working in internal/tui3/home.go
+```
+
+Work nothing ever named is called `another window is also working in internal/tui3/home.go`.
+Long lists stop counting out loud after two — `internal/tui3/home.go, internal/tui3/task.go
+and 4 more` — and so do long lists of tasks. The task's own account of what it did stands
+underneath, along with what it was checked on.
+
+**What will not trigger it**, on purpose:
+
+- **Work that named no files.** A row written by an older build, and work that genuinely
+  wrote nothing, look exactly alike. Neither is treated as overlap — a warning raised on a
+  silence would fire constantly and you would learn to ignore the real one.
+- **The task's own sub-tasks.** A sub-task branches off its parent's working copy and merges
+  back into it, so a child landing in a file its parent also wrote is the design working.
+- **Files the other work merely read.** Nothing anywhere records what a task read, so the
+  claims are about writes only.
+- **A neighbouring file in the same package.** Paths must match exactly; there is no
+  directory-level matching and no patterns.
+- **Work that finished before your task started.** That is a file your task read, not a file
+  that moved under it.
+
+If nothing overlaps, nothing changes: the task merges and lands `done` exactly as it always
+did. There is no setting for this and no way to see it before the run — the earlier warning
+before a task starts is a separate thing, and it cannot see this case at all.
 
 ## Nothing is thrown away
 
@@ -631,6 +688,7 @@ Endings are checked in a fixed order, and the first match wins:
 | 6 | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
+| 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
 
