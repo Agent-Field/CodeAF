@@ -219,6 +219,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asked with a terminal that did not close, and the answer — press it
 		// twice, inside a second and a half — has to come off a page rather than
 		// out of a model that will confidently say one press quits.
+		// The thirteenth wave: asking the record. Every task leaves a journal of
+		// what it actually did, and the chat reads it to answer why a piece of
+		// old work went the way it did — so the words somebody says in front of a
+		// landed task they do not understand have to reach the page that says
+		// this is a question they may simply ask.
+		{"why did the auth task pin the clock", "tasks"},
+		{"what exactly did that task change", "tasks"},
+		{"can I ask you about old work", "tasks"},
+		{"how do I find out what a task actually did", "tasks"},
+
 		{"how do I quit", "keys"},
 		{"how do I exit aforge", "keys"},
 		{"how do I close aforge", "keys"},
