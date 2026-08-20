@@ -1011,6 +1011,9 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	a.mu.Unlock()
 
 	child, err := newAgent(Config{
+		// An adaptive run's worker shares the project's error→fix file for a task
+		// node's reason (task_run.go's newTaskAgent, fixstore.go).
+		fixesDir:       a.config.fixesBucket(),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,

@@ -997,9 +997,21 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, matching pi's thrown-Error semantics.
-			return toolResult{text: err.Error(), isError: true}
+			return ep.noteToolOutcome(call, toolResult{text: err.Error(), isError: true})
 		}
-		return toolResult{text: text, isError: isError}
+		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
+		// (fixrecall.go). A failure this machine has seen before leaves with one
+		// line saying what made it go away last time; a success that follows one
+		// records the command that did it. It is here, at the chokepoint, for the
+		// reason the pre-action gate is: the batch and the early start both pass
+		// through this function and nothing else does, so a call cannot be
+		// executed without being learned from.
+		//
+		// It must happen HERE and not at post-feedback, which is where an
+		// observer of results would otherwise belong: runTurn writes each result
+		// into the transcript BEFORE that seam runs, so a line added there would
+		// be a line no model was ever sent.
+		return ep.noteToolOutcome(call, toolResult{text: text, isError: isError})
 	}
 	return toolResult{text: "Unknown tool: " + call.Function.Name, isError: true}
 }
