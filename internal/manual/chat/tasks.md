@@ -744,7 +744,9 @@ for a reason you cannot see.
 | `esc` | clear the filter, or close the page when there is none |
 | `ctrl+.` | close the page |
 
-`ctrl+c` still works and still means what it always means.
+`ctrl+c` still works and still means what it always means: mid-turn it interrupts,
+and at rest it takes two presses within 1.5 seconds to quit — the page stays up while
+the door is armed, and the armed line names any task that would stop.
 
 **What `enter` opens depends on the row**, and the last line of the page says which you are
 going to get:

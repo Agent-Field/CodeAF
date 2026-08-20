@@ -95,7 +95,8 @@ step walk cannot leave it. `↑`/`↓` never fall off either end.
 
 While the mode is up it takes **every** key. Nothing falls through to the draft box, because
 the mode bar is standing where that box was. `ctrl+c` is read above it and stays the way
-out.
+out — it does not leave rewind, it arms the door underneath, and a second press within
+1.5 seconds quits aforge with the mode still up.
 
 The mouse can do everything the keys can: click any transcript row to move the cut, click
 the cut line itself to commit. A click chooses the nearest point at or above the row you
@@ -413,7 +414,7 @@ reports the state of the file.
 the kernel releases it when the holding process dies, however it dies. There is no pid file
 and no staleness check: after a crash the next launch opens the file again.
 
-**Closing cleanly** — `/quit`, `ctrl+c`, or any other road out — disarms the idle timer,
+**Closing cleanly** — `/quit`, `ctrl+c` twice, a `kill -INT`, or any other road out — disarms the idle timer,
 drops queued follow-ups, closes the wake lanes, cancels the turn with a grace wait, shuts
 down background jobs — which is where a task still running ends, a harness still being
 designed among them — and finally syncs and closes the journal, releasing the lock. Calling it twice is safe, and a session that returns by any

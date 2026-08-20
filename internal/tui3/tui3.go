@@ -43,6 +43,9 @@ package tui3
 import (
 	"context"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -414,13 +417,20 @@ type Options struct {
 	Width, Height int
 }
 
+// sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
+// [forwardSignals] for why this surface catches them itself.
+type sigQuitMsg struct{}
+
 // Run opens the surface and blocks until it closes. A cancelled context closes
 // it the same way ctrl+c does.
 func Run(ctx context.Context, opts Options) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	program := []tea.ProgramOption{tea.WithContext(ctx)}
+	// THE SIGNAL HANDLER IS OURS, and [tea.WithoutSignalHandler] is what takes
+	// Bubble Tea's out of the way — see [forwardSignals] for what was wrong with
+	// the one it installs.
+	program := []tea.ProgramOption{tea.WithContext(ctx), tea.WithoutSignalHandler()}
 	if opts.Input != nil {
 		program = append(program, tea.WithInput(opts.Input))
 	}
@@ -430,6 +440,50 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.Width > 0 && opts.Height > 0 {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
-	_, err := tea.NewProgram(newApp(ctx, opts), program...).Run()
+	p := tea.NewProgram(newApp(ctx, opts), program...)
+	defer forwardSignals(p)()
+	_, err := p.Run()
 	return err
+}
+
+// forwardSignals turns SIGINT and SIGTERM into a message the surface can act on,
+// and returns the function that stops listening.
+//
+// WHY THIS EXISTS AT ALL. Bubble Tea's own handler (its tea.go) answers SIGINT
+// by pushing a tea.InterruptMsg into the program, and the loop answers THAT by
+// returning ErrInterrupted without ever calling Update. So the surface never
+// heard the signal: [app.quit] did not run, the unsent draft was not written to
+// disk, the session was not closed, and the door printed
+// "error: program was interrupted" and exited 1. A person who typed `kill -INT`
+// at a hung terminal, or whose terminal was not in raw mode so that ^C arrived
+// as a signal rather than as a keystroke, lost their draft and got an error for
+// a perfectly ordinary way to leave.
+//
+// SO THE SIGNAL BECOMES A MESSAGE INSTEAD OF A RETURN. sigQuitMsg is routed in
+// [app.Update] to the same [app.quit] the second ctrl+c calls, which writes the
+// draft, closes the session and returns tea.Quit — the ordinary exit, with a nil
+// error and status 0. Sending InterruptMsg ourselves would have reproduced
+// exactly the bug; tea.QuitMsg would exit cleanly but skip [app.quit] and take
+// the draft with it. This is the one path of the three that both runs and exits
+// zero.
+//
+// A REAL SIGNAL NEEDS NO SECOND PRESS. The two-press rule is about a keystroke
+// that can be struck by accident (quitarm.go); a signal is somebody naming this
+// process and asking it to stop, and asking twice is not something a person can
+// do from the other end of a `kill`.
+func forwardSignals(p *tea.Program) func() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ch:
+			p.Send(sigQuitMsg{})
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(ch)
+		close(done)
+	}
 }

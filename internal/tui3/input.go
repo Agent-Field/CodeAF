@@ -337,12 +337,26 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
 		// door, and every terminal habit in the world says that keystroke stops
-		// the RUNNING thing. Idle, there is nothing to stop and it leaves.
+		// the RUNNING thing.
+		//
+		// AND A PRESS THAT INTERRUPTED DOES NOT ARM. It was aimed at the model
+		// and it hit the model; arming there is what made the two-tap — press it
+		// again, harder, because the first one did not seem to land — end the
+		// session, since [app.interrupt] leaves stateWorking on the spot and the
+		// second press was read at rest.
 		if a.state == stateWorking {
 			a.interrupt()
 			return nil
 		}
-		return a.quit()
+		// AND AT REST IT TAKES TWO (quitarm.go). One press arms and says what
+		// leaving would cost; the next one inside the window is the door. Nothing
+		// else on this surface can end a session by accident, and until this wave
+		// this key could end one holding running tasks, live background jobs and
+		// a message still parked for an answer.
+		if a.quitArmed() {
+			return a.quit()
+		}
+		return a.armQuit()
 	}
 
 	// THE TASK PAGE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S REASON: it

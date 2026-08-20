@@ -609,6 +609,10 @@ func helpText(file string) string {
 	}
 	lines = append(lines,
 		"@path          complete a file · a picture attaches",
+		// THE DOOR IS NAMED HERE BECAUSE IT NO LONGER BEHAVES THE WAY THE HABIT
+		// EXPECTS (quitarm.go): one press does not leave, and a person whose
+		// ctrl+c "did nothing" looks here before anywhere else.
+		"ctrl+c         twice quits · mid-turn one press interrupts, like esc",
 		"alt+enter      open a line · enter sends",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",

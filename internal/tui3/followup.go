@@ -111,6 +111,10 @@ func (a *app) startFollow() tea.Cmd {
 
 	a.closeLive()
 	a.turn++
+	// And a turn starting disarms the door, for [app.submitting]'s reason —
+	// which this door needs most of the three, because it is the one that starts
+	// a turn with nobody's hand on the keyboard (quitarm.go).
+	a.disarmQuit()
 	a.sel = -1
 	// NO USER LINE FOR A TURN NOBODY ASKED FOR. A woken turn is the session
 	// speaking because work landed while the room was idle, and a "›" row above
