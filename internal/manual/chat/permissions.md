@@ -90,7 +90,7 @@ purpose.
 An answer whose scope cannot be read is treated as **once** — the narrow reading
 is the safe one.
 
-## What "always" banks: you choose how wide the rule is
+## What "always" means when you press `a`: what "always" banks, and how wide the rule is
 
 Pressing always is not one decision. On a shell command it is two.
 

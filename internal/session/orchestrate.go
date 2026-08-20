@@ -1323,6 +1323,15 @@ type orchestrateFamily struct {
 	mu   sync.Mutex
 	ids  map[string]uint64
 	said map[string]TaskState
+	// names is the last goal each node was published with, keyed the way ids is.
+	//
+	// IT EXISTS SO THAT NO ROW OF THIS RUN IS EVER PUBLISHED NAMELESS. A surface
+	// draws what it is told and falls back to "task 19" when it is told nothing
+	// (internal/tui3's taskTitleOf), and this file had two ways to tell it
+	// nothing: [orchestrateFamily.retire], which settles a node the planner
+	// dropped and never had a goal in its hand, and a snapshot node whose Goal
+	// came back empty. Both now say the name this map remembers.
+	names map[string]string
 }
 
 // newOrchestrateFamily takes the run's own row. It is minted before the first
@@ -1344,6 +1353,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		model:   strings.TrimSpace(planner),
 		ids:     make(map[string]uint64, 8),
 		said:    make(map[string]TaskState, 8),
+		names:   make(map[string]string, 8),
 	}
 	a.emitTaskUpdate(TaskNotice{
 		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
@@ -1395,11 +1405,15 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			continue
 		}
 		f.agent.emitTaskUpdate(TaskNotice{
-			ID:      id,
-			Run:     f.run,
-			Node:    node.ID,
-			Parent:  f.root,
-			Title:   clip(firstLine(node.Goal), hintLimit),
+			ID:     id,
+			Run:    f.run,
+			Node:   node.ID,
+			Parent: f.root,
+			// THE NAME IS NEVER PUBLISHED EMPTY. A snapshot whose Goal came back
+			// blank — an amendment mid-flight, a node the planner minted without one
+			// — would otherwise hand a surface a row it can only call "task 19"
+			// ([orchestrateFamily.names] says the rest).
+			Title:   f.name(node.ID, node.Goal),
 			State:   state,
 			Stopped: stopped,
 			// WHAT THIS NODE IS RUNNING ON. It was missing, and it was missing on
@@ -1440,6 +1454,27 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 		SessionID:     session,
 		TranscriptURI: taskURI(orchestrateJournalPath(session, f.run, node.ID)),
 	})
+}
+
+// name is what one node of this run is CALLED, clipped to a chip's width: the
+// goal it arrived with, or the last one it was published under when this
+// snapshot has none.
+//
+// It remembers as it answers, which is why it is one function and not two: every
+// publish goes through here, so the name a row was last given is always the name
+// the next nameless publish will use.
+func (f *orchestrateFamily) name(node, goal string) string {
+	title := clip(firstLine(strings.TrimSpace(goal)), hintLimit)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if title == "" {
+		return f.names[node]
+	}
+	if f.names == nil {
+		f.names = make(map[string]string, 8)
+	}
+	f.names[node] = title
+	return title
 }
 
 // claim is the id for one node and whether this state is news. The mint and the
@@ -1490,8 +1525,15 @@ func (f *orchestrateFamily) retire(live map[string]bool) {
 	}
 	f.mu.Unlock()
 	for _, row := range gone {
+		// IT KEEPS ITS NAME ON THE WAY OUT. This is the one notice in the file that
+		// has no snapshot behind it — the node is gone from the graph, which is why
+		// it is being settled — so the title comes from what it was last published
+		// as ([orchestrateFamily.names]). Without it the last thing a surface heard
+		// about this row was nameless, and a row that lost its name at the moment it
+		// stopped is the row a person is most likely to be asking about.
 		f.agent.emitTaskUpdate(TaskNotice{
-			ID: row.id, Run: f.run, Node: row.node, Parent: f.root, State: TaskFailed, Stopped: true,
+			ID: row.id, Run: f.run, Node: row.node, Parent: f.root,
+			Title: f.name(row.node, ""), State: TaskFailed, Stopped: true,
 		})
 	}
 }

@@ -145,8 +145,19 @@ func taskTitleOf(label, assignment string, id uint64) string {
 	if name := firstWords(leadSentence(assignment), taskTitleWords); name != "" {
 		return name
 	}
-	return "task " + itoa(int(id))
+	return taskIDWord(id)
 }
+
+// taskIDWord is the LAST-RESORT name: the word a person uses for a node nobody
+// has told this surface the name of.
+//
+// IT IS ONE FUNCTION BECAUSE IT IS ALSO A QUESTION. Two places make this string
+// — the name above and a room opened on a node with no name yet (room.go) — and
+// one place has to be able to ASK whether a name it is holding is really just
+// this ([app.taskUpdate] refreshes a room's header when the node's real name
+// finally arrives). A second spelling of it would be a header that never
+// noticed.
+func taskIDWord(id uint64) string { return "task " + itoa(int(id)) }
 
 // taskSubtitleOf is the one line under a name: the first sentence of what the
 // node was asked to do, capped.

@@ -277,3 +277,63 @@ func TestAFamilyMintsItsIdsFromTheTaskGraph(t *testing.T) {
 		t.Fatalf("the node's id is %d, the run's %d, the next task's %d", kid, family.root, next)
 	}
 }
+
+// EVERY ROW OF A RUN IS PUBLISHED WITH A NAME, and the two rows that were not
+// are the two this pins. A surface draws what it is told and calls a nameless
+// row "task 19" (internal/tui3's taskTitleOf), which is the right floor for a
+// node nobody has named and a lie about one that has a goal.
+func TestEveryRowOfARunIsPublishedWithItsName(t *testing.T) {
+	agent, updates := familyAgent(t)
+	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/model", "run-pricing")
+
+	family.upsert([]orchestrate.NodeStatus{
+		node("n1", "read the tariff table", orchestrate.Running),
+		node("n2", "read the invoice writer", orchestrate.Queued),
+	})
+	// A SNAPSHOT THAT CAME BACK WITHOUT THE GOAL still names the row: the node is
+	// the one it was a moment ago, and the run remembers what it published.
+	family.upsert([]orchestrate.NodeStatus{node("n1", "", orchestrate.Done)})
+	// AND A NODE THE PLANNER DROPPED KEEPS ITS NAME ON THE WAY OUT. This is the
+	// one notice with no snapshot behind it — the node is gone from the graph,
+	// which is why it is being settled at all.
+	family.retire(map[string]bool{})
+
+	byID := map[uint64][]TaskNotice{}
+	for _, notice := range familyNotices(t, updates) {
+		byID[notice.ID] = append(byID[notice.ID], notice)
+	}
+	if len(byID) != 3 {
+		t.Fatalf("%d rows published, want the run and its two nodes", len(byID))
+	}
+	for id, notices := range byID {
+		for _, notice := range notices {
+			if notice.Title == "" {
+				t.Fatalf("row %d was published nameless in state %q: %+v", id, notice.State, notice)
+			}
+		}
+	}
+	// The dropped node's last word carries the name it ran under.
+	var settled []TaskNotice
+	for _, notices := range byID {
+		for _, notice := range notices {
+			if notice.Stopped {
+				settled = append(settled, notice)
+			}
+		}
+	}
+	if len(settled) == 0 {
+		t.Fatal("nothing was settled by the retire")
+	}
+	for _, notice := range settled {
+		switch notice.Node {
+		case "n1":
+			if notice.Title != "read the tariff table" {
+				t.Fatalf("the dropped node is called %q", notice.Title)
+			}
+		case "n2":
+			if notice.Title != "read the invoice writer" {
+				t.Fatalf("the dropped node is called %q", notice.Title)
+			}
+		}
+	}
+}

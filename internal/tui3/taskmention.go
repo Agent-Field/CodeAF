@@ -154,9 +154,23 @@ func (a *app) refreshTasks() tea.Cmd {
 		a.comp.tasksStale = true
 		return nil
 	}
-	if !a.comp.open {
-		// Nobody is looking. The next "@" pays for the read, which is the same
-		// deal the first one made.
+	if !a.comp.open && !a.taskSheet.open && !a.railShowing() {
+		// Nobody is looking. The next "@" — or the next time the task page is
+		// opened — pays for the read, which is the same deal the first one made.
+		// THE PAGE IS ON THIS LIST BECAUSE IT IS THE ONE READER THAT STAYS OPEN
+		// ACROSS A LANDING: the "@" list is dismissed by the keystroke after it,
+		// while somebody can sit on the task page watching a node finish, and a page
+		// that kept drawing it under "running" after it landed would be the record
+		// disagreeing with the column beside it (taskview.go).
+		//
+		// AND THE COLUMN IS ON IT FOR THE SAME REASON, ONE STEP FURTHER: it carries
+		// the project's record under its own rows now ([app.railRecord]) and the
+		// column is PERMANENT ([app.railShowing]), so it is the reader that never
+		// looks away. A node that lands in THIS session moves from the column's
+		// forest into that record, and a snapshot nobody re-read would draw it in
+		// both. What still stands the read down is the column being gone rather
+		// than idle — put away with ctrl+g, or under [railSlimFloor] — which is
+		// exactly the case where nothing on the frame is showing the record.
 		return nil
 	}
 	return a.loadTasks()
