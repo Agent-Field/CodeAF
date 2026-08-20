@@ -141,6 +141,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why don't I see the image", "screen"},
 		{"where did my generated image go", "screen"},
 		{"you only gave me text, where is the picture", "screen"},
+		// The eighth wave: the project's own record. The page holding it is
+		// /history and it used to be /tasks, which collided with the three /task
+		// rows that START work — so the words a person reaches for when they want
+		// the record ("history", "old tasks", "previous sessions") have to land on
+		// the pages that describe the page and the command, and never on the ones
+		// about starting one.
+		{"where is my task history", "tasks"},
+		{"how do I see tasks from previous sessions", "tasks"},
+		{"how do I search my old tasks", "tasks"},
+		{"what did we do last week", "tasks"},
+		{"is there a history command", "commands"},
+
 		// These two are asked ABOUT THE PICTURE rather than about the screen, so
 		// the making page is the right answer and says the same thing: the image
 		// draws itself under the row, and the path it names is whole.

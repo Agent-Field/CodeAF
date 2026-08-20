@@ -76,7 +76,7 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	}
 }
 
-// THE KEY FALLS THROUGH ON A PROJECT THAT HAS RUN NOTHING, and /tasks says so
+// THE KEY FALLS THROUGH ON A PROJECT THAT HAS RUN NOTHING, and /history says so
 // rather than raising a page with a title and nothing under it. The emptiness law
 // reaches modals: a fullscreen page with no rows is the loudest way of saying
 // nothing.
@@ -88,12 +88,44 @@ func TestTheTaskPageRefusesToOpenWithNoTasksAtAll(t *testing.T) {
 		t.Fatal("ctrl+. raised an empty task page")
 	}
 
-	a.slash("/tasks")
+	a.slash("/history")
 	if a.taskSheet.open {
-		t.Fatal("/tasks raised an empty task page")
+		t.Fatal("/history raised an empty task page")
 	}
 	if text := taskText(a); !strings.Contains(text, taskSheetEmpty) {
-		t.Fatalf("/tasks said nothing about why it opened nothing:\n%s", text)
+		t.Fatalf("/history said nothing about why it opened nothing:\n%s", text)
+	}
+}
+
+// THE PAGE'S COMMAND IS /history AND IT IS NOT SPELLED WITH "task". /task means
+// give aforge work — three rows of the list say so — and a plural beside them was
+// a command that answered the muscle memory for starting one.
+func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
+	var named bool
+	for _, c := range commands {
+		if c.name == "history" {
+			named = true
+		}
+		for _, word := range append([]string{c.name}, c.alias...) {
+			if word == "tasks" {
+				t.Fatalf("/tasks is back in the command list, beside /task")
+			}
+		}
+	}
+	if !named {
+		t.Fatal("no /history row in the command list")
+	}
+
+	a, _, _ := taskApp(t)
+	railRun(a)
+	a.slash("/history")
+	if !a.taskSheet.open {
+		t.Fatal("/history did not open the task page")
+	}
+	// And the page names itself with the same word the command spells, so a
+	// person who typed it recognizes what came up.
+	if text := taskSheetText(a); !strings.Contains(text, taskSheetWord) {
+		t.Fatalf("the page does not say what it is:\n%s", text)
 	}
 }
 
@@ -398,5 +430,322 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 	// through: the pin is the head alone.
 	if strings.Contains(rail, "landed 2 ") {
 		t.Fatalf("nothing scrolled at all:\n%s", rail)
+	}
+}
+
+// ── typing at the page ──────────────────────────────────────────────────────
+
+// TYPING FILTERS BOTH SECTIONS AT ONCE. A record of four hundred tasks is
+// reached by remembering a word of a title, and the page is the whole frame —
+// there is no box underneath for a letter to land in.
+func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railRun(a)
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+		pastTask("11", "mix-the-audio", "Mix the audio", 40*time.Hour),
+	}
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open")
+	}
+
+	// "port" is in one live title and one record row, so both sections survive
+	// it and everything else goes.
+	drive(t, a, key("p"), key("o"), key("r"), key("t"))
+	text := taskSheetText(a)
+	for _, want := range []string{
+		taskSheetNowHead, "Ship the port",
+		taskSheetPastHead, "Port the parser",
+		taskSheetFilterWord + "port",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the filtered page is missing %q:\n%s", want, text)
+		}
+	}
+	for _, gone := range []string{"Write the tree", "Mix the audio"} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("%q survived the filter:\n%s", gone, text)
+		}
+	}
+	// A FILTERED TREE IS FLAT. The connectors are a claim about what hangs off
+	// what, and a query that takes the middle out leaves them pointing at nothing.
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, treeBranch) || strings.Contains(line, treeLast) {
+			t.Fatalf("the filtered tree still draws connectors:\n%s", line)
+		}
+	}
+
+	// A SECTION WITH NO MATCH IS NOT DRAWN AT ALL, heading and all: a rule with
+	// nothing under it says the query found something and lost it.
+	drive(t, a, key("ctrl+u"))
+	for _, r := range "audio" {
+		drive(t, a, key(string(r)))
+	}
+	text = taskSheetText(a)
+	if strings.Contains(text, taskSheetNowHead) {
+		t.Fatalf("the %q rule is drawn over nothing:\n%s", taskSheetNowHead, text)
+	}
+	if !strings.Contains(text, "Mix the audio") {
+		t.Fatalf("the record row that matches is gone:\n%s", text)
+	}
+
+	// AND A QUERY THAT MATCHES NOTHING SAYS SO, rather than leaving a blank page
+	// that reads as broken.
+	drive(t, a, key("ctrl+u"))
+	drive(t, a, key("z"), key("z"))
+	if text := taskSheetText(a); !strings.Contains(text, taskSheetFilterNone) {
+		t.Fatalf("an empty filter result says nothing:\n%s", text)
+	}
+	// backspace edits it rather than closing anything.
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if got := a.taskSheetFilter(); got != "z" {
+		t.Fatalf("backspace left the filter %q", got)
+	}
+}
+
+// esc BACKS OUT ONE LAYER AT A TIME — the filter first, the page second — which
+// is the settings panel's own layering. A key that closed the page from inside a
+// filter would throw away the only thing on screen the person typed.
+func TestEscOnTheTaskPageClearsTheFilterBeforeItCloses(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railRun(a)
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open")
+	}
+	drive(t, a, key("t"), key("r"), key("e"), key("e"))
+	if a.taskSheetFilter() != "tree" {
+		t.Fatalf("the filter reads %q", a.taskSheetFilter())
+	}
+
+	drive(t, a, key("esc"))
+	if !a.taskSheet.open {
+		t.Fatal("the first esc closed the page instead of the filter")
+	}
+	if a.taskSheetFiltering() {
+		t.Fatalf("the first esc left the filter %q", a.taskSheetFilter())
+	}
+	drive(t, a, key("esc"))
+	if a.taskSheet.open {
+		t.Fatal("the second esc did not close the page")
+	}
+
+	// The chord is not a layer: it closes the page from inside a filter.
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open again")
+	}
+	drive(t, a, key("t"))
+	drive(t, a, ctrlDot())
+	if a.taskSheet.open {
+		t.Fatal("ctrl+. did not close a filtered page")
+	}
+	// And a page opened again opens unfiltered: the query goes with the page.
+	if !a.openTaskSheet() {
+		t.Fatal("the page refused to open a third time")
+	}
+	if a.taskSheetFiltering() {
+		t.Fatalf("the page reopened still filtered by %q", a.taskSheetFilter())
+	}
+}
+
+// ── the column carries the project's record ─────────────────────────────────
+
+// THE COLUMN NOTES WHAT THE PROJECT HAS RUN, under this session's own work and
+// dulled. It is what makes the record discoverable at all: a page reachable only
+// by a chord nobody has been told about is a page that does not exist.
+func TestTheColumnDrawsTheProjectsRecordUnderItsOwnWork(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+		pastTask("11", "mix-the-audio", "Mix the audio", 40*time.Hour),
+	}
+
+	rail := rosterText(a, a.viewHeight())
+	for _, want := range []string{"Ship the port", taskSheetPastHead, "Port the parser", "Mix the audio"} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the column is missing %q:\n%s", want, rail)
+		}
+	}
+	// THE SESSION'S OWN WORK LEADS IT. The record is a footnote under the column,
+	// not a second list beside it.
+	if strings.Index(rail, "Ship the port") > strings.Index(rail, taskSheetPastHead) {
+		t.Fatalf("the record is drawn above this session's work:\n%s", rail)
+	}
+	// A ROW THIS SESSION IS ALREADY SHOWING IS NOT SAID TWICE, by the page's own
+	// id-and-title rule.
+	a.comp.tasks = append(a.comp.tasks, pastTask("1", "ship-the-port", "Ship the port", time.Minute))
+	if n := strings.Count(rosterText(a, a.viewHeight()), "Ship the port"); n != 1 {
+		t.Fatalf("this session's running node is on the column %d times, want once", n)
+	}
+}
+
+// THE CAP IS SIX ROWS, because the column is a glance and the record runs to
+// two thousand. What is under the cap is the page's business.
+func TestTheColumnsRecordRowsAreCapped(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	for i := 0; i < railRecordMax+4; i++ {
+		a.comp.tasks = append(a.comp.tasks,
+			pastTask(itoa(100+i), "old-"+itoa(i), "older work "+itoa(i), time.Duration(i+1)*time.Hour))
+	}
+
+	rail := rosterText(a, a.viewHeight())
+	drawn := 0
+	for i := 0; i < railRecordMax+4; i++ {
+		if strings.Contains(rail, "older work "+itoa(i)) {
+			drawn++
+		}
+	}
+	if drawn != railRecordMax {
+		t.Fatalf("the column drew %d record rows, want %d:\n%s", drawn, railRecordMax, rail)
+	}
+	// The NEWEST are the ones it keeps: the index arrives newest first.
+	if !strings.Contains(rail, "older work 0") || strings.Contains(rail, "older work 9") {
+		t.Fatalf("the column kept the wrong end of the record:\n%s", rail)
+	}
+	// And the footer says the rest is somewhere.
+	if !strings.Contains(rail, taskSheetMoreHint) {
+		t.Fatalf("the column cut the record and offered no door onto it:\n%s", rail)
+	}
+}
+
+// THE RECORD NEVER EVICTS LIVE WORK. It is filled into the rows the session's
+// own list did not need, so a column busy with running tasks carries none of it.
+func TestTheColumnsRecordNeverPushesOutRunningWork(t *testing.T) {
+	a, _, _ := taskApp(t)
+	for i := 1; i <= 8; i++ {
+		a.taskUpdate(update(uint64(i), "running "+itoa(i), session.TaskRunning, session.TaskNotice{}))
+	}
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("90", "port-the-parser", "Port the parser", time.Hour),
+	}
+
+	// A column with fewer rows than the running work needs: every row of the body
+	// is running work, the record has to wait for the page, and the footer says
+	// where the page is.
+	rail := rosterText(a, 9)
+	if strings.Contains(rail, "Port the parser") || strings.Contains(rail, taskSheetPastHead) {
+		t.Fatalf("the record took a row from running work:\n%s", rail)
+	}
+	for i := 1; i <= 5; i++ {
+		if !strings.Contains(rail, "running "+itoa(i)) {
+			t.Fatalf("running %d was evicted from the column:\n%s", i, rail)
+		}
+	}
+	if !strings.Contains(rail, taskSheetMoreHint) {
+		t.Fatalf("the column dropped the record and offered no door onto it:\n%s", rail)
+	}
+
+	// Given the rows for it, the same column carries both.
+	tall := rosterText(a, 20)
+	if !strings.Contains(tall, "Port the parser") {
+		t.Fatalf("a column with room to spare drew no record:\n%s", tall)
+	}
+	for i := 1; i <= 8; i++ {
+		if !strings.Contains(tall, "running "+itoa(i)) {
+			t.Fatalf("running %d is missing from a column with room:\n%s", i, tall)
+		}
+	}
+}
+
+// THE EMPTY COLUMN AND THE PROJECT'S RECORD COMPOSE, and this is the law they
+// compose to: the column is permanent, so it stands either way — what changes is
+// what stands IN it. A conversation that has run nothing in a directory that has
+// shows the dulled `earlier` rows; only a column with genuinely nothing behind it
+// wears the "no tasks yet" label. Two lines saying "no tasks yet" and "earlier ·
+// Port the parser" one under the other would be the column contradicting itself.
+func TestAnEmptySessionShowsTheProjectsRecordRatherThanTheEmptyWord(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+
+	// Nothing anywhere: the column stands, because it always does, and says what
+	// the place is for.
+	if !a.railShowing() {
+		t.Fatal("the permanent column did not stand on an empty session")
+	}
+	bare := rosterText(a, a.viewHeight())
+	if !strings.Contains(bare, railEmptyWord) {
+		t.Fatalf("an empty column did not say what it is for:\n%s", bare)
+	}
+	if strings.Contains(bare, taskSheetPastHead) {
+		t.Fatalf("an empty project drew a record it does not have:\n%s", bare)
+	}
+
+	// A record behind it, and the same empty session: the rows take the label's
+	// place rather than sitting under it.
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+	}
+	rail := rosterText(a, a.viewHeight())
+	for _, want := range []string{taskSheetPastHead, "Port the parser", taskSheetMoreHint} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the record-only column is missing %q:\n%s", want, rail)
+		}
+	}
+	if strings.Contains(rail, railEmptyWord) {
+		t.Fatalf("the column says it has no tasks over a record of them:\n%s", rail)
+	}
+	// And the record opens at the top of the column: there is nothing above it for
+	// a blank row to separate it from.
+	rows := strings.Split(strings.TrimRight(rail, "\n"), "\n")
+	if !strings.Contains(rows[0], taskSheetPastHead) {
+		t.Fatalf("the record does not open the column: %q", rows[0])
+	}
+
+	// ctrl+g still closes a column standing on the record alone — it is thirty
+	// columns of somebody else's paragraph either way.
+	drive(t, a, key("ctrl+g"))
+	if a.railShowing() {
+		t.Fatal("ctrl+g left a record-only column standing")
+	}
+	drive(t, a, key("ctrl+g"))
+	if !a.railShowing() {
+		t.Fatal("ctrl+g did not bring the record-only column back")
+	}
+}
+
+// THE RECORD ROWS ANSWER TO NOTHING. There is no room behind work another
+// conversation ran, so the column notes it and the page is where it is acted on.
+// What matters here is that the cursor and the pointer never fall into them.
+func TestTheColumnsRecordRowsAreNotDoors(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.comp.tasks = []session.TaskIndexEntry{
+		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
+	}
+
+	height := a.viewHeight()
+	view, _ := a.railView(height)
+	at := -1
+	for i, line := range view {
+		if line.past && strings.Contains(plain(line.text), "Port the parser") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("no record row on the column to press:\n%s", rosterText(a, height))
+	}
+	if line, ok := a.railLineAt(at + a.topHeight()); !ok || line.entry >= 0 {
+		t.Fatalf("a record row belongs to entry %d, want none", line.entry)
+	}
+	// The press belongs to the column — it never falls through to the
+	// conversation — and it opens nothing.
+	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
+		t.Fatal("a press on a record row fell through the column")
+	}
+	if a.room != nil || a.taskSheet.open {
+		t.Fatal("a record row opened something")
+	}
+
+	// AND THE ROSTER'S CURSOR WALKS PAST THEM WITHOUT FALLING IN. They are not
+	// entries, so ctrl+t and forty downs stay on this session's one node.
+	drive(t, a, ctrlT())
+	for i := 0; i < 40; i++ {
+		drive(t, a, key("down"))
+	}
+	if a.railWhere.id != 1 {
+		t.Fatalf("the roster's cursor walked into the record: %+v", a.railWhere)
 	}
 }

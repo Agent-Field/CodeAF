@@ -2383,6 +2383,12 @@ func (a *app) railColumns(width int) int {
 // the frame, the conversation takes back the columns, and the answer is
 // remembered for the next session ([app.railStow]). The width tiers keep their
 // say too — under [railSlimFloor] there is no column to stand.
+//
+// WHAT FILLS IT IS NOT ONLY THIS SESSION'S WORK. Under the forest it carries the
+// project's own record, dulled and capped ([app.railRecordLines], taskview.go),
+// so a column standing in a directory that has run forty tasks is not an empty
+// place with a label on it — and [app.railView] says which of the two an empty
+// session gets.
 func (a *app) railShowing() bool {
 	if a.railAway {
 		return false
@@ -2488,6 +2494,11 @@ type railLine struct {
 	// was asked to widen the column, to hide it, or to leave it for a page that
 	// holds work this session never ran.
 	more bool
+	// past says this line is one row of the PROJECT'S RECORD, or the word above
+	// them ([app.railRecordLines], taskview.go). It belongs to no entry and it
+	// answers to nothing — no cursor, no hover, no door — which is exactly what
+	// the flag is for: the pointer has to be able to tell a note from a task.
+	past bool
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2546,7 +2557,14 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// read as a rendering fault rather than a place. One dim line is the whole of
 	// it — a label, not a count of nothing, which is what keeps it on the right
 	// side of the emptiness law.
-	if len(entries) == 0 {
+	//
+	// AND "EMPTY" IS ABOUT THE WHOLE COLUMN, NOT ABOUT THIS SESSION. A directory
+	// that ran forty tasks last week has a record to show even on a conversation
+	// that has run nothing ([app.railRecordLines], taskview.go), and those rows go
+	// where this label would — because "no tasks yet" over a list of forty of them
+	// is the column contradicting itself in two adjacent lines. The label is for
+	// the column that genuinely has nothing: a new session in a new project.
+	if len(entries) == 0 && !a.railHasRecord() {
 		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
 	}
 	foot, hint, door, more := a.railFootRows(room, height)
@@ -2573,7 +2591,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 		pin = min(a.railMovingHead(lines, entries), body-1)
 	}
 	tail := lines[pin:]
-	room = body - pin
+	// The rows the WINDOW gets, which is what is left of the body once the pinned
+	// head has taken its own. It is not the column's width — that is `room`, and
+	// the record rows below are laid out at it.
+	scroll := body - pin
 
 	// The cursor the window follows is the focused entry's first line, and the
 	// offset itself when nothing is focused: a roster nobody is navigating stays
@@ -2589,13 +2610,19 @@ func (a *app) railView(height int) ([]railLine, int) {
 			}
 		}
 	}
-	a.railTop = listTop(max(cursor-pin, 0), a.railTop, len(tail), room)
+	a.railTop = listTop(max(cursor-pin, 0), a.railTop, len(tail), scroll)
 
 	out := make([]railLine, 0, height)
 	out = append(out, lines[:pin]...)
 	for i := a.railTop; i < len(tail) && len(out) < body; i++ {
 		out = append(out, tail[i])
 	}
+	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED GOES TO THE PROJECT'S RECORD,
+	// dulled, flat and capped ([app.railRecordLines], taskview.go). It is filled in
+	// HERE, after the window and before the padding, because those are exactly the
+	// rows nobody else wanted: work that is still going cannot be evicted by it, by
+	// construction rather than by a rule somebody has to keep.
+	out = a.railRecordLines(out, body, room)
 	for len(out) < body {
 		out = append(out, railLine{entry: -1})
 	}
@@ -2883,12 +2910,13 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		//
 		// IT ONLY ACTS ON A ROSTER THAT IS ON THE FRAME, or on one it has already
 		// taken off. The column stands empty now ([app.railShowing]), so "on the
-		// frame" no longer needs any tasks behind it — but under [railSlimFloor],
-		// where there is no column to close and nobody has raised the overlay, it
-		// still falls through untouched, exactly as ctrl+t does. A keystroke that
-		// silently moved a state nothing is drawing is a keystroke a person cannot
-		// tell they pressed, and this one would move it into the NEXT session as
-		// well.
+		// frame" no longer needs any tasks behind it — a column carrying nothing but
+		// the project's own record rows, or nothing but its label, closes and reopens
+		// like any other. Under [railSlimFloor], where there is no column to close and
+		// nobody has raised the overlay, it still falls through untouched, exactly as
+		// ctrl+t does. A keystroke that silently moved a state nothing is drawing is a
+		// keystroke a person cannot tell they pressed, and this one would move it into
+		// the NEXT session as well.
 		if !(a.railStanding() || a.railAway) {
 			return nil, false
 		}
@@ -3208,11 +3236,19 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 //
 // TWO THINGS EARN THE OFFER AND NOTHING ELSE DOES. A folded family is work the
 // column is deliberately standing one row for, and the page draws every family
-// whole; and the project's record holds work THIS SESSION NEVER RAN, which the
-// column cannot show at all because it is built from this session's own graph.
-// Everything else — a landed node of this session's, drawn on the column and
-// listed again on the page — is the same row said twice, and a line offering to
-// show you what you are already looking at is chrome.
+// whole; and the project's record is work THIS SESSION NEVER RAN, which the
+// column can only ever footnote — at most [railRecordMax] rows of it, dulled,
+// answering to nothing ([app.railRecordLines], taskview.go). A landed node of
+// this session's, drawn on the column and listed again on the page, earns
+// nothing: that is the same row said twice, and a line offering to show you what
+// you are already looking at is chrome.
+//
+// THE RECORD EARNS IT EVEN WHEN EVERY ROW OF IT IS ON THE COLUMN, and that is
+// not a contradiction of the sentence above. Those rows are a NOTE — there is no
+// cursor on them, no room behind them and no mention to be had from them — so
+// this line is the only door onto the work they name, and a column that showed a
+// person six tasks and no way to reach any of them would be the whole complaint
+// this feature was built to answer.
 //
 // It short-circuits on the first row it finds, so the common answer costs one
 // comparison rather than a walk of the whole record.
@@ -3222,16 +3258,7 @@ func (a *app) railOffersMore() bool {
 			return true
 		}
 	}
-	for i := range a.comp.tasks {
-		entry := &a.comp.tasks[i]
-		if entry.Live() {
-			continue
-		}
-		if a.taskSheetNodeFor(entry) == nil {
-			return true
-		}
-	}
-	return false
+	return a.railHasRecord()
 }
 
 // railOffersResize reports whether the footer should name the handle. A cut

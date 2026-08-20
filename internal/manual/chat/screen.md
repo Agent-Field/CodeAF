@@ -11,15 +11,17 @@ menu, completion), and the status line last.
 
 Beside the conversation, on the right, the task roster's column — the right-hand bar,
 sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's very first frame, before any tasks exist. Empty, it says one dim
-line: `no tasks yet`. Work fills the column rather than raising it. `ctrl+g` closes it
-and opens it again, remembered between sessions, and the column's own last line says
-so: `ctrl+g — hide`. With it closed the conversation is laid out at the full width of
-the terminal, running work still draws the strip along the top, and the legend's hint
-slot reads `ctrl+g tasks` once the session has tasks to come back to.
+from the session's very first frame, before any tasks exist. Work fills the column
+rather than raising it. Empty it says one dim line — `no tasks yet` — unless the
+project has a record from earlier sessions, in which case those dulled `earlier` rows
+stand there instead. `ctrl+g` closes it and opens it again, remembered between
+sessions, and the column's own last line says so: `ctrl+g — hide`. With it closed the
+conversation is laid out at the full width of the terminal, running work still draws
+the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
+session has tasks to come back to.
 
 Two things take the whole frame instead of sharing it, at every width: the settings
-panel (`ctrl+,`) and the task page (`ctrl+.`). While either is up nothing else is drawn
+panel (`ctrl+,`) and the task page (`ctrl+.`, or `/history`). While either is up nothing else is drawn
 — no conversation, no box, no status line — and `esc` gives the frame back. They are
 never both up: opening one closes the other.
 
@@ -1007,6 +1009,13 @@ lot of quiet ones.
 **Rows that are running never scroll off**, however long the list gets: they are pinned to
 the top of the column and everything under them scrolls.
 
+**Under this session's rows, the project's record is a dulled footnote.** After a blank
+line comes the word `earlier`, dim, and under it at most six one-line rows of tasks earlier
+sessions ran — glyph, the `⧉` mention mark, the title muted, the age dim. They are filled
+into the rows the session's own list did not need, so they can never push a running task
+off, and they answer to nothing: no cursor, no hover step, no click. The `ctrl+. — view
+more` line below is the door onto them.
+
 The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
 you` — and then up to three more dim lines, each of which is a button as well as a key:
 
@@ -1016,10 +1025,10 @@ w · click seam — widen
 ctrl+g — hide
 ```
 
-`ctrl+. — view more` is drawn only when the full-screen task page would show something
-this column is not: a folded family, or work an earlier session ran. `w · click seam —
-widen` appears only while a title is actually being cut by its own indent. `ctrl+g — hide`
-is always there.
+`ctrl+. — view more` is drawn only when the full-screen task page (`/history`) has
+something this column cannot give: a folded family, or work an earlier session ran.
+`w · click seam — widen` appears only while a title is actually being cut by its own
+indent. `ctrl+g — hide` is always there.
 
 ## Light terminals, and why there is no theme setting
 

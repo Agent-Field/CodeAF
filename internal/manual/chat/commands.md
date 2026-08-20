@@ -160,7 +160,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
-| `/tasks` | — | — | opens the full-screen task page — every task this project has run (also ctrl+.) |
+| `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
@@ -668,17 +668,26 @@ asking whenever there is anything to split, and `single` always starts one worke
 not size the work at all. `solo` and `adaptive` typed on the command line override the row
 either way.
 
-## /tasks — every task this project has run
+## /history — the task history command: past tasks, every task this project has run
 
-`/tasks`, or `ctrl+.`, opens a full-screen page holding the project's whole task record:
+`/history`, or `ctrl+.`, opens a full-screen page holding the project's whole task record:
 this conversation's work **and every earlier conversation's**. It is the one place that
 answers "what did we do about this last week" — the roster's column beside the conversation
-is built from this session alone.
+is built from this session's own work, and carries only a short dulled note of the rest.
+
+**It is not `/tasks`, and there is no `/tasks`.** `/task <brief>` and its `solo` and
+`adaptive` forms mean *give aforge work*; this page starts none, so it does not share their
+word. Typing `/history` is the only slash form.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
 current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
 first, of everything the project has finished — one line each, the same rows the `@` list
 offers.
+
+**Type to filter.** Any printable key, spaces included, narrows both sections at once
+against the titles, the ids and the outcomes; the bottom of the page shows what was typed
+as `filter · port`, and a section with no match disappears entirely. `backspace`, `ctrl+w`
+and `ctrl+u` edit it. `esc` clears the filter first and closes the page on the second press.
 
 `esc` closes it. `↑`/`↓` move, `enter` opens the row: a task this session is holding opens
 its room, and a task another conversation ran goes into your message box as

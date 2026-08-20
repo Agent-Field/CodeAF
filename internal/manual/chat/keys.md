@@ -147,7 +147,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+.` | Open the task page — every task this project has run, across every session. Does nothing when the project has run none |
+| `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -458,13 +458,17 @@ open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab 
 `space` activate · `backspace`, `ctrl+u`, `ctrl+w` edit the search · anything else
 types into it.
 
-**Task page** (`ctrl+.`, or `/tasks`, or the `ctrl+. — view more` line at the bottom of
-the task column): `esc` or `ctrl+.` close · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
+**Task page** (`ctrl+.`, or `/history`, or the `ctrl+. — view more` line at the bottom of
+the task column): `esc` closes it — or clears the filter first, if one is being typed —
+and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
-first and last · `enter` opens the row. Every other key is swallowed. Its foot reads
+first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
+· **every other printable key, the space included, types into the filter**, which narrows
+both sections at once and is shown at the foot as `filter · port`. Its foot reads
 `esc close · ↑↓ move · enter opens its room`, or
 `esc close · ↑↓ move · enter puts it in your message` on a task another conversation ran,
-which has no room to open. Clicking a row acts on the first press; the wheel walks the
+which has no room to open, or `esc clears the filter · ↑↓ move · enter opens the row` while
+you are typing one. Clicking a row acts on the first press; the wheel walks the
 cursor. The tasks pages describe what is on it.
 
 **Connections panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
@@ -500,8 +504,9 @@ back to the box. The choice is written to your profile as `ui.task_column`, so t
 session opens the way you left it, and `ctrl+t` counts as asking for the column back.
 The key falls through and does nothing only when there is no roster on the frame to
 close: a frame under 100 columns where nothing has raised the overlay. It works with
-no tasks at all — the column stands empty, saying `no tasks yet`, and an empty column
-is still a column to close.
+no tasks at all — the column stands there saying `no tasks yet`, or carrying the
+project's dulled `earlier` rows if earlier sessions ran anything, and either way an
+empty column is still a column to close.
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
