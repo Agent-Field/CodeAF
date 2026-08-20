@@ -460,10 +460,7 @@ func TestHomeCollapsesTheQuietTailOfAProject(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	text := homeText(a)
-	// Seven conversations, one of them this window's own. That one is the anchor
-	// against the box and is never counted into the four the project shows
-	// (home.go's [homeView.split]), so the tail stands for the other two.
-	if !strings.Contains(text, "…2 more") {
+	if !strings.Contains(text, "…3 more") {
 		t.Fatalf("home did not whisper the quiet tail:\n%s", text)
 	}
 }
@@ -564,9 +561,9 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 // on the LAST body row — directly above the rule and the box — with the matches
 // rising above it.
 //
-// THE RESTING SCREEN IS THE SAME SHAPE, and [TestHomeRestsAgainstTheBoxToo] is
-// the other half of this law: the same body row, the same cursor, whether or not
-// anything is typed.
+// THE RESTING SCREEN IS THE OTHER SHAPE, and [TestHomeWithNothingTypedHangsFromTheTop]
+// pins it: a dashboard from the top with the preview card beside it. The lift is
+// what typing does, and only what typing does.
 func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -621,94 +618,168 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	}
 }
 
-// homeCursorY is the screen row the cursor's line is drawn on, resolved through
-// the same hit table a click is resolved through — so an assertion about where
-// the cursor IS cannot disagree with where a press would land.
-func homeCursorY(t *testing.T, a *app) int {
+// homeLineY is the screen row one LINE OF THE LEFT COLUMN was drawn on, resolved
+// through the same hit table a click is resolved through — so an assertion about
+// where the column put something cannot disagree with where a press would land.
+//
+// IT IS THE HIT TABLE AND NOT THE TEXT, and that is not fussiness: the preview
+// card across the gutter repeats the focused conversation's NAME, top-anchored, so
+// a search over the frame's text for that name finds the card's copy at row four
+// whatever the list beside it did. A geometry assertion written that way passes on
+// a column dropped to the bottom of the screen — which is exactly how the
+// bottom-anchored resting list shipped past this suite.
+func homeLineY(t *testing.T, a *app, line int) int {
 	t.Helper()
 	width, height := a.size()
 	_, hits, _, _ := a.homeFrame(width, height)
 	for y, hit := range hits {
-		if hit == a.home.cursor {
+		if hit == line {
 			return y
 		}
 	}
-	t.Fatalf("the cursor's line %d is not on the frame", a.home.cursor)
+	t.Fatalf("column line %d is not on the frame", line)
 	return -1
 }
 
-// homeShape is the left column as a person reads its structure: a heading as
-// `# name`, a conversation as its name. It is taken off the built lines rather
-// than off the frame because the detail pane repeats the focused conversation's
-// name across the gutter, and a search over the whole screen would find that
-// copy.
-func homeShape(a *app) []string {
-	var out []string
-	for _, line := range a.home.lines {
-		switch line.kind {
-		case homeHeading:
-			out = append(out, "# "+line.project)
-		case homeSession:
-			out = append(out, homeName(line.row))
-		}
-	}
-	return out
+// homeCursorY is that, asked of the cursor.
+func homeCursorY(t *testing.T, a *app) int {
+	t.Helper()
+	return homeLineY(t, a, a.home.cursor)
 }
 
-// AND WITH NOTHING TYPED IT IS THE SAME SHAPE. The drop-up is not a thing typing
-// does — it is what this screen IS, resting or typing.
-//
-// The defect this answers is the second half of the one above. The action row
-// moved to the foot and the list lifted to meet it, but only WHILE SOMETHING WAS
-// TYPED: at rest the column still hung from the top and the cursor sat on this
-// window's conversation up in the corner, which is the same split attention one
-// keystroke earlier. The eye and the hands live at the box; so does the cursor.
-func TestHomeRestsAgainstTheBoxToo(t *testing.T) {
+// homeRowY is that, asked of the row holding a transcript.
+func homeRowY(t *testing.T, a *app, transcript string) int {
+	t.Helper()
+	for at, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Transcript == transcript {
+			return homeLineY(t, a, at)
+		}
+	}
+	t.Fatalf("no column line holds %s", transcript)
+	return -1
+}
+
+// homeRestLab is the fixture the resting laws are read off: three projects,
+// this window standing in the newest of them.
+func homeRestLab(t *testing.T) (*app, string) {
+	t.Helper()
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
 	lab.session("-tmp-alpha", "aaaa000000000002", "an older one", "/tmp/alpha", now.Add(-2*time.Hour))
 	lab.session("-tmp-beta", "bbbb000000000001", "somewhere else", "/tmp/beta", now.Add(-3*time.Hour))
-
 	a := lab.app(mine)
 	a.openHome()
+	return a, mine
+}
 
-	// THE BOTTOM LINE OF THE COLUMN IS THIS WINDOW'S OWN CONVERSATION, and the
-	// cursor is on it. Both halves matter: the row nearest the hand is the one
-	// enter already means, and the cursor is not somewhere else.
-	last := len(a.home.lines) - 1
-	if last < 0 {
-		t.Fatal("home drew no column at all")
-	}
-	if line := a.home.lines[last]; line.kind != homeSession || line.row.Transcript != mine {
-		t.Fatalf("the bottom row of the column is %q, want this window's conversation:\n%v",
-			homeName(line.row), homeShape(a))
-	}
-	if a.home.cursor != last {
-		t.Fatalf("the cursor rests on line %d, want the bottom line %d:\n%v",
-			a.home.cursor, last, homeShape(a))
-	}
+// AND WITH NOTHING TYPED THE LIST HANGS FROM THE TOP, because at rest home is a
+// DASHBOARD somebody is reading and not a thing they are typing at.
+//
+// THIS LAW WAS TAKEN AWAY ONCE AND HAD TO BE PUT BACK. A wave anchored the column
+// at the foot in both states so the cursor never moved between them, and the cost
+// was the screen: a machine with a handful of conversations drew most of a frame
+// of nothing with a clump of rows against the box. The drop-up is what TYPING
+// needs ([TestTypingClustersAtTheFootOfHome]); it is not what home is.
+func TestHomeWithNothingTypedHangsFromTheTop(t *testing.T) {
+	a, mine := homeRestLab(t)
 
-	// …AND IT IS DRAWN ON THE LAST BODY ROW. The head is four rows and the foot is
-	// three — the rule, the box, the hint — so the last row the column may have is
-	// four up from the bottom of the frame. Anything above that is a column still
-	// hanging from the top.
-	width, height := a.size()
-	if at := homeCursorY(t, a); at != height-4 {
-		lines, _, _, _ := a.homeFrame(width, height)
-		t.Fatalf("the resting cursor is on row %d of %d, want the last body row %d:\n%s",
-			at, height, height-4, ansi.Strip(strings.Join(lines, "\n")))
+	// The head is four rows — title, blank, rule, blank — then the project's
+	// heading, then the row. Anything further down is a list that floated to the
+	// bottom of the frame with nobody typing at it.
+	if at := homeRowY(t, a, mine); at > 6 {
+		t.Fatalf("the list did not hang from the top (row %d):\n%s", at, homeText(a))
 	}
 	if strings.Contains(homeText(a), homeStartWord) {
 		t.Fatal("the action row is drawn with nothing typed")
 	}
+	// AND THE CURSOR IS ON THIS WINDOW'S CONVERSATION, in its own project's
+	// section — not lifted anywhere, and above all not on a fold line.
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
+		t.Fatalf("the resting cursor is not on a conversation (kind %v)", line.kind)
+	}
 }
 
-// AND NOTHING MOVES WHEN THE FIRST CHARACTER LANDS. This is the whole point of
-// the two states being one geometry, and it is the cheapest thing to break: the
-// action row appears, the list re-filters underneath it, and the row the cursor
-// is on must stay on the very same screen row through all of it.
-func TestTheCursorDoesNotJumpWhenTypingStarts(t *testing.T) {
+// THE RIGHT PANE IS DRAWN AT REST. This is the regression that shipped, and it
+// shipped because nothing asserted the obvious.
+//
+// The cause was not the anchoring itself but what the anchoring did to the
+// CURSOR. The preview card is built from the row under the cursor and draws
+// NOTHING for a heading, a fold line or the action row — so a resting cursor that
+// came to rest on a project's `…14 more` line left half the screen blank. Which
+// is exactly what a fresh launch did: the conversation home greets you over has
+// no message in it yet, so the world does not list it, so the row the cursor was
+// supposed to open on did not exist.
+func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
+	a, _ := homeRestLab(t)
+	width, _ := a.size()
+	_, right := homeColumns(width)
+	if right <= 0 {
+		t.Fatalf("a %d-column frame lent the detail pane nothing", width)
+	}
+	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
+		t.Fatalf("the preview pane is empty at rest, with the cursor on %q", homeName(a.home.focused()))
+	}
+	// And it is really on the frame, across the gutter from the list.
+	if !strings.Contains(homeText(a), "alpha · /tmp/alpha") {
+		t.Fatalf("the card is not on the resting frame:\n%s", homeText(a))
+	}
+}
+
+// AND IT IS STILL DRAWN ON A LAUNCH THAT GREETS YOU, which is the case that broke.
+// A session folder nobody has spoken in yet is not a row the world reports, so
+// the cursor cannot open on it — and where it lands instead must still be a
+// CONVERSATION, because that is what keeps the card beside it drawn.
+func TestAFreshLaunchStillRestsOnAConversationWithItsCard(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	// Enough conversations that the project collapses a tail — the fold line was
+	// the row the cursor wrongly came to rest on.
+	for i := 0; i < homeShown+3; i++ {
+		lab.session("-tmp-alpha", "aaaa00000000000"+string(rune('1'+i)),
+			"chat "+string(rune('a'+i)), "/tmp/alpha", now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	// This window's own folder, written the way a launch writes one: a journal and
+	// a meta that names it, and no message spoken in it yet.
+	dir := filepath.Join(lab.project("-tmp-alpha"), "zzzz000000000001")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mine := filepath.Join(dir, "transcript.jsonl")
+	if err := os.WriteFile(mine, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(dir, session.Meta{
+		ID: "zzzz000000000001", Title: "brand new", Workspace: "/tmp/alpha", Created: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := lab.app(mine)
+	a.openHome()
+	if a.home.focused().Transcript == mine {
+		t.Fatal("the world listed a conversation nobody has spoken in, so this proves nothing")
+	}
+	if !strings.Contains(homeText(a), "more") {
+		t.Fatal("nothing collapsed, so the fold line this guards against is not on the screen")
+	}
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeSession {
+		t.Fatalf("a greeted launch rests the cursor on kind %v, want a conversation:\n%s",
+			line.kind, homeText(a))
+	}
+	width, _ := a.size()
+	_, right := homeColumns(width)
+	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
+		t.Fatalf("a greeted launch draws no preview card:\n%s", homeText(a))
+	}
+}
+
+// THE CURSOR MOVES BETWEEN THE TWO STATES, and that is the accepted price of
+// keeping the dashboard. Each state's geometry is pinned on its own: at rest the
+// cursor is up in the list, and the first character takes it to the foot with the
+// action row. Clearing the box brings it back.
+func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
@@ -717,77 +788,149 @@ func TestTheCursorDoesNotJumpWhenTypingStarts(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	before := homeCursorY(t, a)
+	_, height := a.size()
 
+	// AT REST: up in the list, well clear of the box, and on a conversation.
+	rest := homeCursorY(t, a)
+	if rest > 6 {
+		t.Fatalf("the resting cursor is on row %d, want it up in the list:\n%s", rest, homeText(a))
+	}
+	if row := a.home.focused(); row.Transcript != mine {
+		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
+	}
+
+	// TYPING: the action row, on the last body row — four up from the bottom of
+	// the frame, directly above the rule, the box and the hint.
 	a.homeKey(key("p"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("the first character did not leave the cursor on the action row (kind %v)", line.kind)
+		t.Fatalf("the first character did not put the cursor on the action row (kind %v)", line.kind)
 	}
-	if after := homeCursorY(t, a); after != before {
-		t.Fatalf("typing moved the cursor from row %d to row %d — rest and typing are two shapes again",
-			before, after)
+	if at := homeCursorY(t, a); at != height-4 {
+		t.Fatalf("the typing cursor is on row %d of %d, want the last body row %d:\n%s",
+			at, height, height-4, homeText(a))
 	}
-	// And back again when the character is taken away.
+
+	// AND BACK: the box empties, the dashboard returns, the cursor is off the foot.
 	a.homeKey(key("backspace"))
-	if after := homeCursorY(t, a); after != before {
-		t.Fatalf("clearing the box moved the cursor from row %d to row %d", before, after)
+	if at := homeCursorY(t, a); at == height-4 {
+		t.Fatalf("clearing the box left the cursor at the foot:\n%s", homeText(a))
+	}
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
+		t.Fatalf("clearing the box left the cursor on kind %v, want a conversation", line.kind)
 	}
 }
 
-// THE ORDER INVERTS WITH THE ANCHOR. Sections stack warmest-down: this window's
-// project against the box, then the rest of the machine rising above it with age
-// increasing away from the hand — and every project's heading stays ABOVE its own
-// rows, because a name drawn under the things it names reads upside-down.
-func TestHomeStacksTheColdProjectsAwayFromTheBox(t *testing.T) {
+// ── THE RIGHT PANE IS NOT PART OF THE STATE ─────────────────────────────────
+//
+// Home ALWAYS has two panes. What changes with the box is where the LEFT one is
+// anchored — top at rest, against the box while typing. The right one previews
+// whatever the cursor is on, in both states and through every keystroke, and
+// empties only when the focused row is not a conversation.
+
+// THE CARD FOLLOWS THE CURSOR THROUGH A FILTER. Walking the matches is choosing
+// between conversations, and choosing between them by name alone is the thing the
+// card exists to stop.
+func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here i am", "/tmp/alpha", now)
-	lab.session("-tmp-beta", "bbbb000000000001", "yesterday", "/tmp/beta", now.Add(-30*time.Hour))
-	lab.session("-tmp-gamma", "cccc000000000001", "cold storage", "/tmp/gamma", now.Add(-20*24*time.Hour))
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
 
 	a := lab.app(mine)
 	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+	width, _ := a.size()
+	_, right := homeColumns(width)
+	if right <= 0 {
+		t.Fatalf("a %d-column frame lent the detail pane nothing", width)
+	}
 
-	want := []string{"# gamma", "Cold Storage", "# beta", "Yesterday", "# alpha", "Here I Am"}
-	if got := homeShape(a); !equalWords(got, want) {
-		t.Fatalf("the column reads %v, want %v", got, want)
+	// ON THE ACTION ROW THE PANE IS EMPTY, and that is the emptiness law rather
+	// than an omission: "start a new conversation" is a chat that does not exist
+	// yet, so there is nothing true to preview about it.
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
+		t.Fatalf("typing did not rest the cursor on the action row (kind %v)", line.kind)
+	}
+	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
+		t.Fatalf("the pane previewed a conversation that does not exist yet:\n%s", strings.Join(card, "\n"))
+	}
+
+	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD.
+	a.homeKey(key("up"))
+	first := a.home.focused()
+	if first.Transcript == "" {
+		t.Fatal("↑ did not land on a match")
+	}
+	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
+		t.Fatalf("the pane is empty with the cursor on %q", homeName(first))
+	}
+	if text := homeText(a); !strings.Contains(text, homeName(first)) {
+		t.Fatalf("the card for %q is not on the frame:\n%s", homeName(first), text)
+	}
+
+	// AND ANOTHER ↑ SWITCHES IT. The pane is following the cursor, not holding the
+	// first thing it was shown.
+	a.homeKey(key("up"))
+	second := a.home.focused()
+	if second.Transcript == first.Transcript {
+		t.Fatal("the second ↑ did not move to another match, so this proves nothing")
+	}
+	card := strings.Join(a.homeDetail(right, 12, a.pal), "\n")
+	if !strings.Contains(card, homeName(second)) {
+		t.Fatalf("the card still names %q after the cursor moved to %q:\n%s",
+			homeName(first), homeName(second), card)
+	}
+	if strings.Contains(card, homeName(first)) {
+		t.Fatalf("the card kept the row the cursor left:\n%s", card)
+	}
+
+	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN.
+	a.homeKey(key("down"))
+	a.homeKey(key("down"))
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
+		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
+	}
+	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
+		t.Fatalf("the pane kept a card after the cursor left the match:\n%s", strings.Join(card, "\n"))
 	}
 }
 
-// AND A SHORT FRAME LOSES THE COLDEST END, which is the same law again seen from
-// the top of the screen: the rows that fall off are the ones furthest from the
-// box, and the row the cursor is on never does.
-func TestAShortHomeFrameDropsTheColdestRowsFirst(t *testing.T) {
+// AND THE DROP-UP DOES NOT MOVE THE CARD. The list lifts against the box; the
+// card is assembled downward from its title and stays where it is, which is why
+// lifting it would take the facts off the bottom rather than move it down the
+// frame.
+func TestTheDropUpDoesNotLiftTheCardWithIt(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here i am", "/tmp/alpha", now)
-	lab.session("-tmp-beta", "bbbb000000000001", "yesterday", "/tmp/beta", now.Add(-30*time.Hour))
-	lab.session("-tmp-gamma", "cccc000000000001", "cold storage", "/tmp/gamma", now.Add(-20*24*time.Hour))
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
 
 	a := lab.app(mine)
 	a.openHome()
-	a.height = 12
-
-	text := homeText(a)
-	if !strings.Contains(text, "Here I Am") {
-		t.Fatalf("the short frame dropped the row the cursor is on:\n%s", text)
-	}
-	if strings.Contains(text, "Cold Storage") {
-		t.Fatalf("the short frame kept the coldest row and cut something warmer:\n%s", text)
-	}
-}
-
-// equalWords is a slice comparison a failure message can be written around.
-func equalWords(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
+	titleRow := func() int {
+		width, height := a.size()
+		lines, _, _, _ := a.homeFrame(width, height)
+		for y, line := range lines {
+			if strings.Contains(ansi.Strip(line), homeName(a.home.focused())) {
+				return y
+			}
 		}
+		return -1
 	}
-	return true
+	rest := titleRow()
+	if rest < 0 {
+		t.Fatal("no card on the resting frame")
+	}
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+	a.homeKey(key("up"))
+	a.homeKey(key("up"))
+	if at := titleRow(); at != rest {
+		t.Fatalf("the card moved from row %d to row %d when the list became a drop-up", rest, at)
+	}
 }
 
 // A FILTER THAT CANNOT SEE WHAT IT HIDES IS A FILTER LYING ABOUT THE MACHINE.
