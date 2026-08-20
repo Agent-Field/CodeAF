@@ -222,6 +222,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// owed. It runs AFTER recovery so that a node the graph took back is not
 	// closed out from under it.
 	agent.closeInflightTaskIndexRows()
+	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
+	// came to; this is the claim that a PROCESS is alive right now, which no
+	// file on disk could otherwise make (taskpresence.go). It is last of the
+	// three because it describes the state the two lines above just settled.
+	agent.startPresence()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -593,6 +598,10 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	a.running = true
 	a.lastTurnTruncated = false
+	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
+	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
+	// what lets it sit under a.mu here.
+	a.nudgePresence()
 	// The system message is rebuilt here so a turn never opens carrying the
 	// memories of the one before it. WHAT THIS TURN NEEDS is routed inside the
 	// turn goroutine instead ([Agent.refreshMemory], called from the loop): that
@@ -655,6 +664,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// the wake below exists to end.
 			_, unanswered := a.drainSteeringLocked()
 			a.running = false
+			// And the presence stops claiming a turn is in flight, for the
+			// reason it started claiming one (taskpresence.go).
+			a.nudgePresence()
 			a.cancel = nil
 			a.hub = nil
 			a.done = nil
@@ -981,6 +993,12 @@ func (a *Agent) Close() error {
 	if a.jobs != nil {
 		a.jobs.shutdown(jobShutdownGrace)
 	}
+
+	// AND THE SESSION STOPS SAYING IT IS HERE, and takes its presence file with
+	// it (taskpresence.go). It happens after the jobs round because work still
+	// being killed is work another window may still be looking at, and it is
+	// bounded so a quit never waits on a courtesy paid to somebody else's rail.
+	a.stopPresence()
 
 	// The store's copy of the transcript is drained LAST of the writers and
 	// before the file is closed, for the reason the turn is waited for: a

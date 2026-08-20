@@ -297,6 +297,16 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 // end. A "don't ask me again" answer is remembered, because the question was
 // about a tool.
 func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
+	// AND ANOTHER WINDOW LEARNS THIS SESSION IS STOPPED ON SOMEBODY
+	// (taskpresence.go). The line is banked HERE and not inside [Agent.askAnswer]
+	// because this is the lane whose question is about a TOOL and can therefore
+	// be described in one honest sentence; the stuck-turn question borrows that
+	// lane to ask about a TURN (recovery.go), and a reason naming the tool it
+	// happened to be repeating would be a sentence nobody said. That question
+	// still makes the session say it is waiting — with no reason, which is the
+	// truthful shape — because presence counts the pending map and not this one.
+	release := a.presenceWaiting("needs your ok to run " + call.Function.Name)
+	defer release()
 	answer, err := a.askAnswer(ctx, hub, call, decision, true)
 	return answer.allow, err
 }
