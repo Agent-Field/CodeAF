@@ -1444,6 +1444,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tasksLoadedMsg:
 		return a, a.tasksLoaded(msg.rows)
 
+	case taskTailMsg:
+		// One node's journal, read off the loop for the record card
+		// (taskrecord.go). A read that came back about a task the person has
+		// already walked away from is dropped there.
+		a.taskTailRead(msg)
+		return a, nil
+
 	case draftSaveMsg:
 		return a, a.saveDraft()
 

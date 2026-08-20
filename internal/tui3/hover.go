@@ -94,6 +94,12 @@ const (
 	// It is separate from the row behind it so the handle can light without
 	// painting that node as a door.
 	hoverRailSeam
+	// hoverRailGrip is the CLOSED column's edge — the two columns down the right
+	// of the frame that a stowed roster leaves behind (task.go's [railGripCols]).
+	// It is its own kind and not a [hoverRailArea] because there is no roster
+	// there to be an area of: everything that asks about the rail's rows would
+	// answer about a column that is not on the frame.
+	hoverRailGrip
 	// hoverRailPast is one row of the PROJECT'S RECORD at the foot of the column
 	// (taskview.go's [app.railRecordLines]), and index is its place in the rows
 	// the layout drew. It is a kind of its own rather than a [hoverRail] because
@@ -195,6 +201,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// resolves it first: the two are drawn side by side, so which one the pointer
 	// is over is a question about x — and every row of the transcript answers to
 	// the same y as the roster row beside it (room.go's [app.railPress]).
+	// AND THE CLOSED COLUMN'S EDGE IS ASKED FIRST OF ALL OF THEM, because when it
+	// is on the frame none of the others can be: the roster is away, so every
+	// question below about a row of it answers about nothing (task.go's
+	// [app.railGripAt]).
+	if a.railGripAt(x, y) {
+		return hoverAt{kind: hoverRailGrip}
+	}
 	if a.railSeamAt(x, y) {
 		return hoverAt{kind: hoverRailSeam}
 	}
@@ -324,6 +337,9 @@ func (a *app) hoveringRailArea() bool {
 
 // hoveringRailSeam reports whether the pointer is over the resize handle.
 func (a *app) hoveringRailSeam() bool { return a.hot.kind == hoverRailSeam }
+
+// hoveringRailGrip reports whether the pointer is over the closed column's edge.
+func (a *app) hoveringRailGrip() bool { return a.hot.kind == hoverRailGrip }
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {

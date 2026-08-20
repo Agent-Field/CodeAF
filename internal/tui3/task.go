@@ -1871,6 +1871,44 @@ const (
 	railBackHint = railStowKey + " tasks"
 )
 
+// ── THE EDGE A CLOSED COLUMN LEAVES BEHIND ──────────────────────────────────
+//
+// ctrl+g USED TO MAKE THE COLUMN VANISH WITHOUT A TRACE, and a thing with no
+// trace is a thing a person cannot get back. The two ways home were the chord
+// itself — which is knowledge, not an affordance, and the person who pressed it
+// by accident never had that knowledge — and the legend's [railBackHint], which
+// is one line of five words in a slot that carries something else most of the
+// time and says nothing at all in a session that has run no work.
+//
+// So a closed column leaves an EDGE: [railGripCols] columns down the right of
+// the frame, near-silent, with a handle at the middle of it, and the whole strip
+// is a door. Pressing anywhere on it is exactly ctrl+g ([app.railStow] takes
+// both).
+//
+// THREE THINGS KEEP IT HONEST:
+//
+//   - IT COSTS WHAT IT SHOWS. The strip is charged to the conversation through
+//     [app.railWidth] like the column it stands for, so the transcript re-wraps
+//     two columns narrower and nothing is ever drawn under it.
+//   - IT WHISPERS ONLY WHAT IS TRUE. One cell above the handle carries the state
+//     of the work while there is work in a state worth carrying — something
+//     running, or something waiting on a person — and NOTHING otherwise, which
+//     is the emptiness law in the smallest space this surface has.
+//   - IT IS NOT THERE WHEN A COLUMN COULD NOT BE. Under [railSlimFloor] the
+//     frame lends no columns to anything, and an edge onto a column that cannot
+//     stand would be a door onto a room that does not exist.
+const (
+	// railGripCols is what the closed column costs. TWO: one blank to hold it off
+	// the last word of the conversation, and one for the handle. A single column
+	// would put the glyph against the text and read as a typo in the transcript.
+	railGripCols = 2
+	// railGripGlyph is the handle. It points LEFT because that is the way the
+	// column comes back — over the conversation, from the right edge — and it is
+	// the one shape on this surface that means "there is more this way".
+	railGripGlyph      = "‹"
+	railGripGlyphASCII = "<"
+)
+
 // railEmptyWord is the one line a column with no work in it says
 // ([app.railView]). It is a label for the place, not a report about the work —
 // which is why it is allowed where "0 running" never would be.
@@ -2479,13 +2517,113 @@ func (a *app) railRoom() int {
 	return a.railColumns(width) - ansi.StringWidth(railSeam)
 }
 
-// railWidth is what the rail costs the conversation, in columns.
+// railStowed reports whether the frame is drawing the CLOSED column's edge: the
+// person put the column away, and the frame is wide enough that there was a
+// column to put away.
+//
+// It is deliberately the exact complement of [app.railShowing] at every width
+// that lends columns at all — one of the two is true whenever [railColsFor] is
+// positive — so the right-hand strip of the frame always belongs to the roster
+// in one of its two shapes, and never to nobody.
+func (a *app) railStowed() bool {
+	if !a.railAway {
+		return false
+	}
+	width, _ := a.size()
+	return railColsFor(width) > 0
+}
+
+// railWidth is what the rail costs the conversation, in columns: its own where
+// it stands, the grip's [railGripCols] where it is closed, and nothing at a
+// width that lends it neither.
+//
+// THE CLOSED COLUMN IS CHARGED FOR TOO, which is what keeps the edge honest: the
+// transcript is laid out, hit-tested and wrapped at [app.bodyWidth], so a strip
+// the layout did not know about would be two columns of conversation with a
+// handle drawn through them.
 func (a *app) railWidth() int {
+	if a.railStowed() {
+		return railGripCols
+	}
 	if !a.railShowing() {
 		return 0
 	}
 	width, _ := a.size()
 	return a.railColumns(width)
+}
+
+// railGripRows draws the closed column's edge to exactly height rows.
+//
+// EVERY ROW IS [railGripCols] CELLS WIDE, blank ones included, and that is not
+// decoration: [app.railJoin] pads the conversation out to [app.bodyWidth] only
+// on the rows the rail gave it something for, so a strip that returned "" for
+// its empty rows would let a long line of the transcript run out under the
+// handle on some rows and not on others.
+//
+// THE HANDLE IS AT THE MIDDLE OF THE FRAME because that is where a hand reaches
+// for the edge of a panel, and because the top of this strip is beside the
+// oldest thing on screen while the bottom is beside the newest — neither is a
+// place a person is looking. The whole strip answers a click, not the one cell
+// (room.go's [app.railPress]), so nothing here has to be aimed at.
+func (a *app) railGripRows(height int) []string {
+	if height < 1 {
+		return nil
+	}
+	blank := strings.Repeat(" ", railGripCols)
+	out := make([]string, height)
+	for i := range out {
+		out[i] = blank
+	}
+	// UNDER THE POINTER IT BRIGHTENS, which is this surface's one way of saying a
+	// thing is pressable (hover.go's law). It is the whole strip that lights and
+	// not the cell, because it is the whole strip that answers.
+	ink := a.pal.dim
+	if a.hoveringRailGrip() {
+		ink = a.pal.accent
+	}
+	out[height/2] = " " + ink(a.linearMark(railGripGlyph, railGripGlyphASCII))
+	// AND ONE CELL ABOVE IT, WHAT THE WORK IS DOING — while there is anything to
+	// say. A closed column is the one state where this surface can be busy and
+	// silent about it, and one glyph is what the space allows.
+	if mark, hue := a.railGripState(); mark != "" && height > 1 {
+		out[height/2-1] = " " + hue(mark)
+	}
+	return out
+}
+
+// railGripState is the one cell the closed edge whispers with: what the work is
+// in, or nothing.
+//
+// TWO STATES EARN IT AND NO OTHERS. Something WAITING ON A PERSON outranks
+// something running, because it is the only one of the two that is asking for a
+// hand; anything else — idle, parked, done, and a session that has run nothing
+// at all — says nothing, which is the emptiness law in one cell.
+//
+// The marks are home's own ([homeAskGlyph] and [homeLiveGlyph]), which is this
+// program's existing vocabulary for "wants you" and "moving" said in a single
+// column. The rail's own glyphs are a spinner and a tree, and neither is a thing
+// that fits in one static cell.
+func (a *app) railGripState() (string, func(string) string) {
+	members := a.railMembers()
+	switch {
+	case len(members[railAttention]) > 0:
+		return a.linearMark(homeAskGlyph, homeAskASCII), a.pal.ask
+	case len(members[railRunning]) > 0:
+		return a.linearMark(homeLiveGlyph, homeLiveASCII), a.pal.accent
+	}
+	return "", nil
+}
+
+// railGripAt reports whether a pointer at these coordinates is over the closed
+// column's edge. It is the press's guard and the hover's alike, which is
+// [app.railAt]'s own bargain: a strip that answered a click it would not light
+// under the pointer is a strip that disagrees with itself about what it is.
+func (a *app) railGripAt(x, y int) bool {
+	if !a.railStowed() || x < a.bodyWidth() {
+		return false
+	}
+	top := a.bodyTop()
+	return top >= 0 && y >= top && y < top+a.viewHeight()
 }
 
 // bodyWidth is the conversation's own width, and it is what EVERY geometric
@@ -2748,6 +2886,13 @@ func (a *app) railEntryMoving(e railEntry) bool {
 // is reading. It is drawn only while the roster HOLDS the keyboard: a cursor on
 // a map that keys do not reach is a cursor that lies about what enter will do.
 func (a *app) railRows(height int) []string {
+	// A CLOSED COLUMN STILL DRAWS SOMETHING, and it is the edge rather than the
+	// roster: [railGripCols] columns down the right of the frame with a handle in
+	// them, which is the whole of what a person has to find their way back to
+	// (the block above [railGripCols] says why it exists).
+	if a.railStowed() {
+		return a.railGripRows(height)
+	}
 	view, focus := a.railView(height)
 	if len(view) == 0 {
 		return nil
@@ -3215,13 +3360,13 @@ func (a *app) railStow(away bool) {
 //
 // A ROW OF THE PROJECT'S RECORD HAS NO ROOM AND NEVER WILL: a room is a live lane
 // onto a node in this session's graph, and the conversation that ran that work is
-// closed. What it has instead is the mention — its name in your message, which
-// mints the pointer block carrying its outcome, its branch and its transcript
-// when you send.
+// closed. What it has instead is the CARD — the history page standing inside that
+// row, carrying what the work came to, what it cost, where it left its changes
+// and the last thing it said (taskrecord.go). The mention it used to write is
+// `m` from in there, which is where the card's own foot says it is.
 func (a *app) railEnter() tea.Cmd {
 	if entry := a.railPastFocus(); entry != nil {
-		a.mentionTask(entry)
-		return nil
+		return a.openTaskRecord(entry)
 	}
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)

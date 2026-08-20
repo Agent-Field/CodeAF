@@ -98,6 +98,11 @@ where the branch went:
 
 The task's own tool rows never enter the chat. They go to its journal and its room only.
 
+**To read a finished task's report again later**, open the task from `/history` or from the
+dulled `earlier` rows at the bottom of the task column: `enter` goes inside it, and the card
+carries the whole of that final message — read back off the task's own journal — under
+`what it said at the end`.
+
 When a task's work does come home, everything it wrote is staged with `.aforge-v3` reset
 out, committed on its own branch as `task: <first line of title, at most 72 chars>` with
 the identity `aforge <aforge@localhost>`, then merged into your branch with
