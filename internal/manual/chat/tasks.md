@@ -1396,7 +1396,9 @@ never done for you, because only work that was checked reaches your branch.
 
 ## Why is the task waiting for me — finished but needs your look
 
-Some work lands with `needs your look`: it finished, but nobody could say whether it holds.
+Some work lands with `needs your look`: it finished, but nobody could say whether it holds —
+or it finished and held, and one of the files it wrote was changed by other work while it
+was running, which the how-tasks-run page covers on its own.
 It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
 on it stays waiting until somebody decides. Its family rises to the top of the roster, and
 its row reads `finished — look it over`.
