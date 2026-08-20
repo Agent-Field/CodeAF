@@ -939,7 +939,7 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 }
 
-func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
+func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
@@ -954,12 +954,26 @@ func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
 	}
 
+	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes
+	// nothing; the second one inside the window leaves.
+	// The first press returns the frame clock rather than nothing — the window
+	// it opened has an end to reach — so what is asserted is that it is not the
+	// door and that nothing was closed.
 	_, cmd := a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd != nil {
+		if _, quit := cmd().(tea.QuitMsg); quit {
+			t.Fatal("the first ctrl+c quit")
+		}
+	}
+	if agent.closes != 0 {
+		t.Fatalf("the first ctrl+c closed the agent (%d)", agent.closes)
+	}
+	_, cmd = a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("ctrl+c returned no command")
+		t.Fatal("the second ctrl+c returned no command")
 	}
 	if _, quit := cmd().(tea.QuitMsg); !quit {
-		t.Fatal("ctrl+c has to quit")
+		t.Fatal("the second ctrl+c has to quit")
 	}
 	if agent.closes != 1 {
 		t.Fatalf("ctrl+c closed the agent %d times", agent.closes)
