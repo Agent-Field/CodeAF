@@ -823,8 +823,10 @@ type app struct {
 	// person has folded or opened AGAINST their default — nil is the design as
 	// shipped, and an absent key is a family nobody has touched, which is why this
 	// is a map keyed by node id and not a flag on the node. railTop is the
-	// window's offset into the roster's line list, resolved by the same [listTop]
-	// every other list on this surface scrolls with. railWhere is the focused row,
+	// window's offset into the SCROLLING PART of the roster's line list — the part
+	// under the pinned live head ([app.railLiveHead]), because work that is still
+	// going never leaves this column — resolved by the same [listTop] every other
+	// list on this surface scrolls with. railWhere is the focused row,
 	// named by id rather than by index because a fold takes rows out from under a
 	// cursor while nobody is looking, and railHold says the roster has been GIVEN
 	// the keyboard (ctrl+t) — without it there is no cursor, and every key still
@@ -926,6 +928,14 @@ type app struct {
 	// terminal has. Closed, it costs the frame nothing, and it is only ever
 	// opened at tierPhone.
 	expand expand
+	// taskSheet is the task page (taskview.go): the FOURTH fullscreen thing this
+	// surface draws, and the second of them that exists at EVERY width — the deck
+	// and the tool detail above it are the phone tier's alone, so this and the
+	// settings panel are the two pages a person can reach on any terminal. It
+	// holds the project's whole task record rather than this session's, which is
+	// the one question the roster's column cannot answer. Closed, it costs the
+	// frame nothing.
+	taskSheet taskSheet
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1228,10 +1238,19 @@ func (a *app) Init() tea.Cmd {
 	// other half of the same fact: the node's landing reaches the rail on the
 	// task lane, and what the session goes on to SAY about it reaches the
 	// transcript on this one.
+	// AND THE PROJECT'S TASK RECORD IS READ ONCE, HERE. It used to be paid for by
+	// the first "@" (taskmention.go's [app.loadTasks]), which was the right deal
+	// while the record had exactly one reader; the column now has to know whether
+	// there is more work than it is showing before it can offer the line that says
+	// so ([app.railOffersMore]), and that question is asked on the first frame. It
+	// is one small file, read off the loop, and the read marks itself done — a
+	// session that never grows a task never reads it twice.
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(),
+			a.watchDesigns(), a.watchRuns(), a.loadTasks())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
+		a.watchRuns(), a.loadTasks())
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1378,6 +1397,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// And the task page, which is the same claim about the same kind of page:
+		// it is the whole screen, and its window follows its cursor rather than an
+		// offset of its own, so the wheel walks the cursor (taskview.go).
+		if a.taskSheet.open {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.taskSheetScroll(-3)
+			case tea.MouseWheelDown:
+				a.taskSheetScroll(3)
+			}
+			return a, nil
+		}
 		// And the status sheet, which is the same claim about the same kind of
 		// surface (statusdeck.go). The wheel walks its cursor rather than an
 		// offset of its own: the list is short enough that a scroll and a
@@ -1446,6 +1477,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft {
 			if a.sheet.open {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			// The task page is modal for the pointer at the same rung and for the
+			// same reason: it is the whole screen, so a press that fell through to
+			// the conversation underneath would open a tool call nobody can see
+			// (taskview.go).
+			if a.taskSheet.open {
+				return a, a.taskSheetPress(msg.Mouse().Y)
 			}
 			// The status sheet is modal for the pointer at the same rung and for
 			// the same reason: it is the whole screen, and a press outside its
@@ -1613,6 +1651,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.sheet.open {
 			a.sheetHover(msg.Mouse().Y)
+			return a, nil
+		}
+		if a.taskSheet.open {
+			a.taskSheetHover(msg.Mouse().Y)
 			return a, nil
 		}
 		if a.deckShowing() {
@@ -3485,6 +3527,22 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "task":
 		return a.runTaskCommand(rest)
+
+	case "tasks":
+		// The page onto every task this PROJECT has run, this session's and every
+		// conversation's before it (taskview.go). It refuses on a project that has
+		// run nothing rather than raising a page with a title and nothing under it
+		// — the emptiness law reaches modals — and it says so, because a command
+		// typed on purpose that answers with silence reads as a command that broke.
+		//
+		// It arms the read as well as opening the page: the record is a file, and a
+		// session whose "@" list has never been opened has never paid for it
+		// (taskmention.go's [app.loadTasks]).
+		if !a.openTaskSheet() {
+			a.note(taskSheetEmpty)
+			return nil
+		}
+		return a.loadTasks()
 
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER

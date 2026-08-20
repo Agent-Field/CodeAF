@@ -328,6 +328,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.quit()
 	}
 
+	// THE TASK PAGE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S REASON: it
+	// is the whole screen, so there is nothing under it a key could mean anything
+	// to (taskview.go). It is read HERE rather than up beside the panel because
+	// this one handler carries both halves of the page — every key while it is up,
+	// and the single chord that OPENS it while it is down — and the opening half
+	// must not outrank ctrl+c, which is read directly above and stays the door.
+	if cmd, taken := a.taskSheetKeyPress(msg); taken {
+		return cmd
+	}
+
 	// COPY MODE is modal, and it is modal one rung below ctrl+c for the same
 	// reason everything else here is: leaving is never modal. While it is up the
 	// surface is a reader, and a key that fell through to the draft would type

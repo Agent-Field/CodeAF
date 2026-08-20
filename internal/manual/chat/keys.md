@@ -147,6 +147,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
+| `ctrl+.` | Open the task page — every task this project has run, across every session. Does nothing when the project has run none |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -457,6 +458,15 @@ open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab 
 `space` activate · `backspace`, `ctrl+u`, `ctrl+w` edit the search · anything else
 types into it.
 
+**Task page** (`ctrl+.`, or `/tasks`, or the `ctrl+. — view more` line at the bottom of
+the task column): `esc` or `ctrl+.` close · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
+over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
+first and last · `enter` opens the row. Every other key is swallowed. Its foot reads
+`esc close · ↑↓ move · enter opens its room`, or
+`esc close · ↑↓ move · enter puts it in your message` on a task another conversation ran,
+which has no room to open. Clicking a row acts on the first press; the wheel walks the
+cursor. The tasks pages describe what is on it.
+
 **Connections panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`. Its filter placeholder reads `filter · ↑↓ · enter connect · esc close`.
 
@@ -574,8 +584,9 @@ aforge owns the pointer by default, using all-motion tracking so hover works.
 
 Only the left button acts. A press is resolved in this order:
 
-1. The settings panel, the status deck, or the phone tool sheet — each takes **every**
-   press inside its frame, padding included.
+1. The settings panel, the task page, the status deck, or the phone tool sheet — each takes
+   **every** press inside its frame, padding included. On the task page a press on a row
+   opens it on the first press; a press on a section word or on empty padding does nothing.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
@@ -620,9 +631,12 @@ the linear/screen-reader tier, or in the phone tool sheet.
 ## Scrolling
 
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
-routed to copy mode, then the settings panel, then the status deck, then the phone
-tool sheet, then the fullscreen roster, then an open room, and otherwise the
+routed to copy mode, then the settings panel, then the task page, then the status deck,
+then the phone tool sheet, then the fullscreen roster, then an open room, and otherwise the
 conversation.
+
+On the settings panel, the task page and the fullscreen roster the wheel walks the **cursor**
+rather than a scroll offset of its own, because on those the window follows the cursor.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
 up drops out of it.

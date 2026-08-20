@@ -18,6 +18,11 @@ so: `ctrl+g — hide`. With it closed the conversation is laid out at the full w
 the terminal, running work still draws the strip along the top, and the legend's hint
 slot reads `ctrl+g tasks` once the session has tasks to come back to.
 
+Two things take the whole frame instead of sharing it, at every width: the settings
+panel (`ctrl+,`) and the task page (`ctrl+.`). While either is up nothing else is drawn
+— no conversation, no box, no status line — and `esc` gives the frame back. They are
+never both up: opening one closes the other.
+
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
@@ -984,6 +989,37 @@ Six mid-tone hues form a separate identity ring, spent on exactly one cell: the 
 the head of a task row. No role ever paints that column, so a ring hue cannot be misread
 as a state. The ring has no 16-colour tier — below the 256 rung the glyph alphabet
 carries identity alone.
+
+## What the task column looks like: dulled rows and its footer lines
+
+The right-hand task column is read at a glance, so it is drawn as one bright thing and a
+lot of quiet ones.
+
+- A **running** task's name is in ink, the body colour. **Idle, parked and finished**
+  names are muted — a step quieter — and the room you are standing in is the one name in
+  the accent and bold, with a colour band across its whole row.
+- The tree connectors (`├─ `, `└─ `, `│  `), the id at the end of a row (`#7`), every
+  detail line under a title, and every footer line are dim. The one loud exception is a
+  branch that did not merge: `conflicted · task/fix-nil` is in the bad hue.
+- The state glyph at the head of a row takes its own identity ring hue and no role
+  colour, so a glyph can never be misread as a state paint.
+
+**Rows that are running never scroll off**, however long the list gets: they are pinned to
+the top of the column and everything under them scrolls.
+
+The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
+you` — and then up to three more dim lines, each of which is a button as well as a key:
+
+```
+ctrl+. — view more
+w · click seam — widen
+ctrl+g — hide
+```
+
+`ctrl+. — view more` is drawn only when the full-screen task page would show something
+this column is not: a folded family, or work an earlier session ran. `w · click seam —
+widen` appears only while a title is actually being cut by its own indent. `ctrl+g — hide`
+is always there.
 
 ## Light terminals, and why there is no theme setting
 

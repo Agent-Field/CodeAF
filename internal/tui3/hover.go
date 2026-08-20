@@ -92,6 +92,12 @@ const (
 	// It is separate from the row behind it so the handle can light without
 	// painting that node as a door.
 	hoverRailSeam
+	// hoverTaskSheet is one row of the task page; index is its item
+	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
+	// because the two pages number their rows out of different lists, and a
+	// pointer that left the settings panel with a hover on item nine would light
+	// the ninth task the moment this page opened.
+	hoverTaskSheet
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is the other narrow target, and it is a kind of its own rather

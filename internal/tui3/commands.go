@@ -135,6 +135,16 @@ var commands = []command{
 	{name: "task", args: "<brief>", desc: "start work you can walk away from"},
 	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner"},
 	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts"},
+	// AND THE PAGE THAT SHOWS WHAT THEY ALL CAME TO (taskview.go). It sits with
+	// the three rows that START work because that is the pair of errands a person
+	// has about tasks — set one going, and go and look at the ones that already
+	// did — and it is spelled as the plural of the command above it so that typing
+	// "/task" narrows the list to both.
+	//
+	// No argument form. The page is a list you are shown, for /files' reason: a
+	// task is recognized by a title a model wrote, which is not a thing anybody
+	// types back correctly.
+	{name: "tasks", desc: "every task this project has run · ctrl+."},
 	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
 	// line at the bottom of the frame drops whatever does not fit and a phone-width
 	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
@@ -590,6 +600,7 @@ func helpText(file string) string {
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"ctrl+.         every task this project has run · running first, then earlier",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
 		"→ ←            over an empty box: into a running task, and back out",

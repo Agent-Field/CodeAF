@@ -1490,8 +1490,8 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// (statusdeck.go's [app.deckModelRow]).
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.deckShowing(), a.pick.open, a.roster.open, a.copy.on,
-		a.welcome.open, a.menu.open, a.comp.open:
+		a.sheet.open, a.taskSheet.open, a.deckShowing(), a.pick.open, a.roster.open,
+		a.copy.on, a.welcome.open, a.menu.open, a.comp.open:
 		return nil, false
 	}
 	// THE GUARD IS READ BEFORE THE ROOM, and it is the same rung: it is a
@@ -1871,6 +1871,15 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// two hands (task.go's [railStowHint]).
 	if line.stow {
 		a.railStow(true)
+		return nil, true
+	}
+	// AND THE "view more" LINE IS THE THIRD OF THEM, on the same terms: it names a
+	// chord, so it has to answer to the hand that does not type chords
+	// ([taskSheetMoreHint], taskview.go). It leaves the column exactly as it is —
+	// the page is a place you go and come back from, not a state the column
+	// enters.
+	if line.more {
+		a.openTaskSheet()
 		return nil, true
 	}
 	if line.hint {

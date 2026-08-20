@@ -3286,8 +3286,16 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	if !strings.Contains(rail, "node 21") || !strings.Contains(rail, railMark) {
 		t.Fatalf("the window did not follow the cursor down:\n%s", rail)
 	}
-	if strings.Contains(rail, "node 1 ") {
-		t.Fatalf("the window did not move at all:\n%s", rail)
+	// AND WHAT IS RUNNING DID NOT GO WITH IT. The head of the column is pinned
+	// (task.go's [app.railMovingHead]): a person who walks the cursor down into
+	// the record must not take the work that is happening off the one surface
+	// that exists to say it is happening. Everything under the head scrolls,
+	// which is what the cursor is standing in.
+	if !strings.Contains(rail, "node 1 ") {
+		t.Fatalf("the running head scrolled off the column:\n%s", rail)
+	}
+	if strings.Contains(rail, "node 20 ") {
+		t.Fatalf("nothing scrolled at all — the row above the cursor is still drawn:\n%s", rail)
 	}
 	// And the footer still counts the whole roster rather than the window.
 	if !strings.Contains(rail, "300 "+railGroupWords[railRunning]) {

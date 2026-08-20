@@ -2482,6 +2482,12 @@ type railLine struct {
 	// because both can be drawn at once and a press has to tell them apart: one
 	// changes the column's width and the other takes it off the frame.
 	stow bool
+	// more says this line is the footer's door onto the TASK PAGE
+	// ([taskSheetMoreHint], taskview.go) — a third flag for the second one's
+	// reason: all three can be drawn at once, and a press has to know whether it
+	// was asked to widen the column, to hide it, or to leave it for a page that
+	// holds work this session never ran.
+	more bool
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2543,16 +2549,38 @@ func (a *app) railView(height int) ([]railLine, int) {
 	if len(entries) == 0 {
 		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
 	}
-	foot, hint, door := a.railFootRows(room, height)
+	foot, hint, door, more := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
-		body, foot, hint, door = height, nil, -1, -1
+		body, foot, hint, door, more = height, nil, -1, -1, -1
 	}
+
+	// WORK THAT IS STILL GOING IS NEVER SCROLLED OFF THIS COLUMN. The families
+	// are already sorted so that everything live leads ([app.railForest]), and
+	// that alone was not enough: a person who walked the cursor down into two
+	// hundred landed nodes took the running ones off the top of the window with
+	// it, and the column that exists to say "this is happening" said nothing about
+	// what was happening. So the live head is PINNED and only what is under it
+	// scrolls.
+	//
+	// IT YIELDS ONE ROW, never more. A session with more live work than the column
+	// is tall would otherwise pin the whole window and leave the record with
+	// nowhere to be read; one row is not much of a record, and the honest answer to
+	// a column that has run out of room is the page the footer names
+	// ([taskSheetMoreHint], taskview.go) rather than a live row quietly dropped.
+	pin := 0
+	if body > 1 {
+		pin = min(a.railMovingHead(lines, entries), body-1)
+	}
+	tail := lines[pin:]
+	room = body - pin
 
 	// The cursor the window follows is the focused entry's first line, and the
 	// offset itself when nothing is focused: a roster nobody is navigating stays
-	// where it was rather than snapping back to the top under a landing node.
-	cursor := a.railTop
+	// where it was rather than snapping back to the top under a landing node. A
+	// cursor inside the pinned head needs no scroll at all — those lines are on
+	// screen by construction — so the offset is merely clamped there.
+	cursor := a.railTop + pin
 	if focus >= 0 {
 		for i, line := range lines {
 			if line.entry == focus && line.head {
@@ -2561,19 +2589,77 @@ func (a *app) railView(height int) ([]railLine, int) {
 			}
 		}
 	}
-	a.railTop = listTop(cursor, a.railTop, len(lines), body)
+	a.railTop = listTop(max(cursor-pin, 0), a.railTop, len(tail), room)
 
 	out := make([]railLine, 0, height)
-	for i := a.railTop; i < len(lines) && len(out) < body; i++ {
-		out = append(out, lines[i])
+	out = append(out, lines[:pin]...)
+	for i := a.railTop; i < len(tail) && len(out) < body; i++ {
+		out = append(out, tail[i])
 	}
 	for len(out) < body {
 		out = append(out, railLine{entry: -1})
 	}
 	for i, text := range foot {
-		out = append(out, railLine{text: text, entry: -1, hint: i == hint, stow: i == door})
+		out = append(out, railLine{
+			text: text, entry: -1, hint: i == hint, stow: i == door, more: i == more})
 	}
 	return out, focus
+}
+
+// railMovingHead is how many lines at the top of the list belong to work that is
+// MOVING — running right now, or standing still waiting on a person.
+//
+// IT IS THOSE TWO GROUPS AND NOT EVERY LIVE ONE, which is the difference between
+// a head that stays small and a head that eats the column. What is running at
+// once is bounded by the slots the executor has, and what is waiting on a person
+// is bounded by the person; what is QUEUED is bounded by nothing at all — one
+// plan can admit a hundred nodes in a breath — so a head that pinned the idle
+// group would pin the whole window the first time somebody started an adaptive
+// run. Queued work is a promise and promises can wait their turn in a scroll.
+//
+// It is the count through the LAST such line rather than the length of an
+// unbroken run, because a family is drawn whole: a settled child sitting between
+// two running siblings is part of the live shape, and a head that stopped at it
+// would pin half a tree. Families with nothing live in them sort below every
+// family that has ([app.railForest]), so what this measures is the moving region
+// and not the whole column.
+//
+// A FOLDED ROOT COUNTS FOR WHAT IT IS HIDING. One row standing for a subtree
+// with something running in it is that running work as far as this column is
+// concerned, which is the same fact its glyph already carries ([app.railWorst]).
+func (a *app) railMovingHead(lines []railLine, entries []railEntry) int {
+	head := 0
+	for i, line := range lines {
+		if line.entry < 0 || line.entry >= len(entries) {
+			continue
+		}
+		if a.railEntryMoving(entries[line.entry]) {
+			head = i + 1
+		}
+	}
+	return head
+}
+
+// railEntryMoving reports whether one drawn row is work that is running or
+// waiting on a person, its hidden descendants included.
+func (a *app) railEntryMoving(e railEntry) bool {
+	if e.node == nil {
+		return false
+	}
+	nodes := []*taskNode{e.node}
+	if e.folded && e.worst != nil {
+		nodes = append(nodes, e.worst)
+	}
+	for _, node := range nodes {
+		switch a.railGroupOf(node) {
+		case railAttention, railRunning:
+			return true
+		}
+		if node.Paused() {
+			return true
+		}
+	}
+	return false
 }
 
 // railRows draws the roster to exactly height rows, or nil when there is none.
@@ -2785,7 +2871,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.pick.open, a.copy.on, a.welcome.open,
+		a.sheet.open, a.taskSheet.open, a.pick.open, a.copy.on, a.welcome.open,
 		a.menu.open, a.comp.open:
 		return nil, false
 	}
@@ -3042,9 +3128,9 @@ const railFootMax = 3
 // being cut, and hiding is the answer to "I do not want this here", which a
 // person can want at any moment and can find no other way. It is reported the
 // same way and for the same reason — it is pressed as often as it is typed.
-func (a *app) railFootRows(width, height int) ([]string, int, int) {
+func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	if width < 8 || height < 4 {
-		return nil, -1, -1
+		return nil, -1, -1, -1
 	}
 	var segs []string
 	if a.cost > 0 {
@@ -3069,8 +3155,14 @@ func (a *app) railFootRows(width, height int) ([]string, int, int) {
 	// ([app.railFull]), and a second way out named at the bottom of it would be
 	// two exits from a room with one.
 	stow := !a.railFull() && ansi.StringWidth(railStowHint) <= width
-	if len(segs) == 0 && !offer && !stow {
-		return nil, -1, -1
+	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
+	// which is the emptiness law applied to an affordance rather than to a figure
+	// ([app.railOffersMore], taskview.go). A "view more" on a column that is
+	// already showing everything is a row that promises a page and delivers the
+	// list you were looking at.
+	view := ansi.StringWidth(taskSheetMoreHint) <= width && a.railOffersMore()
+	if len(segs) == 0 && !offer && !stow && !view {
+		return nil, -1, -1, -1
 	}
 	// The footer never takes more than a third of the column: a roster that is
 	// mostly its own summary has stopped being a roster.
@@ -3086,6 +3178,16 @@ func (a *app) railFootRows(width, height int) ([]string, int, int) {
 	for _, line := range lines {
 		out = append(out, a.pal.dim(line))
 	}
+	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
+	// column itself. The order is what the lines are ABOUT: the counts say what
+	// this session has, "view more" says where the rest of it is, and widening and
+	// hiding are answers to "how much of my screen is this taking". A person
+	// reading the tally and wanting more finds the next line saying so.
+	more := -1
+	if view && len(out)+1 < height {
+		more = len(out)
+		out = append(out, a.pal.dim(taskSheetMoreHint))
+	}
 	hint := -1
 	if offer && len(out)+1 < height {
 		hint = len(out)
@@ -3098,7 +3200,38 @@ func (a *app) railFootRows(width, height int) ([]string, int, int) {
 		door = len(out)
 		out = append(out, a.pal.dim(railStowHint))
 	}
-	return out, hint, door
+	return out, hint, door, more
+}
+
+// railOffersMore reports whether the task page would show anything this column
+// is not ([taskSheet], taskview.go).
+//
+// TWO THINGS EARN THE OFFER AND NOTHING ELSE DOES. A folded family is work the
+// column is deliberately standing one row for, and the page draws every family
+// whole; and the project's record holds work THIS SESSION NEVER RAN, which the
+// column cannot show at all because it is built from this session's own graph.
+// Everything else — a landed node of this session's, drawn on the column and
+// listed again on the page — is the same row said twice, and a line offering to
+// show you what you are already looking at is chrome.
+//
+// It short-circuits on the first row it finds, so the common answer costs one
+// comparison rather than a walk of the whole record.
+func (a *app) railOffersMore() bool {
+	for _, e := range a.railEntries() {
+		if e.folded {
+			return true
+		}
+	}
+	for i := range a.comp.tasks {
+		entry := &a.comp.tasks[i]
+		if entry.Live() {
+			continue
+		}
+		if a.taskSheetNodeFor(entry) == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // railOffersResize reports whether the footer should name the handle. A cut

@@ -196,7 +196,21 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.sheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// AND THE STATUS SHEET IS THE SECOND, on the phone tier only: the deck's two
+	// AND THE TASK PAGE TAKES IT THE SAME WAY, at every width, and for the same
+	// reason: it is the project's whole record of its own work — the running tree
+	// and the flat list of everything before it — and a record read past a
+	// conversation is a record nobody finishes reading (taskview.go).
+	//
+	// THE SETTINGS PANEL IS READ FIRST AND IT WINS, though the two can never
+	// actually be open together: opening either closes the other
+	// ([app.openTaskSheet], [app.openSettings]). The order is written down anyway,
+	// because an invariant that is only true while nobody makes a mistake is an
+	// invariant that draws a blank frame the day somebody does.
+	if a.taskSheet.open {
+		lines, _, caretX, caretY := a.taskSheetFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	// AND THE STATUS SHEET IS THE THIRD, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame
 	// whole for the reason the panel does — a sheet drawn into a viewport that
@@ -211,7 +225,7 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.deckSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// And the phone's tool detail is the third, for the same reason at the
+	// And the phone's tool detail is the fourth, for the same reason at the
 	// other end of the width range: a call opened at tierPhone is a diff, a
 	// command or a log, and every one of those wants the lines the chrome would
 	// otherwise take (expand.go). It draws nothing when the call it named has
