@@ -139,9 +139,11 @@ is what home is for: one page of everything the machine holds, read top to botto
 
 **The moment you type a character the list becomes a drop-up.** It lifts so that its last
 row — the action row, `start a new conversation: "…"` — lands directly above the box you
-are typing into, and the matches rise above it. Everything to do with typing is then one
-cluster at the foot: your words, the row saying what `enter` will do with them, and the
-hint under it. Clearing the box puts the dashboard back.
+are typing into, and the matches rise above it **best one first**: the strongest match is
+the row immediately above the action row, one `↑` away, and each `↑` past it walks into a
+weaker one. Everything to do with typing is then one cluster at the foot: your words, the
+row saying what `enter` will do with them, and the hint under it. Clearing the box puts the
+dashboard back.
 
 **So the cursor does move between the two**, from up in the list to the foot and back.
 That is deliberate. It was tried the other way — anchored at the bottom in both shapes so
@@ -246,22 +248,45 @@ Matching a project's name keeps every conversation in it.
 
 Ranking is match quality first — a whole word beats a name that starts with what you typed,
 which beats a word inside it, which beats the letters appearing in order. Then two things
-break ties: a conversation **waiting on you** comes above a cold one it ties with, whatever
-their ages, and after that the more recent one wins.
+break ties: a conversation **waiting on you** beats a cold one it ties with, whatever their
+ages, and after that the more recent one wins.
 
 `↑`/`↓` walk the matches, `enter` opens the highlighted one. `esc` clears the box; a second
 `esc` closes home.
 
-**The matches grow upward out of the box.** While anything is typed the list is anchored to
-the bottom of the frame so that everything to do with typing — what you typed, the row that
-says what `enter` will do with it, and the hint under it — is one cluster at the foot, and
-`↑` walks from there into the results. See *Start something new from home* below.
+**The matches grow upward out of the box, best one first** — see *Why is the best search
+result at the bottom* below.
 
-**The preview keeps up.** As `↑`/`↓` move through the matches the right-hand card switches
-to whichever one the cursor is on — its project and path, what it is doing, the work it ran
-and the last thing said in it — so you can tell two similarly named conversations apart
-without opening either. On the `start a new conversation` row the card is empty, because
-there is no conversation there yet.
+**The preview keeps up.** The right-hand card switches to whichever match the cursor is on,
+so one `↑` puts the best one in front of you in full: its project and path, what it is
+doing, the work it ran and the last thing said in it. That is how you tell two similarly
+named conversations apart without opening either. On the `start a new conversation` row the
+card is empty, because there is no conversation there yet.
+
+## Why is the best search result at the bottom — the order of the matches
+
+**The strongest match is the row directly above `start a new conversation`, so one `↑` gets
+you to it.** Each `↑` past that walks into a weaker match, and `↓` comes back down toward
+the box.
+
+That is upside-down next to an ordinary ranked list, and deliberately so. A list you read
+*downward* puts its best answer at the top. While you are typing, home's list is read
+*upward* out of the box — so its best answer belongs at the bottom, under your hand and one
+keystroke away, instead of being the furthest row from the key you reach for. With a dozen
+matches on screen the top-ranked one is still one `↑`.
+
+**The ranking itself is unchanged** — match quality, then `waiting on you`, then recency
+(see *Searching from home*). What the drop-up changes is only which end of the column that
+ranking is drawn at.
+
+Two things do **not** turn over with it:
+
+- **A project's heading stays above its own rows.** The projects stack by rank and so do the
+  conversations inside each one, but a project name drawn under the things it names would
+  read upside-down.
+- **The list with nothing typed.** At rest home is a dashboard read top to bottom in the
+  ordinary direction — most recently spoken-in project first. The inversion is part of the
+  drop-up, and the drop-up is what typing does.
 
 ## Can home search by meaning — semantic search
 
@@ -292,9 +317,12 @@ back — sitting directly above the box you are typing into.
 
 ```
  …
+ gamma
+ ○ Quarterly Pricing Deck                                               3d
+
  alpha
- ○ Pricing Research                                                     2h
- ○ Pricing Sheet Import                                                 3d
+ ○ Pricing Sheet Import                                                 2h
+ ○ Pricing                                                             12m   ← one ↑
 
  + start a new conversation: "pricing"
  ───────────────────────────────────────────────────────────────────────────
@@ -306,17 +334,18 @@ back — sitting directly above the box you are typing into.
 fresh conversation in this project and sends what you typed, exactly as it always has,
 however many matches are on screen.
 
-One `↑` steps off that row **up** into the matches, and then you are picking from the list:
-`enter` opens the highlighted conversation instead. The cursor stays where you put it while
-you keep typing. `↓` walks back down to the action row.
+One `↑` steps off that row **up** onto the best match — the order runs weakest at the top,
+best at the bottom, and *Why is the best search result at the bottom* says why. Then you are
+picking from the list: `enter` opens the highlighted conversation, further `↑` walks into
+weaker matches, `↓` walks back down to the action row, and the cursor stays where you put it
+while you keep typing.
 
-The hint under the box says which of the two `enter` currently means:
-`enter starts a new conversation and sends this · ↑ pick a match · esc clear`, or
-`enter open · ↓ back to starting a new conversation · esc clear`.
+The hint under the box tracks which of the two `enter` means: the line in the example above
+on the action row, and `enter open · ↓ back to starting a new conversation · esc clear` once
+you are on a match.
 
-With **nothing** typed there is no action row, and the list goes back to hanging from the
-top of the frame the way a page you are reading should — see *Why did the list jump to the
-bottom when I typed*.
+With **nothing** typed there is no action row and the list hangs from the top again — see
+*Why did the list jump to the bottom when I typed*.
 
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,

@@ -526,7 +526,8 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 // IT USED TO BE ↓, and the arrow turned round with the action row. The row sits
 // at the BOTTOM of the list now, against the box a person is typing into
 // ([homeAction]), so the matches are above it and walking into them is walking
-// up the screen.
+// up the screen. WHICH match that one ↑ reaches is
+// [TestTheBestMatchSitsNextToTheActionRow].
 func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -820,6 +821,129 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 	}
 }
 
+// ── THE BEST MATCH IS THE ONE UNDER YOUR HAND ───────────────────────────────
+//
+// A ranked list read DOWNWARD puts its best answer first. The drop-up is read
+// UPWARD out of the box, so it has to put its best answer LAST — and it did not.
+// With three matches on screen one ↑ landed on the WORST of them and the best
+// took three keystrokes, which is the ranking being drawn at the wrong end of the
+// column. The scoring was never wrong; the drawing was.
+
+// ONE ↑ FROM THE ACTION ROW IS THE TOP-RANKED MATCH. That is the whole law, and
+// it is asserted against the scores themselves rather than against a list of
+// names, so a change to [homeRank] cannot quietly make this test agree with a
+// column it no longer describes.
+func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	// Three hits of DIFFERENT quality on "pricing": the bare name is the strongest,
+	// then two that carry it among other words. Which is which is decided by
+	// [homeRank] below, not by this comment.
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing", "/tmp/alpha", now)
+	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
+	lab.session("-tmp-gamma", "cccc000000000001", "quarterly pricing deck", "/tmp/gamma", now.Add(-9*time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+
+	// The matches in DRAWN order, each with the score the ranking gave it.
+	type hit struct {
+		name  string
+		score int
+	}
+	var drawn []hit
+	for _, line := range a.home.lines {
+		if line.kind != homeSession {
+			continue
+		}
+		var project session.Project
+		for _, p := range a.home.world.Projects {
+			if p.Dir == line.dir {
+				project = p
+			}
+		}
+		score, ok := homeRank(line.row, project, "pricing", a.home.world.Read)
+		if !ok {
+			t.Fatalf("%q is on the column but does not match the query", homeName(line.row))
+		}
+		drawn = append(drawn, hit{homeName(line.row), score})
+	}
+	if len(drawn) != 3 {
+		t.Fatalf("expected three matches, got %d: %+v", len(drawn), drawn)
+	}
+
+	// SCORE RISES AS YOU GO DOWN THE COLUMN, so the bottom row is the best answer
+	// and the top row is the weakest.
+	for i := 1; i < len(drawn); i++ {
+		if drawn[i].score < drawn[i-1].score {
+			t.Fatalf("the column is drawn best-first: %+v", drawn)
+		}
+	}
+	best := drawn[len(drawn)-1]
+	if best.score == drawn[0].score {
+		t.Fatalf("every match tied, so the order proves nothing: %+v", drawn)
+	}
+
+	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the row one
+	// ↑ away rather than the row furthest from the key.
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
+		t.Fatalf("the cursor did not rest on the action row (kind %v)", line.kind)
+	}
+	a.homeKey(key("up"))
+	if got := homeName(a.home.focused()); got != best.name {
+		t.Fatalf("one ↑ landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
+	}
+	// Further ↑ walks into weaker matches, in order.
+	for i := len(drawn) - 2; i >= 0; i-- {
+		a.homeKey(key("up"))
+		if got := homeName(a.home.focused()); got != drawn[i].name {
+			t.Fatalf("walking up reached %q, want %q (%+v)", got, drawn[i].name, drawn)
+		}
+	}
+	// And ↓ comes back down toward the box, ending on the action row.
+	for range drawn {
+		a.homeKey(key("down"))
+	}
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
+		t.Fatalf("↓ did not walk back to the action row (kind %v)", line.kind)
+	}
+}
+
+// A PROJECT'S HEADING STAYS ABOVE ITS OWN ROWS. Sections stack by rank and the
+// rows inside one do too, but a name drawn UNDER the things it names reads
+// upside-down — so the turn is applied to the order of the sections and of the
+// rows, never to the heading's place within its section.
+func TestTheInvertedDropUpKeepsHeadingsAboveTheirRows(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "pricing sheet import", "/tmp/alpha", now.Add(-time.Hour))
+	lab.session("-tmp-beta", "bbbb000000000001", "quarterly pricing deck", "/tmp/beta", now.Add(-9*time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+	seen := map[string]bool{}
+	for _, line := range a.home.lines {
+		switch line.kind {
+		case homeHeading:
+			seen[line.dir] = true
+		case homeSession:
+			if !seen[line.dir] {
+				t.Fatalf("%q is drawn above its project's heading", homeName(line.row))
+			}
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("the filtered column drew %d headings, want one per matching project", len(seen))
+	}
+}
+
 // ── THE RIGHT PANE IS NOT PART OF THE STATE ─────────────────────────────────
 //
 // Home ALWAYS has two panes. What changes with the box is where the LEFT one is
@@ -830,6 +954,10 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 // THE CARD FOLLOWS THE CURSOR THROUGH A FILTER. Walking the matches is choosing
 // between conversations, and choosing between them by name alone is the thing the
 // card exists to stop.
+//
+// The first ↑ here lands on the TOP-RANKED match, which is
+// [TestTheBestMatchSitsNextToTheActionRow]'s law; what this one is about is that
+// the card changes with the cursor whichever row that turns out to be.
 func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -1086,7 +1214,11 @@ func TestNeedsYouOutranksAColdRowItTiesWith(t *testing.T) {
 	if len(order) != 2 {
 		t.Fatalf("expected two matches, got %d", len(order))
 	}
-	if !order[0].NeedsPerson() {
+	// THE TOP-RANKED ROW IS THE LAST ONE DRAWN, because the drop-up is read
+	// upward out of the box ([TestTheBestMatchSitsNextToTheActionRow] states the
+	// law). The RANKING is what this test is about and it has not moved; only
+	// which end of the column it is written at.
+	if !order[len(order)-1].NeedsPerson() {
 		t.Fatal("the newer cold row outranked the one waiting on somebody")
 	}
 	// The boost is smaller than one rung at even the WEAKEST field, so it can

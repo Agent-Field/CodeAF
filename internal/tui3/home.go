@@ -585,6 +585,23 @@ func (h *homeView) dropUp() bool { return h.searching() }
 // lands against the box, and the matches rise above it ([homeAction] carries
 // the defect that bought that). Clearing the box puts the dashboard back.
 //
+// AND IN THAT SHAPE THE RANKING IS DRAWN UPSIDE-DOWN, which is the one thing
+// about the drop-up that is not simply the dashboard moved. A ranked list read
+// downward puts its best answer first; a ranked list read UPWARD out of a box
+// has to put its best answer LAST, or the row somebody wants is the furthest one
+// from the key they reach for. It was the other way round and it cost real
+// keystrokes: with three matches on screen, one ↑ landed on the WORST of them and
+// the best took three. So the sections and the rows inside them are both turned
+// over ([homeRank] is untouched — the scoring is right, only the drawing was
+// backwards), and the law is:
+//
+//	ONE ↑ FROM THE ACTION ROW IS THE TOP-RANKED MATCH.
+//
+// Further ↑ walks into progressively weaker ones and ↓ comes back toward the
+// box, which is the same grammar the action row already had. A project's heading
+// still sits ABOVE its own rows: sections stack by rank and the rows inside one
+// do too, but a name drawn under the things it names reads upside-down.
+//
 // AND THE CONVERSATION THIS WINDOW IS IN MAY NOT BE ON THE LIST AT ALL. A
 // session folder nobody has spoken in yet is not a row the world reports
 // (session's readSessionRow drops one whose meta names it but records no
@@ -622,22 +639,37 @@ func (h *homeView) buildWorld() {
 			continue
 		}
 		if query != "" {
-			// Inside a project the best match leads. With nothing typed the rows
-			// keep the world's own triage order, which is what the screen is for
-			// when nobody is searching (session's sortSessions).
+			// Inside a project the best match sits CLOSEST TO THE BOX, which in a
+			// drop-up means last (the block above [homeView.buildWorld] states the
+			// law). With nothing typed the rows keep the world's own triage order,
+			// which is what the screen is for when nobody is searching (session's
+			// sortSessions).
 			rows := hit.rows
 			sort.SliceStable(rows, func(i, j int) bool {
 				a, _ := homeRank(rows[i], project, query, h.world.Read)
 				b, _ := homeRank(rows[j], project, query, h.world.Read)
 				return a > b
 			})
+			// SORTED BEST-FIRST AND THEN TURNED OVER, rather than sorted worst-first
+			// in one pass. The two are not the same list: a stable sort leaves rows
+			// of EQUAL score in the world's own order, so sorting ascending would
+			// put the LAST of a tie group nearest the box while turning the
+			// best-first list over puts the FIRST of it there — which is the one
+			// the world already judged hottest.
+			for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
 		}
 		found = append(found, hit)
 	}
 	if query != "" {
-		// And the project holding the best row leads, so the thing somebody is
-		// hunting is near the top of the screen rather than under four headings.
+		// And the project holding the best row is the one against the box, so the
+		// thing somebody is hunting is under their hand rather than four headings
+		// up the screen. Same two steps and the same reason as the rows inside one.
 		sort.SliceStable(found, func(i, j int) bool { return found[i].score > found[j].score })
+		for i, j := 0, len(found)-1; i < j; i, j = i+1, j-1 {
+			found[i], found[j] = found[j], found[i]
+		}
 	}
 	for _, hit := range found {
 		if len(h.lines) > 0 {
