@@ -42,13 +42,18 @@ import (
 
 const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
 
-const tasksSchemaJSON = `{"type":"object","properties":{` +
+// The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
+// than typed out, because the landing note offers the same three words to the
+// same reader (task_run.go's [settleClause]) and a hand-kept second copy is a
+// copy that drifts. The prose around it still spells each verb, because a
+// description is where the model learns what they mean.
+var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"query":{"type":"string","description":"Words to match against task titles, ids and outcomes. Omit or leave empty for the most recent tasks."},` +
 	`"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"},` +
 	`"id":{"type":"string","description":"One task's id (\"7\") or its name (\"fix-the-nil-map-crash\"), to read that task alone instead of searching. A task that is still running answers with its live state."},` +
 	`"lines":{"type":"number","description":"How many recent lines of a running task's output to return with id (default: 40, maximum: 200)"},` +
 	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead. With resolve, this is read as the REASON for the decision instead."},` +
-	`"resolve":{"type":"string","enum":["accept","reaudit","refute"],"description":"Settle the task named by id that needs a look — one nobody could check. accept takes the work as done on your reading of it and merges its branch; reaudit sends a fresh checker at the same working copy and leaves the task waiting until that answers; refute fails it and its dependents. Only ask for accept or refute on evidence you actually have — read the diff or the transcript first — and prefer reaudit when the checker simply never answered."}` +
+	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settle the task named by id that needs a look — one nobody could check. accept takes the work as done on your reading of it and merges its branch; reaudit sends a fresh checker at the same working copy and leaves the task waiting until that answers; refute fails it and its dependents. Only ask for accept or refute on evidence you actually have — read the diff or the transcript first — and prefer reaudit when the checker simply never answered."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just

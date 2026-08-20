@@ -58,6 +58,13 @@ const (
 	// on screen at the same time as any of the three offers, because it is not a
 	// question the session is blocked on.
 	hoverRoomApproval
+	// hoverSettle is one CHIP of a landed card's answers row (tasksettle.go);
+	// entry is the card and index is which of its chips. It is a kind of its own
+	// rather than a hoverEntry because a hoverEntry brightens the whole card,
+	// which is right for "click to expand" and wrong for a row where four
+	// different presses do four different things — the law at the top of this
+	// file, read the other way round.
+	hoverSettle
 	// hoverOverlay is one row of the open list; index is its row in that list.
 	hoverOverlay
 	// hoverSheet is one row of the settings panel; index is its item
@@ -163,10 +170,13 @@ func (a *app) setHover(x, y int) {
 	// A TABLE'S FOOT IS MARKED THE SAME WAY, and for the same reason: it is drawn
 	// dim or accent by the block's own render (mdtable.go), and that render is
 	// cached beside every other row of the answer.
-	if a.hot.kind == hoverEntry || a.hot.kind == hoverTable {
+	// A CARD'S ANSWERS ROW IS MARKED THE SAME WAY, and for the same reason: the
+	// chip under the pointer is painted by the card's own render (tasksettle.go),
+	// which is cached beside every other row of that card.
+	if a.hot.kind == hoverEntry || a.hot.kind == hoverTable || a.hot.kind == hoverSettle {
 		a.markStale(a.hot.entry)
 	}
-	if next.kind == hoverEntry || next.kind == hoverTable {
+	if next.kind == hoverEntry || next.kind == hoverTable || next.kind == hoverSettle {
 		a.markStale(next.entry)
 	}
 	a.hot = next
@@ -244,6 +254,19 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// the pointer was forty cells away from it would be claiming to be
 			// something you could press there (mdtable.go).
 			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
+		case r.hit == hitSettle:
+			// THE THIRD TARGET IN THE TRANSCRIPT THAT IS NARROWER THAN ITS ROW, and
+			// the only one with four of them on one line: which chip the pointer is
+			// on is a question about the column, and a row that lit as a whole would
+			// promise that pressing anywhere on it did something (tasksettle.go).
+			if card := a.doneCardAt(r.entry); card != nil {
+				for i, chip := range card.chips {
+					if chip.span.holds(x) {
+						return hoverAt{kind: hoverSettle, entry: r.entry, index: i}
+					}
+				}
+			}
+			return hoverAt{}
 		case r.hit == hitFold || r.hit == hitWorkFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:

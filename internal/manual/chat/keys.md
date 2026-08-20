@@ -693,6 +693,27 @@ order.
 Nothing is thrown away by stopping: see the tasks page for what a stopped task and a
 stopped run keep.
 
+## Deciding about a landed task from the keyboard — accept, look again, not right
+
+A landing that **needs your look** is the one card in the transcript that is still a
+question, and four letters answer it:
+
+| Key | What it does |
+| --- | --- |
+| `a` | accept — take the work; its branch merges and its dependents unblock |
+| `l` | look again — a fresh check runs; the task keeps waiting until that answers |
+| `n` | not right — the task fails, its branch is kept, its dependents fail with it |
+| `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
+
+**They are held to the same rule `x` is.** The card must be the **selected** one — walk to
+it with `↑`/`↓`, which steps through tool calls, proposals and landed cards — and the
+message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
+sentence stays a letter, always.
+
+Once answered the four go away and one dim line takes their place saying what you chose.
+The same four are clickable on the card. See the tasks page for what each answer does to
+the work.
+
 ## The mouse: what you can click
 
 aforge owns the pointer by default, using all-motion tracking so hover works.
@@ -736,7 +757,10 @@ Only the left button acts. A press is resolved in this order:
    which opens its expansion, or the full-frame sheet on a narrow terminal; the
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
-   a landed card, which opens its full context.
+   a landed card, which opens its full context — except on the answers row of a card
+   that needs your look, where each of `[a] accept`, `[l] look again`, `[n] not right`
+   and `[d] decide these for me` is its own target and a press between them does
+   nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click
 aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
