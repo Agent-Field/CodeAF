@@ -150,7 +150,7 @@ func (a *app) linker() linker {
 		pal:  a.pal,
 		on:   a.pathLinks && !a.roomOpen(),
 		root: a.workspace,
-		home: a.home,
+		home: a.tilde,
 		seen: a.pathSeen,
 	}
 }

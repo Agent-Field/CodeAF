@@ -278,8 +278,24 @@ type homeView struct {
 	// on every arrow key, so the second look at a row is free.
 	last map[string]session.Summary
 
-	// msg is the last refusal, in this surface's own words.
-	msg string
+	// msg is the last refusal, in this surface's own words. msgPath is the
+	// directory that refusal NAMES, kept beside it rather than dug back out of
+	// the sentence: the one refusal that carries a path is the one telling you
+	// to go and stand somewhere else, and that place is a door (pathlink.go).
+	// Empty for every other refusal, which name no file.
+	msg     string
+	msgPath string
+}
+
+// say replaces the refusal on screen, together with the directory it names.
+//
+// It is one call rather than two assignments because the path is the part that
+// can go STALE: every refusal replaces the sentence, only one of them names a
+// place, and a msgPath left behind by an earlier one would hang a link on a
+// sentence that is no longer about it. Passing "" is how the other refusals say
+// they name no file.
+func (h *homeView) say(msg, path string) {
+	h.msg, h.msgPath = msg, path
 }
 
 // ── opening, closing, and the rescan ────────────────────────────────────────
@@ -879,7 +895,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	h := &a.home
 	defer a.touch()
-	h.msg = ""
+	h.say("", "")
 	switch msg.String() {
 	case "esc":
 		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
@@ -1028,7 +1044,7 @@ func (a *app) homeEnter() tea.Cmd {
 		a.closeHome()
 		return nil
 	case !a.homeOpens(line):
-		h.msg = homeElsewhereWord + " · " + homeWhere(line)
+		h.say(homeElsewhereWord+" · "+homeWhere(line), strings.TrimSpace(line.row.ProjectDir))
 		return nil
 	case a.homeHeldNow(line.row):
 		// THE DOOR ANNOUNCES ITSELF LOCKED RATHER THAN SLAMMING. Home read the
@@ -1037,7 +1053,7 @@ func (a *app) homeEnter() tea.Cmd {
 		// it genuinely cannot know beforehand; home can, and a screen that
 		// offers a door it has already established goes nowhere is a screen that
 		// wastes a keystroke and a second of somebody's attention on a raw error.
-		h.msg = sessionBusyWord
+		h.say(sessionBusyWord, "")
 		return nil
 	}
 	chosen := Session{
@@ -1059,7 +1075,7 @@ func (a *app) homeEnter() tea.Cmd {
 	// locked row is exactly how somebody would find that out.
 	cmd, refusal := a.openSession(chosen)
 	if refusal != "" {
-		h.msg = refusal
+		h.say(refusal, "")
 		return nil
 	}
 	a.closeHome()
@@ -1075,7 +1091,7 @@ func (a *app) homeEnter() tea.Cmd {
 // agent and not to the one that just closed.
 func (a *app) homeStart(text string) tea.Cmd {
 	if a.fresh == nil {
-		a.home.msg = newUnavailableWord
+		a.home.say(newUnavailableWord, "")
 		return nil
 	}
 	a.closeHome()
@@ -1347,7 +1363,11 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// rather than stacks, being one field: pressing enter twice on a locked
 		// row says the same thing once, where a note in the conversation would
 		// have said it twice.
-		add(" "+pal.dim(fit(a.home.msg, width-2)), -1)
+		// AND THE PLACE IT SENDS YOU IS A DOOR. The refusal's whole job is to
+		// name where that conversation lives, so the sentence that names it opens
+		// it — the link is applied to the FITTED text, after the width was
+		// measured, and a directory that is not there stays plain (pathlink.go).
+		add(" "+pal.dim(a.pathLink(a.home.msgPath, fit(a.home.msg, width-2))), -1)
 	} else {
 		add(" "+pal.dim(fit(a.homeHint(), width-2)), -1)
 	}
@@ -1656,10 +1676,16 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
 
 	place := line.project
-	if path := strings.TrimSpace(row.ProjectDir); path != "" && path != place {
-		place += " · " + path
+	dir := strings.TrimSpace(row.ProjectDir)
+	if dir != "" && dir != place {
+		place += " · " + dir
 	}
-	bands = append(bands, []string{pal.dim(fit(place, width))})
+	// THE BAND IS A PLACE, SO THE BAND IS A DOOR (pathlink.go). The anchor covers
+	// the whole of it rather than the path half, because the project word and the
+	// path are two spellings of one directory and a link that stopped at the
+	// second would be a target a narrow right column had already cut off. A
+	// directory that is not on this disk is drawn plain, as it always was.
+	bands = append(bands, []string{pal.dim(a.pathLink(dir, fit(place, width)))})
 
 	// STATE IS THE LOUDEST CONTENT LINE, because it is the only band that is
 	// about right now. A conversation stopped on a question says so here and
