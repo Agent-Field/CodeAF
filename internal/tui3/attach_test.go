@@ -223,6 +223,10 @@ func TestSubmitSendsTheAttachedBytesAndEmptiesTheTray(t *testing.T) {
 // honest thing to draw is the file the person pointed at.
 func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"shot.png": 8, "chart.png": 8})
+	// Whether a link is written at all is read off TERM at construction
+	// (pathlink.go), and TERM is whatever the shell that ran the tests exported.
+	// This test asserts on both the dim paint and the link, so it says which.
+	a.pathLinks = true
 	a.attach(filepath.Join(dir, "shot.png"))
 	a.attach(filepath.Join(dir, "chart.png"))
 	typeLine(t, a, "what is wrong here")
@@ -239,9 +243,40 @@ func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	}
 	// And they are DIM inside the person's own bold line: the sentence is what
 	// was said, the file names are the surface saying what went with it.
-	if !strings.Contains(frame(a), a.pal.dim("[shot.png] [chart.png]")) {
+	//
+	// The frame is read with its hyperlinks taken off first, because a marker
+	// naming a file that is really there is also a door into it (pathlink.go) —
+	// so the run carries an anchor and an underline the dim span did not use to
+	// have. What this test is about is unchanged: the dim opens before the
+	// markers and closes after them, with only the sentence's own bytes between.
+	if !strings.Contains(unlinked(frame(a)), a.pal.dim("[shot.png] [chart.png]")) {
 		t.Fatal("the markers are not drawn dim")
 	}
+	// AND THEY ARE DOORS. A person who attached the wrong screenshot finds out
+	// by opening the one named in the transcript.
+	if !strings.Contains(frame(a), "\x1b]8;;"+fileURI(filepath.Join(dir, "chart.png"))) {
+		t.Fatal("an attached picture's marker is not a link to it")
+	}
+}
+
+// unlinked is one frame with its hyperlinks and their underline taken off, for
+// a test that is about some OTHER paint on the same run of text.
+func unlinked(painted string) string {
+	var out strings.Builder
+	for i := 0; i < len(painted); {
+		if n := escLen(painted, i); n > 0 {
+			switch seq := painted[i : i+n]; {
+			case strings.HasPrefix(seq, "\x1b]8;"), seq == sgrUnderOn, seq == sgrUnderOff:
+			default:
+				out.WriteString(seq)
+			}
+			i += n
+			continue
+		}
+		out.WriteByte(painted[i])
+		i++
+	}
+	return out.String()
 }
 
 // A REPLAYED PLACEHOLDER RENDERS AS IT ARRIVED. The journal holds a REFERENCE

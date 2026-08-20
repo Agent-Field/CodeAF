@@ -588,6 +588,116 @@ nothing is worse than no link.
 A reference inside a fenced code block, inside an inline code span, or inside a URL
 field gets no link.
 
+## Click a file path to open it — open a file from the chat
+
+**Every file path on this screen that names a file that really exists is a real
+hyperlink.** Click it and the file opens the way your desktop would open it. In most
+terminals that is **cmd+click** on a Mac and **ctrl+click** on Linux; a few open on a
+plain click, and most will offer it on the right-click menu as well.
+
+This works everywhere a path appears in aforge's own text:
+
+- **anywhere in a reply** — in a sentence, inside `` `backticks` ``, inside a fenced
+  code block, in a list, in a table cell.
+- **in your own message**, including the `[shot.png]` markers under a message you
+  attached a picture to, and the `Transcript: file:///…` line an `@task` mention
+  leaves behind.
+- **in aforge's dim `·` notes** — `/status`'s `file` row, `/help`'s `session · …`,
+  `exported · …`, `resumed …`, `new session · …`.
+- **on a tool row** — the target of a `read`, an `edit` or a `write`, and the file name
+  above an edit's diff, even when the row was too narrow to show the whole path.
+- **the dim line under a picture**, which is the picture's whole absolute path.
+
+**It survives wrapping.** A path too long for the pane goes down across several rows,
+and every row of it opens the same file — the terminal is told the target
+separately from the text, so there is no fragment to grab by mistake. This is the whole
+reason aforge writes the links itself rather than leaving your terminal to guess where a
+word starts and stops.
+
+**A line and column come along.** `internal/tui3/app.go:412:9` — the sort of thing a
+compiler prints — is one target, and the click opens the file.
+
+**A bare file name counts** when it really is a file in the workspace: `go.mod`,
+`README.md`, `main.py`. So does one written against your home directory, `~/notes.md`,
+and one written out as a `file:///…` URI.
+
+**In `/files`, `enter` opens the row** the same way. Those rows are not hyperlinks
+because the key is already there.
+
+## Why is a path underlined
+
+The underline is how you can tell there is something to click. Terminals differ wildly
+about whether they show a hyperlink at all until you are already holding the modifier
+down, so aforge draws the affordance itself: a path that is a working link is
+underlined, and a path that is not is plain.
+
+It is the same underline a path wears inside a highlighted `bash` command, because they
+mean the same thing — this is a location.
+
+The underline is drawn with colour, so a terminal set to draw **no colour at all**
+(`NO_COLOR`, or `TERM=dumb`) shows no underline. Where colour is off but the terminal is
+real, the link is still there and still clickable; you just cannot see it in advance.
+
+## Which terminals can open a path, and which cannot
+
+**They open:** iTerm2, Kitty, WezTerm, Ghostty, Windows Terminal, and the terminal
+built into VS Code. Inside tmux they open too, on tmux 3.4 and later.
+
+**macOS Terminal.app does not.** It has no support for terminal hyperlinks, so a path
+there is underlined text that does nothing. What it does instead is its own
+guess-at-the-word — cmd+double-click — which is exactly the behaviour that breaks on a
+wrapped path, and is why this exists everywhere else.
+
+Nothing breaks in a terminal that cannot open them: the link is written in a form an
+unknowing terminal ignores, and the path reads and copies as the plain path it always
+was. If `TERM` is unset or `dumb` — a pipe, a file, a cron job — aforge writes no path
+links at all.
+
+## What is not a link: a path that does not open
+
+A path only becomes a link **after aforge has gone and looked for the file**. Everything
+below is drawn as plain text on purpose:
+
+- **A file that is not there.** A name the model invented, a file deleted since, a path
+  with a typo in it. A link that opens nothing is worse than no link.
+- **Anything that merely looks like a path.** A diff's `a/main.go` and `b/main.go`,
+  a version like `v2.0`, an aspect ratio like `4:3`, a fraction like `1/2`, an import
+  path like `github.com/…`. None of them is a special case; none of them exists.
+- **A web address.** Only files are linked here. (A sign-in link from `/connect` is
+  separately clickable — that is its own machinery.)
+- **A relative name that climbs out of the workspace** with `../..`. Inside a reply a
+  relative name means "in the workspace", and one that leaves it has stopped meaning
+  that.
+- **Anything a command printed.** A `bash` call's output, a `grep` or `find` result, the
+  body of a `read` — those are another program's words and aforge draws them exactly as
+  they arrived. Sweeping them for pathish words would underline half a test log. What
+  **is** linked on a tool card is the part aforge wrote itself: the call's own target.
+- **Everything on a task's page.** A task works in its own git worktree, so a name on a
+  room's page means that tree's copy of the file and not this one's — and a link built
+  against the wrong tree would open a file with the right name and the wrong contents.
+  The paths are shown in full there.
+- **Everything, over a connection.** On a session started with `--host`, the files are
+  on the other machine, and `file:///app/main.go` handed to the terminal in front of you
+  would mean this machine's `/app/main.go` — nothing at all, or somebody else's file. So
+  no path is a link on a hosted session. The paths are still shown in full, and
+  `/status` names them the way you would have to name them to reach them.
+
+## Copying a path, and why a reply cannot make its own link
+
+**What you copy is the plain path.** Copy mode (`ctrl+b`, or `/copy`) and `/export` strip the
+escape sequences, so a path leaves this conversation as the characters you can read, and
+an exported `.md` has no terminal machinery in it. Your terminal's own
+select-and-copy takes the visible characters too.
+
+**A reply cannot make its own link.** Everything the model and the tools write is
+cleaned on the way in, and that strips terminal hyperlinks along with everything else a
+stream of text could use to make your terminal do something on its own — set the window
+title, write your clipboard. So a reply that writes out a hyperlink to somewhere else
+gets no link, only its visible text.
+
+Every link on this screen was therefore made by aforge, points at a file, and points at
+a file that was there when the row was drawn.
+
 ## Why my table is cut off, and how to open it
 
 A wide table is fitted by truncating its cells. When that happens, aforge grows one dim

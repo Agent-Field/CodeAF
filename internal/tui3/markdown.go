@@ -1021,19 +1021,40 @@ func paintLinks(text, flat string, refs []taskRef, pal palette) (string, []taskL
 func taskLinkInk(pal palette, s string) string { return pal.underline(pal.accent(s)) }
 
 // escLen is the length of the escape sequence at s[i], or zero where there is
-// none. CSI is the only form this surface's renderers emit; anything else is
-// taken as the two bytes it opens with rather than swallowing the row.
+// none. Two forms are recognized, because two forms are written:
+//
+//	CSI   ESC [ … final          every colour this surface paints
+//	OSC   ESC ] … BEL | ESC \    the hyperlink around a path (pathlink.go)
+//
+// AN OSC HAS TO BE SWALLOWED WHOLE OR IT IS NOT SWALLOWED AT ALL. Its payload
+// is ordinary printable bytes — `8;;file:///Users/x/main.go` — so a walk that
+// stopped after `ESC ]` would count twenty-six cells of URI as text, and every
+// caller of [flatten] indexes a row by those counts. Task references would land
+// on the wrong columns and [paintLinks] would splice an SGR into the middle of a
+// URI. Anything else still returns the two bytes it opens with rather than
+// swallowing the row.
 func escLen(s string, i int) int {
 	if s[i] != 0x1b || i+1 >= len(s) {
 		return 0
 	}
-	if s[i+1] != '[' {
-		return 2
-	}
-	for j := i + 2; j < len(s); j++ {
-		if s[j] >= 0x40 && s[j] <= 0x7e {
-			return j - i + 1
+	switch s[i+1] {
+	case '[':
+		for j := i + 2; j < len(s); j++ {
+			if s[j] >= 0x40 && s[j] <= 0x7e {
+				return j - i + 1
+			}
 		}
+	case ']':
+		for j := i + 2; j < len(s); j++ {
+			if s[j] == 0x07 {
+				return j - i + 1
+			}
+			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+				return j - i + 2
+			}
+		}
+	default:
+		return 2
 	}
 	return len(s) - i
 }

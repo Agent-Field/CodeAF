@@ -57,19 +57,22 @@ task's room alike.
 
 **Open the row** — click it, or select it with `↑`/`↓` and press `enter` — for
 the bigger look: the picture again at up to 20 rows, with one dim line under it
-giving the file's whole absolute path, its pixel size and its size on disk. A
-`view_image` row also shows what the looking model said, under the picture.
+giving the file's whole absolute path, its pixel size and its size on disk. That
+path is a link — cmd+click it (ctrl+click on Linux) and the picture opens the way
+your desktop would open it. A `view_image` row also shows what the looking model
+said, under the picture.
 
 It is drawn from half-block characters, two stacked pixels to a cell, so it needs
 a terminal with **256 colours or better** and a UTF-8 locale — iTerm2,
 Terminal.app, kitty, Alacritty, WezTerm, Ghostty, GNOME Terminal, and tmux or ssh
 over any of them all qualify. Where those are missing, or the file is gone, the
 row shows its result line exactly as before and never an error — and that line
-carries the file's whole absolute path, so you can still open it yourself. png,
-jpeg, gif and webp are drawn.
+carries the file's whole absolute path, clickable in the same way, so you can
+still open it yourself. png, jpeg, gif and webp are drawn.
 
 The "what is on the screen" page has the sizes, the wrapping rule for the path,
-and the full list of cases where no picture is drawn.
+which terminals can open a path and which cannot, and the full list of cases
+where no picture is drawn.
 
 ## Can you edit, restyle or combine images I already have?
 

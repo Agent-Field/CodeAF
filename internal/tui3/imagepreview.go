@@ -124,7 +124,7 @@ func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
 		return nil, false
 	}
 	return append(append([]string(nil), preview.rows...),
-		picturePathLine(a.pal, path, preview, width)...), true
+		picturePathLine(a.linker(), path, preview, width)...), true
 }
 
 // drawPicture is the one route from an entry to a painted picture, and both the
@@ -462,9 +462,12 @@ func (p palette) halfCellSGR(top, bottom cellColour) string {
 // given the lines it needs, and the shape and size step down to their own line
 // first — they are the part a reader can lose.
 //
-// It is wrapped in OSC 8 as well, the way every other location on this surface
-// is (opener.go), so a terminal that understands hyperlinks makes it clickable
-// and one that does not shows exactly the characters that can be selected.
+// It is wrapped in OSC 8 as well, through the surface's one door for that
+// (pathlink.go's [linker.anchor]), so a terminal that understands hyperlinks
+// makes it clickable — underlined, like every other path on this surface — and
+// one that does not shows exactly the characters that can be selected. Where
+// the path goes down across several rows EACH ROW OPENS ITS OWN ANCHOR on the
+// same file, which is what makes a terminal treat them as one link.
 //
 // A PREVIEW THAT WAS NEVER DRAWN STILL GETS ITS LINE, and then the line is the
 // path alone. This is the fallback [app.pictureWords] hands a terminal that
@@ -472,7 +475,7 @@ func (p palette) halfCellSGR(top, bottom cellColour) string {
 // no size to state, and [design-law §EMPTINESS] says an unknown number renders
 // as nothing rather than as `0×0`. The path is the whole answer in that case,
 // which is exactly why it is the part that never truncates.
-func picturePathLine(pal palette, path string, preview imagePreview, width int) []string {
+func picturePathLine(l linker, path string, preview imagePreview, width int) []string {
 	if width < 4 {
 		width = 4
 	}
@@ -483,32 +486,30 @@ func picturePathLine(pal palette, path string, preview imagePreview, width int) 
 			shape += " · " + size
 		}
 	}
-	uri := "file://" + path
-
 	if shape == "" {
 		if ansi.StringWidth(path) <= width {
-			return []string{pal.dim(linkify(path, uri))}
+			return []string{l.pal.dim(l.anchor(path, path))}
 		}
 		out := make([]string, 0, 3)
 		for _, segment := range wrap(path, width) {
-			out = append(out, pal.dim(linkify(segment, uri)))
+			out = append(out, l.pal.dim(l.anchor(segment, path)))
 		}
 		return out
 	}
 	if together := path + " · " + shape; ansi.StringWidth(together) <= width {
-		return []string{pal.dim(linkify(path, uri) + " · " + shape)}
+		return []string{l.pal.dim(l.anchor(path, path) + " · " + shape)}
 	}
 	if ansi.StringWidth(path) <= width {
-		return []string{pal.dim(linkify(path, uri)), pal.dim(shape)}
+		return []string{l.pal.dim(l.anchor(path, path)), l.pal.dim(shape)}
 	}
 	// Narrower than the path itself. The path still goes down whole, across as
 	// many rows as it takes, each segment carrying the same link — a wrapped
 	// path can still be read and copied, and a cut one cannot be either.
 	out := make([]string, 0, 3)
 	for _, segment := range wrap(path, width) {
-		out = append(out, pal.dim(linkify(segment, uri)))
+		out = append(out, l.pal.dim(l.anchor(segment, path)))
 	}
-	return append(out, pal.dim(fit(shape, width)))
+	return append(out, l.pal.dim(fit(shape, width)))
 }
 
 // pictureWords is WHAT A TERMINAL THAT CANNOT DRAW GETS INSTEAD: the file,
@@ -545,7 +546,7 @@ func (a *app) pictureWords(e *entry, width int) (rows []string, more int, ok boo
 	// The line is [picturePathLine]'s, with no preview behind it — one formatter
 	// for the path wherever it appears, so the wrapping rule, the OSC 8 link and
 	// the dim can never drift between the drawn case and this one.
-	rows = picturePathLine(a.pal, path, imagePreview{}, width)
+	rows = picturePathLine(a.linker(), path, imagePreview{}, width)
 	// A result with nothing in it is left off rather than drawn as the dim em
 	// dash [app.cap] would give it: the path above has already answered, and a
 	// shrug under an answer is the surface talking for the sake of it.

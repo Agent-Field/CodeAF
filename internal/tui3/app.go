@@ -1048,6 +1048,20 @@ type app struct {
 	// at construction, on the same terms tmux is and for the same reason.
 	remote bool
 
+	// pathLinks says a file path drawn on this surface may be wrapped in an
+	// OSC 8 hyperlink (pathlink.go). It is two facts folded into one, and both
+	// are settled for the whole session at construction: the terminal will take
+	// the sequence, and the files being named are on THIS machine's disk. The
+	// third gate is not a session fact and lives with the render —
+	// [app.linker] turns links off while a task's room is up, because a node
+	// works in its own worktree.
+	//
+	// pathSeen memoizes what has already been looked for, and is emptied at
+	// every turn end so that a file written during the turn becomes clickable
+	// the moment the turn lands.
+	pathLinks bool
+	pathSeen  map[string]string
+
 	// host is the machine the AGENT is on when it is not this one, and it is the
 	// other direction entirely from [app.remote] one line above: that one is
 	// about the terminal reading the frame, this one is about the session
@@ -1202,6 +1216,13 @@ func newApp(ctx context.Context, opts Options) *app {
 	if home, err := os.UserHomeDir(); err == nil {
 		a.tilde = home
 	}
+	// AND THE PATHS ARE ONLY CLICKABLE WHEN THEY ARE THIS MACHINE'S. It is the
+	// branch probe's judgement one more time (pathlink.go): a hosted session's
+	// files are on the other end of the connection, and `file:///app/main.go`
+	// handed to the terminal in front of you names this machine's /app/main.go —
+	// which is either nothing at all or somebody else's file.
+	a.pathLinks = terminalTakesLinks(os.Getenv) && !a.hosted()
+	a.pathSeen = make(map[string]string, 256)
 	// The gate's posture is read at boot and re-read at every turn end
 	// ([app.settle]): a person who opens the settings panel and turns the asking
 	// off sees the YOLO segment appear one turn later, which is soon enough for
@@ -2367,6 +2388,12 @@ func (a *app) settle() tea.Cmd {
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()
+	// AND WHAT WAS NOT A FILE MAY HAVE BECOME ONE. The path memo is emptied at
+	// the turn boundary rather than never or every frame (pathlink.go): a name
+	// the model wrote in its first sentence and only created in its last tool
+	// call was correctly plain text all the way through the turn, and is a
+	// clickable file from the moment the turn lands.
+	clear(a.pathSeen)
 	// Questions the turn was blocked on died with it. The session already
 	// released those calls; a prompt left on screen would be asking about work
 	// that is over (consent.go).
