@@ -152,6 +152,23 @@ type PresenceTask struct {
 	// has not. A surface drawing an age must read that emptiness as "not yet"
 	// rather than as an age of zero (the emptiness law).
 	StartedAt time.Time `json:"startedAt,omitzero"`
+	// Files are the paths this node has written SO FAR — repo-relative,
+	// slash-spelled, in the order it first wrote them, capped at
+	// [taskFilesLimit] ([TaskNode.wrote] is where they accumulate).
+	//
+	// IT IS A FACT AND NOT AN INTENT, and that is the whole of why it belongs in
+	// this file rather than in a plan somewhere. A path is here because a saving
+	// call came back successful; nothing about what the node MEANS to write is
+	// knowable, and a claim staked on an intention would be a window reserving
+	// files it never touched. It refreshes with the ordinary heartbeat, like
+	// everything else here, and it goes stale with the rest of the row.
+	//
+	// EMPTY IS UNKNOWN AND NEVER "TOUCHES NOTHING". A node that has not written
+	// anything yet, and a session running a build too old to say, look exactly
+	// alike here. A reader that took either for "this work is nowhere near my
+	// files" would be inventing the one answer this field cannot give — so
+	// [Elsewhere.Touching] answers with two lists and keeps them apart.
+	Files []string `json:"files,omitempty"`
 }
 
 // SessionPresence is one live session as another window sees it.
@@ -541,6 +558,13 @@ func (a *Agent) presenceTasks() []PresenceTask {
 			Title:     strings.TrimSpace(node.spec.title),
 			State:     string(node.state),
 			StartedAt: node.started,
+			// A COPY, TAKEN UNDER THE LOCK THE LIST IS APPENDED UNDER
+			// ([TaskNode.noteWrote]), so a refresh carries one whole instant of
+			// the node's writing and never half an append. A node that has
+			// written nothing copies to nil, which omitempty drops — see
+			// [PresenceTask.Files] for why that emptiness is unknown and not an
+			// answer.
+			Files: append([]string(nil), node.wrote...),
 		})
 	}
 	return out
