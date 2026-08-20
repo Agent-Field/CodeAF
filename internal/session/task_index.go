@@ -784,6 +784,85 @@ func taskScore(entry TaskIndexEntry, needle string) (int, bool) {
 	return 0, false
 }
 
+// ── the shared ladder ───────────────────────────────────────────────────────
+
+// The rungs [MatchQuality] answers with, HIGHEST IS BEST. They are spaced two
+// hundred apart so that a caller may add its own weighting between them —
+// recency, or how much a row wants somebody — without any of it reaching the
+// rung below (internal/tui3's home.go does exactly that).
+const (
+	// MatchWord is the query standing as a whole word in the text: "auth" in
+	// "fix the auth test". It is the top rung because it is the one a person
+	// means when they type a word and expect the thing they named.
+	MatchWord = 1000
+	// MatchPrefix is the text STARTING with the query — "pric" over "pricing
+	// research". A thing whose name begins with what you typed is the thing you
+	// were typing the name of.
+	MatchPrefix = 800
+	// MatchWordStart is some later word starting with it: "res" in "pricing
+	// research".
+	MatchWordStart = 600
+	// MatchInside is the query somewhere in the text at all.
+	MatchInside = 400
+	// MatchScattered is the query's letters appearing in order with anything
+	// between them — "prr" over "pricing research". It is the bottom rung
+	// because it is the one that finds things nobody was looking for.
+	MatchScattered = 200
+)
+
+// MatchQuality is HOW WELL one query matches one piece of text, and whether it
+// matches at all. It is the ladder above, and it is exported because it is the
+// one fuzzy matcher in this program that more than one surface ranks with.
+//
+// IT IS NOT [taskScore], AND THE DIFFERENCE IS DELIBERATE. That one ranks
+// FIELD-MAJOR — every title-prefix beats every slug-prefix, which beats every
+// substring — because an "@" mention is resolving one token to one task and the
+// field it matched is most of the answer. This one ranks RUNG-MAJOR, because a
+// person searching a whole machine cares how well the words matched and not
+// which column they landed in; the caller weights the columns itself. Two
+// orderings, one matcher underneath, and both of them say so.
+//
+// text and needle are both expected lowercased; a caller folding case twice
+// per row over a thousand rows is the one cost this refuses to pay for it.
+func MatchQuality(text, needle string) (int, bool) {
+	if needle == "" {
+		return 0, false
+	}
+	at := strings.Index(text, needle)
+	if at < 0 {
+		if _, ok := subsequenceSpan(text, needle); ok {
+			return MatchScattered, true
+		}
+		return 0, false
+	}
+	// A whole word: nothing alphanumeric immediately either side of it.
+	before := at == 0 || !matchWordRune(rune(text[at-1]))
+	end := at + len(needle)
+	after := end == len(text) || !matchWordRune(rune(text[end]))
+	switch {
+	case before && after:
+		return MatchWord, true
+	case at == 0:
+		return MatchPrefix, true
+	case before:
+		return MatchWordStart, true
+	}
+	return MatchInside, true
+}
+
+// matchWordRune reports whether a byte is part of a word for [MatchQuality]'s
+// boundary test. It is deliberately ASCII-only and deliberately crude: the
+// question is "did the match start where a word starts", and a separator is any
+// of the space, punctuation and path characters that titles are actually
+// written with.
+func matchWordRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	}
+	return false
+}
+
 // subsequenceSpan reports whether needle's runes appear in order in text, and
 // how far apart the first and last of them landed — the span, which is what
 // tells a tight match from a coincidence.

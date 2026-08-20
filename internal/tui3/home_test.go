@@ -464,9 +464,12 @@ func TestHomeCollapsesTheQuietTailOfAProject(t *testing.T) {
 	}
 }
 
-// `@` turns the column into a search over every conversation on the machine,
-// and drops the headings with it.
-func TestHomeAtFindsAcrossEveryProject(t *testing.T) {
+// ── the omnibox ─────────────────────────────────────────────────────────────
+
+// TYPING DOES BOTH JOBS AT ONCE. The characters are a new conversation waiting
+// to be sent AND a live query over the machine, and the cursor stays on the
+// action row so that type-and-enter means exactly what it always meant.
+func TestTypingFiltersLiveWhileTheActionRowStaysTheDefault(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
@@ -474,15 +477,351 @@ func TestHomeAtFindsAcrossEveryProject(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	for _, r := range "@pricing" {
+	for _, r := range "pricing" {
 		a.homeKey(key(string(r)))
 	}
 	text := homeText(a)
 	if !strings.Contains(text, "Pricing Research") {
-		t.Fatalf("the filter lost the conversation it should have found:\n%s", text)
+		t.Fatalf("the query lost the conversation it should have found:\n%s", text)
 	}
 	if strings.Contains(text, "Porting the Resume Picker") {
-		t.Fatalf("the filter kept a conversation that does not match:\n%s", text)
+		t.Fatalf("the query kept a conversation that does not match:\n%s", text)
+	}
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeAction {
+		t.Fatalf("the cursor left the action row while typing (kind %v)", line.kind)
+	}
+	if !strings.Contains(text, homeStartWord+`: "pricing"`) {
+		t.Fatalf("the action row does not say what enter will do:\n%s", text)
+	}
+}
+
+// …and enter therefore still starts a conversation, with matches on screen.
+func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	a := lab.app(mine)
+	next := &fakeAgent{model: "m"}
+	a.fresh = func() (Agent, string, error) { return next, "/tmp/alpha/next/transcript.jsonl", nil }
+	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+	if !strings.Contains(homeText(a), "Pricing Research") {
+		t.Fatal("the query matched nothing, so this proves nothing")
+	}
+	runCmd(a.homeEnter())
+	if a.home.open {
+		t.Fatal("enter on the action row left home open")
+	}
+	if len(next.sent) != 1 || next.sent[0] != "pricing" {
+		t.Fatalf("the new conversation was sent %v", next.sent)
+	}
+}
+
+// One ↓ is the decision to pick from the list instead, and it sticks.
+func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "pric" {
+		a.homeKey(key(string(r)))
+	}
+	a.homeKey(key("down"))
+	if row := a.home.focused(); row.Transcript != mine {
+		t.Fatal("↓ did not land on the match")
+	}
+	a.homeKey(key("i"))
+	if row := a.home.focused(); row.Transcript != mine {
+		t.Fatal("typing after ↓ threw the cursor back to the action row")
+	}
+}
+
+// A FILTER THAT CANNOT SEE WHAT IT HIDES IS A FILTER LYING ABOUT THE MACHINE.
+func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest one", "/tmp/alpha", now)
+	for i := 0; i < homeShown+3; i++ {
+		lab.session("-tmp-alpha", "bbbb00000000000"+string(rune('a'+i)),
+			"filler "+string(rune('a'+i)), "/tmp/alpha", now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	lab.session("-tmp-alpha", "cccc000000000001", "buried treasure", "/tmp/alpha", now.Add(-40*time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	if !strings.Contains(homeText(a), "more") {
+		t.Fatal("nothing was collapsed, so this proves nothing")
+	}
+	if strings.Contains(homeText(a), "Buried Treasure") {
+		t.Fatal("the row was not behind the collapse to begin with")
+	}
+	for _, r := range "treasure" {
+		a.homeKey(key(string(r)))
+	}
+	if !strings.Contains(homeText(a), "Buried Treasure") {
+		t.Fatalf("the query could not see behind the collapse:\n%s", homeText(a))
+	}
+	a.homeKey(key("ctrl+u"))
+	if !strings.Contains(homeText(a), "more, quiet since") {
+		t.Fatalf("the collapse did not come back on an empty query:\n%s", homeText(a))
+	}
+	if strings.Contains(homeText(a), "Buried Treasure") {
+		t.Fatal("the row stayed out after the query was cleared")
+	}
+}
+
+// The tail line is a door: enter and → open it, ← folds it back, a click toggles.
+func TestTheCollapseLineOpensAndFolds(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest one", "/tmp/alpha", now)
+	for i := 0; i < homeShown+3; i++ {
+		lab.session("-tmp-alpha", "bbbb00000000000"+string(rune('a'+i)),
+			"filler "+string(rune('a'+i)), "/tmp/alpha", now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	a := lab.app(mine)
+	a.openHome()
+
+	quiet := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeQuiet {
+			quiet = at
+		}
+	}
+	if quiet < 0 {
+		t.Fatal("no tail line to open")
+	}
+	a.home.cursor = quiet
+	a.homeKey(key("enter"))
+	if !a.home.expanded[a.home.lines[a.home.cursor].dir] {
+		t.Fatal("enter did not open the project")
+	}
+	if text := homeText(a); !strings.Contains(text, "fewer") || strings.Contains(text, "more") {
+		t.Fatalf("the tail does not offer to fold the rows back:\n%s", text)
+	}
+	if !strings.Contains(homeText(a), "Filler G") {
+		t.Fatalf("opening the project did not draw the rows behind it:\n%s", homeText(a))
+	}
+	if line, _ := a.home.focusedLine(); line.kind != homeQuiet {
+		t.Fatal("the cursor left the line that did the opening")
+	}
+
+	a.homeKey(key("left"))
+	if len(a.home.expanded) != 0 {
+		t.Fatal("← did not fold the project back")
+	}
+	a.homeKey(key("right"))
+	if len(a.home.expanded) != 1 {
+		t.Fatal("→ did not open it again")
+	}
+
+	a.width, a.height = 100, 30
+	_, hits, _, _ := a.homeFrame(a.width, a.height)
+	row := -1
+	for y, at := range hits {
+		if at == a.home.cursor {
+			row = y
+		}
+	}
+	if row < 0 {
+		t.Fatal("the tail line is not on screen")
+	}
+	a.homePress(4, row)
+	if len(a.home.expanded) != 0 {
+		t.Fatal("a click did not fold the project")
+	}
+}
+
+// The outcome sentence is the most informative text the index holds, and it is
+// searched — the closest thing to recalling something by what happened.
+func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "tuesday", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "wednesday", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "1", Name: "n", Label: "A nondescript job", Title: "A nondescript job",
+		Status: string(session.TaskDone), SessionID: "aaaa000000000002",
+		Outcome: "Rewrote the postgres connection pool and the flakes stopped.",
+	})
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "postgres" {
+		a.homeKey(key(string(r)))
+	}
+	text := homeText(a)
+	if !strings.Contains(text, "Wednesday") {
+		t.Fatalf("a query over what the work came to found nothing:\n%s", text)
+	}
+	if strings.Contains(text, "Tuesday") {
+		t.Fatalf("it matched a conversation with no such outcome:\n%s", text)
+	}
+	a.homeKey(key("down"))
+	if !strings.Contains(homeText(a), "Rewrote the postgres") {
+		t.Fatalf("the pane does not show what the work came to:\n%s", homeText(a))
+	}
+}
+
+// AT THE SAME MATCH QUALITY, THE ROW THAT WANTS SOMEBODY WINS — and no amount
+// of the other being newer can change that, because the boost is larger than
+// the whole recency range.
+func TestNeedsYouOutranksAColdRowItTiesWith(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000009", "somewhere else", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000001", "auth work", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "auth work", "/tmp/alpha", now.Add(-31*24*time.Hour))
+	lab.presence("-tmp-alpha", "aaaa000000000002", session.PresenceWaiting, "which branch?", now)
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "auth" {
+		a.homeKey(key(string(r)))
+	}
+	var order []session.SessionRow
+	for _, line := range a.home.lines {
+		if line.kind == homeSession {
+			order = append(order, line.row)
+		}
+	}
+	if len(order) != 2 {
+		t.Fatalf("expected two matches, got %d", len(order))
+	}
+	if !order[0].NeedsPerson() {
+		t.Fatal("the newer cold row outranked the one waiting on somebody")
+	}
+	// The boost is smaller than one rung at even the WEAKEST field, so it can
+	// never override a better match.
+	if rung := (session.MatchWord - session.MatchPrefix) * homeFieldOutcome; homeBoostNeedsYou >= rung {
+		t.Fatalf("the needs-you boost (%d) is big enough to beat a better match (%d)", homeBoostNeedsYou, rung)
+	}
+	// And larger than the whole recency range, which is what the order above
+	// actually turns on.
+	if homeBoostNeedsYou <= homeRecencyBoost {
+		t.Fatalf("the needs-you boost (%d) can be outweighed by recency (%d)", homeBoostNeedsYou, homeRecencyBoost)
+	}
+}
+
+// esc peels one layer at a time.
+func TestEscPeelsTheQueryThenCloses(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "abc" {
+		a.homeKey(key(string(r)))
+	}
+	a.homeKey(key("esc"))
+	if !a.home.open {
+		t.Fatal("the first esc left home instead of clearing the query")
+	}
+	if !a.home.box.empty() {
+		t.Fatalf("the box still holds %q", a.home.box.String())
+	}
+	a.homeKey(key("esc"))
+	if a.home.open {
+		t.Fatal("the second esc did not close home")
+	}
+}
+
+// ── the two columns ─────────────────────────────────────────────────────────
+
+// THE RIGHT PANE'S EDGE IS A STRAIGHT LINE. It is the only thing separating the
+// two columns — this surface draws no borders — so it has to be findable on
+// every row without looking for it.
+func TestTheGutterIsAStraightLine(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "a short one", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "a conversation with a considerably longer name than that", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "1", Name: "n", Label: "Something", Title: "Something",
+		Status: string(session.TaskDone), Cost: 1, Tokens: 100, SessionID: "aaaa000000000001",
+		EndedAt: now.Add(-time.Minute), Outcome: "It worked.",
+	})
+	a := lab.app(mine)
+	a.openHome()
+	for _, width := range []int{100, 84, 120} {
+		a.width, a.height = width, 24
+		left, right := homeColumns(width)
+		if right == 0 {
+			t.Fatalf("width %d dropped the detail column, so there is no gutter to test", width)
+		}
+		lines, _, _, _ := a.homeFrame(width, a.height)
+		// The head is four lines and the foot three; between them is the body,
+		// which is the only part that has two columns in it.
+		for i := 4; i < len(lines)-3; i++ {
+			plain := []rune(ansi.Strip(lines[i]))
+			if len(plain) <= left+homeGutter {
+				continue
+			}
+			gutter := string(plain[left : left+homeGutter])
+			if strings.TrimSpace(gutter) != "" {
+				t.Fatalf("at width %d row %d puts %q in the gutter:\n%s",
+					width, i, gutter, ansi.Strip(strings.Join(lines, "\n")))
+			}
+		}
+	}
+}
+
+// The facts footer is the emptiness law at its most literal.
+func TestTheFactsFooterOmitsWhatIsNotAFact(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	quiet := lab.session("-tmp-alpha", "aaaa000000000001", "just talking", "/tmp/alpha", now.Add(-2*time.Hour))
+	a := lab.app(quiet)
+	a.openHome()
+	text := homeText(a)
+	for _, banned := range []string{"spent $0", "0 tokens", "$0.00"} {
+		if strings.Contains(text, banned) {
+			t.Fatalf("the footer drew %q:\n%s", banned, text)
+		}
+	}
+	if !strings.Contains(text, "last active 2h") {
+		t.Fatalf("the footer lost the one fact it had:\n%s", text)
+	}
+
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "1", Name: "n", Label: "Something", Title: "Something",
+		Status: string(session.TaskDone), Cost: 1.25, Tokens: 34000,
+		SessionID: "aaaa000000000001", EndedAt: now.Add(-time.Minute),
+	})
+	a = lab.app(quiet)
+	a.openHome()
+	if got := homeText(a); !strings.Contains(got, "spent $1.25 · 34k tokens · last active 1m") {
+		t.Fatalf("the footer does not read as one line of facts:\n%s", got)
+	}
+}
+
+// A short frame drops bands from the bottom and never takes the title.
+func TestTheTitleBandSurvivesAShortFrame(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the focused one", "/tmp/alpha", now)
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "1", Name: "n", Label: "Something", Title: "Something",
+		Status: string(session.TaskDone), Cost: 3, Tokens: 90000,
+		SessionID: "aaaa000000000001", EndedAt: now.Add(-time.Minute),
+		Outcome: "A sentence about what it came to.",
+	})
+	lab.session("-tmp-alpha", "aaaa000000000002", "another", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, height := range []int{24, 16, 12, 10, 9} {
+		a.width, a.height = 100, height
+		text := homeText(a)
+		if !strings.Contains(text, "The Focused One") {
+			t.Fatalf("at height %d the pane lost its title:\n%s", height, text)
+		}
+	}
+	a.width, a.height = 100, 9
+	if strings.Contains(homeText(a), "spent $3.00") {
+		t.Fatalf("a short frame kept the footer instead of dropping it:\n%s", homeText(a))
 	}
 }
 
@@ -813,5 +1152,223 @@ func TestReadWorldSkipsAFolderNobodySpokeIn(t *testing.T) {
 func TestReadWorldOnAMissingRootIsAnEmptyWorld(t *testing.T) {
 	if world := session.ReadWorld(filepath.Join(t.TempDir(), "never")); len(world.Projects) != 0 {
 		t.Fatalf("read %d projects off a root that is not there", len(world.Projects))
+	}
+}
+
+// ── the door home from inside a conversation ────────────────────────────────
+
+// doorLab is a surface sitting in a conversation with somewhere else to go, so
+// the door is open. It is [homeLab.app] plus the one cached fact the door reads.
+func (l *homeLab) door(standing string) *app {
+	l.t.Helper()
+	a := l.app(standing)
+	a.landHome()
+	return a
+}
+
+// TWO SPACES IN AN EMPTY BOX GO HOME.
+func TestDoubleSpaceInAnEmptyBoxGoesHome(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is shut on a machine with somewhere to go")
+	}
+	a.key(key(" "))
+	if got := a.input.String(); got != " " {
+		t.Fatalf("the first space did not type itself: %q", got)
+	}
+	if a.home.open {
+		t.Fatal("one space opened home")
+	}
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("two spaces did not open home")
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the gesture left %q behind in the box", got)
+	}
+}
+
+// …AND IT CANNOT EAT A SPACE SOMEBODY WANTED. The first one types itself and
+// stays typed unless the very next key is another space.
+func TestASingleSpaceThenALetterTypesNormally(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.key(key(" "))
+	a.key(key("x"))
+	if got := a.input.String(); got != " x" {
+		t.Fatalf("the box holds %q, want %q", got, " x")
+	}
+	if a.home.open {
+		t.Fatal("typing a space and a letter opened home")
+	}
+	// And a space in a box that already has words in it is just a space.
+	a.key(key(" "))
+	a.key(key(" "))
+	if a.home.open {
+		t.Fatal("the gesture fired in a box that had text in it")
+	}
+	if got := a.input.String(); got != " x  " {
+		t.Fatalf("the box holds %q", got)
+	}
+}
+
+// A PASTE IS NOT A GESTURE. Pasted text arrives as its own message and never
+// reaches the key router, so two leading spaces in pasted text are two spaces.
+func TestAPasteThatStartsWithTwoSpacesDoesNotGoHome(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	runCmd(a.paste("  indented like code"))
+	if a.home.open {
+		t.Fatal("a paste beginning with two spaces opened home")
+	}
+	if got := a.input.String(); got != "  indented like code" {
+		t.Fatalf("the paste landed as %q", got)
+	}
+}
+
+// The door is not offered where there is nowhere to go, and the gesture is
+// inert there too — a door that is drawn is a door that works.
+func TestTheDoorIsShutWhenThereIsNowhereToGo(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
+	a := lab.door(mine)
+	if a.homeDoorOpen() || a.homeDoorShowing() {
+		t.Fatal("the door is open on a machine with only this conversation")
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if a.home.open {
+		t.Fatal("the gesture fired with nowhere to go")
+	}
+	if got := a.input.String(); got != "  " {
+		t.Fatalf("the spaces did not type themselves: %q", got)
+	}
+}
+
+// The advertisement shows at rest and vanishes on the first character.
+func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	if !a.homeDoorShowing() {
+		t.Fatal("the door is not advertised at rest")
+	}
+	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+		t.Fatalf("the hint slot reads %q", got)
+	}
+	frame, _, _ := a.frame()
+	if !strings.Contains(ansi.Strip(frame), homeDoorWord) {
+		t.Fatalf("the door is not on the frame:\n%s", ansi.Strip(frame))
+	}
+
+	a.key(key("h"))
+	if a.homeDoorShowing() {
+		t.Fatal("the door is still advertised while something is being typed")
+	}
+	if got := a.legendRight(a.width); got != microcopy {
+		t.Fatalf("the slot reads %q while typing", got)
+	}
+}
+
+// And it is a thing you can press.
+func TestClickingTheDoorGoesHome(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.width, a.height = 100, 24
+	// The frame has to be laid out before the span it wrote can be read — the
+	// same order every column-aware press on this surface keeps.
+	frame, _, _ := a.frame()
+	if !a.homeDoor.pressable() {
+		t.Fatalf("laying out the frame recorded no columns for the door:\n%s", ansi.Strip(frame))
+	}
+	row := -1
+	for y := 0; y < a.height; y++ {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeLegend {
+			row = y
+		}
+	}
+	if row < 0 {
+		t.Fatal("no legend row on the frame")
+	}
+	if _, took := a.homeDoorPress(a.homeDoor.from, row); !took {
+		t.Fatal("a click on the door did nothing")
+	}
+	if !a.home.open {
+		t.Fatal("the click did not open home")
+	}
+
+	// A press on the rule beside it is a press on a rule.
+	a.closeHome()
+	a.frame()
+	if _, took := a.homeDoorPress(1, row); took {
+		t.Fatal("a click on the bare rule opened home")
+	}
+}
+
+// THE ROUND TRIP: home → enter → the conversation → space space → home.
+func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.launch(mine, true)
+	if !a.home.open {
+		t.Fatal("the launch did not land on home")
+	}
+	a.homeEnter()
+	if a.home.open {
+		t.Fatal("enter did not step into the conversation")
+	}
+	if a.file != mine {
+		t.Fatalf("enter landed in %q", a.file)
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("the gesture did not go back home")
+	}
+	a.homeKey(key("esc"))
+	if a.home.open || a.file != mine {
+		t.Fatal("esc did not come back to the conversation")
+	}
+}
+
+// A turn running underneath is no obstacle, and is not disturbed.
+func TestTheGestureWorksWhileATurnIsRunning(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.state = stateWorking
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("the gesture did not work with a turn running")
+	}
+	if a.state != stateWorking {
+		t.Fatal("opening home disturbed the running turn")
 	}
 }

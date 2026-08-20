@@ -267,9 +267,11 @@ type TaskRollup struct {
 	// Done and Failed are the landed rows, counted by what they came to.
 	Done   int
 	Failed int
-	// Spend is the sum of the rows' cost, in dollars. Zero means nobody could
-	// say, and under the emptiness law a surface draws nothing for it.
-	Spend float64
+	// Spend is the sum of the rows' cost, in dollars, and Tokens the sum of
+	// what they weighed. Zero means nobody could say, and under the emptiness
+	// law a surface draws nothing for either.
+	Spend  float64
+	Tokens int
 	// Newest is when the most recent of these rows landed, and zero when the
 	// only rows are ones that have not.
 	Newest time.Time
@@ -448,6 +450,7 @@ func rollUp(rows []TaskIndexEntry, held SessionRow) TaskRollup {
 			rollup.Done++
 		}
 		rollup.Spend += row.Cost
+		rollup.Tokens += row.Tokens
 		if row.EndedAt.After(rollup.Newest) {
 			rollup.Newest = row.EndedAt
 		}

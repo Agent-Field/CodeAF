@@ -941,6 +941,16 @@ type app struct {
 	// which is why they are read off the options and never off the profile.
 	landing     bool
 	pickSession bool
+	// homeWorth says the machine holds a conversation other than this one, so
+	// home has something to show. It is a CACHED answer to a question about the
+	// disk, refreshed whenever the world is read anyway (home.go), because the
+	// advertisement that reads it is asked on every frame and a directory walk
+	// per frame is not a thing this surface will do.
+	homeWorth bool
+	// homeDoor is where that advertisement was drawn on the last frame, for the
+	// pointer — the same arrangement the model segment and the jump chip use
+	// (render.go's [hudSpan]).
+	homeDoor hudSpan
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door
@@ -1568,6 +1578,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND THE DOOR HOME IS THE THIRD, in the hint slot at the right end
+			// of the legend. Column-aware for the same reason again: the rest of
+			// that rule is a rule, and pressing a rule means nothing (home.go).
+			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -2065,6 +2081,10 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// blocked on must not be behind a sheet somebody opened to read a diff.
 		a.closeSettings()
 		a.closeExpand()
+		// AND HOME, for the same reason in the same words: it is the whole
+		// screen, and a session blocked on an answer behind it would be a
+		// question nobody can see to answer (home.go).
+		a.closeHome()
 		a.askConsent(ev)
 
 	case session.EventConnectAsk:

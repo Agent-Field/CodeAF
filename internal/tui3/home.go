@@ -3,6 +3,7 @@ package tui3
 import (
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,10 +68,11 @@ import (
 const homeShown = 4
 
 // homeTaskRows is how much of the focused conversation's work the detail column
-// shows. Six is the depth at which a list still answers "what has this been
-// doing" rather than becoming the project's whole history, which is what the
-// task index itself is for.
-const homeTaskRows = 6
+// shows. FOUR AND NOT MORE, because each one now costs two lines: the row and
+// the sentence saying what it came to. Four tasks with their outcomes answer
+// "what has this been doing" better than twelve bare labels, and the project's
+// whole history is what the index itself is for.
+const homeTaskRows = 4
 
 // homeEvery is how long between readings of the disk. Three seconds is slow
 // enough that the walk is free and fast enough that a task landing in another
@@ -107,7 +109,25 @@ func (a *app) homeBeat() tea.Cmd {
 // Two columns at thirty cells each is two truncated columns; under this the
 // left column takes the frame and the detail is one screen away, which is the
 // honest answer at that width.
-const homeMinDetail = 76
+const homeMinDetail = 80
+
+// homeGutter is the empty space between the two columns, and it is the ONLY
+// thing that separates them.
+//
+// THIS SURFACE DRAWS NO BORDERS (internal/tui is the north star, and it has
+// none), so the separation has to be made of nothing — which means there has to
+// be enough of it. Two columns of gap read as a wide word space and the two
+// panes ran together into one ragged column; four is unmistakably a gutter. It
+// works only because the left column is padded to its full width on every row,
+// so the right pane's edge is a straight vertical line at a fixed x that the
+// eye can find without looking for it.
+const homeGutter = 4
+
+// homeDetailFloor is the narrowest the detail column is worth drawing. Under it
+// the left list takes the whole frame: a preview squeezed into thirty cells is
+// two truncated columns, and between an index somebody can read and a preview
+// nobody can, the index wins.
+const homeDetailFloor = 34
 
 // The glyphs a conversation wears in the left column. They say what is
 // HAPPENING and nothing else — there is no state here that a person has to be
@@ -135,7 +155,7 @@ const (
 	// homeFootWord is the three verbs, and it stays three. A footer that grew a
 	// key for everything this screen can do would be the cockpit this is
 	// deliberately not (docs/home-design.md).
-	homeFootWord = "type start something new · @ find · enter open"
+	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
 	// homeEmptyWord is a machine that has not held a conversation yet.
 	homeEmptyWord = "nothing here yet — say something and this fills up"
 	// homeNoMatchWord is a filter that matched nothing.
@@ -146,6 +166,16 @@ const (
 	// homeElsewhereWord marks a row this window cannot open, and is also what
 	// enter on one says, with the project's path after it.
 	homeElsewhereWord = "elsewhere"
+	// homeStartWord is the action row's label, with what was typed quoted after
+	// it. "conversation" and not "chat" because that is what this surface calls
+	// one everywhere else it names one — /new closes a session and starts a
+	// fresh one, and the manual has said "conversation" since before home
+	// existed.
+	homeStartWord = "start a new conversation"
+	// homeStartGlyph marks it. A plain `+` on purpose: it is the one row on the
+	// column that is not a thing that exists yet, and every other glyph here is
+	// a state something is in.
+	homeStartGlyph = "+"
 )
 
 // homeRowKind is what one line of the left column is.
@@ -159,10 +189,17 @@ const (
 	// homeSession is one conversation, and the only thing enter means anything
 	// on.
 	homeSession
-	// homeQuiet is the collapsed tail of a project — "…2 more, quiet since
-	// Tue". It is not a cursor stop either: it is a fact about what is not
-	// being shown, not a thing to open.
+	// homeQuiet is a project's tail — "…2 more, quiet since Tue" folded, and
+	// the same line holding it open when it is not. IT IS A CURSOR STOP AND A
+	// DOOR: enter or → opens the project, ← folds it again, and a click does
+	// the same. A line that says work is being hidden and cannot be asked to
+	// stop hiding it is a dead end somebody hits and gives up at.
 	homeQuiet
+	// homeAction is "start a new conversation", drawn only while something is
+	// typed and always at the very top. It is a cursor stop and it is where the
+	// cursor RESTS by default, which is what keeps type-and-enter meaning
+	// exactly what it meant before the box could also search.
+	homeAction
 	// homeBlank is the empty line between projects.
 	homeBlank
 )
@@ -183,9 +220,11 @@ type homeLine struct {
 	// row is the conversation, for [homeSession].
 	row session.SessionRow
 	// quiet is how many conversations the collapsed line stands for, and since
-	// when nobody has been in them.
-	quiet int
-	since time.Time
+	// when nobody has been in them. folded says the line is hiding them right
+	// now; an expanded project keeps the line as the way back.
+	quiet  int
+	since  time.Time
+	folded bool
 }
 
 // homeView is the whole surface's state. The zero value is closed, which is
@@ -205,11 +244,23 @@ type homeView struct {
 	// hover is the line the pointer is over, or -1.
 	hover int
 
-	// box is the one line at the foot, and it is TWO things depending on what
-	// is in it: a message being started, or — with a leading `@` — a search
-	// over the left column. One box rather than two, because a person's fingers
-	// do not choose a mode before they choose a word.
+	// box is the one line at the foot, and it is TWO THINGS AT ONCE rather than
+	// two things by turns. What is typed there is a new conversation waiting to
+	// be sent AND a live query over every project on the machine, both of them
+	// true of the same characters at the same moment. There is no prefix, no
+	// mode and nothing to switch: a person's fingers should not have to choose
+	// what a word is for before they have finished typing it.
 	box editor
+	// picked says the person walked off the action row onto a match. It is what
+	// keeps the two readings of the box from fighting: while it is false the
+	// cursor sits on "start a new conversation" through every keystroke, so
+	// type-and-enter starts a chat exactly as it always did; one ↓ sets it, and
+	// then the list is being chosen from.
+	picked bool
+	// expanded is the projects somebody opened by hand, by bucket directory.
+	// It outlives a rescan and a query, because folding is a thing a person did
+	// and not a thing the data said.
+	expanded map[string]bool
 
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
@@ -247,11 +298,12 @@ func (a *app) openHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
-		open:   true,
-		world:  session.ReadWorld(a.placesRoot()),
-		bucket: homeBucketOf(a.file),
-		hover:  -1,
-		last:   map[string]session.Summary{},
+		open:     true,
+		world:    session.ReadWorld(a.placesRoot()),
+		bucket:   homeBucketOf(a.file),
+		hover:    -1,
+		last:     map[string]session.Summary{},
+		expanded: map[string]bool{},
 	}
 	a.home.build()
 	a.home.point(a.file)
@@ -295,19 +347,26 @@ func (a *app) openHome() tea.Cmd {
 // themselves; a switch would be a third answer that has to be kept in step with
 // two facts that are already true.
 func (a *app) landHome() {
-	if !a.landing || a.pickSession || a.hosted() {
+	if a.hosted() || a.resume == nil {
 		return
 	}
+	// ONE READ ANSWERS BOTH QUESTIONS. Whether to greet somebody now, and
+	// whether the door is worth advertising at the foot of the conversation
+	// afterwards ([app.homeWorth]), are the same fact about the same machine —
+	// and the second is asked on every frame, which is exactly as many times as
+	// a directory walk must not happen.
 	world := session.ReadWorld(a.placesRoot())
-	if !worldHasElsewhere(world, a.file) {
+	a.homeWorth = worldHasElsewhere(world, a.file)
+	if !a.landing || a.pickSession || !a.homeWorth {
 		return
 	}
 	a.home = homeView{
-		open:   true,
-		world:  world,
-		bucket: homeBucketOf(a.file),
-		hover:  -1,
-		last:   map[string]session.Summary{},
+		open:     true,
+		world:    world,
+		bucket:   homeBucketOf(a.file),
+		hover:    -1,
+		last:     map[string]session.Summary{},
+		expanded: map[string]bool{},
 	}
 	a.home.build()
 	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS IN, which is the
@@ -355,6 +414,12 @@ func worldHasElsewhere(world session.World, here string) bool {
 }
 
 func (a *app) closeHome() {
+	// The world in hand on the way out is the freshest reading there will be
+	// until home opens again, so the door's advertisement is trued up here
+	// rather than left as it was at boot.
+	if len(a.home.world.Projects) > 0 {
+		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
+	}
 	a.home = homeView{}
 	a.touch()
 }
@@ -381,6 +446,7 @@ func (a *app) refreshHome() {
 		return
 	}
 	a.home.world = session.ReadWorld(a.placesRoot())
+	a.homeWorth = worldHasElsewhere(a.home.world, a.file)
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// this is a rescan and a rebuild and nothing else.
 	a.home.build()
@@ -390,91 +456,119 @@ func (a *app) refreshHome() {
 // build turns the world into lines, applying the filter when one is typed.
 func (h *homeView) build() {
 	previous := h.focused()
-	h.lines = h.lines[:0]
-	if query, searching := h.query(); searching {
-		h.buildFound(query)
-	} else {
-		h.buildWorld()
+	// An empty box is not a choice anybody has made yet, so the next character
+	// typed starts on the action row again.
+	if !h.searching() {
+		h.picked = false
 	}
-	// THE CURSOR FOLLOWS THE CONVERSATION AND NOT THE LINE NUMBER. A filter
-	// typed one letter at a time, and a rescan that re-sorts around work
-	// starting, both rebuild this list under a cursor — and a cursor that held
-	// its position would land on whatever happened to sort into row seven. So it
+	h.lines = h.lines[:0]
+	h.buildWorld()
+	// THE CURSOR FOLLOWS THE CONVERSATION AND NOT THE LINE NUMBER. A query typed
+	// one letter at a time, and a rescan that re-sorts around work starting,
+	// both rebuild this list under a cursor — and a cursor that held its
+	// position would land on whatever happened to sort into row seven. So it
 	// goes to the top of the new list, and comes back to the row it was on if
 	// that row is still in it.
+	//
+	// THE ACTION ROW IS THE EXCEPTION AND IT IS THE WHOLE POINT. While something
+	// is typed, the cursor rests on "start a new conversation" unless the person
+	// walked off it — so type-and-enter still starts a chat, exactly as it did
+	// before this box could also search (see [homeAction]).
 	h.cursor, h.top = h.clamp(0), 0
+	if h.searching() {
+		h.picked = h.picked && h.pointable(previous.Transcript)
+		if !h.picked {
+			return
+		}
+	}
 	if previous.Transcript != "" {
 		h.point(previous.Transcript)
 	}
 }
 
-// buildWorld is the ordinary column: projects as headings, their conversations
-// under them, the quiet tail of each collapsed.
+// buildWorld is the column: projects as dim headings with their conversations
+// under them, filtered and ranked by whatever is in the box.
 func (h *homeView) buildWorld() {
+	query := h.query()
+	if query != "" {
+		// The action row leads, always, and is what the cursor opens on.
+		h.lines = append(h.lines, homeLine{kind: homeAction})
+	}
+	type ranked struct {
+		project session.Project
+		rows    []session.SessionRow
+		score   int
+	}
+	var found []ranked
 	for _, project := range h.world.Projects {
+		hit := ranked{project: project}
+		for _, row := range project.Sessions {
+			score, ok := homeRank(row, project, query, h.world.Read)
+			if !ok {
+				continue
+			}
+			hit.rows = append(hit.rows, row)
+			if score > hit.score {
+				hit.score = score
+			}
+		}
+		if len(hit.rows) == 0 {
+			continue
+		}
+		if query != "" {
+			// Inside a project the best match leads. With nothing typed the rows
+			// keep the world's own triage order, which is what the screen is for
+			// when nobody is searching (session's sortSessions).
+			rows := hit.rows
+			sort.SliceStable(rows, func(i, j int) bool {
+				a, _ := homeRank(rows[i], project, query, h.world.Read)
+				b, _ := homeRank(rows[j], project, query, h.world.Read)
+				return a > b
+			})
+		}
+		found = append(found, hit)
+	}
+	if query != "" {
+		// And the project holding the best row leads, so the thing somebody is
+		// hunting is near the top of the screen rather than under four headings.
+		sort.SliceStable(found, func(i, j int) bool { return found[i].score > found[j].score })
+	}
+	for _, hit := range found {
 		if len(h.lines) > 0 {
 			h.lines = append(h.lines, homeLine{kind: homeBlank})
 		}
-		h.lines = append(h.lines, homeLine{kind: homeHeading, project: project.Name, dir: project.Dir})
-		shown, quiet, since := homeSplit(project.Sessions)
+		h.lines = append(h.lines, homeLine{
+			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
+		})
+		shown, quiet, since := h.split(hit.project, hit.rows, query)
 		for _, row := range shown {
 			h.lines = append(h.lines, homeLine{
-				kind: homeSession, project: project.Name, dir: project.Dir, row: row,
+				kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: row,
 			})
 		}
-		if quiet > 0 {
+		// A SEARCH HAS NO TAIL LINE. Everything that matched is on screen, so
+		// there is nothing being hidden to offer to show — and a fold control
+		// over a list nobody folded would be a control that does nothing.
+		if quiet > 0 && query == "" {
 			h.lines = append(h.lines, homeLine{
-				kind: homeQuiet, project: project.Name, dir: project.Dir, quiet: quiet, since: since,
+				kind: homeQuiet, project: hit.project.Name, dir: hit.project.Dir,
+				quiet: quiet, since: since, folded: !h.expanded[hit.project.Dir],
 			})
 		}
 	}
 }
 
-// buildFound is the column under a filter: every conversation on the machine,
-// ranked, with no headings and no collapse. A search is a flat answer — the
-// project is on the row itself, because a heading over one hit is a heading
-// that says less than the row under it.
-func (h *homeView) buildFound(query string) {
-	type hit struct {
-		line  homeLine
-		score int
-	}
-	var hits []hit
-	tokens := strings.Fields(strings.ToLower(query))
-	for _, project := range h.world.Projects {
-		for _, row := range project.Sessions {
-			text := strings.ToLower(homeName(row) + " " + project.Name)
-			total, matched := 0, true
-			for _, token := range tokens {
-				score, ok := tokenScore(text, token)
-				if !ok {
-					matched = false
-					break
-				}
-				total += score
-			}
-			if !matched {
-				continue
-			}
-			hits = append(hits, hit{
-				line:  homeLine{kind: homeSession, project: project.Name, dir: project.Dir, row: row},
-				score: total,
-			})
-		}
-	}
-	// Lower is better, and ties keep the world's own order — which is triage
-	// first and recency under it, so an empty-ish filter reads as the column
-	// did before anything was typed.
-	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score < hits[j].score })
-	for _, found := range hits {
-		h.lines = append(h.lines, found.line)
-	}
-}
-
-// homeSplit decides what a project shows and what it whispers: everything with
-// work running or work left unfinished, then enough of the rest to reach
+// split decides what a project shows and what it whispers: everything with work
+// running or work left unfinished, then enough of the rest to reach
 // [homeShown], and the remainder counted with the newest of their stamps.
-func homeSplit(rows []session.SessionRow) (shown []session.SessionRow, quiet int, since time.Time) {
+//
+// TWO THINGS OPEN IT ALL THE WAY. A project somebody expanded by hand stays
+// expanded ([homeView.expanded]), and — the one that matters — A SEARCH IS
+// NEVER COLLAPSED. A filter that could not see what it hides would be a filter
+// lying about the machine: somebody typing three letters and getting
+// "…13 more, quiet since 10h" has been told the thing they asked for might be
+// behind a line they cannot open, which is worse than no search at all.
+func (h *homeView) split(project session.Project, rows []session.SessionRow, query string) (shown []session.SessionRow, quiet int, since time.Time) {
 	for i, row := range rows {
 		busy := row.Tasks.Running > 0 || row.Tasks.Incomplete > 0
 		if busy || i < homeShown {
@@ -486,17 +580,179 @@ func homeSplit(rows []session.SessionRow) (shown []session.SessionRow, quiet int
 			since = row.At
 		}
 	}
+	// THE COUNT IS THE SAME EITHER WAY, and only whether the rows are drawn
+	// changes. An opened project still has to say how many it opened, because
+	// that line is the way back: a fold with no label is a fold nobody can find
+	// again.
+	if query != "" || h.expanded[project.Dir] {
+		return rows, quiet, since
+	}
 	return shown, quiet, since
 }
 
-// query is what is in the box after a leading `@`, and false when the box is
-// not a search at all.
-func (h *homeView) query() (string, bool) {
-	text := h.box.String()
-	if !strings.HasPrefix(text, "@") {
-		return "", false
+// query is what is in the box, folded for matching. It is the SAME text the
+// action row would send as a new conversation: one box, read two ways, and
+// never a mode (see this file's header).
+func (h *homeView) query() string {
+	return strings.ToLower(strings.TrimSpace(h.box.String()))
+}
+
+// searching reports whether anything is typed at all.
+func (h *homeView) searching() bool { return h.query() != "" }
+
+// pointable reports whether a transcript is still a row on this list.
+func (h *homeView) pointable(transcript string) bool {
+	if transcript == "" {
+		return false
 	}
-	return strings.TrimSpace(text[1:]), true
+	for _, line := range h.lines {
+		if line.kind == homeSession && line.row.Transcript == transcript {
+			return true
+		}
+	}
+	return false
+}
+
+// ── the ranking ─────────────────────────────────────────────────────────────
+
+// THERE ARE NO EMBEDDINGS HERE AND THERE ARE NOT GOING TO BE.
+//
+// Home's search is lexical, local and instant: a few hundred rows already in
+// memory, matched with the one ladder this program has ([session.MatchQuality]),
+// answered inside a keystroke with nothing loaded, no model called and no index
+// to keep in step with the disk. That is the right trade for the question it is
+// asked, which is "get me back to the thing I half remember the name of".
+//
+// The semantic tail is served twice over, and neither answer is this function's:
+//
+//   - THE ACTION ROW NEVER GOES AWAY. A query that matches nothing at all still
+//     offers to start a conversation with it, so the worst case of a lexical
+//     miss is that the words somebody typed become the first message of a chat
+//     rather than a dead end — which is very often what they wanted anyway.
+//   - THE MODEL OWNS THE DEEP SEARCH. The `tasks` tool reads the whole project
+//     record and the chat can be asked in sentences. Home is the fast layer and
+//     the conversation is the thoughtful one, and putting a second, worse
+//     semantic search on the fast layer would blur which is which.
+//
+// Score is HIGHEST WINS, and it is three things added together.
+const (
+	// The FIELD weights: which text the query landed in. They multiply the rung
+	// so that a strong match in a weak field cannot beat a weak match in a
+	// strong one by more than the gap between them — a name is what a person
+	// remembers, and an outcome sentence is where they end up when they cannot.
+	homeFieldName    = 10
+	homeFieldProject = 6
+	homeFieldTask    = 5
+	homeFieldOutcome = 3
+
+	// The STATE boosts and the recency bonus, added once per row. Their sizes
+	// relative to each other and to a rung are the whole of the ranking's
+	// character, and the band they sit in is deliberate:
+	//
+	//	a rung at the weakest field   200 × 3  = 600
+	//	needs somebody                           400
+	//	work running                             200
+	//	work left unfinished                      60
+	//	the whole recency range                  120
+	//
+	// SO: A BETTER MATCH ALWAYS WINS, and among matches of the SAME quality the
+	// row that wants somebody always wins — the needs-you boost is larger than
+	// the entire recency range, so no amount of "but the other one is newer"
+	// can push a waiting conversation below a cold one it ties with. Recency
+	// then orders what is left, which is what it is for: separating equals, not
+	// overruling a better answer.
+	homeBoostNeedsYou   = 400
+	homeBoostRunning    = 200
+	homeBoostIncomplete = 60
+
+	homeRecencyBoost = 120
+	homeRecencySpan  = 30 * 24 * time.Hour
+)
+
+// homeRank scores one conversation against the box, and reports false for one
+// the query does not reach at all. An empty query matches everything at zero,
+// which is what leaves the world in its own order.
+func homeRank(row session.SessionRow, project session.Project, query string, now time.Time) (int, bool) {
+	if query == "" {
+		return 0, true
+	}
+	name := strings.ToLower(homeName(row))
+	place := strings.ToLower(project.Name)
+	total := 0
+	// EVERY WORD MUST LAND SOMEWHERE, which is the roster's rule and the reason
+	// a second word narrows instead of widening. Where each lands is its own
+	// business: "auth flaky" may match the name with one word and a task outcome
+	// with the other, and that row is a better answer than either alone.
+	for _, token := range strings.Fields(query) {
+		best := 0
+		if rung, ok := session.MatchQuality(name, token); ok {
+			best = max(best, rung*homeFieldName)
+		}
+		if rung, ok := session.MatchQuality(place, token); ok {
+			best = max(best, rung*homeFieldProject)
+		}
+		for _, entry := range row.Tasks.Rows {
+			if best >= session.MatchWord*homeFieldTask {
+				// Nothing left in this field can beat what we already have, and
+				// a project's index runs to two thousand rows.
+				break
+			}
+			if rung, ok := session.MatchQuality(strings.ToLower(homeTaskText(entry)), token); ok {
+				best = max(best, rung*homeFieldTask)
+			}
+			if entry.Outcome == "" {
+				continue
+			}
+			if rung, ok := session.MatchQuality(strings.ToLower(entry.Outcome), token); ok {
+				best = max(best, rung*homeFieldOutcome)
+			}
+		}
+		if best == 0 {
+			return 0, false
+		}
+		total += best
+	}
+	return total + homeState(row) + homeRecency(row.At, now), true
+}
+
+// homeTaskText is what a task is searched by: the label a row shows, falling
+// back to the title it was groomed from.
+func homeTaskText(entry session.TaskIndexEntry) string {
+	if entry.Label != "" {
+		return entry.Label
+	}
+	return entry.Title
+}
+
+// homeState is what a row's own situation is worth, added once per row.
+func homeState(row session.SessionRow) int {
+	switch {
+	case row.NeedsPerson():
+		return homeBoostNeedsYou
+	case row.Tasks.Running > 0:
+		return homeBoostRunning
+	case row.Tasks.Incomplete > 0:
+		return homeBoostIncomplete
+	}
+	return 0
+}
+
+// homeRecency decays [homeRecencyBoost] to nothing over [homeRecencySpan],
+// straight-line. Nothing subtler is warranted: this is a tie-breaker between
+// matches of the same quality, and a curve would be a shape nobody could read
+// off the screen.
+func homeRecency(at, now time.Time) int {
+	if at.IsZero() || now.IsZero() {
+		return 0
+	}
+	old := now.Sub(at)
+	if old <= 0 {
+		return homeRecencyBoost
+	}
+	if old >= homeRecencySpan {
+		return 0
+	}
+	return int(int64(homeRecencyBoost) * (int64(homeRecencySpan) - int64(old)) / int64(homeRecencySpan))
 }
 
 // focused is the conversation under the cursor, and the zero row when the
@@ -508,9 +764,12 @@ func (h *homeView) focused() session.SessionRow {
 	return h.lines[h.cursor].row
 }
 
-// focusedLine is [homeView.focused] with the project around it.
+// focusedLine is WHATEVER the cursor is on — a conversation, a project's folded
+// tail, or the action row. [homeView.focused] is the narrower question and
+// answers a zero row for the other two, which is what keeps the detail column
+// from drawing a conversation nobody is pointing at.
 func (h *homeView) focusedLine() (homeLine, bool) {
-	if h.cursor < 0 || h.cursor >= len(h.lines) || h.lines[h.cursor].kind != homeSession {
+	if h.cursor < 0 || h.cursor >= len(h.lines) || !h.lines[h.cursor].stop() {
 		return homeLine{}, false
 	}
 	return h.lines[h.cursor], true
@@ -541,16 +800,27 @@ func (h *homeView) clamp(at int) int {
 		at = len(h.lines) - 1
 	}
 	for i := at; i < len(h.lines); i++ {
-		if h.lines[i].kind == homeSession {
+		if h.lines[i].stop() {
 			return i
 		}
 	}
 	for i := at; i >= 0; i-- {
-		if h.lines[i].kind == homeSession {
+		if h.lines[i].stop() {
 			return i
 		}
 	}
 	return at
+}
+
+// stop reports whether the cursor may rest on this line. A heading names a
+// project and a blank separates two, and neither is a thing to do anything to;
+// everything else on the column answers enter.
+func (l homeLine) stop() bool {
+	switch l.kind {
+	case homeSession, homeQuiet, homeAction:
+		return true
+	}
+	return false
 }
 
 // move walks by whole conversations, stepping over headings, blanks and
@@ -567,7 +837,7 @@ func (h *homeView) move(delta int) {
 	at := h.cursor
 	for ; delta > 0; delta-- {
 		next := at + step
-		for next >= 0 && next < len(h.lines) && h.lines[next].kind != homeSession {
+		for next >= 0 && next < len(h.lines) && !h.lines[next].stop() {
 			next += step
 		}
 		if next < 0 || next >= len(h.lines) {
@@ -576,6 +846,12 @@ func (h *homeView) move(delta int) {
 		at = next
 	}
 	h.cursor = at
+	// WALKING OFF THE ACTION ROW IS THE DECISION. Until it is made the box is a
+	// message being written; after it, the person is picking from the list and
+	// the cursor stays where they put it through every further keystroke.
+	if h.cursor >= 0 && h.cursor < len(h.lines) && h.lines[h.cursor].kind != homeAction {
+		h.picked = true
+	}
 }
 
 // ── the keyboard ────────────────────────────────────────────────────────────
@@ -633,16 +909,37 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.box.deleteWord()
 		h.build()
 		return nil
-	case "left", "ctrl+b":
+	case "right":
+		// THE ARROWS ARE THE FOLD'S, the same way they are in the task column:
+		// → opens what is closed, ← closes what is open. On the tail line that
+		// is the project; on a conversation inside an opened project, ← folds
+		// the project back, which is how somebody gets out of a list they
+		// opened without walking to the bottom of it.
+		if line, ok := h.focusedLine(); ok && line.kind == homeQuiet {
+			h.fold(line.dir, true)
+			return nil
+		}
+		h.box.right()
+		return nil
+	case "left":
+		if line, ok := h.focusedLine(); ok && (line.kind == homeQuiet || line.kind == homeSession) && h.expanded[line.dir] {
+			h.fold(line.dir, false)
+			return nil
+		}
 		h.box.left()
 		return nil
-	case "right", "ctrl+f":
+	case "ctrl+b":
+		h.box.left()
+		return nil
+	case "ctrl+f":
 		h.box.right()
 		return nil
 
 	default:
-		// TYPING IS THE WHOLE CEREMONY. Any printable key starts a message, or —
-		// with a leading `@` — a search, and nothing had to be opened first.
+		// TYPING IS THE WHOLE CEREMONY, and it does both jobs at once: the
+		// characters are a message being written AND a query over every project
+		// on the machine. Nothing had to be opened, and nothing has to be
+		// chosen between (see [homeView.box]).
 		if text := msg.Key().Text; text != "" {
 			h.box.insert(text)
 			h.build()
@@ -651,18 +948,55 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
+// fold opens or closes one project, and leaves the cursor on the line that did
+// it so the gesture can be reversed without moving.
+func (h *homeView) fold(dir string, open bool) {
+	if h.expanded == nil {
+		h.expanded = map[string]bool{}
+	}
+	if open {
+		h.expanded[dir] = true
+	} else {
+		delete(h.expanded, dir)
+	}
+	held := h.cursor
+	h.rebuild()
+	// The tail line of the project just toggled, which is where the person is
+	// standing. It has moved — an opened project put its rows above it — so it
+	// is found again rather than counted to.
+	for at, line := range h.lines {
+		if line.kind == homeQuiet && line.dir == dir {
+			h.cursor = at
+			h.picked = true
+			return
+		}
+	}
+	h.cursor = h.clamp(held)
+}
+
+// rebuild is [homeView.build] with the cursor left alone, for the callers that
+// are moving it themselves.
+func (h *homeView) rebuild() {
+	h.lines = h.lines[:0]
+	h.buildWorld()
+	h.cursor = h.clamp(h.cursor)
+}
+
 // homeEnter is the one decision this surface makes, and it makes a different
 // one depending on what is in the box.
 func (a *app) homeEnter() tea.Cmd {
 	h := &a.home
-	// A message typed into the box outranks the cursor: the person wrote a
-	// sentence, and enter after a sentence has one meaning everywhere else on
-	// this surface.
-	if text := strings.TrimSpace(h.box.String()); text != "" && !strings.HasPrefix(text, "@") {
-		return a.homeStart(text)
-	}
 	line, ok := h.focusedLine()
 	if !ok {
+		return nil
+	}
+	switch line.kind {
+	case homeAction:
+		// The row the cursor rests on while something is typed, which is what
+		// makes type-and-enter mean today what it meant yesterday.
+		return a.homeStart(strings.TrimSpace(h.box.String()))
+	case homeQuiet:
+		h.fold(line.dir, line.folded)
 		return nil
 	}
 	switch {
@@ -748,6 +1082,80 @@ func homeBucketOf(transcript string) string {
 	return filepath.Clean(dir)
 }
 
+// ── the door from inside a conversation ─────────────────────────────────────
+
+// homeDoorWord is the dim advertisement at the foot of an idle conversation,
+// and it is written in the hint slot's own grammar — the key, then the noun,
+// exactly as `ctrl+g tasks` is (render.go's [app.hintWord]).
+const homeDoorWord = "space space home"
+
+// homeGesture is TWO SPACES TYPED INTO AN EMPTY BOX, and it is the way back to
+// home from inside a conversation.
+//
+// WHY A GESTURE AND NOT A KEY. Every ctrl+letter is taken. `esc` was the
+// obvious candidate and is not available: on an idle conversation it already
+// arms rewind (the hint slot says `esc again to rewind`) and it already sends a
+// message parked against a turn that has ended, and a third meaning on one key
+// in that state is how a surface becomes unpredictable. What was left is a
+// gesture, and a leading run of spaces in an empty message is the one keystroke
+// on this surface that is reliably NOTHING: a message that begins with two
+// spaces is a message nobody meant to send that way.
+//
+// THE INTERMEDIATE SPACE IS REAL, AND THAT IS THE POINT. The first space types
+// itself, plainly, the way every other character does — there is no pending
+// state, no timer, and no ghost. The SECOND one, arriving to find a box holding
+// exactly one space, takes both away and opens home. So somebody who genuinely
+// wanted a leading space types it and carries on: space then `x` leaves ` x`,
+// untouched, because the gesture only ever fires on a space and only ever when
+// a single space is all there is.
+//
+// PASTED TEXT CANNOT FIRE IT. A bracketed paste arrives as its own message and
+// never reaches this router at all, and a paste whose brackets leak is absorbed
+// key by key into the bracket's buffer above it (app.go's [app.pasteKey]) —
+// so two spaces at the start of pasted text are two characters, not a door. The
+// one hole is a terminal that does not speak bracketed paste at all, where a
+// paste IS a stream of keystrokes and there is nothing anywhere in this program
+// that can tell it from typing.
+//
+// A RUNNING TURN IS NO OBSTACLE. Home takes the frame the way the settings
+// panel does, and the settings panel does not disturb a turn: the stream events
+// are their own messages and land whatever is drawn over them (app.go's
+// Update). The turn goes on underneath and is still there when esc comes back.
+func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
+	if msg.Key().Text != " " || !a.homeDoorOpen() {
+		return false
+	}
+	return len(a.input.value) == 1 && a.input.value[0] == ' '
+}
+
+// homeDoorOpen reports whether home is reachable AND worth going to from this
+// conversation. It is the gesture's guard and the advertisement's condition,
+// which is deliberate: a door that is drawn is a door that works, and one that
+// would open on nothing is neither drawn nor bound.
+func (a *app) homeDoorOpen() bool {
+	return a.homeWorth && a.resume != nil && !a.hosted() && !a.home.open
+}
+
+// homeDoorShowing reports whether the foot of the conversation should advertise
+// it: the door is open, and the box is EMPTY. It vanishes on the first
+// character typed, because it is a door and not chrome — the space it takes is
+// the hint slot's, which the frame already has (render.go's [app.legendRight]).
+func (a *app) homeDoorShowing() bool {
+	return a.homeDoorOpen() && a.input.empty() && !a.copy.on && !a.rew.on
+}
+
+// homeDoorPress is a click on that advertisement.
+func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
+	if !a.homeDoorShowing() || !a.homeDoor.holds(x) {
+		return nil, false
+	}
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeLegend {
+		return nil, false
+	}
+	return a.openHome(), true
+}
+
 // ── the pointer ─────────────────────────────────────────────────────────────
 
 // homePress is a click in the left column: the first puts the cursor on a row,
@@ -764,13 +1172,27 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		return nil
 	}
 	at := hits[y]
-	if at < 0 || at >= len(a.home.lines) || a.home.lines[at].kind != homeSession {
+	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
+		return nil
+	}
+	// A FOLDED TAIL OPENS ON ONE CLICK. The two-step below is there so a
+	// mis-aimed pointer cannot switch somebody's conversation; unfolding a
+	// project costs nothing and undoes itself, so making a person click it
+	// twice would be ceremony guarding against no risk.
+	if a.home.lines[at].kind == homeQuiet {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.fold(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
 		return nil
 	}
 	if a.home.cursor == at {
 		return a.homeEnter()
 	}
 	a.home.cursor = at
+	if a.home.lines[at].kind != homeAction {
+		a.home.picked = true
+	}
 	a.touch()
 	return nil
 }
@@ -786,7 +1208,7 @@ func (a *app) homeHover(y int) {
 	was := a.home.hover
 	a.home.hover = -1
 	if y >= 0 && y < len(hits) {
-		if at := hits[y]; at >= 0 && at < len(a.home.lines) && a.home.lines[at].kind == homeSession {
+		if at := hits[y]; at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
 	}
@@ -889,7 +1311,11 @@ func homeColumns(width int) (left, right int) {
 	if left < 30 {
 		left = 30
 	}
-	return left, width - left - 2
+	right = width - left - homeGutter
+	if right < homeDetailFloor {
+		return width, 0
+	}
+	return left, right
 }
 
 // homeBody draws the two columns side by side, room rows tall.
@@ -913,11 +1339,15 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 			text, hit = column[i].text, column[i].hit
 		}
 		if right > 0 && i < len(detail) && detail[i] != "" {
+			// THE GUTTER IS PADDED ON EVERY ROW, whether or not the left column
+			// had anything to put there. That is what makes the right pane's
+			// edge a straight line instead of a ragged one that moves with the
+			// length of whatever conversation name happened to land beside it.
 			pad := left - ansi.StringWidth(text)
 			if pad < 0 {
 				pad = 0
 			}
-			text += strings.Repeat(" ", pad+2) + detail[i]
+			text += strings.Repeat(" ", pad+homeGutter) + detail[i]
 		}
 		drawn = append(drawn, homeDrawn{text: text, hit: hit})
 	}
@@ -929,7 +1359,7 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 	h := &a.home
 	if len(h.lines) == 0 {
 		word := homeEmptyWord
-		if _, searching := h.query(); searching {
+		if h.searching() {
 			word = homeNoMatchWord
 		}
 		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1}}
@@ -959,25 +1389,72 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		}
 		return "  " + pal.dim(fit(word, width-2))
 	case homeQuiet:
-		return "  " + pal.dim(fit(homeQuietWord(line, h.world.Read), width-2))
+		// THE SAME FOLD MARK THE TASK COLUMN USES (task.go's [glyphShut] and
+		// [glyphOpen]), because it is the same gesture over the same kind of
+		// thing: a line that stands for rows you cannot see, and an arrow that
+		// says which way it goes.
+		mark := glyphOpen
+		if line.folded {
+			mark = glyphShut
+		}
+		if pal.ascii {
+			mark = ">"
+			if !line.folded {
+				mark = glyphOpenASCII
+			}
+		}
+		return overlayRow(mark+" "+homeQuietWord(line, h.world.Read), "", at == h.cursor, false, at == h.hover, width, pal)
+	case homeAction:
+		// It carries the words back at the person, cut to fit. The box at the
+		// foot holds them too, but the box is where you are typing and this is
+		// what enter will DO with it — and on a screen where enter has two
+		// possible meanings, the one it currently has must be legible without
+		// looking away from the list.
+		label := homeStartWord
+		if text := strings.TrimSpace(h.box.String()); text != "" {
+			label += ": " + strconv.Quote(text)
+		}
+		return overlayRow(homeStartGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
 	}
 	label := homeGlyph(line.row, pal.ascii) + " " + homeName(line.row)
 	note := homeNote(line.row, h.world.Read)
-	if _, searching := h.query(); searching && line.project != "" {
-		// A flat answer has no heading over it, so the project — and whether
-		// this window can open it — rides on the row.
-		note = line.project
-		if !a.homeOpens(line) {
-			note += " · " + homeElsewhereWord
-		}
+	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
+	// one the cursor is on, which takes the band and the ink — the same
+	// treatment the detail column's title takes across the gutter, so the two
+	// read as one thing rather than as two lists.
+	//
+	// The one exception is a row that wants somebody. `waiting on you` is
+	// brought up out of the dim, because a screen whose whole job is triage
+	// cannot render its most urgent fact in the same grey as an age.
+	return overlayRowTinted(label, note, homeNoteInk(line.row),
+		at == h.cursor, line.row.Transcript == a.file, at == h.hover, width, pal)
+}
+
+// homeNoteInk is how a row's trailing fact is painted. It answers nil for every
+// row that has nothing urgent to say, which is [paintNote]'s way of asking for
+// the ordinary rule.
+func homeNoteInk(row session.SessionRow) noteInk {
+	if !row.NeedsPerson() {
+		return nil
 	}
-	return overlayRow(label, note, at == h.cursor, line.row.Transcript == a.file, at == h.hover, width, pal)
+	return func(pal palette, note string, selected bool) string {
+		if selected {
+			return pal.ink(note)
+		}
+		return pal.accent(note)
+	}
 }
 
 // homeQuietWord is the collapsed tail's one line. The age is the newest of the
 // conversations it stands for, so "quiet since" is a fact about the whole group
 // rather than about whichever one sorted last.
 func homeQuietWord(line homeLine, now time.Time) string {
+	if !line.folded {
+		// Open, and the line is now the way back. It says how many it is
+		// holding open rather than how long they have been quiet: the ages are
+		// on the rows themselves, right above it.
+		return "…" + itoa(line.quiet) + " fewer"
+	}
 	word := "…" + itoa(line.quiet) + " more"
 	if age := sinceAt(line.since, now); age != "" {
 		word += ", quiet since " + age
@@ -1053,60 +1530,172 @@ func homeName(row session.SessionRow) string {
 	return humanName(Session{Title: row.Title, File: row.Transcript})
 }
 
-// homeDetail is the right column: the focused conversation, whole.
+// homeDetail is the right column, and it is a PREVIEW CARD rather than a second
+// list.
+//
+// The left column is an index — a hundred things, each one line, calm. This is
+// the one thing the cursor is on, and it has to read as a different KIND of
+// object or the eye runs the two together into one confusing column. It gets
+// that from three things and no border (this surface draws none):
+//
+//   - A TITLE THAT IS THE BRIGHTEST TEXT ON THE SCREEN, matching the ink and
+//     weight of the focused row across the gutter. That pairing is the bridge:
+//     the eye leaves the highlighted row on the left and arrives at the same
+//     treatment on the right, and the two read as one thing.
+//   - BANDS SEPARATED BY BLANK LINES, in one fixed order — who it is, what it
+//     is doing, what it has done, what was last said, and the dim arithmetic
+//     underneath. Whitespace where a lesser surface would put rules.
+//   - A FLOOR ON WHAT SURVIVES. A short frame drops bands FROM THE BOTTOM, so
+//     the facts go first and the title never goes at all. A pane that truncated
+//     its own title would be a preview that cannot say what it is previewing.
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	line, ok := a.home.focusedLine()
-	if !ok {
+	if !ok || line.kind != homeSession {
+		// The action row and a folded tail are not things with a detail; the
+		// column stays empty rather than keeping the last conversation's up,
+		// which would be the pane answering for a row nobody is on.
 		return nil
 	}
 	row := line.row
-	lines := []string{pal.ink(fit(homeName(row), width))}
+	now := a.home.world.Read
+
+	// The bands, in order, each already painted. The first is the title and is
+	// never dropped; the rest go from the bottom up as the frame shortens.
+	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
 
 	place := line.project
 	if path := strings.TrimSpace(row.ProjectDir); path != "" && path != place {
 		place += " · " + path
 	}
-	lines = append(lines, pal.dim(fit(place, width)))
+	bands = append(bands, []string{pal.dim(fit(place, width))})
+
+	// STATE IS THE LOUDEST CONTENT LINE, because it is the only band that is
+	// about right now. A conversation stopped on a question says so here and
+	// then says what it is stopped on, in ink.
+	var state []string
 	if word := a.homeHolding(row); word != "" {
-		lines = append(lines, pal.dim(fit(word, width)))
-	}
-	// THE QUESTION IT IS STOPPED ON IS THE ONE THING ON THIS PANE THAT IS NOT
-	// DIM. Everything else here is a fact about what happened; this is a thing
-	// somebody has to do, and it is the whole reason the row sorted to the top
-	// of its project. It draws nothing at all when the conversation gave no
-	// words for what it is waiting on (the emptiness law, and
-	// [session.SessionPresence.Reason]'s own instruction).
-	if reason := row.Reason(); reason != "" {
-		lines = append(lines, "")
-		for _, wrapped := range wrap(reason, width) {
-			lines = append(lines, pal.ink(wrapped))
+		ink := pal.dim
+		if row.NeedsPerson() {
+			ink = pal.accent
 		}
+		state = append(state, ink(fit(word, width)))
+	}
+	if reason := row.Reason(); reason != "" {
+		for _, wrapped := range wrap(reason, width) {
+			state = append(state, pal.ink(wrapped))
+		}
+	}
+	bands = append(bands, state)
+
+	// THE WORK, WITH WHAT IT CAME TO. The outcome sentence is the most
+	// informative text this program holds about a finished task and nothing has
+	// ever drawn it; a row that says "done" and nothing else makes a person open
+	// the conversation to find out what "done" meant.
+	var work []string
+	shown := row.Tasks.Rows
+	if len(shown) > homeTaskRows {
+		shown = shown[:homeTaskRows]
+	}
+	for _, entry := range shown {
+		work = append(work, homeTaskLine(entry, row, now, width, pal))
+		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && width > homeOutcomeIndent+16 {
+			work = append(work, strings.Repeat(" ", homeOutcomeIndent)+
+				pal.dim(fit(outcome, width-homeOutcomeIndent)))
+		}
+	}
+	bands = append(bands, work)
+
+	if last := a.homeLast(row); last != "" {
+		var said []string
+		for _, wrapped := range wrap(last, width) {
+			said = append(said, pal.dim(wrapped))
+		}
+		bands = append(bands, said)
 	}
 
-	if len(row.Tasks.Rows) > 0 {
-		lines = append(lines, "")
-		shown := row.Tasks.Rows
-		if len(shown) > homeTaskRows {
-			shown = shown[:homeTaskRows]
-		}
-		for _, entry := range shown {
-			lines = append(lines, homeTaskLine(entry, row, a.home.world.Read, width, pal))
-		}
+	if facts := homeFacts(row, now); facts != "" {
+		bands = append(bands, []string{pal.dim(fit(facts, width))})
 	}
-	// Spend only when there is spend to name — see [homeNote].
+
+	return homeBands(bands, room)
+}
+
+// homeOutcomeIndent is where an outcome sentence hangs under the task it
+// belongs to — far enough in to read as a continuation rather than as another
+// task.
+const homeOutcomeIndent = 2
+
+// homeBands assembles the card, dropping whole bands from the bottom until it
+// fits and putting one blank line between the ones that survive.
+//
+// IT DROPS AND NEVER TRUNCATES. Half a band is a band that lies about how much
+// there was; a band that is not there is simply a fact this frame had no room
+// for, and the frame is one keystroke from being taller.
+func homeBands(bands [][]string, room int) []string {
+	// The title is bands[0] and is not up for negotiation.
+	for len(bands) > 1 {
+		if homeBandLines(bands) <= room {
+			break
+		}
+		bands = bands[:len(bands)-1]
+	}
+	var out []string
+	for _, band := range bands {
+		if len(band) == 0 {
+			continue
+		}
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, band...)
+	}
+	if len(out) > room {
+		out = out[:room]
+	}
+	return out
+}
+
+// homeBandLines is how many screen lines a set of bands takes, blanks included.
+func homeBandLines(bands [][]string) int {
+	total, drawn := 0, 0
+	for _, band := range bands {
+		if len(band) == 0 {
+			continue
+		}
+		if drawn > 0 {
+			total++
+		}
+		total += len(band)
+		drawn++
+	}
+	return total
+}
+
+// homeFacts is the dim arithmetic under the card: what this conversation has
+// spent, what it weighed, and when it was last touched.
+//
+// EVERY FACT IS OMITTED WHEN IT IS NOT ONE. The emptiness law is at its most
+// literal on a line like this — a footer reading "$0.00 · 0 tok · last active"
+// is three absences dressed as three facts — so each part appears only when
+// there is something to say, and a footer with nothing to say is not drawn.
+func homeFacts(row session.SessionRow, now time.Time) string {
+	var parts []string
 	if row.Tasks.Spend > 0 {
-		lines = append(lines, "", pal.dim(fit("spent "+dollars(row.Tasks.Spend), width)))
+		parts = append(parts, "spent "+dollars(row.Tasks.Spend))
 	}
-	if last := a.homeLast(row); last != "" {
-		lines = append(lines, "")
-		for _, wrapped := range wrap(last, width) {
-			lines = append(lines, pal.dim(wrapped))
-		}
+	if row.Tasks.Tokens > 0 {
+		parts = append(parts, tokenWord(row.Tasks.Tokens)+" tokens")
 	}
-	if len(lines) > room {
-		lines = lines[:room]
+	// The later of "somebody spoke" and "work landed": both are this
+	// conversation being active, and the footer is asked when, not how.
+	touched := row.At
+	if row.Tasks.Newest.After(touched) {
+		touched = row.Tasks.Newest
 	}
-	return lines
+	if age := sinceAt(touched, now); age != "" {
+		parts = append(parts, "last active "+age)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // homeHolding says whether a window has this conversation open right now and
@@ -1211,14 +1800,18 @@ func (a *app) homeLast(row session.SessionRow) string {
 // homeHint is the line under the foot: what the keyboard does, and what the box
 // will do with what is in it.
 func (a *app) homeHint() string {
-	if query, searching := a.home.query(); searching {
-		if query == "" {
-			return "type to search every conversation · enter open · esc clear"
-		}
-		return "enter open · esc clear"
-	}
-	if !a.home.box.empty() {
-		return "enter starts a new conversation here and sends this · esc clear"
+	line, _ := a.home.focusedLine()
+	switch {
+	case line.kind == homeAction:
+		// The two readings of the box, both said, because both are true of what
+		// is on screen right now: enter sends it, ↓ walks into what it found.
+		return "enter starts a new conversation and sends this · ↓ pick a match · esc clear"
+	case line.kind == homeQuiet && line.folded:
+		return "enter or → show them · esc close"
+	case line.kind == homeQuiet:
+		return "enter or ← fold them away · esc close"
+	case a.home.searching():
+		return "enter open · ↑ back to starting a new conversation · esc clear"
 	}
 	return "↑↓ move · enter open · esc close"
 }
