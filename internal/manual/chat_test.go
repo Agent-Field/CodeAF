@@ -187,6 +187,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// missing a sentence.
 		{"the task bar disappeared how do I get it back", "tasks"},
 		{"how do I bring back the right sidebar", "tasks"},
+
+		// The tenth wave, from three things a person hit in one sitting. Two are
+		// about a key that is bound and never arrives — the answer is which
+		// terminal they are in, and it has to come off a page rather than out of a
+		// model that will happily invent a setting. The third is asked looking at a
+		// roster row whose name they did not write, and the honest answer is that a
+		// model wrote it, on purpose, out of the call that was already running.
+		{"delete a whole line", "keys"},
+		{"cmd backspace does nothing", "keys"},
+		{"why does my task have a weird name", "tasks"},
+		{"who decides what my task is called", "tasks"},
+		// And the wait itself: it used to sit there dead, so the words somebody
+		// says while looking at it have to reach the page that says it is alive.
+		{"is it stuck on shaping the brief", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

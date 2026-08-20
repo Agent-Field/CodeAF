@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -164,6 +165,65 @@ func TestTheWordAndLineKillsAnswerToEveryNameTheySendUnder(t *testing.T) {
 	drive(t, a, key("ctrl+u"))
 	if got := a.input.String(); got != "first line\n" {
 		t.Fatalf("ctrl+u killed across the newline: %q", got)
+	}
+}
+
+// AND THE NAMES ARE THE ONES A TERMINAL ACTUALLY SENDS UNDER. Every table above
+// is written in the spelling this surface's key switches match on, and that
+// spelling is a fact about a library rather than about this repo: the names come
+// out of ultraviolet's decoder, through bubbletea's [tea.KeyPressMsg.String].
+// A rename there would leave every binding in this file syntactically perfect
+// and permanently unreachable, with no test failing — which is exactly the state
+// `cmd+delete` would arrive in.
+//
+// So the wire is checked directly. These are the escape codes a terminal
+// speaking the kitty keyboard protocol sends for the three modified backspaces,
+// and the third of them is also the sequence the manual tells an iTerm2 user to
+// map `⌘⌫` to, which is a promise this surface has to be able to keep.
+func TestTheModifiedBackspacesDecodeToTheNamesWeBindThemUnder(t *testing.T) {
+	for _, tc := range []struct{ seq, want string }{
+		{"\x1b[127;3u", "alt+backspace"},
+		{"\x1b[127;5u", "ctrl+backspace"},
+		{"\x1b[127;9u", "super+backspace"},
+	} {
+		var decoder uv.EventDecoder
+		n, event := decoder.Decode([]byte(tc.seq))
+		press, ok := event.(uv.KeyPressEvent)
+		if !ok {
+			t.Fatalf("%q decoded to %#v, want a key press", tc.seq, event)
+		}
+		if n != len(tc.seq) {
+			t.Fatalf("%q was read %d bytes deep, want %d", tc.seq, n, len(tc.seq))
+		}
+		if got := uv.Key(press).String(); got != tc.want {
+			t.Fatalf("%q arrives as %q, but this surface binds %q", tc.seq, got, tc.want)
+		}
+	}
+}
+
+// AND THEY ANSWER TO THE SAME NAMES IN EVERY FILTERABLE BOX. Until this wave
+// they did not: `super+backspace` was the composer's alone, so cmd+delete
+// cleared the message box and did nothing whatever in the model picker, the
+// sessions roster, the connect panels, the memory panel or the settings filter —
+// all seven of which walk through the one [listNavigate] this checks. A gesture
+// that works in one box and dies in the next is a gesture people stop reaching
+// for anywhere.
+func TestTheOverlayFilterAnswersToTheSameKillsAsTheMessageBox(t *testing.T) {
+	for _, tc := range []struct {
+		key, want string
+	}{
+		{"ctrl+w", "read the config "},
+		{"alt+backspace", "read the config "},
+		{"ctrl+backspace", "read the config "},
+		{"ctrl+u", ""},
+		{"super+backspace", ""},
+	} {
+		var box editor
+		box.setText("read the config file")
+		listNavigate(key(tc.key), &box, func(int) {}, func() {}, 5)
+		if got := box.String(); got != tc.want {
+			t.Fatalf("%s left %q, want %q", tc.key, got, tc.want)
+		}
 	}
 }
 

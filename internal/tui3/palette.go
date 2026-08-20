@@ -914,10 +914,17 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 	case "delete":
 		filter.deleteForward()
 		rank()
-	case "ctrl+u":
+	// THE LINE AND WORD KILLS ANSWER TO EVERY NAME THEY SEND UNDER, exactly as
+	// they do in the message box (input.go). A gesture that clears the filter in
+	// the composer and does nothing in the model picker is a gesture a person
+	// stops trusting anywhere — and `super+backspace` is what a hand on a Mac
+	// keyboard does without being told, so it means kill-to-line-start here for
+	// the same reason it means it there. It reaches this switch only on a terminal
+	// that reports the super modifier at all, which costs nothing where none does.
+	case "ctrl+u", "super+backspace":
 		filter.killToStart()
 		rank()
-	case "ctrl+w":
+	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		filter.deleteWord()
 		rank()
 	case "left", "ctrl+b":

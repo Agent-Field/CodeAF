@@ -37,17 +37,28 @@ type taskJudgeVerdict struct {
 //
 // THE BRIEF IS SHAPED BEFORE IT IS ADMITTED (task_shape.go), and the shaped text
 // is what the node, the room, the roster and the journal all carry — there is no
-// second, secret version of the work anywhere. What is NOT shaped is the title
-// and the summary: those are drawn from the person's own words, so the row on the
-// rail reads as the thing they typed and not as a document a model wrote about
-// it. A shaper that could not run leaves the brief exactly as they typed it.
+// second, secret version of the work anywhere.
+//
+// THE TITLE IS SHAPED WITH IT, and the reason is what the rail actually draws:
+// THREE WORDS ([taskTitleOf], tui3). The first three words of a typed sentence
+// are whatever that sentence happened to open with — "can you go", "please have
+// a", "look into why" — so a rail of them names every task after the way somebody
+// cleared their throat. The shaper has already read the work closely enough to
+// write a worker's brief about it, so it is asked for the name in the same
+// answer; where it did not run, [taskPersonTitle] cuts the old mechanical one and
+// nothing is lost but a good name.
+//
+// WHAT IS STILL THEIRS, WORD FOR WORD, is the summary under the row and the
+// request the worker is told outranks anything a model wrote. A shaper that could
+// not run leaves the brief exactly as they typed it.
 func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
 		return 0, "", errors.New("a task needs a brief")
 	}
-	title := taskPersonTitle(brief)
-	work, acceptance := a.shapeBrief(ctx, brief)
+	shaped := a.shapeBrief(ctx, brief)
+	title := taskName(shaped.Title, brief)
+	work, acceptance := shaped.Brief, shaped.Acceptance
 	graph := a.graph()
 	id := graph.reserve()
 	// THE MODEL IS SETTLED HERE, AT ADMISSION, and frozen with the rest of the
@@ -90,7 +101,6 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) 
 	if brief == "" {
 		return "", "", errors.New("an adaptive task needs a brief")
 	}
-	title := taskPersonTitle(brief)
 	// THE PERSON TYPED THIS, so it is what the run's planner and every one of its
 	// nodes will be shown as the request (task_brief.go). Without this line the
 	// run would carry whatever was last said in the CHAT, which on this path is
@@ -102,7 +112,11 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) 
 	// nodes are workers with the same silence around them as a single task's, and
 	// a planner cutting up one unshaped sentence cuts up the same ambiguity into
 	// several pieces.
-	goal, acceptance := a.shapeBrief(ctx, brief)
+	shaped := a.shapeBrief(ctx, brief)
+	// The adaptive run is named out of the same answer as the single task's, for
+	// the same reason: a run's row on the rail is three words too.
+	title := taskName(shaped.Title, brief)
+	goal, acceptance := shaped.Brief, shaped.Acceptance
 	// A RUN HAS NO ACCEPTANCE FIELD — it is a goal, a planner and a fleet
 	// (orchestrate.go) — so a shaped done-condition would be thrown away unless
 	// it rides in the goal. It goes under [briefDoneHeading], the same word every
@@ -117,6 +131,20 @@ func (a *Agent) StartPlannerRun(ctx context.Context, brief, plannerHint string) 
 	}
 	id, err := a.RunOrchestrate(ctx, goal, "", 0)
 	return id, title, err
+}
+
+// taskName settles what a person's task is called: the shaper's name where it
+// wrote one, and the mechanical cut of their own opening words where it did not.
+//
+// It is one function rather than the same two-line choice at both doors, because
+// the fallback is the thing that has to be identical — a single task and an
+// adaptive run started from the identical sentence must not end up on the rail
+// under two different names when the shaper is offline.
+func taskName(shaped, brief string) string {
+	if shaped = strings.TrimSpace(shaped); shaped != "" {
+		return shaped
+	}
+	return taskPersonTitle(brief)
 }
 
 func taskPersonTitle(brief string) string {

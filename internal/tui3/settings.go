@@ -1588,9 +1588,11 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 		edit.box.deleteBackward()
 	case "delete":
 		edit.box.deleteForward()
-	case "ctrl+u":
+	// Under every name they send under, as in the message box and in every
+	// filterable overlay (input.go, palette.go's [listNavigate]).
+	case "ctrl+u", "super+backspace":
 		edit.box.killToStart()
-	case "ctrl+w":
+	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		edit.box.deleteWord()
 	case "left", "ctrl+b":
 		edit.box.left()

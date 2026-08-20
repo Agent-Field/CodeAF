@@ -714,9 +714,12 @@ task starts silently. A bare `/task` prints its one-line usage.
 
 Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
 into the fuller brief the worker is given — your sentence kept word for word, with the
-constraints and the done-condition written around it. Both notes disappear as the task
-starts. The *work that runs on its own* page has this in full, under *Why my task's brief is
-longer than what I typed*.
+constraints and the done-condition written around it, **and the name the roster will call
+the work**. Both waiting lines carry a spinning mark and a climbing clock while they run
+(`⠙ shaping the brief… · 6s`), so you can see the wait is alive rather than stuck, and both
+disappear as the task starts. The *work that runs on its own* page has this in full, under
+*Why my task's brief is longer than what I typed* and *Why my task is called something I did
+not type*.
 
 `/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
 adaptive run with a planner immediately. Both explicit forms skip sizing altogether, and

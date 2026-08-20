@@ -187,9 +187,36 @@ caret is on the first logical line, and `down` only when it is on the last.
 | `ctrl+backspace` | Same as `ctrl+w` |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
-`super+backspace`, `alt+backspace` and `ctrl+backspace` only arrive at all on
-terminals that report those modifiers, such as ones speaking the kitty keyboard
-protocol or win32-input. aforge does not detect whether yours does.
+All five of the kills above work the same way in **every** box aforge has, not
+only the message box: the model picker, the sessions roster, the deliverables
+list, the connect key box and panel, the memory panel, the settings filter and
+its value editor, and the task page's filter.
+
+## Why cmd+backspace does nothing — which terminal you are in decides
+
+`cmd+delete` is bound. aforge answers it under the name `super+backspace`, and it
+deletes to the start of the line, exactly as `ctrl+u` does. When it does nothing
+at all, the key never reached aforge: **your terminal decides whether cmd
+combinations are sent to the program at all**, and several do not send them.
+
+| Terminal | Does `cmd+delete` reach aforge? |
+|---|---|
+| Ghostty | Yes |
+| Kitty | Yes |
+| WezTerm | Yes |
+| iTerm2 | Not by default. It has no default action for `cmd+delete` and does not forward it. You can make it work: **Settings → Profiles → Keys → Key Mappings**, add `⌘⌫`, action *Send Escape Sequence*, and give it `[127;9u` |
+| Terminal.app | No, and it cannot be made to. It does not speak the keyboard protocol that carries modifiers like `cmd` |
+| Anything over `ssh` or `tmux` | Only if the outer terminal is one of the first three, and tmux is passing the protocol through |
+
+**`ctrl+u` is the spelling that works everywhere**, on every terminal on every
+machine, and it is the same deletion. If `cmd+delete` does nothing where you are
+sitting, that is the key to use instead — nothing is missing and there is nothing
+to turn on inside aforge.
+
+The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
+`ctrl+w` is *their* everywhere-spelling. aforge does not detect what your
+terminal sends and cannot tell you which of these it will deliver; the only test
+is pressing it.
 
 ## The message box itself
 

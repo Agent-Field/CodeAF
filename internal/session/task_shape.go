@@ -12,7 +12,10 @@ package session
 // that is technically responsive and useless.
 //
 // So one auxiliary call stands between the command and the graph. It reads what
-// the person typed and writes the brief and the acceptance the worker gets.
+// the person typed and writes the brief and the acceptance the worker gets — and
+// the NAME the rail calls the work, because working out a good name is the same
+// reading, and a second call to a second prompt would be a second bill and a
+// second thing to keep in step.
 //
 // ── IT IS A META-PROMPT, AND THAT IS THE WHOLE DESIGN ──
 //
@@ -107,24 +110,41 @@ const taskPersonAcceptance = "Complete the brief and report the result and check
 // with something other than the object. It is [Agent.judgeDecomposable]'s move,
 // and it restates the schema rather than only complaining, so a model that
 // forgot the shape is told the shape.
-const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"brief":"...","acceptance":"..."}`
+const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"..."}`
 
 // shapedBrief is the wire form of the answer.
 type shapedBrief struct {
+	Title      string `json:"title"`
 	Brief      string `json:"brief"`
 	Acceptance string `json:"acceptance"`
 }
 
-// shapeBrief turns what a person typed into what a worker is given, and answers
-// with their own words and the canned acceptance whenever it cannot.
+// unshaped is what a caller is handed when no shaper ran: the person's own
+// sentence as the brief, the canned done-condition, and NO NAME — an empty title
+// is the signal that the mechanical one ([taskPersonTitle]) is what this task
+// gets, and it is spelled once here so all six failure paths agree on it.
+func unshaped(request string) shapedBrief {
+	return shapedBrief{Brief: request, Acceptance: taskPersonAcceptance}
+}
+
+// shapeBrief turns what a person typed into what a worker is given — and, in the
+// same breath, into the two or three words the rail will call it. It answers with
+// their own words and the canned acceptance whenever it cannot.
 //
-// Every return path is a pair, never an error: there is nothing a caller could
-// usefully do with a failure here except start the task anyway, which is what
-// the pair already says.
-func (a *Agent) shapeBrief(ctx context.Context, request string) (brief, acceptance string) {
+// THE NAME RIDES THE CALL THAT WAS ALREADY BEING MADE. Naming a task well means
+// reading what the task IS, which is the exact reading this call already does and
+// pays for; a second small call to a second small prompt would be a second bill,
+// a second thing to keep in step with the first, and a second way for the two to
+// disagree about the same work. So the shaper answers with three fields instead
+// of two, and `/task` costs precisely what it cost before.
+//
+// Every return path is a whole answer, never an error: there is nothing a caller
+// could usefully do with a failure here except start the task anyway, which is
+// what [unshaped] already says.
+func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 	request = strings.TrimSpace(request)
 	if request == "" {
-		return request, taskPersonAcceptance
+		return unshaped(request)
 	}
 
 	a.mu.Lock()
@@ -132,7 +152,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (brief, acceptan
 	closed := a.closed
 	a.mu.Unlock()
 	if closed || err != nil || strings.TrimSpace(call.Model) == "" {
-		return request, taskPersonAcceptance
+		return unshaped(request)
 	}
 
 	// IT CARRIES ITS OWN DEADLINE, for [Agent.guardianAllows]'s reason: the
@@ -159,13 +179,13 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (brief, acceptan
 		response, callErr := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
 			ai.WithModel(call.Model), ai.WithTemperature(taskShapeTemp), ai.WithMaxTokens(taskShapeTokens))
 		if callErr != nil || response == nil {
-			return request, taskPersonAcceptance
+			return unshaped(request)
 		}
 		// The person pays for it out of the same pocket the title and the
 		// guardian come out of, and no turn asked for it.
 		a.addAuxiliaryUsage(response, call.Model, 1)
 		if shaped, ok := parseShapedBrief(response.Text()); ok {
-			return shaped.Brief, shaped.Acceptance
+			return shaped
 		}
 		if strings.TrimSpace(response.Text()) == "" {
 			// NOTHING CAME BACK, so there is nothing to repair — the reflex
@@ -173,12 +193,12 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (brief, acceptan
 			// made a rule: the repair prompt works by putting the model's own bad
 			// answer in front of it, and against an empty answer it is a second
 			// full-price call asking the identical question.
-			return request, taskPersonAcceptance
+			return unshaped(request)
 		}
 		messages = append(messages, textMessage("assistant", response.Text()),
 			textMessage("user", taskShapeRepair))
 	}
-	return request, taskPersonAcceptance
+	return unshaped(request)
 }
 
 // parseShapedBrief reads the answer back, through the same salvage ladder every
@@ -190,6 +210,17 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (brief, acceptan
 // the person's task outright — which is the one thing this whole file is
 // written not to do. An empty acceptance is survivable and falls back to the
 // canned line, because the brief is the part no default can stand in for.
+//
+// AND AN EMPTY TITLE IS SURVIVABLE TOO, for the same reason and with a different
+// stand-in: [taskPersonTitle] cuts a serviceable name out of the person's own
+// first eight words, so a shaper that answered with two fields where three were
+// asked for costs a good name and nothing else. It is left empty here rather
+// than filled in, because this function does not have the request to cut.
+//
+// THE NAME IS CLEANED BY THE SAME HAND THAT CLEANS THE SESSION'S ([cleanTitle],
+// title.go). A model asked for a short lowercase name answers "Title: ..." or
+// quotes it or welds it into a slug at exactly the same rates whichever prompt
+// asked, and one repair belongs in one place.
 func parseShapedBrief(text string) (shapedBrief, bool) {
 	raw, err := subharness.Salvage(text)
 	if err != nil {
@@ -207,5 +238,6 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 	if shaped.Acceptance == "" {
 		shaped.Acceptance = taskPersonAcceptance
 	}
+	shaped.Title = cleanTitle(shaped.Title)
 	return shaped, true
 }
