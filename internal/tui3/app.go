@@ -1032,7 +1032,13 @@ type app struct {
 	// mode being DOWN. rewSay is one sentence the mode could not act on
 	// ("nothing to rewind") and rewSayAt when it was said; both run down on the
 	// frame clock ([app.rewindSweep]), because this surface has one clock.
-	rew      rewindMode
+	rew rewindMode
+	// rewSheet is the DELIBERATE rewind: the whole conversation as a full-frame
+	// timeline, with a search, a preview of the pick and a two-stage enter
+	// (rewindsheet.go). It is the fourth page on this surface that takes the frame
+	// whole, and it is built from the session's own transcript rather than from
+	// the drawn blocks — which is why it can reach turns the inline mode cannot.
+	rewSheet rewindSheet
 	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
@@ -1554,6 +1560,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// And the rewind timeline, on the same terms as all three: it is the whole
+		// screen, and its window follows its cursor rather than an offset of its
+		// own, so the wheel walks the cursor (rewindsheet.go).
+		if a.rewSheet.open {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.rewindSheetScroll(-3)
+			case tea.MouseWheelDown:
+				a.rewindSheetScroll(3)
+			}
+			return a, nil
+		}
 		// And the status sheet, which is the same claim about the same kind of
 		// surface (statusdeck.go). The wheel walks its cursor rather than an
 		// offset of its own: the list is short enough that a scroll and a
@@ -1632,6 +1650,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.home.open {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			// And the rewind timeline at the same rung and for the same reason: a
+			// press that fell through to the conversation underneath would open a
+			// tool call nobody can see, in a conversation somebody is about to cut
+			// (rewindsheet.go).
+			if a.rewSheet.open {
+				a.rewindSheetPress(msg.Mouse().Y)
+				return a, nil
 			}
 			// The status sheet is modal for the pointer at the same rung and for
 			// the same reason: it is the whole screen, and a press outside its
@@ -1813,6 +1839,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.home.open {
 			a.homeHover(msg.Mouse().Y)
+			return a, nil
+		}
+		if a.rewSheet.open {
+			a.rewindSheetHover(msg.Mouse().Y)
 			return a, nil
 		}
 		if a.deckShowing() {
@@ -3819,9 +3849,13 @@ func (a *app) slash(line string) tea.Cmd {
 		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
 
 	case "rewind":
-		// The keys are esc esc and the row says so; the command exists because a
-		// gesture nobody can see is a gesture nobody finds (commands.go).
-		return a.enterRewind()
+		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
+		// (rewindsheet.go), while esc esc keeps the quick inline gesture
+		// (rewind.go). Somebody who typed six letters to get here has already told
+		// this surface that the answer is not the message they just sent — it is
+		// somewhere back in the conversation, and finding it wants the whole of the
+		// conversation, a search over it, and a look at the point before the cut.
+		return a.openRewindSheet()
 
 	case "new":
 		// The command that replaces the agent is the one command here that

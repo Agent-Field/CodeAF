@@ -185,7 +185,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `alt+enter` | Open a new line in the message |
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
-| `esc` `esc` | Two presses inside a short window open rewind mode |
+| `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
@@ -573,6 +573,24 @@ message box** and closes the page. Its foot reads
 `esc back · ↑↓ scroll · m puts it in your message`. Clicking its head row or its foot goes
 back to the list; its body is read.
 
+**Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
+clears the search first and closes the page second · `up`/`ctrl+p`, `down`/`ctrl+n` move ·
+`pgup`/`pgdown` move twelve · `home`/`end` the oldest point and the newest · **`enter`
+places the pick, and `enter` again on that same point does the rewind** · `backspace`,
+`ctrl+u` and `ctrl+w` edit the search · **every other printable key types into the search**,
+which reaches your messages, the model's replies and the tool calls' arguments. Its head
+reads `⟲ rewind — pick where the conversation goes back to` and its foot
+`⟲ drops 2 turns — everything below the pick is let go` above
+`esc close · ↑↓ move · enter picks the point` — which becomes
+`esc close · ↑↓ move · enter again rewinds here` once a pick is placed, and
+`esc clears the search · ↑↓ move · enter picks the point` while you are typing one.
+Clicking a row places the pick; clicking the placed point rewinds; the wheel walks the
+cursor. The sessions and rewind page describes what the cut does.
+
+**Inside the quick rewind mode** (`esc` `esc`): `↑`/`↓` walk turns · `←`/`→` step inside
+one · `enter` cuts · **`tab` lifts you onto the rewind timeline** with the cut you had
+chosen · `esc` leaves with nothing changed.
+
 **Connections panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`. Its filter placeholder reads `filter · ↑↓ · enter connect · esc close`.
 
@@ -788,12 +806,16 @@ aforge owns the pointer by default, using all-motion tracking so hover works.
 
 Only the left button acts. A press is resolved in this order:
 
-1. The settings panel, the task page, home, the status deck, or the phone tool sheet — each
-   takes **every** press inside its frame, padding included. On the task page a press on a
-   row opens it on the first press; a press on a section word or on empty padding does
-   nothing. Inside an old task's record card, the head row and the foot go back to the
-   list and its body is read. On home a click puts the cursor on a row and a second click
-   opens it.
+0. The quick rewind mode (`esc` `esc`), which takes **every** press on the conversation
+   while it is up: a click on any transcript row moves the cut to the nearest point at or
+   above it, and a click on the `⟲ rewind here` line does the rewind.
+1. The settings panel, the task page, home, the rewind timeline, the status deck, or the
+   phone tool sheet — each takes **every** press inside its frame, padding included. On the
+   task page a press on a row opens it on the first press; a press on a section word or on
+   empty padding does nothing. Inside an old task's record card, the head row and the foot
+   go back to the list and its body is read. On home a click puts the cursor on a row and a
+   second click opens it. On the rewind timeline a click places the pick and a click on the
+   point already placed does the rewind.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
@@ -856,12 +878,12 @@ under the pointer".
 
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
 routed to copy mode, then the settings panel, then the task page, then home, then the
-status deck, then the phone tool sheet, then the fullscreen roster, then an open room, and
-otherwise the conversation.
+rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
+roster, then an open room, and otherwise the conversation.
 
-On the settings panel, the task page, home and the fullscreen roster the wheel walks the
-**cursor** rather than a scroll offset of its own, because on those the window follows the
-cursor.
+On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
+the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
+window follows the cursor.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
 up drops out of it.
@@ -1113,4 +1135,5 @@ live-applies on the next render; work stays indented in either mode.
   `/resume`, `/permissions` and the rest do: the commands page.
 - **The status line, the legend under the box, and the layout**: the screen page.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.
-- **Rewind**, which `esc` `esc` opens: the sessions and rewind page.
+- **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and
+  rewind page.
