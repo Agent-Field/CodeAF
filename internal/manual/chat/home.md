@@ -16,6 +16,44 @@ Home is a glance you take, not a place you live. It does nothing on its own: no
 notifications, no charts, no history graphs. You open it, you see where things stand, and
 you leave.
 
+## Why did a dashboard open when I started aforge — home greets you
+
+**Home is the first thing you see when you open aforge.** The conversation your launch
+would have opened is loaded and waiting underneath it: `esc` drops straight into it, and so
+does `enter` on the row you are already standing on, which is where the cursor starts. In
+effect the launch is the launch you always had, with home already open on top of it.
+
+Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
+always did — this directory's most recently spoken-in chat, or a fresh one — before home is
+drawn at all.
+
+It greets you only when it has something to say. All of these have to be true:
+
+- You opened aforge **without naming a conversation**. `aforge` or `aforge chat`.
+- The machine holds **a conversation other than the one this launch opened**. Somewhere
+  else to go, in other words.
+- It is a real terminal session — not `--once`, not `--host`.
+
+When home greets you there is no welcome box: home's left column already lists every
+conversation the box's `recent sessions` would have, and more.
+
+## Skip the home screen — launching straight into a conversation
+
+Four ways, and each of them is you saying which conversation you mean:
+
+| What you run | What you get |
+|---|---|
+| `aforge chat --session <path>` | that conversation, no home |
+| `aforge resume` | the session picker, no home |
+| `aforge chat --once "text"` | one reply, printed; no surface at all |
+| `aforge --host <machine>` | the far machine's session, no home |
+
+And on a machine with only one conversation — a first run — home stays out of the way by
+itself. There is no setting for this and no flag to turn it off: whether home greets you
+follows from how you launched and what the machine holds, both of which answer themselves.
+
+Once you are in a conversation, `/home` opens the screen whenever you want it.
+
 ## Everything I have ever worked on — what home shows
 
 Two columns, no borders.
@@ -58,7 +96,9 @@ cursor on it; clicking the row the cursor is already on opens it.
 the running turn is interrupted, the chat you were in is closed, the chosen journal is
 opened and replayed, and the surface says `resumed <path>`.
 
-`enter` on the one you are already in does no work and says `already here · <Name>`.
+`enter` on the one you are already in simply steps into it and says nothing — it is
+already loaded underneath, so there is nothing to reopen and nothing to announce. That is
+what makes `enter` the calm keystroke on a launch: the cursor starts on that very row.
 
 The foot line reads exactly:
 

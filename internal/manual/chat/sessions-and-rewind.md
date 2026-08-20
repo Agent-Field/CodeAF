@@ -266,6 +266,17 @@ name and a coarse age (`now`, `12m`, `3h`, `5d`, then a date like `16 Aug`). The
 nothing brings it back. It never shows over a resumed conversation, and it draws nothing at
 all on a frame under 12 rows or under 40 columns.
 
+**When home greets you instead, there is no welcome box at all.** On a machine that holds
+a conversation other than the one your launch opened, the first frame is the home screen
+(see the home page), and the box is retired before it ever draws — home's left column is
+every conversation in every project, which is the box's four recent rows and more. Two
+greeters would be one too many. It does not appear behind home either: `esc` out of home
+lands you on the ordinary prompt.
+
+So the box is what a **first run** sees — the launch where home has nothing to say, because
+the only conversation on the machine is the one already on screen. That is the one case
+where the wordmark and `recent sessions` still greet you.
+
 ## /resume — opening an earlier conversation
 
 `/resume` (alias `/sessions`) opens the picker of earlier conversations in this directory.

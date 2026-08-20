@@ -254,8 +254,104 @@ func (a *app) openHome() tea.Cmd {
 		last:   map[string]session.Summary{},
 	}
 	a.home.build()
+	a.home.point(a.file)
 	a.touch()
 	return homeTick()
+}
+
+// ── the landing ─────────────────────────────────────────────────────────────
+
+// landHome decides, once, whether home is the FIRST THING a launch shows.
+//
+// A person opening aforge is not usually opening a conversation — they are
+// opening the machine, and the conversation is a guess the door made for them
+// out of which directory they happened to be standing in. So the first frame is
+// this screen, with the conversation the door picked loaded and waiting
+// underneath it: esc, or the first character of a message, drops straight into
+// it exactly as if home had never been there. Nothing about which session opens
+// is changed by any of this — the door had already chosen before the surface
+// existed.
+//
+// THREE THINGS HAVE TO BE TRUE, and each of them is a way of saying that a
+// person is being greeted rather than obeyed:
+//
+//  1. THE DOOR ASKED FOR IT ([Options.Landing]). A `--once` run, a headless
+//     frame, a test, anything over `--host` — none of them set it, so none of
+//     them can be greeted by accident. And a launch that NAMED a conversation
+//     (`--session <path>`, `aforge resume`) does not set it either: somebody who
+//     said which one means that one.
+//  2. NOTHING ELSE IS ALREADY GREETING THEM. `aforge resume` opens on its
+//     picker; a surface that put a second full-screen greeting behind the first
+//     would be two answers to one keystroke.
+//  3. THERE IS SOMEWHERE ELSE TO GO. This is the emptiness law applied to a
+//     whole surface rather than to a number: a machine whose only conversation
+//     is the one this launch just opened has NOTHING home could tell anybody —
+//     it would be a dashboard of one row, and the row is the screen behind it.
+//     A first run therefore goes straight to the chat, and gets the welcome box
+//     it always got. Home arrives the day it has an answer.
+//
+// It is not a setting. Whether a person is greeted is a property of what the
+// machine holds and of how they launched, and both of those change by
+// themselves; a switch would be a third answer that has to be kept in step with
+// two facts that are already true.
+func (a *app) landHome() {
+	if !a.landing || a.pickSession || a.hosted() {
+		return
+	}
+	world := session.ReadWorld(a.placesRoot())
+	if !worldHasElsewhere(world, a.file) {
+		return
+	}
+	a.home = homeView{
+		open:   true,
+		world:  world,
+		bucket: homeBucketOf(a.file),
+		hover:  -1,
+		last:   map[string]session.Summary{},
+	}
+	a.home.build()
+	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS IN, which is the
+	// resume picker's law and it matters more here: enter is a confirm key, and
+	// a screen that greeted somebody with the cursor on a stranger's row would
+	// make the cheapest keystroke on it the wrong one. Landed on the row you
+	// were already in, enter and esc mean the same calm thing — go on with what
+	// I was doing (resume.go's [roster.start] holds the original of this).
+	a.home.point(a.file)
+	// AND THE WELCOME BOX RETIRES WITHOUT EVER DRAWING. Its right column is the
+	// four most recent conversations in this directory, and home's left column
+	// is every conversation in every project — the same rows and more, under a
+	// heading that says which project each belongs to. Two greeters is one too
+	// many, and between a box that lists four and a screen that lists them all
+	// there is nothing to weigh up.
+	//
+	// It is RETIRED and not merely hidden ([welcome.spent]), so that esc out of
+	// home lands on the ordinary prompt rather than on a box popping up behind
+	// the screen that just closed. A machine where home does not land is
+	// untouched by this: the box greets a first run exactly as it always has.
+	a.welcome = welcome{spent: true}
+}
+
+// worldHasElsewhere reports whether this machine holds a conversation OTHER than
+// the one a launch just opened.
+//
+// It is the third condition of [app.landHome] and it is deliberately a fact
+// rather than a count. "More than one session" and "more than one project" are
+// both thresholds somebody would have to defend; this is the question home
+// actually answers on a launch — is there anywhere else to go — and a machine
+// that answers no has no use for the screen.
+//
+// A launch with no session file at all (memory-only, a surface with no door
+// onto the disk) compares against nothing, so any conversation on the machine
+// counts as somewhere else.
+func worldHasElsewhere(world session.World, here string) bool {
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			if row.Transcript != here {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *app) closeHome() {
@@ -571,11 +667,18 @@ func (a *app) homeEnter() tea.Cmd {
 	}
 	switch {
 	case line.row.Transcript == a.file:
-		// The conversation this window is already in. Reopening it would drop
-		// the lock, replay the journal and land exactly here — the resume
-		// picker's words, for the same second of work (resume.go).
+		// The conversation this window is already in, and it is already loaded
+		// underneath this screen — so enter simply steps into it. Reopening it
+		// would drop the lock, replay the journal and land exactly here, for a
+		// second of work and nothing to show (resume.go says the same of its
+		// own marked row).
+		//
+		// IT SAYS NOTHING. The picker notes `already here` because it stays open
+		// and owes an explanation for a keystroke that did nothing; home CLOSES,
+		// and closing into the conversation somebody just confirmed is the thing
+		// happening rather than the absence of one. A note here would be the
+		// surface narrating a door it just walked through.
 		a.closeHome()
-		a.note("already here · " + homeName(line.row))
 		return nil
 	case !a.homeOpens(line):
 		h.msg = homeElsewhereWord + " · " + homeWhere(line)

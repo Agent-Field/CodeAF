@@ -935,6 +935,12 @@ type app struct {
 	// opens and again on a slow tick while it is up. Closed, it costs nothing —
 	// no walk happens until somebody asks for one.
 	home homeView
+	// landing and pickSession are how this launch was made: whether the door
+	// invited home onto the first frame ([app.landHome]) and whether it asked
+	// for the resume picker there instead. Both are properties of ONE launch,
+	// which is why they are read off the options and never off the profile.
+	landing     bool
+	pickSession bool
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door
@@ -1097,6 +1103,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
+		landing:          opts.Landing,
+		pickSession:      opts.PickSession,
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,
@@ -1223,6 +1231,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	if opts.PickSession {
 		a.openResume()
 	}
+	// AND HOME IS DECIDED AFTER BOTH, for the picker's own reason and one more.
+	// It reads the surface it opens over — which conversation this window is in,
+	// so the cursor can open on it — and it must be able to see that the picker
+	// already took the frame, because a launch gets one greeting (home.go).
+	a.landHome()
 	return a
 }
 
@@ -1243,10 +1256,18 @@ func (a *app) Init() tea.Cmd {
 	// other half of the same fact: the node's landing reaches the rail on the
 	// task lane, and what the session goes on to SAY about it reaches the
 	// transcript on this one.
+	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns()}
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+		standing = append(standing, a.wake())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+	// AND HOME'S OWN CLOCK, when home is the first frame. It is not the paint
+	// clock — home is a still page and asks for a beat every few seconds rather
+	// than thirty a second (home.go's [homeEvery]) — so it is started here
+	// beside the standing lanes rather than folded into the wake above.
+	if a.home.open {
+		standing = append(standing, homeTick())
+	}
+	return tea.Batch(standing...)
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

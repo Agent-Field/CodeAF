@@ -580,6 +580,12 @@ at once, and every conversation in all of them, the command is `/home`.
 conversation in them**, which is the one thing `/resume` cannot show you: `/resume` is
 "which conversation, here", and this is "what is there at all".
 
+**It is also what a bare `aforge` opens on.** The conversation the launch picked is loaded
+underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
+conversation — drops into it. Home stays out of the way when you named a conversation
+(`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
+conversation is the one already open. There is no welcome box when home greets you.
+
 There is no argument form and no key chord — `/home` is the only way in. Projects are dim
 headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
