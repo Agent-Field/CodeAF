@@ -3406,11 +3406,21 @@ type roomFake struct {
 	steered  []steerLine
 	steerErr error
 	watchErr error
+	// retargeted is every explicit model pick this fake was handed, in order, and
+	// retargetErr is the engine refusing one — a node that settled between the
+	// frame and the press (internal/session's [Agent.RetargetTask]).
+	retargeted  []modelPick
+	retargetErr error
 }
 
 type steerLine struct {
 	id   uint64
 	text string
+}
+
+type modelPick struct {
+	id    uint64
+	model string
 }
 
 // lane is the node's live channel, made on first ask so a test can fill it
@@ -3464,6 +3474,18 @@ func (f *roomFake) SteerTask(id uint64, text string) error {
 		return f.steerErr
 	}
 	f.steered = append(f.steered, steerLine{id: id, text: text})
+	return nil
+}
+
+// RetargetTask is the room's fourth door: one running node moved onto another
+// model, from its next turn on. The real one publishes the change on a task
+// update of its own, which is why nothing here writes the node — a test that
+// wants the row to move drives the update the engine would have sent.
+func (f *roomFake) RetargetTask(id uint64, model string) error {
+	if f.retargetErr != nil {
+		return f.retargetErr
+	}
+	f.retargeted = append(f.retargeted, modelPick{id: id, model: model})
 	return nil
 }
 

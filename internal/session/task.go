@@ -129,7 +129,9 @@ type taskArguments struct {
 // IT IS BUILT ONCE AND AMENDED AT MOST ONCE — by a redirect, BEFORE admission
 // (see proposeTask below). After [TaskGraph.admit] takes it, brief and
 // acceptance are frozen for the node's whole life: that is the goal contract,
-// and the law and the reason for it are written out on [TaskNode].
+// and the law and the reason for it are written out on [TaskNode]. The one field
+// a person may still move afterwards is `model`, and only from inside the node's
+// own room — see the field itself.
 type taskSpec struct {
 	title   string
 	summary string
@@ -147,7 +149,15 @@ type taskSpec struct {
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run
-	// on, settled before admission and frozen with the rest of the spec.
+	// on, settled before admission.
+	//
+	// IT IS FROZEN AGAINST DRIFT AND NOT AGAINST THE PERSON, and it is the ONE
+	// field of this spec that is so. Nothing implicit moves it — a `/model` in
+	// the conversation reaches the conversation and no work already handed over —
+	// and one thing explicit does: a person picking a model inside this node's
+	// own room, which moves this node from its next turn on and nothing else in
+	// the session ([Agent.RetargetTask], task_room.go). A node that has settled
+	// is refused there, so a landed row's model is a fact and stays one.
 	//
 	// modelOptions is the shortlist a word that fits more than one model raises.
 	// It is on the proposal the person is shown and is empty by the time the node

@@ -71,6 +71,14 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// chose it for; and an empty field is an empty [TaskNotice.Model], so the
 	// node's own room had nothing to say about what was running it.
 	//
+	// FROZEN AGAINST DRIFT IS NOT FROZEN AGAINST THE PERSON. What the freeze
+	// stops is the IMPLICIT move — the conversation's dial reaching across into
+	// work that was handed over before it turned. A person standing in this
+	// node's room and picking a model for THIS node moves it, from its next turn
+	// on, and moves nothing else ([Agent.RetargetTask], task_room.go). That door
+	// is the only writer of this field after this line, and a node that has
+	// settled is refused at it.
+	//
 	// The word is empty because a person's task names no model, and
 	// [Agent.resolveTaskModel] answers that with the configured task model or the
 	// conversation's own — the same ladder a proposal's blank `model` argument

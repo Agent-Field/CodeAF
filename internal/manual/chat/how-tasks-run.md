@@ -390,10 +390,19 @@ the fifth would turn a proposal into a picker.
 
 **If no model was named**, the task runs on `task.model` from settings when that is set,
 otherwise on **the model the conversation was on at the moment the task was admitted**.
-The id is settled then and **frozen** — a `/model` after that moves the conversation and
-never the work already handed over, so a task that sat in the queue starts on the model
-you launched it with rather than on whatever you have switched to since. A task groomed
-*before* the switch keeps the old model; one started after it gets the new one.
+The id is settled then and **frozen against drift** — a `/model` after that moves the
+conversation and never the work already handed over, so a task that sat in the queue
+starts on the model you launched it with rather than on whatever you have switched to
+since. A task groomed *before* the switch keeps the old model; one started after it gets
+the new one.
+
+**Frozen against drift is not frozen against you.** The one deliberate way to move a
+running task off its id is to walk into that task's room and press the model's name at
+the bottom of the screen: the picker opens aimed at that task, and choosing moves that
+task from its next turn onward — the conversation and every other task are untouched. A
+task that has already landed is refused, in the words `task 7 is done, not running`. The
+tasks page has the whole of it under "Changing the model for one task while it is
+running".
 `task.model` is profile-only: a repository must not be able to send your work and your
 credit to a model you never picked. Blank means the conversation's own model.
 

@@ -54,6 +54,16 @@ type picker struct {
 	// which cannot change while a modal overlay owns the keyboard.
 	current string
 
+	// task is the NODE this list is being chosen for, and 0 is the conversation —
+	// which is every /model, every press on the status row out in the thread, and
+	// every settings row. It is set only by [app.openTaskPicker], and what it
+	// changes is where enter goes: one list, two subjects, and the subject is
+	// decided when the list is opened rather than guessed at when it closes
+	// ([app.pickerKey]). It is on the picker rather than on the app so that
+	// [picker.close] forgets it with everything else — a target left behind by a
+	// cancelled list is the next /model retargeting a task nobody was looking at.
+	task uint64
+
 	filter editor
 }
 
@@ -710,6 +720,29 @@ func (a *app) openPicker() {
 	a.touch()
 }
 
+// openTaskPicker is the same list, pointed at ONE RUNNING NODE: the model word
+// in a room's status line pressed, which is the only door onto it (app.go's
+// [app.statusPress]).
+//
+// IT OFFERS THE SAME ROWS AS THE CONVERSATION'S, filtered by the same chat law,
+// and that is what keeps the engine's ambiguity out of this gesture entirely: a
+// row is one concrete catalog id, so the word handed over resolves to exactly one
+// model and the shortlist a typed word can raise (internal/session's
+// taskmodel.go) has nothing to raise here.
+//
+// THE MARK OPENS ON THE NODE'S OWN MODEL, not the session's, for [picker.start]'s
+// stated reason: the cursor sits on what you are on, so enter confirms rather
+// than changes. In here what you are on is what the task is running.
+func (a *app) openTaskPicker(id uint64) {
+	current := ""
+	if node := a.tasks[id]; node != nil {
+		current = node.model
+	}
+	a.pick.startFor(a.modelList(), current, chatModel)
+	a.pick.task = id
+	a.touch()
+}
+
 // modelList is the source order stated in models.go, applied once here: the
 // door's list (the catalog, when it can answer without a fetch), then the disk
 // cache, then the built-ins. Each rung is tried only if the one above it came
@@ -860,9 +893,19 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 
 	case "enter":
 		chosen, ok := a.pick.choice()
+		// THE SUBJECT IS READ BEFORE THE LIST IS CLOSED, because closing it is what
+		// forgets the subject ([picker.close] zeroes the whole struct).
+		task := a.pick.task
 		a.pick.close()
 		if ok {
-			a.switchModel(chosen.ID, chosen.ContextLength)
+			// One list, two subjects, decided where the list was opened: a node when
+			// the model word in its room was pressed, and the conversation every
+			// other time (palette.go's [app.openTaskPicker]).
+			if task != 0 {
+				a.retargetTask(task, chosen.ID)
+			} else {
+				a.switchModel(chosen.ID, chosen.ContextLength)
+			}
 		}
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it

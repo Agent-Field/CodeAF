@@ -112,6 +112,89 @@ func (a *app) roomDoors() (taskRoomAgent, bool) {
 	return doors, ok
 }
 
+// taskModelDoor is the fourth door onto a node (internal/session's
+// [Agent.RetargetTask]): the person's explicit pick of another model for THIS
+// node, taking effect on its next turn.
+//
+// IT IS ITS OWN INTERFACE for the reason [taskRoomAgent] is: a capability is
+// asserted, never required. An engine that can stream a node and be steered but
+// has never heard of retargeting keeps its rooms, and the model word in there is
+// simply a fact with no door on it — which is the honest degraded state and the
+// same one every node that is not running is in.
+type taskModelDoor interface {
+	RetargetTask(id uint64, model string) error
+}
+
+// taskModelDoors is that door under this surface, when it has one.
+func (a *app) taskModelDoors() (taskModelDoor, bool) {
+	door, ok := a.agent.(taskModelDoor)
+	return door, ok
+}
+
+// roomModelMovable reports whether the room's model word is a DOOR as well as a
+// fact — which is exactly the set of moments a press on it would do something.
+//
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
+// records the press target from ([app.identityParts]) rather than something the
+// press checks after the fact. A finished, failed, stopped or unverified node's
+// model is a fact about what happened and nothing can move it; a queued node has
+// not started, and the engine refuses it in the same words; a run's page is a
+// fleet rather than one node, and a node belonging to a run is not in the graph
+// this door reaches. In every one of those the word is still drawn — a person is
+// entitled to read what the work ran on — and it simply does not light and does
+// not answer.
+func (a *app) roomModelMovable() bool {
+	if a.room == nil || a.room.orch != nil {
+		return false
+	}
+	node := a.roomNode()
+	if node == nil || node.run != "" {
+		return false
+	}
+	if node.state != session.TaskRunning || node.stopped {
+		return false
+	}
+	_, ok := a.taskModelDoors()
+	return ok
+}
+
+// retargetTask is what choosing a model in a node's own picker does: ask the
+// engine, and say what it said.
+//
+// THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, the way a stop's is
+// (stop.go's [app.stopTake]): "task 7 is done, not running" is the answer, and a
+// surface that swallowed it would leave a person pressing the same name again.
+// The gate above means a person cannot ordinarily reach one — the word is not
+// pressable when it would refuse — but a node that landed in the instant between
+// the frame and the press still gets told rather than ignored.
+func (a *app) retargetTask(id uint64, model string) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return
+	}
+	door, ok := a.taskModelDoors()
+	if !ok {
+		a.note(taskModelUnavailableWord)
+		return
+	}
+	if err := door.RetargetTask(id, model); err != nil {
+		a.note(err.Error())
+		return
+	}
+	// The engine publishes the new id on an update of its own, which is what moves
+	// the roster row, the status line and the card this node eventually lands as —
+	// so nothing here writes the node. The note is the RECORD of a decision, left
+	// in the conversation where every other model change is written down
+	// (palette.go's [app.switchModel] says `model · <id>`); the person standing in
+	// the room reads the change off the status line under their hand.
+	a.note(taskIDWord(id) + " · model · " + model)
+}
+
+// taskModelUnavailableWord is the degraded case, in the vocabulary the other
+// unavailable doors on this surface use (room.go's [roomUnavailableWord],
+// stop.go's [stopUnavailableWord]).
+const taskModelUnavailableWord = "changing a task's model is unavailable — this session has no door onto it"
+
 // ── the room's state ────────────────────────────────────────────────────────
 
 // taskRoom is one node's page: what it has said, the lane carrying what it says

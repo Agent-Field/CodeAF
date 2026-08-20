@@ -907,7 +907,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | legend word | the workspace path and branch | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
-| clicking that model | opens the model picker | inert — the picker moves the conversation |
+| clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next turn — and does nothing at all once the task has landed |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
 | scroll position | the conversation's | the room's own, kept separately |
 | attachments | the tray sends pictures | a room's box sends words only |
@@ -1225,7 +1225,62 @@ Name nothing and the task runs on `task.model` if you have set it, and otherwise
 model the conversation was on **when the task was admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the
 conversation's model afterwards does not move work that was already handed over. This
-holds for `/task` and for a task the model proposed alike.
+holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
+you, from inside that task's own room — see the next section.
+
+## Changing the model for one task while it is running — switch, change or swap a task's model
+
+**Walk into the task's room and press the model's name at the bottom of the screen.**
+
+While you are in a room the status line names that node: `<mark> <task name> · task
+<model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
+task. Choose a row and that task moves onto it.
+
+What that does, exactly:
+
+- **It takes effect on the task's next turn.** The call the worker is in the middle of
+  finishes on the model it started on — killing a request in flight would throw away work
+  you have already paid and waited for — and everything after it is on the new model.
+- **It moves that task and nothing else.** The conversation stays on its own model, and so
+  does every other task. Walk back out with `esc` and the status line is the
+  conversation's model again.
+- **A note is written in the conversation**, reading `task 7 · model · <the model you
+  chose>`, so the change is on the record where every other model change is.
+- **New tasks are unaffected.** Work admitted after this still follows the ordinary
+  ladder: `task.model` from settings if you have set one, otherwise the model the
+  conversation is on. A pick made inside one room is not a preference the session learns.
+- **The row, the roster and the finished card all say the new model** from that moment on,
+  and the change survives a restart.
+
+The picker offers the same rows `/model` offers, and it opens with the cursor on the model
+the task is already running — so `enter` confirms rather than changes. `esc` leaves
+everything as it was.
+
+There is still no command, key or setting for this: the model's name in the room is the
+only door. `/model` always means the conversation.
+
+## Why can't I change the model here — the model's name is not pressable
+
+**Because the task is not running any more.** A finished, failed, stopped or
+needs-your-look task's model is a fact about what already happened, so the name is drawn
+for you to read and there is nothing to press. The same is true of a task that is still
+queued, of an adaptive run's page — a run is a fleet of nodes rather than one — and of any
+node inside a run.
+
+If a task lands in the instant between your reading the name and pressing it, the refusal
+is said out loud rather than swallowed:
+
+```
+task 7 is done, not running
+```
+
+A stopped or failed task says the same thing with its own word in place of `done`.
+
+Two more places the name is not a door. At phone width the status line becomes a two-row
+deck and the task's model is a chip on the second row: tapping it opens the status sheet,
+which names the conversation's model and the task's on two labelled lines, and only the
+conversation's line is a door. And if you have turned the mouse off (`ui.mouse`) there is
+no way in at all — the model's name is a pointer target and has no key.
 
 ## When no model matches the word you used
 
