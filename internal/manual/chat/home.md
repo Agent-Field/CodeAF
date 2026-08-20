@@ -89,7 +89,9 @@ as bands separated by blank lines — no rules and no borders anywhere:
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    highlighted row on the left wears, so the eye travels between them;
-2. one dim line of **where it is** — project · path;
+2. one dim line of **where it is** — project · path. That line is a **link**: cmd+click it
+   (ctrl+click on Linux) and the project's folder opens, in the terminals that make
+   hyperlinks. A folder that is no longer on this disk is named and not linked;
 3. what it is **doing right now**, and — if it is stopped on a question — that question, in
    full;
 4. the **work it ran**: up to four tasks, each with what it came to underneath;
@@ -167,7 +169,8 @@ conversation you were in is untouched.
 **`enter` only opens sessions of the project this window is in.** Every other project is
 shown, and its heading carries a dim `elsewhere` to say so. Pressing `enter` on one of its
 rows opens nothing and says `elsewhere · <the project's path>` — the path to start aforge
-in.
+in. **That path is clickable**, so you can open the folder from here even though the
+conversation cannot be; the "what is on the screen" page has which terminals do that.
 
 This is a limit and not a bug. A window's approval rules, its crew, its spend ceiling and
 its saved shapes of work were all resolved from the workspace it launched in; carrying a

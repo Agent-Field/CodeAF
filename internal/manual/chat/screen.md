@@ -607,6 +607,9 @@ This works everywhere a path appears in aforge's own text:
 - **on a tool row** — the target of a `read`, an `edit` or a `write`, and the file name
   above an edit's diff, even when the row was too narrow to show the whole path.
 - **the dim line under a picture**, which is the picture's whole absolute path.
+- **on the home screen** — the dim `project · path` line under a conversation's name,
+  and the `elsewhere · …` line that tells you which folder to go and start aforge in.
+  Both open that folder.
 
 **It survives wrapping.** A path too long for the pane goes down across several rows,
 and every row of it opens the same file — the terminal is told the target
@@ -672,10 +675,12 @@ below is drawn as plain text on purpose:
   body of a `read` — those are another program's words and aforge draws them exactly as
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part aforge wrote itself: the call's own target.
-- **Everything on a task's page.** A task works in its own git worktree, so a name on a
-  room's page means that tree's copy of the file and not this one's — and a link built
-  against the wrong tree would open a file with the right name and the wrong contents.
-  The paths are shown in full there.
+- **Everything on a task's page and inside a task's room** — that is the `/history`
+  page and a room both. A task works in its own git worktree, so `internal/tui3/app.go`
+  on one of those rows means THAT tree's copy and not this one's, and a link built
+  against the wrong tree opens a file with the right name and the wrong contents. The
+  `/history` page names no file paths of its own anyway: a row says what a task did and
+  which branch it left behind, never where its journal is.
 - **Everything, over a connection.** On a session started with `--host`, the files are
   on the other machine, and `file:///app/main.go` handed to the terminal in front of you
   would mean this machine's `/app/main.go` — nothing at all, or somebody else's file. So
