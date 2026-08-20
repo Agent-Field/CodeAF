@@ -704,6 +704,18 @@ type Config struct {
 	TaskAudit bool
 	Guardian  bool
 
+	// TaskSettle is who decides a task that landed needing a look — the
+	// `task.settle` row, as the person set it ([TaskSettle]). Empty is
+	// [TaskSettleAsk], which is the default and the only value a caller that has
+	// said nothing may get: a session must not start settling work on somebody's
+	// behalf because a field was left blank.
+	//
+	// It changes exactly one string — the landing note a settled node writes to
+	// whoever asked for the work (task_run.go's [taskNote]). Nothing about the
+	// three answers changes: the tool takes the same verbs and the surface offers
+	// the same choices whichever way this is set.
+	TaskSettle string
+
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
 	// It is what the settings and change_setting tools are a door onto

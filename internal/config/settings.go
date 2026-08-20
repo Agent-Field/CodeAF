@@ -315,6 +315,19 @@ const (
 	// somewhere quieter.
 	KeyTaskModel = "task.model"
 
+	// KeyTaskSettle is WHO DECIDES a task that finished but that nobody could
+	// check (internal/session's task_contract.go). It sits under `task.` beside
+	// the audit row because it is the other end of that row's question: the audit
+	// says whether the work is checked at all, and this says what happens when
+	// the check came back with nothing.
+	//
+	// `ask` is the default and puts the decision on the landed card, where the
+	// person answers it with one press. `auto` hands it to the chat: the landing
+	// note tells the model to read the work and settle it, and to come back only
+	// when it genuinely cannot tell. Both leave the same three answers available
+	// to both of them — this row changes who is asked first, and nothing else.
+	KeyTaskSettle = "task.settle"
+
 	// The web-search rows. They are three rather than one because they answer
 	// three separable questions: WHERE a lookup goes, and the two credentials
 	// that change what "where" can mean. A person with no key still searches —
@@ -424,6 +437,23 @@ var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
 
 // DefaultTaskAudit is on.
 const DefaultTaskAudit = TaskAuditOn
+
+// The two answers to [KeyTaskSettle]: who settles a task that finished with
+// nobody able to say whether it holds.
+const (
+	// TaskSettleAsk puts it in front of the person, on the landed card.
+	TaskSettleAsk = "ask"
+	// TaskSettleAuto hands it to the chat, which reads the work and decides.
+	TaskSettleAuto = "auto"
+)
+
+// TaskSettleModes lists them, ask first — which is also the default. Deciding
+// on somebody's behalf is a thing they say yes to, never a thing they get by
+// saying nothing.
+var TaskSettleModes = []string{TaskSettleAsk, TaskSettleAuto}
+
+// DefaultTaskSettle is ask.
+const DefaultTaskSettle = TaskSettleAsk
 
 // The three answers to [KeyTaskStart], and they are not three settings but one
 // question asked once instead of on every `/task`: who decides the shape.
@@ -1314,6 +1344,22 @@ func (s *Settings) build() []Setting {
 				"roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
+		},
+		// And directly under it, the other end of the same question: what happens
+		// when the check above came back with nothing at all.
+		Setting{
+			Key: KeyTaskSettle, Category: CategorySpending, Kind: SettingChoice,
+			Label: "who settles a task nobody could check", Choices: TaskSettleModes,
+			Hint: "who decides about a task that finished with nobody able to say whether " +
+				"it holds. ask is the default and means you do: the landed card offers " +
+				"accept, look again and not right, and the chat says what it thinks and " +
+				"leaves the choice with you. auto means the chat decides: it reads the " +
+				"report and the work, settles the task itself, and comes back to you only " +
+				"when it genuinely cannot tell. Either way the task is neither done nor " +
+				"failed until somebody answers, its branch is kept, and anything waiting " +
+				"on it waits.",
+			read:  func() string { return TaskSettleAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyTaskSettle, raw, TaskSettleModes) },
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
@@ -2483,6 +2529,19 @@ func TaskAuditAt(profileDir string) string {
 // TaskAuditEnabledAt is [TaskAuditAt] as the bool the session's Config takes.
 func TaskAuditEnabledAt(profileDir string) bool {
 	return TaskAuditAt(profileDir) == TaskAuditOn
+}
+
+// TaskSettleAt resolves the row to its word, default ask. A value this build
+// does not recognise reads as the default rather than as an error, on the rule
+// [TaskStartAt] states: this row decides who is asked about somebody's work, and
+// a typo in a config file must not start answering on their behalf.
+func TaskSettleAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTaskSettle); ok {
+		if value = strings.TrimSpace(value); value == TaskSettleAuto || value == TaskSettleAsk {
+			return value
+		}
+	}
+	return DefaultTaskSettle
 }
 
 // TaskStartAt resolves [KeyTaskStart]: the persisted row, else the default. A

@@ -1,6 +1,10 @@
 package session
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // ── The task contract ───────────────────────────────────────────────────────
 //
@@ -98,6 +102,67 @@ const (
 	// fails, its branch is kept, and the cascade takes its dependents.
 	TaskRefute TaskResolution = "refute"
 )
+
+// TaskResolutions are the three answers in the order every place that offers
+// them spells them.
+//
+// ONE SOURCE OF TRUTH, because this list is written down in three places a
+// model reads and one of them used to be a hand-typed copy: the `tasks` tool's
+// schema enum, that tool's description, and the landing note that tells the
+// model what to type back (task_run.go's [taskNote]). A note offering a verb
+// the schema rejects is the harness teaching a model a word it cannot use, and
+// that is the same defect `propose_task`'s step default had when its schema
+// said 40 and its executor applied 200.
+var TaskResolutions = []TaskResolution{TaskAccept, TaskReaudit, TaskRefute}
+
+// TaskResolveVerbs is that list as it reads inside a sentence —
+// `accept|reaudit|refute` — which is how the landing note offers it.
+func TaskResolveVerbs() string {
+	words := make([]string, 0, len(TaskResolutions))
+	for _, one := range TaskResolutions {
+		words = append(words, string(one))
+	}
+	return strings.Join(words, "|")
+}
+
+// TaskResolveEnum is the same list as the JSON array a tool schema takes.
+func TaskResolveEnum() string {
+	words := make([]string, 0, len(TaskResolutions))
+	for _, one := range TaskResolutions {
+		words = append(words, strconv.Quote(string(one)))
+	}
+	return "[" + strings.Join(words, ",") + "]"
+}
+
+// TaskSettle is the person's standing answer to "who decides a task nobody
+// could check" — the `task.settle` row (internal/config's settings.go).
+//
+// IT IS A POLICY AND NOT A CAPABILITY. Both values leave the model the same
+// `tasks … resolve` verb and leave the person the same choices on the landed
+// card; what changes is who is ASKED first, which is the whole of what a person
+// is annoyed about when a third task in an afternoon lands waiting on them.
+type TaskSettle string
+
+const (
+	// TaskSettleAsk puts the decision in front of the person: the landing note
+	// tells the model what happened and what the choices are, and the model does
+	// not spend a decision on their behalf. It is the default.
+	TaskSettleAsk TaskSettle = "ask"
+	// TaskSettleAuto hands the decision to the model: the landing note tells it
+	// to read the report and the work and settle the node itself, and to come
+	// back to the person only when it genuinely cannot tell.
+	TaskSettleAuto TaskSettle = "auto"
+)
+
+// settleOrAsk reads a configured word as one of the two, defaulting to asking:
+// a row this build does not recognise must not silently start deciding for
+// somebody.
+func settleOrAsk(word string) TaskSettle {
+	if TaskSettle(strings.TrimSpace(word)) == TaskSettleAuto {
+		return TaskSettleAuto
+	}
+	return TaskSettleAsk
+}
 
 // TaskNotice is the flat payload of EventTaskProposal and EventTaskUpdate —
 // one struct for both, the way Event itself is one struct: a proposal fills
