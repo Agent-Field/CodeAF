@@ -610,7 +610,7 @@ func (a *Agent) recoverTasks() {
 	}
 
 	graph := a.graph()
-	recovery := graph.rehydrate(document, a.config.Workspace)
+	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
 	// The consume-once receipt reaches the disk BEFORE anything else happens: a
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
@@ -639,7 +639,7 @@ func (a *Agent) recoverTasks() {
 // failed, a queued node never started — but a RUNNING node names work that
 // stopped existing the moment the process did, and what it left is on disk under
 // a branch nobody is going to come back for unless somebody says its name.
-func (g *TaskGraph) rehydrate(document taskDocument, workspace string) taskRecovery {
+func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle TaskSettle) taskRecovery {
 	var recovery taskRecovery
 	records := make([]taskRecord, 0, len(document.Nodes))
 	for _, record := range document.Nodes {
@@ -700,7 +700,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string) taskRecov
 	// and marked as handed over, so this is the only life of this session in
 	// which they are said.
 	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath())))
+		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle))
 		node.markNoted()
 	}
 	return recovery

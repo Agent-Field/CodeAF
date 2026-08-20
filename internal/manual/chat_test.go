@@ -201,6 +201,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+
+		// The eleventh wave, from the one state people found genuinely stuck: a
+		// task that lands "needs your look" and sits there. Three questions get
+		// asked in front of it — what am I supposed to do, what does each answer
+		// do, and can you just decide — and a fourth is asked about a family, when
+		// somebody notices they are not being asked about the pieces.
+		{"why is the task waiting for me", "tasks"},
+		{"finished but needs your look", "tasks"},
+		{"how do I accept a task", "tasks"},
+		{"can the chat decide on its own", "tasks"},
+		{"stop asking me about tasks", "tasks"},
+		{"why am I not being asked about the sub tasks", "how-tasks-run"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

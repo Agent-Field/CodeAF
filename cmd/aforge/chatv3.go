@@ -766,6 +766,11 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// picked, by being cloned.
 	cfg.TaskModel = config.TaskModelAt(profileDir)
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	// And who decides when that check comes back with nothing. PROFILE-ONLY for
+	// the reason the audit row above it is: a repository that could set this
+	// would be deciding, by being cloned, that a visitor's work gets accepted by
+	// a model rather than by the visitor.
+	cfg.TaskSettle = config.TaskSettleAt(profileDir)
 	cfg.TaskRepairRounds = config.TaskRepairRoundsAt(profileDir)
 	// How much of the work that leaves this conversation happens at once: the
 	// person's own cap, and the two readings of this machine that hold the next

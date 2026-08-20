@@ -225,6 +225,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, taken := a.harnessAskKey(msg); taken {
 		return cmd
 	}
+	// And a LANDED card that is still asking, on the same rung and for the same
+	// reason: a card in the transcript with a question on it answers its own
+	// keys while it is the selected block (tasksettle.go). Every guard `x` has is
+	// on it — the box must be empty, no overlay may be up — because these are
+	// letters, and a letter that decided somebody's work was finished while they
+	// were typing a sentence would be unforgivable.
+	if a.settleCardKey(msg) {
+		return nil
+	}
 	if a.harnessCardKey(msg) {
 		// `e` on that card walks into the design's room now (harnesscard.go), so
 		// whatever door it parked is handed on here: a room whose lane was never

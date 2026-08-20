@@ -74,7 +74,7 @@ func TestCancelCutsARunningTask(t *testing.T) {
 	if !notice.Stopped {
 		t.Fatalf("the landing does not say a person stopped it: %+v", notice)
 	}
-	if note := taskNote(notice, ""); !strings.Contains(note, "stopped") || strings.Contains(note, "failed") {
+	if note := taskNote(notice, "", TaskSettleAsk); !strings.Contains(note, "stopped") || strings.Contains(note, "failed") {
 		t.Fatalf("the model is told %q — a stop is not a failure", note)
 	}
 }

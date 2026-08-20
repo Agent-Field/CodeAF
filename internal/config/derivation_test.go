@@ -179,12 +179,17 @@ var settingReaders = map[string]string{
 	// the list ever reaches a request.
 	KeyModelFallbacks: "ParseModelFallbacks",
 	KeyTaskAudit:      "TaskAuditEnabledAt",
+	// And the row beside it, read at the same moment and into the same struct:
+	// the launch resolves it onto session.Config.TaskSettle, which is the one
+	// thing that decides whether a landing nobody could check asks the person or
+	// the model (internal/session's task_run.go).
+	KeyTaskSettle: "TaskSettleAt",
 	// The starting-a-task row names its own accessor, which the v3 surface calls
 	// at the moment `/task` is typed rather than at boot (internal/tui3's
 	// taskcommand.go): the row decides what one command does, so it is read when
 	// the command is run and never resolved into a session field.
-	KeyTaskStart: "TaskStartAt",
-	KeyMemoryEnabled:  "MemoryEnabledAt",
+	KeyTaskStart:     "TaskStartAt",
+	KeyMemoryEnabled: "MemoryEnabledAt",
 	// The task countdown names the field it becomes on the far side —
 	// session.Config's TaskAutoApproveSeconds, which task.go reads when it puts
 	// a deadline on a proposal — for the reason the spend rail names its own:

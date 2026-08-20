@@ -239,7 +239,7 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	if !found {
 		t.Fatal("checkpoint was not found")
 	}
-	recovery := graph.rehydrate(document, repo)
+	recovery := graph.rehydrate(document, repo, TaskSettleAsk)
 
 	// THE INTERRUPTED NODE: failed, with the branch named in its own report.
 	interrupted := graph.node(2)
@@ -289,7 +289,7 @@ func TestRecoveryTellsTheTruthAboutAMissingBranch(t *testing.T) {
 			ID: 1, Title: "Grind", Brief: "b", Acceptance: "a",
 			State: TaskRunning, Branch: "task/grind-000000",
 		}},
-	}, workspace)
+	}, workspace, TaskSettleAsk)
 
 	report := graph.node(1).notice().Report
 	if !strings.Contains(report, "branch task/grind-000000 is gone") {
@@ -329,7 +329,7 @@ func TestRecoveryResumesAQueuedNodeAndNeverReRunsAFinishedOne(t *testing.T) {
 				DependsOn: []uint64{1}, State: TaskQueued,
 			},
 		},
-	}, t.TempDir())
+	}, t.TempDir(), TaskSettleAsk)
 
 	if recovery.done != 1 || recovery.waiting != 1 || recovery.interrupted != 0 {
 		t.Fatalf("recovery counted %+v", recovery)
@@ -379,7 +379,7 @@ func TestRecoveryResumesANodeBeforeItsDependent(t *testing.T) {
 			{ID: 1, Title: "Grind", Brief: "b", Acceptance: "a", State: TaskRunning},
 			{ID: 2, Title: "Build on it", Brief: "b", Acceptance: "a", DependsOn: []uint64{1}, State: TaskQueued},
 		},
-	}, t.TempDir())
+	}, t.TempDir(), TaskSettleAsk)
 	graph.runFrontier()
 
 	for _, want := range []uint64{1, 2} {
@@ -571,7 +571,7 @@ func TestAnInterruptedDesignSettlesAndIsNeverRunAsAnOrdinaryTask(t *testing.T) {
 	if !found {
 		t.Fatal("checkpoint was not found")
 	}
-	recovery := graph.rehydrate(document, repo)
+	recovery := graph.rehydrate(document, repo, TaskSettleAsk)
 
 	notice := graph.node(1).notice()
 	if notice.State != TaskFailed {

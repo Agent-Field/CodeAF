@@ -928,7 +928,8 @@ The tabs, in order:
 
 **Session** — what this conversation may run and spend. Rows include "ask before running",
 "tool exceptions", "shell command rules", "guardian", "approval countdown",
-"starting a task", "check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
+"starting a task", "check task work", "who settles work that needs a look", "memory",
+"task countdown", "task repair rounds", "tasks at once",
 "busy machine", "memory floor", "task model", "fallback models", "session ceiling".
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with

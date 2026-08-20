@@ -1033,7 +1033,7 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	// is the right sentence: a done node asked to re-audit hears that it is done,
 	// rather than that there is no auditor configured.
 	if state := node.stateNow(); state != TaskUnverified {
-		return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide", id, state)
+		return settledAlready(id, state)
 	}
 	why = strings.TrimSpace(why)
 	switch resolution {
@@ -1046,6 +1046,60 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	}
 	return fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
 }
+
+// ErrTaskDecided says the answer arrived after the question had gone: somebody
+// else settled this node — the model's own `tasks … resolve`, a re-check that
+// finally answered, another window — between the surface drawing the choices and
+// somebody pressing one.
+//
+// IT IS A SENTINEL BECAUSE THE SURFACE HAS TO TELL IT APART FROM TROUBLE. Every
+// other refusal these doors give means the question is STILL STANDING and the
+// person should try another answer — no working copy, no checker to ask — and a
+// card that answered both by quietly saying "already answered" would be
+// reporting a decision nobody made (internal/tui3's tasksettle.go).
+var ErrTaskDecided = errors.New("session: that task has already been settled")
+
+// settledAlready is the refusal both doors give for a node that has moved on. It
+// names the state in the person's own words and wraps the sentinel above.
+func settledAlready(id uint64, state TaskState) error {
+	return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide: %w",
+		id, state, ErrTaskDecided)
+}
+
+// HandUnverifiedToModel gives ONE node's decision to the model instead of
+// taking it: the surface's "decide these yourself from now on", pressed on the
+// card that is asking right now (internal/tui3's taskdone.go).
+//
+// IT DOES NOT RESOLVE ANYTHING. The node stays exactly as it is — unverified,
+// branch kept, dependents waiting — and what changes is who is holding the
+// question: a line lands on the steering queue, the session wakes if it is
+// idle, and the model reads the work and calls `tasks … resolve` itself. That
+// is the same path a landing under `task.settle = auto` takes, said about a
+// node that already landed, so the two doors cannot disagree about what the
+// model is being asked to do.
+//
+// The error is the one [Agent.ResolveUnverified] gives for the same node,
+// because a surface pressing this on work that somebody else has already
+// decided needs the same sentence either way.
+func (a *Agent) HandUnverifiedToModel(id uint64) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	if state := node.stateNow(); state != TaskUnverified {
+		return settledAlready(id, state)
+	}
+	notice := node.notice()
+	a.enqueueSteering(handOverLead + "\n" +
+		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto))
+	return nil
+}
+
+// handOverLead is what the model reads first when a person hands one of these
+// over. It says who asked, because the sentence under it is written as an
+// instruction and an instruction with no author is one the model has to guess
+// the standing of.
+const handOverLead = "the person has asked you to make this decision rather than making it themselves."
 
 // The three claims, spelled as the thing a person is waiting on rather than as
 // the function that took it: whoever loses the race reads this word back inside
