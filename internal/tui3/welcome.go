@@ -271,6 +271,10 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// Same rule as /new for the door's arm: a warm ctrl+c names what a second
+	// press would stop in THIS conversation, and this is a different one
+	// (quitarm.go).
+	a.disarmQuit()
 	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
 	// WAS TYPED AT (park.go). It was parked against a reply that no longer
 	// exists, and there is no turn end coming to send it — but the person typed

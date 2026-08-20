@@ -61,7 +61,7 @@ One row appears under the connect offer and above the message box:
 | --- | --- |
 | `enter` or `y` | run the harness |
 | `esc` or `n` | no — the ordinary turn goes ahead |
-| `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn |
+| `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn. It never quits on one press — the door takes two |
 
 Every other key does nothing while the row is up. It is modal, because the session is
 holding a turn on your answer.

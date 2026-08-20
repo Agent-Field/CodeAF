@@ -26,7 +26,9 @@ always, `d` is deny.
 
 Any other key stops the clock and does nothing else. Every key that is not
 `ctrl+c` is swallowed, so a stray keystroke cannot type into your draft.
-`ctrl+c` passes through and interrupts the blocked call.
+`ctrl+c` passes through: mid-turn — which a blocked call always is — it interrupts
+the blocked call, exactly as it always has. It never quits on one press; the door
+takes two presses and does not arm while a turn is running.
 
 `[a]` is only drawn, and only acts, when the question is one that can bank an
 answer. The recovery lane borrows the same block without it, and there the

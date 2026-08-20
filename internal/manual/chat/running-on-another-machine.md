@@ -366,7 +366,7 @@ this side reads `this connection is closed` instead.
 **Run the same command again.** That is not advice dressed up: the conversation is on the
 far machine's disk, and the same command opens it again. Nothing that reached the session
 file is lost — the far machine is the only writer of it, and on every road out it
-interrupts the turn in flight (keeping its partial reply, exactly as `ctrl+c` does) and
+interrupts the turn in flight (keeping its partial reply, exactly as a mid-turn `ctrl+c` does) and
 flushes the file. A closed lid, a killed ssh and a closed surface are all the same event.
 
 ## One headless message over a connection

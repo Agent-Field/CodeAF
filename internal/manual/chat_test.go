@@ -213,6 +213,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the chat decide on its own", "tasks"},
 		{"stop asking me about tasks", "tasks"},
 		{"why am I not being asked about the sub tasks", "how-tasks-run"},
+
+		// The twelfth wave, from the key that stopped doing what the habit
+		// expects: ctrl+c no longer leaves on one press. Every one of these is
+		// asked with a terminal that did not close, and the answer — press it
+		// twice, inside a second and a half — has to come off a page rather than
+		// out of a model that will confidently say one press quits.
+		{"how do I quit", "keys"},
+		{"how do I exit aforge", "keys"},
+		{"how do I close aforge", "keys"},
+		{"ctrl+c didn't quit", "keys"},
+		{"why doesn't ctrl+c close it", "keys"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

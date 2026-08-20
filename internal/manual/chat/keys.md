@@ -108,7 +108,7 @@ What happens:
 **What the screen says.** While a turn runs, the right end of the row under the
 message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
 yours is waiting for the answer to finish. On the very first frame of a session the
-conversation carries the note `esc or ctrl+c interrupts`.
+conversation carries the note `esc interrupts · ctrl+c twice quits`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
 the interrupt last: a history recall is cancelled first, rewind is armed on the way
@@ -116,9 +116,64 @@ past, and any open list or overlay takes the key before the message box sees it.
 `esc` while the command list or the `@` list is open closes that list and does
 **not** interrupt.
 
-**When no turn is running, `ctrl+c` quits aforge.** It writes your unsent draft to
-disk first, then interrupts and closes the session. Only mid-turn is `ctrl+c` the
-interrupt.
+**Mid-turn `ctrl+c` only ever interrupts — it never leaves.** Pressing it a second
+time straight away does not quit either: the press that stopped the turn does not
+arm the door, so the second press only arms it and a third one is needed to leave.
+See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Quitting aforge — how do I exit, close it, or why did ctrl+c not quit
+
+**`ctrl+c` twice.** One press does not leave. The first press *arms* the door and the
+right end of the row under the message box reads exactly:
+
+```
+ctrl+c again to quit
+```
+
+Press `ctrl+c` again within **1.5 seconds** and aforge exits. Anything else — any
+other key, or letting the 1.5 seconds lapse — puts the door back and the hint leaves
+the screen. Press it once more and you get the same arm again.
+
+**Why it takes two.** One keystroke used to end the session outright, and that
+keystroke is the one every terminal habit tells you to hit when something seems stuck.
+It could end a session that was running tasks, holding live background jobs, and still
+carrying a message you had typed and pressed `enter` on.
+
+**What is running is named before it stops.** If this session has tasks or background
+jobs alive, the armed line says so:
+
+```
+ctrl+c again to quit · a task will stop
+ctrl+c again to quit · 2 tasks and a job will stop
+ctrl+c again to quit · a task and a job will stop
+```
+
+With nothing running there is no suffix at all — just `ctrl+c again to quit`.
+
+**Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
+the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
+people make mid-turn — press it again, harder — stops the model once and then arms;
+you would have to press a third time to leave.
+
+**It works over everything.** `ctrl+c` is read above every picker, panel, room, mode
+and paste bracket — leaving is never modal. Pressing it with the model picker or the
+settings panel up does not close them: it arms the door underneath, the hint slot
+shows `ctrl+c again to quit`, and the second press leaves with the panel still up.
+
+**What quitting does.** Your unsent draft is written to disk first, with any message
+still waiting for an answer folded in underneath it, then the turn is interrupted and
+the session is closed. Nothing is lost that was typed.
+
+**Limits.**
+
+- **`/quit` still leaves at once.** It is typed out on purpose, so it is not asked
+  twice. `/exit` is the same command.
+- A real signal — `kill -INT`, `kill -TERM`, or `^C` on a terminal that is not in raw
+  mode — also leaves at once, through the same clean exit: draft written, session
+  closed, status 0. Only the keystroke asks twice.
+- The 1.5-second window cannot be changed.
+- Closing the terminal window is not a quit aforge sees; the draft written 300ms after
+  you stopped typing is what survives that.
 
 ## Keys in the message box: sending, stopping, and queueing
 
@@ -131,7 +186,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open rewind mode |
-| `ctrl+c` | Turn running: interrupt. Nothing running: quit aforge |
+| `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
 | `enter` while a turn runs | Hold the message above the box until the answer finishes |
@@ -255,7 +310,8 @@ line. Bracketed paste is on. CRLF and bare CR become LF at the door.
 Inside an open paste bracket, every key is text: `enter` and `ctrl+j` become a
 newline, `tab` becomes a tab, everything else contributes its text. Nothing between
 the brackets can submit, interrupt, or answer a question. `ctrl+c` is the one
-exception and still works. A bracket that goes quiet for 2 seconds is treated as
+exception and still works — it arms the door without closing the bracket, and a
+second press within 1.5 seconds quits. A bracket that goes quiet for 2 seconds is treated as
 abandoned, flushed, and the keyboard handed back.
 
 A paste while copy mode is up is **declined** — nothing happens, and your clipboard
@@ -268,6 +324,11 @@ that has moved on. There is nothing to press; it is automatic.
 
 - It is written 300ms after you stop typing, and again synchronously on quit before
   anything else happens.
+- **Anything still waiting for an answer is folded in on quit.** A message you parked
+  with `enter` while a turn was running (see "Typing while the model is still
+  answering") is written into the draft file underneath your unsent sentence, each on
+  its own line, so it comes back the next time you open aforge here instead of
+  vanishing with the session.
 - It is cleared **only** when you send it, or queue it as a follow-up. `/new` does
   **not** clear it.
 - The file is keyed by the directory plus this process's id, and is written with mode
@@ -453,12 +514,15 @@ selected session. Its placeholder reads `filter · ↑↓ · enter open · esc c
 key dismisses the box and then does whatever it normally does.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
+`ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
+seconds quits aforge with the picker still up.
 
 ## Keys when aforge asks you a question
 
 **An approval question:** `y` allow once · `a` or `t` always — refused when it would
 do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
-countdown**. `ctrl+c` is handed back to the message box. On the second beat of
+countdown**. `ctrl+c` is handed back to the message box, where it arms the door and a
+second press within 1.5 seconds quits. On the second beat of
 "always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
 
 **A task proposal** is not modal — the message box stays live as a redirect lane.
@@ -475,7 +539,8 @@ nothing.
 
 **The steer guard**, raised when you press `enter` in a room whose node is not
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
-`ctrl+c` handed back · everything else does nothing. Its row reads
+`ctrl+c` handed back to the door, where two presses quit · everything else does nothing.
+Its row reads
 `[r] revive and send · [m] send to main · [esc] cancel`.
 
 ## Keys in the settings panel and the other panels
@@ -527,6 +592,8 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
+`ctrl+c` does not close the panel — it arms the door, and a second press within 1.5
+seconds quits aforge.
 
 ## Keys on home, and is there a shortcut for it
 
@@ -585,7 +652,8 @@ The right-hand preview is there in both shapes and never moves. It follows the c
 through a filter too, and is empty while the cursor is on the action row.
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
-to it.
+to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
+seconds quits aforge.
 
 ## Keys in the task roster and inside a room
 
