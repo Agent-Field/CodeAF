@@ -2014,6 +2014,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
 	if !a.config.TaskAudit {
+		// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE, and with the check off
+		// this is one of the places it would. A person who turned verification off
+		// has not asked to be merged over the top of another window (taskground.go).
+		if shift := a.groundShift(node, changed); shift != "" {
+			return a.landShifted(node, tree, changed,
+				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
+		}
 		merge, detail := tree.comeHome(node.title())
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
 		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
@@ -2052,6 +2059,16 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		merge, changed := keptWork(tree, node.title(), changed)
 		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, merge)
 		return TaskFailed
+	}
+
+	// THE WORK HOLDS, AND THE QUESTION IS WHETHER IT HOLDS AGAINST TODAY. The
+	// check the gate ran was run inside this node's own working copy, which is a
+	// copy of the world as it was when the node started — so a verdict of
+	// verified says nothing at all about a file another window has landed in
+	// since. That is the one question left before a merge, and taskground.go is
+	// where it is asked.
+	if shift := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 	}
 
 	merge, detail := tree.comeHome(node.title())
@@ -2120,6 +2137,14 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
+			// The same last question the ordinary finishing line asks, for the same
+			// reason: this branch is about to merge (taskground.go). The threshold's
+			// own sentence is left out of what follows exactly as it is left out of
+			// the merge below — the run was interrupted, the deliverable was not, and
+			// the news here is the file somebody else is in.
+			if shift := a.groundShift(node, changed); shift != "" {
+				return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
+			}
 			merge, detail := tree.comeHome(node.title())
 			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
 			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
@@ -2134,6 +2159,38 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 	merge, changed := keptWork(tree, node.title(), changed)
 	node.finish(withReport(stopped, report), changed, tree.branch, merge)
 	return TaskFailed
+}
+
+// landShifted settles a node whose work holds and whose GROUND MOVED while it
+// held — somebody else landed in, or is still writing, a file this node wrote
+// (taskground.go).
+//
+// IT IS NOT A NEW ENDING. It is [TaskUnverified]'s ending, reached by a third
+// road: the branch is committed and kept ([keptWork]) exactly as it is for the
+// landing nobody could judge, the report leads with [needsLookLead] in the same
+// person's words, and everything downstream — the settle card, the rail, the
+// note's "needs your look" verb, the bubbling of a still-undecided child up to
+// whoever is left to decide ([Agent.bubbleUnverifiedChildren]) — is the machinery
+// that was already there. Nothing about this landing has to know why it was
+// asked for.
+//
+// THE REASON RIDES IN THE REPORT AND NOWHERE ELSE, which is what puts it in front
+// of BOTH readers without a second channel: the person reads it on the card,
+// whose first line is this one, and the model reads it inside the landing note
+// ([taskNote] prints the report whole). It composes with the settle policy rather
+// than replacing it — [settleClause] still writes the ask or the auto tail
+// underneath, so a session that decides these itself is handed the fact and the
+// job in the order it already expects them.
+//
+// AND THE WORK IS NOT MERGED. That is the point of routing here rather than
+// merging and marking: the person's branch is the thing being protected, and a
+// merge that has already happened is not a warning, it is a cleanup. Accepting on
+// the card merges it the ordinary way ([Agent.acceptTask]).
+func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, report, shift string, log io.Writer) TaskState {
+	merge, kept := keptWork(tree, node.title(), changed)
+	fmt.Fprintf(log, "not merged: %s\n", shift)
+	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
+	return TaskUnverified
 }
 
 // resumeTree reuses the durable working copy after a process interruption.
