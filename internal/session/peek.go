@@ -138,6 +138,67 @@ func Peek(path string) (Summary, bool) {
 	return summary, true
 }
 
+// reportPeekMax bounds what one report is read back as. A node's final message
+// is three lines in the project's record and a page or two in the journal it
+// was cut from; eight kilobytes is far past any report a person reads down and
+// far short of a journal line somebody pasted a file into.
+const reportPeekMax = 8 << 10
+
+// PeekReport is the LAST THING THE AGENT SAID in a journal, read off the file
+// and whole.
+//
+// IT IS THE SENTENCE THE PROJECT'S RECORD ALREADY QUOTES THE FIRST LINE OF. A
+// node's report is its final assistant message (task_run.go's lastSaid), and
+// [TaskIndexEntry.Outcome] is that message's first sentence, cut to
+// [taskOutcomeLimit]. So a surface holding the row and wanting the rest of it
+// follows the row's own TranscriptURI through here rather than keeping a second
+// copy — the index carries citations, and this is what following one costs.
+//
+// It is [Peek]'s discipline and not [openSessionFile]'s: open, scan forward,
+// close. No lock, no replay, no repair, nothing created. A journal that is not
+// there, cannot be read, or never had the agent say anything answers false,
+// which is a surface drawing nothing rather than a surface drawing an empty
+// quotation.
+func PeekReport(path string) (string, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+
+	said := ""
+	scanner := bufio.NewScanner(file)
+	// The same buffer [Peek] takes, for the same reason: one tool result of any
+	// size would otherwise end the scan at the line before it, and the message
+	// this function is looking for is the LAST one in the file.
+	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry sessionEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Type != "message" || entry.Role != "assistant" {
+			continue
+		}
+		if text := strings.TrimSpace(entry.Content); text != "" {
+			// LAST ONE WINS, which is the whole rule. A node says a great many
+			// things on its way to a report and only the final one is the report.
+			said = text
+		}
+	}
+	if said == "" {
+		return "", false
+	}
+	if len(said) > reportPeekMax {
+		said = strings.TrimSpace(said[:reportPeekMax]) + "…"
+	}
+	return said, true
+}
+
 // Recent is [Peek] over a directory of FLAT transcripts, newest first.
 //
 // It is the old layout's reader and dies with it: a directory that may hold

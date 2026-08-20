@@ -467,11 +467,18 @@ first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` ed
 · **every other printable key, the space included, types into the filter**, which narrows
 both sections at once and is shown at the foot as `filter · port`. Its foot reads
 `esc close · ↑↓ move · enter opens its room`, or
-`esc close · ↑↓ move · enter puts it in your message` on a task another conversation ran,
-which has no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
+`esc close · ↑↓ move · enter goes inside it` on a task another conversation ran, which has
+no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
 at all — which is a page holding only work running in other aforge windows — or
 `esc clears the filter · ↑↓ move · enter opens the row` while you are typing one. Clicking a row acts on the first press; the wheel walks the
 cursor. The tasks pages describe what is on it.
+
+**Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
+list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
+`space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
+message box** and closes the page. Its foot reads
+`esc back · ↑↓ scroll · m puts it in your message`. Clicking its head row or its foot goes
+back to the list; its body is read.
 
 **Connections panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`. Its filter placeholder reads `filter · ↑↓ · enter connect · esc close`.
@@ -535,8 +542,14 @@ a click on a `…13 more` line toggles it in one press.
 The top line carries `esc close` on the right. The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`, and the line under it
 changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
-`enter starts a new conversation and sends this · ↓ pick a match · esc clear` on the action
+`enter starts a new conversation and sends this · ↑ pick a match · esc clear` on the action
 row, and `enter or → show them · esc close` on a folded project.
+
+**While anything is typed the list is a drop-up.** The action row —
+`start a new conversation: "…"` — is the LAST row of the list, directly above the box, and
+the matches rise above it; the cursor starts on the action row, so `↑` walks up into the
+results and `↓` walks back down to it. With nothing typed there is no action row and the
+list hangs from the top.
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it.
@@ -548,16 +561,23 @@ back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` 
 that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
 
 The walk carries on **into the dulled `earlier` rows** at the foot of the column — the
-project's record from earlier sessions — and `enter` down there writes that task's name
-into your message box instead of opening a room, because a room is a live lane onto a task
-in *this* session's work. A click on one of those rows does the same thing on the first
-press. On a column that has only the record, `ctrl+t` parks the cursor on its first row.
+project's record from earlier sessions — and `enter` down there **goes inside that task**
+instead of opening a room, because a room is a live lane onto a task in *this* session's
+work. What opens is the record card: what the work came to, what it cost, where it left its
+changes and the last thing it said. `esc` backs out of it, `↑`/`↓` scroll it, and `m` puts
+that task's name in your message box. A click on one of those rows opens the same card on
+the first press. On a column that has only the record, `ctrl+t` parks the cursor on its
+first row.
 
 **`ctrl+g` closes the roster's column, and opens it again.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
 session opens the way you left it, and `ctrl+t` counts as asking for the column back.
+
+**A closed column leaves a two-column edge down the right of the frame with a dim `‹` in
+it, and clicking anywhere on that edge opens the column again.** The key is unchanged; the
+edge is there so the column is not a thing you have to already know a chord to get back.
 The key falls through and does nothing only when there is no roster on the frame to
 close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands there saying `no tasks yet`, or carrying the
@@ -648,7 +668,9 @@ Only the left button acts. A press is resolved in this order:
 1. The settings panel, the task page, home, the status deck, or the phone tool sheet — each
    takes **every** press inside its frame, padding included. On the task page a press on a
    row opens it on the first press; a press on a section word or on empty padding does
-   nothing. On home a click puts the cursor on a row and a second click opens it.
+   nothing. Inside an old task's record card, the head row and the foot go back to the
+   list and its body is read. On home a click puts the cursor on a row and a second click
+   opens it.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
@@ -663,7 +685,9 @@ Only the left button acts. A press is resolved in this order:
    family lines under it are facts, not doors, and do nothing.
 8. Task strip chips, then the rail column, then a proposal's choices row. On a wide
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
-   pressing it asks to stop that work instead of opening its room.
+   pressing it asks to stop that work instead of opening its room. **When the column is
+   closed, the two-column edge it leaves at the right of the frame answers here too** —
+   a press anywhere on it opens the column again, which is exactly what `ctrl+g` does.
 9. The model name in the status row, which opens the model picker. A press elsewhere
    on the status row falls through. On a narrow terminal the whole two-row deck
    answers.

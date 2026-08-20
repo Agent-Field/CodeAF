@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -42,15 +43,23 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	if a.railShowing() || a.railStanding() {
 		t.Fatal("ctrl+g left the column on the frame")
 	}
-	if rows := a.railRows(a.viewHeight()); len(rows) != 0 {
-		t.Fatalf("a closed column still drew %d rows", len(rows))
+	// NOT ONE ROW OF THE ROSTER IS LEFT. What the frame keeps is the closed
+	// column's own edge — [railGripCols] cells carrying a handle and at most one
+	// glyph of state, and no task's name anywhere (task.go's [app.railGripRows])
+	// — which is a different thing from the column and is tested as one below.
+	edge := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
+	for _, gone := range []string{"Ship the port", "Read the law", railStowHint} {
+		if strings.Contains(edge, gone) {
+			t.Fatalf("a closed column still drew %q:\n%q", gone, edge)
+		}
 	}
-	// THE CONVERSATION TAKES THE COLUMNS BACK, and it takes every one of them:
+	// THE CONVERSATION TAKES THE COLUMNS BACK, all but the two the edge costs:
 	// the width is what the transcript wraps at, what the wheel resolves through
 	// and what a click is hit-tested against, so a body that stayed narrow would
-	// be thirty columns of blank beside a paragraph.
-	if a.bodyWidth() != full {
-		t.Fatalf("the closed column still charges %d columns", full-a.bodyWidth())
+	// be thirty columns of blank beside a paragraph — and a body that took the
+	// edge's two as well would run a sentence out under the handle.
+	if a.bodyWidth() != full-railGripCols {
+		t.Fatalf("the closed column charges %d columns, want %d", full-a.bodyWidth(), railGripCols)
 	}
 
 	// WORK THAT LANDS WHILE THE COLUMN IS AWAY IS IN IT WHEN IT COMES BACK. The
@@ -217,5 +226,143 @@ func TestTheColumnsPostureIsRememberedAcrossSessions(t *testing.T) {
 	drive(t, a, ctrlG())
 	if !config.TaskColumnAt(dir) {
 		t.Fatal("reopening the column was not written to the profile")
+	}
+}
+
+// ── THE EDGE A CLOSED COLUMN LEAVES BEHIND ──────────────────────────────────
+//
+// ctrl+g used to make the column vanish without a trace, and a thing with no
+// trace is a thing a person cannot get back: the chord is knowledge, and the
+// person who pressed it by accident does not have it. So a closed column leaves
+// an edge — two columns down the right of the frame with a handle in them — and
+// the whole strip is a door.
+
+// THE EDGE IS ON THE FRAME, IT COSTS WHAT IT SHOWS, AND PRESSING IT BRINGS THE
+// COLUMN BACK.
+func TestTheClosedColumnLeavesAnEdgeYouCanClick(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	railRun(a)
+	full := a.width
+
+	drive(t, a, ctrlG())
+	if !a.railStowed() {
+		t.Fatal("a closed column on a wide frame drew no edge")
+	}
+	rows := a.railRows(a.viewHeight())
+	if len(rows) != a.viewHeight() {
+		t.Fatalf("the edge drew %d rows, want %d", len(rows), a.viewHeight())
+	}
+	handles := 0
+	for _, row := range rows {
+		if ansi.StringWidth(plain(row)) != railGripCols {
+			t.Fatalf("an edge row is %d cells wide, want %d: %q",
+				ansi.StringWidth(plain(row)), railGripCols, plain(row))
+		}
+		if strings.Contains(row, railGripGlyph) {
+			handles++
+		}
+	}
+	if handles != 1 {
+		t.Fatalf("the edge drew %d handles, want exactly one", handles)
+	}
+	if a.bodyWidth() != full-railGripCols {
+		t.Fatalf("the edge costs %d columns, want %d", full-a.bodyWidth(), railGripCols)
+	}
+
+	// THE POINTER LIGHTS IT, because it answers to a click.
+	middle := a.bodyTop() + a.viewHeight()/2
+	a.setHover(a.bodyWidth(), middle)
+	if !a.hoveringRailGrip() {
+		t.Fatalf("the pointer over the edge lit nothing: %+v", a.hot)
+	}
+
+	// AND A PRESS ANYWHERE ON IT IS ctrl+g. Not the handle — anywhere: a strip
+	// two cells wide is not a thing to aim at.
+	if _, took := a.railPress(a.bodyWidth(), a.bodyTop()); !took {
+		t.Fatal("a press on the edge fell through to the conversation")
+	}
+	if a.railAway || !a.railShowing() {
+		t.Fatal("pressing the edge did not bring the column back")
+	}
+	if a.bodyWidth() != full-railCols {
+		t.Fatalf("the reopened column is not charged against the conversation: body=%d", a.bodyWidth())
+	}
+}
+
+// THE EDGE WHISPERS WHAT THE WORK IS DOING, and only while there is anything to
+// whisper. A column full of finished work says nothing; one with something
+// running says so in a cell, and one with something waiting on a person outranks
+// it.
+func TestTheClosedEdgeCarriesTheStateOfTheWork(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	a.taskUpdate(update(1, "Ship the port", session.TaskDone, session.TaskNotice{}))
+	drive(t, a, ctrlG())
+
+	edge := strings.Join(a.railRows(a.viewHeight()), "\n")
+	for _, never := range []string{homeLiveGlyph, homeAskGlyph} {
+		if strings.Contains(plain(edge), never) {
+			t.Fatalf("the edge whispered %q over work that has landed:\n%q", never, plain(edge))
+		}
+	}
+
+	// Something RUNNING earns the accent dot.
+	a.taskUpdate(update(2, "Port the parser", session.TaskRunning, session.TaskNotice{}))
+	if edge := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(edge, homeLiveGlyph) {
+		t.Fatalf("the edge said nothing about running work:\n%q", edge)
+	}
+
+	// And something WAITING ON A PERSON outranks it: it is the one of the two
+	// that is asking for a hand.
+	a.taskUpdate(update(3, "Mix the audio", session.TaskUnverified, session.TaskNotice{}))
+	edge = plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
+	if !strings.Contains(edge, homeAskGlyph) {
+		t.Fatalf("the edge said nothing about work that needs a person:\n%q", edge)
+	}
+	if strings.Contains(edge, homeLiveGlyph) {
+		t.Fatalf("the edge said both things at once:\n%q", edge)
+	}
+}
+
+// AND UNDER THE SLIM FLOOR THERE IS NO EDGE, because at that width there is no
+// column to bring back — a door onto a room that does not exist.
+func TestThereIsNoEdgeWhereThereCouldBeNoColumn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	a.width = railSlimFloor - 20
+	railRun(a)
+	a.railAway = true
+
+	if a.railStowed() {
+		t.Fatal("a frame too narrow for a column drew its edge anyway")
+	}
+	if rows := a.railRows(a.viewHeight()); len(rows) != 0 {
+		t.Fatalf("the narrow frame drew %d edge rows", len(rows))
+	}
+	if a.bodyWidth() != a.width {
+		t.Fatalf("the narrow frame charged %d columns for an edge it has none of", a.width-a.bodyWidth())
+	}
+	if a.railGripAt(a.width-1, a.bodyTop()) {
+		t.Fatal("the narrow frame answers a press on an edge it does not draw")
+	}
+}
+
+// AND THERE IS NO EDGE WHILE THE COLUMN IS STANDING, which is the other half of
+// the same law: the right-hand strip of the frame belongs to the roster in one
+// shape or the other, never to both.
+func TestThereIsNoEdgeWhileTheColumnStands(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.profileDir = t.TempDir()
+	railRun(a)
+
+	if !a.railShowing() {
+		t.Fatal("a session with five nodes drew no column")
+	}
+	if a.railStowed() {
+		t.Fatal("an open column drew its own closed edge")
+	}
+	if a.railGripAt(a.width-1, a.bodyTop()) {
+		t.Fatal("the open column answers a press as though it were closed")
 	}
 }

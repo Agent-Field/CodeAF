@@ -521,7 +521,12 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	}
 }
 
-// One ↓ is the decision to pick from the list instead, and it sticks.
+// One ↑ is the decision to pick from the list instead, and it sticks.
+//
+// IT USED TO BE ↓, and the arrow turned round with the action row. The row sits
+// at the BOTTOM of the list now, against the box a person is typing into
+// ([homeAction]), so the matches are above it and walking into them is walking
+// up the screen.
 func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -531,13 +536,117 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	for _, r := range "pric" {
 		a.homeKey(key(string(r)))
 	}
-	a.homeKey(key("down"))
+	a.homeKey(key("up"))
 	if row := a.home.focused(); row.Transcript != mine {
-		t.Fatal("↓ did not land on the match")
+		t.Fatal("↑ did not land on the match")
 	}
 	a.homeKey(key("i"))
 	if row := a.home.focused(); row.Transcript != mine {
-		t.Fatal("typing after ↓ threw the cursor back to the action row")
+		t.Fatal("typing after ↑ threw the cursor back to the action row")
+	}
+	// And ↓ walks back down to the action row, which is where the sentence is.
+	a.homeKey(key("down"))
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
+		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
+	}
+}
+
+// TYPING IS ONE CLUSTER AT THE FOOT, and this pins the geometry that makes it
+// one.
+//
+// The defect it answers: the characters landed in the box at the very bottom of
+// the frame while the row saying what enter would do with them stood at the very
+// top, so the eye had to jump between the two ends of the screen and the cursor
+// was at one end while the caret blinked at the other. The action row now sits
+// on the LAST body row — directly above the rule and the box — with the matches
+// rising above it.
+func TestTypingClustersAtTheFootOfHome(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+
+	width, height := a.size()
+	lines, _, _, caretY := a.homeFrame(width, height)
+	rows := make([]string, len(lines))
+	for i, line := range lines {
+		rows[i] = strings.TrimRight(ansi.Strip(line), " ")
+	}
+	action := -1
+	for i, row := range rows {
+		if strings.Contains(row, homeStartWord+`: "pricing"`) {
+			action = i
+		}
+	}
+	if action < 0 {
+		t.Fatalf("the action row is not on the frame:\n%s", strings.Join(rows, "\n"))
+	}
+	// THE BOX IS THE ROW THE CARET IS ON, and the action row is two rows above
+	// it: the rule between them is the frame's own foot rule. Anything more than
+	// that is the split this test exists to stop coming back.
+	if caretY-action != 2 {
+		t.Fatalf("the action row is %d rows above the box, want 2:\n%s", caretY-action, strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[caretY], "pricing") {
+		t.Fatalf("row %d is not the box:\n%s", caretY, strings.Join(rows, "\n"))
+	}
+	// AND THE MATCHES ARE ABOVE IT, not below — the list grew upward out of the
+	// box rather than downward from the title.
+	match := -1
+	for i, row := range rows {
+		if strings.Contains(row, "Pricing Research") {
+			match = i
+		}
+	}
+	if match < 0 || match > action {
+		t.Fatalf("the matches are not above the action row (match %d, action %d):\n%s",
+			match, action, strings.Join(rows, "\n"))
+	}
+	// The hint under the box names the arrow that is actually true of the screen.
+	if !strings.Contains(rows[len(rows)-1], "↑ pick a match") {
+		t.Fatalf("the hint names the wrong arrow:\n%s", rows[len(rows)-1])
+	}
+}
+
+// AND WITH NOTHING TYPED THE LIST HANGS FROM THE TOP, as a list somebody is
+// browsing should. The drop-up is a thing typing does, not a permanent shape.
+func TestHomeWithNothingTypedStillHangsFromTheTop(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	a := lab.app(mine)
+	a.openHome()
+
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	rows := make([]string, len(lines))
+	for i, line := range lines {
+		rows[i] = strings.TrimRight(ansi.Strip(line), " ")
+	}
+	at := -1
+	for i, row := range rows {
+		if strings.Contains(row, "Pricing Research") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the conversation is not on the frame:\n%s", strings.Join(rows, "\n"))
+	}
+	// The head is four rows — title, blank, rule, blank — then the heading, then
+	// the row. Anything further down is a list that floated to the bottom with
+	// nobody typing at it.
+	if at > 6 {
+		t.Fatalf("the list did not hang from the top (row %d):\n%s", at, strings.Join(rows, "\n"))
+	}
+	if strings.Contains(strings.Join(rows, "\n"), homeStartWord) {
+		t.Fatal("the action row is drawn with nothing typed")
 	}
 }
 
@@ -661,7 +770,9 @@ func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
 	if strings.Contains(text, "Tuesday") {
 		t.Fatalf("it matched a conversation with no such outcome:\n%s", text)
 	}
-	a.homeKey(key("down"))
+	// ↑ walks off the action row and up into the match, which is where the matches
+	// are now ([homeAction]).
+	a.homeKey(key("up"))
 	if !strings.Contains(homeText(a), "Rewrote the postgres") {
 		t.Fatalf("the pane does not show what the work came to:\n%s", homeText(a))
 	}

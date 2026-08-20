@@ -170,6 +170,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is a path underlined", "screen"},
 		{"cmd click on a file name does nothing", "screen"},
 		{"why is this file path not clickable", "screen"},
+
+		// The ninth wave, from two things a person did with the landed build.
+		// Clicking an old task only tagged it in the message box, when what they
+		// meant was "let me in" — so the words for going into finished work have
+		// to reach the page that now has a card behind them. And a column closed
+		// with ctrl+g used to leave nothing on the frame at all, so the words
+		// somebody says when a panel they can no longer see has gone have to
+		// reach the page that says where it went.
+		{"how do I see what an old task did", "tasks"},
+		{"open a past task", "tasks"},
+		// "read a finished task's report" is deliberately NOT pinned here. It is
+		// the same question from the other side — a report is a thing a task
+		// WRITES — and it lands on how-tasks-run, whose own section now names the
+		// card and says where to open it. Retrieval was right and the page was
+		// missing a sentence.
+		{"the task bar disappeared how do I get it back", "tasks"},
+		{"how do I bring back the right sidebar", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
