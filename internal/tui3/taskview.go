@@ -1012,11 +1012,17 @@ func (a *app) taskSheetPress(y int) tea.Cmd {
 // answer changed (hover.go's rule, applied to this page).
 func (a *app) taskSheetHover(y int) {
 	if a.taskSheet.detailOn {
-		// THE CARD HAS NOTHING TO LIGHT. Its edges are the way back and its body
-		// is read; a hover step over a paragraph would be the surface offering a
-		// door that is not there (hover.go's own law).
-		if a.hot != (hoverAt{}) {
-			a.hot = hoverAt{}
+		// THE CARD LIGHTS ITS EDGES AND NOTHING ELSE. They are the way back and its
+		// body is read, so a hover step over a paragraph would be the surface
+		// offering a door that is not there — and an edge that stayed dark under the
+		// hand was the other half of the same lie (hover.go's own law, and
+		// taskrecord.go's [app.taskCardHitAt]).
+		next := hoverAt{}
+		if hit, ok := a.taskCardHitAt(y); ok {
+			next = hoverAt{kind: hoverTaskCard, index: int(hit)}
+		}
+		if next != a.hot {
+			a.hot = next
 			a.touch()
 		}
 		return

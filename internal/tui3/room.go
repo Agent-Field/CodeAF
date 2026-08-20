@@ -2101,9 +2101,23 @@ func (a *app) roomHead(width int) string {
 	}
 	left := a.roomHeadWord(width)
 	mark := a.roomStopWord()
+	// THE ✕ BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather than
+	// spliced into the finished line: [app.legendLine] paints the right label as
+	// one piece and the mark is the last thing in it, so ink written into the label
+	// lands on the mark's own cells and the piece after it is painted separately
+	// anyway. It is a step up from the dim the label rests in, which is the model
+	// segment's own answer to a label that is also a control (render.go's
+	// [app.paintIdentity]) — the row is one line at the top of the frame, not a row
+	// of a list, and a highlighted rectangle round one glyph would be the one boxed
+	// thing on a surface with no boxes. The width is unchanged, so every attempt
+	// below still fits exactly as it did.
+	shown := mark
+	if mark != "" && a.hoveringRoomStop() {
+		shown = a.pal.ink(mark)
+	}
 	attempts := []string{roomBackWord, ""}
 	if mark != "" {
-		attempts = []string{roomBackWord + roomStopSep + mark, mark, roomBackWord, ""}
+		attempts = []string{roomBackWord + roomStopSep + shown, shown, roomBackWord, ""}
 	}
 	for _, right := range attempts {
 		line, ok := a.legendLine(left, right, width, a.pal.accent)
@@ -2113,9 +2127,17 @@ func (a *app) roomHead(width int) string {
 		// The mark is the LAST thing in the right label, and [app.legendLine]
 		// closes with one space and one rule cell after it — so its columns are
 		// arithmetic rather than a second layout, whichever attempt fitted.
-		if mark != "" && strings.HasSuffix(right, mark) {
+		if mark != "" && strings.HasSuffix(right, shown) {
 			cols := ansi.StringWidth(mark)
 			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+		}
+		// AND THE ROW ITSELF TAKES THE BACKGROUND STEP, because the row itself is
+		// the control: everything on it is about leaving, and [app.roomBackPress]
+		// takes a press anywhere along it. The ✕ never lights with it — the two are
+		// different hovers and the pointer can only be on one of them — so the band
+		// is never the surface offering "leave" over cells that end work.
+		if a.hoveringRoomBack() {
+			line = a.pal.hover(line, width)
 		}
 		return line
 	}
@@ -2145,11 +2167,19 @@ func (a *app) roomHead(width int) string {
 // resolves the block at the BOTTOM of the window and has never had a row up here
 // to answer for.
 func (a *app) roomBackPress(y int) bool {
-	if !a.roomOpen() || a.headHeight() == 0 || y != 0 {
+	if !a.roomBackAt(y) {
 		return false
 	}
 	a.closeRoom()
 	return true
+}
+
+// roomBackAt is that same test with nothing done about it, so the pointer can ask
+// what the press asks and the row can light on exactly the cells a click acts on
+// (hover.go's law). The ✕ is claimed one rung earlier and never reaches here
+// (stop.go's [app.stopMarkAt]).
+func (a *app) roomBackAt(y int) bool {
+	return a.roomOpen() && a.headHeight() != 0 && y == 0
 }
 
 // roomHeadWord is the header's left: the node's mark, the trail, and the three

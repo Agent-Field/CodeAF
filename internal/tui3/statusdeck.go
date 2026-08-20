@@ -97,7 +97,19 @@ func (a *app) statusDeck(width int) []string {
 	// not this frame had room to say so — and here the room it has is the sheet,
 	// where the same clocks paint the same segments.
 	a.freshen(a.telemetry(hudWide))
-	return []string{a.deckTopRow(width), a.deckModelRow(width)}
+	rows := []string{a.deckTopRow(width), a.deckModelRow(width)}
+	// THE ROW UNDER THE POINTER LIGHTS WHOLE, which is this deck's own bargain read
+	// back off [app.deckPress]: every cell of these two rows opens something — the
+	// chip its picker, every other cell the sheet — so there is no part of either
+	// row a band would be promising a door it does not have (hover.go's law). It is
+	// the row and not the chip for the same reason the press takes the whole row: a
+	// gap that fell through is a gap that punishes a finger for being a finger.
+	for i := range rows {
+		if a.hoveringDeck(i) {
+			rows[i] = a.hoverRow(rows[i], width)
+		}
+	}
+	return rows
 }
 
 // deckTopRow is row 1: the session's name against its spend and its context.

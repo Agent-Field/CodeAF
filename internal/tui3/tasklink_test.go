@@ -83,7 +83,7 @@ func TestTheTaskLinkGrammarRecognizesOnlyWhatNamesATask(t *testing.T) {
 		{"inside a URL", "See https://example.com/task 7 for it.", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			out, links := linkifyTasks(tc.text, pal, look)
+			out, links := linkifyTasks(tc.text, pal, look, -1)
 			if len(links) != len(tc.want) {
 				t.Fatalf("%q produced %d links, want %d: %q", tc.text, len(links), len(tc.want), plain(out))
 			}
@@ -121,7 +121,7 @@ func TestTaskLinksSkipCode(t *testing.T) {
 	// A FENCED LINE. prose draws every row of a block behind one hairline, which
 	// is the mark this pass reads (prose/code.go).
 	fenced := "  " + tokens.GlyphCodeGutter + " run(\"task 7\")"
-	if out, links := linkifyTasks(fenced, pal, look); len(links) != 0 || out != fenced {
+	if out, links := linkifyTasks(fenced, pal, look, -1); len(links) != 0 || out != fenced {
 		t.Fatalf("a fenced line grew %d links: %q", len(links), plain(out))
 	}
 
@@ -135,7 +135,7 @@ func TestTaskLinksSkipCode(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatal("prose rendered nothing")
 	}
-	out, links := linkifyTasks(rows[0], pal, look)
+	out, links := linkifyTasks(rows[0], pal, look, -1)
 	if len(links) != 1 {
 		t.Fatalf("the code span and the prose were not told apart: %d links in %q", len(links), plain(out))
 	}
@@ -147,7 +147,7 @@ func TestTaskLinksSkipCode(t *testing.T) {
 
 	// AND WHERE THERE IS NO PLANE THE BACKTICKS COME BACK (prose/inline.go), so
 	// the same reference is masked by the backticks instead.
-	if out, links := linkifyTasks("Run `task 7` please.", pal, look); len(links) != 0 {
+	if out, links := linkifyTasks("Run `task 7` please.", pal, look, -1); len(links) != 0 {
 		t.Fatalf("a backticked reference was linked: %q", plain(out))
 	}
 }
@@ -160,7 +160,7 @@ func TestATaskLinkRestoresTheInkAroundIt(t *testing.T) {
 	pal := newPalette(tokens.ANSI256, false)
 	painted := pal.ink("before task 7 after")
 
-	out, links := linkifyTasks(painted, pal, look)
+	out, links := linkifyTasks(painted, pal, look, -1)
 	if len(links) != 1 {
 		t.Fatalf("the painted row produced %d links: %q", len(links), plain(out))
 	}
@@ -179,7 +179,7 @@ func TestATaskLinkRestoresTheInkAroundIt(t *testing.T) {
 
 	// AND IT IS IDEMPOTENT: the pass over its own output is the same output,
 	// which is what makes a re-render at the same width a no-op.
-	again, links := linkifyTasks(out, pal, look)
+	again, links := linkifyTasks(out, pal, look, -1)
 	if again != out || len(links) != 1 {
 		t.Fatalf("the pass is not idempotent:\n%q\n%q", out, again)
 	}
@@ -187,7 +187,7 @@ func TestATaskLinkRestoresTheInkAroundIt(t *testing.T) {
 	// A TERMINAL THAT DRAWS NO SGR KEEPS THE ROW AND KEEPS THE DOOR: no ink to
 	// spend, and the columns are recorded all the same.
 	bare := newPalette(tokens.NoColor, false)
-	out, links = linkifyTasks("before task 7 after", bare, look)
+	out, links = linkifyTasks("before task 7 after", bare, look, -1)
 	if out != "before task 7 after" || len(links) != 1 {
 		t.Fatalf("a colourless row lost its link: %q (%d links)", out, len(links))
 	}
