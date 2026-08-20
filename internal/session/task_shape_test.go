@@ -61,19 +61,21 @@ func settled(t *testing.T, ran <-chan uint64) {
 
 const (
 	shapedAsk        = "write a blog post about our launch"
+	shapedTitle      = "launch post for existing users"
 	shapedAcceptance = "The post is at blog/launch.md and names the three features by their shipped spelling."
 )
 
 // shapedAnswer is what a shaper that did its job returns: the person's sentence
-// quoted whole, and the brief written around it.
-var shapedAnswer = `{"brief":"The ask, in their words: \"` + shapedAsk +
+// quoted whole, the brief written around it, and the name the rail will call it.
+var shapedAnswer = `{"title":"` + shapedTitle +
+	`","brief":"The ask, in their words: \"` + shapedAsk +
 	`\". Write it for people who already use the product. No opening that restates the ` +
 	`question, no three-item lists, no sentence that would be true of any launch.",` +
 	`"acceptance":"` + shapedAcceptance + `"}`
 
-// THE NODE IS ADMITTED WITH THE SHAPED BRIEF, and everything a person reads is
-// still their own words: the roster's title, the summary under it, and the
-// request the worker is told outranks anything a model wrote.
+// THE NODE IS ADMITTED WITH THE SHAPED BRIEF AND THE SHAPED NAME, and the two
+// things a person reads underneath are still their own words: the summary under
+// the row, and the request the worker is told outranks anything a model wrote.
 func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(shapedAnswer), nil
@@ -105,11 +107,12 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	if node.spec.request != shapedAsk {
 		t.Fatalf("the request is %q, want the person's own sentence", node.spec.request)
 	}
-	// AND THE ROW READS AS WHAT THEY TYPED. A title drawn from the shaped brief
-	// would put a model's opening sentence on the rail under work somebody asked
-	// for in six words.
-	if title != shapedAsk || node.spec.title != shapedAsk {
-		t.Fatalf("title = %q / %q, want the person's words", title, node.spec.title)
+	// AND THE ROW IS NAMED BY THE SAME ANSWER. The rail draws three words, and
+	// the first three words of a typed sentence are how somebody cleared their
+	// throat — "write a blog" — so the shaper that has already read the work
+	// closely enough to brief a worker about it names it in the same breath.
+	if title != shapedTitle || node.spec.title != shapedTitle {
+		t.Fatalf("title = %q / %q, want the shaped name %q", title, node.spec.title, shapedTitle)
 	}
 	if node.spec.summary != shapedAsk {
 		t.Fatalf("summary = %q, want the person's words", node.spec.summary)
@@ -199,8 +202,11 @@ func TestAShaperThatCannotAnswerLetsThePersonsWordsThrough(t *testing.T) {
 			if node.spec.acceptance != taskPersonAcceptance {
 				t.Fatalf("acceptance = %q, want the plain one", node.spec.acceptance)
 			}
+			// AND THE NAME FALLS BACK TO THEIR OWN OPENING WORDS. There is no
+			// shaped title when nothing shaped anything, and the mechanical cut is
+			// what this path has always had to stand on.
 			if title != shapedAsk {
-				t.Fatalf("title = %q", title)
+				t.Fatalf("title = %q, want the person's words", title)
 			}
 			// AN EMPTY ANSWER IS NOT REPAIRED, and neither is a call that never
 			// landed: the second request would ask the identical question of the
@@ -209,6 +215,47 @@ func TestAShaperThatCannotAnswerLetsThePersonsWordsThrough(t *testing.T) {
 				t.Fatalf("%d requests, want %d", got, tc.requests)
 			}
 		})
+	}
+}
+
+// THE NAME COSTS NO SECOND CALL, and it is bounded and cleaned by the same hand
+// that cleans the session's own ([cleanTitle]): a model asked for a short
+// lowercase name answers "Title: …", or quotes it, or welds it into a slug, at
+// the same rates whichever prompt asked.
+func TestTheShapedNameIsCleanedAndIsSurvivableWhenAbsent(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer, want string
+	}{
+		{"a plain name", `{"title":"launch post","brief":"do it","acceptance":"checkable"}`, "launch post"},
+		{"a labelled one", `{"title":"Title: launch post","brief":"do it","acceptance":"c"}`, "launch post"},
+		{"a quoted one", `{"title":"\"launch post\"","brief":"do it","acceptance":"c"}`, "launch post"},
+		{"one that stopped", `{"title":"launch post.","brief":"do it","acceptance":"c"}`, "launch post"},
+		{"a welded one", `{"title":"launch_post_draft","brief":"do it","acceptance":"c"}`, "launch post draft"},
+		// NO NAME IS NOT A FAILED ANSWER. The brief is the field no default can
+		// stand in for; a name has [taskPersonTitle] behind it, so a shaper that
+		// answered with two fields where three were asked for costs a good name
+		// and nothing else.
+		{"none at all", `{"brief":"do it","acceptance":"checkable"}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shaped, ok := parseShapedBrief(tc.answer)
+			if !ok {
+				t.Fatalf("%q was not read as an answer", tc.answer)
+			}
+			if shaped.Title != tc.want {
+				t.Fatalf("title = %q, want %q", shaped.Title, tc.want)
+			}
+		})
+	}
+	// AND A MISSING NAME REACHES THE RAIL AS THEIR OWN OPENING WORDS, cut the way
+	// this path has always cut them, at BOTH doors — a single task and an adaptive
+	// run started from one sentence must never end up under two different names.
+	long := "please have a look at why the nightly build keeps falling over on port b"
+	if got := taskName("", long); got != "please have a look at why the nightly" {
+		t.Fatalf("the fallback name is %q", got)
+	}
+	if got := taskName("  port b nightly build failures  ", long); got != "port b nightly build failures" {
+		t.Fatalf("the shaped name is %q", got)
 	}
 }
 
@@ -272,8 +319,8 @@ func TestTheAdaptiveTaskShapesItsBriefToo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title != shapedAsk {
-		t.Fatalf("title = %q, want the person's words", title)
+	if title != shapedTitle {
+		t.Fatalf("title = %q, want the shaped name %q", title, shapedTitle)
 	}
 	// The run's REQUEST is the raw sentence, recorded before the shaping call and
 	// from what they typed: it is the one thing on this path no model may write.

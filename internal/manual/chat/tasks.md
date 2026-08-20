@@ -61,7 +61,14 @@ So the brief in the task's room really is longer than what you typed, and **the 
 showing you the truth** — that is the brief the worker read. Nothing shorter was sent and
 nothing was kept back.
 
-`shaping the brief…` is the note on screen while that call runs. It waits up to 25 seconds.
+`shaping the brief…` is the line on screen while that call runs, and it is **alive**: it
+carries the same spinning braille mark and the same climbing clock a running tool call and
+a running compaction carry, so it reads as `⠙ shaping the brief… · 6s`. The clock is
+dropped under a second. The line disappears the moment the task starts. It waits up to 25
+seconds.
+
+A still line here would mean something is wrong. If the mark is not turning, aforge is not
+waiting on the shaper — look for the task's own row on the roster instead.
 
 **If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
 answer that was not readable — the task starts with exactly your sentence and the plain
@@ -82,9 +89,8 @@ this work came out of. Where anything below reads differently from it, their wor
 was asked for.”* That is a rule the worker reads: where the shaped brief and your sentence
 disagree, yours wins. So a shaper that overreached is overruled by the document itself.
 
-Two more things stay yours. **The title on the roster is made from the words you typed**, not
-from the shaped brief — the row reads as the thing you asked for. And the short summary
-beside it is the first line of what you typed.
+**The short summary beside the row is the first line of what you typed**, word for word.
+The title above it is not — see *Why my task is called something I did not type*.
 
 What shaping is allowed to do is settle what you left open — which file, which format, how
 long, which of two readings — and it must say in the brief that it decided, so you can see
@@ -93,6 +99,36 @@ it in the room. What it is told not to do is invent scope you did not ask for.
 The same guidance reaches briefs the conversation model writes with `propose_task`, but as
 part of that tool rather than as a second call: it already has the whole conversation, so
 nothing needs to be re-read for it.
+
+## Why my task is called something I did not type — who names a task, and can I rename it
+
+The name on the roster is written by a model, not cut out of your sentence.
+
+The roster draws **three words**, and the first three words of a typed sentence are almost
+never the useful ones — “can you have…”, “please look into…”, “write me a…”. Every task
+would be named after the way you cleared your throat, and a column of them would be
+unreadable. So the same call that shapes the brief also names the work: it has just read
+the job closely enough to brief a worker about it, and it answers with a short lowercase
+name for the thing that will exist when the job is done — `frieren pdf summary`,
+`nil-map crash in the reconciler`. It is asked for at most six words and the identifying
+ones first, because only the first two or three are usually on screen.
+
+**This costs nothing extra.** It is one more field in an answer aforge was already paying
+for and already waiting on — there is no second call and no second wait.
+
+**Where no model named it, your own words are used**, cut to the first eight of the first
+line. That is what happens when shaping could not run at all: no model resolved for the
+`shaper` role, a timeout, an unreadable answer. So a task named exactly what you typed is
+usually a sign the shaper did not run.
+
+**There is no command to rename a task.** The name is settled when the work is admitted and
+does not change afterwards. What you can always see is the summary underneath it, which is
+the first line of what you typed, word for word — and the room holds your whole sentence
+under `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS`. If a name is wrong, nothing about
+the work is wrong with it: the worker read the brief, not the name.
+
+Tasks the conversation proposes with `propose_task` are named by the model in the same
+breath, as an argument to that tool rather than by this call.
 
 ## Stopping the adaptive-or-single question — making adaptive or single the default
 
