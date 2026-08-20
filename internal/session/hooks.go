@@ -198,6 +198,11 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	plane.register(&changeLedger{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
+	// The error→fix sidecar hangs one more piece of turn state (fixrecall.go).
+	// It is registered LAST and its position carries no argument, because
+	// episode-init is the one hook whose order cannot matter: every citizen there
+	// writes its own field on a struct nobody else has read yet.
+	plane.register(fixMemory{agent: a})
 	// The write scope runs LAST of the pre-action citizens, and only ever
 	// refuses: an agent with no scope (every agent but a node of an adaptive
 	// run) is one slice length away from being where it was before this
@@ -225,6 +230,10 @@ type episode struct {
 	// changes is what this turn's successful edits and writes touched
 	// (recovery.go), and what a revert would restore.
 	changes *fileLedger
+	// fixes is the error→fix lane: what has failed on each hand this turn, so
+	// that the next call on that hand can be read as the fix or as the same
+	// failure again (fixrecall.go).
+	fixes *fixLane
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.
