@@ -511,10 +511,14 @@ writes one note in the conversation: `room unavailable — this session has no t
 | its row on the roster | nothing is marked | that task's row wears a colour band and an accent title |
 | clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
+| what `↑`/`↓` do | walk your history, then select a tool row, then scroll | the same walk through **the same history** — steered lines are in it — then scroll the page |
+| what `esc` does | interrupts the running turn | leaves the room. It never interrupts and never stops work |
+| how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top line | none | the focus header, and the family lines under it |
-| legend word | the workspace path and branch | `room · esc/←← main` |
+| legend word | the workspace path and branch | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the model picker | inert — the picker moves the conversation |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
@@ -539,6 +543,40 @@ it, where `esc` still leaves.
 Under it, dim and indented, come up to three more pinned lines saying where this task sits
 in its family — see *Who started this task, and what it handed out*.
 
+## Typing in a task's room — the up arrow, editing what you sent, and escape
+
+The box in a room is the same box as the one in the main thread, and it behaves the same
+way. There is no separate "steer widget" with rules of its own.
+
+**`↑` brings back what you typed, so you can edit it and send it again.** Over an empty
+box, or with the caret on the first line of what you are writing, `↑` walks your own
+history newest first — this directory's prompts before everything else — and `↓` walks
+forward again until your own half-written draft comes back untouched. It is one list,
+shared with the main thread: **a line you steered into a task joins your history**, so
+`↑` in the room brings back the last thing you said to the task, and `↑` in the thread
+reaches it too. A line the task refused (see *the steer guard*) never joins it — those
+words went nowhere, and they are still sitting in your box.
+
+Inside a multi-line message `↑` and `↓` move the caret between lines first, exactly as
+they do in the main thread. With **no history at all** — a fresh machine, or input
+history switched off in the settings panel — `↑` and `↓` fall through to scrolling the
+page one row, which is what they used to do always.
+
+**Scrolling the page** is `pgup`/`pgdown` and the mouse wheel, and those are never taken
+by anything else.
+
+**`esc` in a room is the way out and nothing else.** It leaves the page and puts the
+thread back exactly as it was. It does **not** interrupt the running turn the way `esc`
+does out in the thread — leaving is the first press, and the `esc` after that one
+interrupts. And it never stops the task: stopping is `x`, which raises a card you have to
+answer, because a stopped task cannot be un-stopped. The legend at the bottom of the
+frame always says which of these the next `esc` is: `room · esc/←← main` normally, and
+`room · esc your line back` for as long as a history walk is on, because during a walk
+`esc` gives your own draft back before the room's own `esc` gets the key.
+
+`enter` steers. Nothing is ever held above the box inside a room — the waiting-message
+machinery belongs to the main thread, since a task reads what you send at its next step.
+
 ## Reading a task's room, and its frozen clock
 
 Inside a task's room the page is built from the same blocks the conversation is made of, so
@@ -547,10 +585,11 @@ steered wears your own hue. History comes off the task's journal, capped at the 
 blocks; a missing or unreadable journal is not an error — the room opens on the live edge
 instead. When the task has landed, a foot line reads `task finished — esc to return`.
 
-`↑`/`↓` over an empty box scroll a line, `pgup`/`pgdown` a page, and reaching the bottom
-re-sticks to the live edge. `ctrl+b` freezes the room's rows for copying — one known
-wrinkle: leaving copy mode rejoins the conversation's live edge, so freezing a room while
-the conversation was scrolled up loses that scroll.
+`pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
+to the live edge. `↑`/`↓` walk your history first and only scroll a line when there is no
+history to walk — see *Typing in a task's room*. `ctrl+b` freezes the room's rows for
+copying — one known wrinkle: leaving copy mode rejoins the conversation's live edge, so
+freezing a room while the conversation was scrolled up loses that scroll.
 
 The task's elapsed clock freezes while you stand in its room. That number exists to ask
 whether you should go and look; being there is the answer. Nothing is stopped, only
@@ -796,9 +835,10 @@ vendors share a tail, in which case all of them keep their full id; a chip that 
 is dropped rather than cut, and a row that would show one chip is not drawn at all.
 
 Name nothing and the task runs on `task.model` if you have set it, and otherwise on the
-model the conversation is on right now — read live, so switching the conversation's model
-moves it too. The resolved id is remembered for the task's whole life and survives a
-restart.
+model the conversation was on **when the task was admitted**. The id is settled at that
+moment and remembered for the task's whole life — it survives a restart, and switching the
+conversation's model afterwards does not move work that was already handed over. This
+holds for `/task` and for a task the model proposed alike.
 
 ## When no model matches the word you used
 
