@@ -509,8 +509,8 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 // taskCardShown is a path as this card prints it: the home directory
 // abbreviated to "~" and NOTHING ELSE abbreviated at all.
 //
-// It is deliberately not [shortPath]'s fish-style initials, which the legend
-// spends because the legend is one line beside a status row. This card is the
+// It is deliberately not [shortPath]'s fish-style initials, which the status
+// sheet spends because a sheet row is one line at forty-four columns. This card is the
 // whole frame, and the question it is answering is WHERE the work went — an
 // answer of `~/.a/v3/p/-U-s/t/…jsonl` is a path nobody can retype, on a screen
 // with room for the real one. What it does not fit in is cut by [fit], and the

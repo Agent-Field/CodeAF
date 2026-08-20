@@ -119,9 +119,13 @@ icon, no "connected" word and no extra segment in the status line.
 The workspace is written with the machine in front of it and a colon between, the way you
 would type it into `scp`:
 
-- `devbox:/s/c/app` in the legend under the input box
+- `devbox:/s/c/app` on the status sheet's `place` row
 - `devbox:app` in the status line's place segment
 - `devbox:/srv/code/app` in full in `/status`
+
+The legend under the input box says the machine too, but as a segment of its own rather
+than as a path prefix, because that line carries the conversation's name and not the
+folder: `devbox · porting the parser`.
 
 `/status` also names the session file with its machine in front of it, because that is a
 path you may want to copy.

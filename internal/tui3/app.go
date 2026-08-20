@@ -542,7 +542,8 @@ type app struct {
 	ringTurn int
 
 	// branch is the git branch the workspace is on and branchDirty whether it
-	// has uncommitted work — the right half of the input's legend (render.go).
+	// has uncommitted work — what follows the conversation's name at the left
+	// end of the input's legend (render.go's [app.branchWord]).
 	// Empty branch means "no answer", which is what a directory that is not a
 	// repository, a git that is not installed and a probe that timed out all
 	// look like from here.
@@ -552,7 +553,7 @@ type app struct {
 	// a repository and the surface can be driven with no git at all. Nil is
 	// [gitHead].
 	gitProbe func(dir string) (string, bool, bool)
-	// tilde is what "~" abbreviates in the legend's path, read once at boot.
+	// tilde is what "~" abbreviates in the place's path, read once at boot.
 	// It is NOT the home surface (home.go) — this is one string, the person's
 	// home directory, and it was called `home` until a screen by that name
 	// existed.
