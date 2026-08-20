@@ -181,6 +181,60 @@ is put at the top of the task's own instructions. The task never writes memories
 of its own: a family of eight tasks would otherwise be eight writers on one
 brain, all blind to each other.
 
+## Do you remember errors and how they were fixed?
+
+Yes, and it is a separate thing from everything above. When a command fails and
+the next run of that same tool works, the pair is written down: what the failure
+said, and the command that made it go away. No model is asked anything to do it
+— a failure followed by a success is something aforge watched happen.
+
+The next time that same failure comes back, **one line is added to the bottom of
+the failed row**, and it is the only place you will ever see this:
+
+```
+this exact error was fixed 7/8 times before · what worked: make clean && make build
+```
+
+7 is how many times that command has worked; 8 is how many times it has been
+tried. Only **one** suggestion is ever offered — the one with the best record —
+and nothing at all is said when the record is worse than three tries in five,
+because a coin toss dressed as advice is worth less than silence.
+
+This only happens **after** something has already failed. Nothing is looked up
+before a command runs, and a command that works is never annotated.
+
+Only `bash`, `grep` and `find` are remembered this way, because their answer is
+something you could run again. A `read` that could not find a file is not: the
+"fix" would be one particular path, right for that call and wrong for every
+later one.
+
+## Why did it say this error was fixed before, and how did it know?
+
+Because it watched it happen here, on this machine, in an earlier conversation
+or an earlier task — nothing is shipped with aforge and nothing is learned from
+anybody else's work.
+
+Two files hold it, both called `fixes.json`. One sits beside this project's
+conversations and is asked first, because a fix is usually about this
+repository — its toolchain, its build tags, the one `grep` on this machine that
+will not take that pattern. The other sits at the top of aforge's own folder and
+is what makes the first failure in a brand new checkout cheap. `AFORGE_HOME`
+moves both, with everything else aforge keeps.
+
+**Tasks write into the same project file.** A worker hammering a build in its own
+worktree is where most of this comes from, and a private file nobody ever read
+would waste it.
+
+The counts are a confidence rather than a tally: they are **halved every week**,
+so something confirmed once months ago drops out entirely and something
+confirmed again this morning rises. A suggestion that gets offered and then
+fails on the same error is counted against itself, and stops being offered once
+its record falls.
+
+There is no command for this and no panel: it is not part of `/memory`, nothing
+about it appears there, and turning memory off does not turn it off. The one
+line on a failed row is the whole of what it ever says.
+
 ## I used to have a memory.md file
 
 Earlier builds kept memory as one file of lines at `~/.aforge/v3/memory.md`,

@@ -2775,7 +2775,13 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 	}
 
 	return newAgent(Config{
-		memoryBrief:    a.memoryBlock(ctx, node.assembledBrief()),
+		memoryBrief: a.memoryBlock(ctx, node.assembledBrief()),
+		// The node learns from, and into, the PROJECT'S error→fix file rather
+		// than one of its own (fixstore.go states why a node cannot find it
+		// alone). A worker hammering a build in a worktree is the richest source
+		// of error→fix pairs this product has, and every one of them would be
+		// lost in a private file nobody reads.
+		fixesDir:       a.config.fixesBucket(),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,

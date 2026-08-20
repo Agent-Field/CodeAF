@@ -1082,6 +1082,14 @@ type Config struct {
 	// does — and a node is handed the WORDS rather than the store, so a family
 	// of eight nodes cannot become eight writers on one brain.
 	memoryBrief string
+	// fixesDir is the project bucket the error→fix sidecar keeps its file in
+	// (fixstore.go), and it is set only when this agent is a NODE. A node's
+	// session file is a journal inside its parent's place rather than a place of
+	// its own, so it cannot derive the bucket for itself; handed one, a family of
+	// eight workers and the conversation that spawned them all learn from the
+	// same file. It is private for memoryBrief's reason: no surface sets it, the
+	// executor does (task_run.go, orchestrate.go).
+	fixesDir string
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).
@@ -1227,6 +1235,15 @@ type Agent struct {
 	// compaction pass that must not need the session lock to render a block.
 	stateOnce  sync.Once
 	stateStore *stateStore
+
+	// fixShelf is the error→fix sidecar's pair of files — this project's and
+	// this machine's (fixstore.go). It is built on first use through
+	// [Agent.fixShelfFor] for stateStore's reason: a conversation in which
+	// nothing ever fails should open no file at all. Like the stores above it
+	// sits outside mu and holds its own lock, because its writers are the tool
+	// calls of one batch running in parallel.
+	fixOnce  sync.Once
+	fixShelf *fixShelf
 
 	// cardOnce / cardStore are the STATE CARD (card.go): what the work is for
 	// and where it stands, folded in by the post-turn extractor and rendered
