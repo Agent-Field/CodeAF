@@ -826,9 +826,10 @@ vendors share a tail, in which case all of them keep their full id; a chip that 
 is dropped rather than cut, and a row that would show one chip is not drawn at all.
 
 Name nothing and the task runs on `task.model` if you have set it, and otherwise on the
-model the conversation is on right now — read live, so switching the conversation's model
-moves it too. The resolved id is remembered for the task's whole life and survives a
-restart.
+model the conversation was on **when the task was admitted**. The id is settled at that
+moment and remembered for the task's whole life — it survives a restart, and switching the
+conversation's model afterwards does not move work that was already handed over. This
+holds for `/task` and for a task the model proposed alike.
 
 ## When no model matches the word you used
 
