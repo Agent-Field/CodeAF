@@ -156,6 +156,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
 	family := a.newOrchestrateFamily(goal, plannerModel, id)
+	// AND THE NODES' MODEL GOES WITH IT, settled here for the run's whole life
+	// the way a task's is settled at admission: every row this family publishes
+	// says which model is doing the work, and the answer must not be able to move
+	// under a `/model` switch half way through the run.
+	family.worker = worker.model()
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
@@ -862,6 +867,25 @@ type orchestrateExec struct {
 	goal    string
 }
 
+// model is the id this run's nodes actually run on: the worker tier's, and the
+// conversation's where nothing resolved one.
+//
+// IT IS ONE FUNCTION BECAUSE TWO PLACES ASK IT — the child agent that is built
+// on it ([orchestrateExec.newChild]) and the roster row that SAYS it is running
+// on it ([orchestrateFamily.publish]) — and a row naming a model its node is not
+// on is exactly the defect this exists to prevent. The run's nodes are the one
+// class of work on this surface whose model genuinely differs from the
+// conversation's with the shipped crew configured, and they were the one class
+// that published nothing.
+func (e *orchestrateExec) model() string {
+	if model := strings.TrimSpace(e.call.model); model != "" {
+		return model
+	}
+	e.agent.mu.Lock()
+	defer e.agent.mu.Unlock()
+	return e.agent.model
+}
+
 // Exec runs one node and hands back its digest.
 //
 // A NODE IS A CHILD AGENT, which is the same answer task_run.go gives and for
@@ -970,12 +994,12 @@ func (e *orchestrateExec) workspace(node orchestrate.Node) (dir string, shared b
 // which is the one thing a task node has no equivalent of.
 func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, error) {
 	a := e.agent
+	// Asked before the lock is taken, because [orchestrateExec.model] takes the
+	// same one: this package has a single lock order and nesting it here would be
+	// the first exception to it.
+	model := e.model()
 	a.mu.Lock()
 	parent := a.config
-	model := e.call.model
-	if strings.TrimSpace(model) == "" {
-		model = a.model
-	}
 	window := parent.ContextWindow
 	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {
 		// A window measured for another model is not a fact about this one
@@ -1287,6 +1311,14 @@ type orchestrateFamily struct {
 	// tank is paying for, and with tiers configured it is not the model the
 	// person is talking to ([Snapshot.Planner] says the same thing to the room).
 	model string
+	// worker is what the run's NODES run on, drawn on each of their rows, and it
+	// is a second field rather than the same one because the two are different
+	// models on purpose: one careful call decides what happens, many cheap ones
+	// do it (roles.TierMastermind against roles.TierLow). It is settled once, at
+	// the run's start, from the same [orchestrateExec.model] the child agents are
+	// built with. Empty on a family nobody handed one to, which publishes nothing
+	// — the emptiness law, and what every test constructing a bare family gets.
+	worker string
 
 	mu   sync.Mutex
 	ids  map[string]uint64
@@ -1370,6 +1402,13 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			Title:   clip(firstLine(node.Goal), hintLimit),
 			State:   state,
 			Stopped: stopped,
+			// WHAT THIS NODE IS RUNNING ON. It was missing, and it was missing on
+			// exactly the rows it mattered most for: a run's nodes are the one class
+			// of work whose model genuinely differs from the conversation's under the
+			// shipped crew, so a person who opened one of these rooms to check that
+			// their crew was doing anything found the model line blank. The root row
+			// beside them has always carried the planner's ([Agent.RunOrchestrate]).
+			Model:   f.worker,
 			Report:  orchestrateNodeReport(node),
 			CostUSD: node.Cost,
 		})

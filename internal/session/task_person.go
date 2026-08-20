@@ -50,6 +50,26 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	work, acceptance := a.shapeBrief(ctx, brief)
 	graph := a.graph()
 	id := graph.reserve()
+	// THE MODEL IS SETTLED HERE, AT ADMISSION, and frozen with the rest of the
+	// spec — which is what [taskSpec.model] has always said of itself and what
+	// this one path did not do. A person's task named no model, so the field was
+	// left empty and the id was picked much later, when the worker was actually
+	// spun up (task_run.go's [Agent.newTaskAgent] falling to a.model). Two things
+	// were wrong with that. A `/model` switch between starting the task and the
+	// worker reaching the front of the queue moved the work onto a model nobody
+	// chose it for; and an empty field is an empty [TaskNotice.Model], so the
+	// node's own room had nothing to say about what was running it.
+	//
+	// The word is empty because a person's task names no model, and
+	// [Agent.resolveTaskModel] answers that with the configured task model or the
+	// conversation's own — the same ladder a proposal's blank `model` argument
+	// takes, so both doors freeze the same id at the same moment.
+	//
+	// WHAT THIS DOES NOT CLAIM is anything below the first node. A task may spawn
+	// work of its own and that work resolves its own model when it is admitted;
+	// this is the id THIS node runs on, which is the only one anybody can be told
+	// up front.
+	//
 	// THE REQUEST STAYS THE PERSON'S SENTENCE whatever the shaper wrote, and
 	// [composeBrief] prints it above the work under the heading that says whose
 	// words they are, with the rule that theirs win where the two read
@@ -57,7 +77,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// identical and that same function prints them once.
 	graph.admit(id, taskSpec{
 		title: title, summary: firstLine(brief), request: brief, brief: work,
-		acceptance: acceptance,
+		acceptance: acceptance, model: a.resolveTaskModel("").model,
 	})
 	return id, title, nil
 }

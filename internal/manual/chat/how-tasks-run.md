@@ -384,10 +384,21 @@ member. The task is admitted with one model, never a set. The shortlist is cappe
 the fifth would turn a proposal into a picker.
 
 **If no model was named**, the task runs on `task.model` from settings when that is set,
-otherwise on **the model the conversation is on right now** — read live, so `/model` moves
-it and a task groomed after the switch goes to the new one. `task.model` is profile-only:
-a repository must not be able to send your work and your credit to a model you never
-picked. Blank means the conversation's own model.
+otherwise on **the model the conversation was on at the moment the task was admitted**.
+The id is settled then and **frozen** — a `/model` after that moves the conversation and
+never the work already handed over, so a task that sat in the queue starts on the model
+you launched it with rather than on whatever you have switched to since. A task groomed
+*before* the switch keeps the old model; one started after it gets the new one.
+`task.model` is profile-only: a repository must not be able to send your work and your
+credit to a model you never picked. Blank means the conversation's own model.
+
+**This is a promise about the task, not about everything under it.** A task can start work
+of its own, and each of those settles its own model when *it* is admitted — the only id
+anybody can be told up front is the one the task you asked for is running on. The one
+thing that can move a task off its frozen id is a model with **no tool use**: a task
+cannot run without tools, so aforge swaps once to the small-work class and says so on the
+row — `model <id> has no tools; using <other>` — and from then on the row names the model
+it is really on.
 
 The receipt only names a model when the `model` argument was given. A task that named no
 model is not told which default it got.
@@ -686,7 +697,8 @@ and their reports are put in front of it when it starts. Ids can only point back
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise
-on whatever model the conversation is on at that moment.
+on whatever model the conversation is on at the moment of admission — settled once, then
+frozen for the task's whole life.
 
 **`max_steps`** — how many finished tool calls make one checkpoint. Default **200**. At a
 checkpoint a second look at the evidence decides: progress buys another 200 (up to 1000 in
