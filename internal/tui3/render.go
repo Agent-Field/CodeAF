@@ -447,6 +447,14 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryConnect && e.conn != nil && e.conn.state == connectWaiting {
 		return a.renderEntry(i, e, width)
 	}
+	// AND A TASK COMMAND'S PRE-FLIGHT, for the reason all three of those are not:
+	// `shaping the brief…` carries a spinner and a count-up while the call is out
+	// (taskcommand.go's [app.preflightRows]), and both are functions of the frame.
+	// It rejoins the cache the moment the wait ends, which is the moment the line
+	// is taken away altogether.
+	if a.waiting(e) {
+		return a.renderEntry(i, e, width)
+	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -525,6 +533,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
 	case entryNote:
+		// A WAIT THAT IS STILL RUNNING IS NOT A NOTE YET. The lane's other lines
+		// are facts about work that is over, and a command's pre-flight is the one
+		// thing in it that is still happening — so while it is, it wears the
+		// spinner and the clock every other live row on this surface wears
+		// (taskcommand.go's [preflight]).
+		if a.waiting(e) {
+			return a.preflightRows(e, width)
+		}
 		body := wrap(e.text, width-2)
 		out := make([]string, 0, len(body))
 		for i, line := range body {

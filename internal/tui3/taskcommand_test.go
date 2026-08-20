@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 )
@@ -239,5 +242,92 @@ func TestTheShapingWaitIsShownAndThenTakenAway(t *testing.T) {
 	}
 	if got := lastNote(t, a); !strings.Contains(got, "task 7 started") {
 		t.Fatalf("last note = %q", got)
+	}
+	if a.wait.live() {
+		t.Fatal("the wait's clock outlived the wait")
+	}
+}
+
+// THE WAIT IS ALIVE WHILE IT IS RUNNING, and that is the whole defect: shaping a
+// brief is up to twenty-five seconds of a model call, and the line saying so was
+// a static dim note in the same lane as `⟲ 135.7k cached · saved $0.0069` — a
+// finished fact, sitting under a screenful of other finished facts, while the
+// surface stopped painting altogether. So it wears the braille spinner and the
+// count-up every other genuinely in-flight row on this surface wears.
+func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := taskStartApp(t, f, config.TaskStartSingle)
+	base := time.Now()
+	a.clock = func() time.Time { return base }
+	_ = a.slash("/task write the release notes")
+
+	// SIX SECONDS IN, WITHOUT ANYTHING MARKING THE ROW STALE. The row is kept out
+	// of the cache exactly as a running compaction is, because a cached row is a
+	// still photograph of an animation.
+	a.clock = func() time.Time { return base.Add(6 * time.Second) }
+	line := findRow(t, a, taskShapingNote)
+	if !strings.Contains(line, "· 6s") {
+		t.Fatalf("the wait has no clock: %q", line)
+	}
+	painted := rowHolding(t, a, taskShapingNote)
+	if !strings.ContainsAny(painted, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the wait has no spinner: %q", plain(painted))
+	}
+	// AND THE FRAME KEEPS BEING ASKED FOR. No turn is running while a command
+	// sizes and shapes a brief, so without this the spinner above would never
+	// turn and the clock would never climb.
+	if !a.wait.live() {
+		t.Fatal("the surface stopped painting while the wait was up")
+	}
+	// UNDER A SECOND IT SAYS NOTHING ABOUT ITS LENGTH — the emptiness law, in the
+	// spelling every other live clock on this surface uses.
+	a.clock = func() time.Time { return base }
+	a.touch()
+	if got := findRow(t, a, taskShapingNote); strings.Contains(got, "0s") {
+		t.Fatalf("a wait that has just started is timing itself: %q", got)
+	}
+}
+
+// AND IT IS ONE BLOCK AT EVERY WIDTH. The complaint that produced this was a
+// ragged clump of half-sentences with nothing lined up, so the wait keeps the
+// note lane's hanging indent: the spinner stands where the `· ` would, two
+// cells, and every continuation lines up under the words rather than falling
+// back to column zero.
+func TestTheShapingWaitHangsItsIndentAtNarrowWidths(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := taskStartApp(t, f, config.TaskStartSingle)
+	base := time.Now()
+	a.clock = func() time.Time { return base }
+	_ = a.slash("/task write the release notes")
+	a.clock = func() time.Time { return base.Add(3 * time.Minute) }
+
+	var wrapped bool
+	for _, width := range []int{24, 30, 40, 60} {
+		body := a.preflightRows(&entry{kind: entryNote, text: taskShapingNote}, width)
+		if len(body) == 0 {
+			t.Fatalf("width %d drew no wait at all", width)
+		}
+		wrapped = wrapped || len(body) > 1
+		for i, row := range body {
+			line := plain(row)
+			if got := ansi.StringWidth(line); got > width {
+				t.Fatalf("width %d row %d is %d cells wide: %q", width, i, got, line)
+			}
+			if i == 0 {
+				if !strings.ContainsAny(line[:3], "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+					t.Fatalf("width %d: the first row does not open with the spinner: %q", width, line)
+				}
+				continue
+			}
+			// EVERY CONTINUATION IS INDENTED UNDER THE WORDS, never flush left.
+			if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "   ") {
+				t.Fatalf("width %d row %d lost the hanging indent: %q", width, i, line)
+			}
+		}
+	}
+	// AND THE INDENT ASSERTION ABOVE IS NOT VACUOUS: at least one of those widths
+	// has to have wrapped, or the loop pinned nothing at all.
+	if !wrapped {
+		t.Fatal("no width wrapped the wait, so nothing above tested a continuation")
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 type taskCommandAgent interface {
@@ -145,7 +147,7 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	if preset == config.TaskStartSingle {
 		return a.startTaskDoor(door, "single", brief, "")
 	}
-	a.note(taskSizingNote)
+	a.beginPreflight(taskSizingNote)
 	ctx := a.ctx
 	return func() tea.Msg {
 		parallel, parts, why := door.JudgeDecomposable(ctx, brief)
@@ -164,7 +166,7 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // nothing shaped it, because the note was about the attempt.
 func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea.Cmd {
 	ctx := a.ctx
-	a.note(taskShapingNote)
+	a.beginPreflight(taskShapingNote)
 	return func() tea.Msg {
 		if mode == "adaptive" {
 			id, title, err := door.StartPlannerRun(ctx, brief, hint)
@@ -184,8 +186,96 @@ const (
 	taskShapingNote = "shaping the brief…"
 )
 
-func (a *app) settleSizing()  { a.dropNote(taskSizingNote) }
-func (a *app) settleShaping() { a.dropNote(taskShapingNote) }
+// preflight is the wait a task command is standing in: which of the two notes
+// above is on screen, and the moment it went up.
+//
+// THE DEFECT THIS FIXES: both notes were plain notes, and a note is the lane
+// this surface says FINISHED things in — `exported · …`, `⟲ 135.7k cached ·
+// saved $0.0069`. Dim, static, and cached like every other note (render.go's
+// [app.entryRows]), so `shaping the brief…` was a still photograph for the
+// twenty-five seconds the shaping call is allowed (internal/session's
+// task_shape.go), sitting in a stack of post-hoc telemetry with nothing to
+// distinguish it from the lines above it that were about work already over.
+// Worse, no frame was even being ASKED for while it was up: the seven reasons
+// this surface keeps painting with the model idle ([app.paint]) did not include a
+// command's pre-flight, so the surface genuinely stopped. From where the person sat, a command they had just typed
+// had done nothing and then kept doing nothing.
+//
+// So the wait is drawn the way every other genuinely in-flight thing on this
+// surface is drawn — the braille spinner and the count-up the tool lines and a
+// running compaction already wear (render.go's [app.compactRow]) — and the frame
+// keeps turning while it is up. It borrows both rather than inventing an
+// animation, for [app.compactRow]'s stated reason: somebody who has learned that
+// a spinner means "this is happening right now" has learned it here too, and
+// both turn on the same [spinnerStep] grid so two moving rows never beat against
+// each other.
+type preflight struct {
+	note string
+	at   time.Time
+}
+
+// live reports whether a wait is up. It is the frame's eighth reason to paint.
+func (p preflight) live() bool { return p.note != "" }
+
+// begin puts the wait on screen and starts its clock.
+func (a *app) beginPreflight(note string) {
+	a.wait = preflight{note: note, at: a.now()}
+	a.note(note)
+}
+
+// endPreflight stops the clock and takes the line away. The two halves are one
+// call because they are one fact — this is no longer happening — and a surface
+// that dropped the note while leaving the clock running would keep asking for
+// frames forever on behalf of a row nobody can see.
+func (a *app) endPreflight(note string) {
+	if a.wait.note == note {
+		a.wait = preflight{}
+	}
+	a.dropNote(note)
+}
+
+func (a *app) settleSizing()  { a.endPreflight(taskSizingNote) }
+func (a *app) settleShaping() { a.endPreflight(taskShapingNote) }
+
+// waiting reports whether this note is the wait that is in flight right now,
+// rather than one of the finished facts the same lane carries.
+func (a *app) waiting(e *entry) bool {
+	return a.wait.live() && e.kind == entryNote && e.text == a.wait.note
+}
+
+// preflightRows draws the wait: the spinner, the note's own words, and how long
+// it has been going.
+//
+//	⠙ shaping the brief… · 6s
+//
+// It keeps the note lane's hanging indent — the spinner stands exactly where the
+// `· ` would, two cells, and every continuation lines up under the words — so a
+// wait that wraps at a narrow width is still one block rather than a ragged
+// clump. The count-up is [countUpWord], which floors under a second: a wait that
+// has only just started says nothing about its length, by the emptiness law.
+func (a *app) preflightRows(e *entry, width int) []string {
+	// The linear tier's objection to a spinner is the one it makes on a tool
+	// line: a claim repeated thirty times a second is heard thirty times a second
+	// by a surface being read aloud. A still mark makes it once.
+	mark := tokens.Spinner(a.paints / spinnerStep)
+	if a.linear {
+		mark = glyphRunASCII
+	}
+	line := e.text
+	if word := countUpWord(a.now().Sub(a.wait.at)); word != "" {
+		line += " · " + word
+	}
+	body := wrap(line, width-2)
+	out := make([]string, 0, len(body))
+	for i, row := range body {
+		lead := mark + " "
+		if i > 0 {
+			lead = "  "
+		}
+		out = append(out, a.pal.dim(lead+row))
+	}
+	return out
+}
 
 // dropNote takes the most recent note with this exact text back off the
 // transcript. It is how a line that said what was happening leaves when it has
