@@ -149,7 +149,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+,` | Open the settings panel |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `ctrl+g` | Close the task roster's column, or bring it back. Remembered for the next session. With no roster on the frame it does nothing |
+| `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
 | `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only |
@@ -488,8 +488,10 @@ box, from inside a room, and while the roster holds the keyboard — it is the o
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
 session opens the way you left it, and `ctrl+t` counts as asking for the column back.
-The key falls through and does nothing when there is no roster on the frame to close:
-no tasks at all, or a frame under 100 columns where nothing has raised the overlay.
+The key falls through and does nothing only when there is no roster on the frame to
+close: a frame under 100 columns where nothing has raised the overlay. It works with
+no tasks at all — the column stands empty, saying `no tasks yet`, and an empty column
+is still a column to close.
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for

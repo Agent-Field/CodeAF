@@ -2692,20 +2692,31 @@ func TestEscDeclinesTheProposalRatherThanTheTurn(t *testing.T) {
 	}
 }
 
-// THE RAIL IS PRESENCE: it appears when a node is alive, says which state each
-// node is in, and disappears when the work has come home.
+// THE RAIL IS THE PLACE, NOT THE PRESENCE: it stands from the session's first
+// frame, says what it is for while it is empty, and work fills it rather than
+// raising it (task.go's [app.railShowing]).
 func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	a, _, advance := taskApp(t)
-	if a.railShowing() {
-		t.Fatal("an empty session drew a rail")
+	if !a.railShowing() {
+		t.Fatal("an empty session drew no rail")
 	}
-	if a.bodyWidth() != 200 {
-		t.Fatalf("an empty session charged %d columns for a rail", 200-a.bodyWidth())
+	if a.bodyWidth() != 200-railCols {
+		t.Fatalf("the empty column is not charged against the conversation: body=%d", a.bodyWidth())
+	}
+	// AND IT SAYS WHAT IT IS FOR. Thirty blank columns beside a paragraph read as
+	// a rendering fault, so the empty column carries its one dim label.
+	if rail := plain(strings.Join(a.railRows(10), "\n")); !strings.Contains(rail, railEmptyWord) {
+		t.Fatalf("the empty column does not say %q:\n%s", railEmptyWord, rail)
 	}
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})})
 	if !a.railShowing() {
-		t.Fatal("a running node did not raise the rail")
+		t.Fatal("a running node did not keep the rail standing")
+	}
+	// The label leaves with the emptiness: a column with a row in it needs no
+	// explanation of itself.
+	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, railEmptyWord) {
+		t.Fatalf("the label outlived the emptiness it explains:\n%s", rail)
 	}
 	advance(12 * time.Second)
 	rail := plain(strings.Join(a.railRows(10), "\n"))
@@ -2764,10 +2775,14 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	}
 	// The two kept branches are what remains, and dealing with them is the
 	// person's business — this test only owns the empty case, so it drops them
-	// the way /new does.
+	// the way /new does. The column does NOT leave with them: the place is
+	// permanent, and an emptied column is back to saying what it is for.
 	a.dropTasks()
-	if a.railShowing() {
-		t.Fatal("the rail stayed up with nothing on it")
+	if !a.railShowing() {
+		t.Fatal("/new took the column down with the nodes")
+	}
+	if rail := plain(strings.Join(a.railRows(10), "\n")); !strings.Contains(rail, railEmptyWord) {
+		t.Fatalf("the emptied column does not say %q:\n%s", railEmptyWord, rail)
 	}
 }
 

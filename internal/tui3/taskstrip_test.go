@@ -43,14 +43,20 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 		}
 	}
 
-	// NARROW: no column to lend, so the row is the door.
+	// NARROW: no column to lend, so the row is the door. It costs two rows: the
+	// chips, and the blank row that separates chrome from conversation
+	// (taskstrip.go's [app.stripRows]).
 	for _, width := range []int{99, 80, 44} {
 		a.width = width
 		a.touch()
-		if !a.stripShowing() || a.stripHeight() != 1 {
+		if !a.stripShowing() || a.stripHeight() != 2 {
 			t.Fatalf("at %d columns nothing raised the strip over a running node", width)
 		}
-		text := stripText(a)
+		rows := stripLines(a)
+		if rows[len(rows)-1] != "" {
+			t.Fatalf("at %d columns the strip's last row is not the separating blank:\n%q", width, rows)
+		}
+		text := rows[0]
 		if width >= 80 {
 			for _, want := range []string{"Fix the nil-map", "Write the auth"} {
 				if !strings.Contains(text, want) {
@@ -64,7 +70,8 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 		if got := plain(strings.Split(frame(a), "\n")[0]); !strings.Contains(got, "Fix the nil-map") {
 			t.Fatalf("at %d columns the strip is not the frame's first row:\n%q", width, got)
 		}
-		if a.bodyTop() != 1 {
+		// Both of the strip's rows are budgeted: the chips and the blank under them.
+		if a.bodyTop() != 2 {
 			t.Fatalf("at %d columns the strip is drawn but not budgeted: top=%d", width, a.bodyTop())
 		}
 	}
@@ -100,13 +107,15 @@ func TestTheStripIsOneRowWhateverTheWorkIsShapedLike(t *testing.T) {
 	for i := uint64(1); i <= 3; i++ {
 		a.taskUpdate(update(i, "node number "+itoa(int(i)), session.TaskRunning, session.TaskNotice{}))
 	}
+	// Two rows always: the chips, then the separating blank — never a row per
+	// node or per family.
 	rows := stripLines(a)
-	if len(rows) != 1 || a.stripHeight() != 1 {
+	if len(rows) != 2 || a.stripHeight() != 2 || rows[1] != "" {
 		t.Fatalf("a flat session drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
 	a.tasks[2].parent = itoa(1)
 	rows = stripLines(a)
-	if len(rows) != 1 {
+	if len(rows) != 2 || rows[1] != "" {
 		t.Fatalf("a family grew the strip to %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
 	for _, want := range []string{"node number 1", "node number 2", "node number 3"} {

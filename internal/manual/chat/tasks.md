@@ -331,7 +331,12 @@ It appears only while something is running, and goes away the moment nothing is.
 frame at least 24 columns wide and 6 rows tall. It is the narrow-frame door: wherever the
 roster stands — as the right column or open over the whole frame — the strip stands down.
 A column you closed with `ctrl+g` is a roster standing down, so the strip comes back and
-running work stays reachable.
+running work stays reachable. The one exception is a running sub-harness: its chip raises
+the strip even beside a standing roster, because the roster's rows are tasks and a harness
+run is not one — the chip is the only place on the screen that run exists.
+
+A blank line sits under the chips, separating them from the first line of conversation.
+It is part of the strip and leaves with it.
 
 Order: running first, then work that needs you, then idle. Parked and finished work never
 appear on it — the strip is the live set, the roster is the history.
@@ -356,12 +361,15 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 
 The roster is a column on the right holding every task this session has admitted, not just
 the live ones. It is the session's record of its own work. Work finishing never puts it
-away. Two things do: `/new`, which takes the tasks with it, and `ctrl+g`, which closes the
-column and leaves the work exactly where it was. The bottom line of the column says so.
+away, and neither does `/new` — that takes the tasks with it and leaves the column standing
+empty again. One thing closes it: `ctrl+g`, which takes the column off the frame and leaves
+the work exactly where it was. The bottom line of the column says so.
 
-It appears as soon as one task exists, at a frame width of 100 columns or more — 30 columns
-wide from 120 up, a slim 24 columns from 100 to 119. Under 100 columns there is no column,
-and `ctrl+t` opens the same roster over the body instead.
+The column is permanent: it stands from the session's first frame, before any task exists,
+at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
+from 100 to 119. Empty, it carries one dim line, `no tasks yet`, and work fills it rather
+than raising it. Under 100 columns there is no column, and `ctrl+t` opens the same roster
+over the body instead once tasks exist.
 
 The roster is a forest. Each root task is followed by its whole family, with children
 joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
@@ -420,13 +428,14 @@ With the column closed, work is still visible:
   that task's room, or the `+N` for the whole roster.
 - The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
   this session has any tasks at all, running or not. A session that has run nothing says
-  nothing there — there is no column to miss.
+  nothing there — the column you closed was empty, and `ctrl+g` still brings it back.
 - `ctrl+t` still works: asking for the roster brings the column back and gives it the
   keyboard in one press.
 
-`ctrl+g` does nothing, and is not swallowed, when there is no roster on the frame to
-close: no tasks at all, or a frame under 100 columns where nothing has raised the
-roster over the body.
+`ctrl+g` works whether or not the session has tasks — the column stands empty, so an
+empty column is still a column to close. It does nothing, and is not swallowed, only
+when there is no roster on the frame at all: a frame under 100 columns where nothing
+has raised the roster over the body.
 
 ## Using the roster from the keyboard
 
