@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// THE TASK PAGE: /tasks, ctrl+. , or the column's own "view more" line — the
+// THE TASK PAGE: /history, ctrl+. , or the column's own "view more" line — the
 // SECOND of the two fullscreen pages this surface draws at every width, and the
 // settings panel (settings.go) is the first. The status deck and the tool detail
 // take the frame as well, but only at [tierPhone].
@@ -42,10 +42,18 @@ import (
 //   - IT READS THE SAME SNAPSHOT THE "@" LIST READS ([app.comp].tasks, loaded by
 //     [app.loadTasks]). One read, one cache, one answer to "what has this project
 //     run" — a page that fetched its own copy would be a second answer with its
-//     own staleness.
+//     own staleness. The COLUMN reads it too now ([app.railRecord]), which is the
+//     same one-read law with a third reader on it.
+//   - IT IS TYPED AT. Every printable key builds a filter over both sections at
+//     once ([app.taskSheetFilter]), because a record of four hundred tasks is
+//     reached by remembering a word of the title and by nothing else. esc backs
+//     out of the filter first and closes the page second, which is the settings
+//     panel's own layering ([app.sheetKey]).
 //
-// WHAT IT DOES NOT DO is replace the column. The column is a glance and this is
-// an errand: you come here, find the thing, and leave.
+// WHAT IT DOES NOT DO is replace the column. The column carries the same record
+// under its live rows — dulled, and capped at [railRecordMax] — and this is where
+// a person acts on it: the column's record rows answer to nothing, and every door
+// onto old work is on this page.
 
 // The page's own key, and the words that name it.
 //
@@ -57,22 +65,29 @@ import (
 // pair, and the pair is the point: ctrl+, opens the settings panel and ctrl+.
 // opens this one, two adjacent keys for the two fullscreen pages. A terminal
 // that cannot send one cannot send the other either, which is why this page has
-// two more doors — /tasks, and the line at the bottom of the column.
+// two more doors — /history, and the line at the bottom of the column.
 const (
 	taskSheetKey = "ctrl+."
 	// taskSheetWord is the page's name, in the title and in the command list
-	// alike.
-	taskSheetWord = "tasks"
+	// alike, and it is the word the command spells: /history.
+	//
+	// IT IS NOT SPELLED "tasks", AND THAT IS THE WHOLE OF WHY THE COMMAND IS
+	// /history. "/task <brief>" means GIVE AFORGE WORK, and it has three rows in
+	// the command list; a "/tasks" beside them narrowed to both on the four
+	// characters they share, so the muscle memory for starting work led to a page
+	// that starts none. What a person calls this thing is the record of everything
+	// the project has run, and "history" is that word.
+	taskSheetWord = "history"
 	// taskSheetNowHead heads the tree. It is [railGroupWords]'s own word rather
 	// than a second one, because a person who reads "3 running" at the bottom of
 	// the column must not have to learn that this page calls the same thing
 	// something else.
 	taskSheetNowHead = "running"
-	// taskSheetPastHead heads the flat list. "earlier" and not "history": the
-	// rows under it are work, in the order it happened, and the word a person
-	// uses for the thing that came before this one is the word that goes on it.
+	// taskSheetPastHead heads the flat list. "earlier" and not "past": the rows
+	// under it are work, in the order it happened, and the word a person uses for
+	// the thing that came before this one is the word that goes on it.
 	taskSheetPastHead = "earlier"
-	// taskSheetEmpty is what /tasks says instead of opening an empty page. The
+	// taskSheetEmpty is what /history says instead of opening an empty page. The
 	// emptiness law reaches modals too — a fullscreen page with nothing on it is
 	// the loudest possible way of saying nothing.
 	taskSheetEmpty = "no tasks yet — /task <brief> starts one"
@@ -82,6 +97,16 @@ const (
 const (
 	taskSheetRoomKeys    = "esc close · ↑↓ move · enter opens its room"
 	taskSheetMentionKeys = "esc close · ↑↓ move · enter puts it in your message"
+	// taskSheetFilterWord opens the line that says what was typed, and
+	// taskSheetFilterNone is what that line adds when the query has taken every
+	// row off the page. A filtered page with nothing on it and nothing said is a
+	// page a person reads as broken.
+	taskSheetFilterWord = "filter · "
+	taskSheetFilterNone = " · nothing matches"
+	// taskSheetFilterKeys replaces the enter line while a filter is being typed:
+	// esc means the filter first and the page second, and a foot that went on
+	// promising to close would be lying about the next keystroke.
+	taskSheetFilterKeys = "esc clears the filter · ↑↓ move · enter opens the row"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when
@@ -106,6 +131,11 @@ type taskSheet struct {
 	open   bool
 	cursor int
 	top    int
+	// query is the type-to-filter box, and it is the [editor] every other box on
+	// this surface is rather than a string of its own: backspace, ctrl+u and
+	// ctrl+w are edits a person's hands already know, and a second implementation
+	// of them would be a second set of bugs in them.
+	query editor
 }
 
 // taskSheetItem is one row of the page: a heading, a node of the tree, or one
@@ -142,7 +172,7 @@ func (i taskSheetItem) heading() bool { return i.head != "" }
 // openTaskSheet raises the page, and reports whether it went up.
 //
 // IT REFUSES ON AN EMPTY PROJECT rather than drawing a page with a title and
-// nothing under it. The refusal is the caller's to say — /tasks writes a line
+// nothing under it. The refusal is the caller's to say — /history writes a line
 // and the key falls through in silence — because a command typed on purpose that
 // answers with nothing reads as a command that broke, and a chord that was never
 // bound in the person's mind reads as a chord that was never bound.
@@ -205,17 +235,30 @@ func taskSheetClamp(items []taskSheetItem, at int) int {
 
 // ── the rows ────────────────────────────────────────────────────────────────
 
-// taskSheetItems is the whole page as a list: the tree, then the record.
+// taskSheetItems is the whole page as a list: the tree, then the record, minus
+// whatever the filter has taken out of both.
+//
+// THE RECORD IS SUBTRACTED FROM THE UNFILTERED TREE and only then filtered
+// itself, which is the one ordering here that is not free: [app.taskSheetPast]
+// drops the rows the tree above is already drawing, and asking it about a tree a
+// query has just emptied would put every one of those rows back under `earlier`
+// as though another conversation had run them.
 func (a *app) taskSheetItems() []taskSheetItem {
 	live := a.taskSheetForest()
-	out := make([]taskSheetItem, 0, len(live)+len(a.comp.tasks)+2)
+	past := a.taskSheetPast(live)
+	if needle := a.taskSheetFilter(); needle != "" {
+		live, past = taskSheetKeepLive(live, needle), taskSheetKeepPast(past, needle)
+	}
+	out := make([]taskSheetItem, 0, len(live)+len(past)+2)
+	// A SECTION WITH NOTHING IN IT IS NOT DRAWN AT ALL, filter or no filter. It is
+	// the emptiness law: a `running` rule with a blank under it says the query
+	// found something and lost it.
 	if len(live) > 0 {
 		out = append(out, taskSheetItem{head: taskSheetNowHead})
 		for _, e := range live {
 			out = append(out, taskSheetItem{node: e.node, stems: e.stems, root: e.root})
 		}
 	}
-	past := a.taskSheetPast(live)
 	if len(past) > 0 {
 		out = append(out, taskSheetItem{head: taskSheetPastHead})
 		for _, entry := range past {
@@ -223,6 +266,71 @@ func (a *app) taskSheetItems() []taskSheetItem {
 		}
 	}
 	return out
+}
+
+// ── the filter ──────────────────────────────────────────────────────────────
+
+// taskSheetFilter is what has been typed, trimmed. Empty is no filter, which is
+// the same bargain [session.SearchTaskIndex] makes with an empty query.
+func (a *app) taskSheetFilter() string {
+	return strings.TrimSpace(a.taskSheet.query.String())
+}
+
+// taskSheetFiltering reports whether the page is being typed at.
+func (a *app) taskSheetFiltering() bool { return a.taskSheetFilter() != "" }
+
+// taskSheetKeepLive is the filter over the tree, and IT FLATTENS WHAT IT KEEPS.
+//
+// A FILTERED TREE IS A TREE WITH HOLES IN IT. The connectors are a claim about
+// what hangs off what, and a query that takes a parent out from between two
+// matching rows leaves stems pointing at a row that is no longer drawn. So while
+// a filter is on, the top half of the page is a flat list of the live work that
+// matches — which is the same answer this page already gives for the record, and
+// for the same reason: a person searching is looking for a name, not a shape.
+func taskSheetKeepLive(live []railEntry, needle string) []railEntry {
+	out := make([]railEntry, 0, len(live))
+	for _, e := range live {
+		if e.node == nil || !taskSheetNodeMatches(e.node, needle) {
+			continue
+		}
+		out = append(out, railEntry{node: e.node})
+	}
+	return out
+}
+
+// taskSheetNodeMatches asks the query of one live node.
+//
+// THE ID IS AN EXACT MATCH OR NOTHING, which is [session.TaskMatches]'s own rule
+// restated over a node rather than over a row: "7" typed at this page is somebody
+// quoting an id, and a fuzzy id answers the wrong task.
+func taskSheetNodeMatches(node *taskNode, needle string) bool {
+	if strings.TrimSpace(needle) == strconv.FormatUint(node.id, 10) {
+		return true
+	}
+	return session.TaskWordsMatch(node.title, needle)
+}
+
+// taskSheetKeepPast is the filter over the record, in the record's own order.
+// It RANKS NOTHING: the rows are newest first because that is what the file
+// says, and a query is a question about which of them to draw rather than about
+// which to draw first.
+func taskSheetKeepPast(past []*session.TaskIndexEntry, needle string) []*session.TaskIndexEntry {
+	out := make([]*session.TaskIndexEntry, 0, len(past))
+	for _, entry := range past {
+		if session.TaskMatches(*entry, needle) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// taskSheetTyped is what every edit of the filter ends with: the list has
+// changed under the cursor, so the cursor goes back to the first row of it and
+// the window with it. A cursor left at item forty of a list that now has three
+// is a page a person types one letter into and finds empty.
+func (a *app) taskSheetTyped() {
+	a.taskSheet.cursor, a.taskSheet.top = 0, 0
+	a.taskSheetFollow()
 }
 
 // taskSheetForest is the tree half: every family with anything still going,
@@ -372,10 +480,23 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	defer a.touch()
 	switch key {
-	case "esc", taskSheetKey:
-		// esc is the dismiss key everywhere on this surface, and the chord that
-		// opened this is the chord that closes it — the roster's own bargain with
-		// ctrl+t.
+	case "esc":
+		// esc BACKS OUT ONE LAYER AT A TIME, which is the settings panel's own
+		// layering ([app.sheetKey]): the filter first, the page second. A key that
+		// closed the whole page from inside a filter would throw away the only
+		// thing on screen the person typed, and leave them looking for the row they
+		// had just narrowed to.
+		if a.taskSheetFiltering() {
+			a.taskSheet.query.reset()
+			a.taskSheetTyped()
+			return nil, true
+		}
+		a.closeTaskSheet()
+		return nil, true
+	case taskSheetKey:
+		// The chord that opened this is the chord that closes it — the roster's own
+		// bargain with ctrl+t — and it closes it from inside a filter as well,
+		// because a chord is not a layer a person is standing in.
 		a.closeTaskSheet()
 		return nil, true
 	case "up", "ctrl+p":
@@ -393,10 +514,36 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheet.cursor = taskSheetClamp(items, len(items)-1)
 	case "enter":
 		return a.taskSheetEnter(), true
+
+	// ── the filter's own edits, in the settings panel's spelling ──────────────
+	case "backspace":
+		a.taskSheet.query.deleteBackward()
+		a.taskSheetTyped()
+	case "ctrl+u":
+		a.taskSheet.query.reset()
+		a.taskSheetTyped()
+	case "ctrl+w":
+		a.taskSheet.query.deleteWord()
+		a.taskSheetTyped()
+
+	default:
+		// EVERY PRINTABLE KEY IS THE FILTER, which is the one thing this page can
+		// do with a letter: the frame is the page, so there is no draft underneath
+		// for a keystroke to reach, and a record of four hundred tasks is found by
+		// remembering a word of a title and by nothing else.
+		//
+		// THE SPACE IS TYPED HERE AND NOT ON THE SETTINGS PANEL, and the difference
+		// is what the key already means: space ACTIVATES a row over there, and
+		// nothing on this page answers it. "port the parser" is a thing a person
+		// half-remembers as three words.
+		if text := msg.Key().Text; text != "" {
+			a.taskSheet.query.insert(text)
+			a.taskSheetTyped()
+		}
 	}
 	// EVERY OTHER KEY IS SWALLOWED. The page is the whole frame, so there is
-	// nothing underneath for a key to mean anything to, and a letter that fell
-	// through would type into a box that is not on screen.
+	// nothing underneath for a key to mean anything to, and a chord that fell
+	// through would act on a surface that is not on screen.
 	return nil, true
 }
 
@@ -583,8 +730,14 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	add(pal.dim(rule(width)), taskSheetHit{})
 
 	// The foot is three rows and it is spoken for before the list is: a rule, the
-	// tally, and the keys.
-	const foot = 3
+	// tally, and the keys. A FOURTH JOINS THEM WHILE A FILTER IS ON, because what
+	// was typed has to be on screen — a list that has lost rows for a reason a
+	// reader cannot see is a list that has lost them for no reason at all
+	// (settings.go's [sheetTitle] says the same thing about its own search).
+	foot := 3
+	if a.taskSheetFiltering() {
+		foot++
+	}
 	head := len(lines)
 	room := height - head - foot
 	if room < 1 {
@@ -611,6 +764,9 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 
 	add(pal.dim(rule(width)), taskSheetHit{})
 	add(" "+pal.dim(fit(a.taskSheetTally(items), width-2)), taskSheetHit{})
+	if a.taskSheetFiltering() {
+		add(" "+pal.dim(fit(a.taskSheetFilterLine(items), width-2)), taskSheetHit{})
+	}
 	add(" "+pal.dim(fit(a.taskSheetKeysLine(), width-2)), taskSheetHit{})
 
 	// A terminal too short for the whole page keeps its head and its foot: what
@@ -676,10 +832,29 @@ func (a *app) taskSheetTally(items []taskSheetItem) string {
 	return strings.Join(segs, railSep)
 }
 
+// taskSheetFilterLine is what was typed, said back where a person is already
+// reading the tally — and, when the query has emptied the page, the one clause
+// that stops a blank list reading as a page that broke.
+func (a *app) taskSheetFilterLine(items []taskSheetItem) string {
+	line := taskSheetFilterWord + a.taskSheetFilter()
+	if len(items) == 0 {
+		line += taskSheetFilterNone
+	}
+	return line
+}
+
 // taskSheetKeysLine names the keys, and it names the one enter actually has on
 // the row under the cursor. A foot that promised a room over work that has none
 // would be the page lying about its own door.
+//
+// WHILE A FILTER IS ON IT NAMES WHAT esc DOES, because that is the key whose
+// meaning just moved: it clears the filter first and closes the page second
+// ([app.taskSheetKeyPress]), and a foot still reading "esc close" would be the
+// page lying about the next keystroke instead of about enter.
 func (a *app) taskSheetKeysLine() string {
+	if a.taskSheetFiltering() {
+		return taskSheetFilterKeys
+	}
 	item, ok := a.taskSheetCurrent()
 	switch {
 	case !ok:
@@ -810,4 +985,128 @@ func (a *app) taskSheetPastRow(entry *session.TaskIndexEntry, width int) string 
 		line += a.pal.dim(note)
 	}
 	return line
+}
+
+// ── the column's own record rows ────────────────────────────────────────────
+
+// THE COLUMN CARRIES THE PROJECT'S RECORD TOO, dulled, under everything this
+// session is doing.
+//
+// It did not, and that was the whole feature reading as absent: a person opening
+// aforge in a directory they had worked in for a month saw an empty frame, no
+// column at all, and therefore no "view more" line and no reason to guess that a
+// page existed behind it. The record was one chord away and the chord was
+// undiscoverable.
+//
+// So the column is the project's roster as well as the session's, in two tiers
+// that are drawn nothing alike:
+//
+//   - THIS SESSION'S WORK IS THE COLUMN, as it always was — the forest, the
+//     folds, the cursor, the rooms behind enter.
+//   - THE RECORD IS A FOOTNOTE UNDER IT: at most [railRecordMax] rows, flat, no
+//     connectors, no cursor, no door, drawn in the same muted-and-dim the page's
+//     own `earlier` rows are ([app.taskSheetPastRow] draws both, so the two
+//     lists cannot disagree about what a finished task looks like).
+//
+// THE RECORD NEVER EVICTS LIVE WORK. It is filled into the rows the session's
+// own list did not need and into no others ([app.railRecordLines]), so a column
+// full of running work carries none of it — and the honest answer for a person
+// who wants it anyway is the page, which the footer's line names.
+
+// railRecordMax is how many record rows the column may carry.
+//
+// SIX, AND IT IS A CAP ON A FOOTNOTE RATHER THAN A WINDOW ONTO A FILE. The
+// record runs to two thousand rows; a column that showed forty of them would be
+// a file browser standing where a glance used to be, and the rows under the
+// sixth are what the page is for. It is the most RECENT six, because the index
+// arrives newest first and recency is the only order a footnote can carry.
+const railRecordMax = 6
+
+// railRecord is the project's record as the column shows it: the rows this
+// session is not already holding, newest first, and never more than limit of
+// them.
+//
+// THE MEMBERSHIP RULE IS THE PAGE'S ([app.taskSheetNodeFor]): a row whose id and
+// title name a node of this session's graph is that node, and the column is
+// already drawing it — folded or not — so repeating it down here would be the
+// same work said twice in two different colours.
+//
+// IT STOPS AT limit, which is what makes it cheap enough to ask on every frame:
+// the column asks whether there is ANY record before it decides whether to stand
+// at all ([app.railContent]), and that question costs one row rather than a walk
+// of two thousand.
+func (a *app) railRecord(limit int) []*session.TaskIndexEntry {
+	if limit < 1 {
+		return nil
+	}
+	out := make([]*session.TaskIndexEntry, 0, min(limit, len(a.comp.tasks)))
+	for i := range a.comp.tasks {
+		entry := &a.comp.tasks[i]
+		if entry.Live() {
+			// EVERYTHING LIVE BELONGS TO THE FOREST ABOVE. The index's live rows are
+			// merged in off this session's own graph ([session.Agent.TaskIndex]), and
+			// a live row down here would be a running task drawn as history.
+			continue
+		}
+		if a.taskSheetNodeFor(entry) != nil {
+			continue
+		}
+		out = append(out, entry)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+// railHasRecord reports whether the project has any work this session is not
+// showing — the cheapest form of the question, and the one [app.railShowing]
+// asks.
+func (a *app) railHasRecord() bool { return len(a.railRecord(1)) > 0 }
+
+// railRecordLines fills what is left of the column's body with the record: a
+// blank, the same `earlier` word the page heads its flat list with, and the rows.
+//
+// IT TAKES ONLY WHAT THE SESSION'S OWN ROWS LEFT BEHIND, and that is the whole
+// contract: it is handed the lines already laid out and the height they had to
+// fit in, so a column whose running work fills the frame gets no record rows at
+// all rather than a record row where a running one was. Nothing here can evict
+// anything.
+//
+// The rows answer to NOTHING — no cursor, no hover, no click. They are marked
+// [railLine.past] so the pointer can tell, and the door onto them is the page:
+// there is no room to open on work another conversation ran (taskview.go says
+// why), and a row that opened nothing under a finger would be worse than a row
+// that is plainly a note.
+//
+// AND THEY ARE WHAT AN EMPTY SESSION IN AN OLD PROJECT SHOWS INSTEAD OF THE
+// LABEL. The permanent column says "no tasks yet" when it has nothing
+// ([railEmptyWord], task.go) — but a directory with a record behind it has
+// something, so [app.railView] stands the label down and these rows take the top
+// of the column. Two lines saying "no tasks yet" and "earlier · Port the parser"
+// one under the other would be the column contradicting itself.
+func (a *app) railRecordLines(out []railLine, body, width int) []railLine {
+	left := body - len(out)
+	// A RULE WITH NOTHING UNDER IT IS NOT A SECTION. Two rows is the least this
+	// block can be: the word, and one task under it.
+	if left < 2 {
+		return out
+	}
+	rows := a.railRecord(min(railRecordMax, left-1))
+	if len(rows) == 0 {
+		return out
+	}
+	if len(out) > 0 && left > len(rows)+1 {
+		// ONE BLANK ABOVE IT where the column can lend one — whitespace is how this
+		// surface separates blocks, and it is what the footer already does. There is
+		// nothing to separate at the top of the column, though: a conversation that
+		// has run nothing in a project that has ([app.railView]'s empty branch stands
+		// down for exactly this) opens with the word itself and not with a blank row.
+		out = append(out, railLine{entry: -1})
+	}
+	out = append(out, railLine{text: a.pal.dim(taskSheetPastHead), entry: -1, past: true})
+	for _, entry := range rows {
+		out = append(out, railLine{text: a.taskSheetPastRow(entry, width), entry: -1, past: true})
+	}
+	return out
 }

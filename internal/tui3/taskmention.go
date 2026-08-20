@@ -154,7 +154,7 @@ func (a *app) refreshTasks() tea.Cmd {
 		a.comp.tasksStale = true
 		return nil
 	}
-	if !a.comp.open && !a.taskSheet.open {
+	if !a.comp.open && !a.taskSheet.open && !a.railShowing() {
 		// Nobody is looking. The next "@" — or the next time the task page is
 		// opened — pays for the read, which is the same deal the first one made.
 		// THE PAGE IS ON THIS LIST BECAUSE IT IS THE ONE READER THAT STAYS OPEN
@@ -162,6 +162,12 @@ func (a *app) refreshTasks() tea.Cmd {
 		// while somebody can sit on the task page watching a node finish, and a page
 		// that kept drawing it under "running" after it landed would be the record
 		// disagreeing with the column beside it (taskview.go).
+		//
+		// AND THE COLUMN IS ON IT FOR THE SAME REASON, ONE STEP FURTHER: it carries
+		// the project's record under its own rows now ([app.railRecord]) and it is
+		// on screen the whole time, so it is the reader that never looks away. A
+		// node that lands in THIS session moves from the column's forest into that
+		// record, and a snapshot nobody re-read would draw it in both.
 		return nil
 	}
 	return a.loadTasks()

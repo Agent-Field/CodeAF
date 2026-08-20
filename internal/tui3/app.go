@@ -3528,9 +3528,12 @@ func (a *app) slash(line string) tea.Cmd {
 	case "task":
 		return a.runTaskCommand(rest)
 
-	case "tasks":
+	case "history":
 		// The page onto every task this PROJECT has run, this session's and every
-		// conversation's before it (taskview.go). It refuses on a project that has
+		// conversation's before it (taskview.go). It is NOT spelled /tasks: the
+		// three /task rows all mean give aforge work, and a plural among them was a
+		// command that answered the muscle memory for starting one (commands.go
+		// says it at more length). It refuses on a project that has
 		// run nothing rather than raising a page with a title and nothing under it
 		// — the emptiness law reaches modals — and it says so, because a command
 		// typed on purpose that answers with silence reads as a command that broke.
@@ -3659,7 +3662,14 @@ func (a *app) renew() tea.Cmd {
 	} else {
 		a.note("new session")
 	}
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+	// AND THE PROJECT'S RECORD IS READ AGAIN ON THE WAY OUT. [app.dropTasks] takes
+	// the snapshot with the nodes, because the live rows merged into it belonged
+	// to the conversation that just ended — but the FILE is the project's and
+	// outlives every session in it, and the column carries it under whatever this
+	// new conversation goes on to do ([app.railRecord], taskview.go). Without this
+	// read a /new would empty the column of a history that is still on disk.
+	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
+		a.loadTasks())
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────
