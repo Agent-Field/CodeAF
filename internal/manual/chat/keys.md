@@ -477,6 +477,31 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 
+## Keys on home, and is there a shortcut for it
+
+**There is no key for home. `/home` is the only way to open it.** Every `ctrl+<letter>`
+this surface could use is already taken, and the chords that were left — `ctrl+.` and the
+`alt+` letters — arrive in some terminals and do nothing at all in others, so none was
+bound rather than shipping a key that works on one machine and not the next.
+
+Once it is open (`/home`): `esc` clears the box if anything is in it, and closes home
+otherwise · `up`/`ctrl+p` and `down`/`ctrl+n` walk the conversations, stepping over the
+project headings · `pgup`/`pgdown` jump four · `enter` opens the conversation under the
+cursor, or — with something typed in the box — starts a new conversation here and sends it
+· `backspace`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f` edit the box ·
+**anything else you type goes into the box**, and a leading `@` turns it into a search over
+every conversation on the machine.
+
+With the mouse: a click puts the cursor on a row, and a second click on that same row
+opens it.
+
+The top line carries `esc close` on the right. The foot reads exactly
+`type start something new · @ find · enter open`, and the line under it
+`↑↓ move · enter open · esc close`.
+
+Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
+to it.
+
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard

@@ -147,6 +147,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
+| `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/rewind` | `/undo`, `/back` | — | enters rewind mode (also esc esc) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
@@ -569,6 +570,45 @@ close failed: <error>
 
 `already here` is enter on the row you are on; nothing is closed. A directory with no
 conversations never opens the picker at all — a modal list with no rows would be a trap.
+
+**`/resume` lists this directory's conversations only.** For every project on the machine
+at once, and every conversation in all of them, the command is `/home`.
+
+## /home — every project on this machine
+
+`/home` opens a fullscreen screen of **every project on this machine and every
+conversation in them**, which is the one thing `/resume` cannot show you: `/resume` is
+"which conversation, here", and this is "what is there at all".
+
+There is no argument form and no key chord — `/home` is the only way in. Projects are dim
+headings, one line per conversation under each: a glyph (`●` running, `◌` left unfinished,
+`○` at rest), the name, what it has going on, and how long since you spoke in it. Quiet
+conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
+right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
+
+`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from. Typing
+anything starts a new conversation in this project and sends it on `enter`; typing `@`
+searches every conversation on the machine instead. The foot reads exactly
+`type start something new · @ find · enter open`.
+
+**The limit, plainly: `enter` opens conversations of the project this window is in.**
+Other projects are shown with a dim `elsewhere` on their heading, and enter on one of
+their rows says `elsewhere · <that project's path>` rather than opening it — a window's
+permissions, crew and spend ceiling all came from the workspace it launched in, and
+carrying a conversation across without them is not something aforge will do quietly.
+
+Refusals, exactly as written:
+
+```
+home shows this machine's projects, and this session is on another
+nothing here yet — say something and this fills up
+no conversation matches
+/new is unavailable here
+```
+
+The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
+session is on the other end. The last is what the typing-to-start box says where no
+fresh-session seam exists.
 
 ## /permissions — what runs without asking
 

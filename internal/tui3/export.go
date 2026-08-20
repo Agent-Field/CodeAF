@@ -158,7 +158,7 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 // a person to search a remote workspace for a file that is on their laptop
 // (host.go's [exportHereWord] and the STUB beside it).
 func (a *app) exportDone(msg exportedMsg) {
-	short := shortPath(msg.path, a.home, 0)
+	short := shortPath(msg.path, a.tilde, 0)
 	here := ""
 	if a.hosted() {
 		here = exportHereWord

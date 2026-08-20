@@ -552,8 +552,11 @@ type app struct {
 	// a repository and the surface can be driven with no git at all. Nil is
 	// [gitHead].
 	gitProbe func(dir string) (string, bool, bool)
-	// home is what "~" abbreviates in the legend's path, read once at boot.
-	home string
+	// tilde is what "~" abbreviates in the legend's path, read once at boot.
+	// It is NOT the home surface (home.go) — this is one string, the person's
+	// home directory, and it was called `home` until a screen by that name
+	// existed.
+	tilde string
 	// approval is the tool gate's blanket posture — "prompt", "allow", "deny" —
 	// as the profile last said. It is on this surface for exactly one reason:
 	// "allow" means nothing will ever be asked, and that is the one posture a
@@ -926,6 +929,18 @@ type app struct {
 	// terminal has. Closed, it costs the frame nothing, and it is only ever
 	// opened at tierPhone.
 	expand expand
+	// home is /home (home.go): the FOURTH fullscreen thing, and the only one of
+	// the four that is not about this conversation at all. It is every project
+	// on the machine and every conversation in them, read off the disk when it
+	// opens and again on a slow tick while it is up. Closed, it costs nothing —
+	// no walk happens until somebody asks for one.
+	home homeView
+	// homeRoot is where that screen looks for the projects, and "" means the
+	// state root under this machine's home ([app.placesRoot]). It exists for
+	// tests, which build a projects directory in a temp dir; nothing on the door
+	// sets it, because where sessions live is internal/session's answer and a
+	// second one would be a second place for it to be wrong.
+	homeRoot string
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1138,7 +1153,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		a.home = home
+		a.tilde = home
 	}
 	// The gate's posture is read at boot and re-read at every turn end
 	// ([app.settle]): a person who opens the settings panel and turns the asking
@@ -1447,6 +1462,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.sheet.open {
 				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
+			if a.home.open {
+				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			// The status sheet is modal for the pointer at the same rung and for
 			// the same reason: it is the whole screen, and a press outside its
 			// list is how a finger closes it (statusdeck.go).
@@ -1615,6 +1633,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.sheetHover(msg.Mouse().Y)
 			return a, nil
 		}
+		if a.home.open {
+			a.homeHover(msg.Mouse().Y)
+			return a, nil
+		}
 		if a.deckShowing() {
 			a.deckSheetHover(msg.Mouse().Y)
 			return a, nil
@@ -1713,6 +1735,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.roomResolveUnfinished()
 		a.roomTouched()
 		return a, a.wake()
+
+	case homeTickMsg:
+		// HOME IS LIVE, and this is the whole of how: read the folders again,
+		// then ask for one more beat. It rides its own clock rather than the
+		// paint clock for the reason home.go's [homeEvery] gives (home.go).
+		return a, a.homeBeat()
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -3426,6 +3454,13 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openSettings()
 		return nil
 
+	case "home":
+		// The one command on this surface that is not about this conversation.
+		// It has no argument form: the screen IS the way of naming what you
+		// want, and a command that took a project name would be asking a person
+		// to remember what home exists to show them (home.go).
+		return a.openHome()
+
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
 		// is /connections, on the table's row): a person asking what they have
@@ -3533,6 +3568,12 @@ func (a *app) slash(line string) tea.Cmd {
 	}
 }
 
+// newUnavailableWord is what /new says where no fresh-session seam was wired —
+// a headless frame, or a launcher that did not supply one. It is a constant
+// because home's door opens a new conversation through this same seam and has
+// to refuse in the same words when it is not there (home.go).
+const newUnavailableWord = "/new is unavailable here"
+
 // renew closes this conversation and opens the next one on the same config.
 // The transcript is cleared because it belongs to the agent that just closed:
 // a fresh session file with the old conversation still on screen would be the
@@ -3541,7 +3582,7 @@ func (a *app) slash(line string) tea.Cmd {
 // standing task subscription (task.go).
 func (a *app) renew() tea.Cmd {
 	if a.fresh == nil {
-		a.note("/new is unavailable here")
+		a.note(newUnavailableWord)
 		return nil
 	}
 	if a.state == stateWorking {

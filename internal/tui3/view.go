@@ -196,6 +196,14 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.sheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// AND HOME TAKES IT ON THE SAME TERMS (home.go). It is the whole machine's
+	// work rather than this conversation's, so there is nothing of this window
+	// worth showing around the edges of it — and the conversation is exactly
+	// where esc puts you back.
+	if a.home.open {
+		lines, _, caretX, caretY := a.homeFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	// AND THE STATUS SHEET IS THE SECOND, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame

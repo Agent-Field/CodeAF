@@ -70,6 +70,14 @@ var commands = []command{
 	{name: "new", desc: "close this session and start a fresh one", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
+	// frequency law this table is ordered by. /resume is "which conversation,
+	// here" and this is "what is there at all" — the same question one size up —
+	// but the first eight rows are the ones a person reaches for without
+	// looking, /compact is one of them, and a row inserted above it would push
+	// the daily command behind a scroll (deliverables_test.go pins exactly
+	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "home", desc: "every project and conversation on this machine"},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
