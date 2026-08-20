@@ -955,7 +955,7 @@ func (a *app) statusRows(width int) []string {
 	}
 	if wrapped {
 		return []string{
-			fit(paint(left), width),
+			fit(a.paintIdentity(left, paint), width),
 			rightAlign(right, plainRight, width),
 		}
 	}
@@ -967,7 +967,42 @@ func (a *app) statusRows(width int) []string {
 		a.modelSpan = hudSpan{}
 		return []string{fit(right, width)}
 	}
-	return []string{paint(left) + strings.Repeat(" ", gap) + right}
+	return []string{a.paintIdentity(left, paint) + strings.Repeat(" ", gap) + right}
+}
+
+// paintIdentity paints the left cluster, BRIGHTENING THE MODEL SEGMENT while the
+// pointer is on it.
+//
+// Every interactive thing on this surface answers the pointer before it is
+// clicked (hover.go), and this one never did: the model's name has been the door
+// to the picker for a wave now, and it looked exactly like the telemetry it sits
+// beside. A label that is also a control has to say so.
+//
+// IT IS A BRIGHTENING AND NOT A BACKGROUND BAND, which is the jump chip's own
+// decision for the jump chip's own reason (jumpchip.go): the segment is three
+// words at the end of a line, not a row of a list, and a highlighted rectangle
+// around them would be the one boxed thing on a surface with no boxes. One step
+// up from wherever the cluster already is — accent from the conversation's dim,
+// ink from a room's accent — so the step reads the same in both.
+//
+// THE PIECES ARE PAINTED SEPARATELY RATHER THAN NESTED. These hues are raw SGR
+// with an explicit reset (styles.go's [palette.paint]), so a colour inside a
+// colour would end the outer one at the inner one's reset and leave the tail of
+// the cluster unpainted. The cluster is plain text at this point and the span was
+// measured against it, so cutting it in cells is exact.
+func (a *app) paintIdentity(left string, paint func(string) string) string {
+	span := a.modelSpan
+	if !span.pressable() || !a.hoveringStatusModel() || span.to > ansi.StringWidth(left) {
+		return paint(left)
+	}
+	lift := a.pal.accent
+	if a.roomOpen() {
+		lift = a.pal.ink
+	}
+	head := ansi.Cut(left, 0, span.from)
+	segment := ansi.Cut(left, span.from, span.to)
+	tail := ansi.Cut(left, span.to, ansi.StringWidth(left))
+	return paint(head) + lift(segment) + paint(tail)
 }
 
 // hudGap is the smallest barrier the two clusters will stand next to each
@@ -1060,9 +1095,10 @@ func (a *app) identity() string {
 // to change it, and until this wave the only door was typing /model.
 //
 // The span is [from, to) in cells from the row's left edge, which is where this
-// cluster is drawn. An empty span (to == 0) means there is nothing to press —
-// a session with no model yet, or a room, whose cluster names the NODE's model
-// and so must not open a picker that would move the conversation's.
+// cluster is drawn. An empty span (to == 0) means there is nothing to press — a
+// session with no model yet, or a room whose node is past being moved: the press
+// always acts on WHAT THE ROW NAMES, so in a room it is the node's model and out
+// here it is the conversation's, and neither can ever be mistaken for the other.
 func (a *app) identityParts() (string, hudSpan) {
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
@@ -1081,20 +1117,37 @@ func (a *app) identityParts() (string, hudSpan) {
 	// its room, and read the conversation's model at the foot of the frame was
 	// told the wrong thing by the one line they could not look away from.
 	//
-	// THE SEGMENT IS A FACT AND NOT A DOOR WHILE A ROOM IS OPEN, which is what
-	// the empty span says. The picker moves the CONVERSATION's model and nothing
-	// else, so a name that opened it while naming the TASK's model would be an
-	// affordance lying about what it acts on — worse than no door, because it
-	// would swap the session's model on a person who pressed the id they were
-	// reading. The door comes back one esc later, on the name it belongs to
-	// (app.go's [app.statusPress] falls through on an empty span; the phone
-	// tier's press lands on the sheet, which labels both — statusdeck.go).
+	// AND WHILE A ROOM IS OPEN THE SEGMENT IS A DOOR ONTO THAT NODE'S OWN MODEL —
+	// never onto the conversation's. The two are one gesture over two subjects,
+	// which is the only reading of "press the name to change it" that stays true
+	// wherever the name is: what the row names is what the press moves. A picker
+	// opened from in here retargets THIS node from its next turn on and touches
+	// neither the conversation nor any other task (room.go's [app.retargetTask],
+	// internal/session's [Agent.RetargetTask]).
+	//
+	// THE SPAN IS EMPTY WHENEVER THE PICK COULD NOT LAND, which is the design law
+	// rather than a special case: a capability that cannot work is absent, not
+	// broken. A node that has finished, failed, been stopped or needs a look has a
+	// model that is a FACT about what happened — nothing can move it and the
+	// engine refuses to try — so the name is still drawn and simply cannot be
+	// pressed ([app.roomModelMovable] holds the whole of that list). An
+	// affordance that lit up and then apologised would be worse than none.
 	if a.roomOpen() {
 		cluster := a.roomChip()
-		if word := a.roomModelWord(); word != "" {
-			cluster += " · " + word
+		word := a.roomModelWord()
+		if word == "" {
+			return cluster, hudSpan{}
 		}
-		return cluster, hudSpan{}
+		// The LEAD WORD IS PART OF THE TARGET, exactly as the served rider is part
+		// of the conversation's: "task glm-5.2" is one fact said in three words, and
+		// a person pressing any of them means the same thing (room.go's
+		// [roomModelLead]).
+		from := ansi.StringWidth(cluster + " · ")
+		cluster += " · " + word
+		if !a.roomModelMovable() {
+			return cluster, hudSpan{}
+		}
+		return cluster, hudSpan{from: from, to: from + ansi.StringWidth(word)}
 	}
 	name := a.sessionName()
 	if name == "" {

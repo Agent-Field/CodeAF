@@ -3422,15 +3422,19 @@ func (a *app) statusPress(x, y int) bool {
 	}
 	// Index zero is the identity's row in both status layouts — the shared row,
 	// and the first of the two when the telemetry wraps onto its own (render.go).
-	//
-	// A ROOM TAKES THE DOOR AWAY AND KEEPS THE NAME, and it does so through the
-	// span rather than through a test here: while a room is open the segment names
-	// the NODE's model, and the picker moves the CONVERSATION's, so the render
-	// records no columns for it and the press falls through to the row it landed
-	// on (render.go's [app.identityParts] states the law and why an inert fact
-	// beats a door onto the wrong dial). One esc restores both.
 	if mark.index != 0 || !a.modelSpan.holds(x) {
 		return false
+	}
+	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so
+	// through the span rather than through a second gesture: the segment in there
+	// is the task's model, so the picker it opens moves the task's model and
+	// nothing else. Which nodes may be moved at all is settled by the render, in
+	// the columns it recorded — a node past being moved has no span, so this never
+	// sees the press (render.go's [app.identityParts], room.go's
+	// [app.roomModelMovable]). One esc puts the door back on the conversation.
+	if a.roomOpen() {
+		a.openTaskPicker(a.room.id)
+		return true
 	}
 	a.openPicker()
 	return true

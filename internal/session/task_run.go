@@ -972,6 +972,31 @@ func (n *TaskNode) model() string {
 	return n.spec.model
 }
 
+// retarget writes the person's EXPLICIT pick onto this node. It is the only
+// write to a spec after admission anywhere in this package, and task_room.go's
+// header states the law it is the exception to: the freeze is against a
+// conversation's `/model` drifting work nobody chose it for, never against the
+// person choosing for one node in that node's own room.
+//
+// A RESCUE'S SWAP IS SUPERSEDED BY A PERSON'S PICK. [TaskNode.ran] exists so the
+// tool-use fallback can be told without unfreezing the spec, and once the spec IS
+// the person's own answer there is nothing left for it to say — a row that kept
+// it would name the rescued model while the person was looking at the one they
+// just chose. The sentence beside it goes with it, and only when it is the
+// rescue's own: a repair round's `mend` is about the work and has nothing to do
+// with this.
+func (n *TaskNode) retarget(model string) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.spec.model = model
+	if n.ran != "" {
+		n.ran = ""
+		if isTaskModelRescueNote(n.mend) {
+			n.mend = ""
+		}
+	}
+}
+
 // runModelLocked is the model a row about this node should NAME: the one it is
 // actually running on where a rescue swapped it, and the spec's frozen id
 // everywhere else. The caller holds the graph lock, which is why it is spelled
@@ -2738,7 +2763,7 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
 			}
 			node.graph.mu.Lock()
-			node.mend = "model " + model + " has no tools; using " + fallback
+			node.mend = taskModelRescueNote(model, fallback)
 			// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
 			// on: the sentence above and [TaskNode.notice]'s model are two halves of
 			// one card, and until this line they named different models.
