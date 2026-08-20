@@ -1106,6 +1106,38 @@ Unknown tokens are left alone in silence — `@santosh` is a person, `@internal/
 path. A task mentioned twice gets one block. A slug pasted whole and submitted in the same
 beat resolves against what is already in memory, so it may stay the plain word you typed.
 
+## Why did a task do that — asking about old work, what exactly it changed, what it decided
+
+**Just ask, in the chat.** "Why did the auth task pin the clock?", "why did that task do
+that?", "what exactly did that task change?", "what did it try first?", "why did it make
+that decision?" — aforge answers all of these by going and reading, not by remembering. It
+was never in the room while the task worked, and neither were you.
+
+What happens is two steps and you do not have to ask for either.
+
+1. **It finds the task.** aforge searches the project's whole record — every task this
+   project has ever run, this conversation's and every closed conversation's — against the
+   words you used, matching titles, ids and outcomes. You need no id and no `@`.
+2. **It reads that task's own transcript** — what the task actually did, in its own words.
+   Every task writes a journal as it works: a real file on this disk, one line per thing it
+   said, called and got back, at a path like
+   `~/.aforge/v3/projects/<workspace>/<session id>/tasks/20260819-120133_7.jsonl`. The
+   answer comes out of that — the decision the task made and its reasoning for it, the
+   commands it ran, the files it touched by full path — and not out of the one-line outcome
+   the record keeps.
+
+Pointing at the task with `@its-name` is faster and never required: the pointer block
+already carries the transcript address, so aforge follows it instead of searching.
+
+**When the transcript is gone, it says so.** A session folder you deleted, or work that
+happened on another machine, leaves the record's row with nothing behind it. Then you get
+that plainly — the outcome line and the fact that there is no journal to read — and not a
+confident story reconstructed from one sentence. The task card shows the same thing its own
+way: `its transcript is not on this disk any more`.
+
+You can read it yourself too. The card behind `enter` on any `earlier` row of the task page
+(`ctrl+.`) prints a `transcript · …` line, and it opens in your editor on a click.
+
 ## When a task splits its own work — sub-tasks, nested tasks, children
 
 A task can hand pieces of its own work further out. If its brief turns out to hold two or

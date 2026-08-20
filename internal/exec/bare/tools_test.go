@@ -131,6 +131,48 @@ func TestReadNoTrailingNewlineOmitsEmptyLine(t *testing.T) {
 	}
 }
 
+// THE ADDRESS THIS PROGRAM PRINTS IS THE ADDRESS ITS TOOLS ACCEPT.
+//
+// A row of the project's task record spells its transcript as
+// `file:///…/tasks/20260819-120133_7.jsonl`, and both the system prompt and the
+// `tasks` tool's own description tell the model to read that URI when it needs
+// what a task actually did. Before [stripFileScheme] the URI was not an
+// absolute path, so it was joined to the working directory and the read failed
+// on a file nobody had named — which broke the one gesture that answers "why
+// did that task do X" at the last step of it.
+func TestReadOpensAFileURITheWayThisProgramPrintsOne(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir, "7.jsonl", "the story\n")
+	tools := Tools(dir)
+	for _, spelling := range []string{
+		"file://" + dir + "/7.jsonl",
+		"file://localhost" + dir + "/7.jsonl",
+	} {
+		text, isErr := runTool(t, tools[0], map[string]any{"path": spelling})
+		if isErr {
+			t.Fatalf("%s: unexpected error: %s", spelling, text)
+		}
+		if text != "the story\n" {
+			t.Errorf("%s: got %q, want %q", spelling, text, "the story\n")
+		}
+	}
+}
+
+// A path that merely begins with those letters is a path, and an authority that
+// names another machine is not this machine's file: neither is touched.
+func TestReadLeavesANonLocalFileURIAlone(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir, "filed.txt", "kept\n")
+	tools := Tools(dir)
+	text, isErr := runTool(t, tools[0], map[string]any{"path": "filed.txt"})
+	if isErr || text != "kept\n" {
+		t.Errorf("a plain name starting with file: got %q (isErr=%v)", text, isErr)
+	}
+	if got := stripFileScheme("file://elsewhere/etc/passwd"); got != "file://elsewhere/etc/passwd" {
+		t.Errorf("another machine's URI was rewritten to %q", got)
+	}
+}
+
 // ── read: offset 1-indexed ─────────────────────────────────────────────────
 
 func TestReadOffset(t *testing.T) {
