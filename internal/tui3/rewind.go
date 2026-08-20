@@ -18,13 +18,19 @@ import (
 //
 //	 ⟲ drops 2 turns          ↑↓ turns · ←→ steps · enter rewind · esc back
 //
-// THE TRANSCRIPT IS THE PICKER. There is no overlay, no list and no second
-// rendering of the conversation to choose from: the thing a person is deciding
-// about is on the screen already, in the shapes they read it in the first time,
-// and the whole of the mode is a line through it plus a bar where the box was.
-// An overlay would have meant drawing the conversation twice — which is how a
-// picker starts disagreeing with the page it is picking from — and it would have
-// covered the very rows the decision is about.
+// THIS IS THE QUICK TIER OF TWO, and the transcript is its picker. The thing a
+// person taking something back is deciding about is on the screen already, in
+// the shapes they read it in the first time, and the whole of this mode is a line
+// through it plus a bar where the box was. Nothing is drawn twice, and nothing
+// covers the very rows the decision is about.
+//
+// THE DELIBERATE TIER IS THE TIMELINE (rewindsheet.go): the whole conversation as
+// a full-frame list with a search, a preview and a two-stage enter, which /rewind
+// opens and which `tab` in here lifts into with this cut carried over. It exists
+// because this mode walks the DRAWN blocks and the drawn blocks are a windowed
+// tail (replay.go's [replayTail]), so a resumed conversation's early turns cannot
+// be reached from here at all. The two share the ⟲ glyph, the "drops N turns"
+// arithmetic ([rewindDropCount]) and the cut itself ([app.rewindLand]).
 //
 // THE MODE BAR TAKES THE DRAFT'S OWN POSITION, and the draft is stashed for the
 // duration. That is the recall walk's bargain (recall.go) applied to a bigger
@@ -87,8 +93,14 @@ const (
 	// rewindCutWord is the cut line's label, and rewindKeysWord the mode bar's
 	// legend. The keys are QUOTED FROM [app.rewindKey] — a legend that disagreed
 	// with the handler would be a legend somebody acts on.
-	rewindCutWord  = "rewind here"
-	rewindKeysWord = "↑↓ turns · ←→ steps · enter rewind · esc back"
+	rewindCutWord = "rewind here"
+	// THE LEGEND CARRIES THE DOOR ONTO THE TIMELINE, because a key nobody can see
+	// is a key nobody finds: `tab` lifts this mode into the full-frame picker over
+	// the WHOLE conversation, with the cut already chosen carried across
+	// (rewindsheet.go). The inline mode walks the drawn blocks and the drawn
+	// blocks are a windowed tail, so this is the only way out of that window from
+	// inside the gesture that ran into it.
+	rewindKeysWord = "↑↓ turns · ←→ steps · enter rewind · " + rewindSheetLiftWord + " · esc back"
 )
 
 // rewindMark is the mode's glyph, with the stand-in the linear tier reads out
@@ -151,7 +163,7 @@ func (a *app) enterRewind() tea.Cmd {
 	// The frame stack decides where this can be opened from: a room, a frozen
 	// viewport and the fullscreen panels all draw over the place the mode bar
 	// stands in, and a bar nobody can see is a mode nobody can leave (view.go).
-	if a.rew.on || a.copy.on || a.roomOpen() || a.sheet.open || a.railFull() {
+	if a.rew.on || a.rewSheet.open || a.copy.on || a.roomOpen() || a.sheet.open || a.railFull() {
 		return nil
 	}
 	agent, ok := a.rewinder()
@@ -244,7 +256,8 @@ func (a *app) rewindReady() bool {
 		return false
 	}
 	switch {
-	case a.sheet.open, a.taskSheet.open, a.deck.open, a.expand.open, a.pick.open, a.roster.open,
+	case a.rewSheet.open,
+		a.sheet.open, a.taskSheet.open, a.deck.open, a.expand.open, a.pick.open, a.roster.open,
 		a.connPanel.open, a.menu.open, a.comp.open, a.welcome.open,
 		a.copy.on, a.recalling(), a.roomOpen(), a.railHold, a.railFull(),
 		a.asking(), a.awaitingTask(), a.guard != nil, len(a.connAsks) > 0,
@@ -312,6 +325,11 @@ func (a *app) rewindKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.leaveRewind(true)
 	case "enter":
 		a.commitRewind()
+	case rewindSheetLiftKey:
+		// tab LIFTS, and it is the one key here that opens something rather than
+		// deciding something: the same conversation, drawn whole, with this cut
+		// carried over (rewindsheet.go's [app.liftRewind]).
+		return a.liftRewind(), true
 	case "up":
 		a.walkRewind(-1)
 	case "down":
@@ -425,7 +443,7 @@ func (a *app) rewindPointAtEntry(entry int) int {
 // the answer to it is to press enter again a moment later, which is only possible
 // if the mode is still there to press it in.
 func (a *app) commitRewind() {
-	agent, ok := a.rewinder()
+	_, ok := a.rewinder()
 	if !ok || a.rew.at < 0 || a.rew.at >= len(a.rew.points) {
 		a.leaveRewind(true)
 		return
@@ -434,13 +452,32 @@ func (a *app) commitRewind() {
 	// The count is taken BEFORE the cut, because after it the blocks it counted
 	// are gone.
 	word := a.rewindDropWord()
-	if _, err := agent.RewindAt(point.Index); err != nil {
+	stash, cursor := a.rew.draft, a.rew.cursor
+	if err := a.rewindLand(point, word, stash, cursor, func() { a.rew = rewindMode{} }); err != nil {
 		a.rew.said = errText(err)
 		a.touch()
-		return
 	}
-	stash, cursor := a.rew.draft, a.rew.cursor
-	a.rew = rewindMode{}
+}
+
+// rewindLand IS THE CUT, AND THERE IS ONE OF IT. Both rewind surfaces — the
+// inline mode above and the timeline (rewindsheet.go) — come through here, so
+// there is exactly one account of what a rewind does to this window: the engine
+// cuts, the mode that asked for it leaves, the drawn conversation is thrown away
+// and rebuilt from what the session now holds, one note says so, and the box is
+// refilled.
+//
+// leave is the caller's own way out, and it is called AFTER the engine has said
+// yes and never before: a refused cut leaves the surface exactly as it was, with
+// the mode still up and the sentence to press again in a moment.
+func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, caret int, leave func()) error {
+	agent, ok := a.rewinder()
+	if !ok {
+		return session.ErrNothingToRewind
+	}
+	if _, err := agent.RewindAt(point.Index); err != nil {
+		return err
+	}
+	leave()
 	a.dropHover()
 	a.rebuildTranscript()
 	// The note is the compaction mark's voice: one dim line, said once, about
@@ -457,12 +494,13 @@ func (a *app) commitRewind() {
 		a.input.setText(point.Said)
 	} else {
 		a.input.value = append(a.input.value[:0], stash...)
-		a.input.cursor = min(cursor, len(a.input.value))
+		a.input.cursor = min(caret, len(a.input.value))
 	}
 	a.stick = true
 	a.follow()
 	a.measureContext()
 	a.touch()
+	return nil
 }
 
 // rebuildTranscript throws the drawn blocks away and builds them again from the
@@ -506,15 +544,20 @@ func (a *app) rewindDrops() (turns, blocks int) {
 	return turns, blocks
 }
 
-// rewindDropWord spells that count. A cut on a turn boundary is measured in
-// turns; a cut INSIDE the newest turn takes no whole turn with it, so it is
-// measured in the steps it does take rather than claiming a round zero.
-func (a *app) rewindDropWord() string {
-	turns, blocks := a.rewindDrops()
+// rewindDropWord spells that count.
+func (a *app) rewindDropWord() string { return rewindDropCount(a.rewindDrops()) }
+
+// rewindDropCount is HOW A CUT'S COST IS SPELLED, and there is one of it because
+// both rewind surfaces say the same sentence about the same arithmetic: a cut on
+// a turn boundary is measured in turns, and a cut INSIDE the newest turn takes no
+// whole turn with it, so it is measured in the steps it does take rather than
+// claiming a round zero. The timeline counts its rows and the inline mode counts
+// its blocks; the words that go around the number are these.
+func rewindDropCount(turns, steps int) string {
 	if turns > 0 {
 		return itoa(turns) + " " + plural("turn", turns)
 	}
-	return itoa(blocks) + " " + plural("step", blocks)
+	return itoa(steps) + " " + plural("step", steps)
 }
 
 // ── DRAWING ─────────────────────────────────────────────────────────────────

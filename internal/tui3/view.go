@@ -216,15 +216,25 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.homeFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// THE ORDER OF THOSE THREE IS SETTINGS, THEN THE TASK PAGE, THEN HOME —
-	// oldest surface first, which is also the order settings.go tells the story
-	// in. No two of them can actually be open at once: opening any one closes the
-	// other two ([app.openSettings], [app.openTaskSheet], [app.openHome]). The
-	// order is written down anyway, because an invariant that is only true while
-	// nobody makes a mistake is an invariant that draws a blank frame the day
-	// somebody does.
+	// AND THE REWIND TIMELINE IS THE FOURTH, on the same terms again
+	// (rewindsheet.go). It is the whole conversation, laid out as the list a
+	// person picks a point out of, and a picker read past the very conversation it
+	// is picking from would be the page arguing with itself — which is also why
+	// the inline mode draws no list at all (rewind.go).
+	if a.rewSheet.open {
+		lines, _, caretX, caretY := a.rewindSheetFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	// THE ORDER OF THOSE FOUR IS SETTINGS, THEN THE TASK PAGE, THEN HOME, THEN
+	// THE REWIND TIMELINE — oldest surface first, which is also the order
+	// settings.go tells the story in. No two of them can actually be open at once:
+	// opening any one closes the other three ([app.openSettings],
+	// [app.openTaskSheet], [app.openHome], [app.openRewindSheet], all through
+	// [app.standDownFullscreen]). The order is written down anyway, because an
+	// invariant that is only true while nobody makes a mistake is an invariant
+	// that draws a blank frame the day somebody does.
 	//
-	// AND THE STATUS SHEET IS THE FOURTH, on the phone tier only: the deck's two
+	// AND THE STATUS SHEET IS THE FIFTH, on the phone tier only: the deck's two
 	// rows are what fits at forty-four columns, and the sheet is everything the
 	// status line can carry, one per line (statusdeck.go). It takes the frame
 	// whole for the reason the panel does — a sheet drawn into a viewport that
@@ -239,7 +249,7 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.deckSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
-	// And the phone's tool detail is the fourth, for the same reason at the
+	// And the phone's tool detail is the sixth, for the same reason at the
 	// other end of the width range: a call opened at tierPhone is a diff, a
 	// command or a log, and every one of those wants the lines the chrome would
 	// otherwise take (expand.go). It draws nothing when the call it named has

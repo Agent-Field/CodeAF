@@ -83,7 +83,11 @@ var commands = []command{
 	// what you do when the turn was right and too long, rewinding is what you do
 	// when the turn was wrong. Putting it last, beside /quit, would file "take
 	// back a message" under leaving.
-	{name: "rewind", desc: "take back a message · esc esc", alias: []string{"undo", "back"}},
+	// The row names what the COMMAND opens — the whole conversation, as a list to
+	// pick a point out of (rewindsheet.go) — and then the gesture that takes the
+	// last message back without opening anything (rewind.go). Two tiers, one row,
+	// in the order a person meets them.
+	{name: "rewind", desc: "go back to an earlier point · esc esc takes back the last", alias: []string{"undo", "back"}},
 	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
 	// (permissions.go). It BELONGS beside /settings and /connect — those two are
 	// "what may this thing do" and "what may it reach", and this is "what has it
