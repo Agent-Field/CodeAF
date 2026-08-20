@@ -1036,6 +1036,13 @@ type app struct {
 	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
+	// quitArm is when the first ctrl+c landed, or zero — the door's own arm,
+	// and the reason one press no longer ends the session (quitarm.go). It sits
+	// beside escArm because it is the same shape of fact for the same kind of
+	// reason: a key whose meaning is different for a moment, held out here
+	// rather than inside any mode, and run down on the frame clock
+	// ([app.quitSweep]) because this surface has one clock.
+	quitArm time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
 	// to be wrapped in its passthrough (copymode.go). It is read once, from
 	// TERM, because a terminal does not change what it is mid-session.
@@ -1279,7 +1286,13 @@ func newApp(ctx context.Context, opts Options) *app {
 	// other two — /help and ctrl+o — moved to that line's right end this wave
 	// and are on screen permanently, so repeating them here would be the surface
 	// saying the same thing twice on the first frame of every session.
-	a.note("esc or ctrl+c interrupts")
+	//
+	// IT HAS TO BE TRUE IN EVERY STATE, and the line it replaced was not: it
+	// promised an interrupt on the first frame of a session where nothing was
+	// running, and at that moment ctrl+c was the door rather than a stop. The
+	// two clauses here are each true whatever is happening — esc stops the turn
+	// when there is one, and two presses of ctrl+c always leave (quitarm.go).
+	a.note("esc interrupts · ctrl+c twice quits")
 	a.restoreDraft()
 	// LAST, because it reads the surface it opens over: the picker marks the
 	// session this window is already in, and that is not known until the agent,
@@ -1353,7 +1366,30 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.clampScroll()
 		return a, nil
 
+	case sigQuitMsg:
+		// A REAL SIGINT OR SIGTERM, forwarded by this package's own handler
+		// (tui3.go's [forwardSignals]) because Bubble Tea's answers SIGINT by
+		// returning an error without ever calling this function. It takes the
+		// ordinary door: the draft and anything parked go to disk, the session
+		// closes, and the program exits zero. NO SECOND PRESS IS ASKED FOR — the
+		// two-press rule is about a keystroke that can be struck by accident, and
+		// a signal is somebody naming this process on purpose.
+		return a, a.quit()
+
 	case tea.KeyPressMsg:
+		// THE DOOR DISARMS ON ANY KEY BUT ITS OWN, and it is done HERE rather
+		// than at the top of [app.key] — where the pointer handover is — because
+		// this is the only line every keypress passes through. The stop
+		// confirmation, the roster and the room are all read below and above
+		// [app.key], and a person who armed the door and then pressed `x` at a
+		// running node would otherwise have had the arm still warm underneath
+		// them. The first ctrl+c puts a sentence in the hint slot promising what
+		// the NEXT keystroke does (quitarm.go); reaching for any other key is
+		// that promise being answered. ctrl+c itself is excepted, because it is
+		// the key the state is about.
+		if msg.String() != "ctrl+c" {
+			a.disarmQuit()
+		}
 		// A KEY INSIDE AN OPEN PASTE BRACKET IS TEXT, and it is read here, before
 		// anything else, because the first key of a leaked paste is usually the
 		// one that would do the damage (see [app.pasteKey]). It can also hand the
@@ -2027,6 +2063,10 @@ func (a *app) paint() tea.Cmd {
 	// esc buys, and the sentence the mode says when there is nothing to cut. Both
 	// are windows with an end, and neither is worth a goroutine.
 	a.rewindSweep()
+	// AND THE DOOR'S OWN ARM RUNS DOWN HERE ON THE SAME TERMS (quitarm.go): the
+	// second and a half the first ctrl+c buys, and the sentence in the hint slot
+	// that has to leave the screen when it lapses.
+	a.quitSweep()
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
@@ -2041,6 +2081,11 @@ func (a *app) paint() tea.Cmd {
 		// rewind" for half a second, and something has to be drawing the frame
 		// that takes it away again (rewind.go).
 		a.rewindTicking() ||
+		// AND THE ARMED DOOR IS THE NINTH, and it is the second one that turns
+		// with nothing on screen moving at all: the hint slot says "ctrl+c again
+		// to quit" for a second and a half, and something has to be drawing the
+		// frame that takes it away again (quitarm.go).
+		a.quitArmed() ||
 		// A BROWSER SOMEBODY IS STANDING IN IS THE SIXTH, and it is the only one
 		// of them that can be the whole of what is happening: no turn is
 		// running while a person signs in, so without this the waiting line's
@@ -3026,6 +3071,11 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	if a.stream == nil {
 		a.turn++
 	}
+	// AND A TURN STARTING DISARMS THE DOOR (quitarm.go). The arm is a promise
+	// about what the NEXT ctrl+c does, and from here that key is the interrupt
+	// again — a hint slot still offering to quit would be naming the wrong verb
+	// for the key on top of a turn somebody just started.
+	a.disarmQuit()
 	// A new turn drops the selection: the calls it was pointing into belong to
 	// the turn before this one, and a cursor left on them would answer enter
 	// with somebody else's history.
@@ -3790,6 +3840,11 @@ func (a *app) renew() tea.Cmd {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// AND THE DOOR'S ARM GOES WITH THE CONVERSATION IT WAS RAISED OVER
+	// (quitarm.go). A warm ctrl+c names what a second press would stop, and
+	// after this line none of that is the same session — a person who armed the
+	// door and then typed /new is a person who changed their mind.
+	a.disarmQuit()
 	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
 	// WAS TYPED AT (park.go). It was parked against a reply that no longer
 	// exists, and there is no turn end coming to send it — but the person typed
@@ -3925,8 +3980,13 @@ func (a *app) quit() tea.Cmd {
 	// else: the debounce may be mid-window, and a sentence typed in the last
 	// three hundred milliseconds of a session is exactly the one a person would
 	// be most surprised to lose (draft.go).
+	//
+	// AND WHAT IS WRITTEN IS THE DRAFT PLUS WHATEVER IS STILL PARKED
+	// (quitarm.go's [app.leavingDraft]): a message waiting for an answer that is
+	// never now going to land is a message the person typed and pressed enter
+	// on, and it comes back next launch rather than going quietly.
 	if a.draftFile != "" {
-		writeDraft(a.draftFile, a.input.String())
+		writeDraft(a.draftFile, a.leavingDraft())
 	}
 	if a.agent != nil {
 		a.agent.Interrupt()
@@ -3937,7 +3997,11 @@ func (a *app) quit() tea.Cmd {
 
 // interrupt is esc: stop the turn, keep what it said.
 func (a *app) interrupt() {
-	if a.state != stateWorking {
+	// THE AGENT IS ASKED FOR RATHER THAN ASSUMED, on [app.quit]'s own terms: a
+	// surface can be standing with no session under it, and a stop that panicked
+	// on the way to stopping nothing would be the worst possible answer to the
+	// key a person presses when they want something to stop.
+	if a.state != stateWorking || a.agent == nil {
 		return
 	}
 	a.agent.Interrupt()

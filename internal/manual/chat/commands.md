@@ -179,16 +179,23 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `openaf` — the one place on this surface it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
-`alt+enter`, and `d` inside `/permissions`. The keys page covers those in full.
+`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
+`alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
+`ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
 has a file**. Over `--host` the path is written `machine:/path`.
 
-`/quit` (or `/exit`, `/q`) leaves. Your draft is written to disk synchronously first, so
-a sentence typed in the last moment before quitting is not lost. Then the running turn is
-interrupted, the agent is closed, and the program exits. ctrl+c does the same thing when
-the session is idle; while a turn is running ctrl+c interrupts the turn instead.
+`/quit` (or `/exit`, `/q`) leaves, **and it leaves at once** — it is typed out on
+purpose, so it is not asked twice. Your draft is written to disk synchronously first,
+with any message still waiting for an answer folded in underneath it, so nothing typed
+in the last moment before quitting is lost. Then the running turn is interrupted, the
+agent is closed, and the program exits.
+
+`ctrl+c` is the other road out and it takes **two presses**: the first arms the door
+and the hint slot reads `ctrl+c again to quit`, and a second press within 1.5 seconds
+leaves. While a turn is running `ctrl+c` interrupts the turn instead and does not arm
+anything. The keys page has the whole rule under "Quitting aforge".
 
 ## /new — close this session and start a fresh one
 
