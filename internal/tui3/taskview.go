@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// THE TASK PAGE: /history, ctrl+. , or the column's own "view more" line — the
+// THE TASK PAGE: /history, ctrl+. , or the column's own one door line — the
 // SECOND of the two fullscreen pages this surface draws at every width, and the
 // settings panel (settings.go) is the first. The status deck and the tool detail
 // take the frame as well, but only at [tierPhone].
@@ -49,18 +49,25 @@ import (
 //   - IT READS THE SAME SNAPSHOT THE "@" LIST READS ([app.comp].tasks, loaded by
 //     [app.loadTasks]). One read, one cache, one answer to "what has this project
 //     run" — a page that fetched its own copy would be a second answer with its
-//     own staleness. The COLUMN reads it too now ([app.railRecord]), which is the
-//     same one-read law with a third reader on it.
+//     own staleness. The column asks the same snapshot ONE QUESTION
+//     ([app.railHasRecord]) — is there any of this at all — because the answer
+//     decides whether the foot of the column carries a door onto this page.
 //   - IT IS TYPED AT. Every printable key builds a filter over both sections at
 //     once ([app.taskSheetFilter]), because a record of four hundred tasks is
 //     reached by remembering a word of the title and by nothing else. esc backs
 //     out of the filter first and closes the page second, which is the settings
 //     panel's own layering ([app.sheetKey]).
 //
-// WHAT IT DOES NOT DO is replace the column. The column carries the same record
-// under its live rows — dulled, and capped at [railRecordMax] — and this is where
-// a person acts on it: the column's record rows answer to nothing, and every door
-// onto old work is on this page.
+// WHAT IT DOES NOT DO IS SHARE THE COLUMN. The column carried a dulled footnote
+// of this same record under its live rows for a while, and it was the wrong
+// place for it: six rows out of two thousand is not a record, the rows pushed the
+// column's own "no tasks yet" off the top, and a person walking the roster's
+// cursor fell out of this conversation's work into another one's without the
+// column ever saying they had. So the column is THIS CONVERSATION'S WORK AND
+// NOTHING ELSE, and what stands at the foot of it is ONE DIM DOOR onto this page
+// ([taskSheetPastHint], drawn by task.go's [app.railFootRows]) whenever the
+// project has a record to open. Every row of old work — and every door into one —
+// is here.
 
 // The page's own key, and the words that name it.
 //
@@ -173,9 +180,25 @@ const (
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when
-	// there is genuinely more here than the column is showing
-	// ([app.railOffersMore]).
+	// there is genuinely more here than the column is showing (task.go's
+	// [app.railFootRows] weighs it against [app.railFoldedAny] and
+	// [app.railHasRecord]).
 	taskSheetMoreHint = taskSheetKey + " — view more"
+	// taskSheetPastHint is that SAME LINE when what is behind it is the project's
+	// own record, and it is the commoner of the two by a long way: any directory
+	// that has been worked in before has one.
+	//
+	// IT IS ONE DOOR WEARING THE NAME OF WHAT IT OPENS, not a second door. The
+	// column has exactly one line onto this page and the words on it say which
+	// question the page will answer — "earlier" when there is history down there,
+	// "view more" when the only thing the column is holding back is a family it
+	// folded. A permanent "view more" over a month of finished work never told
+	// anybody the work existed, which is the whole reason the record was ever
+	// footnoted onto the column in the first place.
+	//
+	// It is [taskSheetPastHead]'s own word rather than a second one, because it is
+	// the section it lands you in.
+	taskSheetPastHint = taskSheetKey + " — " + taskSheetPastHead
 )
 
 // taskSheetRows is the page's own page size: what pgup and pgdown move by, and
@@ -1436,199 +1459,50 @@ func (a *app) taskSheetAwayRow(away session.ElsewhereTask, width int) string {
 	return line
 }
 
-// ── the column's own record rows ────────────────────────────────────────────
+// ── the one door the column has onto this page ──────────────────────────────
 
-// THE COLUMN CARRIES THE PROJECT'S RECORD TOO, dulled, under everything this
-// session is doing.
+// THE COLUMN IS THIS CONVERSATION'S WORK AND THE PROJECT'S RECORD IS THIS PAGE'S,
+// and the two are joined by exactly one dim line.
 //
-// It did not, and that was the whole feature reading as absent: a person opening
-// aforge in a directory they had worked in for a month saw an empty frame, no
-// column at all, and therefore no "view more" line and no reason to guess that a
-// page existed behind it. The record was one chord away and the chord was
-// undiscoverable.
+// It was not always so. The column carried a footnote of the record under its
+// live rows — at most six flat rows, dulled, walkable, each a door into a card —
+// and it was put there to solve a real problem: a person opening aforge in a
+// directory they had worked in for a month saw a column saying "no tasks yet",
+// and nothing on the frame suggested that a month of finished work was one chord
+// away. The footnote made the work visible and cost more than it was worth. Six
+// rows out of two thousand is not a record, it is a sample; the sample stood
+// where the column's own empty label goes, so the column stopped being able to
+// say what it was for; and the roster's cursor walked out of this conversation's
+// work into somebody else's without the column ever saying it had.
 //
-// So the column is the project's roster as well as the session's, in two tiers
-// that are drawn nothing alike:
-//
-//   - THIS SESSION'S WORK IS THE COLUMN, as it always was — the forest, the
-//     folds, the cursor, the rooms behind enter.
-//   - THE RECORD IS A FOOTNOTE UNDER IT: at most [railRecordMax] rows, flat, no
-//     connectors, no cursor, no door, drawn in the same muted-and-dim the page's
-//     own `earlier` rows are ([app.taskSheetPastRow] draws both, so the two
-//     lists cannot disagree about what a finished task looks like).
-//
-// THE RECORD NEVER EVICTS LIVE WORK. It is filled into the rows the session's
-// own list did not need and into no others ([app.railRecordLines]), so a column
-// full of running work carries none of it — and the honest answer for a person
-// who wants it anyway is the page, which the footer's line names.
+// SO THE VISIBILITY IS KEPT AND THE ROWS ARE NOT. The foot of the column carries
+// [taskSheetPastHint] — `ctrl+. — earlier`, dim, one line — whenever the project
+// has a record behind it, and that line is the door: it names the page, it says
+// what is on it, and it is pressed as readily as it is typed (task.go's
+// [app.railFootRows] draws it, [app.railPress] answers it). Everything the
+// footnote used to offer is on the other side of it, whole: every row, the
+// filter, the cards, the mention.
 
-// railRecordMax is how many record rows the column may carry.
-//
-// SIX, AND IT IS A CAP ON A FOOTNOTE RATHER THAN A WINDOW ONTO A FILE. The
-// record runs to two thousand rows; a column that showed forty of them would be
-// a file browser standing where a glance used to be, and the rows under the
-// sixth are what the page is for. It is the most RECENT six, because the index
-// arrives newest first and recency is the only order a footnote can carry.
-const railRecordMax = 6
-
-// railRecord is the project's record as the column shows it: the rows this
-// session is not already holding, newest first, and never more than limit of
-// them.
+// railHasRecord reports whether the project has finished work this session did
+// not run — which is the ONLY question the column asks of the record, and the
+// question that decides whether its foot carries a door (task.go's
+// [app.railFootRows]).
 //
 // THE MEMBERSHIP RULE IS THE PAGE'S ([app.taskSheetNodeFor]): a row whose id and
 // title name a node of this session's graph is that node, and the column is
-// already drawing it — folded or not — so repeating it down here would be the
-// same work said twice in two different colours.
+// already drawing it — so a directory whose whole record is this conversation's
+// own work has nothing behind a door and is offered none.
 //
-// IT STOPS AT limit, which is what makes it cheap enough to ask on every frame:
-// the column asks whether there is ANY record before it decides whether to stand
-// at all ([app.railContent]), and that question costs one row rather than a walk
-// of two thousand.
-func (a *app) railRecord(limit int) []*session.TaskIndexEntry {
-	if limit < 1 {
-		return nil
-	}
-	out := make([]*session.TaskIndexEntry, 0, min(limit, len(a.comp.tasks)))
+// IT SHORT-CIRCUITS ON THE FIRST ROW IT FINDS, which is what makes it cheap
+// enough to ask on every frame: the record runs to two thousand rows and the
+// common answer costs one comparison rather than a walk of all of them.
+func (a *app) railHasRecord() bool {
 	for i := range a.comp.tasks {
-		entry := &a.comp.tasks[i]
-		if a.taskSheetNodeFor(entry) != nil {
-			// THIS SESSION'S OWN WORK BELONGS TO THE FOREST ABOVE. The index's live
-			// rows are merged in off this session's own graph
-			// ([session.Agent.TaskIndex]), and a copy down here would be a running
-			// task drawn as history.
-			continue
-		}
-		// A ROW ANOTHER WINDOW WROTE IS KEPT WHATEVER IT CLAIMS, and the row itself
-		// says which it is ([app.taskSheetPastRow] asks [app.recordRuns]). It used
-		// to be dropped for saying `running`, which is how a task somebody started
-		// in the window next door — and a task some window died in the middle of —
-		// came to be visible on no surface this program draws.
-		out = append(out, entry)
-		if len(out) >= limit {
-			break
+		if a.taskSheetNodeFor(&a.comp.tasks[i]) == nil {
+			return true
 		}
 	}
-	return out
-}
-
-// railHasRecord reports whether the project has any work this session is not
-// showing — the cheapest form of the question, and the one [app.railShowing]
-// asks.
-func (a *app) railHasRecord() bool { return len(a.railRecord(1)) > 0 }
-
-// railRecordLines fills what is left of the column's body with the record: a
-// blank, the same `earlier` word the page heads its flat list with, and the rows.
-//
-// IT TAKES ONLY WHAT THE SESSION'S OWN ROWS LEFT BEHIND, and that is the whole
-// contract: it is handed the lines already laid out and the height they had to
-// fit in, so a column whose running work fills the frame gets no record rows at
-// all rather than a record row where a running one was. Nothing here can evict
-// anything.
-//
-// THE ROWS ARE DOORS. They were a note once — dulled, and unreachable by cursor
-// or pointer, with the page as the only place to act on them — and that was the
-// wrong call twice over: a row a person can read and cannot press is a row they
-// press anyway, and the thing they want from it is exactly the thing enter on
-// the page already does. So the cursor walks into them ([app.railMove]), the
-// pointer lights them, and enter or a click writes "@<slug>" into the message box
-// ([app.mentionTask]) — which is the door that EXISTS for work another
-// conversation ran, because a room is a live lane onto a node in this session's
-// graph and that session is closed.
-//
-// THE PAINT IS A CLAIM ABOUT THE WORK AND NOT ABOUT THE ROW. Muted-and-dim under
-// the selection band means this is the record rather than what is happening, and
-// it says nothing about whether the row answers a key. Which is why the ONE row
-// that is not dulled down here is the one that is genuinely running: a row
-// another window on this project is still holding wears the running ink and the
-// word `running`, and a row that claims to be running with nothing behind it
-// wears a dot and the word [taskRecordStoppedWord] ([app.taskSheetPastRow]
-// draws all three). The column cannot show another window's ordinary work — that
-// work has no row in the file until it lands, so only the page can
-// ([app.taskSheetAwayRows]) — but it must never draw the rows it DOES have as
-// history when they are not.
-//
-// The rows the frame drew are kept in [app.railPast], in drawn order, because
-// how many of them fit is a fact only this layout has: the cursor and the
-// pointer resolve against that list, which is the same bargain the glyph and
-// badge spans make ([railLine]).
-//
-// AND THEY ARE WHAT AN EMPTY SESSION IN AN OLD PROJECT SHOWS INSTEAD OF THE
-// LABEL. The permanent column says "no tasks yet" when it has nothing
-// ([railEmptyWord], task.go) — but a directory with a record behind it has
-// something, so [app.railView] stands the label down and these rows take the top
-// of the column. Two lines saying "no tasks yet" and "earlier · Port the parser"
-// one under the other would be the column contradicting itself.
-func (a *app) railRecordLines(out []railLine, body, width int) []railLine {
-	// THE DRAWN LIST IS CLEARED BEFORE IT IS FILLED, on every frame and however
-	// early this returns. A cursor resolving against last frame's rows — after a
-	// resize, after a landing that took the leftover space — is a cursor standing
-	// on a row that is not on the screen.
-	a.railPast = a.railPast[:0]
-	left := body - len(out)
-	// A RULE WITH NOTHING UNDER IT IS NOT A SECTION. Two rows is the least this
-	// block can be: the word, and one task under it.
-	if left < 2 {
-		return out
-	}
-	rows := a.railRecord(min(railRecordMax, left-1))
-	if len(rows) == 0 {
-		return out
-	}
-	if len(out) > 0 && left > len(rows)+1 {
-		// ONE BLANK ABOVE IT where the column can lend one — whitespace is how this
-		// surface separates blocks, and it is what the footer already does. There is
-		// nothing to separate at the top of the column, though: a conversation that
-		// has run nothing in a project that has ([app.railView]'s empty branch stands
-		// down for exactly this) opens with the word itself and not with a blank row.
-		out = append(out, railLine{entry: -1})
-	}
-	out = append(out, railLine{text: a.pal.dim(taskSheetPastHead), entry: -1, past: true})
-	for _, entry := range rows {
-		out = append(out, railLine{
-			text: a.taskSheetPastRow(entry, width), entry: -1, past: true, record: entry})
-	}
-	a.railPast = append(a.railPast, rows...)
-	return out
-}
-
-// railPastAt is the record row a cursor position names, or nil. It is asked of
-// the DRAWN list, so a cursor that a shrinking column has pushed off the bottom
-// answers nothing rather than answering about a row nobody can see.
-func (a *app) railPastAt(at int) *session.TaskIndexEntry {
-	if at < 0 || at >= len(a.railPast) {
-		return nil
-	}
-	return a.railPast[at]
-}
-
-// railPastIndex is where the roster's cursor is standing in the record block, or
-// -1 when it is not standing there at all.
-//
-// IT IS RESOLVED BY KEY AND NOT BY POSITION, which is [railSpot]'s own law: the
-// record shifts under the cursor whenever a node of this session's lands into it
-// or the column's leftover space changes, and an index would follow the shift
-// instead of following the work.
-func (a *app) railPastIndex() int {
-	if a.railWhere.past == "" {
-		return -1
-	}
-	for i, entry := range a.railPast {
-		if railPastKey(entry) == a.railWhere.past {
-			return i
-		}
-	}
-	return -1
-}
-
-// railPastFocus is the record row the cursor is on, or nil — and it is nil
-// unless the roster actually HOLDS the keyboard, which is [app.railFocusIndex]'s
-// own rule: a marker on a map that keys do not reach is a marker that lies about
-// what enter will do.
-func (a *app) railPastFocus() *session.TaskIndexEntry {
-	if !a.railHold {
-		return nil
-	}
-	return a.railPastAt(a.railPastIndex())
+	return false
 }
 
 // mentionTask writes "@<slug>" into the draft, which is the one door work
@@ -1640,9 +1514,11 @@ func (a *app) railPastFocus() *session.TaskIndexEntry {
 // saying something, and a list that emptied it to hand back a name would have
 // thrown away the sentence the name was for.
 //
-// It is ONE function because there are now two lists that offer it — the page's
-// `earlier` rows and the column's ([app.railEnter]) — and two spellings of
-// "put this task in my message" is two ways for the same gesture to differ.
+// IT IS OFFERED FROM INSIDE THE CARD AND FROM NOWHERE ELSE — `m`, which the
+// card's own foot names (taskrecord.go). The column used to offer it too, from
+// the record rows it no longer draws; one spelling of "put this task in my
+// message" is the point, because two would be two ways for the same gesture to
+// differ.
 func (a *app) mentionTask(entry *session.TaskIndexEntry) {
 	if entry == nil {
 		return

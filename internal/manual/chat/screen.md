@@ -12,9 +12,10 @@ menu, completion), and the status line last.
 Beside the conversation, on the right, the task roster's column — the right-hand bar,
 sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
 from the session's very first frame, before any tasks exist. Work fills the column
-rather than raising it. Empty it says one dim line — `no tasks yet` — unless the
-project has a record from earlier sessions, in which case those dulled `earlier` rows
-stand there instead. `ctrl+g` closes it and opens it again, remembered between
+rather than raising it, and the work it fills with is **this conversation's alone**.
+Empty it says one dim line — `no tasks yet` — whatever the project has behind it; where
+the project has a record from earlier sessions, one dim line at the foot of the column
+reads `ctrl+. — earlier` and opens the task page. `ctrl+g` closes it and opens it again, remembered between
 sessions, and the column's own last line says so: `❯ ctrl+g — hide`. With it closed the
 conversation is laid out at the full width of the terminal, running work still draws
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
@@ -1155,7 +1156,7 @@ the head of a task row. No role ever paints that column, so a ring hue cannot be
 as a state. The ring has no 16-colour tier — below the 256 rung the glyph alphabet
 carries identity alone.
 
-## What the task column looks like: dulled rows and its footer lines
+## What the task column looks like: quiet rows, its footer lines and its one door
 
 The right-hand task column is read at a glance, so it is drawn as one bright thing and a
 lot of quiet ones.
@@ -1172,37 +1173,32 @@ lot of quiet ones.
 **Rows that are running never scroll off**, however long the list gets: they are pinned to
 the top of the column and everything under them scrolls.
 
-**Under this session's rows, the project's record is a dulled footnote.** After a blank
-line comes the word `earlier`, dim, and under it at most six one-line rows of tasks earlier
-sessions ran — glyph, the `⧉` mention mark, the title muted, the age dim. They are filled
-into the rows the session's own list did not need, so they can never push a running task
-off.
+**The column is this conversation's work and nothing else.** No rows of the project's
+record are drawn under it. It used to carry a dulled footnote of up to six of them — a
+sample of two thousand, standing where the column's own `no tasks yet` goes, with the
+cursor walking out of this conversation into another one without the column saying so.
+What stands in their place is **one dim door** at the foot of the column: `ctrl+. — earlier`.
 
-**Dulled does not mean inert.** Those rows take the cursor (`ctrl+t`, then `↓` past this
-session's last task) and the hover step like any other row of the column, and `enter` or a
-click **goes inside that task** — the full-screen card of what the work came to, what it
-cost, where it left its changes and the last thing it said. What they never take is the
-selection band: that background means "this is the room you are standing in", and there is
-no room to stand in for work another conversation ran. The `ctrl+. — view more` line below
-reaches the rest of them.
-
-**And dulled is a claim about the work.** A row that still says `running` is drawn undulled
-and reads `running` only while the window that started it is open and still holds it;
-otherwise the glyph becomes a dot `·` and the row reads `incomplete` — the window went and
-nothing finished the work. Running work belonging to *other* windows is not on the column
-at all; `/history` carries that.
+**Everything earlier lives one press away.** `ctrl+. — earlier` opens the full-screen task
+page (`ctrl+.`, `/history`), which holds every task the project has ever run, across every
+session, with the filter, the cards and the mention. Home (`/home`, or space twice on an
+empty box) is the other place old work is listed. Running work belonging to *other*
+windows is not on the column at all, and never was; `/history` carries that too.
 
 The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
 you` — and then up to three more dim lines, each of which is a button as well as a key:
 
 ```
-ctrl+. — view more
+ctrl+. — earlier
 w · click seam — widen
 ❯ ctrl+g — hide
 ```
 
-`ctrl+. — view more` is drawn only when the full-screen task page (`/history`) has
-something this column cannot give: a folded family, or work an earlier session ran.
+**The first of them is one door with two spellings, never two doors.** It is drawn only
+when the full-screen task page (`/history`) has something this column cannot give, and the
+words on it say which: `ctrl+. — earlier` when the project's record holds work this
+session never ran, and `ctrl+. — view more` when the only thing held back is a family the
+column has folded. There is never more than one such line.
 `w · click seam — widen` appears only while a title is actually being cut by its own
 indent. `❯ ctrl+g — hide` is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses — the words beside it are the label for the
