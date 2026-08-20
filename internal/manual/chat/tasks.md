@@ -419,8 +419,10 @@ At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `1 need you · 3 r
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
 
-Under those, always, one more dim line: `ctrl+g — hide`. It is the column's own door, and
-it is a button as well as a key — click that line and the column goes away.
+Under those, always, one more line: `❯ ctrl+g — hide`. It is the column's own door, and it
+is a button as well as a key — click that line and the column goes away. The `❯` is in ink
+and the words are dim, because the chevron is what the pointer presses and the words are
+what the keyboard reads.
 
 **Work that is running never scrolls off it.** Families are already ordered so that
 anything running or waiting on you leads the column, and those rows are also *pinned*: when
@@ -494,11 +496,13 @@ directory.
 `ctrl+g` closes the column of tasks on the right and gives its columns back to the
 conversation. Press it again and the column comes back with the current state of the
 work in it, including anything that started or finished while it was gone — nothing here
-is a snapshot; the column is redrawn from the tasks every frame. The `ctrl+g — hide` line
-at the bottom of the column is the same door for the pointer: click it and it closes.
+is a snapshot; the column is redrawn from the tasks every frame.
 
-**A closed column leaves a thin edge behind, and clicking it opens the column again** —
-see *The task bar disappeared* below.
+**The pointer can do the whole cycle on its own.** The last line of the column reads
+`❯ ctrl+g — hide` with the chevron in ink: click it and the column closes. What is left
+behind is a thin edge carrying `❮`: click that and the column comes back. One control, two
+states — `❯` to close, `❮` to open — so a closed column is never a thing you need to know a
+chord to recover. See *The task bar disappeared* below.
 
 The choice is remembered. It is written to your profile the moment the column moves, as
 the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
@@ -524,18 +528,23 @@ all: a frame under 100 columns where nothing has raised the roster over the body
 ## The task bar disappeared — how do I get the task column back
 
 A closed column does not vanish without a trace. It leaves a **thin edge two columns wide
-down the right of the frame**, with a dim `‹` handle at the middle of it:
+down the right of the frame**, with a `❮` handle at the middle of it, drawn in ordinary ink
+rather than dim so the eye can find it:
 
 ```
- …and the parser suite passes now.                                       ‹
+ …and the parser suite passes now.                                       ❮
 ```
 
 **Click anywhere on that edge and the column comes back** — the whole strip is the door,
 not just the handle, so there is nothing to aim at. It is the same act as `ctrl+g`, which
 still works and is still the key.
 
-- Under the pointer the handle brightens, which is how everything pressable on this screen
-  says so.
+- Under the pointer the handle brightens further and the whole two-cell strip takes a
+  background, which is how everything pressable on this screen says so.
+- **The chevron points the way the column goes**, and it is the same control in its other
+  state: `❮` while the column is away, `❯` on the `❯ ctrl+g — hide` line while it stands.
+  Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
+  that cannot draw them they are `<` and `>`.
 - **One cell above the handle says what the work is doing**, while there is anything worth
   saying: `▲` in the question colour when a task is waiting on you, `●` in the accent when
   something is running. Nothing at all otherwise — a session with nothing running and
@@ -568,7 +577,7 @@ rest state, so a person who starts typing is typing, not navigating.
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
 When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
 `w · click seam — narrow` once it is wide); that hint is clickable as well as available
-from the keyboard, and so is the `ctrl+g — hide` line under it.
+from the keyboard, and so is the `❯ ctrl+g — hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with
@@ -789,7 +798,7 @@ is closed opens the card.
 ## The "view more" line at the bottom of the task column
 
 When there is more work than the column is showing, the roster's footer grows one more dim
-line above `ctrl+g — hide`:
+line above `❯ ctrl+g — hide`:
 
 ```
 ctrl+. — view more
