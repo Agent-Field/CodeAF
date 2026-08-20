@@ -304,7 +304,10 @@ func (a *app) openRoom(id uint64, title string) {
 		return
 	}
 	if title == "" {
-		title = "task " + itoa(int(id))
+		// A node nobody has named yet opens under the name a person can still say
+		// out loud ([taskIDWord], taskident.go) — and the header takes the real one
+		// the moment the engine publishes it ([app.taskUpdate]).
+		title = taskIDWord(id)
 	}
 	a.roomGen++
 	room := &taskRoom{
@@ -1886,6 +1889,16 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.railWiden(!a.railWide)
 		return nil, true
 	}
+	// A ROW OF THE PROJECT'S RECORD IS A DOOR ONTO THE MENTION, and a press walks
+	// through it on the FIRST press, which is what every row of this column has
+	// always done (taskview.go's [app.railRecordLines] says why the door is the
+	// mention and not a room). The cursor moves with it, so the keyboard picks up
+	// where the hand left off — the same bargain a press on a node row makes.
+	if line.record != nil {
+		a.railWhere = railSpotOfPast(line.record)
+		a.mentionTask(line.record)
+		return nil, true
+	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {
 		return nil, true
@@ -1947,6 +1960,24 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 		return nil
 	}
 	return a.railNodeAt(y)
+}
+
+// railHoverPast is which row of the PROJECT'S RECORD the pointer is over, as an
+// index into the rows the layout drew ([app.railPast], taskview.go), or -1.
+func (a *app) railHoverPast(x, y int) int {
+	if !a.railAt(x, y) {
+		return -1
+	}
+	line, ok := a.railLineAt(y)
+	if !ok || line.record == nil {
+		return -1
+	}
+	for i, entry := range a.railPast {
+		if entry == line.record {
+			return i
+		}
+	}
+	return -1
 }
 
 // ── THE FOCUS HEADER ────────────────────────────────────────────────────────
