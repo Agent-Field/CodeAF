@@ -69,7 +69,8 @@ your home directory — with one line per session under it:
 ```
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
-spoke in it. The glyphs: `▲` it is stopped waiting on you, `●` something is running, `◌`
+spoke in it — or `another window` where another terminal is sitting on that conversation
+and this one therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting on you, `●` something is running, `◌`
 work was left unfinished, `○` at rest. On a terminal that cannot draw them they are `!`,
 `*`, `o` and `-`.
 
@@ -125,6 +126,41 @@ type to search or start something new · ↑↓ pick · enter open
 
 and the line under it says what the keyboard does, which changes with what the cursor is
 on — at rest, `↑↓ move · enter open · esc close`.
+
+## Why can't I open a session from home — open in another window
+
+A conversation that another terminal already has open cannot be opened by this one: two
+aforge windows on one journal would both append to it and neither would end up with the
+conversation. Home knows this **before you press anything**, so it says so twice over.
+
+**On the row.** A conversation sitting idle in another terminal reads `another window`
+where its rollup would be, so a locked door does not look like an ordinary one.
+
+A row already showing `waiting on you` or `N running` keeps those words instead, and does
+not need the extra label: **both of them are read from a file only a live session writes**,
+so a row wearing either is already telling you a window has it. Saying it twice would cost
+the name the width it needs.
+
+**On enter.** Nothing is tried. Home stays open, nothing is written into the conversation
+underneath, and one dim line appears at the foot of the screen:
+
+```
+open in another window — go there, or start a new conversation here
+```
+
+Pressing enter again says it once more in the same place rather than piling it up, and you
+can move straight to another row. **No file path is printed** — the path is aforge's own
+bookkeeping and not a thing you can act on.
+
+The right-hand pane spells the same fact out as `open in another window`, along with what
+that window is doing.
+
+So the two things to do are exactly the two the sentence names: go to the terminal that has
+it, or type something here and start a new conversation instead.
+
+There is one case the check cannot cover: a lock taken in the instant between home drawing
+the row and your keystroke. You get the same sentence in the same place, and the
+conversation you were in is untouched.
 
 ## What home will not do yet — opening another project's work
 

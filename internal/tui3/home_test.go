@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -1370,5 +1371,224 @@ func TestTheGestureWorksWhileATurnIsRunning(t *testing.T) {
 	}
 	if a.state != stateWorking {
 		t.Fatal("opening home disturbed the running turn")
+	}
+}
+
+// ── a conversation another window is holding ────────────────────────────────
+
+// hold takes a real exclusive flock on a session's journal and keeps it until
+// the test ends — the same lock a second aforge would meet, taken the same way
+// (internal/session's sessionfile.go), so these tests exercise the actual
+// condition rather than a flag standing in for it.
+func (l *homeLab) hold(transcript string) {
+	l.t.Helper()
+	file, err := os.Open(transcript)
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		file.Close()
+		l.t.Fatalf("could not hold %s: %v", transcript, err)
+	}
+	l.t.Cleanup(func() {
+		unix.Flock(int(file.Fd()), unix.LOCK_UN)
+		file.Close()
+	})
+}
+
+// THE ROW SAYS SO BEFORE IT IS PRESSED. This is the half of the trap that made
+// a locked door look like every other row on the list.
+func TestALockedRowSaysSoInTheList(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	a.openHome()
+	text := homeText(a)
+	if !strings.Contains(text, homeHeldShort) {
+		t.Fatalf("the list does not say the row is held:\n%s", text)
+	}
+	// And the detail column spells it out in full.
+	a.home.point(theirs)
+	if detail := homeText(a); !strings.Contains(detail, homeHeldWord) {
+		t.Fatalf("the pane does not say the conversation is open elsewhere:\n%s", detail)
+	}
+}
+
+// ENTER REFUSES WITHOUT TRYING, keeps home open, and never touches the
+// conversation underneath.
+func TestEnterOnALockedRowRefusesInHomesOwnVoice(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	asked := 0
+	a.resume = func(string) (Agent, error) {
+		asked++
+		return &fakeAgent{model: "m"}, nil
+	}
+	a.openHome()
+	a.home.point(theirs)
+	before := len(a.entries)
+
+	a.homeKey(key("enter"))
+	if asked != 0 {
+		t.Fatalf("home tried the door it already knew was locked (%d times)", asked)
+	}
+	if !a.home.open {
+		t.Fatal("the refusal closed home")
+	}
+	if a.file != mine {
+		t.Fatalf("the refusal moved this window to %q", a.file)
+	}
+	if a.home.msg != sessionBusyWord {
+		t.Fatalf("home said %q", a.home.msg)
+	}
+	if len(a.entries) != before {
+		t.Fatalf("the refusal was written into the conversation: %v", a.entries[before:])
+	}
+	if !strings.Contains(homeText(a), "go there, or start a new conversation here") {
+		t.Fatalf("the refusal is not on the screen:\n%s", homeText(a))
+	}
+	// NO RAW PATH ANYWHERE. The whole defect was sixty characters of somebody
+	// else's bookkeeping wrapped across two lines.
+	for _, banned := range []string{"transcript.jsonl", "resume failed", "aforge/v3"} {
+		if strings.Contains(homeText(a), banned) {
+			t.Fatalf("the refusal leaked %q:\n%s", banned, homeText(a))
+		}
+	}
+}
+
+// A SECOND PRESS SAYS IT ONCE. The refusal lives in home's own line and is
+// replaced, where a note in the conversation would have stacked.
+func TestASecondEnterOnALockedRowDoesNotStack(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(theirs)
+	before := len(a.entries)
+	a.homeKey(key("enter"))
+	a.homeKey(key("enter"))
+	a.homeKey(key("enter"))
+	if len(a.entries) != before {
+		t.Fatalf("three presses wrote %d lines into the conversation", len(a.entries)-before)
+	}
+	if got := strings.Count(homeText(a), "go there, or start"); got != 1 {
+		t.Fatalf("the refusal is on the screen %d times", got)
+	}
+}
+
+// The lock can appear between the scan and the keystroke, so the open itself
+// can still lose. It loses in the same words, in the same place.
+func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	// The door answers the way the engine does when it meets the flock, which
+	// is the state a lock taken microseconds ago leaves the surface in.
+	a.resume = func(file string) (Agent, error) {
+		return nil, &session.SessionLockedError{Path: file}
+	}
+	a.openHome()
+	a.home.point(theirs)
+	before := len(a.entries)
+
+	a.homeKey(key("enter"))
+	if !a.home.open {
+		t.Fatal("losing the race closed home")
+	}
+	if a.home.msg != sessionBusyWord {
+		t.Fatalf("home said %q", a.home.msg)
+	}
+	if len(a.entries) != before {
+		t.Fatalf("the race wrote into the conversation: %v", a.entries[before:])
+	}
+	if strings.Contains(homeText(a), "transcript.jsonl") {
+		t.Fatalf("the race leaked the path:\n%s", homeText(a))
+	}
+}
+
+// THE WINDOW KEEPS WHAT IT HAD. A refusal used to close this window's agent
+// before discovering it could not open the other one.
+func TestARefusedResumeLeavesThisWindowWhereItWas(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	held := a.agent.(*fakeAgent)
+	a.resume = func(file string) (Agent, error) {
+		return nil, &session.SessionLockedError{Path: file}
+	}
+	if _, refusal := a.openSession(Session{File: theirs}); refusal != sessionBusyWord {
+		t.Fatalf("openSession answered %q", refusal)
+	}
+	if held.closes != 0 {
+		t.Fatal("the conversation on screen was closed before the other one failed to open")
+	}
+	if a.agent != Agent(held) || a.file != mine {
+		t.Fatal("the surface moved off the conversation it was in")
+	}
+}
+
+// And a row nobody is holding still opens, which is the whole point of being
+// careful about the ones that are.
+func TestAnUnlockedRowStillOpens(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	free := lab.session("-tmp-alpha", "aaaa000000000002", "nobody has this one", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(free)
+	if strings.Contains(homeText(a), homeHeldShort) {
+		t.Fatalf("an unheld row was drawn as held:\n%s", homeText(a))
+	}
+	a.homeKey(key("enter"))
+	if a.home.open {
+		t.Fatal("opening a free conversation left home up")
+	}
+	if a.file != free {
+		t.Fatalf("home opened %q, want %q", a.file, free)
+	}
+}
+
+// The picker and the welcome box go through the same door, so they get the same
+// sentence — no path, no "resume failed".
+func TestTheOtherDoorsAlsoStopDumpingThePath(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.resume = func(file string) (Agent, error) {
+		return nil, &session.SessionLockedError{Path: file}
+	}
+	a.resumeSession(Session{File: theirs, Title: "the other terminal"})
+	said := homeNotes(a)
+	if !strings.Contains(said, sessionBusyWord) {
+		t.Fatalf("the picker's door said %q", said)
+	}
+	for _, banned := range []string{"transcript.jsonl", "resume failed"} {
+		if strings.Contains(said, banned) {
+			t.Fatalf("the picker's door leaked %q: %s", banned, said)
+		}
 	}
 }

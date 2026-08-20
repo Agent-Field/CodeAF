@@ -1,11 +1,14 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE WELCOME BOX: the first thing an empty session shows, and the last time it
@@ -208,12 +211,53 @@ func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 // armed on the new one. Both lanes are re-opened here for the same reason /new
 // re-opens them: they belong to the agent that handed them over.
 func (a *app) resumeSession(chosen Session) tea.Cmd {
+	cmd, refusal := a.openSession(chosen)
+	if refusal != "" {
+		a.note(refusal)
+	}
+	return cmd
+}
+
+// sessionBusyWord is what this surface says about a conversation another window
+// is holding, and it is ONE SENTENCE IN ONE PLACE.
+//
+// It replaces the engine's own error, which reads
+// `session file: /Users/…/b9c0d3ad…/transcript.jsonl is open in another aforge`
+// — a full path, wrapped across two lines of somebody's conversation, naming a
+// directory they have never had a reason to look at and a fact they cannot act
+// on. The path is not the news. The news is that the conversation is open
+// somewhere and what to do about it, and neither of those needs sixty
+// characters of bookkeeping to say.
+const sessionBusyWord = "open in another window — go there, or start a new conversation here"
+
+// openSession swaps this surface onto an earlier conversation, and answers the
+// command it owes plus a SENTENCE FOR A PERSON rather than an error — "" when
+// it worked.
+//
+// THE NEW CONVERSATION IS OPENED BEFORE THE OLD ONE IS CLOSED, and that order is
+// the whole repair. It used to be the other way round, so a resume that failed
+// — the ordinary case of a second window on a session somebody already has open
+// — closed this window's agent, failed to open the other, and left the surface
+// holding a closed session with nothing to fall back to. Opening first means a
+// refusal costs nothing at all: the conversation on screen is still the live one
+// and still writable, and the person is exactly where they were.
+//
+// Two agents are briefly alive, which is fine and is not a lock conflict: they
+// hold different files by construction, because every caller answers a request
+// for the conversation already open by staying in it rather than reopening it.
+func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	if a.resume == nil {
 		// The picker's sentence, said once (resume.go): the box and the list are
 		// two doors onto the same missing seam, and a surface that explained it
 		// twice in two different words would read as two different faults.
-		a.note(resumeUnavailableWord)
-		return nil
+		return nil, resumeUnavailableWord
+	}
+	agent, err := a.resume(chosen.File)
+	if err != nil {
+		if errors.Is(err, session.ErrSessionLocked) {
+			return nil, sessionBusyWord
+		}
+		return nil, "resume failed: " + err.Error()
 	}
 	if a.state == stateWorking && a.agent != nil {
 		a.agent.Interrupt()
@@ -222,11 +266,6 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 		if err := a.agent.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}
-	}
-	agent, err := a.resume(chosen.File)
-	if err != nil {
-		a.note("resume failed: " + err.Error())
-		return nil
 	}
 	a.agent, a.file = agent, chosen.File
 	a.entries = nil
@@ -257,12 +296,13 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 	a.replay()
 	a.measureContext()
 	a.note("resumed " + a.hostedPath(chosen.File))
+	//nolint:staticcheck // the batch below is this function's whole result.
 	// The conversation that just opened subscribes to its OWN lanes: the rail's
 	// updates and the turns the session starts by itself. A resumed session is
 	// exactly where the second one earns its keep — the node that lands is
 	// usually one this session started before it was closed (session's
 	// recovery.go continues the frontier).
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns()), ""
 }
 
 // welcomePress is a click inside the box: on a recent row it opens that
@@ -278,6 +318,13 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
+	if chosen.File != "" && chosen.File == a.file {
+		// The conversation this window is already in. It is the picker's rule
+		// (resume.go), and here it is also what keeps [app.openSession]'s
+		// open-before-close safe: asking the door for our own journal would meet
+		// our own flock.
+		return nil
+	}
 	return a.resumeSession(chosen)
 }
 
