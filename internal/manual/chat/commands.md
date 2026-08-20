@@ -581,8 +581,10 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 "which conversation, here", and this is "what is there at all".
 
 There is no argument form and no key chord — `/home` is the only way in. Projects are dim
-headings, one line per conversation under each: a glyph (`●` running, `◌` left unfinished,
-`○` at rest), the name, what it has going on, and how long since you spoke in it. Quiet
+headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
+`◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
+spoke in it. A conversation stopped on a question sorts to the top of its project and the
+right half shows the line it is stopped on. Quiet
 conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
 right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
 

@@ -25,16 +25,19 @@ your home directory — with one line per session under it:
 
 ```
   aforge-v2
+  ▲ pricing research          waiting on you · 4m
   ● port the resume picker      2 running · 12m
   ○ import cleanup              3 tasks · 3h
 ```
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
-spoke in it. The glyphs: `●` something is running, `◌` work was left unfinished, `○` at
-rest. On a terminal that cannot draw them they are `*`, `o` and `-`.
+spoke in it. The glyphs: `▲` it is stopped waiting on you, `●` something is running, `◌`
+work was left unfinished, `○` at rest. On a terminal that cannot draw them they are `!`,
+`*`, `o` and `-`.
 
-Sessions with work running or work left unfinished come first inside a project, then the
-rest by when you last spoke. Quiet ones past the first four collapse into one dim line,
+Inside a project the order is **what wants you first**: sessions stopped on a question,
+then ones with work running, then ones with work left unfinished, then the rest by when
+you last spoke. Quiet ones past the first four collapse into one dim line,
 `…3 more, quiet since 2d`.
 
 **On the right** is whatever the cursor is on: its name, its project and workspace path,
@@ -124,19 +127,46 @@ already taken, and the chords that were left — `ctrl+.` and the `alt+` letters
 some terminals and silently do nothing in others. A key that works on one machine and not
 the next is worse than a command that works everywhere, so none was bound.
 
+## Why a session says it needs you — waiting on you
+
+A session that has asked you something and can go no further writes that down, and home is
+where you see it without opening the window it is in. The row wears `▲`, its rollup reads
+exactly `waiting on you`, and **it sorts to the top of its project** — above work that is
+running, above everything you spoke in more recently.
+
+The right column then shows the one line it is stopped on, and it is the only thing on
+that pane that is not dim: everything else there is a fact about what happened, and this
+is a thing somebody has to do. A session that gave no words for what it is waiting on
+shows no line at all rather than a placeholder.
+
+This is read out of a small file each live session keeps in its own folder, refreshed
+every five seconds and believed for fifteen. So a window that was killed, or a laptop that
+closed, stops claiming to need you within a glance — nothing on home asks you for
+something that nobody is waiting for any more.
+
+`enter` on the row opens it under the ordinary rule, so a question in this project is one
+key away and one in another project tells you where to go.
+
 ## Why a task says incomplete on home
 
 The project's record of its work is append-only: a task writes a row when it starts and
 another when it lands. So a machine that lost power, or an aforge that was killed, leaves
 rows on disk that say `running` forever.
 
-Home never repeats that claim. It asks the operating system who is actually holding each
-journal open, and a `running` row in a session **nobody is holding** is drawn as
-`incomplete` — work that was under way when the window went — rather than as something
-happening now. The same rule decides the glyph: `◌`, not `●`.
+Home never repeats that claim. **It asks the session itself.** A live session says out
+loud, every few seconds, which task nodes it currently has out; a `running` row is drawn
+as `running` only when the session that ran it is still alive and still names that node.
+Every other live-looking row is `incomplete` — work that was under way when the window
+went — and the same rule decides the glyph: `◌`, not `●`.
+
+A session too old to keep that file, but whose journal a window is holding, falls back to
+the older answer: the lock is asked, and its rows are believed. That is the same rule with
+less to go on, not a different one.
 
 The right column says `open here` for the one this window is in and `open in another
-window` for one a second aforge has, and says nothing at all when nobody has it.
+window` for one a second aforge has, with what it is doing after it — `open in another
+window · working`. `idle` is not spelled out, because it is what an open session usually
+is. Nothing at all is said when nobody has it.
 
 ## Home on a fresh machine, and over --host
 
@@ -150,9 +180,10 @@ screen full of the wrong machine's projects would be a confident lie.
 
 ## Does home update while I look at it?
 
-Yes, every few seconds, by reading the folders again. A task landing in another window, or
-work somebody starts in a second terminal, shows up without you doing anything. There is
-no file watcher and nothing runs when the screen is closed.
+Yes, every few seconds, by reading the folders again. A task landing in another window,
+work somebody starts in a second terminal, or a session stopping to ask a question all
+show up without you doing anything. There is no file watcher and nothing runs when the
+screen is closed.
 
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto
