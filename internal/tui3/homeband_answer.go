@@ -217,7 +217,10 @@ func (a *app) answerKey(key string) (tea.Cmd, bool) {
 		// answered, and the row is still saying so.
 		return nil, false
 	}
-	if session.AnswerLabel(question.Kind, key) == "" {
+	// THE LIST IS THE ONE THAT SESSION OFFERED and not what this build knows
+	// the kind can take (this file's first law). A one-off reminder's card has
+	// no `3`, and a `3` pressed over its row is a character being typed.
+	if question.Label(key) == "" {
 		return nil, false
 	}
 	return a.sendAnswer(row, question, key)
@@ -279,7 +282,7 @@ func (a *app) answerPress(x, y int) (tea.Cmd, bool) {
 // through the resolver this window already holds, and every other window's is
 // left on its doorstep for it to pick up.
 func (a *app) sendAnswer(row session.SessionRow, question session.PresenceQuestion, key string) (tea.Cmd, bool) {
-	label := session.AnswerLabel(question.Kind, key)
+	label := question.Label(key)
 	if label == "" {
 		return nil, false
 	}

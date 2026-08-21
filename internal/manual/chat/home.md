@@ -652,7 +652,9 @@ The chips are the ones the question has:
 
 - It is **waiting for permission to run something**: `1 allow once · 2 always · 3 deny`.
 - It is **asking whether to start a task**: `1 yes · 2 no`.
-- It is **asking whether to keep an eye on something**: `1 yes · 3 once, not standing`.
+- It is **asking whether to keep an eye on something**: `1 yes · 3 once, not standing`
+  — or just `1 yes`, when what it is asking about is a **one-off reminder**, which has no
+  `once` answer at all (the reminders page says why).
   There is no `2 change when` here, on purpose: that answer is a request for a text box,
   and a card in a column has no box. There is no outright **no** either — `esc` on home
   closes home, and a key that could refuse a reminder on the way out of a dashboard would
@@ -884,12 +886,19 @@ If it made the timing up rather than reading it off what you said, the band asks
 instead of stating: `Mondays at 9am — you didn't say, so that's my guess.
 Right?`
 
-**The three answers**, by key, by `←`/`→` and `enter`, or by clicking one:
+**The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
 
 - `1 yes, set it up` — it stands.
 - `2 change when` — the box below becomes a place to say when instead; `enter`
   sends your words back and nothing is set up until a new card comes.
 - `3 once, not standing` — do it now and leave nothing behind.
+
+A **one-off reminder's card draws only the first two**, and `3` does nothing on
+it: "do it now" for a line meant for six o'clock is not a smaller version of the
+reminder, it is the wrong thing at the wrong moment. Watches, rules, routines and
+overnight work keep all three. The hint under the box says which digits are
+really there — `1 yes · 2 change when · 3 once · esc no`, or
+`1 yes · 2 change when · esc no`.
 
 `esc` says no. **There is no clock on this one**: no bar, no countdown, and no
 moment where it answers on your behalf — it waits while you read it. That is the

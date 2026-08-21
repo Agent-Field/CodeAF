@@ -100,6 +100,11 @@ type standingCard struct {
 	// offerWatch says a yes is followed by the one-time question rather than by
 	// an answer.
 	offerWatch bool
+	// answers is the proposal's chip row, in order, as THE ENGINE named it
+	// ([session.StandingNotice.Options] via [standAnswerWords]). It is held on
+	// the card rather than worked out at draw time because the keyboard asks
+	// which digits belong to this question before any frame has been painted.
+	answers []string
 	// deadline is when the card stops asking, and zero when the engine is
 	// holding it open indefinitely. born is when it arrived, which the meter
 	// needs for the other end of its span.
@@ -180,8 +185,13 @@ const (
 	// standChangeLane is the box's placeholder while a correction is being
 	// written.
 	standChangeLane = "say when instead… (enter sends it, esc leaves it alone)"
-	// standProposalHint is the hint slot's line while the card is up.
+	// standProposalHint is the hint slot's line while the card is up, and
+	// standTwoHint is the same line for a card with no `once` on it — a one-off
+	// reminder's ([standAnswerWords]). THE HINT NAMES THE KEYS THE CARD DREW and
+	// never one more: a hint offering a digit the chips do not is the same
+	// defect as a chip that does nothing.
 	standProposalHint = "1 yes · 2 change when · 3 once · esc no"
+	standTwoHint      = "1 yes · 2 change when · esc no"
 	// standWatchHint is the same slot during the follow-up.
 	standWatchHint = "1 always · 2 only while a window is open"
 
@@ -454,12 +464,55 @@ var (
 	standWatchWords  = [...]string{standAlwaysWord, standWindowWord}
 )
 
+// standAnswerWords is the proposal's chips for one notice, and it READS THE
+// ENGINE'S LIST rather than deciding anything.
+//
+// THE CARD DOES NOT ALWAYS HAVE THREE. A one-off reminder offers no `once, not
+// standing`, because "do it once, now" for a line that was meant for six
+// o'clock says the wrong thing at the wrong moment or says nothing at all
+// (session's [StandingOptions] holds the whole law and the story behind it).
+// The engine states which answers a card has on the notice; this turns that
+// into the words this surface draws, in the same order.
+//
+// `change when` is on every row and is never in the engine's list: it is a
+// request for the box under the card, and the list it comes from is the one
+// home draws from, where there is no box.
+func standAnswerWords(notice session.StandingNotice) []string {
+	words := []string{standYesWord, standChangeWord}
+	for _, option := range notice.Options {
+		if option.Key == session.StandingOnceKey {
+			return append(words, standOnceWord)
+		}
+	}
+	if len(notice.Options) == 0 {
+		// A NOTICE THAT NAMED NOTHING IS THE KIND'S FULL ROW. The zero value of
+		// the field is "the engine did not narrow this", which is what every
+		// card was before it existed.
+		return append(words, standOnceWord)
+	}
+	return words
+}
+
 // standChips is the row of answers the card is currently asking with.
 func (c *standingCard) chips() []string {
 	if c.stage == standWatching {
 		return standWatchWords[:]
 	}
+	if len(c.answers) > 0 {
+		return c.answers
+	}
 	return standChoiceWords[:]
+}
+
+// offers reports whether one digit has a chip under it on this card. A digit
+// that does not is NOT AN ANSWER: it belongs to the box, exactly as any other
+// character does.
+func (c *standingCard) offers(key string) bool {
+	if c == nil {
+		return false
+	}
+	at, ok := taskModelKey(key)
+	return ok && at < len(c.chips())
 }
 
 // standingKey is the card's claim on the keyboard, and it is NOT modal — the
@@ -506,8 +559,20 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if card.typing {
 		return nil, false
 	}
-	if at, ok := taskModelKey(msg.String()); ok && at < len(card.chips()) {
-		return a.takeStanding(at), true
+	if at, ok := taskModelKey(msg.String()); ok {
+		if at < len(card.chips()) {
+			return a.takeStanding(at), true
+		}
+		// A DIGIT THE PROPOSAL DID NOT DRAW IS INERT, AND IS NOT TEXT EITHER.
+		// The card owns 1, 2 and 3 while it is asking with an empty box — that
+		// is the trade this lane already makes, and a correction cannot begin
+		// with one of them whatever this line says. So `3` on a one-off
+		// reminder, which has no third chip ([standAnswerWords]), does NOTHING:
+		// letting it through would put a stray character in the box and turn
+		// the `1` after it into a correction rather than a yes.
+		if card.stage == standAsking && at < len(standChoiceWords) {
+			return nil, true
+		}
 	}
 	return nil, false
 }
@@ -912,6 +977,21 @@ func (a *app) standMeter(card *standingCard, width int) string {
 	return a.progress(frac, cells) + "  " + a.pal.dim(word)
 }
 
+// standAskHint is the hint slot's line for the question a card is asking right
+// now: the follow-up's two, or the proposal's own row of digits.
+func standAskHint(card *standingCard) string {
+	if card == nil {
+		return standProposalHint
+	}
+	if card.stage == standWatching {
+		return standWatchHint
+	}
+	if len(card.chips()) <= standOnce {
+		return standTwoHint
+	}
+	return standProposalHint
+}
+
 // standingAnimating reports whether the frame clock has to keep turning for the
 // ambient side: a card's meter is draining toward the moment the engine
 // declines it, or a firing is in flight and the status segment is breathing.
@@ -941,6 +1021,7 @@ func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
 		cost:       strings.TrimSpace(notice.CostWords),
 		guessed:    notice.Guessed,
 		offerWatch: notice.OfferWatch,
+		answers:    standAnswerWords(notice),
 		deadline:   notice.Deadline,
 		born:       a.now(),
 		// THE CARD OPENS ON "YES", which is [app.proposeTask]'s law and not a
