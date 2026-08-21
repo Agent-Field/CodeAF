@@ -661,6 +661,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			settings: settings, client: workingClient, workspace: jobSpace, web: web,
 			graph: graph, media: &leafMedia, model: workingModel, models: modelCatalog,
 			maxTurns: turns, maxTokens: tokens, deadline: deadline, fanIn: fanIn,
+			// This surface settles its leaves through the path that grows the
+			// graph from a division request, so the verb has somewhere to go.
+			// See leafBuild.swarm.
+			swarm: true,
 		}
 		shape := "atomic"
 		if isReflex {
@@ -1338,6 +1342,35 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						})
 					}
 				}
+			}
+		}
+		// The cooperative sibling of the block above: the same decision, bought
+		// without the failure. An overrun grows the graph on evidence that a
+		// leaf spent everything it had; this grows it on evidence that a leaf
+		// opened the material and found several jobs in it — which is the same
+		// finding, arriving before the money instead of after.
+		//
+		// It is gated on the settings row and on nothing else being true of the
+		// settlement. Off, outcome.SplitRequest is nil on every leaf because the
+		// verb is not on any belt, so this is a nil check that never fires and
+		// the tree behaves exactly as it did. The two arms cannot both run:
+		// StopSplit is deliberately not an overrun (see exec.StopSplit), and a
+		// continuation already under way is a graph that has grown once for this
+		// settlement, which is all any settlement gets.
+		if settings.Swarm && !isReflex && !continuing && outcome.SplitRequest.Valid() {
+			spliced, splitErr := splitAsAsked(ctx, graph, plans, settings, planClient, taskClient,
+				planContextTokens, node, outcome, absolute)
+			if splitErr != nil {
+				// A division that failed is a leaf that did not divide, and the
+				// partial it is holding is still a result. Logged rather than
+				// returned for the same reason the claim-time division logs: the
+				// caller's remaining move is the one it was going to make.
+				log.Printf("note: could not divide %s as it asked: %v", node.ID, splitErr)
+			}
+			if spliced > 0 {
+				continuing = true
+				notes = append(notes, "["+resident.CooperativeContinuationMessage(spliced)+"]")
+				recordOnNode(graph, node.ID, resident.CooperativeContinuationMessage(spliced), store.RoleSystem)
 			}
 		}
 		promoted := shouldPromoteReflex(node, outcome)
