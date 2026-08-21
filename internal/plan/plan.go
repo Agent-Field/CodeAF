@@ -352,6 +352,14 @@ type Options struct {
 	// passes still running. See Graph.Invoice and invoice.go.
 	Invoice string
 
+	// CapacitySamples and CapacityOverrunRate are the journal's measured answer
+	// to how often one-worker leaves exceeded their envelope. Zero is no
+	// measurement and preserves the old decision exactly; callers only populate
+	// them behind the swarm gate. The sample count remains separate because a
+	// dramatic rate from one run is an anecdote, not a reason to buy more work.
+	CapacitySamples     int
+	CapacityOverrunRate float64
+
 	Report Report
 
 	// Progress is called at pass boundaries. Nil keeps planning behavior and
