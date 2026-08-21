@@ -417,6 +417,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I use home on my phone", "home"},
 		{"how do I approve a command from my phone", "home"},
 		{"how do I open a task by tapping", "tasks"},
+		// Background checks are on out of the box now, and the two sentences a
+		// person says about that are the plain question and the plain wish.
+		{"does it run when my terminal is closed", "keeping-an-eye"},
+		{"turn off background checks", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

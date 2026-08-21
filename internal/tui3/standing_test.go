@@ -222,45 +222,49 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 	}
 }
 
-// THE ONE-TIME QUESTION IS ASKED IN PLACE AND ANSWERED ONCE. The engine is
-// waiting on a single answer, so both halves — the yes and the preference —
-// travel in it.
-func TestTheWatchFollowUpCollectsBothAnswersInOneCall(t *testing.T) {
+// A YES IS THE WHOLE ANSWER AND NOTHING FOLLOWS IT. The card used to ask a
+// second question after a yes — keep checking when no window is open? — and it
+// asks nobody now: background checks go on with the first item that stands and
+// the switch is a settings row from then on.
+func TestAYesOnAStandingCardResolvesItOutright(t *testing.T) {
 	a, agent, _ := standApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run", OfferWatch: true,
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
 	})})
-	drive(t, a, key2("1"))
-	if len(agent.answered) != 0 {
-		t.Fatalf("the yes was sent before the follow-up was answered: %+v", agent.answered)
-	}
-	text := standText(a)
-	for _, want := range []string{standWatchAsk, "[ 1 " + standAlwaysWord + " ]", "[ 2 " + standWindowWord + " ]"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the follow-up is missing %q:\n%s", want, text)
-		}
-	}
 	drive(t, a, key2("1"))
 	if len(agent.answered) != 1 {
 		t.Fatalf("the card resolved %d times, want exactly 1", len(agent.answered))
 	}
-	answer := agent.answered[0].answer
-	if !answer.Approved || answer.KeepWatch == nil || !*answer.KeepWatch {
-		t.Fatalf("the follow-up sent %+v, want approved with KeepWatch true", answer)
+	if answer := agent.answered[0].answer; !answer.Approved {
+		t.Fatalf("the yes travelled as %+v", answer)
 	}
+	text := standText(a)
+	if strings.Contains(text, "no window is open?") || strings.Contains(text, "yes, always") {
+		t.Fatalf("the card asked a question this build no longer asks:\n%s", text)
+	}
+	if !strings.Contains(text, standSetWord) {
+		t.Fatalf("the settled card does not say what it came to:\n%s", text)
+	}
+}
 
-	// AND THE OTHER ANSWER IS THE ONE THAT INSTALLS NOTHING.
-	b, other, _ := standApp(t)
-	drive(t, b, streamEventMsg{gen: b.gen, ev: standProposal(b, session.StandingNotice{
-		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run", OfferWatch: true,
-	})})
-	drive(t, b, key2("1"))
-	drive(t, b, key2("2"))
-	if len(other.answered) != 1 {
-		t.Fatalf("the card resolved %d times, want exactly 1", len(other.answered))
+// AND THE LINE ABOUT THE BACKGROUND CHECKS IS THE SENTENCE AND NOTHING ELSE —
+// no glyph, no item name in front of it. It is not news about the reminder; it
+// is what this machine just switched on, and where the switch is.
+func TestTheBackgroundNoticeDrawsAsItsOwnBareLine(t *testing.T) {
+	a, _, _ := standApp(t)
+	line := "checks every 5 minutes, window or not · background checks under /settings"
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventStandingUpdate,
+		Standing: &session.StandingNotice{
+			Item: standItem(), Update: standBackgroundWord, Text: line,
+		},
+	}})
+	text := standText(a)
+	if !strings.Contains(text, line) {
+		t.Fatalf("the background line is not on the screen:\n%s", text)
 	}
-	if answer := other.answered[0].answer; !answer.Approved || answer.KeepWatch == nil || *answer.KeepWatch {
-		t.Fatalf("the follow-up sent %+v, want approved with KeepWatch false", answer)
+	if strings.Contains(text, standWaitGlyph+" "+standName(standItem().Words)) {
+		t.Fatalf("the background line was drawn as news about the item:\n%s", text)
 	}
 }
 

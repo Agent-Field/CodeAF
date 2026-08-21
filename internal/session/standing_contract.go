@@ -45,10 +45,6 @@ type StandingNotice struct {
 	// none, and the card should ask rather than state: "about every 2 minutes
 	// — you didn't say, so that's my guess. Right?"
 	Guessed bool
-	// OfferWatch says this is the person's first standing item and the card
-	// should follow a yes with the one-time question: keep checking when no
-	// window is open? The answer comes back in StandingAnswer.KeepWatch.
-	OfferWatch bool
 	// Options are the answers THIS card offers, from [StandingOptions].
 	//
 	// THE ENGINE SAYS WHICH CHIPS A CARD HAS, so the conversation's card, home's
@@ -85,9 +81,6 @@ type StandingAnswer struct {
 	// weekday" — which goes back to the model to re-propose. Nothing is
 	// created on a change.
 	Change string
-	// KeepWatch answers OfferWatch: true installs the OS timer, false is
-	// remembered as a decline and never asked again. Only read on Approved.
-	KeepWatch *bool
 }
 
 // ResolveStanding answers one EventStandingProposal. An id nobody is waiting
@@ -112,8 +105,18 @@ func (a *Agent) ResolveStanding(id uint64, answer StandingAnswer) {
 // capability that cannot work is absent, not broken.
 type Standing struct {
 	Store *standing.Store
-	// Watch installs the OS timer on the one-time yes. Nil means the offer is
-	// never made (a remote engine, a test).
+	// Watch is this machine's own scheduler, and BACKGROUND CHECKS ARE ON BY
+	// DEFAULT: the first item that ever stands installs the timer without
+	// asking anybody, and the conversation says one dim line saying so and
+	// where to turn it off. Nobody is asked because the question had one
+	// sensible answer — something you asked to happen every morning is
+	// something you asked to happen on the mornings you do not open a terminal
+	// — and the switch lives in /settings under `background checks`
+	// (internal/config's KeyStandingBackground).
+	//
+	// Nil means there is no timer on this host (a remote engine, a test, an
+	// operating system the package cannot arrange one for), and then nothing is
+	// installed and nothing is said.
 	Watch standing.Watch
 	// DailyRailUSD is quoted on the card beside the per-run cap.
 	DailyRailUSD float64

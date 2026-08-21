@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -579,10 +580,165 @@ func TestStandingListSpeaksThePersonsWords(t *testing.T) {
 	}
 }
 
-// ── the one-time offer ──────────────────────────────────────────────────────
+// ── background checks, on by default, said once ─────────────────────────────
 
-// THE YES IS JOURNALED BEFORE THE HOST IS TOUCHED, and the question is asked
-// once ever: a marker beside the items is the whole memory of it.
+// fakeWatch is this machine's scheduler, stood in for. Nothing in these tests
+// goes near launchd.
+type fakeWatch struct {
+	installs   int
+	uninstalls int
+	fail       error
+	installed  bool
+}
+
+func (w *fakeWatch) Install(context.Context) error {
+	w.installs++
+	if w.fail != nil {
+		return w.fail
+	}
+	w.installed = true
+	return nil
+}
+
+func (w *fakeWatch) Uninstall(context.Context) error {
+	w.uninstalls++
+	w.installed = false
+	return nil
+}
+
+func (w *fakeWatch) Status() (standing.WatchStatus, error) {
+	return standing.WatchStatus{Installed: w.installed}, nil
+}
+
+// standRatify runs one whole proposal through to a yes, on the store and timer
+// it is handed.
+func standRatify(t *testing.T, store *fakeStanding, watch standing.Watch, profileDir string) []Event {
+	t.Helper()
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("set up"),
+	}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.Standing.Watch = watch
+		config.ProfileDir = profileDir
+	})
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	return drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+}
+
+// backgroundLine is the sentence one of these turns said about the machine, or
+// empty if it said nothing.
+func backgroundLine(events []Event) string {
+	for _, event := range events {
+		if event.Kind == EventStandingUpdate && event.Standing != nil &&
+			event.Standing.Update == standingBackgroundUpdate {
+			return event.Standing.Text
+		}
+	}
+	return ""
+}
+
+// THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON, WITHOUT
+// ASKING, AND SAYS SO ONCE. There used to be a question here and it had one
+// sensible answer; what is owed instead is the fact and the switch, in one dim
+// line the person cannot miss and never has to read twice.
+func TestTheFirstThingThatStandsTurnsBackgroundChecksOnAndSaysSo(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{}
+	events := standRatify(t, store, watch, t.TempDir())
+
+	if watch.installs != 1 {
+		t.Fatalf("the timer was installed %d times, want exactly 1", watch.installs)
+	}
+	if line := backgroundLine(events); line != standingBackgroundLine {
+		t.Fatalf("the line said %q, want %q", line, standingBackgroundLine)
+	}
+	// AND NOBODY WAS ASKED ANYTHING. A card carrying a second question is the
+	// thing this replaced.
+	for _, event := range events {
+		if event.Kind == EventStandingProposal && strings.Contains(event.Standing.Text, "no window") {
+			t.Fatalf("the card asked about the window: %+v", event.Standing)
+		}
+	}
+	// The marker says it was TOLD rather than asked, journaled before the host
+	// was touched.
+	marker, told := standingWatchAsked(store.Root())
+	if !told || !marker.Told || !marker.Answer {
+		t.Fatalf("marker = %+v told=%v", marker, told)
+	}
+}
+
+// AND IT IS SAID ONCE, EVER. The second thing that stands installs nothing and
+// says nothing: the machine is already checking, and a line repeated every time
+// is a line nobody reads.
+func TestTheBackgroundLineIsSaidOnceEver(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{}
+	standRatify(t, store, watch, t.TempDir())
+	events := standRatify(t, store, watch, t.TempDir())
+
+	if watch.installs != 1 {
+		t.Fatalf("the timer was installed %d times across two items", watch.installs)
+	}
+	if line := backgroundLine(events); line != "" {
+		t.Fatalf("the second item said it again: %q", line)
+	}
+}
+
+// AN INSTALL THAT DID NOT TAKE IS SAID HONESTLY. The person is about to walk
+// away from a machine they think is watching something for them.
+func TestABackgroundInstallThatFailedSaysSo(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{fail: errors.New("launchctl bootstrap:\nDomain does not support\nspecified action")}
+	events := standRatify(t, store, watch, t.TempDir())
+
+	line := backgroundLine(events)
+	if !strings.HasPrefix(line, standingBackgroundFailed) || !strings.HasSuffix(line, standingBackgroundWhere) {
+		t.Fatalf("a failed install said %q", line)
+	}
+	if strings.Contains(line, "\n") {
+		t.Fatalf("the reason came through in more than one line: %q", line)
+	}
+	// It is still remembered, so the sentence is not said again tomorrow.
+	if _, told := standingWatchAsked(store.Root()); !told {
+		t.Fatal("a failed install will be attempted and announced all over again")
+	}
+}
+
+// THE ROW OUTRANKS THE DEFAULT. Somebody who turned background checks off
+// before anything ever stood has answered this already, and installing over
+// that answer would make the switch a suggestion.
+func TestNothingIsInstalledWhenTheRowIsAlreadyOff(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{}
+	profile := t.TempDir()
+	row, ok := config.NewSettings(config.SettingsOptions{
+		ProfileDir: profile, BackgroundChecks: watch,
+	}).Row(config.KeyStandingBackground)
+	if !ok {
+		t.Fatal("the registry has no background checks row to turn")
+	}
+	if err := row.Apply(config.BackgroundOff); err != nil {
+		t.Fatalf("turning the row off: %v", err)
+	}
+	watch.uninstalls = 0
+	events := standRatify(t, store, watch, profile)
+
+	if watch.installs != 0 {
+		t.Fatalf("a timer was installed over a row the person turned off")
+	}
+	if line := backgroundLine(events); line != "" {
+		t.Fatalf("something was said about a switch the person had already thrown: %q", line)
+	}
+}
+
+// THE MARKER IS JOURNALED BEFORE THE HOST IS TOUCHED, and it is the whole
+// memory of the one line: a marker beside the items.
 func TestStandingWatchOfferIsRememberedOnceEver(t *testing.T) {
 	root := t.TempDir()
 	if _, asked := standingWatchAsked(root); asked {

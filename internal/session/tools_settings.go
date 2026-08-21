@@ -111,6 +111,15 @@ func (a *Agent) settingsTools() []bare.Tool {
 			defer a.mu.Unlock()
 			return a.model
 		},
+		// AND THE ONE LIVE SEAM THAT IS A HAND. The `background checks` row is
+		// the switch on this machine's own timer, and the row cannot be built
+		// without the timer to read and turn (internal/config's backgroundRow).
+		// This session already holds it — it is what the first standing item
+		// installs — so handing it over is what makes "turn off the background
+		// checks" a sentence the chat can act on rather than one it has to send
+		// somebody to /settings for. A session with no ambient side hands nil
+		// and the row is simply not there.
+		BackgroundChecks: a.standingWatch(),
 	})
 	return []bare.Tool{a.settingsTool(registry), a.changeSettingTool(registry)}
 }

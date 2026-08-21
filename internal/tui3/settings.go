@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the three fullscreen
@@ -402,6 +403,18 @@ var settingUI = map[string]settingMeta{
 	config.KeyTenureAfter: {
 		tab: tabWorkspace, label: "tenure after", widget: widgetText,
 		about: "how many clean firings a standing charter needs before it earns tenure.",
+	},
+	// And beside it, the switch on the whole ambient side's timing. It is on
+	// this tab rather than under Session because it is not about this
+	// conversation at all: it is about what happens on this machine when there
+	// is no conversation. The line says what it DOES rather than what it
+	// installs — the row's own hint names the launchd agent and the systemd
+	// timer for anybody who wants to go and look.
+	config.KeyStandingBackground: {
+		tab: tabWorkspace, label: "background checks", widget: widgetCycle,
+		about: "reminders, watches and routines are checked every " +
+			everyWord(standing.Interval) + " with no window open. " +
+			"Off checks only while one is.",
 	},
 	config.KeyAttribution: {
 		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
@@ -796,7 +809,12 @@ func (a *app) registry() *config.Settings {
 			a.switchModel(slug, 0)
 			return nil
 		},
-		Applied: func(string) { a.touch() },
+		// The `background checks` row's own hand: this machine's timer, read for
+		// the row's value and turned by its write. Nil on a machine that cannot
+		// have one, and the row is then absent rather than present and refusing
+		// (internal/config's backgroundRow).
+		BackgroundChecks: a.stands.Background,
+		Applied:          func(string) { a.touch() },
 	})
 	return a.settings
 }

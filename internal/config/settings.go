@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -234,7 +236,24 @@ const (
 	// `remember` tool the model reaches for. Off is a conversation that starts
 	// knowing nothing about you, and that makes not one extra call.
 	KeyMemoryEnabled = "memory.enabled"
-	KeyModelRoles    = "models.roles"
+
+	// KeyStandingBackground is whether this machine's own scheduler keeps
+	// standing items current when no aforge window is open (internal/standing's
+	// watch.go). It is dotted with the other v3 keys, under `standing.` because
+	// that is the thing it is about, and it is PROFILE-ONLY — deliberately
+	// absent from [ProjectKeys]: installing a timer is a change to somebody's
+	// machine, and a checked-in file that could make one is a repository
+	// arranging to run a program on every laptop that clones it.
+	//
+	// ON IS THE DEFAULT and the row is the only place it is ever asked. What
+	// the row READS is derived from the timer itself rather than from this
+	// value, so the sheet cannot say `on` over a machine where nothing is
+	// installed; this value is the person's INTENT, which is what the launch
+	// repair reads before it puts a drifted timer back
+	// ([BackgroundChecksWantedAt]).
+	KeyStandingBackground = "standing.background"
+
+	KeyModelRoles = "models.roles"
 	// KeyModelFallbacks is the ordered list of models a conversation moves to
 	// when no endpoint serving the one it is on will accept the request at all
 	// (internal/provider's endpoints.go). Comma-separated slugs, first tried
@@ -554,6 +573,21 @@ var MemoryModes = []string{MemoryOn, MemoryOff}
 
 // DefaultMemory is on.
 const DefaultMemory = MemoryOn
+
+// The background-checks row's two answers.
+const (
+	BackgroundOff = "off"
+	BackgroundOn  = "on"
+)
+
+// BackgroundModes lists them, on first — which is the default. Something you
+// asked to happen every morning is something you asked to happen on the
+// mornings you do not open a terminal, and a person who wanted it only while
+// they were sitting there says so here.
+var BackgroundModes = []string{BackgroundOn, BackgroundOff}
+
+// DefaultBackground is on.
+const DefaultBackground = BackgroundOn
 
 // The routing row's three answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
@@ -1043,6 +1077,19 @@ type SettingsOptions struct {
 	// offline case, not a bad model. [ModelCostHint] is the derivation the
 	// wiring lane hands in.
 	ModelCost func(slug string) string
+
+	// BackgroundChecks is this machine's own scheduler as internal/standing
+	// drives it: the launchd agent or systemd user timer that runs `aforge tick`
+	// every [standing.Interval] so standing items are checked with no window
+	// open. It is what the `standing.background` row reads and writes.
+	//
+	// NIL LEAVES THE ROW OUT ALTOGETHER, which is this codebase's law about a
+	// capability that cannot work rather than a shortcut: a Windows host, a
+	// build with no store, a registry built to read defaults out of a profile
+	// nobody has — none of them has a timer to turn on, and a row present and
+	// refusing every write would be a switch wired to nothing. The divider row
+	// is absent for the same reason ([Settings.build]).
+	BackgroundChecks standing.Watch
 
 	// Applied fires after a row is successfully written, so a process holding
 	// its own copy of a value can honor the change without waiting for a
@@ -1654,6 +1701,16 @@ func (s *Settings) build() []Setting {
 		},
 	)
 
+	// THE SECOND ROW THAT IS NOT ALWAYS BUILT, on the divider's law below and
+	// for a plainer reason: on a machine with no timer to install there is
+	// nothing for this switch to switch. A Windows host, a registry built over
+	// a profile that exists only to read defaults out of, a caller that never
+	// opened a standing store — each of them gets a sheet without the row
+	// rather than a row that reads nothing and refuses every write.
+	if s.options.BackgroundChecks != nil {
+		rows = append(rows, s.backgroundRow(s.options.BackgroundChecks))
+	}
+
 	// THE ONE ROW THAT IS NOT ALWAYS BUILT, and it is the exception
 	// [NewSettings] names: a missing seam makes a row read-only, except where
 	// read-only would mean a control that cannot do the one thing it is for.
@@ -1892,6 +1949,65 @@ func modelSlotReading(options SettingsOptions, slot ModelSlot) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// backgroundRow is the `background checks` switch.
+//
+// WHAT IT READS IS DERIVED FROM THE MACHINE AND NEVER FROM THE FILE. The value
+// on disk is what the person last asked for; whether anything is actually
+// checking is a definition on this host, and [standing.Timer.Status] answers it
+// by reading that definition's own bytes. A row that read the file would say
+// `on` over a timer somebody removed with launchctl, in the one place a person
+// went to check — so the file's answer is used for exactly one thing, the
+// launch repair, and never for the sentence in front of you.
+//
+// A status that cannot be read renders as NOTHING, which is the emptiness law:
+// a switch that guessed would be worse than a switch that admits it does not
+// know.
+func (s *Settings) backgroundRow(watch standing.Watch) Setting {
+	dir := s.options.ProfileDir
+	return Setting{
+		Key: KeyStandingBackground, Category: CategoryPractice, Kind: SettingChoice,
+		Label: "background checks", Choices: BackgroundModes,
+		Hint: "whether reminders, watches and routines are checked when no aforge window " +
+			"is open. On installs one small timer under your own login that runs " +
+			"`aforge tick` every " + standing.IntervalWords() + " — a launchd agent called " +
+			standing.DarwinTickLabel + " on a Mac, a systemd user timer called " +
+			standing.LinuxTickTimer + " on Linux — and on is the default. Off removes it, and " +
+			"then things are checked only while a window is open. Either way nothing runs " +
+			"while the machine is asleep, and nothing runs when you are not logged in.",
+		read: func() string {
+			status, err := watch.Status()
+			if err != nil {
+				return ""
+			}
+			if status.Installed {
+				return BackgroundOn
+			}
+			return BackgroundOff
+		},
+		write: func(raw string) error {
+			value := strings.ToLower(strings.TrimSpace(raw))
+			if value == "" {
+				value = DefaultBackground
+			}
+			if value != BackgroundOn && value != BackgroundOff {
+				return fmt.Errorf("pick one of: %s", strings.Join(BackgroundModes, ", "))
+			}
+			// THE ANSWER IS WRITTEN DOWN BEFORE THE MACHINE IS TOUCHED, which is
+			// the law the first-item notice keeps too (internal/session's
+			// tools_standing.go): a person whose install half-worked is somebody
+			// this build knows what they asked for, rather than somebody it
+			// quietly does the opposite for at the next launch.
+			if err := writeProfileValue(dir, KeyStandingBackground, value); err != nil {
+				return err
+			}
+			if value == BackgroundOff {
+				return watch.Uninstall(context.Background())
+			}
+			return watch.Install(context.Background())
+		},
+	}
 }
 
 func (s *Settings) splitRow() Setting {
@@ -2638,6 +2754,27 @@ func MemoryAt(profileDir string) string {
 // caller has to remember (internal/session's memory.go states the law).
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
+}
+
+// BackgroundChecksAt resolves the background-checks row to its word, default
+// on. It is the person's INTENT and not a reading of the machine: what the
+// settings row shows is derived from the timer ([Settings.build]), and this is
+// what the row was last told.
+func BackgroundChecksAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyStandingBackground); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultBackground
+}
+
+// BackgroundChecksWantedAt is [BackgroundChecksAt] as the bool the launch reads
+// before it repairs a timer that has drifted off a program that moved
+// (cmd/aforge's chatv3_process.go). A person who turned the row off is a person
+// whose machine must stay as they left it.
+func BackgroundChecksWantedAt(profileDir string) bool {
+	return BackgroundChecksAt(profileDir) == BackgroundOn
 }
 
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.

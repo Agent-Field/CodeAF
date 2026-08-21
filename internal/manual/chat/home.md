@@ -1067,7 +1067,7 @@ still.
 keeping watch   installed · last check 4m
 keeping watch   while a window is open · last check 4m
 keeping watch   nothing is checking · say "remind me…" to start
-keeping watch   nothing is checking · you said not to check with no window open
+keeping watch   nothing is checking · background checks are off · /settings
 ```
 
 It says **`installed`** when the machine's own timer is set up, so the checking
@@ -1077,9 +1077,11 @@ minutes. When neither is true it says **`nothing is checking`** — nothing was
 switched off, and the items are still there and still due; there is simply
 nothing running the checks right now. The tail says which way it got there:
 `say "remind me…" to start`, because setting up the first standing thing is what
-raises the one-time offer to install the timer, or `you said not to check with no
-window open`, because you answered that offer with a no and are never asked
-again.
+installs the timer, or `background checks are off · /settings`, because something
+has stood here before — so the timer went on once — and it is not on now. That
+one covers both ways it can happen, a row you turned off and an install that did
+not take, because the row reads `off` for both and the row is where both are
+fixed.
 
 The `last check` half is dropped when nothing has ever run. A window with no
 ambient side at all — `--host`, a build without it — prints **no line**, and so
@@ -1143,10 +1145,18 @@ goes grey, and the bottom edge carries the answer and what it came to —
 `you asked for a different when`, `ended · nothing was set up`. That is true of a card in a conversation and of a
 card in home's `ask here` pane alike; it is one card with one renderer.
 
-**The first time you ever set one up** there is one more question, on the same
-card: `keep checking when no window is open?` with `1 yes, always` and
-`2 only while a window is open`. Saying always is what installs the machine's own
-timer. It is asked once, ever.
+**The first time you ever set one up** the machine's own timer goes on, without
+asking, and one dim line says so under the card you just answered:
+
+```
+checks every 5 minutes, window or not · background checks under /settings
+```
+
+That line is said **once, ever**, and it is the only thing ever said about it. If
+the install did not take it says so instead, with the reason, and points at the
+same row. The switch is `/settings` → **Workspace** → **background checks**;
+turning it off leaves everything standing and checks it only while a window is
+open (the keeping-an-eye page has the whole of it).
 
 ## What does a ◦ line in the middle of my conversation mean — news from something standing
 
