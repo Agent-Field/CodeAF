@@ -514,6 +514,64 @@ func TestHomesChipsAgreeWithTheCard(t *testing.T) {
 	}
 }
 
+// `0` IS THE OUTRIGHT NO, AND IT IS THE SAME KEY ON EVERY CARD.
+//
+// In the conversation `esc` has always been the no and still is. It is the key
+// the other two surfaces cannot spare — esc on home closes home, and esc in the
+// errand pane hands the keyboard back to the list — so the decline needed a
+// name a card could draw, and `0` is it: one keystroke, off both ends of the
+// chip numbering, nowhere near `1` ([session.StandingNoKey]).
+func TestZeroSaysNoToAStandingCardWhereverItIsDrawn(t *testing.T) {
+	watch := standItem()
+	watch.When = standing.When{Kind: standing.WhenProbe, Words: "every few minutes"}
+	for _, item := range []standing.Item{watch, standReminder()} {
+		a, agent, _ := standApp(t)
+		drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+			Item:      item,
+			WhenWords: "every few minutes",
+			CostWords: "about $0.02 a check",
+			Options:   session.StandingOptions(item),
+		})})
+		drive(t, a, key2(session.StandingNoKey))
+		if len(agent.answered) != 1 {
+			t.Fatalf("`%s` resolved %d times on a %s card, want once", session.StandingNoKey, len(agent.answered), item.When.Kind)
+		}
+		// NOTHING WAS SET UP AND NOTHING WAS RUN: the zero answer, which is what
+		// the engine reads as a decline.
+		if answer := agent.answered[0].answer; answer != (session.StandingAnswer{}) {
+			t.Fatalf("`%s` sent %+v, want the decline", session.StandingNoKey, answer)
+		}
+		// And the row keeps the same words `esc` would have left on it.
+		if a.stand == nil || a.stand.verdict != standNoWord {
+			t.Fatalf("the declined card settled as %q, want %q", a.stand.verdict, standNoWord)
+		}
+	}
+
+	// THE HINT NAMES IT, on both shapes of card — the decline is the one key
+	// that is on every standing card there is, so a person who only ever meets
+	// one in a conversation still learns the key that works everywhere.
+	for _, hint := range []string{standProposalHint, standTwoHint} {
+		if !strings.Contains(hint, session.StandingNoKey) {
+			t.Fatalf("the hint %q does not name the decline", hint)
+		}
+	}
+
+	// AND IT IS A DIGIT BEFORE IT IS AN ANSWER, exactly as 1, 2 and 3 are: a
+	// correction in the box is a sentence, and "0900" is a when somebody might
+	// write. With anything typed the card lets the key go.
+	a, agent, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	})})
+	drive(t, a, key("9"), key2(session.StandingNoKey), key("0"))
+	if len(agent.answered) != 0 {
+		t.Fatalf("the decline answered a card somebody was typing a when into: %v", agent.answered)
+	}
+	if typed := a.input.String(); typed != "900" {
+		t.Fatalf("the box holds %q, want the digits that were typed", typed)
+	}
+}
+
 // ── THE FIRING IS DRAWN WHERE IT LANDED ─────────────────────────────────────
 //
 // [TestAStandingUpdateIsExactlyOneLine] proves the renderer; this proves the

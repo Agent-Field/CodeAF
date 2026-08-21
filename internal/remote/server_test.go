@@ -15,12 +15,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // TestMain silences the fault log. A recovered panic writes its stack through
@@ -50,6 +52,7 @@ type fakeAgent struct {
 	closes     int
 
 	consents  []string
+	standings []session.StandingAnswer
 	harnesses []string
 	connects  []string
 	connected []string
@@ -212,6 +215,15 @@ func (f *fakeAgent) ResolveConsentRemember(id uint64, allow bool, scope session.
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.consents = append(f.consents, note("remember", id, allow, string(scope)))
+}
+
+func (f *fakeAgent) ResolveStanding(id uint64, answer session.StandingAnswer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.consents = append(f.consents, note("standing", id, answer.Approved, answer.Change))
+	// The answer is kept WHOLE as well as noted, because the thing worth
+	// asserting about it is a pointer's three states and a note is a string.
+	f.standings = append(f.standings, answer)
 }
 
 func (f *fakeAgent) ResolveHarness(id uint64, run bool, model string) {
@@ -1040,5 +1052,209 @@ func TestServeLandsAnUploadedPictureInTheSessionFolder(t *testing.T) {
 	}
 	if rows := session.ReadArtifacts(index); len(rows) != 0 {
 		t.Fatalf("a paste earned %d deliverable rows, want none: %+v", len(rows), rows)
+	}
+}
+
+// ── the ambient side ────────────────────────────────────────────────────────
+
+// standingCard is one proposal with every band of the card filled, so that a
+// round trip has something to lose. It is deliberately a COMPLETE item — the
+// person's words, a probe with its arguments, a task action, the rails, the
+// item's own present — because the question these tests ask is not "does JSON
+// work" but "does anything on either of these two types quietly fail to
+// travel".
+func standingCard() session.StandingNotice {
+	item := standing.Item{
+		Schema:    standing.Schema,
+		ID:        "01HQ",
+		Words:     "tell me when CI goes red on main",
+		Workspace: "/home/somebody/api",
+		Origin: standing.Origin{
+			SessionID: "one", Transcript: "/sessions/one.jsonl", TurnIDs: []string{"t1", "t2"},
+		},
+		When: standing.When{
+			Kind:  standing.WhenProbe,
+			Words: "whenever CI finishes",
+			Probe: standing.Probe{
+				Tool: "bash",
+				Args: json.RawMessage(`{"command":"gh run list --limit 1"}`),
+			},
+			ProbeEvery: 10 * time.Minute,
+			Hint:       "yes when any run on main shows conclusion=failure",
+		},
+		Does: standing.Action{
+			Kind: standing.ActionTask, Brief: "find out what broke", Acceptance: "a named commit", MaxSteps: 40,
+		},
+		Rails:         standing.Rails{PerRunUSD: 0.05, MaxPerDay: 6, Expires: time.Now().Add(48 * time.Hour).UTC().Round(time.Second)},
+		Status:        standing.StatusActive,
+		Created:       time.Now().UTC().Round(time.Second),
+		Updated:       time.Now().UTC().Round(time.Second),
+		LastChecked:   time.Now().UTC().Round(time.Second),
+		LastCheckLine: "green",
+		Previous:      []string{"green", "green"},
+		Runs:          2,
+		SpentUSD:      0.04,
+		NeedsPerson:   "the branch is gone",
+	}
+	return session.StandingNotice{
+		ID:         7,
+		Item:       item,
+		WhenWords:  "every ten minutes while CI is running",
+		CostWords:  "about $0.05 a run, at most six times a day",
+		Guessed:    true,
+		OfferWatch: true,
+		Options:    session.StandingOptions(item),
+	}
+}
+
+// A CARD IS DATA AND THE ANSWER IS A CALL, and this is the whole seam in one
+// test: the proposal goes out on a turn's stream as an ordinary event, and the
+// person's answer comes back as its own frame. Neither half existed over --host
+// before — the card crossed and could only be looked at.
+func TestAStandingCardCrossesTheWireAndIsAnsweredBack(t *testing.T) {
+	agent := &fakeAgent{}
+	l := dialAgent(t, engineOn(agent))
+	l.hello(Hello{Version: Version})
+
+	ref := decode[StreamRef](t, l.ok(1, MethodSubmit, SubmitArgs{Text: "keep an eye on CI"}).Payload)
+	card := standingCard()
+	stream := agent.stream(0)
+	stream <- session.Event{Kind: session.EventStandingProposal, Tool: "stand", Standing: &card}
+
+	frame := l.await(func(f Frame) bool { return f.Kind == "event" && f.ID == ref.Stream })
+	arrived := decode[EventWire](t, frame.Payload).Unwire()
+	if arrived.Kind != session.EventStandingProposal || arrived.Standing == nil {
+		t.Fatalf("the card did not arrive as a card: %+v", arrived)
+	}
+	// THE ITEM IS THE CARD. A surface draws it and never reshapes it, so a field
+	// that fell off the wire is a band a person reads as absent.
+	if !reflect.DeepEqual(*arrived.Standing, card) {
+		t.Fatalf("the card changed crossing the wire:\n got %+v\nwant %+v", *arrived.Standing, card)
+	}
+	if len(arrived.Standing.Options) != len(card.Options) || len(card.Options) == 0 {
+		t.Fatalf("the chips did not travel: %+v", arrived.Standing.Options)
+	}
+	if arrived.Standing.Item.When.Probe.Tool != "bash" || len(arrived.Standing.Item.When.Probe.Args) == 0 {
+		t.Fatalf("the probe did not travel: %+v", arrived.Standing.Item.When)
+	}
+
+	yes := true
+	l.ok(2, MethodStandingResolve, StandingArgs{ID: 7, Answer: session.StandingAnswer{Approved: true, KeepWatch: &yes}})
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	if len(agent.standings) != 1 {
+		t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
+	}
+	if !agent.standings[0].Approved || agent.standings[0].KeepWatch == nil || !*agent.standings[0].KeepWatch {
+		t.Fatalf("the answer arrived as %+v", agent.standings[0])
+	}
+	if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
+		t.Fatalf("the card the answer was for did not travel: %q", agent.consents)
+	}
+	stream <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Text: "watching CI"}}
+	news := decode[EventWire](t, l.await(func(f Frame) bool {
+		return f.Kind == "event" && f.ID == ref.Stream
+	}).Payload).Unwire()
+	if news.Standing == nil || news.Standing.Update != "stood" || news.Standing.Text != "watching CI" {
+		t.Fatalf("the update line did not travel: %+v", news.Standing)
+	}
+}
+
+// KEEPWATCH HAS THREE STATES AND ALL THREE ARE LOAD-BEARING: nil is nobody was
+// asked, false is a decline that is remembered and never asked again, true
+// installs the OS timer. A wire that flattened nil into false would answer a
+// question on the person's behalf, in the negative, for ever.
+func TestAKeepWatchAnswerArrivesAsItselfInAllThreeStates(t *testing.T) {
+	yes, no := true, false
+	for i, want := range []*bool{nil, &yes, &no} {
+		agent := &fakeAgent{}
+		l := dialAgent(t, engineOn(agent))
+		l.hello(Hello{Version: Version})
+		l.ok(1, MethodStandingResolve, StandingArgs{
+			ID:     uint64(i + 1),
+			Answer: session.StandingAnswer{Approved: true, KeepWatch: want},
+		})
+		agent.mu.Lock()
+		got := agent.standings
+		agent.mu.Unlock()
+		if len(got) != 1 {
+			t.Fatalf("case %d: the answer did not arrive", i)
+		}
+		switch {
+		case want == nil && got[0].KeepWatch != nil:
+			t.Fatalf("case %d: nobody was asked and the engine heard %v", i, *got[0].KeepWatch)
+		case want != nil && got[0].KeepWatch == nil:
+			t.Fatalf("case %d: %v arrived as nobody-was-asked", i, *want)
+		case want != nil && *got[0].KeepWatch != *want:
+			t.Fatalf("case %d: %v arrived as %v", i, *want, *got[0].KeepWatch)
+		}
+	}
+}
+
+// THE STORE THE SURFACE READS IS THE ENGINE MACHINE'S OWN, and these are the two
+// doors that make that true: one workspace's items out, one item back.
+func TestTheEnginesStandingStoreAnswersOverTheWire(t *testing.T) {
+	root := t.TempDir()
+	store, err := standing.Open(filepath.Join(root, "standing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := standingCard().Item
+	item.Workspace = "/home/somebody/api"
+	item.NeedsPerson = ""
+	if _, err := store.Create(item); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	engine := engineOn(&fakeAgent{})
+	engine.StandingItems = store.ForWorkspace
+	engine.StandingSave = store.Save
+	l := dialAgent(t, engine)
+	l.hello(Hello{Version: Version})
+
+	items := decode[[]standing.Item](t, l.ok(1, MethodStandingItems, "/home/somebody/api").Payload)
+	if len(items) != 1 || items[0].Words != item.Words {
+		t.Fatalf("Standing.Items answered %+v", items)
+	}
+	// A workspace nothing was ever set up in is an empty list and never an
+	// error: the ambient side is on, and there is simply nothing here.
+	if elsewhere := decode[[]standing.Item](t, l.ok(2, MethodStandingItems, "/home/somebody/www").Payload); len(elsewhere) != 0 {
+		t.Fatalf("another workspace answered %+v", elsewhere)
+	}
+
+	// The pause key: one item written back, and the store holding the change.
+	paused := items[0]
+	paused.Status = standing.StatusPaused
+	l.ok(3, MethodStandingSave, paused)
+	after, err := store.ForWorkspace("/home/somebody/api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].Status != standing.StatusPaused {
+		t.Fatalf("the write did not land: %+v", after)
+	}
+
+	// A REFUSED WRITE IS AN ERROR AND NOT A SHRUG. The store validates what it
+	// is asked to hold, and the surface prints the refusal on its own message
+	// line rather than redrawing a row that was never saved.
+	broken := paused
+	broken.Rails.PerRunUSD = 0
+	if result := l.call(4, MethodStandingSave, broken); result.Error == "" {
+		t.Fatal("an item the store refuses was reported as written")
+	}
+}
+
+// AN ENGINE WITH NO AMBIENT SIDE HAS NO DOOR, not an empty one. A store that
+// could not be opened leaves both closures nil (cmd/aforge's engine.go), and the
+// surface keeps the difference between "nothing is set up here" and "this
+// machine cannot answer that at all".
+func TestServeSaysWhenTheStandingDoorIsMissing(t *testing.T) {
+	l := dialAgent(t, engineOn(&fakeAgent{}))
+	l.hello(Hello{Version: Version})
+	if result := l.call(1, MethodStandingItems, "/home/somebody/api"); result.Error == "" {
+		t.Error("Standing.Items answered without a store behind it")
+	}
+	if result := l.call(2, MethodStandingSave, standingCard().Item); result.Error == "" {
+		t.Error("Standing.Save answered without a store behind it")
 	}
 }
