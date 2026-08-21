@@ -74,8 +74,12 @@ hangs from the top of the frame**, as a page you are reading should:
                                        the roster resumes cleanly
 ```
 
-Projects are ordered by the one you spoke in most recently. The cursor opens on the
-conversation this window is in, and the preview on the right follows it.
+Projects are ordered by the one you spoke in most recently — and a project whose only
+content is something *keeping an eye* on it is ordered by the newest thing that has done,
+which is the same question asked of the only rows it has (see below).
+
+The cursor opens on the conversation this window is in, and the preview on the right
+follows it.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
 spoke in it — or `another window` where another terminal is sitting on that conversation
@@ -539,6 +543,16 @@ for, and the fold only ever takes the ones still waiting.
 or that you stopped, is a thing that happened; the conversation that made it
 still has the whole record.
 
+**A project with items and no conversations still gets a heading.** A watch is
+content. If you set a reminder in a directory you have never held a conversation
+in — or a machine-wide one, which belongs to `~` — home draws that workspace as a
+heading of its own, named the way every other heading is named (the folder's last
+part, `~` for your home directory), with its items under it. It sits in the
+recency order by the newest thing those items have done. Such a heading is never
+marked `elsewhere`: that word names a conversation this window cannot open, and
+there are no conversations under it at all. `p` and `s` on its rows work exactly
+as they do anywhere else — they go through the store, not through a door.
+
 **Typing hides the band.** The box at the foot searches conversations — by name,
 by project, by what their tasks came to — and rows the query never considered
 would be rows drawn as though it had.
@@ -648,6 +662,12 @@ money forever with nobody in the room is not a thing silence should agree to. If
 the turn ends with the card still up — you interrupt it, or the window closes —
 it says `ended · nothing was set up`, and nothing was.
 
+**An answered card stays where it is.** It does not vanish: it settles, the frame
+goes grey, and the bottom edge carries the answer and what it came to —
+`yes, set it up · set up`, `once, not standing`, `you asked for a different when`,
+`ended · nothing was set up`. That is true of a card in a conversation and of a
+card in home's `ask here` pane alike; it is one card with one renderer.
+
 **The first time you ever set one up** there is one more question, on the same
 card: `keep checking when no window is open?` with `1 yes, always` and
 `2 only while a window is open`. Saying always is what installs the machine's own
@@ -677,5 +697,13 @@ with a real transcript, kept outside `~/.aforge/v3/projects` so this list never 
 for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does it without
 leaving the box.
 
-The whole of it — where the record goes, how the card is answered, and how to turn the
-exchange into an ordinary conversation — is on its own page: *Asking from home*.
+While an exchange is up, home has **two zones** — the list on the left and the pane on the
+right — and exactly one of them has the keyboard. `tab` toggles them, `esc` in the pane
+hands it to the list, a click on a row selects that row and takes the keyboard with it, a
+click in the pane brings it back, and answering `1` on a card hands it back by itself. With
+the keyboard on the list every walking key still walks the list, and the pane goes on
+showing the exchange rather than the preview of whatever row you pass.
+
+The whole of it — where the record goes, how the card is answered, how to get back to the
+list, and how to turn the exchange into an ordinary conversation — is on its own page:
+*Asking from home*.

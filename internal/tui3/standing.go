@@ -741,7 +741,14 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 	chips, spans := a.standChips(card, ansi.StringWidth(a.blockStem()), room)
 	card.choiceRow, card.spans = len(out), spans
 	out = append(out, stem+chips)
-	out = append(out, stem+a.standMeter(card, room))
+	// A CARD WITH NO CLOCK DRAWS NO ROW WHERE THE CLOCK WOULD BE. The engine
+	// holds a watched session's card open indefinitely, and the emptiness law
+	// reaches a whole row: a bar with nothing to drain toward would be an
+	// animation inventing a deadline, and a word standing in for one would be a
+	// line spent saying that a thing is absent.
+	if meter := a.standMeter(card, room); meter != "" {
+		out = append(out, stem+meter)
+	}
 	return append(out, a.standFoot(card, width))
 }
 
@@ -878,9 +885,15 @@ func (a *app) standChips(card *standingCard, left, width int) (string, []choiceS
 // other label on it. The bar drains toward NOTHING BEING SET UP, which is why
 // the word beside it is `ends in`; a card that borrowed `auto-starts in` would
 // be promising the opposite of what the engine does.
+//
+// AND A CARD WITH NO DEADLINE HAS NO METER AT ALL. It answers "" and the caller
+// leaves the row out entirely.
 func (a *app) standMeter(card *standingCard, width int) string {
 	if card.deadline.IsZero() {
-		return a.pal.dim(fit(taskWaitingWord, width))
+		// NOTHING, and the caller draws no row for it. A zero deadline is a
+		// clock that is off: the card waits, and [app.tickStanding] never
+		// expires it.
+		return ""
 	}
 	left := card.deadline.Sub(a.now())
 	word := standEndsWord + countdownFine(left)

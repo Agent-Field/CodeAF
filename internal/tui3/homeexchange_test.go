@@ -296,8 +296,21 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	if lab.agent.answerID[0] != 7 {
 		t.Fatalf("the answer went back on token %d, want 7", lab.agent.answerID[0])
 	}
-	if a.home.exchange.card != nil {
-		t.Fatal("an answered card is still on the pane")
+	// AND THE CARD IS STILL THERE, SETTLED. It used to be taken off the pane the
+	// instant somebody answered it, which left the one thing on screen that
+	// records what was decided blank at the moment it had something to record.
+	if a.home.exchange.card == nil || a.home.exchange.view == nil {
+		t.Fatal("answering took the card off the pane")
+	}
+	if !a.home.exchange.view.settled() {
+		t.Fatal("the answered card is still asking")
+	}
+	settled := homeText(a)
+	if !strings.Contains(settled, standYesWord+" · "+standSetWord) {
+		t.Fatalf("the settled card does not carry the answer and what it came to:\n%s", settled)
+	}
+	if strings.Contains(settled, "[ 1 "+standYesWord+" ]") {
+		t.Fatalf("the settled card is still drawing its chips:\n%s", settled)
 	}
 }
 
@@ -360,6 +373,12 @@ func TestContinueAsAConversationMovesTheFolderIntoTheBucket(t *testing.T) {
 // stands, and the short exchange that produced it is filed under it rather than
 // left in the errands drawer — which is what makes "why did I get this?" a door
 // ([standing.Store.ExchangeDir], [standing.Origin]).
+//
+// THE MOVE HAPPENS WHEN THE EXCHANGE ENDS AND NOT WHEN THE NEWS ARRIVES. The
+// news arrives mid-turn, so closing the agent to free the transcript's lock
+// there cancelled the running turn and parked the update loop on the close's
+// grace period — which is what a person felt as the screen going dead just
+// after they said yes (homeexchange.go's header).
 func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -385,17 +404,83 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := store.ExchangeDir(item.ID)
+	// NOTHING HAS MOVED AND NOTHING HAS BEEN CLOSED YET.
+	if lab.agent.closes != 0 {
+		t.Fatalf("the agent was closed mid-turn, %d times", lab.agent.closes)
+	}
+	if _, err := os.Stat(filepath.Join(made, "transcript.jsonl")); err != nil {
+		t.Fatalf("the exchange left its folder before it ended: %v", err)
+	}
+	if !a.home.exchange.stood || a.home.exchange.itemID != item.ID {
+		t.Fatalf("the exchange did not remember what stood: %+v", a.home.exchange.stood)
+	}
+	// AND A FOLLOW-UP STILL WORKS, because the session is still there.
+	before := len(lab.agent.sent)
+	drive(t, a, key("tab"))
+	typeHome(a, "make it 7")
+	drive(t, a, key("enter"))
+	if len(lab.agent.sent) != before+1 {
+		t.Fatalf("a follow-up after something stood went nowhere, the agent saw %v", lab.agent.sent)
+	}
+
+	// THE EXCHANGE ENDS, AND ONLY THEN DOES THE FOLDER GO UNDER THE ITEM.
+	a.closeHome()
+	if lab.agent.closes == 0 {
+		t.Fatal("closing home left the errand's agent open")
+	}
 	if _, err := os.Stat(filepath.Join(want, "transcript.jsonl")); err != nil {
 		t.Fatalf("the exchange was not filed under the item: %v", err)
 	}
 	if _, err := os.Stat(made); err == nil {
 		t.Fatalf("the exchange is in two places at once — %s is still there", made)
 	}
-	if a.home.exchange.dir != want {
-		t.Fatalf("the pane thinks the folder is at %q, it is at %q", a.home.exchange.dir, want)
+}
+
+// TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard is the other half of
+// the news arriving: the card that proposed the thing settles in place rather
+// than vanishing, and the hand goes back to the column — the thing they asked
+// for exists now, and the list is where a person goes next.
+func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	item := standing.Item{
+		ID: "cccc000000000009", Words: "remind me at 6 to leave", Workspace: "/tmp/alpha",
+		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"},
+		Does: standing.Action{Kind: standing.ActionSay, Say: "leave"},
 	}
-	if lab.agent.closes == 0 {
-		t.Fatal("the agent must be closed before its folder moves")
+	a := lab.app(mine, []session.Event{
+		standingProposal(7, "remind me at 6 to leave"),
+		{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Item: item}},
+		{Kind: session.EventTurnDone},
+	})
+	a.openHome()
+	typeHome(a, "remind me at 6 to leave")
+	drive(t, a, key("up"), key("enter"))
+
+	ex := a.home.exchange
+	if ex == nil || ex.view == nil {
+		t.Fatal("the card is gone from the pane")
+	}
+	if !ex.view.settled() {
+		t.Fatal("a card whose proposal now stands is still asking")
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, standSetWord) {
+		t.Fatalf("the settled card does not say what it came to:\n%s", frame)
+	}
+	if !strings.Contains(frame, homeAskStoodWord) {
+		t.Fatalf("the pane does not say where the record went:\n%s", frame)
+	}
+	if ex.focused {
+		t.Fatal("the keyboard stayed in the pane after something stood")
+	}
+	before := a.home.cursor
+	drive(t, a, key("down"))
+	if a.home.cursor == before {
+		t.Fatal("the list does not move after something stood")
 	}
 }
 
@@ -440,5 +525,340 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(lab.dirs[0], "transcript.jsonl")); err != nil {
 		t.Fatalf("closing home took the record with it: %v", err)
+	}
+}
+
+// ── the two zones ───────────────────────────────────────────────────────────
+
+// exchangeLab is a home with two projects, three conversations and one exchange
+// standing in the pane — the shape every assertion about the two zones needs.
+func exchangeLab(t *testing.T) (*errandLab, *app) {
+	t.Helper()
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+	lab.session("-tmp-beta", "bbbb000000000001", "beta notes", "/tmp/beta", now.Add(-2*time.Hour))
+
+	a := lab.app(mine, []session.Event{
+		text(session.EventTextDelta, "I will remind you at 6."),
+		{Kind: session.EventTurnDone},
+	})
+	a.openHome()
+	typeHome(a, "remind me at 6")
+	drive(t, a, key("up"), key("enter"))
+	return lab, a
+}
+
+// TestTabTogglesTheListAndThePaneAtHome is the zone toggle, both ways, from
+// every state either zone is in. A pane with one way out and a state that did
+// not offer it is the trap somebody reports as "stuck".
+func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
+	_, a := exchangeLab(t)
+	ex := a.home.exchange
+	if !ex.focused {
+		t.Fatal("asking here should put the keyboard in the pane")
+	}
+	drive(t, a, key("tab"))
+	if ex.focused {
+		t.Fatal("tab did not hand the keyboard to the list")
+	}
+	drive(t, a, key("tab"))
+	if !ex.focused {
+		t.Fatal("tab did not bring the keyboard back to the pane")
+	}
+	// AND IT LEAVES FROM THE OFFER ROW TOO, which is the state that held the
+	// keyboard hostage: `continue as a conversation` answered ↑ and enter and
+	// nothing else.
+	drive(t, a, key("down"))
+	if !ex.onOffer {
+		t.Fatal("↓ in the pane did not reach the offer row")
+	}
+	drive(t, a, key("tab"))
+	if ex.focused {
+		t.Fatalf("tab did not leave %q", homeContinueWord)
+	}
+	// AND SO DOES esc, from the same row.
+	drive(t, a, key("tab"), key("down"), key("esc"))
+	if ex.focused || ex.onOffer {
+		t.Fatalf("esc did not leave %q", homeContinueWord)
+	}
+	if a.home.exchange == nil {
+		t.Fatal("leaving the pane closed the exchange")
+	}
+}
+
+// TestTheListWalksWhileAnExchangeIsAliveAndThePaneKeepsIt is the complaint in
+// one test: with the keyboard on the column every walking key moves the column,
+// and the exchange stays drawn beside it the whole time.
+func TestTheListWalksWhileAnExchangeIsAliveAndThePaneKeepsIt(t *testing.T) {
+	_, a := exchangeLab(t)
+	drive(t, a, key("tab"))
+
+	seen := map[int]bool{a.home.cursor: true}
+	for _, pressed := range []string{"down", "ctrl+n", "up", "ctrl+p", "pgdown", "pgup"} {
+		before := a.home.cursor
+		drive(t, a, key(pressed))
+		if a.home.cursor == before && len(seen) < 2 {
+			t.Fatalf("%q did not move the list off line %d", pressed, before)
+		}
+		seen[a.home.cursor] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("the list never moved while the exchange was alive, it sat on %v", seen)
+	}
+	// AND THE PANE IS STILL THE EXCHANGE, not a preview of whatever row the
+	// cursor walked onto.
+	if frame := homeText(a); !strings.Contains(frame, "I will remind you at 6.") {
+		t.Fatalf("walking the list took the exchange off the pane:\n%s", frame)
+	}
+}
+
+// TestSayingYesHandsTheKeyboardBackToTheList pins the gesture the report is
+// about: after the one answer that finishes the errand, the arrows move the
+// column again without anybody having to find the key that says so.
+func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine, []session.Event{
+		standingProposal(7, "remind me at 6 to leave"),
+		{Kind: session.EventTurnDone},
+	})
+	a.openHome()
+	typeHome(a, "remind me at 6 to leave")
+	// THE TWO DRIVES ARE THE POINT. [drive] queues what a command produced
+	// behind the keys already in hand, so a `1` sent in the same call would be
+	// pressed before the card it answers had arrived.
+	drive(t, a, key("up"), key("enter"))
+	drive(t, a, key("1"))
+
+	ex := a.home.exchange
+	if ex == nil {
+		t.Fatal("a yes closed the exchange")
+	}
+	if ex.focused {
+		t.Fatal("the keyboard stayed in the pane after a yes")
+	}
+	before := a.home.cursor
+	drive(t, a, key("down"))
+	if a.home.cursor == before {
+		t.Fatal("the list does not move after a yes")
+	}
+	// AND THE EXCHANGE IS STILL REACHABLE for a follow-up.
+	drive(t, a, key("tab"))
+	if !ex.focused {
+		t.Fatal("tab did not bring the answered exchange back")
+	}
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// homeClickAt clicks the screen row that draws a given line of the left column.
+func homeClickAt(t *testing.T, a *app, at int) {
+	t.Helper()
+	width, height := a.size()
+	_, hits, _, _ := a.homeFrame(width, height)
+	for y, hit := range hits {
+		if hit == at {
+			drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: 2, Y: y})
+			return
+		}
+	}
+	t.Fatalf("line %d is not on the screen", at)
+}
+
+// TestAClickOnARowSelectsItWhileAnExchangeIsUp is the other half of the
+// complaint: a row used to light up under the pointer and then go on ignoring
+// every key, because the click moved the cursor and left the keyboard in the
+// pane.
+func TestAClickOnARowSelectsItWhileAnExchangeIsUp(t *testing.T) {
+	_, a := exchangeLab(t)
+	ex := a.home.exchange
+
+	want := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeSession && at != a.home.cursor {
+			want = at
+			break
+		}
+	}
+	if want < 0 {
+		t.Fatal("the lab drew no second conversation to click on")
+	}
+	homeClickAt(t, a, want)
+	if a.home.cursor != want {
+		t.Fatalf("the click put the cursor on line %d, not %d", a.home.cursor, want)
+	}
+	if ex.focused {
+		t.Fatal("the click selected a row and left the keyboard in the pane")
+	}
+	// AND THE KEYBOARD IS REALLY ON THE COLUMN: the next arrow moves it.
+	before := a.home.cursor
+	drive(t, a, key("down"))
+	if a.home.cursor == before {
+		t.Fatal("the row was selected but the list still does not answer the arrows")
+	}
+}
+
+// paneRowAt is the screen position of one of the pane's own rows.
+func paneRowAt(a *app, row int) (x, y int, ok bool) {
+	width, height := a.size()
+	a.homeFrame(width, height)
+	left, _ := homeColumns(width)
+	for y, at := range a.home.pane {
+		if at == row {
+			return left + homeGutter + 1, y, true
+		}
+	}
+	return 0, 0, false
+}
+
+// TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick is the row that
+// had no hover at all: a thing you can click that never says so is a thing
+// nobody clicks.
+func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) {
+	lab, a := exchangeLab(t)
+	ex := a.home.exchange
+	if !ex.offering() {
+		t.Fatal("the exchange is not offering to become a conversation")
+	}
+	// Draw once so the pane records where it put the row.
+	homeText(a)
+	x, y, ok := paneRowAt(a, ex.offerAt)
+	if !ok {
+		t.Fatalf("%q was not drawn on any screen row", homeContinueWord)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: x, Y: y})
+	if !ex.hover {
+		t.Fatalf("the pointer over %q lit nothing up", homeContinueWord)
+	}
+	if frame := homeText(a); !strings.Contains(frame, homeContinueWord) {
+		t.Fatalf("the offer row left the pane:\n%s", frame)
+	}
+	made := lab.dirs[0]
+	id := filepath.Base(made)
+	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+	moved := filepath.Join(lab.project("-tmp-alpha"), id)
+	if _, err := os.Stat(filepath.Join(moved, "transcript.jsonl")); err != nil {
+		t.Fatalf("a click on the offer row did not promote the exchange: %v", err)
+	}
+	if a.home.open {
+		t.Fatal("home is still open after the exchange became a conversation")
+	}
+}
+
+// TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard is the pointer's half of
+// the zone model, and the card's chips answered the way they are answered in
+// the conversation.
+func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine, []session.Event{
+		standingProposal(7, "remind me at 6 to leave"),
+		{Kind: session.EventTurnDone},
+	})
+	a.openHome()
+	typeHome(a, "remind me at 6 to leave")
+	drive(t, a, key("up"), key("enter"))
+	drive(t, a, key("tab"))
+
+	ex := a.home.exchange
+	if ex.focused {
+		t.Fatal("tab left the keyboard in the pane")
+	}
+	homeText(a)
+	if ex.cardAt < 0 {
+		t.Fatal("the card's chips were not drawn on the pane")
+	}
+	// A PRESS ON THE PANE'S BODY IS THE ZONE CHANGE AND NOTHING ELSE.
+	if bx, by, ok := paneRowAt(a, 0); ok {
+		drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: bx, Y: by})
+	}
+	if !ex.focused {
+		t.Fatal("a click in the pane did not take the keyboard")
+	}
+	drive(t, a, key("tab"))
+	x, y, ok := paneRowAt(a, ex.cardAt)
+	if !ok {
+		t.Fatal("the chips row is not on the screen")
+	}
+	// The yes chip's own columns, taken from where the renderer put them — a
+	// chip that did not fit was dropped rather than truncated, so the spans are
+	// the authority on where the answers actually are ([app.standChips]).
+	span := ex.view.spans[0]
+	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x - 1 + span.from, Y: y})
+	// The yes hands the keyboard straight back to the list, which is the whole
+	// of [app.answerCard]'s last line — so what a click on a chip proves about
+	// the zones is proved above, on a press that landed on the body.
+	if ex.focused {
+		t.Fatal("a yes clicked in the pane kept the keyboard")
+	}
+	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+		t.Fatalf("clicking the yes chip did not answer, the agent saw %v", lab.agent.answered)
+	}
+	if !ex.view.settled() || !strings.Contains(homeText(a), standSetWord) {
+		t.Fatalf("the clicked card did not settle:\n%s", homeText(a))
+	}
+}
+
+// TestAChangedCardIsReplacedByTheOneThatFollowsIt is the one case where a card
+// leaves the pane: `2 change when`, a correction typed, and the model proposing
+// again. Two cards about one proposal would be one question asked twice.
+func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine, []session.Event{standingProposal(7, "remind me at 6 to leave"), {Kind: session.EventTurnDone}})
+	a.openHome()
+	typeHome(a, "remind me at 6 to leave")
+	drive(t, a, key("up"), key("enter"))
+	drive(t, a, key("2"))
+
+	ex := a.home.exchange
+	if !ex.changing {
+		t.Fatal("`2` did not arm the correction")
+	}
+	if ex.view.settled() {
+		t.Fatal("`2` settled the card; it is still a question until the words arrive")
+	}
+	if !strings.Contains(homeText(a), homeAskChangeWord) {
+		t.Fatalf("the pane does not ask for the change:\n%s", homeText(a))
+	}
+	first := ex.view
+	typeHome(a, "make it 8")
+	drive(t, a, key("enter"))
+	if first.verdict != standChangedWord {
+		t.Fatalf("the corrected card settled as %q, want %q", first.verdict, standChangedWord)
+	}
+	// THE RE-PROPOSAL COMES BACK ON THE SAME TURN in a real session — the tool
+	// call that raised the first card is still blocked on the answer — so it
+	// arrives here as the event it is rather than as a second Submit.
+	spent := make(chan session.Event)
+	close(spent)
+	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: standingProposal(8, "remind me at 8 to leave")})
+
+	// AND THE SECOND CARD REPLACES IT.
+	cards := 0
+	for _, row := range ex.rows {
+		if row.kind == exchangeCard {
+			cards++
+		}
+	}
+	if cards != 1 {
+		t.Fatalf("the pane is drawing %d cards, want 1", cards)
+	}
+	if ex.view == first || ex.view.id != 8 {
+		t.Fatalf("the re-proposal did not take the card slot: %+v", ex.view)
+	}
+	if !ex.asking() {
+		t.Fatal("the new card is not asking")
 	}
 }
