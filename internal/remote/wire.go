@@ -61,6 +61,7 @@ const (
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
+	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
 	MethodHarness         = "ResolveHarness"         // HarnessArgs → nothing
 	MethodConnect         = "ResolveConnect"         // ConnectArgs → nothing
 	MethodConnectKey      = "ResolveConnectKey"      // ConnectArgs → nothing
@@ -76,6 +77,15 @@ const (
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
 	MethodSessionNew     = "Session.New"     // nothing → Welcome (the engine swaps to a fresh session)
 	MethodSessionOpen    = "Session.Open"    // string (path) → Welcome (the engine swaps to that session)
+
+	// Standing doors. They are in the Session group and not the Agent one
+	// because they are about the ENGINE MACHINE'S STORE rather than about the
+	// conversation: a local surface opens internal/standing on its own disk and
+	// a remote one cannot, which is the same reason Sessions.Recent exists. The
+	// items belong to the machine that runs them, so a session swap leaves them
+	// exactly where they were.
+	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
+	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
 )
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -141,6 +151,22 @@ type ConsentArgs struct {
 	ID    uint64               `json:"id"`
 	Allow bool                 `json:"allow"`
 	Scope session.ConsentScope `json:"scope,omitempty"`
+}
+
+// StandingArgs carries ResolveStanding: which card, and what the person said to
+// it. It is the standing lane's ConsentArgs — one id and one answer — and the
+// answer travels WHOLE rather than field by field, because
+// [session.StandingAnswer] is the engine's own type and a field added there must
+// arrive without a wire change (this file's header states that bargain).
+//
+// KEEPWATCH'S THIRD STATE IS LOAD-BEARING AND SURVIVES BECAUSE IT IS A POINTER.
+// The field answers a question that is only ever ASKED of a person's first
+// standing item, so nil means nobody was asked, and encoding/json writes a nil
+// pointer as null and reads null back as nil. A bool would have turned "never
+// asked" into "said no" on the far machine.
+type StandingArgs struct {
+	ID     uint64                 `json:"id"`
+	Answer session.StandingAnswer `json:"answer"`
 }
 
 type HarnessArgs struct {

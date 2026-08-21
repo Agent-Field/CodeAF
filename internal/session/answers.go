@@ -117,6 +117,13 @@ type AnswerOption struct {
 // there is right here. `2 change when` is deliberately NOT on this list: it is a
 // request for a text box, and there is no box on the row this is drawn beside.
 //
+// AND `0 not set up` IS THE OUTRIGHT NO, ON EVERY SURFACE THAT DRAWS THE CARD.
+// In the conversation the no was `esc`, which home does not have to give — esc
+// there closes home — so a standing card met from home used to offer a yes, a
+// once, and no way at all to say no; the only ways out were opening the window
+// or leaving the question standing. [StandingNoKey] is why the key is a `0` and
+// not a fourth digit.
+//
 // THIS IS THE ANSWER FOR THE KIND AND NOT FOR AN ITEM. A one-off reminder's
 // card offers no `3` at all, because doing that action "now" is meaningless —
 // [StandingOptions] narrows this list to one item, and that is what a card and
@@ -142,7 +149,8 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 	case QuestionStanding:
 		return []AnswerOption{
 			{Key: "1", Label: "yes"},
-			{Key: "3", Label: "once, not standing"},
+			{Key: StandingOnceKey, Label: "once, not standing"},
+			{Key: StandingNoKey, Label: "not set up"},
 		}
 	}
 	return nil
@@ -153,6 +161,25 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 // [StandingOptions] all have to agree about which chip is the one that may be
 // missing.
 const StandingOnceKey = "3"
+
+// StandingNoKey is the digit that DECLINES a standing card outright: nothing is
+// created, nothing is run, and the row settles as `not set up` — the answer
+// [Agent.ResolveStanding] reads out of a zero [StandingAnswer].
+//
+// IT IS A `0` BECAUSE IT MUST NOT BE A DIGIT ANOTHER CHIP ALREADY OWNS, AND
+// MUST NOT BE A LETTER. The card in a conversation numbers its chips by their
+// position — 1 yes, 2 change when, 3 once (tui3's [taskModelKey]) — so a fourth
+// answer taking `4` would move the moment a card drew one chip fewer, and the
+// hand that learned the keys on a watch would decline a reminder. A letter is
+// worse: on home the letters are already typing, which is the whole reason
+// [AnswerOption.Key] is a digit on every kind. `0` is off the end of the chip
+// numbering in both directions, is one keystroke, and is nowhere near `1`.
+//
+// IT IS NOT A CHIP IN THE CONVERSATION'S OWN CARD, where the row is numbered by
+// position and `esc` has always been the no. It is a bare key there, named in
+// the hint beside `esc` (tui3's [standProposalHint]), and a drawn chip on home
+// and in the errand pane, which are the two places that have no esc to spare.
+const StandingNoKey = "0"
 
 // StandingOnceIsAnAnswer reports whether "once, not standing" MEANS anything
 // for one item, and it is the ONE PLACE that is decided.
@@ -174,6 +201,12 @@ func StandingOnceIsAnAnswer(item standing.Item) bool {
 
 // StandingOptions is [AnswerOptions](QuestionStanding) narrowed to ONE item:
 // the answers this particular card offers, in the order chips are drawn.
+//
+// THE ONLY CHIP THAT IS EVER MISSING IS THE `once`. A yes and a no are answers
+// to every standing card there is — "set it up" and "set nothing up" are what
+// the question means — so [StandingNoKey] is on every row this returns, and a
+// person who learned the decline on a watch finds it under the same key on a
+// reminder.
 //
 // IT IS WHAT BOTH SURFACES DRAW FROM. The engine puts it on the card
 // ([StandingNotice.Options]) and into the presence file another window answers
@@ -271,8 +304,16 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 		switch key {
 		case "1":
 			action.Standing = StandingAnswer{Approved: true}
-		case "3":
+		case StandingOnceKey:
 			action.Standing = StandingAnswer{Once: true}
+		case StandingNoKey:
+			// THE DECLINE IS WRITTEN OUT RATHER THAN LEFT TO FALL THROUGH. It
+			// is already the zero value — which is the safety this whole
+			// function is built on — but a reader counting the answers a
+			// standing card takes must find three arms here and not two, and
+			// the day one of them learns something the line to change is
+			// visible.
+			action.Standing = StandingAnswer{}
 		}
 	}
 	return action, true

@@ -97,6 +97,35 @@ import "strings"
 //	                  (internal/remote's SubmitImage). So a relative path and the
 //	                  completion walk are both anchored HERE rather than on the
 //	                  remote workspace — see [app.pathRoot].
+//	standing items    ON, and on at both ends. The `stand` tool is on the belt
+//	                  over a connection because the engine keeps its ambient
+//	                  side (cmd/aforge's engine.go), the proposal card crosses as
+//	                  an ordinary event and the answer crosses back as its own
+//	                  frame (internal/remote's ResolveStanding), so a person
+//	                  sitting here can set something up on the far machine and it
+//	                  goes on working after this window closes. THE ITEMS BELONG
+//	                  TO THE MACHINE THAT RUNS THEM: the store, the profile rules
+//	                  a firing inherits and the OS timer are all the engine's.
+//	the item band     wired to the engine's store and drawn nowhere, because
+//	                  /home does not open over a connection at all
+//	                  ([homeRemoteWord] above). What the seam actually lights up
+//	                  here is the status line's `keeping an eye on` segment,
+//	                  which asks about THIS window's workspace — and over --host
+//	                  that path is the engine's own, so the count is about the
+//	                  right machine. The rows answer from a cache that refreshes
+//	                  behind itself (cmd/aforge's [hostStanding]), because this
+//	                  seam is asked on the frame and a wire call is not.
+//	`keeping watch`   NO LINE. The OS timer is the far machine's and its status
+//	                  is derived from a definition file on that disk, so the door
+//	                  hands no Watch over rather than reading this laptop's
+//	                  launchd — a status about the wrong machine. [StandingSeam]
+//	                  already calls a false the honest third state, and the
+//	                  emptiness law draws it as nothing.
+//	the ● glyph       never worn, and for the reason the field states rather than
+//	                  for a remote one: a firing is in flight inside whichever
+//	                  process holds the tick lock, nothing on disk says so, and
+//	                  no frame could carry an answer the far end does not have.
+//	                  Running is nil here exactly as it is at home.
 //	/export           writes HERE, and the note says so ([exportHereWord]). The
 //	                  transcript is assembled from what this surface is holding,
 //	                  so it can be written without asking anybody; the wire has no
