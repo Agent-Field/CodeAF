@@ -239,6 +239,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// a row lit the row up without moving the keyboard with it.
 		{"how do I get back to the list from ask here", "asking-from-home"},
 		{"why can't I click a row while asking", "asking-from-home"},
+		{"what happened in this conversation while I was away", "home"},
+		{"where are the files this conversation produced", "home"},
+		{"where did we leave off in this conversation", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

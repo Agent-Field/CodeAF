@@ -707,3 +707,25 @@ showing the exchange rather than the preview of whatever row you pass.
 The whole of it — where the record goes, how the card is answered, how to get back to the
 list, and how to turn the exchange into an ordinary conversation — is on its own page:
 *Asking from home*.
+
+## What happened in this conversation while I was away — news since I last looked
+
+A conversation with queued news draws `◆ N things since you left` in its home preview.
+Each item underneath reads `<age> · <words> · <text>`, for example
+`4m · keep main green · the tests passed`. Home shows three items, then a
+`▸ …N more things` door; `m` opens or closes the preview's folds. An absent or empty inbox
+draws no news band at all. Looking at the band does not consume the news.
+
+## Where are the files it produced — deliverables on a conversation
+
+The home preview lists files produced by that conversation, newest first, as
+`<basename> · <age>`, for example `report.md · 2h`. The basename is a clickable path in
+terminals that support file links, and opens the full recorded path. Home shows three
+files, then a `▸ …N more files` door; `m` opens or closes the preview's folds. A
+conversation with no indexed files draws no deliverables band.
+
+## Where did we leave off — the last exchange on a conversation
+
+The home preview keeps the two sides of the last exchange together. The person's last
+message is one muted line beginning `› `, followed by the reply in dim text wrapped to at
+most two lines. A conversation with no turns draws no last-exchange band.
