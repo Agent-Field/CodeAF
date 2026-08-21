@@ -48,7 +48,7 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 		_, structuring := planClient.Snapshot()
 		return structuring
 	}
-	target, ok := plans.divisionTarget(node.ID, settings, planner, planContextTokens)
+	target, ok := plans.divisionTarget(graph, node.ID, settings, planner, planContextTokens)
 	if !ok {
 		return 0, nil
 	}
