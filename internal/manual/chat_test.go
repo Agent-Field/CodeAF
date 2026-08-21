@@ -233,6 +233,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"cmd backspace does nothing", "keys"},
 		{"why does my task have a weird name", "tasks"},
 		{"who decides what my task is called", "tasks"},
+		// The naming wave. A row that shows a path or the front of somebody's
+		// sentence is the thing people actually see, and they say it in the words
+		// of what is on screen — a folder, a file path, "the first few words" —
+		// long before they would say "title".
+		{"my task is named after a folder path", "tasks"},
+		{"the task on the right is called /var/folders", "tasks"},
+		{"why is the task named the first few words of what I typed", "tasks"},
+		{"the name on the task changed by itself a few seconds later", "tasks"},
+		{"can I give a task a short name", "tasks"},
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},

@@ -422,8 +422,15 @@ func (r *runModels) CompleteWithMessages(ctx context.Context, messages []ai.Mess
 		_ = option(&request)
 	}
 	kind := "node"
-	if isPlannerCall(messages) {
+	switch {
+	case isPlannerCall(messages):
 		kind = "planner"
+	case isNameCall(messages):
+		// THE NAMER IS NOT PART OF THE RUN. It is one cheap call that turns the
+		// run's goal into the two or three words its row is drawn under
+		// (taskname.go), on its own role and its own class, and counting it as a
+		// node would make every assertion here about the wrong model.
+		kind = "namer"
 	}
 	r.mu.Lock()
 	if r.seen == nil {
