@@ -83,9 +83,17 @@ func init() { roles.Register(roles.RoleTaskName, roles.TierLow) }
 // are thrown away on the way to the screen (internal/tui3's taskTitleWords).
 const TaskNameWords = 3
 
+// taskNameSystem is all the system message says, for the session namer's reason
+// (title.go): the cheap model reads the system message as character and the end
+// of the user message as the thing to do, so the instruction is not put here.
+const taskNameSystem = "You name pieces of work."
+
 // taskNamePrompt is the whole instruction, and the shape of the answer IS the
 // requirement: a label for a narrow column, in the lowercase every other label
-// on this surface is drawn in.
+// on this surface is drawn in. IT GOES LAST IN THE USER MESSAGE, after the work
+// it is about — this call lands on the same small models the session's namer
+// does, and one of them handed that instruction straight back as a session's
+// name.
 const taskNamePrompt = "Name this piece of work in two or three words — a label for a narrow column, not a sentence. Lowercase, no quotes, no full stop, no file paths, no ids. Answer with the name and nothing else."
 
 const (
@@ -202,14 +210,17 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 	// name in a few words, and this is one of them. WithoutStream because nobody
 	// asked for this call and left on a stream it would type into the room.
 	response, callErr := client.CompleteWithMessages(provider.WithoutStream(ctx),
-		[]ai.Message{textMessage("system", taskNamePrompt), textMessage("user", subject)},
+		[]ai.Message{
+			textMessage("system", taskNameSystem),
+			textMessage("user", subject+"\n\n"+taskNamePrompt),
+		},
 		ai.WithModel(call.Model), ai.WithTemperature(taskNameTemp), ai.WithMaxTokens(taskNameTokens))
 	if callErr != nil || response == nil {
 		return ""
 	}
 	// The person pays for it out of the same pocket the session's own title, the
 	// guardian and the shaper come out of, and no turn asked for it.
-	a.addAuxiliaryUsage(response, call.Model, 1)
+	a.addAuxiliaryUsageAs(response, call.Model, 1, auxRoleTaskName)
 	return cleanTaskName(response.Text())
 }
 
@@ -221,7 +232,10 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 // AN ANSWER THAT IS STILL NOT A NAME IS NO ANSWER. The test is the same one that
 // decided to make the call ([taskNameNeeded]): a namer that echoed a path has
 // handed back exactly the thing the call was made to get rid of, and taking it
-// would be paying to make the row no better.
+// would be paying to make the row no better. The other way an answer is not a
+// name — the INSTRUCTION handed back — is refused by [cleanTitle] before the cut
+// to three words ever happens, because a shared hand is the only place a rule
+// like that can be true of both namers at once.
 func cleanTaskName(raw string) string {
 	name := firstWordsOf(cleanTitle(raw), TaskNameWords)
 	if name == "" || taskNameNeeded(name) {

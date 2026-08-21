@@ -194,6 +194,19 @@ func LoadMeta(dir string) (Meta, error) {
 	if json.Unmarshal(raw, &meta) != nil || strings.TrimSpace(meta.ID) == "" {
 		return Meta{}, nil
 	}
+	// A TITLE THAT IS THE NAMER'S OWN INSTRUCTION IS NOT A TITLE ([healedTitle],
+	// title.go), and this file is where that name landed: [Agent.stampTitle]
+	// wrote it over the placeholder the person's own opening words were.
+	//
+	// So the bad name is dropped on the way IN — nothing on disk is rewritten,
+	// because meta.json is a citation and not the record — and the placeholder
+	// is read back out of the journal to stand in its place, exactly as it did
+	// before the name arrived. Only a folder that actually holds one of these
+	// pays for that read ([openingPlaceholder]), and the next thing said in the
+	// session stamps the words back onto the file ([Agent.stampUserLocked]).
+	if strings.TrimSpace(meta.Title) != "" && healedTitle(meta.Title) == "" {
+		meta.Title = openingPlaceholder(dir)
+	}
 	return meta, nil
 }
 
