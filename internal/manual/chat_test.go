@@ -201,6 +201,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+
+		// The eleventh wave: the ambient side arriving on home. Each of these is
+		// asked by somebody LOOKING at a row they did not expect — a glyph they
+		// have not met, a segment at the foot of the frame, a card that appeared
+		// mid-conversation — so the words are the ones they would say out loud
+		// about what is in front of them.
+		{"what is the little circle row on home", "home"},
+		{"how do I pause a reminder", "home"},
+		{"what does keeping an eye on 2 mean", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

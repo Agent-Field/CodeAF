@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // HOME: /home — everything this machine has worked on, in one place.
@@ -226,6 +227,21 @@ const (
 	homeAction
 	// homeBlank is the empty line between projects.
 	homeBlank
+	// homeItem is ONE STANDING ITEM — a reminder, a watch, a rule, an overnight
+	// job — under the project it belongs to (homestanding.go). It is a cursor
+	// stop and it answers three keys: enter opens the conversation that asked
+	// for it, p pauses it, s stops it.
+	//
+	// It is a kind of its own and not a conversation with a different glyph,
+	// because the two objects have two lives and two doors: a conversation is
+	// opened, an item is opened THROUGH — the door it offers is the chat that
+	// made it, which is provenance and not identity.
+	homeItem
+	// homeItemFold is the band's tail — "…2 more keeping an eye" — and it is a
+	// DOOR exactly as [homeQuiet] is, with the same two marks and the same
+	// gestures. A line that says work is being hidden and cannot be asked to
+	// stop hiding it is a dead end somebody hits and gives up at.
+	homeItemFold
 )
 
 // homeLine is one drawn line of the left column, resolved against the world
@@ -249,6 +265,12 @@ type homeLine struct {
 	quiet  int
 	since  time.Time
 	folded bool
+	// item is the standing item, for [homeItem], and view carries the two facts
+	// about NOW that the document does not hold (homestanding.go's
+	// [StandingItemView]). They are resolved when the row is built, so a row and
+	// the card beside it can never disagree about whether something is firing.
+	view StandingItemView
+	item standing.Item
 }
 
 // homeView is the whole surface's state. The zero value is closed, which is
@@ -285,6 +307,17 @@ type homeView struct {
 	// It outlives a rescan and a query, because folding is a thing a person did
 	// and not a thing the data said.
 	expanded map[string]bool
+	// items is each project's standing band, keyed by the project's BUCKET
+	// directory, as it stood at the last reading (homestanding.go). It is held
+	// beside the world rather than read per frame for [app.homeHeld]'s reason:
+	// the column is drawn on every keystroke and every pointer movement, and the
+	// store is a directory of documents.
+	items map[string][]StandingItemView
+	// itemsOpen is the bands somebody opened by hand, by the same key. It is a
+	// second map and not a flag beside [homeView.expanded] because they are two
+	// folds over two different things, and a person who opened the watches
+	// should not thereby have opened eleven quiet conversations.
+	itemsOpen map[string]bool
 
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
@@ -343,13 +376,15 @@ func (a *app) openHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
-		open:     true,
-		world:    session.ReadWorld(a.placesRoot()),
-		bucket:   homeBucketOf(a.file),
-		hover:    -1,
-		last:     map[string]session.Summary{},
-		expanded: map[string]bool{},
+		open:      true,
+		world:     session.ReadWorld(a.placesRoot()),
+		bucket:    homeBucketOf(a.file),
+		hover:     -1,
+		last:      map[string]session.Summary{},
+		expanded:  map[string]bool{},
+		itemsOpen: map[string]bool{},
 	}
+	a.readStandBands()
 	a.home.build()
 	a.home.point(a.file)
 	a.touch()
@@ -406,13 +441,15 @@ func (a *app) landHome() {
 		return
 	}
 	a.home = homeView{
-		open:     true,
-		world:    world,
-		bucket:   homeBucketOf(a.file),
-		hover:    -1,
-		last:     map[string]session.Summary{},
-		expanded: map[string]bool{},
+		open:      true,
+		world:     world,
+		bucket:    homeBucketOf(a.file),
+		hover:     -1,
+		last:      map[string]session.Summary{},
+		expanded:  map[string]bool{},
+		itemsOpen: map[string]bool{},
 	}
+	a.readStandBands()
 	a.home.build()
 	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS IN, which is the
 	// resume picker's law and it matters more here: enter is a confirm key, and
@@ -492,6 +529,11 @@ func (a *app) refreshHome() {
 	}
 	a.home.world = session.ReadWorld(a.placesRoot())
 	a.homeWorth = worldHasElsewhere(a.home.world, a.file)
+	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
+	// the conversation rows above it are one triage order, and two readings taken
+	// a beat apart would sort a firing item against a world that had not heard of
+	// it yet.
+	a.readStandBands()
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// this is a rescan and a rebuild and nothing else.
 	a.home.build()
@@ -501,6 +543,11 @@ func (a *app) refreshHome() {
 // build turns the world into lines, applying the filter when one is typed.
 func (h *homeView) build() {
 	previous := h.focused()
+	// AND THE ITEM UNDER THE CURSOR IS FOLLOWED THE SAME WAY. A band re-sorts
+	// when something starts firing, exactly as the conversations above it do, and
+	// a cursor that held its line number would land the person on a different
+	// watch between two glances.
+	previousItem := h.focusedItem()
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -533,6 +580,33 @@ func (h *homeView) build() {
 	}
 	if previous.Transcript != "" {
 		h.point(previous.Transcript)
+		return
+	}
+	if previousItem != "" {
+		h.pointItem(previousItem)
+	}
+}
+
+// focusedItem is the id of the standing item under the cursor, and "" when the
+// cursor is not on one.
+func (h *homeView) focusedItem() string {
+	if h.cursor < 0 || h.cursor >= len(h.lines) || h.lines[h.cursor].kind != homeItem {
+		return ""
+	}
+	return h.lines[h.cursor].item.ID
+}
+
+// pointItem puts the cursor on the row holding an item, and leaves it where it
+// is when that item is not on the list any more.
+func (h *homeView) pointItem(id string) {
+	if id == "" {
+		return
+	}
+	for at, line := range h.lines {
+		if line.kind == homeItem && line.item.ID == id {
+			h.cursor = at
+			return
+		}
 	}
 }
 
@@ -678,10 +752,49 @@ func (h *homeView) buildWorld() {
 		h.lines = append(h.lines, homeLine{
 			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
 		})
+		// THE BAND SPLITS AROUND THE CONVERSATIONS, and the split is triage
+		// (homestanding.go's header states it whole): an item that needs somebody
+		// or is firing right now sits ABOVE the conversations, with the rows this
+		// screen exists for; everything still waiting for its time sits under
+		// them, above the quiet fold.
+		//
+		// AND A SEARCH DRAWS NO BAND AT ALL. The box searches conversations — by
+		// name, by project, by what their tasks came to (see [homeRank]) — and a
+		// band of items riding along under every hit would be rows the query
+		// never considered, drawn as though it had.
+		var hot, cold []StandingItemView
+		var itemsFolded int
+		if query == "" {
+			shownItems, folded := standSplit(h.items[hit.project.Dir], h.itemsOpen[hit.project.Dir])
+			itemsFolded = folded
+			for _, view := range shownItems {
+				if standHot(view) {
+					hot = append(hot, view)
+					continue
+				}
+				cold = append(cold, view)
+			}
+		}
+		for _, view := range hot {
+			h.lines = append(h.lines, h.itemLine(hit.project, view))
+		}
 		shown, quiet, since := h.split(hit.project, hit.rows, query)
 		for _, row := range shown {
 			h.lines = append(h.lines, homeLine{
 				kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: row,
+			})
+		}
+		for _, view := range cold {
+			h.lines = append(h.lines, h.itemLine(hit.project, view))
+		}
+		// A BAND WITH NOTHING BEHIND IT DRAWS NO DOOR, opened or not. An opened
+		// band whose items have since dropped under the cap is a band that is
+		// hiding nothing, and a fold control over nothing is a control that does
+		// nothing (home.go's quiet tail follows the same rule for a search).
+		if itemsFolded > 0 {
+			h.lines = append(h.lines, homeLine{
+				kind: homeItemFold, project: hit.project.Name, dir: hit.project.Dir,
+				quiet: itemsFolded, folded: !h.itemsOpen[hit.project.Dir],
 			})
 		}
 		// A SEARCH HAS NO TAIL LINE. Everything that matched is on screen, so
@@ -962,12 +1075,20 @@ func (h *homeView) clamp(at int) int {
 	return at
 }
 
+// itemLine is one standing item as a line of the column.
+func (h *homeView) itemLine(project session.Project, view StandingItemView) homeLine {
+	return homeLine{
+		kind: homeItem, project: project.Name, dir: project.Dir,
+		view: view, item: view.Item,
+	}
+}
+
 // stop reports whether the cursor may rest on this line. A heading names a
 // project and a blank separates two, and neither is a thing to do anything to;
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
-	case homeSession, homeQuiet, homeAction:
+	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold:
 		return true
 	}
 	return false
@@ -1069,6 +1190,10 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.fold(line.dir, true)
 			return nil
 		}
+		if line, ok := h.focusedLine(); ok && line.kind == homeItemFold {
+			h.foldItems(line.dir, true)
+			return nil
+		}
 		h.box.right()
 		return nil
 	case "left":
@@ -1076,8 +1201,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.fold(line.dir, false)
 			return nil
 		}
+		if line, ok := h.focusedLine(); ok && (line.kind == homeItemFold || line.kind == homeItem) && h.itemsOpen[line.dir] {
+			h.foldItems(line.dir, false)
+			return nil
+		}
 		h.box.left()
 		return nil
+
 	case "ctrl+b":
 		h.box.left()
 		return nil
@@ -1086,6 +1216,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	default:
+		// PAUSE AND STOP ARE BARE LETTERS ON AN ITEM ROW, and they are read HERE
+		// — inside the default branch, ahead of typing — because home's box is a
+		// search AND a new conversation at the same moment. A letter is only a
+		// key while there is nothing typed and the cursor is on an item; every
+		// other moment it is a character, and it falls through to the box below
+		// exactly as it always did (homestanding.go's [app.homeItemWrite] does
+		// the write).
+		if key := msg.String(); (key == "p" || key == "s") && !h.searching() {
+			if line, ok := h.focusedLine(); ok && line.kind == homeItem {
+				if key == "p" {
+					return a.homeItemWrite(line, standing.StatusPaused)
+				}
+				return a.homeItemWrite(line, standing.StatusRetired)
+			}
+		}
 		// TYPING IS THE WHOLE CEREMONY, and it does both jobs at once: the
 		// characters are a message being written AND a query over every project
 		// on the machine. Nothing had to be opened, and nothing has to be
@@ -1124,6 +1269,32 @@ func (h *homeView) fold(dir string, open bool) {
 	h.cursor = h.clamp(held)
 }
 
+// foldItems opens or closes one project's standing band, and leaves the cursor
+// on the line that did it so the gesture can be reversed without moving. It is
+// [homeView.fold] over the other fold, and it is a second function rather than a
+// parameter because the two folds are two maps: opening the watches must not
+// open eleven quiet conversations.
+func (h *homeView) foldItems(dir string, open bool) {
+	if h.itemsOpen == nil {
+		h.itemsOpen = map[string]bool{}
+	}
+	if open {
+		h.itemsOpen[dir] = true
+	} else {
+		delete(h.itemsOpen, dir)
+	}
+	held := h.cursor
+	h.rebuild()
+	for at, line := range h.lines {
+		if line.kind == homeItemFold && line.dir == dir {
+			h.cursor = at
+			h.picked = true
+			return
+		}
+	}
+	h.cursor = h.clamp(held)
+}
+
 // rebuild is [homeView.build] with the cursor left alone, for the callers that
 // are moving it themselves.
 func (h *homeView) rebuild() {
@@ -1148,6 +1319,14 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeQuiet:
 		h.fold(line.dir, line.folded)
 		return nil
+	case homeItemFold:
+		h.foldItems(line.dir, line.folded)
+		return nil
+	case homeItem:
+		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
+		// get this?" opens the conversation that asked for it
+		// (homestanding.go's [app.homeItemEnter]).
+		return a.homeItemEnter(line)
 	}
 	switch {
 	case line.row.Transcript == a.file:
@@ -1390,6 +1569,13 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		a.home.cursor = at
 		a.home.picked = true
 		a.home.fold(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
+		return nil
+	}
+	if a.home.lines[at].kind == homeItemFold {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.foldItems(a.home.lines[at].dir, a.home.lines[at].folded)
 		a.touch()
 		return nil
 	}
@@ -1660,6 +1846,26 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			}
 		}
 		return overlayRow(mark+" "+homeQuietWord(line, h.world.Read), "", at == h.cursor, false, at == h.hover, width, pal)
+	case homeItem:
+		// ONE ITEM, ONE ROW, drawn by the renderer home's errand box shares
+		// (homestanding.go's [StandingItemRow]).
+		return StandingItemRow(a, line.view, width, h.world.Read, at == h.cursor, at == h.hover)
+	case homeItemFold:
+		// THE SAME FOLD MARK AS THE QUIET TAIL, over the same kind of thing: a
+		// line standing for rows you cannot see, and an arrow saying which way it
+		// goes.
+		mark := glyphOpen
+		if line.folded {
+			mark = glyphShut
+		}
+		if pal.ascii {
+			mark = ">"
+			if !line.folded {
+				mark = glyphOpenASCII
+			}
+		}
+		return overlayRow(mark+" "+standFoldWord(line.quiet, line.folded), "",
+			at == h.cursor, false, at == h.hover, width, pal)
 	case homeAction:
 		// It carries the words back at the person, cut to fit. The box at the
 		// foot holds them too, but the box is where you are typing and this is
@@ -1829,6 +2035,13 @@ func homeName(row session.SessionRow) string {
 // ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	line, ok := a.home.focusedLine()
+	if ok && line.kind == homeItem {
+		// THE OTHER KIND OF CARD, in the same column and the same bands
+		// (homestanding.go's [StandingItemCard]). It is a card about an item
+		// rather than about a conversation, and it is assembled by the same
+		// [homeBands] so a short frame drops from the bottom on both.
+		return StandingItemCard(a, line.view, line.project, strings.TrimSpace(line.item.Workspace), width, room, a.home.world.Read)
+	}
 	if !ok || line.kind != homeSession {
 		// The action row and a folded tail are not things with a detail; the
 		// column stays empty rather than keeping the last conversation's up,
@@ -2103,6 +2316,15 @@ func (a *app) homeHint() string {
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
 		return "enter or ← fold them away · esc close"
+	case line.kind == homeItemFold && line.folded:
+		return "enter or → show them · esc close"
+	case line.kind == homeItemFold:
+		return "enter or ← fold them away · esc close"
+	case line.kind == homeItem:
+		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
+		// hand is. One vocabulary, two places (homestanding.go's
+		// [homeItemActions]).
+		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}

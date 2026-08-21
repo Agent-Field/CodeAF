@@ -48,6 +48,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -408,10 +409,67 @@ type Options struct {
 	Input  io.Reader
 	Output io.Writer
 
+	// Standing is the ambient side's seam: what home reads to draw the band of
+	// items under a project, what a pause or a stop is written back through, and
+	// what /status derives its `keeping watch` line from ([StandingSeam] says
+	// what each function owes).
+	//
+	// The zero value is a surface with the ambient side OFF, and it is off the
+	// way every optional capability here is off: home draws no item band at all,
+	// the status line grows no segment, and /status says nothing about keeping
+	// watch. Nothing half-works and nothing claims to.
+	Standing StandingSeam
+
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
 	Width, Height int
+}
+
+// StandingSeam is everything this surface needs from internal/standing, as
+// FUNCTIONS rather than as a store.
+//
+// It is functions for the reason [Options.Models] is one: the door owns where
+// the store lives and how it is opened, and a test owns neither. Handing the
+// surface a *standing.Store would make "home with three items on it" a test
+// that writes JSON documents into a temp directory to assert a row's spacing.
+//
+// EVERY FIELD IS INDEPENDENTLY OPTIONAL. A door that can list items but cannot
+// install an OS timer wires Items and leaves Watch nil, and what a person then
+// sees is item rows and no `keeping watch` line — which is exactly the truth.
+type StandingSeam struct {
+	// Items answers the items belonging to one workspace, in whatever order the
+	// store holds them; this surface applies its own triage order
+	// (homestanding.go's [standTriage]). It must NOT block: home calls it on
+	// every three-second beat and on the keystroke that opens the screen.
+	//
+	// Nil is a home with no item band, which is the ambient side switched off.
+	Items func(workspace string) []standing.Item
+
+	// Save writes one item back — the pause and the stop keys on a home row, and
+	// nothing else on this surface. It returns the write's error and home says
+	// so on its own message line rather than swallowing it: a row that redrew as
+	// paused over a store that refused the write would be the screen lying about
+	// the disk.
+	//
+	// Nil is a home where `p` and `s` say the change cannot be made here.
+	Save func(item standing.Item) error
+
+	// Running reports whether one item is FIRING AT THIS INSTANT, by id. It is
+	// separate from the item document because it is not a fact the document
+	// holds — a run is in flight in a process, and the store's own contract is
+	// deliberately silent about it.
+	//
+	// Nil answers no for everything, and a home where no row ever wears `●` is
+	// honest: the glyph is a claim about right now, and a surface with no way to
+	// ask must not make it.
+	Running func(id string) bool
+
+	// Watch is what /status prints under `keeping watch`, derived and never
+	// asserted ([standing.WatchStatus]). The bool is whether there is an answer
+	// at all — a build with no OS timer support, a remote engine — and a false
+	// prints nothing, which is the emptiness law applied to a whole line.
+	Watch func() (standing.WatchStatus, bool)
 }
 
 // Run opens the surface and blocks until it closes. A cancelled context closes
