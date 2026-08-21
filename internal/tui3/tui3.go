@@ -192,6 +192,24 @@ type Options struct {
 	// created. A test and the --host door are both that window.
 	Errand func(dir, workspace string) (Agent, error)
 
+	// Answer leaves one answer on ANOTHER session's doorstep: the question home
+	// read out of that session's presence file, answered by the key the chips
+	// offered (internal/session's answers.go, tui3's homeband_answer.go). The
+	// session picks it up on its own heartbeat and applies it through the same
+	// resolver its own card would have called.
+	//
+	// IT IS A SEAM AND NOT A DIRECT CALL for the reason every write on this
+	// surface is one: the door decides where state lives, and a surface that
+	// wrote into another process's folder on its own would be a second place
+	// that knows the layout. The live door passes [session.WriteAnswer].
+	//
+	// Nil is a window that can SEE another session's question and not answer it
+	// — the band draws no chips, which is the absence law. A test is that
+	// window. A --host session never reaches the question either, for a reason
+	// one level up: home refuses to open at all over --host, because the state
+	// root under this process belongs to the wrong machine (home.go).
+	Answer func(dir string, kind session.QuestionKind, id uint64, key string) error
+
 	// StandingRoot is where the ambient side keeps its things —
 	// ~/.aforge/v3/standing — which is where an errand's folder is made and where
 	// one that came to nothing stays. Empty falls through to the sibling of the
