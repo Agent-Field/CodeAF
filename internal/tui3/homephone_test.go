@@ -262,7 +262,7 @@ func TestATapOnTheSheetsBackRowReturnsToTheInbox(t *testing.T) {
 func TestThePhoneSheetHoldsRepoKeysAndSpendBehindMore(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", lab.workspace("alpha"), now)
 	lab.task("-tmp-alpha", session.TaskIndexEntry{
 		ID: "1", SessionID: "aaaa000000000001", Title: "port", Label: "port",
 		Status: string(session.TaskDone), EndedAt: now.Add(-time.Hour), Cost: 1.25,
