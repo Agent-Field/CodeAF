@@ -3917,6 +3917,14 @@ func (a *app) slash(line string) tea.Cmd {
 	// resolved to, so the name as written is kept.
 	switch canonicalCommand(name) {
 	case "quit":
+		// /quit CLOSES THE CONVERSATION IN FRONT, and leaves only when it was the
+		// last one this terminal was holding (keeper.go's [app.closeFront]). It
+		// keeps its "leaves at once, it is typed out on purpose" property either
+		// way: closing one conversation is not something a person types three
+		// characters by accident.
+		if cmd, more := a.closeFront(); more {
+			return cmd
+		}
 		return a.quit()
 
 	case "help":
@@ -4229,86 +4237,116 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	}
 }
 
-// renew closes this conversation and opens the next one on the same config.
-// The transcript is cleared because it belongs to the agent that just closed:
+// freshAndEmpty is the conversation nobody has used yet: nothing on screen, no
+// turn ever run, no work out and nothing waiting.
+//
+// IT IS THE ONE STATE /new MAY REPLACE. Closing it costs nothing — there is
+// nothing in it — and it is what a conversation is in when somebody typed /new
+// because they had not started yet, or pressed enter on a row of the welcome
+// box. Keeping it would spend a slot on a conversation nobody typed in.
+func (a *app) freshAndEmpty() bool {
+	if a.turn != 0 || a.state == stateWorking {
+		return false
+	}
+	// A NOTE IS NOT A CONVERSATION. Every surface opens with the surface's own
+	// lines on it — `esc interrupts · ctrl+c twice quits`, a door's notice, a
+	// refusal somebody read — and counting those would make "fresh and empty"
+	// false on the very first frame of every session, which is the one state
+	// this test exists to recognise.
+	for i := range a.entries {
+		if a.entries[i].kind != entryNote {
+			return false
+		}
+	}
+	if len(a.taskOrder) > 0 || a.asking() || len(a.parks) > 0 {
+		return false
+	}
+	return a.hudStats().jobs == 0
+}
+
+// renew is /new: ANOTHER CONVERSATION IN THIS PROJECT, unless the one on screen
+// is fresh and empty, in which case it takes its place.
+//
+// IT ADDS RATHER THAN REPLACES, and three things say so. Every neighbouring door
+// adds — home's enter, home's typed path, the welcome box's rows — and a /new
+// that closed a conversation with three tasks running would be the one place the
+// surface still punished somebody for using it. It makes home's action row the
+// same act whether or not a path was typed, with the branch only about WHICH
+// workspace. And nothing is lost by the exception, because the exception is the
+// empty case.
+//
+// The transcript is cleared because it belongs to the conversation being left:
 // a fresh session file with the old conversation still on screen would be the
 // surface claiming context the model does not have.
-// It returns the one command the next conversation owes itself: its own
-// standing task subscription (task.go).
+//
+// It returns the commands the next conversation owes itself: its own standing
+// lanes and the project's record (task.go, taskmention.go).
 func (a *app) renew() tea.Cmd {
 	if !a.canStart() {
 		a.note(newUnavailableWord)
 		return nil
 	}
-	if a.state == stateWorking {
-		a.agent.Interrupt()
-	}
-	if err := a.agent.Close(); err != nil {
-		a.note("close failed: " + err.Error())
+	replacing := a.freshAndEmpty()
+	if !replacing {
+		if word, room := a.roomForAnother(); !room {
+			a.note(word)
+			return nil
+		}
 	}
 	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
 		return nil
 	}
-	a.takeUp(conv, whole)
-	agent := a.agent
-	file := a.file
-	a.entries = nil
-	a.live, a.sel, a.think = -1, -1, -1
-	a.asks, a.follows = nil, nil
-	// AND THE DOOR'S ARM GOES WITH THE CONVERSATION IT WAS RAISED OVER
-	// (quitarm.go). A warm ctrl+c names what a second press would stop, and
-	// after this line none of that is the same session — a person who armed the
-	// door and then typed /new is a person who changed their mind.
-	a.disarmQuit()
-	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
-	// WAS TYPED AT (park.go). It was parked against a reply that no longer
-	// exists, and there is no turn end coming to send it — but the person typed
-	// those words, so this says that it went rather than dropping it in silence.
-	a.dropParked()
-	// The offers and the sign-ins belong to the conversation that raised them,
-	// and a browser still standing open on one of them is a browser nobody is
-	// coming back to (connect.go).
-	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
-	a.harnessStep = ""
-	// And the picked harness goes with them: a chip is a choice made about the
-	// next message of THIS conversation, and a fresh session has no next message
-	// of that one (harnesspick.go).
-	a.harnPick, a.harnChip = harnessPick{}, ""
-	a.abandonConnects()
-	a.title = strings.TrimSpace(agent.Title())
-	a.turn = 0
-	// AND THE SCROLLBACK'S MARK GOES WITH THE CONVERSATION IT WAS TAKEN IN
-	// (replay.go). /new is the one door that changes the session without going
-	// back through [app.replay], so it is the one door that has to say this
-	// itself — a mark left standing would offer to scroll back into the
-	// conversation that was just closed.
-	a.replayFrom, a.replayFloor = 0, 0
-	a.unfolded = map[int]bool{}
-	a.dropHover()
-	// A frozen viewport is a snapshot of a conversation that no longer exists
-	// (copymode.go), for the same reason the hover is dropped one line above.
-	a.copy = copyMode{mark: -1}
-	// The rail goes with the conversation: its nodes died with the agent that
-	// started them, and a row left standing would be presence claimed for work
-	// nobody is doing (task.go).
-	a.dropTasks()
-	a.stream = nil
-	a.gen++
-	a.state = stateIdle
-	a.resetMeters()
-	a.model = agent.Model()
-	// The draft is NOT cleared: /new closes a conversation, and the sentence in
-	// the box is the person's next one (draft.go).
-	a.endRecall()
-	a.offset, a.stick = 0, true
-	a.touch()
-	if file != "" {
-		a.note("new session · " + a.hostedPath(file))
+	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
+	// own repair: a /new that failed used to leave the surface holding a closed
+	// session with nothing to fall back on, and now a refusal costs nothing at
+	// all.
+	leaving, side := a.agent, a.detachConversation()
+	if replacing {
+		if leaving != nil {
+			leaving.Interrupt()
+			if err := leaving.Close(); err != nil {
+				a.note("close failed: " + err.Error())
+			}
+		}
 	} else {
+		// AND THE CONVERSATION GOES ON RUNNING, in the keeper (keeper.go). Its
+		// draft file is written there; the sentence in the box goes with the
+		// PERSON, which is what this door has always promised.
+		a.stow(a.front(), side)
+	}
+	if !whole {
+		// The older seam hands back an agent alone, so the surface keeps every
+		// other seam it was holding ([app.takeUp] states this).
+		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
+			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
+			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
+	}
+	cmd := a.attachConversation(conv, nil)
+	a.resumed = false
+	// THE DRAFT GOES WITH THE PERSON AND NOT WITH THE CONVERSATION, which is what
+	// this door has always promised in those words: /new starts something else,
+	// and the sentence in the box is the person's NEXT one. The messages that
+	// were parked behind a turn come with it, in the order they would have been
+	// sent — nobody is left to send them, and they are still what somebody typed
+	// (park.go, quitarm.go's [app.leavingDraft]).
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
+	// AND THE NOTE SAYS WHICH OF THE TWO HAPPENED. A count appearing on the
+	// status line is not enough on its own to tell somebody whether the
+	// conversation they were in is still running.
+	switch {
+	case replacing && a.file != "":
+		a.note("new session · " + a.hostedPath(a.file))
+	case replacing:
 		a.note("new session")
+	default:
+		a.note("new conversation · " + a.place)
 	}
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
@@ -4317,15 +4355,10 @@ func (a *app) renew() tea.Cmd {
 		// notice lands too ([Options.Notice]).
 		a.note(conv.Notice)
 	}
-	// AND THE PROJECT'S RECORD IS READ AGAIN ON THE WAY OUT. [app.dropTasks] takes
-	// the snapshot with the nodes, because the live rows merged into it belonged
-	// to the conversation that just ended — but the FILE is the project's and
-	// outlives every session in it, and the foot of the column keeps its door onto
-	// it whatever this new conversation goes on to do ([app.railHasRecord],
-	// taskview.go). Without this read a /new would take the door off a column
-	// standing in a directory whose history is still on disk.
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
-		a.loadTasks())
+	if key := convKey(a.file); key != "" {
+		a.rememberOpen(key)
+	}
+	return cmd
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────
@@ -4417,6 +4450,8 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 	return nil
 }
 
+// quit is the door out of the PROGRAM, and it takes every conversation this
+// terminal is holding with it.
 func (a *app) quit() tea.Cmd {
 	// The draft goes to disk on the way out, synchronously and before anything
 	// else: the debounce may be mid-window, and a sentence typed in the last
@@ -4430,10 +4465,11 @@ func (a *app) quit() tea.Cmd {
 	if a.draftFile != "" {
 		writeDraft(a.draftFile, a.leavingDraft())
 	}
-	if a.agent != nil {
-		a.agent.Interrupt()
-		_ = a.agent.Close()
-	}
+	// AND EVERY CONVERSATION, IN PARALLEL (keeper.go's [app.closeEverything]).
+	// The ones this terminal is holding behind the screen have their own drafts
+	// already on disk — written when they were left — so what is above is the
+	// only box that still needs saving.
+	a.closeEverything()
 	return tea.Quit
 }
 

@@ -98,20 +98,30 @@ func (a *app) quitSweep() {
 
 // ── WHAT THE SECOND PRESS WOULD COST ────────────────────────────────────────
 
-// quitHint is the armed sentence, with what is running named on the end of it:
+// quitHint is the armed sentence, with what would stop named on the end of it:
 //
 //	ctrl+c again to quit
-//	ctrl+c again to quit · 2 tasks and a job will stop
+//	ctrl+c again to quit · a task will stop
+//	ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 //
-// THE SUFFIX IS ABSENT WHEN NOTHING IS RUNNING, which is the emptiness law: a
-// line reading "0 tasks will stop" is a permanent reminder of the absence of a
-// thing, and this slot is the one a person reads most.
+// THE CLAUSE ORDER IS DELIBERATE: how many conversations, then what work. A
+// person who has forgotten they left something open in another project needs the
+// first number before the second one means anything.
+//
+// EVERY CLAUSE IS ABSENT WHEN IT IS ZERO, which is the emptiness law: one
+// conversation drops the first, nothing running drops the second, and a quiet
+// single conversation reads exactly `ctrl+c again to quit`. A line saying
+// "1 conversation · 0 tasks will stop" would be two facts of which both are the
+// absence of a fact, in the slot a person reads most.
 func (a *app) quitHint() string {
-	work := a.quitWorkWord()
-	if work == "" {
-		return quitArmWord
+	word := quitArmWord
+	if open := a.openCount(); open > 1 {
+		word += " · " + itoa(open) + plural(" conversation", open)
 	}
-	return quitArmWord + " · " + work + " will stop"
+	if work := a.quitWorkWord(); work != "" {
+		word += " · " + work + " will stop"
+	}
+	return word
 }
 
 // quitWorkWord names what this session has running that the door would take
@@ -127,8 +137,14 @@ func (a *app) quitHint() string {
 // this surface last HEARD FROM rather than a list of what is running, and a
 // warning that named a run which had already finished would be worse than a
 // warning that named nothing.
+//
+// AND IT COUNTS ACROSS EVERY CONVERSATION THIS TERMINAL HOLDS, on the keystroke
+// and never on a frame (keeper.go's [app.behindTasks]) — a warning that named
+// only the conversation on screen would be the one place this feature could
+// cost somebody work they had forgotten about. The jobs are the front
+// conversation's only, and that limit is stated where it is made.
 func (a *app) quitWorkWord() string {
-	tasks := 0
+	tasks := a.behindTasks()
 	for _, id := range a.taskOrder {
 		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
 			tasks++

@@ -501,6 +501,22 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 	return cmd
 }
 
+// lastConversation is `tab`: the way back to the conversation that was in front
+// before this one.
+//
+// IT DOES NOTHING WHEN THERE IS NOWHERE TO GO, and says nothing about it. One
+// conversation open, or none this terminal has been in before, is a key that
+// cannot act — and a key that cannot act says so by not being advertised
+// (home.go's legend slot carries `tab last` only while there is a last one).
+func (a *app) lastConversation() tea.Cmd {
+	key, ok := a.lastBehind()
+	if !ok {
+		return nil
+	}
+	cmd, _ := a.bringForward(a.behind[key].conv.SessionFile)
+	return cmd
+}
+
 // roomForAnother reports whether this process may open one more conversation,
 // and says so in home's own voice when it may not.
 //
