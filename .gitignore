@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 *.aux
 harnesses/
+bench/swarm/results/
