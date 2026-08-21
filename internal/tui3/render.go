@@ -191,6 +191,15 @@ func (a *app) visible(width int) []row {
 // transcript.
 func (a *app) layout(width int) []row {
 	out, closed := a.deckRows(a.conversation(), width)
+	// THE ONE THING EVER EMITTED AT THE TOP OF THE TRANSCRIPT, and it is emitted
+	// here rather than by any block because it is not one: it says that the
+	// conversation on screen starts part-way through and that scrolling reaches
+	// the rest (replay.go's [app.earlierRow]). It goes while the reader is still
+	// above it — the moment the real beginning is drawn, there is nothing left
+	// to promise and the marker is not laid out at all.
+	if line := a.earlierRow(width); line != "" && len(out) > 0 {
+		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
+	}
 	line, ok := a.harnessStepRow(width)
 	if !ok {
 		line, ok = a.ellipsis()
