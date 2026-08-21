@@ -22,11 +22,31 @@ import (
 type homeLab struct {
 	t    *testing.T
 	root string
+	// work is where [homeLab.workspace] mints project folders. It is OUTSIDE the
+	// places root on purpose: a directory made under the root would be read back
+	// as another bucket, and the test would grow a project nobody wrote.
+	work string
 }
 
 func newHomeLab(t *testing.T) *homeLab {
 	t.Helper()
-	return &homeLab{t: t, root: t.TempDir()}
+	return &homeLab{t: t, root: t.TempDir(), work: t.TempDir()}
+}
+
+// workspace is a project folder that REALLY EXISTS, and it answers its path.
+//
+// A row whose recorded folder is not on the disk is marked `folder gone` and its
+// card loses three of its keys, which is a fact about that row and about nothing
+// else on this screen. So a test whose subject is a rollup word, a legend or a
+// tick names a folder that is there, and only the tests about a missing one name
+// one that is not.
+func (l *homeLab) workspace(name string) string {
+	l.t.Helper()
+	dir := filepath.Join(l.work, name)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		l.t.Fatal(err)
+	}
+	return dir
 }
 
 // project makes a bucket and answers its directory.
@@ -304,8 +324,9 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 	now := time.Now()
 	// The running one is a SECOND window's conversation, which is the case this
 	// screen exists for — this window cannot see that turn any other way.
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now.Add(-2*time.Hour))
-	lab.session("-tmp-alpha", "aaaa000000000002", "the long one", "/tmp/alpha", now.Add(-time.Hour))
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now.Add(-2*time.Hour))
+	lab.session("-tmp-alpha", "aaaa000000000002", "the long one", here, now.Add(-time.Hour))
 	lab.task("-tmp-alpha", session.TaskIndexEntry{
 		ID: "7", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
 		Status: string(session.TaskRunning), SessionID: "aaaa000000000002",
@@ -396,9 +417,10 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	// The one that needs somebody is the OLDEST, so recency alone would sink it.
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest chat", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "middle of the road", "/tmp/alpha", now.Add(-time.Hour))
-	lab.session("-tmp-alpha", "aaaa000000000003", "pricing research", "/tmp/alpha", now.Add(-6*time.Hour))
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest chat", here, now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "middle of the road", here, now.Add(-time.Hour))
+	lab.session("-tmp-alpha", "aaaa000000000003", "pricing research", here, now.Add(-6*time.Hour))
 	lab.presence("-tmp-alpha", "aaaa000000000003", session.PresenceWaiting, "can I run: rm -rf build/", now)
 
 	a := lab.app(mine)
@@ -1509,6 +1531,119 @@ func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
 	}
 }
 
+// AND IT SAYS SO BEFORE ANYTHING IS PRESSED. The refusal above lands on the last
+// line of the screen, which on a tall terminal is nowhere near the cursor — so
+// the fact is on the row and on the card as well, exactly as `another window` is.
+func TestHomeMarksARowWhoseFolderIsGoneOnTheRowAndOnTheCard(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	gone := lab.session("-tmp-gone", "cccc000000000001", "a project that moved",
+		filepath.Join(lab.root, "no-such-repository"), now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+
+	if !strings.Contains(homeText(a), homeGoneShort) {
+		t.Fatalf("no %q on the column:\n%s", homeGoneShort, homeText(a))
+	}
+	card := strings.Join(homeCardFor(t, a, gone), "\n")
+	if !strings.Contains(card, WorkspaceGoneWord) {
+		t.Fatalf("the card never said %q:\n%s", WorkspaceGoneWord, card)
+	}
+	// The sentence is the FIRST BAND under the place line — title, blank, place,
+	// blank, this — because a short frame drops bands from the bottom and this is
+	// the one that must survive.
+	if at := cardLine(homeCardFor(t, a, gone), WorkspaceGoneWord); at > 4 {
+		t.Fatalf("the sentence was on line %d, not directly under the place line:\n%s", at, card)
+	}
+	// AND THE LEGEND NAMES ONLY KEYS THAT WORK.
+	for _, dead := range []string{"enter open", "n new chat here", "o open folder"} {
+		if strings.Contains(card, dead) {
+			t.Fatalf("the card still offered %q for a folder that is gone:\n%s", dead, card)
+		}
+	}
+	for _, alive := range []string{"y copy path", "m more"} {
+		if !strings.Contains(card, alive) {
+			t.Fatalf("the card lost %q, which needs no folder:\n%s", alive, card)
+		}
+	}
+}
+
+// A project that is still on the disk is untouched by any of it.
+func TestHomeLeavesARowWhoseFolderIsThereAlone(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	here := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
+
+	a := lab.app(mine)
+	a.openHome()
+
+	if strings.Contains(homeText(a), homeGoneShort) {
+		t.Fatalf("a folder that is there was marked gone:\n%s", homeText(a))
+	}
+	card := strings.Join(homeCardFor(t, a, mine), "\n")
+	if strings.Contains(card, WorkspaceGoneWord) {
+		t.Fatalf("a folder that is there was called gone:\n%s", card)
+	}
+	if !strings.Contains(card, "enter open · n new chat here · o open folder") {
+		t.Fatalf("the ordinary legend went missing:\n%s", card)
+	}
+}
+
+// THE DISK IS ASKED ONCE PER READING AND NEVER ONCE PER FRAME. The column and
+// the card beside it are repainted on every keystroke and every pointer
+// movement; a stat from the draw would be thousands a second to re-learn
+// something that changes about as often as a repository is deleted.
+func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", lab.project("-tmp-alpha"), now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "two", lab.project("-tmp-alpha"), now.Add(-time.Minute))
+	gone := lab.session("-tmp-gone", "cccc000000000001", "moved",
+		filepath.Join(lab.root, "no-such-repository"), now.Add(-time.Hour))
+
+	was := homeFolderThere
+	asked := map[string]int{}
+	homeFolderThere = func(where string) bool {
+		asked[where]++
+		return was(where)
+	}
+	t.Cleanup(func() { homeFolderThere = was })
+
+	a := lab.app(mine)
+	a.openHome()
+	// ONE PER PROJECT DIRECTORY, not one per conversation: two conversations in
+	// -tmp-alpha carry the same recorded folder and are one syscall between them.
+	opened := map[string]int{}
+	for where, count := range asked {
+		opened[where] = count
+	}
+	for where, count := range opened {
+		if count != 1 {
+			t.Fatalf("the reading statted %q %d times", where, count)
+		}
+	}
+	if len(opened) == 0 {
+		t.Fatal("the reading statted nothing at all")
+	}
+
+	// Now draw the screen many times over, with the cursor on the gone row and
+	// on a live one, and nothing more may be asked of the disk.
+	a.home.point(gone)
+	for i := 0; i < 20; i++ {
+		homeText(a)
+		homeCardFor(t, a, gone)
+		homeCardFor(t, a, mine)
+	}
+	for where, count := range asked {
+		if count != opened[where] {
+			t.Fatalf("painting statted %q %d more times", where, count-opened[where])
+		}
+	}
+}
+
 // Typing anything that is not a search is the start of a new conversation.
 func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	lab := newHomeLab(t)
@@ -2044,8 +2179,9 @@ func (l *homeLab) hold(transcript string) {
 func TestALockedRowSaysSoInTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", here, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", here, now.Add(-time.Hour))
 	lab.hold(theirs)
 
 	a := lab.app(mine)

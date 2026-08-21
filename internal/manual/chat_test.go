@@ -97,6 +97,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// it still stands; the rest are the four things a person does with the
 		// feature the moment they find it.
 		{"open another project from home", "home"},
+		{"enter does nothing on home", "home"},
 		{"why does it say elsewhere", "home"},
 		{"can I work on two repos in one terminal", "home"},
 		{"can I work on two projects at once", "home"},
