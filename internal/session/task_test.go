@@ -791,7 +791,13 @@ func TestTaskOutlivesSurfaceDetachAndReattachSeesLanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go collect(t, events)
+	// THE SURFACE SIDE IS ONLY DRAINED, never judged: this test is about what
+	// the detached task does, and a helper that could fail the test from a
+	// goroutine after the test returned is a vet finding and a flake in waiting.
+	go func() {
+		for range events {
+		}
+	}()
 	waitSignal(t, started, "the task to start")
 	detach()
 	rejoined := agent.TaskUpdates()

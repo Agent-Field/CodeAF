@@ -201,6 +201,121 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+
+		// The eleventh wave: the ambient side — the things a conversation leaves
+		// behind that keep working after the window is closed. Every one of
+		// these is said in the ordinary words somebody uses when they are NOT
+		// asking for work now, which is the whole recognition problem: "run the
+		// tests" is a turn, and "run the tests whenever I push" is one of these.
+		{"remind me at 6 to leave", "keeping-an-eye"},
+		{"tell me when ci goes red", "keeping-an-eye"},
+		{"can you run something every monday morning", "keeping-an-eye"},
+		{"does it keep working when I close the terminal", "keeping-an-eye"},
+		{"how do I stop a reminder", "keeping-an-eye"},
+		// The eleventh wave: the ambient side arriving on home. Each of these is
+		// asked by somebody LOOKING at a row they did not expect — a glyph they
+		// have not met, a segment at the foot of the frame, a card that appeared
+		// mid-conversation — so the words are the ones they would say out loud
+		// about what is in front of them.
+		{"what is the little circle row on home", "home"},
+		{"how do I pause a reminder", "home"},
+		{"what does keeping an eye on 2 mean", "home"},
+		// The twelfth wave: the cursor on a PROJECT rather than on one of its
+		// chats. Both of these are asked while looking at a name with a card
+		// beside it, and neither of them is a question about one conversation.
+		{"what does the right side show for a whole project", "home"},
+		{"how many conversations does a project have", "home"},
+		// The eleventh wave: the errand you say from home. Every one of these is
+		// asked with home on screen and a sentence half typed, and the honest
+		// answers — that there is a second row, that the exchange is stored
+		// somewhere home does not list, and how to turn it into an ordinary
+		// conversation — are all on one page.
+		// The twelfth wave: what the card actually does while somebody is
+		// reading it, and where an errand said at home leaves its record. Both
+		// were asked by the first person to use this, and the corpus answered
+		// the first one wrongly — it described a countdown that is now gone.
+		{"how long do I have to answer the card", "keeping-an-eye"},
+		{"where is the record of a reminder I made from home", "keeping-an-eye"},
+		// The twelfth wave: answering a question from home. Both are asked by
+		// somebody looking at a `▲` row and wondering whether they have to walk
+		// to the terminal it belongs to — which, for the ordinary answers, they
+		// no longer do.
+		{"can I approve a command from home", "home"},
+		{"how do I answer a question in another window", "home"},
+		{"can I set a reminder from home", "asking-from-home"},
+		{"what is ask here", "asking-from-home"},
+		{"where did that exchange go", "asking-from-home"},
+		// Both written from one person's first run of `ask here`: the pane took
+		// the keyboard and they could not find the way out of it, and a click on
+		// a row lit the row up without moving the keyboard with it.
+		{"how do I get back to the list from ask here", "asking-from-home"},
+		{"why can't I click a row while asking", "asking-from-home"},
+		{"what happened in this conversation while I was away", "home"},
+		{"where are the files this conversation produced", "home"},
+		{"where did we leave off in this conversation", "home"},
+		{"what branch is this home conversation on", "home"},
+		{"what does y do on a home card", "home"},
+		{"what is next up on this home card", "home"},
+		{"what has this home conversation spent", "home"},
+		// The thirteenth wave: home's left column in two tiers, and the work band
+		// on the right. All three are asked by somebody LOOKING at the screen and
+		// finding something missing — most of their projects, the rows behind a
+		// `▸`, and the rest of the tasks behind a fold line.
+		{"why are most projects collapsed on home", "home"},
+		{"how do I open a collapsed project", "home"},
+		{"how do I see more tasks on the right", "home"},
+		{"why did the end of a narrow home card move to another line", "home"},
+		{"why doesn't hovering change the right side", "home"},
+		// The fourteenth wave, both written from one person's own transcripts.
+		// A reminder made from `ask here` fired into the exchange behind home's
+		// pane and they were never told, sitting two panes away in an ordinary
+		// chat; and every "remind me in 2 mins" opened with a `bash date …` row
+		// they could see and asked about.
+		{"where does my reminder show up when it fires", "keeping-an-eye"},
+		{"why did it run date before setting the reminder", "keeping-an-eye"},
+		// The wave that made an exchange a row that outlives the screen it was
+		// asked on. All three are the person's own words after using `ask here`:
+		// the card was answered for them because looking at another chat closed
+		// the errand, the pane drew one dim `…` for a whole turn, and nothing
+		// said whether a second errand was allowed at all.
+		{"why did my reminder card disappear when I opened another chat", "asking-from-home"},
+		{"how do I know ask here is doing something", "asking-from-home"},
+		{"can I ask two things from home at once", "asking-from-home"},
+		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
+		{"why is there no once on my reminder card", "keeping-an-eye"},
+		// The e2e suite found the firing that reached a conversation and was
+		// never drawn in it. The page now says what is drawn and when, and this
+		// is the sentence a person types when it looks like nothing happened.
+		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		// The wave that gave a standing card an outright no on the two surfaces
+		// that have no `esc` to spare. Both of these are what a person types
+		// when a card is up and they do not want the thing.
+		{"how do I say no to a reminder from home", "home"},
+		{"how do I decline a standing card", "keeping-an-eye"},
+		// The wave that gave the engine on the far machine its own ambient
+		// side. This is what a person asks before they rely on it.
+		{"do reminders work over --host", "keeping-an-eye"},
+		{"where does a reminder I set up over --host actually run", "running-on-another-machine"},
+		// The wave that made home able to answer about money and about the
+		// ambient side being idle. The first is asked by somebody looking at a
+		// card and wanting the whole bill, not the tasks' half of it; the second
+		// by somebody who typed /status because they suspect nothing is
+		// happening; the third by somebody deciding whether a watch earns its
+		// keep.
+		{"how much has this conversation cost on home", "home"},
+		{"is the ambient side off", "home"},
+		{"how many times did my watch run this week", "keeping-an-eye"},
+		// `●` used to mean only "firing", and only inside the one window doing
+		// it. It is now a marker on disk that every window reads, so a person
+		// can meet the dot without having started anything themselves.
+		{"why does my watch show a filled dot right now", "keeping-an-eye"},
+		// The wave that gave home a phone shape. Three sentences a person types
+		// with the terminal in one hand: what this screen even is at that width,
+		// how to answer another window's question from it, and how to reach a
+		// task without a keyboard.
+		{"how do I use home on my phone", "home"},
+		{"how do I approve a command from my phone", "home"},
+		{"how do I open a task by tapping", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -84,6 +84,10 @@ func (a *app) statusText() string {
 		}
 		items = append(items, item)
 	}
+	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
+	// made it the one fact /status carried that the phone's own sheet did not —
+	// on the tier where every other fact had moved into that sheet. It is part of
+	// [app.deckItems] now, so both surfaces say it and neither says it twice.
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it

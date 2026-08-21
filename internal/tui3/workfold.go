@@ -59,7 +59,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
 				answer = i
 			}
-			if es[i].kind == entryTask || es[i].kind == entryConnect ||
+			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding ||
 				(es[i].kind == entryNote && strings.HasPrefix(es[i].text, "cancel")) {
 				blocked = true
 			}

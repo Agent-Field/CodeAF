@@ -37,8 +37,14 @@ const sweepLogName = "sweep.log"
 //
 // The call sits inside openV3Launch, beside the rest of what a v3 launch
 // resolves, so every door — chat, resume, engine — sweeps without naming it.
+//
+// THE STANDING ROOT IS HANDED OVER RATHER THAN FOUND. The same pass reaps the
+// ambient side's own litter — an errand that came to nothing, a run that
+// delivered nothing — and internal/session is given the directory to walk so
+// that the rule can be pointed at a temp directory and proved. [v3StandingRoot]
+// is the one answer to where that is.
 func startPlaceSweep() {
-	sweepOnce.Do(func() { go session.SweepHome(noteSweep) })
+	sweepOnce.Do(func() { go session.SweepHome(v3StandingRoot(), noteSweep) })
 }
 
 var sweepOnce sync.Once

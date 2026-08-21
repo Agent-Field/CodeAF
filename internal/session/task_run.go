@@ -1643,6 +1643,13 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // The channel is never closed by a turn ending — a turn's end is not the end of
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
+//
+// AND THE FIRST SUBSCRIBER IS HANDED WHAT ARRIVED WHILE THE WINDOW WAS SHUT.
+// The fold was built inside New ([Agent.drainStandingInbox]), where there was
+// nobody to send it to, so it waited here for the surface to open the lane; the
+// stream is unbounded, so handing it over is an append and never a wait. It is
+// handed over ONCE — a second lane on the same session is a second view of the
+// same conversation, not a second person arriving.
 func (a *Agent) TaskUpdates() <-chan Event {
 	stream := newEventStream()
 	a.mu.Lock()
@@ -1652,7 +1659,12 @@ func (a *Agent) TaskUpdates() <-chan Event {
 		return stream.out
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
+	news := a.standingNews
+	a.standingNews = nil
 	a.mu.Unlock()
+	for _, event := range news {
+		stream.send(event)
+	}
 	return stream.out
 }
 
@@ -3077,7 +3089,15 @@ func (t taskTree) comeHome(title string) (string, string) {
 	_ = commitTaskWork(t.dir, title)
 
 	defer lockGitRoot(t.place, t.root)()
-	if out, err := git(t.root, "merge", "--no-edit", t.branch); err != nil {
+	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
+	// ([commitTaskWork]). A merge that is not a fast-forward writes a commit,
+	// and git refuses to write one for a checkout with no user.name — which is
+	// every hermetic HOME and some fresh machines — so without these two flags
+	// a clean merge came back as "conflicted: Committer identity unknown" and
+	// the branch was kept for a conflict that never existed.
+	if out, err := git(t.root,
+		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+		"merge", "--no-edit", t.branch); err != nil {
 		// --abort is best-effort: a merge that never started (git refused
 		// before touching the index) has nothing to abort, and it says so.
 		_, _ = git(t.root, "merge", "--abort")

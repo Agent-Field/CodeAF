@@ -462,6 +462,17 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec) (TaskAnsw
 		deadline = time.Now().Add(countdown)
 	}
 
+	// AND ANOTHER WINDOW LEARNS WHAT THIS ONE IS STOPPED ON (taskpresence.go).
+	// The line is the title, because the title is what the person on the card is
+	// deciding about; a proposal has a summary and a brief as well, and neither
+	// belongs in a file every window re-reads every few seconds.
+	//
+	// IT IS BANKED EVEN WHEN THE CLOCK IS RUNNING. An answer that arrives after
+	// the countdown approved is late, and late answers are dropped by
+	// [Agent.ResolveTask] exactly as they are when a click lands a moment too
+	// slowly in the card's own window.
+	defer a.presenceAsking(QuestionTask, id, "wants to start a task: "+strings.TrimSpace(spec.title))()
+
 	if hub != nil {
 		hub.send(Event{
 			Kind: EventTaskProposal,
