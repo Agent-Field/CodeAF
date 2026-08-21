@@ -294,7 +294,6 @@ func init() {
 	registerHomeBand(homeBand{name: "state", order: bandOrderState, draw: drawStateBand})
 	registerHomeBand(homeBand{name: "work", order: bandOrderWork, draw: drawWorkBand})
 	registerHomeBand(homeBand{name: "last", order: bandOrderLeftOff, draw: drawLastBand})
-	registerHomeBand(homeBand{name: "facts", order: bandOrderSpend, draw: drawFactsBand})
 }
 
 // drawStateBand: STATE IS THE LOUDEST CONTENT LINE, because it is the only band
@@ -347,15 +346,6 @@ func drawLastBand(a *app, ctx bandContext) []string {
 		said = append(said, ctx.pal.dim(wrapped))
 	}
 	return said
-}
-
-// drawFactsBand is the dim arithmetic under the card.
-func drawFactsBand(a *app, ctx bandContext) []string {
-	facts := homeFacts(ctx.subject.row, ctx.now)
-	if facts == "" {
-		return nil
-	}
-	return []string{ctx.pal.dim(fit(facts, ctx.width))}
 }
 
 // itemView is a convenience for bands that draw for items.

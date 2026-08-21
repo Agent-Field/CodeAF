@@ -679,3 +679,39 @@ leaving the box.
 
 The whole of it — where the record goes, how the card is answered, and how to turn the
 exchange into an ordinary conversation — is on its own page: *Asking from home*.
+
+## Where does this repository stand — branch and dirty files on home
+
+A conversation whose workspace is a Git repository gets one dim repository line on its
+home card. A changed branch can read `feature/home · 2 files dirty · ahead 1 · behind 3`.
+Every unknown or zero clause disappears, so a clean repository on main reads only `main`;
+a folder that is not a repository draws no line. Home refreshes this reading for the
+workspace at most once every five seconds, and a failed or timed-out Git check draws
+nothing.
+
+## What do the keys on a home card do — open, new chat, folder, and copy path
+
+The last dim line of a conversation card reads `enter open · n new chat here · o open
+folder · y copy path · m more`. These bare letters are keys only while the box is empty
+and the cursor is on a conversation. `n` starts a fresh conversation when that row is in
+this window's project; on an `elsewhere` row it repeats `elsewhere · <path>` instead of
+starting in the wrong project. `o` asks the machine to open that conversation's workspace folder, `y` copies
+the workspace path, and `m` opens or closes the card's folded bands. A failed folder open
+says `could not open <path>` on home's message line.
+
+An item's card carries the exact legend `enter open where it was asked · p pause · s stop
+· m more`.
+
+## What is next up on home — scheduled items coming soon
+
+The `next up` band lists active items belonging to the card's project, soonest first and
+two at a time. Rows look like `◦ leave for the train · in 4m`, `◦ draft the update ·
+Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are present, the card
+adds a dim `▸ …N more items` door; `m` opens it. Paused, stopped, and absent items draw
+nothing.
+
+## What has this conversation cost — tokens and last activity on home
+
+The dim spend band can read `spent $1.25 · 34k tokens · last active 12m`. Each clause is
+independent: zero or unknown spend and tokens are omitted, and a line with no true fact
+is not drawn. Home has no additional run-count clause when that fact is unavailable.
