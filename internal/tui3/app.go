@@ -123,6 +123,23 @@ const (
 	// waiting — with a spinner, and a link a person may need to copy — and closes
 	// minutes later on an event nobody typed.
 	entryConnect
+	// entrySeam is the one line at the boundary a compaction left behind, drawn
+	// when scrolling up crosses from the conversation the model still carries
+	// into the conversation only the journal does (replay.go's [seamMark]).
+	//
+	// IT IS A BLOCK AND NOT A ROW, which is the opposite of the choice
+	// [earlierMark] makes two doors down, and the difference is what each one is
+	// about. That marker is a fact about the SCREEN — "the top of the frame is
+	// not the top of the conversation" — and it moves as the frame does, so it is
+	// painted at the frame's edge and belongs to nobody. This is a fact about the
+	// CONVERSATION: it names the moment the model's memory of it was shortened,
+	// and that moment stays where it happened while the reader scrolls on past
+	// it. A line that could only be drawn at the top edge could not say it.
+	//
+	// It is still the surface's own line and not the session's: the journal holds
+	// no such message, [fromTranscript] steps over it so a rewind cannot cut it,
+	// and a rebuild earns it again from scratch.
+	entrySeam
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -479,6 +496,29 @@ type app struct {
 	// would have slid forward under every one of them.
 	replayFrom  int
 	replayFloor int
+	// earlier is the conversation a compaction edited away — what
+	// [session.Agent.EarlierHistory] hands over — and earlierFrom is where the
+	// DRAWN conversation starts inside it, exactly as replayFrom names a place in
+	// the live transcript.
+	//
+	// THE TWO ARE SPLICED, NOT STACKED. earlierFloor is where the live
+	// transcript stops being new conversation and starts being the pass's own
+	// rewritten copy of the region — stubs where the results were, one line where
+	// a long run of work was. The backfill walks the live transcript down to that
+	// floor and then carries on into the region, so the conversation is drawn
+	// once and drawn in the words it was said in (replay.go).
+	//
+	// It is fetched once per replay rather than on demand: [app.moreHistory] is
+	// asked on every frame, and the floor has to be known from the first one.
+	earlier      []session.DisplayEntry
+	earlierFloor int
+	earlierFrom  int
+	// earlierSeam says the seam row has been drawn already, or that there is no
+	// seam to draw. A compaction that fires while the surface is open sets it
+	// true without drawing anything: the pass puts its OWN row on the screen at
+	// exactly that boundary (the entryCompact block), and a second line saying
+	// the same thing two rows above it is the surface stuttering.
+	earlierSeam bool
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
@@ -2460,6 +2500,14 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// close.
 		a.closeLive()
 		a.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+		// AND THE SCROLLBACK'S BOOKKEEPING MOVES WITH THE PASS. Everything above
+		// this moment is now history the session keeps outside the transcript, and
+		// the mark this surface holds into the transcript was taken against a list
+		// that no longer exists — left alone it would hand up somebody else's
+		// blocks the next time a person scrolled off the top. [app.rebase] carries
+		// the place over into the region the pass just created, so the history
+		// stays reachable and stays in order.
+		a.rebase()
 		// AND RE-READ THE METER HERE. The pass just changed what the
 		// conversation weighs by an order of magnitude, and the status line's
 		// only other reader is the end of the turn — which is a long way off

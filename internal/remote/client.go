@@ -614,6 +614,22 @@ func (a *Agent) Transcript() []session.DisplayEntry {
 	return a.entries(MethodTranscript, nil)
 }
 
+// EarlierHistory is the conversation above the session's latest compaction and
+// where the pass's rewritten copy of it ends, which is what the surface scrolls
+// back into. Empty for a session that has never been compacted, and empty for a
+// connection that has dropped — the same answer as every other read on this
+// agent, and the honest one either way: what cannot be fetched cannot be drawn,
+// and an empty region leaves the transcript drawn exactly as it always was.
+func (a *Agent) EarlierHistory() session.EarlierHistory {
+	payload, err := a.c.call(nil, MethodEarlier, nil)
+	if err != nil {
+		return session.EarlierHistory{}
+	}
+	var history session.EarlierHistory
+	_ = json.Unmarshal(payload, &history)
+	return history
+}
+
 // RewindPoints is every place the conversation can be cut. It is half of the
 // OPTIONAL pair internal/tui3's rewind.go type-asserts for, and this agent
 // implements it so a remote session rewinds exactly like a local one.

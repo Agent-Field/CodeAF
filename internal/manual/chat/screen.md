@@ -127,6 +127,18 @@ out of the session file and puts them **above** what you are reading. The line u
 your eye does not move; you simply carry on scrolling into it. Repeat and you reach the
 first thing you ever said in that conversation.
 
+**Scrolling runs straight through a compaction.** A long conversation gets shortened for
+the model along the way — old tool results become one-line pointers, long runs of the
+model's own work become a single line — and scrolling up used to read that shortened copy
+back to you. It no longer does. The session file kept every original line, so above the
+boundary you are handed the conversation **in the words it was said in**, and one dim line
+is drawn where the two meet (below).
+
+This works on a session compacted by **this** version of aforge or later. A conversation
+compacted by an older one is drawn from the shortened copy exactly as it always was, and
+picks the fuller history up the next time it compacts. Nothing is lost either way — the
+file has always held it all.
+
 While there is still more above you, the top row of the conversation reads:
 
 ```
@@ -138,6 +150,41 @@ top row with no marker over it *is* the start of the conversation.
 
 `/rewind` is the other way at the same thing, and it needs no scrolling: it opens the
 whole conversation as a list, oldest first (see the sessions and rewind page).
+
+## The dim line that says the model keeps a shortened record — reading what was summarized away
+
+Scroll far enough up a long conversation and one dim line appears in the middle of it:
+
+```
+· above here the model keeps a shortened record — you can still read it all
+```
+
+That is the point where aforge shortened the conversation to keep it inside the model's
+context. It stays where it happened, so you scroll past it and carry on reading upward.
+
+Both halves of the line are true and neither one covers for the other:
+
+- **You can read all of it.** Everything above the line is drawn from the session file, in
+  the words it was said in — your messages, the replies, the tool calls and their whole
+  output. Nothing was thrown away.
+- **The model does not.** Above that line the model is working from a shortened version:
+  old tool results became one-line pointers to the files that hold them, and long runs of
+  its own earlier work became a single line saying how much went. So if you ask about
+  something above the line, it may answer from something shorter than what you are looking
+  at — ask it to `read` the file, or paste the part you mean back in.
+
+**The shortened copy is never drawn.** aforge holds the same conversation twice above that
+line — the original, and the version the model kept — and it always shows you the original.
+So the seam is a statement about the model's memory, never about how much of your
+conversation is on the screen.
+
+The line is aforge talking, not part of the conversation: a rewind cannot cut it, an
+export does not carry it, and it is drawn fresh each time you scroll back into it. A
+conversation short enough never to have been shortened never shows one, and neither does
+one compacted by a version of aforge older than this line.
+
+If a compaction happens **while** you are reading, you see its own row instead — the
+`compacted · …` line — and no second line beside it. The history above stays reachable.
 
 ## It jumps to the bottom when I scroll — does new output pull me back down?
 
