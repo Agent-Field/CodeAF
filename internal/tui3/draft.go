@@ -132,6 +132,18 @@ func (a *app) dropDraft() {
 	_ = os.Remove(a.draftFile)
 }
 
+// dropDraftFile removes one conversation's draft, named rather than taken off
+// the surface. It is what a CLOSE owes: the file is crash insurance for a
+// conversation that can no longer crash, and one left behind is somebody's
+// finished sentence waiting to be adopted into the next window that opens on
+// that directory ([adoptDraft]).
+func dropDraftFile(path string) {
+	if path == "" {
+		return
+	}
+	_ = os.Remove(path)
+}
+
 // restoreDraft puts the file back in the box at startup — this window's own if
 // it is somehow still there, and otherwise the sentence a dead window left.
 func (a *app) restoreDraft() {
