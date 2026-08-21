@@ -1123,6 +1123,65 @@ func TestAgentsFileTruncationKeepsRunesWhole(t *testing.T) {
 	}
 }
 
+// THE MODEL IS TOLD WHAT TIME IT IS, and told it completely enough to write an
+// RFC3339 stamp back without asking anybody.
+//
+// Written from a person's own transcripts: every "remind me in 2 mins" opened
+// with a `bash date +"%Y-%m-%dT%H:%M:%S%z"`, because the prompt carried a bare
+// date and nothing else. Four facts have to be there — the minute, the numeric
+// offset, the zone by name and the weekday — and a test that checked only that
+// the line existed would pass on any three of them.
+func TestTheSystemPromptSaysWhatTimeItIsWithOffsetAndZone(t *testing.T) {
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("this machine has no zone database: %v", err)
+	}
+	moment := time.Date(2026, 8, 21, 6, 52, 39, 0, zone)
+	if got, want := nowLine(moment), "- Now: 2026-08-21 06:52 -04:00 (America/New_York, Friday)\n"; got != want {
+		t.Fatalf("nowLine = %q, want %q", got, want)
+	}
+
+	rendered := renderSystem(Config{Workspace: t.TempDir()})
+	if !strings.Contains(rendered, "\n- Now: ") {
+		t.Fatalf("the rendered prompt carries no Now line:\n%s", rendered)
+	}
+	// The bare date it replaces is gone: two answers to "what day is it" is the
+	// one thing worse than none.
+	if strings.Contains(rendered, "- Today: ") {
+		t.Fatal("the prompt still carries the old Today line beside Now")
+	}
+	line := ""
+	for _, candidate := range strings.Split(rendered, "\n") {
+		if strings.HasPrefix(candidate, "- Now: ") {
+			line = candidate
+		}
+	}
+	// It is the machine's real clock, to the minute, in the machine's own zone.
+	now := time.Now()
+	if !strings.Contains(line, now.Format("2006-01-02 15:04")) {
+		t.Fatalf("Now line %q does not carry the local time to the minute", line)
+	}
+	if !strings.Contains(line, now.Format("-07:00")) {
+		t.Fatalf("Now line %q does not carry the numeric offset", line)
+	}
+	if !strings.Contains(line, now.Format("Monday")) {
+		t.Fatalf("Now line %q does not carry the weekday", line)
+	}
+}
+
+// A machine whose zone has no name in the database still gets a name it can
+// use. "Local" is the name of a Go variable and would be the prompt telling the
+// model about this program's internals instead of about its clock.
+func TestTheNowLineNamesAZoneEvenWithNoZoneDatabase(t *testing.T) {
+	line := nowLine(time.Date(2026, 8, 21, 6, 52, 0, 0, time.FixedZone("EDT", -4*60*60)))
+	if !strings.Contains(line, "(EDT, Friday)") {
+		t.Fatalf("nowLine = %q, want the zone's own abbreviation", line)
+	}
+	if strings.Contains(line, "Local") {
+		t.Fatalf("nowLine = %q names a Go variable rather than a zone", line)
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // blockingTool is a belt tool that reports it started and then waits for the

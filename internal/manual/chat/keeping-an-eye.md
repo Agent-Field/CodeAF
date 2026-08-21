@@ -15,14 +15,73 @@ me on Friday to send the invoice". A card comes up with your own sentence on it,
 when it will fire, and what it costs. Say yes and it stands. The card has **no
 countdown on it** — it waits for you — and nothing is set up until you answer.
 
-A reminder fires once, says one line into this conversation, and retires. Its
-cap is **1 firing a day**, because a moment cannot happen twice.
+A reminder fires once, says one line to you, and retires. Its cap is
+**1 firing a day**, because a moment cannot happen twice.
 
-The line arrives in the conversation that asked for it, looking like this:
+The line looks like this, wherever it reaches you:
 
 ```
 ◦ remind me at 6 to leave: time to leave
 ```
+
+Which chat it lands in is the next section.
+
+## Where a reminder arrives — the chat you are in, or the next one you open
+
+A firing reaches **you**, not one particular window. aforge tries four addresses
+in this order and stops at the first one that ends at a person:
+
+1. **The conversation that asked for it, if it is open.** The line arrives in it
+   as it happens, exactly as a finished task's news does.
+2. **Any other conversation of the same project that is open**, the one you most
+   recently opened or spoke in first. This is what happens when the chat that set
+   the reminder up has been closed — and it is always what happens when you asked
+   from home with `ask here`, because that exchange is a pane on the home screen
+   and not a room you sit in. It is never steered into.
+3. **The conversation's own inbox**, when nothing is open. The next time you open
+   that conversation it is folded into one note beginning `while you were away`.
+4. **The project's inbox**, when nothing is open *and* it was an `ask here`
+   errand. An errand has no row on home to come back to, so the news is filed
+   under the project instead: it shows on home under that project as
+   `◆ N things since you left`, and the next ordinary conversation you open in
+   that project folds it into its own `while you were away`.
+
+So a reminder set from home while you are working in a chat in the same window
+arrives **in the chat you are working in**. Nothing is ever delivered only into
+the `ask here` pane, and nothing is ever left in a file no screen reads.
+
+`◦ remind me at 6 to leave: time to leave` is the same line on every one of those
+roads. There is no phone, no email and no desktop notification — see the last
+section of this page.
+
+## Why did it run date before setting the reminder — it knows the clock now
+
+It does not any more. aforge tells the model the time when the session opens, in
+its own instructions, as one line:
+
+```
+- Now: 2026-08-21 06:52 -04:00 (America/New_York, Friday)
+```
+
+The local time to the minute, the numeric offset, the zone by name and the day of
+the week. Before that line existed, "remind me in 2 minutes" began with a
+`bash date +"%Y-%m-%dT%H:%M:%S%z"` — a tool row you could see, spending a step to
+read a clock the program already had. The instructions now say plainly: never run
+`date` to learn the time.
+
+For a moment you name — "at 6", "tomorrow at 9am" — aforge works the stamp out
+from that line itself. For a distance from now — "remind me in 2 minutes" — it
+sends the **duration** instead and aforge resolves it against the real clock at
+that instant, then says back the moment it landed on. That is what the card
+shows:
+
+```
+in 2 minutes — 06:54
+```
+
+so you can check the time it settled on without reading a timestamp. A session
+that has been open for hours cannot drift on this: `Now` is when the session
+started, and anything relative is resolved when you ask, not from that stamp.
 
 ## Tell me when something happens
 
@@ -116,7 +175,9 @@ morning." "Later when it's idle, look into the flaky test."
 nobody is working anywhere on this machine and nobody has typed for the span you
 named — the machine being quiet, not a clock.
 
-The result is waiting in the conversation that asked for it. Close the lid.
+The result is waiting for you — in the chat that asked for it if it is open, and
+otherwise wherever the delivery rules put it (see "Where a reminder arrives").
+Close the lid.
 
 ## What does it cost?
 
@@ -224,11 +285,13 @@ Every standing item remembers the conversation that made it, so the answer to
 "why did I get this?" is always a conversation you can open.
 
 If the conversation was open when it fired, the line arrived in it as it
-happened. If it was not, the news waited, and the next time you open that
-conversation it is folded into **one** note that begins `while you were away` —
-one line per thing, with when, your own words, what happened, and the run folder
-to open for the whole story. Two hours away with nothing to report is nothing at
-all: silence is the design.
+happened. If it was not, it went to whichever chat of that project you did have
+open; and if none was, the news waited, and the next time you open a conversation
+there it is folded into **one** note that begins `while you were away` — one line
+per thing, with when, your own words, what happened, and the run folder to open
+for the whole story. Two hours away with nothing to report is nothing at all:
+silence is the design. The four addresses in order are under "Where a reminder
+arrives".
 
 A firing's run folder is a normal session folder outside your projects, so its
 transcript reads with the same tools as any other conversation.
@@ -250,7 +313,8 @@ transcript reads with the same tools as any other conversation.
 - **It will not fire while the machine is asleep.** A late check says it was
   late; it does not pretend it happened on time.
 - **It will not reach your phone.** There is no notification, no email, no
-  outward lane at all. News lands in the conversation that asked for it.
+  outward lane at all. News lands in a chat you have open, or waits on home and
+  in the next chat you open in that project ("Where a reminder arrives").
 - **It will not spend past the rails without asking.**
 - **It cannot do anything unattended that you have not already allowed.** Nobody
   is there to answer a permission card, so the run stops and says so.

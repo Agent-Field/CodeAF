@@ -10,19 +10,45 @@ package session
 // note in a conversation, and a task run unattended is an agent with a brief.
 // Building any of them inside internal/standing would be a second harness.
 //
-// ── THE LIVE-WINDOW REGISTRY ──
+// ── THE LIVE-WINDOW REGISTRY, AND WHERE A FIRING ACTUALLY LANDS ──
 //
-// News reaches a conversation in one of two ways and the difference is whether
-// its window is open IN THIS PROCESS. Open, and the line goes onto the same
-// steering queue a task's landing and a watch's delta ride, so the person sees
-// it in the room they are sitting in. Closed, and it is appended to the
-// session's inbox and folded under one "while you were away" the next time they
-// open it ([Agent.drainStandingInbox]).
+// A FIRING THAT NOBODY READS DID NOT HAPPEN. That is the whole law this half of
+// the file serves, and it was written the hard way: a reminder made from home's
+// `ask here` box fired into the EXCHANGE that had asked for it — an agent still
+// open in the pane of a window whose person was sitting in an ordinary
+// conversation two panes over — and they were never told. Had the exchange been
+// closed it would have been worse: the note would have gone to the exchange
+// folder's inbox, which no screen on this product reads, because an exchange is
+// deliberately not a row on home.
+//
+// So [standingRunner.deliver] walks four roads, in this order, and stops at the
+// first one that ends at a person:
+//
+//  1. THE ORIGIN CONVERSATION, IF IT IS OPEN HERE. The line goes onto the same
+//     steering queue a task's landing and a watch's delta ride, so a person
+//     sitting in the room hears about it in the room.
+//  2. ANY OTHER OPEN CONVERSATION OF THE SAME PROJECT, most recently touched
+//     first. The origin may be closed, or may be an exchange — and the window
+//     the person is actually sitting in is a better address than a file.
+//  3. THE ORIGIN'S OWN INBOX, folded under one "while you were away" the next
+//     time they open it ([Agent.drainStandingInbox]). This is the right answer
+//     for an item born in an ordinary conversation, which is a row somebody
+//     comes back to.
+//  4. THE PROJECT'S INBOX, for an item whose origin was an exchange. An
+//     exchange is not a row anywhere, so its folder is a dead letter office;
+//     the project's inbox is read by home and drained by the next ordinary
+//     conversation opened in that project ([standing.ProjectInboxPath]).
 //
 // The registry below is the whole of "is it open here": a map from session id to
-// agent, written by [newAgent] and erased by [Agent.Close]. It is deliberately
-// tiny and holds nothing but the pointer — a second index of sessions would be a
-// second truth beside the folders that world.go already reads.
+// the agent and the moment it registered, written by [newAgent] and erased by
+// [Agent.Close]. It is deliberately tiny and holds nothing but that — a second
+// index of sessions would be a second truth beside the folders that world.go
+// already reads.
+//
+// AN ERRAND IS NEVER IN IT. [Config.Errand] marks home's `ask here` exchange,
+// and [registerLiveSession] refuses one: it is a pane that closes with the
+// screen, not a room. Its own card still ratifies, because a card is answered
+// through the agent the surface holds and never through this map.
 //
 // ── WHAT AN UNATTENDED RUN IS ──
 //
@@ -41,6 +67,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -85,14 +112,26 @@ func init() {
 
 var (
 	liveSessionsMu sync.Mutex
-	liveSessions   = map[string]*Agent{}
+	liveSessions   = map[string]liveWindow{}
 )
 
-// registerLiveSession records that this process holds a conversation open. A
-// node's own agent is not one: it has a journal but no person and nothing to
-// deliver into.
+// liveWindow is one open conversation in this process.
+type liveWindow struct {
+	agent *Agent
+	// opened is when it registered. It is half of "which window is the person
+	// actually in" — see [liveSessionTouched].
+	opened time.Time
+}
+
+// registerLiveSession records that this process holds a conversation open.
+//
+// TWO KINDS OF AGENT ARE NOT ONE. A node's own agent has a journal but no
+// person and nothing to deliver into ([Config.InTask]). An ERRAND — home's `ask
+// here` exchange — has a person, but the pane it draws in closes with home and
+// is not the room they are sitting in ([Config.Errand], and this file's header
+// for the firing that proved it). Neither is ever steered into.
 func registerLiveSession(agent *Agent) {
-	if agent == nil || agent.config.InTask {
+	if agent == nil || agent.config.InTask || agent.config.Errand {
 		return
 	}
 	id := strings.TrimSpace(agent.id)
@@ -100,7 +139,7 @@ func registerLiveSession(agent *Agent) {
 		return
 	}
 	liveSessionsMu.Lock()
-	liveSessions[id] = agent
+	liveSessions[id] = liveWindow{agent: agent, opened: time.Now()}
 	liveSessionsMu.Unlock()
 }
 
@@ -116,7 +155,7 @@ func forgetLiveSession(agent *Agent) {
 		return
 	}
 	liveSessionsMu.Lock()
-	if held, found := liveSessions[id]; found && held == agent {
+	if held, found := liveSessions[id]; found && held.agent == agent {
 		delete(liveSessions, id)
 	}
 	liveSessionsMu.Unlock()
@@ -130,7 +169,62 @@ func liveSession(id string) *Agent {
 	}
 	liveSessionsMu.Lock()
 	defer liveSessionsMu.Unlock()
-	return liveSessions[id]
+	return liveSessions[id].agent
+}
+
+// liveSessionIn answers the open conversation of one workspace that the person
+// most recently touched, or nil. It is road 2 of the delivery order.
+//
+// EXCLUDING ONE IS THE CALLER'S BUSINESS: the origin has already been tried by
+// id, and offering it again would put a firing into the same room twice when
+// two windows of one project are open.
+func liveSessionIn(workspace, exclude string) *Agent {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return nil
+	}
+	liveSessionsMu.Lock()
+	windows := make([]liveWindow, 0, len(liveSessions))
+	for id, window := range liveSessions {
+		if id == strings.TrimSpace(exclude) {
+			continue
+		}
+		windows = append(windows, window)
+	}
+	liveSessionsMu.Unlock()
+
+	var best *Agent
+	var bestAt time.Time
+	for _, window := range windows {
+		if window.agent.standingWorkspace() != workspace {
+			continue
+		}
+		at := liveSessionTouched(window)
+		if best == nil || at.After(bestAt) {
+			best, bestAt = window.agent, at
+		}
+	}
+	return best
+}
+
+// liveSessionTouched is when a person last had anything to do with one open
+// window: the later of when they last SPOKE in it ([Meta.LastUserAt], the same
+// stamp the resume law and [StandingIdle] read, and deliberately never a file
+// mtime) and when the window opened.
+//
+// THE OPENING COUNTS BECAUSE A FRESH WINDOW IS SOMEBODY ARRIVING. A
+// conversation opened one minute ago with nothing typed in it yet is more
+// likely to be where the person is than one they last spoke in yesterday and
+// left on screen, and a rule that read only the spoken stamp would deliver
+// every firing into the stale one forever.
+func liveSessionTouched(window liveWindow) time.Time {
+	at := window.opened
+	if dir := strings.TrimSpace(window.agent.config.Place.Dir); dir != "" {
+		if meta, err := LoadMeta(dir); err == nil && meta.LastUserAt.After(at) {
+			at = meta.LastUserAt
+		}
+	}
+	return at
 }
 
 // ── the runner ──────────────────────────────────────────────────────────────
@@ -139,10 +233,22 @@ func liveSession(id string) *Agent {
 // keys, the approval policy and the accounts a firing works with are the ones
 // the person's own conversations run on, because a firing is their work done
 // while they are not looking.
-type standingRunner struct{ parent Config }
+type standingRunner struct {
+	parent Config
+	// root is the standing root, and it is handed in rather than read off
+	// [Config.Standing] because a firing's posture deliberately has none: a run
+	// that could reach the seam could arm another standing item, which is the
+	// one thing the ambient side forbids (chatv3_standing.go). It is needed for
+	// exactly one thing — the project inbox, road 4 of this file's delivery
+	// order — and an empty root simply means that road is closed.
+	root string
+}
 
 // NewStandingRunner is the seam a door fills [standing.Ticker.Runner] with.
-func NewStandingRunner(parent Config) standing.Runner { return &standingRunner{parent: parent} }
+// root is the store's own directory ([standing.Store.Root]).
+func NewStandingRunner(parent Config, root string) standing.Runner {
+	return &standingRunner{parent: parent, root: strings.TrimSpace(root)}
+}
 
 // Probe takes one look at the world and answers what it saw, clipped from the
 // TAIL: a command's news is at the end of its output, and a probe clipped from
@@ -254,29 +360,54 @@ func (r *standingRunner) Say(ctx context.Context, item standing.Item, text strin
 }
 
 // deliver is the one door news comes through, so a firing's line and a firing's
-// outcome cannot drift on where they land.
+// outcome cannot drift on where they land. The four roads and why they are in
+// this order are this file's header; the code below is that list, in that order.
 //
 // THE STEERING LANE IS THE LIVE ONE. It is the same queue a task's landing and
 // a watch's delta ride ([Agent.enqueueSteering]), so a person sitting in the
 // room hears about it in the room, and an idle session wakes and answers rather
 // than banking a line nobody will read.
+//
+// THE NOTE IS THE SAME NOTE WHICHEVER ROAD IT TAKES. A person who was told in
+// the room and a person who reads the fold tomorrow are owed the same sentence,
+// so the line and the note are both built from the item's own words here and
+// never assembled twice.
 func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
-	if agent := liveSession(item.Origin.SessionID); agent != nil {
+	origin := strings.TrimSpace(item.Origin.SessionID)
+	agent := liveSession(origin)
+	if agent == nil {
+		// The origin is closed, or was an exchange and was never a target at
+		// all. The window the person is actually sitting in is a better address
+		// than any file: any open conversation of the SAME PROJECT, most
+		// recently touched first.
+		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
+	}
+	if agent != nil {
 		agent.enqueueSteering(standingSteeringLine(item, text))
 		return
 	}
-	dir := standingSessionDir(item)
-	if dir == "" {
-		return
-	}
-	_ = standing.Deliver(dir, standing.Note{
+	note := standing.Note{
 		At:     time.Now(),
 		ItemID: item.ID,
 		Words:  item.Words,
 		Kind:   kind,
 		Text:   text,
 		Run:    run,
-	})
+	}
+	// AN EXCHANGE'S FOLDER IS A DEAD LETTER OFFICE. Home lists what is under
+	// v3/projects, which is precisely what an errand's folder is kept out of,
+	// so a note written into it is a note no screen in this product ever opens.
+	// The project's inbox is the address that IS read: home draws it under the
+	// project, and the next ordinary conversation opened there folds it in.
+	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
+		_ = standing.DeliverProject(r.root, item.Workspace, note)
+		return
+	}
+	dir := standingSessionDir(item)
+	if dir == "" {
+		return
+	}
+	_ = standing.Deliver(dir, note)
 }
 
 // standingSteeringLine is the shape a firing takes in a live conversation: the
@@ -638,18 +769,52 @@ func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
 	}
+	var notes []standing.Note
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		dir = filepath.Dir(strings.TrimSpace(a.config.SessionFile))
 	}
-	if dir == "" || dir == "." {
+	if dir != "" && dir != "." {
+		if mine, err := standing.Drain(dir); err == nil {
+			notes = mine
+		}
+	}
+	notes = append(notes, a.drainProjectInbox()...)
+	if len(notes) == 0 {
 		return
 	}
-	notes, err := standing.Drain(dir)
-	if err != nil || len(notes) == 0 {
-		return
-	}
+	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a
+	// person who was away does not care which file a note waited in, and two
+	// folds with two openings would be the mailbox this note exists to avoid.
+	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
 	a.enqueueAmbientNote(standingAwayNote(notes))
+}
+
+// drainProjectInbox empties the PROJECT's inbox — what fired for this workspace
+// while no window of it was open, from an item whose own origin was an exchange
+// and had nowhere else to land ([standingRunner.deliver], road 4).
+//
+// AN ERRAND DOES NOT DRAIN IT. Home's `ask here` pane closes with the screen
+// and is never reopened, so a fold drawn into one would be this build reading a
+// person's news out to nobody and then deleting it. It waits for a
+// conversation, which is a room they come back to.
+func (a *Agent) drainProjectInbox() []standing.Note {
+	if a.config.Errand {
+		return nil
+	}
+	store := a.standingItems()
+	if store == nil {
+		return nil
+	}
+	root, workspace := strings.TrimSpace(store.Root()), a.standingWorkspace()
+	if root == "" || workspace == "" {
+		return nil
+	}
+	notes, err := standing.DrainProject(root, workspace)
+	if err != nil {
+		return nil
+	}
+	return notes
 }
 
 // standingAwayNote renders that fold: one opening line, then one line per note

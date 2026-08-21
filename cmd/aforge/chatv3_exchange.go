@@ -49,6 +49,12 @@ func v3Errand(cfg session.Config, workspace, profileDir string, yolo bool) func(
 		}
 		fresh := v3CurrentGate(cfg, ws, profileDir, yolo)
 		fresh.Workspace = ws
+		// ── lane time ── AND IT SAYS WHAT IT IS. An exchange is a pane that
+		// closes with home, not a room somebody sits in, so it is never a
+		// steering target for a standing item that fires (internal/session's
+		// standing_run.go). Its own card still ratifies: that goes through the
+		// agent the surface is holding and not through the live registry.
+		fresh.Errand = true
 		// A BORROWED PLACE ON A FOLDER NOBODY BORROWED IT FOR. The exchange is
 		// not owned — it has no work/ of its own and litters nothing, because it
 		// works in the project the sentence was about — so it takes the ordinary

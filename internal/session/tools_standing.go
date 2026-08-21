@@ -137,14 +137,15 @@ func (a *Agent) standingItems() standingStore {
 // RECOGNITION rather than mechanics: the tool is useless unless the model
 // notices that an ordinary sentence was a standing one, and nothing else in
 // this build watches for those words.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line into this conversation) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"What to do: propose a new one, list what stands here, or pause, resume or stop one that already does."},` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim. Never your paraphrase: every card, row and note leads with it, and they must recognise what they said. On pause, resume and stop this is a way to name an item instead of its id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
 	`"kind":{"type":"string","enum":["at","every","file","idle","probe"],"description":"at fires once at a moment and retires; every is a rhythm; file is a glob changing; idle is the machine having been quiet; probe is a look at the world judged against the person's words."},` +
-	`"at":{"type":"string","description":"The one moment of an at, as a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\")."},` +
+	`"at":{"type":"string","description":"The one moment of an at, as a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). You know the time and the offset already — the Project section of your instructions carries a Now line — so work this out from it and NEVER shell out to read a clock. For a relative moment send in instead."},` +
+	`"in":{"type":"string","description":"An at's moment said as a distance from RIGHT NOW instead: a Go duration (\"2m\", \"90s\", \"1h30m\"). aforge resolves it against the clock at the instant you call and answers with the moment it landed on, so \"remind me in two minutes\" needs no arithmetic from you. Send at or in, never both."},` +
 	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
 	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project."},` +
 	`"idle_for":{"type":"string","description":"How quiet the machine must have been for an idle item: a Go duration (\"45m\")."},` +
@@ -157,7 +158,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does.","properties":{` +
-	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line into this conversation; task runs a brief in its own session."},` +
+	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person — into this conversation when it is open, into whichever conversation of this project they are in when it is not, and waiting for them on home and in the next one they open when nothing is open at all; task runs a brief in its own session."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained, exactly as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
@@ -186,6 +187,7 @@ type standArguments struct {
 	When      struct {
 		Kind    string `json:"kind"`
 		At      string `json:"at"`
+		In      string `json:"in"`
 		Every   string `json:"every"`
 		Glob    string `json:"glob"`
 		IdleFor string `json:"idle_for"`
@@ -280,8 +282,12 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 
 	notice := StandingNotice{
-		Item:       item,
-		WhenWords:  strings.TrimSpace(parsed.WhenWords),
+		Item: item,
+		// ONE SOURCE OF TRUTH FOR THE CADENCE. The card, the item and the line
+		// this tool answers with all read [standing.When.Words], which is the
+		// model's own when_words or — when it sent none and the moment was
+		// worked out from a duration — the moment the engine landed on.
+		WhenWords:  item.When.Words,
 		CostWords:  strings.TrimSpace(parsed.CostWords),
 		Guessed:    parsed.Guessed,
 		OfferWatch: a.standingMayOfferWatch(store),
@@ -353,7 +359,13 @@ func (a *Agent) standingItem(parsed standArguments) (standing.Item, string) {
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	when.Words = strings.TrimSpace(parsed.WhenWords)
+	// THE PERSON'S CADENCE, SAID BACK, WINS OVER ANYTHING THE ENGINE WORKED
+	// OUT. when_words is the model's plain-words reading of what they asked
+	// for; the only time it is not the answer is when there is none, and then
+	// whatever [standingWhen] echoed stands (a resolved `in`, or nothing).
+	if words := strings.TrimSpace(parsed.WhenWords); words != "" {
+		when.Words = words
+	}
 	return standing.Item{
 		Schema:    standing.Schema,
 		Words:     words,
@@ -372,11 +384,17 @@ func standingWhen(parsed standArguments) (standing.When, string) {
 	}
 	switch when.Kind {
 	case standing.WhenAt:
-		moment, err := standingMoment(parsed.When.At)
-		if err != nil {
-			return when, "Invalid arguments: when.at " + err.Error()
+		moment, echo, problem := standingAtMoment(parsed.When.At, parsed.When.In, time.Now())
+		if problem != "" {
+			return when, problem
 		}
 		when.At = moment
+		// THE ECHO IS A FALLBACK AND NEVER AN OVERRIDE. [Agent.standingItem]
+		// puts the model's own when_words over the top of this when it sent
+		// any; what is left here is the case it sent none, where a card reading
+		// "in 2 minutes — 06:54" is the difference between a person checking a
+		// stamp and a person reading a sentence.
+		when.Words = echo
 	case standing.WhenEvery:
 		when.Every = strings.TrimSpace(parsed.When.Every)
 		if when.Every == "" {
@@ -464,6 +482,73 @@ func standingRails(parsed standArguments, when standing.When, does standing.Acti
 		rails.Expires = moment
 	}
 	return rails, ""
+}
+
+// standingAtMoment answers the one moment of an `at`, from either of the two
+// ways a model may say it.
+//
+// A STAMP IS ONE ANSWER AND A DURATION IS THE OTHER, and there is never a third
+// road out of this function: two answers to one question are refused rather
+// than reconciled, because picking one of a disagreeing pair silently is how a
+// reminder lands at the wrong hour and nobody can see why.
+//
+// The duration is resolved against the clock HERE, at the instant of the call,
+// and not against the Now line the model was given at the top of the session
+// (prompt.go's nowLine says why): a conversation that has been open for an hour
+// still means two minutes from now when the person says "in two minutes".
+func standingAtMoment(rawAt, rawIn string, now time.Time) (moment time.Time, echo, problem string) {
+	rawAt, rawIn = strings.TrimSpace(rawAt), strings.TrimSpace(rawIn)
+	switch {
+	case rawAt != "" && rawIn != "":
+		return time.Time{}, "", "Invalid arguments: when.at and when.in are two answers to one question — send the stamp or the duration, not both"
+	case rawIn != "":
+		span, err := time.ParseDuration(rawIn)
+		if err != nil {
+			return time.Time{}, "", "Invalid arguments: when.in is a duration like \"2m\", \"90s\" or \"1h30m\""
+		}
+		if span <= 0 {
+			return time.Time{}, "", "Invalid arguments: when.in has to be a distance into the future"
+		}
+		landed := now.Add(span)
+		return landed, "in " + standingSpanWords(span) + " — " + landed.Format("15:04"), ""
+	}
+	parsed, err := standingMoment(rawAt)
+	if err != nil {
+		return time.Time{}, "", "Invalid arguments: when.at " + err.Error()
+	}
+	return parsed, "", ""
+}
+
+// standingSpanWords is a duration as somebody would say it out loud, which is
+// what a card is read as. Go's own String() answers "1h30m0s", and a card that
+// said that would be quoting a wire format at a person.
+//
+// It is deliberately coarse: whole hours and minutes down to a minute, seconds
+// only under one minute, and no fractions anywhere. "in 1 hour 30 minutes" is
+// the sentence; "in 1.5 hours" is arithmetic somebody has to check.
+func standingSpanWords(span time.Duration) string {
+	span = span.Round(time.Second)
+	if span < time.Minute {
+		return standingCountWords(int(span/time.Second), "second")
+	}
+	span = span.Round(time.Minute)
+	hours, minutes := int(span/time.Hour), int(span%time.Hour/time.Minute)
+	switch {
+	case hours == 0:
+		return standingCountWords(minutes, "minute")
+	case minutes == 0:
+		return standingCountWords(hours, "hour")
+	}
+	return standingCountWords(hours, "hour") + " " + standingCountWords(minutes, "minute")
+}
+
+// standingCountWords is "1 minute" and "2 minutes" — the plural nobody notices
+// until it is wrong.
+func standingCountWords(count int, unit string) string {
+	if count == 1 {
+		return "1 " + unit
+	}
+	return strconv.Itoa(count) + " " + unit + "s"
 }
 
 // standingMoment reads a stamp the way a model actually writes one: RFC3339

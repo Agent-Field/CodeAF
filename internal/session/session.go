@@ -1067,6 +1067,24 @@ type Config struct {
 	// sets it on the config it builds for a node and nowhere else.
 	InTask bool
 
+	// Errand marks this agent as the short exchange behind home's `ask here`
+	// (cmd/aforge's chatv3_exchange.go) rather than a conversation somebody
+	// sits in. It is a conversation in every other way — a real model, a real
+	// transcript, a card it can answer — so InTask would be a lie about it.
+	//
+	// IT CHANGES EXACTLY ONE THING: an errand is never registered as a live
+	// delivery target (standing_run.go). A firing steered into an exchange is
+	// news typed into a forty-cell pane that closes with home, and the person
+	// sitting in an ordinary conversation in the same window is never told —
+	// which is what happened the first time a reminder made from home ever
+	// fired.
+	//
+	// Ratifying the exchange's OWN card is untouched by this, and the two are
+	// separate lanes on purpose: a card is answered through the agent the
+	// surface is holding ([Agent.ResolveStanding]), never through the registry,
+	// so an exchange still proposes and still hears yes.
+	Errand bool
+
 	// roomThread says this agent is a node somebody TALKS TO rather than a
 	// worker a runner drives, and it is set on exactly one kind of node: the
 	// thread a sub-harness is designed in (harness_task.go).
