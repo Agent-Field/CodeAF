@@ -20,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // ── harness ─────────────────────────────────────────────────────────────────
@@ -593,5 +595,185 @@ func TestAnInterruptedDesignSettlesAndIsNeverRunAsAnOrdinaryTask(t *testing.T) {
 	case id := <-ran:
 		t.Fatalf("the frontier started node %d: an interrupted design was handed to a worker", id)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// A DESIGN WHOSE PAGE WAS FINISHED COMES BACK AND ASKS AGAIN. The card is a
+// question and closing the terminal is not an answer to it: the checkpoint
+// carries the page itself (the Offer), the record rehydrates QUEUED with the
+// design spec rebuilt from that page, and the frontier picks it up — as a
+// design, never as a worker, because restoreNode set the one field that says
+// which body the node has.
+func TestAClosedSessionsFinishedDesignComesBackToAskAgain(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	checkpoint := taskCheckpointPath(journal)
+
+	// The page as subharness.Encode would have written it — the same shape the
+	// designReply fixture carries inside its envelope.
+	carriedPage := `{
+	  "id": {"name": "flake-triage", "desc": "chase a flaky test to a fix"},
+	  "program": {
+	    "nodes": [
+	      {"id": "look", "kind": "agent.loop", "fields": {"brief": "read the failing test and say what it does", "tools": "read", "max_turns": "3"}},
+	      {"id": "check", "kind": "verify", "fields": {"ladder": "accept", "check": "the report names the failing test"}}
+	    ],
+	    "edges": [["look", "check"]]
+	  },
+	  "whitelist": ["read"],
+	  "verify": {"ladder": "accept"},
+	  "dyn": {"ladder": "fixed"}
+	}`
+
+	writeCheckpoint(t, checkpoint, taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Kind: TaskKindHarness,
+			Title:      "harness · triaging flaky tests",
+			Brief:      "triaging flaky tests",
+			Acceptance: "a page the person approves, saved into this machine's harness registry",
+			State:      TaskRunning,
+			Offer: &harnessOfferRecord{
+				Goal:          "triaging flaky tests",
+				Model:         "test/model",
+				Page:          json.RawMessage(carriedPage),
+				Cues:          []string{"flaky test", "triage the flake"},
+				Justification: "Two jobs: read the failure, then check the report names it.",
+			},
+		}},
+	})
+
+	ran := make(chan uint64, 4)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.SessionFile = journal
+		config.InTask = true // recover explicitly below so the runner can be observed.
+	})
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(node *TaskNode) { ran <- node.id }
+	graph.mu.Unlock()
+	document, found := loadTaskCheckpoint(checkpoint)
+	if !found {
+		t.Fatal("checkpoint was not found")
+	}
+	recovery := graph.rehydrate(document, repo, TaskSettleAsk)
+
+	node := graph.node(1)
+	if node.notice().State != TaskQueued {
+		t.Fatalf("a finished design came back %q, want queued", node.notice().State)
+	}
+	if node.spec.design == nil || node.spec.design.resume == nil {
+		t.Fatal("the design spec was not rebuilt from the offer: the frontier would run this as a worker")
+	}
+	if node.spec.design.goal != "triaging flaky tests" || node.spec.design.model != "test/model" {
+		t.Fatalf("the rebuilt spec reads %+v", node.spec.design)
+	}
+	if recovery.asking != 1 || recovery.designs != 0 || recovery.interrupted != 0 {
+		t.Fatalf("counted wrong: %d asking, %d designs, %d interrupted",
+			recovery.asking, recovery.designs, recovery.interrupted)
+	}
+	if note := recovery.note(); !strings.Contains(note, "1 design asks again") {
+		t.Fatalf("the recovery note does not say the design is coming back: %q", note)
+	}
+
+	graph.runFrontier()
+	select {
+	case id := <-ran:
+		if id != 1 {
+			t.Fatalf("the frontier started node %d, want 1", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the carried-over design was never started")
+	}
+}
+
+// AND THE WHOLE ROUND TRIP: the next session raises the same card — to a
+// surface that subscribes AFTER recovery already raised it, which is every
+// surface, because recovery runs at construction — and a yes saves the same
+// page into the registry. No model is called anywhere in this: the page was
+// already written, and that is the point of carrying it.
+func TestACarriedOverDesignRaisesItsCardAndSavesOnYes(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	checkpoint := taskCheckpointPath(journal)
+	carriedPage := `{
+	  "id": {"name": "flake-triage", "desc": "chase a flaky test to a fix"},
+	  "program": {
+	    "nodes": [
+	      {"id": "look", "kind": "agent.loop", "fields": {"brief": "read the failing test and say what it does", "tools": "read", "max_turns": "3"}},
+	      {"id": "check", "kind": "verify", "fields": {"ladder": "accept", "check": "the report names the failing test"}}
+	    ],
+	    "edges": [["look", "check"]]
+	  },
+	  "whitelist": ["read"],
+	  "verify": {"ladder": "accept"},
+	  "dyn": {"ladder": "fixed"}
+	}`
+	writeCheckpoint(t, checkpoint, taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Kind: TaskKindHarness,
+			Title:      "harness · triaging flaky tests",
+			Brief:      "triaging flaky tests",
+			Acceptance: "a page the person approves, saved into this machine's harness registry",
+			State:      TaskRunning,
+			Offer: &harnessOfferRecord{
+				Goal:  "triaging flaky tests",
+				Model: "test/model",
+				Page:  json.RawMessage(carriedPage),
+				Cues:  []string{"flaky test", "triage the flake"},
+			},
+		}},
+	})
+
+	registry := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		buildConfig(config, registry)
+		config.Workspace = repo
+		config.SessionFile = journal
+	})
+
+	// Subscribing AFTER construction is the ordinary order — recovery has
+	// already raised the card by now — so what this read exercises is the
+	// standing-question replay ([Agent.WatchHarnessDesigns]).
+	lane, stopWatch := agent.WatchHarnessDesigns()
+	defer stopWatch()
+	var card Event
+	deadline := time.After(5 * time.Second)
+	for card.Harness == nil {
+		select {
+		case ev := <-lane:
+			if ev.Kind == EventHarnessDesignDone {
+				card = ev
+			}
+		case <-deadline:
+			t.Fatal("the carried-over card never reached a late subscriber")
+		}
+	}
+	if card.ID != 1 || card.Text != "flake-triage" {
+		t.Fatalf("the replayed card is %d %q", card.ID, card.Text)
+	}
+	if card.Task == nil || card.Task.ID != 1 {
+		t.Fatal("the replayed card does not say which node to watch")
+	}
+
+	agent.ResolveHarness(card.ID, true, "")
+	node := agent.graph().node(1)
+	select {
+	case <-node.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the answered design never settled")
+	}
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("the saved design settled %q with report %q", state, node.notice().Report)
+	}
+	if _, err := subharness.At(registry).Load("flake-triage", 1); err != nil {
+		t.Fatalf("the page never reached the registry: %v", err)
+	}
+	// And the question is spent: the checkpoint no longer carries the page, so
+	// a second restart cannot resurrect a card that was answered.
+	if node.offer != nil {
+		t.Fatal("the answered design still carries its offer")
 	}
 }

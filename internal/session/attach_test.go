@@ -364,7 +364,7 @@ func TestNeedsPersonAgreesWithPresence(t *testing.T) {
 		}},
 		{"a sub-harness offer", func(a *Agent) {
 			a.mu.Lock()
-			a.harnessAsks = map[uint64]chan harnessAnswer{1: make(chan harnessAnswer, 1)}
+			a.harnessAsks = map[uint64]harnessAsk{1: {answers: make(chan harnessAnswer, 1)}}
 			a.mu.Unlock()
 		}},
 		{"a task proposal", func(a *Agent) {

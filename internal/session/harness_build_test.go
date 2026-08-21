@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -402,12 +403,19 @@ func TestADesignThatNeverWritesAPageRunsOutOfTime(t *testing.T) {
 	}
 }
 
-// AND A CARD NOBODY EVER ANSWERS SAYS SO IN THOSE WORDS. The session closing
-// under a card is the one ending left that reaches no answer, and what a person
-// needs from it is that the page was written and that the registry is untouched —
-// not a fault, and never a clock.
-func TestACardNobodyAnsweredSaysThePageWasWritten(t *testing.T) {
-	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
+// AND A CARD THE SESSION CLOSED UNDER IS NOT AN ENDING AT ALL. A card is a
+// question; closing the terminal is not an answer to it, so the node is left
+// exactly as it was — running, with the finished page riding the checkpoint —
+// and the next session's recovery raises the same card over the same page
+// (task_store.go's TestACarriedOverDesignRaisesItsCardAndSavesOnYes is the
+// other half of this round trip).
+func TestACardNobodyAnsweredIsCarriedToTheNextSession(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	registry := t.TempDir()
+	agent, _ := newTestAgent(t, designingCompleter(), func(config *Config) {
+		buildConfig(config, registry)
+		config.SessionFile = journal
+	})
 	lane := agent.HarnessDesigns()
 	submitBuild(t, agent)
 
@@ -416,15 +424,25 @@ func TestACardNobodyAnsweredSaysThePageWasWritten(t *testing.T) {
 	waitForPhase(t, node, HarnessPhaseAsking)
 	agent.Close()
 
-	report := designOutcome(t, agent)
-	if !strings.Contains(report, `harness "flake-triage" was designed`) || !strings.Contains(report, "nothing was saved") {
-		t.Fatalf("an unanswered card landed saying %q", report)
+	// The node does not settle: TaskRunning is what the checkpoint keeps, and
+	// what the next session's recovery turns back into this same question
+	// (task_store.go's interrupt).
+	if state := node.stateNow(); state != TaskRunning {
+		t.Fatalf("a design closed under its card settled as %q", state)
 	}
-	if strings.Contains(report, "out of time") || strings.Contains(report, "failed") {
-		t.Fatalf("a design that wrote its page was reported as %q", report)
+	document, found := loadTaskCheckpoint(taskCheckpointPath(journal))
+	if !found {
+		t.Fatal("no checkpoint was written")
 	}
-	if state := node.stateNow(); state != TaskDone {
-		t.Fatalf("a design that wrote its page settled as %q", state)
+	record := document.Nodes[len(document.Nodes)-1]
+	if record.Offer == nil || len(record.Offer.Page) == 0 {
+		t.Fatal("the finished page is not on the checkpoint: the next session has nothing to ask with")
+	}
+	if record.Offer.Goal != buildGoal || record.Offer.Model != "test/model" {
+		t.Fatalf("the offer cannot rebuild the design: %+v", record.Offer)
+	}
+	if len(record.Offer.Cues) == 0 {
+		t.Fatal("the cues were dropped: a yes next session would save an unreachable entry")
 	}
 }
 

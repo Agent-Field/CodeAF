@@ -310,9 +310,9 @@ func (a *Agent) askRouteOffer(ctx context.Context, hub *eventHub, verdict routeV
 	id := a.harnessSeq
 	answers := make(chan harnessAnswer, 1)
 	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
 	}
-	a.harnessAsks[id] = answers
+	a.harnessAsks[id] = harnessAsk{answers: answers}
 	a.mu.Unlock()
 
 	hub.send(Event{

@@ -254,6 +254,18 @@ func (a *Agent) WatchHarnessDesigns() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.harnessWatchers = append(a.harnessWatchers, stream)
+	// A CARD ALREADY STANDING IS REPLAYED TO THE NEWCOMER. A design card is
+	// emitted once, at the moment the page lands, and a subscriber that attached
+	// after that moment would otherwise wait forever on a question that is
+	// already up — which is the ordinary case after a restart, where recovery
+	// raises a carried-over card at construction, before any surface has
+	// subscribed. Only design cards live in this map with an event on them; the
+	// run-this-harness offers keyed beside them carry none and replay nothing.
+	for _, ask := range a.harnessAsks {
+		if ask.card.Harness != nil {
+			stream.send(ask.card)
+		}
+	}
 	a.mu.Unlock()
 	var once sync.Once
 	return stream.out, func() {
@@ -277,6 +289,17 @@ func (a *Agent) WatchHarnessDesigns() (<-chan Event, func()) {
 // yes and it is emphatically not a no, and a wait that flattened it into either
 // would either save a page nobody approved or throw away a design somebody was
 // in the middle of working on.
+// harnessAsk is one standing question on [Agent.harnessAsks]: the channel its
+// answer arrives on, and — for a DESIGN card only — the card event itself, kept
+// so a watcher that subscribes while the question stands can be handed it
+// ([Agent.WatchHarnessDesigns]). A run-this-harness offer and a route judgement
+// share the map and carry no card: their questions live in a turn, and a turn
+// has no late subscribers.
+type harnessAsk struct {
+	answers chan harnessAnswer
+	card    Event
+}
+
 type harnessWord struct {
 	// answer is the person's, through [Agent.ResolveHarness], and it is the only
 	// half that decides anything: run saves the page, and its absence drops it.
@@ -312,30 +335,41 @@ type harnessWord struct {
 // [Agent.forgetHarness] at the instant it takes the words — so a person pressing
 // save while their thread is calling revise_design gets exactly one of the two,
 // and the loser is dropped the way every late answer on this lane is dropped.
-func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness.Harness, model string, changes <-chan string) (harnessWord, error) {
+func (a *Agent) askHarnessDesign(ctx context.Context, node *TaskNode, page subharness.Harness, model string, changes <-chan string) (harnessWord, error) {
+	id := node.id
 	answers := make(chan harnessAnswer, 1)
-	a.mu.Lock()
-	if a.closed {
-		a.mu.Unlock()
-		return harnessWord{}, errAgentClosed
-	}
-	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
-	}
-	a.harnessAsks[id] = answers
-	a.mu.Unlock()
-
-	// The page travels by pointer and this is its only copy: nothing else holds
-	// it, and whether it is ever written down is what the answer decides.
+	// The page travels on the event and this is its only copy: nothing else
+	// holds it, and whether it is ever written down is what the answer decides.
 	carried := page
-	a.emitHarness(Event{
+	card := Event{
 		Kind:    EventHarnessDesignDone,
 		ID:      id,
 		Text:    page.Id.Name,
 		Hint:    page.Id.Desc,
 		Model:   model,
 		Harness: &carried,
-	})
+		// Which node to go and watch, for the one subscriber that never saw the
+		// design begin — a surface that attached after this card went out reads
+		// the task off the replayed event ([Agent.WatchHarnessDesigns]).
+		Task: &TaskNotice{ID: id},
+	}
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return harnessWord{}, errAgentClosed
+	}
+	if a.harnessAsks == nil {
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
+	}
+	// THE CARD IS KEPT BESIDE THE ANSWER CHANNEL for as long as the question
+	// stands, so a watcher that subscribes late — above all the surface of a
+	// session that RESTORED this design from its checkpoint, which subscribes
+	// moments after recovery raised the card — is handed the standing question
+	// instead of a silence ([Agent.WatchHarnessDesigns]).
+	a.harnessAsks[id] = harnessAsk{answers: answers, card: card}
+	a.mu.Unlock()
+
+	a.emitHarness(card)
 
 	select {
 	case answer := <-answers:

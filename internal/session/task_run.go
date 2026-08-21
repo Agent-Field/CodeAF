@@ -321,6 +321,11 @@ type TaskNode struct {
 	// interrupt a recovery has consumed. It is history, and it is written down so
 	// that exactly one recovery ever consumes it.
 	interrupted bool
+	// offer is a finished harness page waiting on the person, held for exactly
+	// as long as its card is up so the checkpoint can carry it across a restart
+	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
+	// node that is not a design mid-question.
+	offer *harnessOfferRecord
 	// queuedSaid marks that this node's "queued" update has been sent. A node
 	// waiting behind the cap or behind an edge must show up on the surface —
 	// otherwise admitted work is invisible until it starts — but a frontier pass
