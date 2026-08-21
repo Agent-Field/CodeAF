@@ -25,6 +25,25 @@ func TestHarnessProgressReplacesOneRowInTheDesignRoom(t *testing.T) {
 	}
 }
 
+// TestHarnessRoomRowPrefersTheHintOverTheThinking: the room streams the
+// designer's reasoning in full already, so when the progress event carries both
+// halves of the stream, this row shows the JSON half — the hint — rather than
+// repeating a line of the prose scrolling above it.
+func TestHarnessRoomRowPrefersTheHintOverTheThinking(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 30
+	a.tasks = map[uint64]*taskNode{}
+	a.tasks[4] = &taskNode{id: 4, title: "design helper"}
+	a.room = &taskRoom{id: 4, title: "design helper", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Text: "design helper", Task: &session.TaskNotice{ID: 4}})
+	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "designing", Attempt: 1, Attempts: 3,
+		ThoughtTail: "let me reconsider the split", Hint: "4 steps so far"})
+	got := roomText(a)
+	if !strings.Contains(got, "designing · attempt 1/3 · 4 steps so far") || strings.Contains(got, "reconsider") {
+		t.Fatalf("the room row repeated the thinking instead of showing the hint:\n%s", got)
+	}
+}
+
 func TestHarnessProgressForUnknownTaskDoesNothing(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.room = &taskRoom{id: 4, unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
