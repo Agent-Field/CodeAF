@@ -40,7 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
+const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. A search also lists the work every OTHER aforge window open on this project has out right now, marked `another window` — those carry no id here and cannot be read, steered or resolved from this conversation, but they are the truthful answer to \"what else is running on this project\". With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -112,11 +112,112 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
-				return taskRowsTextLimit(a.taskRows(), parsed.Query, parsed.Limit), false, nil
+				return a.taskSearchText(parsed.Query, parsed.Limit), false, nil
 			}
 			return a.oneTask(token, parsed)
 		},
 	}
+}
+
+// taskSearchText is the no-id answer: this project's own rows, and under them
+// the work every OTHER aforge window on this project has out right now.
+//
+// THE SECOND HALF IS WHY THIS FUNCTION EXISTS. The index is what work CAME TO,
+// and an ordinary task writes no row into it until it lands (taskelsewhere.go's
+// header) — so a model asked "what else is running on this project" could read
+// the whole file and truthfully find nothing, while two windows beside it were
+// mid-run. It answered by denying, and the denial was wrong. The other windows
+// say what they have out in their own presence files, and this is the model's
+// door onto them.
+//
+// IT IS A CONVERSATION'S ANSWER AND NEVER A NODE'S ([Agent.tellsElsewhere]): a
+// node sees the pieces it handed out itself and nothing wider, which is this
+// tool's own scope law said about a different set of rows.
+func (a *Agent) taskSearchText(query string, limit int) string {
+	out := taskRowsTextLimit(a.taskRows(), query, limit)
+	if !a.tellsElsewhere() {
+		return out
+	}
+	if section := taskElsewhereText(a.Elsewhere().Tasks(), query, time.Now()); section != "" {
+		return out + "\n" + section
+	}
+	return out
+}
+
+// taskElsewhereText draws the other windows' running work in this tool's own row
+// grammar, matched against the same query the search used.
+//
+//	running in other aforge windows on this project:
+//	another window · Sweep the call sites · running · running for 4m 12s
+//	  in the window called "docs pass"
+//	  files so far: internal/session/agent.go, internal/session/task.go
+//
+// THE ROW LEADS WITH `another window` AND CARRIES NO ID, and that is the one
+// deliberate break from [taskRowText]. Ids restart with every conversation
+// ([TaskIndexEntry.ID]), so a row printing "7" here would invite `tasks id 7`
+// and reach THIS project's task seven, which is a different piece of work
+// entirely. The words are the task page's own (`another window`, tasks.md), so
+// the model and the screen say the same thing about the same row.
+//
+// `files so far` is spelled that way because a live claim is what a run has
+// ALREADY written, never what it means to write ([PresenceTask.Files]).
+func taskElsewhereText(rows []ElsewhereTask, query string, now time.Time) string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	var matched []ElsewhereTask
+	for _, at := range rows {
+		if query != "" && !strings.Contains(strings.ToLower(at.Task.Title+" "+at.Session), query) {
+			continue
+		}
+		matched = append(matched, at)
+	}
+	if len(matched) == 0 {
+		return ""
+	}
+	over := 0
+	if len(matched) > taskSearchLimit {
+		over = len(matched) - taskSearchLimit
+		matched = matched[:taskSearchLimit]
+	}
+	var out strings.Builder
+	out.WriteString("running in other aforge windows on this project:\n")
+	for _, at := range matched {
+		// FLATTENED, because these words were written by ANOTHER window's model
+		// and reach this one unedited: a title carrying a newline would turn one
+		// row of this answer into three ([deltaLine] is the same stop the
+		// <elsewhere> block uses on the same strings).
+		title := deltaLine(at.Task.Title)
+		if title == "" {
+			title = "untitled work"
+		}
+		parts := []string{"another window", title}
+		if state := strings.TrimSpace(at.Task.State); state != "" {
+			parts = append(parts, state)
+		}
+		// A QUEUED NODE HAS NO CLOCK, exactly as [taskWhenWord] has it: its
+		// StartedAt is zero because it has not started, and an age of zero
+		// beside the word "queued" is a row arguing with itself.
+		if !at.Task.StartedAt.IsZero() {
+			if span := taskSpanWord(now.Sub(at.Task.StartedAt)); span != "" {
+				parts = append(parts, "running for "+span)
+			}
+		}
+		out.WriteString(strings.Join(parts, " · ") + "\n")
+		if name := deltaLine(at.Session); name != "" {
+			out.WriteString("  in the window called " + strconv.Quote(name) + "\n")
+		}
+		files := at.Task.Files
+		if len(files) > deltaRowFiles {
+			files = files[:deltaRowFiles]
+		}
+		if word := deltaFilesWord(files, len(at.Task.Files)); word != "" {
+			out.WriteString("  files so far: " + word + "\n")
+		}
+	}
+	if over > 0 {
+		fmt.Fprintf(&out, "… and %d more running elsewhere.\n", over)
+	}
+	out.WriteString("These have no id in this conversation: work running in another window cannot be read, steered or resolved from here, and it lands in that window rather than this one.\n")
+	return out.String()
 }
 
 // taskToken reads the id argument back as the handle a person or a model would
