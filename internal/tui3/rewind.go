@@ -731,9 +731,9 @@ func replayDraws(e session.DisplayEntry) bool {
 
 // fromTranscript reports whether a block on screen came out of the session's
 // transcript at all. The others are this surface talking — its own notes, a
-// reasoning block the journal never held, the cards the tasker draws — and they
-// are stepped over rather than matched, because nothing in the transcript
-// corresponds to them.
+// reasoning block the journal never held, the seam a scrolled-back conversation
+// draws, the cards the tasker draws — and they are stepped over rather than
+// matched, because nothing in the transcript corresponds to them.
 func fromTranscript(kind entryKind) bool {
 	switch kind {
 	case entryUser, entryAssistant, entryTool, entryDivider:

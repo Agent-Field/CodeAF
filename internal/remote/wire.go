@@ -69,6 +69,7 @@ const (
 	MethodUsage           = "Usage"                  // nothing → session.Usage
 	MethodContextTokens   = "ContextTokens"          // nothing → int
 	MethodTranscript      = "Transcript"             // nothing → []session.DisplayEntry
+	MethodEarlier         = "EarlierHistory"          // nothing → session.EarlierHistory
 	MethodRewindPoints    = "RewindPoints"           // nothing → []session.RewindPoint
 	MethodRewindAt        = "RewindAt"               // int → []session.DisplayEntry
 

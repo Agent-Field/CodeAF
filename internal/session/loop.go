@@ -1673,6 +1673,24 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	a.compacting = true
 	tokensBefore := a.estimateTokensLocked()
 
+	// THE CONVERSATION IS SHAPED FOR THE SCROLLBACK BEFORE IT IS EDITED. This is
+	// the same region a resume recovers from the journal ([replayedSession.earlier]),
+	// taken from memory because that is where it is: the pass is about to stub
+	// results and fold assistant work in place, and afterwards the original text
+	// exists only in the file. Shaping it now is what lets a person scroll back
+	// through a pass that fired under them and read what was there.
+	//
+	// It is shaped rather than copied for [Agent.earlier]'s reason — a copy of
+	// the messages would hold this session's pictures alive after the pass let go
+	// of them — and it is assigned only once the pass is known to have DONE
+	// something, below, so a refused pass leaves the region it replaced alone.
+	// It is [Agent.Transcript]'s own shaping, over [Agent.Transcript]'s own
+	// messages, and that exactness is the point: a surface holding a position in
+	// the transcript it drew can carry that position straight over into the
+	// region, because the two lists are the same list (internal/tui3's replay.go).
+	// The system message needs no removing — shapeEntries drops it.
+	earlier := shapeEntries(a.messages, a.file)
+
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()
 	if a.estimateTokensLocked() > a.compactThreshold() {
@@ -1687,6 +1705,21 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 		a.mu.Unlock()
 		return false, ErrNothingToCompact
 	}
+
+	// The pass really edited the transcript, so the region above it is now
+	// history and this is the record of it. The region a PREVIOUS pass left is
+	// replaced rather than prepended to, which is the same one-hop reading the
+	// journal is given ([replayedSession.earlier]): the window this pass just
+	// rewrote already contains everything the older marker was about.
+	//
+	// AND THE FLOOR IS THE WHOLE TRANSCRIPT, because at this instant the whole
+	// transcript IS the rewritten copy — every entry of it is a stub, a fold line
+	// or a kept line standing in for something in the region above. Everything
+	// appended after this point is new conversation and sits below the floor,
+	// which is why the floor is an index from the START and never moves again
+	// ([EarlierHistory]).
+	a.earlier = earlier
+	a.earlierFloor = len(shapeEntries(a.messages, a.file))
 
 	// The provider's context figure described the request that is now gone.
 	// Zero sends the estimator back to the content until the next response.

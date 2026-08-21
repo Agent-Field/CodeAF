@@ -553,6 +553,22 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 	case entryDivider:
 		return []string{a.divider(e.text, width)}
 
+	case entrySeam:
+		// THE DIM "· " LANE, like every other line this surface says on its own
+		// account, and WRAPPED rather than cut — the same two leads a note uses
+		// above. The sentence states a limit, and a limit truncated at column 58
+		// on a narrow frame is the half-sentence that invites exactly the wrong
+		// conclusion: "above here the model keeps a shortened rec…".
+		out := make([]string, 0, 2)
+		for i, line := range wrap(e.text, width-2) {
+			lead := "· "
+			if i > 0 {
+				lead = "  "
+			}
+			out = append(out, a.pal.dim(lead+line))
+		}
+		return out
+
 	case entryCompact:
 		return []string{a.compactRow(e, width)}
 

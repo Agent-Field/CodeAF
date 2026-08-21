@@ -58,6 +58,7 @@ type fakeAgent struct {
 	usage      session.Usage
 	tokens     int
 	transcript []session.DisplayEntry
+	earlier    []session.DisplayEntry
 	points     []session.RewindPoint
 	dropped    []session.DisplayEntry
 
@@ -260,6 +261,12 @@ func (f *fakeAgent) Transcript() []session.DisplayEntry {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.transcript
+}
+
+func (f *fakeAgent) EarlierHistory() session.EarlierHistory {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return session.EarlierHistory{Entries: f.earlier}
 }
 
 func (f *fakeAgent) RewindPoints() []session.RewindPoint {
