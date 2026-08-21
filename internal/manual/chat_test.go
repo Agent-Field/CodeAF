@@ -212,6 +212,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run something every monday morning", "keeping-an-eye"},
 		{"does it keep working when I close the terminal", "keeping-an-eye"},
 		{"how do I stop a reminder", "keeping-an-eye"},
+		// The eleventh wave: the ambient side arriving on home. Each of these is
+		// asked by somebody LOOKING at a row they did not expect — a glyph they
+		// have not met, a segment at the foot of the frame, a card that appeared
+		// mid-conversation — so the words are the ones they would say out loud
+		// about what is in front of them.
+		{"what is the little circle row on home", "home"},
+		{"how do I pause a reminder", "home"},
+		{"what does keeping an eye on 2 mean", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

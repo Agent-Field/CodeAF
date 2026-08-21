@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
 // standingLogName is where a failed pass says so.
@@ -242,4 +243,37 @@ func noteStanding(line string) {
 	}
 	defer file.Close()
 	fmt.Fprintf(file, "%s %s\n", time.Now().Format(time.RFC3339), line)
+}
+
+// v3StandingSeam is the surface's reading of the same seam the session
+// proposes through. A nil seam is a zero StandingSeam, which internal/tui3 reads
+// as the ambient side absent: no band on home, no segment, no /status line.
+//
+// Running is deliberately NOT supplied. A firing runs inside whichever process
+// holds the tick lock, and nothing on disk says "firing now" in a way a second
+// window could believe; a guess drawn as a breathing glyph would be the screen
+// asserting what it cannot derive. The item's own LastFired and NeedsPerson are
+// the honest half, and the surface already draws those.
+func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
+	if seam == nil || seam.Store == nil {
+		return tui3.StandingSeam{}
+	}
+	store, watch := seam.Store, seam.Watch
+	out := tui3.StandingSeam{
+		Items: func(workspace string) []standing.Item {
+			items, err := store.ForWorkspace(workspace)
+			if err != nil {
+				return nil
+			}
+			return items
+		},
+		Save: store.Save,
+	}
+	if watch != nil {
+		out.Watch = func() (standing.WatchStatus, bool) {
+			status, err := watch.Status()
+			return status, err == nil
+		}
+	}
+	return out
 }
