@@ -521,13 +521,19 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	}
 }
 
-// One ↑ is the decision to pick from the list instead, and it sticks.
+// Walking UP off the action row is the decision to pick from the list instead,
+// and it sticks.
 //
 // IT USED TO BE ↓, and the arrow turned round with the action row. The row sits
 // at the BOTTOM of the list now, against the box a person is typing into
 // ([homeAction]), so the matches are above it and walking into them is walking
-// up the screen. WHICH match that one ↑ reaches is
+// up the screen. WHICH match the walk reaches is
 // [TestTheBestMatchSitsNextToTheActionRow].
+//
+// IT IS TWO ↑ AND NOT ONE, because `ask here` sits between the action row and
+// the matches (homeexchange.go): the two rows that do something with the
+// SENTENCE are one cluster against the box, and the rows that are other
+// conversations begin above them.
 func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -538,6 +544,10 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 		a.homeKey(key(string(r)))
 	}
 	a.homeKey(key("up"))
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
+		t.Fatalf("the first ↑ should reach `ask here` (kind %v)", line.kind)
+	}
+	a.homeKey(key("up"))
 	if row := a.home.focused(); row.Transcript != mine {
 		t.Fatal("↑ did not land on the match")
 	}
@@ -545,7 +555,9 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	if row := a.home.focused(); row.Transcript != mine {
 		t.Fatal("typing after ↑ threw the cursor back to the action row")
 	}
-	// And ↓ walks back down to the action row, which is where the sentence is.
+	// And ↓ walks back down through the same two rows to the action row, which
+	// is where the sentence is.
+	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
@@ -887,14 +899,17 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 		t.Fatalf("every match tied, so the order proves nothing: %+v", drawn)
 	}
 
-	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the row one
-	// ↑ away rather than the row furthest from the key.
+	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the FIRST
+	// conversation the walk reaches rather than the row furthest from the key.
+	// The row between them is `ask here` (homeexchange.go), which is the other
+	// thing enter can do with the sentence and not a match.
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("the cursor did not rest on the action row (kind %v)", line.kind)
 	}
 	a.homeKey(key("up"))
+	a.homeKey(key("up"))
 	if got := homeName(a.home.focused()); got != best.name {
-		t.Fatalf("one ↑ landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
+		t.Fatalf("walking up landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
 	}
 	// Further ↑ walks into weaker matches, in order.
 	for i := len(drawn) - 2; i >= 0; i-- {
@@ -903,10 +918,16 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 			t.Fatalf("walking up reached %q, want %q (%+v)", got, drawn[i].name, drawn)
 		}
 	}
-	// And ↓ comes back down toward the box, ending on the action row.
+	// And ↓ comes back down toward the box, through `ask here` and onto the
+	// action row — one step per match, plus the one for the row between them
+	// (homeexchange.go).
 	for range drawn {
 		a.homeKey(key("down"))
 	}
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
+		t.Fatalf("↓ did not walk back to `ask here` (kind %v)", line.kind)
+	}
+	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("↓ did not walk back to the action row (kind %v)", line.kind)
 	}
@@ -985,7 +1006,13 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("the pane previewed a conversation that does not exist yet:\n%s", strings.Join(card, "\n"))
 	}
 
-	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD.
+	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD. Two of them: `ask here` is the row
+	// in between, and it is a thing that does not exist yet exactly as the action
+	// row is, so its pane is empty for the same reason (homeexchange.go).
+	a.homeKey(key("up"))
+	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
+		t.Fatalf("the pane previewed the `ask here` row:\n%s", strings.Join(card, "\n"))
+	}
 	a.homeKey(key("up"))
 	first := a.home.focused()
 	if first.Transcript == "" {
@@ -1014,7 +1041,9 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("the card kept the row the cursor left:\n%s", card)
 	}
 
-	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN.
+	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN. Three steps: two matches
+	// and the `ask here` row between them and the box (homeexchange.go).
+	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
@@ -1181,8 +1210,9 @@ func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
 	if strings.Contains(text, "Tuesday") {
 		t.Fatalf("it matched a conversation with no such outcome:\n%s", text)
 	}
-	// ↑ walks off the action row and up into the match, which is where the matches
-	// are now ([homeAction]).
+	// ↑ walks off the action row, past `ask here` (homeexchange.go), and up into
+	// the match — which is where the matches are now ([homeAction]).
+	a.homeKey(key("up"))
 	a.homeKey(key("up"))
 	if !strings.Contains(homeText(a), "Rewrote the postgres") {
 		t.Fatalf("the pane does not show what the work came to:\n%s", homeText(a))

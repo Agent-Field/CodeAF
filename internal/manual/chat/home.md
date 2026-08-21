@@ -139,9 +139,9 @@ is what home is for: one page of everything the machine holds, read top to botto
 
 **The moment you type a character the list becomes a drop-up.** It lifts so that its last
 row — the action row, `start a new conversation: "…"` — lands directly above the box you
-are typing into, and the matches rise above it **best one first**: the strongest match is
-the row immediately above the action row, one `↑` away, and each `↑` past it walks into a
-weaker one. Everything to do with typing is then one cluster at the foot: your words, the
+are typing into — with `ask here: "…"` between it and the matches — and the matches rise
+above the pair **best one first**: the strongest match is two `↑` away, and each `↑` past it
+walks into a weaker one. Everything to do with typing is then one cluster at the foot: your words, the
 row saying what `enter` will do with them, and the hint under it. Clearing the box puts the
 dashboard back.
 
@@ -258,22 +258,22 @@ ages, and after that the more recent one wins.
 result at the bottom* below.
 
 **The preview keeps up.** The right-hand card switches to whichever match the cursor is on,
-so one `↑` puts the best one in front of you in full: its project and path, what it is
+so walking up into the list puts the best one in front of you in full: its project and path, what it is
 doing, the work it ran and the last thing said in it. That is how you tell two similarly
 named conversations apart without opening either. On the `start a new conversation` row the
 card is empty, because there is no conversation there yet.
 
 ## Why is the best search result at the bottom — the order of the matches
 
-**The strongest match is the row directly above `start a new conversation`, so one `↑` gets
-you to it.** Each `↑` past that walks into a weaker match, and `↓` comes back down toward
-the box.
+**The strongest match is the first conversation above the two typing rows — `ask here` and
+`start a new conversation` — so two `↑` get you to it.** Each `↑` past that walks into a
+weaker match, and `↓` comes back down toward the box.
 
 That is upside-down next to an ordinary ranked list, and deliberately so. A list you read
 *downward* puts its best answer at the top. While you are typing, home's list is read
 *upward* out of the box — so its best answer belongs at the bottom, under your hand and one
 keystroke away, instead of being the furthest row from the key you reach for. With a dozen
-matches on screen the top-ranked one is still one `↑`.
+matches on screen the top-ranked one is still the first one the walk reaches.
 
 **The ranking itself is unchanged** — match quality, then `waiting on you`, then recency
 (see *Searching from home*). What the drop-up changes is only which end of the column that
@@ -322,20 +322,23 @@ back — sitting directly above the box you are typing into.
 
  alpha
  ○ Pricing Sheet Import                                                 2h
- ○ Pricing                                                             12m   ← one ↑
+ ○ Pricing                                                             12m   ← two ↑
 
+ ? ask here: "pricing"
  + start a new conversation: "pricing"
- ───────────────────────────────────────────────────────────────────────────
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
  › pricing
- enter starts a new conversation and sends this · ↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
 fresh conversation in this project and sends what you typed, exactly as it always has,
 however many matches are on screen.
 
-One `↑` steps off that row **up** onto the best match — the order runs weakest at the top,
-best at the bottom, and *Why is the best search result at the bottom* says why. Then you are
+One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
+the pane on the right instead of opening a conversation for it — see *Asking from home*. A
+second `↑` reaches the best match — the order runs weakest at the top, best at the bottom,
+and *Why is the best search result at the bottom* says why. Then you are
 picking from the list: `enter` opens the highlighted conversation, further `↑` walks into
 weaker matches, `↓` walks back down to the action row, and the cursor stays where you put it
 while you keep typing.
@@ -482,3 +485,14 @@ screen is closed.
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
+
+## Ask here — a reminder or a watch without opening a conversation
+
+While you are typing, the row directly above `start a new conversation` is
+`ask here: "…"`. It answers the sentence **in the pane on the right** — a real conversation
+with a real transcript, kept outside `~/.aforge/v3/projects` so this list never grows a row
+for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does it without
+leaving the box.
+
+The whole of it — where the record goes, how the card is answered, and how to turn the
+exchange into an ordinary conversation — is on its own page: *Asking from home*.

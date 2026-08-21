@@ -201,6 +201,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+
+		// The eleventh wave: the errand you say from home. Every one of these is
+		// asked with home on screen and a sentence half typed, and the honest
+		// answers — that there is a second row, that the exchange is stored
+		// somewhere home does not list, and how to turn it into an ordinary
+		// conversation — are all on one page.
+		{"can I set a reminder from home", "asking-from-home"},
+		{"what is ask here", "asking-from-home"},
+		{"where did that exchange go", "asking-from-home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

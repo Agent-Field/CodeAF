@@ -569,15 +569,16 @@ a click on a `…13 more` line toggles it in one press.
 The top line carries `esc close` on the right. The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`, and the line under it
 changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
-`enter starts a new conversation and sends this · ↑ pick a match · esc clear` on the action
+`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
 row, and `enter or → show them · esc close` on a folded project.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
 this window is in, with the preview card beside it. **While anything is typed the list is a
 drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
-directly above the box, and the matches rise above it **best one first**; the cursor starts
-on the action row, so one `↑` lands on the strongest match, further `↑` walks into weaker
-ones, and `↓` walks back down toward the box. Clearing the box puts the list back at the
+with `ask here: "…"` directly above it, both directly above the box, and the matches rise
+above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
+`ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,
+and `↓` walks back down toward the box. Clearing the box puts the list back at the
 top.
 
 The right-hand preview is there in both shapes and never moves. It follows the cursor

@@ -172,6 +172,31 @@ type Options struct {
 	// makes /new report that it is unavailable rather than pretending.
 	Fresh func() (Agent, string, error)
 
+	// Errand builds the agent behind home's `ask here` (tui3's homeexchange.go):
+	// the same launch config [Fresh] uses, pointed at a transcript inside dir and
+	// working in workspace.
+	//
+	// IT IS A SECOND SEAM AND NOT AN ARGUMENT ON THE FIRST, because the two
+	// build different things. [Fresh] mints a session folder in THIS project's
+	// bucket and hands back where it put it; an errand's folder is made by the
+	// surface, under the standing root, and is deliberately not a place [Fresh]
+	// is allowed to put anything — a conversation home would then list is exactly
+	// what asking from home exists to avoid. So the caller names the folder, and
+	// the door only has to point a config at it.
+	//
+	// The workspace is the project the cursor was on, or the person's home
+	// directory when it was on none (docs/AMBIENT.md Part 5).
+	//
+	// Nil is a window that cannot ask from home: the row says so and nothing is
+	// created. A test and the --host door are both that window.
+	Errand func(dir, workspace string) (Agent, error)
+
+	// StandingRoot is where the ambient side keeps its things —
+	// ~/.aforge/v3/standing — which is where an errand's folder is made and where
+	// one that came to nothing stays. Empty falls through to the sibling of the
+	// projects root, which is what that path is by construction (internal/standing).
+	StandingRoot string
+
 	// Workspace is the directory the agent works in; its base name is the
 	// place shown in the status line. Empty takes the process's cwd.
 	Workspace string
