@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -55,9 +56,10 @@ func TestAWatchedCallGivesUpOnPacingAfterTheBoundedPatience(t *testing.T) {
 	}
 }
 
-// A TASK CHILD DOES NOT. Nobody is watching it and a worktree of real work is
-// behind it, so it waits the pacing out however long that takes — here, well
-// past the number of attempts that ends a conversation's call.
+// A TASK CHILD KEEPS GOING. Nobody is watching it and a worktree of real work
+// is behind it, so it waits the pacing out well past the number of attempts
+// that ends a conversation's call — as far as its own budget, which the test
+// below this one spends.
 func TestATaskChildWaitsPacingOutPastTheBoundedPatience(t *testing.T) {
 	var mu sync.Mutex
 	served := 0
@@ -86,6 +88,64 @@ func TestATaskChildWaitsPacingOutPastTheBoundedPatience(t *testing.T) {
 		if delay <= 0 || delay > maxProviderWait {
 			t.Fatalf("wait %d = %s, want a positive wait no longer than %s", index, delay, maxProviderWait)
 		}
+	}
+}
+
+// BUT IT STILL ENDS. "Waits it out however long that takes" was written as a
+// loop with no exit but the context's, so an account saturated by something
+// else — a sibling process on the same key, a neighbour's burst that never
+// clears — held the node forever and said nothing an operator could act on.
+func TestAPatientCallGivesUpOnceItsPatienceIsSpent(t *testing.T) {
+	var mu sync.Mutex
+	served := 0
+	client := pacedClient(t, rateLimitedUntil(1<<20, &served, &mu))
+	// Instant waits: this is the degenerate case the attempt ceiling exists for,
+	// where the wall clock never moves and only a count is finite.
+	client.wait = func(context.Context, time.Duration) error { return nil }
+
+	ctx := WithPatientRateLimits(context.Background())
+	_, err := client.CompleteWithMessages(ctx, userMessages("a"))
+	if err == nil {
+		t.Fatal("a provider that never lets up should still end the call")
+	}
+	mu.Lock()
+	attempts := served
+	mu.Unlock()
+	if attempts != patientAttempts {
+		t.Fatalf("a patient call made %d attempts, want the capped %d", attempts, patientAttempts)
+	}
+	// It comes out of the SAME DOOR every other provider failure comes out of:
+	// the provider's own words, wrapped in the attempt count. internal/session
+	// reads exactly this text to decide whether to retry the turn.
+	if !strings.Contains(err.Error(), "API error (429)") || !strings.Contains(err.Error(), "slow down") {
+		t.Fatalf("the spent call said %q, want the provider's own 429 through the usual path", err)
+	}
+}
+
+// The other currency. A count of attempts does not bound TIME when the provider
+// names the waits: six attempts each told to come back in a minute is five
+// minutes of somebody watching a cursor.
+func TestPatienceIsBoundedByTheClockAsWellAsTheCount(t *testing.T) {
+	fresh := time.Now()
+	long := time.Now().Add(-3 * time.Minute)
+	forever := time.Now().Add(-11 * time.Minute)
+
+	if outOfPatience(false, 1, fresh) {
+		t.Fatal("a watched call gave up on its first retry")
+	}
+	if !outOfPatience(false, 1, long) {
+		t.Fatalf("a watched call was still paced after 3m, past the %s budget", watchedPacingBudget)
+	}
+	if outOfPatience(true, 1, long) {
+		t.Fatalf("a task node gave up after 3m, inside its %s budget", patientPacingBudget)
+	}
+	if !outOfPatience(true, 1, forever) {
+		t.Fatalf("a task node was still paced after 11m, past the %s budget", patientPacingBudget)
+	}
+	// A call that has met no 429 at all is not on the clock: pacing is measured
+	// from the first one, so real work done before it costs nothing.
+	if outOfPatience(true, 1, time.Time{}) {
+		t.Fatal("a call that was never paced was judged to have spent its patience")
 	}
 }
 
