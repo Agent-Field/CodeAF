@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -694,7 +693,7 @@ func (s *Store) RecordAssumedWithDefault(category QuestionCategory, defaultAnswe
 	}
 	payload := assumedWithDefaultPayload{Category: category, Default: defaultAnswer,
 		SessionID: strings.TrimSpace(sessionID), Question: bounded(strings.TrimSpace(question), MaxDigestBytes)}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -894,7 +893,7 @@ func (s *Store) TuneParameter(name string, direction int, evidence ParameterEvid
 	change := ParameterChange{Name: name, Old: old, New: next, Evidence: evidence,
 		Direction: map[bool]string{true: "eased", false: "tightened"}[direction < 0],
 		Phrase:    strings.TrimSpace(phrase)}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return ParameterChange{}, false, err
 	}

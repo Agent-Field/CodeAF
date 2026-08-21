@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -68,7 +67,7 @@ func (s *Store) SetSubtreeWorkModel(root, model, reason string) (ModelRebinding,
 	if root == "" || model == "" {
 		return ModelRebinding{}, fmt.Errorf("set subtree model: %w: root and model are required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return ModelRebinding{}, fmt.Errorf("set subtree model: %w", err)
 	}

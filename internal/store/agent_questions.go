@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -205,7 +204,7 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w", err)
 	}
@@ -380,7 +379,7 @@ func (s *Store) surfaceQuestion(seq int64, neutralSessionID string) (Message, er
 }
 
 func (s *Store) surfaceQuestionInto(seq int64, neutralSessionID string, rehome bool) (Message, error) {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Message{}, fmt.Errorf("surface question: %w", err)
 	}
@@ -469,7 +468,7 @@ func (s *Store) ResolveQuestion(seq int64, status AgentQuestionStatus, resolutio
 		return fmt.Errorf("resolve question: %w: empty resolution", ErrInvalid)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("resolve question: %w", err)
 	}
@@ -523,7 +522,7 @@ func (s *Store) ResolveQuestionWithCommand(seq int64, resolution string, answerS
 		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
 	}

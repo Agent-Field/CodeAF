@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -650,7 +649,7 @@ func (s *Store) CreateCharter(charter Charter) error {
 	charter.NextDue = next
 	payload := charterToRecord(charter)
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("create charter: %w", err)
 	}
@@ -1059,7 +1058,7 @@ func (s *Store) ReviseCharter(id, invariant string, watch WatchSpec, sentinelHin
 		return fmt.Errorf("revise charter: %w", err)
 	}
 	payload := charterToRecord(validated)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("revise charter: %w", err)
 	}
@@ -1146,7 +1145,7 @@ func (s *Store) SetCharterStatusWithReason(id string, status CharterStatus, rati
 		return fmt.Errorf("set charter status: %w: transition reason is required", ErrInvalid)
 	}
 	payload := charterStatusPayload{Status: status, Ratification: ratification, Reason: bounded(reason, MaxDigestBytes)}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("set charter status: %w", err)
 	}
@@ -1218,7 +1217,7 @@ func (s *Store) DeclineCharterProposal(id, reason string) error {
 		body += ": " + payload.Reason
 	}
 	body = bounded(body, MaxFactBytes)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("decline charter: %w", err)
 	}
@@ -1286,7 +1285,7 @@ func (s *Store) DueCharters(now time.Time, limit int) ([]Charter, error) {
 // AdvanceCharterWatch journals a due observation that did not warrant a
 // sentinel call: an initial file baseline or a graph scan with no match.
 func (s *Store) AdvanceCharterWatch(id string, state CharterWatchState) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -1317,7 +1316,7 @@ func applyCharterWatch(tx *sql.Tx, id string, payload CharterWatchState, seq int
 // BeginCharterWake durably reserves one due occurrence. A pending reservation
 // is returned unchanged after restart instead of creating another wake.
 func (s *Store) BeginCharterWake(id string, at time.Time, evidence string, state CharterWatchState) (int64, error) {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return 0, err
 	}
@@ -1365,7 +1364,7 @@ func applyCharterWake(tx *sql.Tx, id string, payload charterWakePayload, seq int
 func (s *Store) RecordSentinelCheck(id string, check SentinelCheck) error {
 	check.Line = bounded(strings.TrimSpace(check.Line), MaxDigestBytes)
 	check.Error = bounded(strings.TrimSpace(check.Error), MaxDigestBytes)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -1696,7 +1695,7 @@ func (s *Store) FirePracticeCharter(id string, wakeSeq int64, subtree Subtree,
 // fireCharter atomically admits work after the autonomy boundary is satisfied.
 func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
 	dailyBudgetUSD float64, now time.Time, practice *practiceAdmission, probationApproved bool) (FireDisposition, error) {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return "", err
 	}

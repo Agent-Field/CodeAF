@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -432,7 +431,7 @@ func validRoleBinding(role ModelRole, scope BindingScope, value, origin string) 
 // binding the same role at the same moment cannot both decide they are the
 // change.
 func (s *Store) journalRoleBinding(binding RoleBinding, changed func(current RoleBinding, bound bool) bool) (bool, error) {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, fmt.Errorf("journal role binding: %w", err)
 	}

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -477,7 +476,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		}
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Message{}, fmt.Errorf("post message: %w", err)
 	}
@@ -563,7 +562,7 @@ func (s *Store) TouchSeen(surface, sessionID string, state SeenState) (Seen, err
 		return Seen{}, fmt.Errorf("touch seen: %w: surface and valid state are required", ErrInvalid)
 	}
 	payload := seenPayload{Surface: surface, SessionID: sessionID, State: state}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Seen{}, fmt.Errorf("touch seen: %w", err)
 	}
@@ -760,7 +759,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 		}
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Command{}, fmt.Errorf("request command: %w", err)
 	}
@@ -928,7 +927,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 		return fmt.Errorf("resolve command: %w: status %q is not a resolution", ErrInvalid, status)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("resolve command: %w", err)
 	}

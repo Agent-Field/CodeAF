@@ -35,23 +35,44 @@ package session
 // ── WHY A GOROUTINE AND NOT A CALL ──
 //
 // A post is a SQLite transaction against a database the resident may also be
-// writing, with a ten-second busy timeout behind it. The record seams
-// ([Agent.recordLocked], [Agent.recordUserLocked]) run under a.mu, which is the
-// lock Interrupt has to be able to take, so a write there could park a person's
-// stop for ten seconds. Instead the seam appends to an unbounded queue — one
-// append, no blocking, no dropping — and one writer goroutine drains it in
-// order.
+// writing, and one that loses the race for the write lock waits seconds for it.
+// The record seams ([Agent.recordLocked], [Agent.recordUserLocked]) run under
+// a.mu, which is the lock Interrupt has to be able to take, so a write there
+// could park a person's stop for as long as the lock is held. Instead the seam
+// appends to an unbounded queue — one append, no blocking, no dropping — and one
+// writer goroutine drains it in order.
+//
+// ── AND WHY THE DRAIN AT CLOSE HAS A DEADLINE ──
+//
+// [chatJournal.close] is on the quit path, and until it had a clock it was the
+// place a quit could hang: it waited for the queue with no bound at all, behind
+// a store write that itself waited ten uncancellable seconds for a lock another
+// process was holding. Quitting is not negotiable — a person who has pressed
+// ctrl+c twice is owed their terminal back — so the drain gets [closeSettle],
+// and what has not landed by then is said out loud in the log rather than
+// waited for or pretended about. The session file still holds every word.
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// closeSettle is how long a quit waits for the store's copy of the conversation
+// to finish landing. It is [closeGrace], the same two seconds Close already
+// gives a cancelled turn and a background job, because it is owed to the same
+// person for the same reason: this is the last thing between them and their
+// prompt. Two seconds is enough for a queue drained against an uncontended
+// database — those writes are milliseconds — and nowhere near long enough to
+// sit through a wedged one.
+const closeSettle = closeGrace
 
 // chatRefPrefix opens every pointer at a store message. It is a scheme rather
 // than a bare number so a stub line's reader — a person, or the model deciding
@@ -72,6 +93,13 @@ type chatJournal struct {
 	pending []ai.Message
 	writing bool
 	closed  bool
+	// idle carries one nudge each time the writer finishes a batch, for the one
+	// waiter that has a deadline and therefore cannot use the condition — a
+	// [sync.Cond] wait is a promise to wait forever, and the quit path cannot
+	// make that promise. It is buffered and never blocks: a nudge nobody is
+	// waiting for is dropped, and a waiter re-reads the queue rather than
+	// trusting a signal.
+	idle chan struct{}
 	// refs is where each posted message can be read back from, under a
 	// fingerprint of the message itself ([chatRefKey]).
 	//
@@ -94,6 +122,7 @@ func newChatJournal(brain *store.Store, thread, workspace string, place Place) *
 		workspace: strings.TrimSpace(workspace),
 		place:     place,
 		refs:      make(map[string]string, 64),
+		idle:      make(chan struct{}, 1),
 	}
 	journal.cond = sync.NewCond(&journal.mu)
 	go journal.run()
@@ -140,12 +169,48 @@ func (j *chatJournal) settle() {
 	}
 }
 
-// close drains what is queued and stops the writer.
+// settleWithin is settle with a clock on it. It answers whether the queue
+// actually drained, so a caller that gave up can say so.
+func (j *chatJournal) settleWithin(limit time.Duration) bool {
+	if j == nil {
+		return true
+	}
+	deadline := time.Now().Add(limit)
+	for {
+		j.mu.Lock()
+		busy := len(j.pending) > 0 || j.writing
+		j.mu.Unlock()
+		if !busy {
+			return true
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return false
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-j.idle:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+}
+
+// close drains what is queued, within [closeSettle], and stops the writer.
+//
+// What did not land is SAID rather than swallowed. It goes to the log and not to
+// the screen deliberately: the chat log has always been best-effort — a post
+// that fails is dropped in silence and never fails a turn — so a quit, a /new
+// and a /resume must not start reporting a second copy of the transcript as a
+// failure when the first copy is complete and on disk.
 func (j *chatJournal) close() {
 	if j == nil {
 		return
 	}
-	j.settle()
+	if !j.settleWithin(closeSettle) {
+		log.Printf("session: the store's copy of the conversation was still being written after %s; "+
+			"closing without it — the session file has the whole transcript", closeSettle)
+	}
 	j.mu.Lock()
 	j.closed = true
 	j.cond.Broadcast()
@@ -180,6 +245,10 @@ func (j *chatJournal) run() {
 		}
 		j.writing = false
 		j.cond.Broadcast()
+		select {
+		case j.idle <- struct{}{}:
+		default:
+		}
 		j.mu.Unlock()
 	}
 }

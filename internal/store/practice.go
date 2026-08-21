@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"math"
@@ -218,7 +217,7 @@ func (s *Store) CompleteQuestionPractice(jobID string, resultSurprise float64) (
 	if jobID == "" || resultSurprise < 0 || math.IsNaN(resultSurprise) || math.IsInf(resultSurprise, 0) {
 		return "", fmt.Errorf("complete question practice: %w: invalid outcome", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return "", fmt.Errorf("complete question practice: %w", err)
 	}

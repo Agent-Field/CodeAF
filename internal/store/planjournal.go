@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -49,7 +48,7 @@ func (s *Store) RecordPlanGraph(prefix string, plan PlanGraph) error {
 	if len(plan.Graph) == 0 || !json.Valid(plan.Graph) {
 		return fmt.Errorf("record plan graph: %w: graph must be valid JSON", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record plan graph: %w", err)
 	}
@@ -121,7 +120,7 @@ func (s *Store) RecordNodeBrief(nodeID string, brief NodeBrief) error {
 	if nodeID == "" {
 		return fmt.Errorf("record node brief: %w: node id is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record node brief: %w", err)
 	}

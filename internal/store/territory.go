@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -200,7 +199,7 @@ func (s *Store) FormTerritory(id, title, digest string, pointers, members []stri
 		return fmt.Errorf("form territory: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("form territory: %w", err)
 	}
@@ -298,7 +297,7 @@ func (s *Store) GrowTerritory(territoryID, memberID, digest string, pointers []s
 	if err != nil {
 		return fmt.Errorf("grow territory: %w", err)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("grow territory: %w", err)
 	}

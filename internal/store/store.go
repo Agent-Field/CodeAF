@@ -7,7 +7,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -603,7 +602,10 @@ func Open(path string) (*Store, error) {
 
 	u := url.URL{Scheme: "file", Path: absolute}
 	query := u.Query()
-	query.Add("_pragma", "busy_timeout(10000)")
+	// busy_timeout is SQLite's own patience and nothing else's: no caller waits
+	// it out any more, because every write goes through [Store.beginWrite] and
+	// gives up on its own clock first (writelock.go).
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyWait.Milliseconds()))
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "synchronous(NORMAL)")
 	query.Set("_txlock", "immediate")
@@ -743,7 +745,7 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) ensureSpine() error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("initialize spine: %w", err)
 	}
