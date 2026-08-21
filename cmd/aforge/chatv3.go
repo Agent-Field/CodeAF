@@ -766,6 +766,11 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// picked, by being cloned.
 	cfg.TaskModel = config.TaskModelAt(profileDir)
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
+	// the reason is not trust this time but taste: it is a judgement about
+	// somebody's own replies, and a repository has no business turning off a
+	// visitor's protection against a model that has stopped writing language.
+	cfg.ReplyGuardOff = !config.ReplyGuardEnabledAt(profileDir)
 	// And who decides when that check comes back with nothing. PROFILE-ONLY for
 	// the reason the audit row above it is: a repository that could set this
 	// would be deciding, by being cloned, that a visitor's work gets accepted by

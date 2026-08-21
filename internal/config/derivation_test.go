@@ -179,6 +179,11 @@ var settingReaders = map[string]string{
 	// the list ever reaches a request.
 	KeyModelFallbacks: "ParseModelFallbacks",
 	KeyTaskAudit:      "TaskAuditEnabledAt",
+	// The reply guard is read by the v3 door and becomes the OFF half of
+	// session.Config's ReplyGuardOff, which the session's completer stamps onto
+	// every request as internal/provider's WithoutBabbleGuard. It names the
+	// accessor the door touches.
+	KeyReplyGuard: "ReplyGuardEnabledAt",
 	// And the row beside it, read at the same moment and into the same struct:
 	// the launch resolves it onto session.Config.TaskSettle, which is the one
 	// thing that decides whether a landing nobody could check asks the person or

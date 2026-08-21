@@ -203,6 +203,15 @@ const (
 	// beside the guardian because both spend a model on the person's behalf:
 	// the guardian to answer, the auditor to check.
 	KeyTaskAudit = "task.audit"
+	// KeyReplyGuard is whether a reply that has stopped being language is cut
+	// and asked again (internal/provider's streamguard.go). It is a row because
+	// the cut is a JUDGEMENT about somebody else's text, and a person who writes
+	// in four alphabets, or who asks for pages of repeated output outside a code
+	// fence, is entitled to say they would rather see whatever arrives.
+	//
+	// The silence watchdog beside it has no row: a request that produced nothing
+	// at all has failed by any reading.
+	KeyReplyGuard = "reply.guard"
 	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
 	// or a planner cutting the work into pieces that run at once (internal/tui3's
 	// taskcommand.go). Shipped, it asks — a small sizing call reads the brief and,
@@ -437,6 +446,20 @@ var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
 
 // DefaultTaskAudit is on.
 const DefaultTaskAudit = TaskAuditOn
+
+const (
+	ReplyGuardOff = "off"
+	ReplyGuardOn  = "on"
+)
+
+// ReplyGuardModes lists them, on first — which is also the default. A reply that
+// has come apart is worth almost nothing and costs the whole of the next
+// request, because it goes back into the conversation and the model reads its
+// own soup before writing more.
+var ReplyGuardModes = []string{ReplyGuardOn, ReplyGuardOff}
+
+// DefaultReplyGuard is on.
+const DefaultReplyGuard = ReplyGuardOn
 
 // The two answers to [KeyTaskSettle]: who settles a task that finished with
 // nobody able to say whether it holds.
@@ -1601,6 +1624,19 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeContextReuse(dir, raw) },
 		},
 		Setting{
+			Key: KeyReplyGuard, Category: CategoryModels, Kind: SettingChoice,
+			Label: "reply guard", Choices: ReplyGuardModes,
+			Hint: "when on, a reply that stops being language — a model repeating one line " +
+				"or one letter until the budget is gone, words with three alphabets inside " +
+				"them — is cut where it went wrong, thrown away, and asked again once. None " +
+				"of it is kept, which matters because a bad reply goes back into the " +
+				"conversation and the next one reads it. Code blocks are never judged, so a " +
+				"page of zeros or a long log is safe. Off shows you whatever arrives. " +
+				"A model that goes quiet is cut either way.",
+			read:  func() string { return ReplyGuardAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyReplyGuard, raw, ReplyGuardModes) },
+		},
+		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
 			Label: "tenure after", Env: "AFORGE_TENURE_AFTER",
 			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
@@ -2529,6 +2565,23 @@ func TaskAuditAt(profileDir string) string {
 // TaskAuditEnabledAt is [TaskAuditAt] as the bool the session's Config takes.
 func TaskAuditEnabledAt(profileDir string) bool {
 	return TaskAuditAt(profileDir) == TaskAuditOn
+}
+
+// ReplyGuardAt resolves the reply-guard row to its word, default on.
+func ReplyGuardAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyReplyGuard); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultReplyGuard
+}
+
+// ReplyGuardEnabledAt is [ReplyGuardAt] as the bool the session's Config takes.
+// The two exist separately for the reason the guardian's pair does: the row's
+// value is a WORD, and the seam on the other side is a switch.
+func ReplyGuardEnabledAt(profileDir string) bool {
+	return ReplyGuardAt(profileDir) == ReplyGuardOn
 }
 
 // TaskSettleAt resolves the row to its word, default ask. A value this build

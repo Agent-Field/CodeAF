@@ -358,6 +358,70 @@ Each press walks it round: off → low → medium → high → off.
 - Where the level is set, it is shown after the id as `<id>:<level>` — in the picker row, and
   on the `model` line of `/status`.
 
+## The model went quiet, or stopped answering halfway through — the request is cut when nothing comes back, and how long it waits first
+
+A request that has been accepted and then produces nothing is cut and sent again. Two
+clocks decide, and only the **model writing** moves either of them — a token of answer, a
+token of thinking, a piece of a tool call. Keepalive bytes on the wire do not count, which
+is the whole reason this exists: an endpoint can hold a connection open forever without
+ever saying anything.
+
+| The clock | How long | What it catches |
+| --- | --- | --- |
+| first word | **1m30s** | accepted the request and never started |
+| a gap mid-reply | **45s** | started writing and stopped |
+
+The first bound is generous on purpose: a reasoning model at a long context legitimately
+thinks for a minute before its first token, and cutting a request that was about to answer
+costs the whole prompt again. The second is shorter because the question is different — a
+model that has started writing has finished deciding.
+
+A cut request is asked again **twice**. The screen says `trying again · 12s` while it is
+(see *What is on the screen*), and a dim line lands saying `nothing came back from the
+model — asking again` or `the model went quiet mid-reply — asking again`. If all three
+attempts come back with nothing, the turn ends:
+
+```
+error: nothing came back from the model in 1m30s, three times. a different model may answer — /model
+```
+
+These retries are **their own budget**. A request nobody answered is not evidence that the
+endpoint is failing, so it does not spend the three retries a real provider error gets.
+
+## The model was printing garbage — a reply that repeats itself or comes back as gibberish
+
+A model can lose the thread and stop writing language: one line or one letter repeated
+until the token budget is gone, or words with two and three alphabets inside them. It
+happens most at long contexts, and it feeds itself — a bad reply goes back into the
+conversation, and the model reads its own nonsense before writing the next one.
+
+So aforge watches the reply as it arrives and cuts it where it went wrong. **None of that
+text is kept**: it is not in the conversation, not in the session file, not sent back to
+the model, and it comes off your screen. A dim line says so —
+`the reply lost its thread — that text was dropped, asking again` — and the same question
+is asked **once** more. If the second reply comes apart too, the turn ends in the sentence
+that says what to do about it:
+
+```
+error: the reply lost its thread twice — it came back as repetition and jumbled text, so none of it was kept. a different model may hold it (/model), or /compact to lighten the conversation
+```
+
+Both doors are real. A different model is different weights on the same conversation;
+`/compact` is the same weights on a shorter one, and length is the condition this happens
+in.
+
+**What it will not cut.** Fenced code blocks are never judged, so a page of zeros, a long
+test log, a generated table or a big JSON dump is safe however repetitive it is. Neither
+is a reply that is simply multilingual: switching language between words is ordinary
+writing, and only switching *inside* words counts. A short repetitive answer is never cut
+either — there has to be several kilobytes of it.
+
+**Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
+or `off`, and the default is **on**. Off means you see whatever arrives. You can also just
+ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
+section above have no switch — a request that produced nothing at all has failed by any
+reading.
+
 ## What this conversation has cost — /cost
 
 `/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on

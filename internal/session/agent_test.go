@@ -920,7 +920,7 @@ func TestRetryDoesNotConcatenatePartialAttempts(t *testing.T) {
 		}
 	}()
 
-	if _, err := agent.completeWithRetry(ctx, "test/model", provider.EffortNone, partial, &warmBatch{}, &formingBatch{}); err == nil {
+	if _, err := agent.completeWithRetry(ctx, nil, "test/model", provider.EffortNone, partial, &warmBatch{}, &formingBatch{}); err == nil {
 		t.Fatal("completeWithRetry returned no error after the cancel")
 	}
 	if got := partial.take(); got != "second attempt" {
