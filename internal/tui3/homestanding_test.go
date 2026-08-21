@@ -17,8 +17,11 @@ import (
 type standBand struct {
 	items   []standing.Item
 	running map[string]bool
-	saved   []standing.Item
-	err     error
+	// runs is the ledger's answer for the week, by item id — the seam's
+	// [StandingSeam.Runs] without a file on disk.
+	runs  map[string]standing.Spend
+	saved []standing.Item
+	err   error
 }
 
 func (b *standBand) wire(a *app) {
@@ -45,6 +48,9 @@ func (b *standBand) wire(a *app) {
 			return nil
 		},
 		Running: func(id string) bool { return b.running[id] },
+	}
+	if b.runs != nil {
+		a.stands.Runs = func(time.Time) map[string]standing.Spend { return b.runs }
 	}
 }
 
@@ -221,6 +227,43 @@ func TestTheItemCardDrawsNothingItDoesNotKnow(t *testing.T) {
 	}
 }
 
+// AN ITEM'S CARD SAYS WHAT IT HAS ACTUALLY DONE LATELY, off the ledger, under
+// the lifetime figures its own document remembers.
+func TestTheItemCardSaysWhatTheThingDidThisWeek(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	item := bandItem("i1", "check the deploy", "/w/alpha", standing.WhenEvery, "every morning")
+	item.Runs, item.SpentUSD = 9, 0.31
+
+	// WITH NO LEDGER READER THE LINE IS SIMPLY ABSENT — a surface that cannot
+	// ask must not draw a figure, and the rest of the card is unchanged.
+	card := strings.Join(plainAll(StandingItemCard(a, StandingItemView{Item: item},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	if strings.Contains(card, homeWeekWord) {
+		t.Fatalf("a surface with no ledger reader drew a weekly line:\n%s", card)
+	}
+
+	band := &standBand{runs: map[string]standing.Spend{"i1": {Fired: 3, USD: 0.04}}}
+	band.wire(a)
+	card = strings.Join(plainAll(StandingItemCard(a, StandingItemView{Item: item},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	if !strings.Contains(card, "9 runs · spent $0.31") {
+		t.Fatalf("the card lost the lifetime figures:\n%s", card)
+	}
+	if !strings.Contains(card, "ran 3 times this week · $0.04") {
+		t.Fatalf("the card does not say what it did this week:\n%s", card)
+	}
+
+	// AND A WEEK IN WHICH IT DID NOTHING SAYS NOTHING — not `0 runs this week`.
+	quiet := newTestApp(&fakeAgent{model: "m"})
+	(&standBand{runs: map[string]standing.Spend{"other": {Fired: 2, USD: 1}}}).wire(quiet)
+	card = strings.Join(plainAll(StandingItemCard(quiet, StandingItemView{Item: item},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	if strings.Contains(card, homeWeekWord) {
+		t.Fatalf("an item that fired nothing this week drew a weekly line:\n%s", card)
+	}
+}
+
 // p AND s GO THROUGH THE STORE, and the row afterwards is what the store says
 // rather than what the keystroke hoped for.
 func TestPauseAndStopReachTheStore(t *testing.T) {
@@ -343,12 +386,58 @@ func TestStatusPrintsKeepingWatchOnlyWhenTheSeamAnswers(t *testing.T) {
 	}
 
 	a.stands.Watch = func() (standing.WatchStatus, bool) { return standing.WatchStatus{}, true }
+	a.stands.Ticking = func() bool { return true }
 	text = a.statusText()
 	if !strings.Contains(text, homeWatchWindow) {
 		t.Fatalf("an uninstalled timer does not say what still checks:\n%s", text)
 	}
 	if strings.Contains(text, homeWatchLastWord) {
 		t.Fatalf("a machine that has never woken claimed a last check:\n%s", text)
+	}
+}
+
+// AND IT SAYS SO WHEN NOTHING IS CHECKING AT ALL — the state a person asking
+// /status most needs and the line could not say. It is not the word "off": the
+// items are still there and the next window to open will check them.
+func TestStatusSaysNothingIsCheckingAndWhy(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	// The seam is here — this machine has an ambient side — and neither the OS
+	// timer nor this process is keeping time.
+	a.stands.Items = func(string) []standing.Item { return nil }
+	a.stands.Watch = func() (standing.WatchStatus, bool) { return standing.WatchStatus{}, true }
+
+	text := a.statusText()
+	if !strings.Contains(text, homeWatchLabel+"  ") || !strings.Contains(text, homeWatchNobody) {
+		t.Fatalf("/status does not say that nothing is checking:\n%s", text)
+	}
+	if strings.Contains(text, "off") {
+		t.Fatalf("/status called a working capability off:\n%s", text)
+	}
+	// Nobody has been asked about the timer yet, so the tail is the move that
+	// starts the whole thing.
+	a.stands.WatchAsked = func() (bool, bool) { return false, false }
+	if text := a.statusText(); !strings.Contains(text, homeWatchNobody+homeWatchStart) {
+		t.Fatalf("a machine nobody has been asked does not offer the way in:\n%s", text)
+	}
+	// And when they were asked and said no, the tail is what they chose —
+	// never an invitation to choose it again, because they are never asked
+	// twice.
+	a.stands.WatchAsked = func() (bool, bool) { return false, true }
+	text = a.statusText()
+	if !strings.Contains(text, homeWatchNobody+homeWatchSaidNo) {
+		t.Fatalf("a machine whose person said no does not say so:\n%s", text)
+	}
+	if strings.Contains(text, homeWatchStart) {
+		t.Fatalf("/status offered a question the person has already answered:\n%s", text)
+	}
+}
+
+// A SURFACE WITH NO AMBIENT SIDE AT ALL STAYS SILENT. The --host door wires no
+// standing seam, and a capability that cannot work is absent, not off.
+func TestStatusSaysNothingAboutWatchingWithNoStandingSeam(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	if text := a.statusText(); strings.Contains(text, homeWatchLabel) || strings.Contains(text, homeWatchNobody) {
+		t.Fatalf("a surface with no ambient side talked about checking:\n%s", text)
 	}
 }
 

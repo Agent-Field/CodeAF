@@ -296,6 +296,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// side. This is what a person asks before they rely on it.
 		{"do reminders work over --host", "keeping-an-eye"},
 		{"where does a reminder I set up over --host actually run", "running-on-another-machine"},
+		// The wave that made home able to answer about money and about the
+		// ambient side being idle. The first is asked by somebody looking at a
+		// card and wanting the whole bill, not the tasks' half of it; the second
+		// by somebody who typed /status because they suspect nothing is
+		// happening; the third by somebody deciding whether a watch earns its
+		// keep.
+		{"how much has this conversation cost on home", "home"},
+		{"is the ambient side off", "home"},
+		{"how many times did my watch run this week", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

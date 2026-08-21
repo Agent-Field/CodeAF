@@ -43,6 +43,7 @@ package tui3
 import (
 	"context"
 	"io"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -513,6 +514,44 @@ type StandingSeam struct {
 	// at all — a build with no OS timer support, a remote engine — and a false
 	// prints nothing, which is the emptiness law applied to a whole line.
 	Watch func() (standing.WatchStatus, bool)
+
+	// WatchAsked is the person's answer to the ONE-TIME offer to keep checking
+	// with no window open: whether they were ever asked, and what they said
+	// (internal/session's standingWatchAsked reads the marker the card writes).
+	//
+	// /status uses it for one word and one word only — why nothing is checking.
+	// "Nobody has asked you yet" and "you said no" are two different situations
+	// for the person in front of the screen, and the first has a move in it.
+	//
+	// Nil is a surface that cannot tell them apart, and it says neither.
+	WatchAsked func() (keep bool, asked bool)
+
+	// Ticking reports that THIS PROCESS is running the standing pass itself —
+	// the every-five-minutes walk any open window takes when it gets the store's
+	// lock (cmd/aforge's startStandingTicks).
+	//
+	// IT IS WHAT LETS /status SAY THE AMBIENT SIDE IS NOT BEING CHECKED. Without
+	// it the line could only say `installed` or assert `while a window is open`
+	// about a window it had not asked, and a person asking /status about a
+	// machine where nothing is keeping time would be told a window was.
+	//
+	// Nil answers no, on [StandingSeam.Running]'s law: this is a claim about
+	// right now, and a surface with no way to ask must not make it.
+	Ticking func() bool
+
+	// Runs is the standing ledger since a moment, summed per item id — how many
+	// times each thing fired and what it spent ([standing.Store.RunsSince]). It
+	// is what a card means by `ran 3 times this week`.
+	//
+	// IT ANSWERS THE WHOLE MACHINE IN ONE CALL, deliberately: the ledger is one
+	// file per day, so a surface asking item by item would open the same seven
+	// files once per row it drew. The surface reads it on home's own beat and
+	// sums whichever ids the card it is drawing owns.
+	//
+	// It must not block — it is a walk of at most a month of small files — and
+	// nil is a surface that simply draws no weekly line, which is the emptiness
+	// law applied to a fact nobody can answer.
+	Runs func(since time.Time) map[string]standing.Spend
 }
 
 // Run opens the surface and blocks until it closes. A cancelled context closes
