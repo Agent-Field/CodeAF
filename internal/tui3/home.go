@@ -1183,6 +1183,18 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
+	// ── lane answer, for the merge: this hunk and nothing else ─────────────
+	// A DIGIT ANSWERS THE QUESTION UNDER THE CURSOR. It is read here, ahead of
+	// everything, and taken only when the row is a conversation stopped on a
+	// card that offered that key and there is nothing typed — every other
+	// moment a digit is a character going into the box, exactly as it always
+	// was ("2 hours later" begins with a 2). The chips it answers are drawn by
+	// homeband_answer.go, which is also where the whole rule lives.
+	if h.box.empty() {
+		if cmd, took := a.answerKey(msg.String()); took {
+			return cmd
+		}
+	}
 	switch msg.String() {
 	case "esc":
 		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
@@ -1609,6 +1621,16 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 func (a *app) homePress(x, y int) tea.Cmd {
 	if !a.home.open {
 		return nil
+	}
+	// ── lane answer, for the merge: this hunk and nothing else ─────────────
+	// A CHIP ON THE CARD IS PRESSED WHERE IT IS DRAWN. It is read before the
+	// list below because the two answer different halves of the frame — the
+	// chips are in the right column, which nothing else here claims — and a
+	// press that fell through to the list would move somebody's cursor instead
+	// of answering the question they aimed at (homeband_answer.go).
+	if cmd, took := a.answerPress(x, y); took {
+		a.touch()
+		return cmd
 	}
 	width, height := a.size()
 	_, hits, _, _ := a.homeFrame(width, height)

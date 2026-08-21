@@ -1024,6 +1024,17 @@ type app struct {
 	// capability that is absent rather than broken.
 	errand       func(dir, workspace string) (Agent, error)
 	standingRoot string
+	// ── lane answer, for the merge: these two and nothing else ──────────────
+	// leaveAnswer leaves one answer on another session's doorstep, and answered
+	// is what this window has already sent, by session folder, so the band can
+	// say so while it waits for that session to pick it up (homeband_answer.go).
+	// A nil seam is a window that can read a question from home and not answer
+	// it — the chips are simply not drawn, which is the absence law. It is
+	// `leaveAnswer` and not `answer` because [app.answer] is already the consent
+	// block's own verb, and one word for two doors is how the wrong one gets
+	// called.
+	leaveAnswer func(dir string, kind session.QuestionKind, id uint64, key string) error
+	answered    map[string]homeAnswered
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1193,6 +1204,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:            opts.Fresh,
 		errand:           opts.Errand,
 		standingRoot:     opts.StandingRoot,
+		leaveAnswer:      opts.Answer,
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,

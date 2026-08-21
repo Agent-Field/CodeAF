@@ -283,6 +283,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// (chatv3_exchange.go, tui3's homeexchange.go).
 		Errand:       v3Errand(cfg, workspace, settings.ProfileDir, *yolo),
 		StandingRoot: v3StandingRoot(),
+		// ── lane answer, for the merge: this field and nothing else ─────────
+		// Answering another window's question from home: the answer is left in
+		// that session's own folder and it picks it up on its heartbeat
+		// (internal/session's answers.go, tui3's homeband_answer.go).
+		Answer: session.WriteAnswer,
 		// The conversations this directory has had, and the door back into one
 		// of them. They are the welcome box's right column and the /resume
 		// picker's rows; the walk happens on the keystroke that asks for it and

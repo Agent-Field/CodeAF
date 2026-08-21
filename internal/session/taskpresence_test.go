@@ -184,7 +184,7 @@ func TestPresenceSaysWhenTheSessionNeedsItsPerson(t *testing.T) {
 	agent.mu.Lock()
 	agent.consent = map[uint64]chan consentAnswer{1: make(chan consentAnswer, 1)}
 	agent.mu.Unlock()
-	release := agent.presenceWaiting("needs your ok to run bash")
+	release := agent.presenceAsking(QuestionConsent, 1, "needs your ok to run bash")
 
 	snapshot := agent.presenceSnapshot(time.Now())
 	if snapshot.State != PresenceWaiting {
@@ -376,7 +376,7 @@ func TestASessionWithNoFolderKeepsNoPresence(t *testing.T) {
 	}
 	// And every door on it is safe to call.
 	agent.nudgePresence()
-	agent.presenceWaiting("needs your ok to run bash")()
+	agent.presenceAsking(QuestionConsent, 1, "needs your ok to run bash")()
 	agent.stopPresence()
 }
 
