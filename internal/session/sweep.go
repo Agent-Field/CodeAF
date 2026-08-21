@@ -21,6 +21,18 @@
 //     transcript would make every one of them provisional, and the whole value
 //     of a journal a person can cat, grep and rsync is that it is not.
 //
+//  4. AND THE AMBIENT SIDE'S OWN LITTER GOES THE SAME WAY. The standing root
+//     accumulates two things nobody asked to keep: the folder behind an errand
+//     said at home that came to nothing, and the run folder of a firing that
+//     delivered nothing. Both are reaped after [standing.RunKeep] and both are
+//     asked the same two questions rule 2 asks — is anybody holding it, and has
+//     anything touched it lately — with a third for a run, which is whether the
+//     run itself said it came to nothing ([standing.RunCameToNothing]). The
+//     items, the ledgers, the wake log and every run that said, landed or is
+//     waiting for the person are outside its reach by construction, and so is
+//     everything under v3/projects: rule 4 walks exchanges/ and <id>/runs/ and
+//     nothing else, and answers immediately on an empty root.
+//
 // The two removals are DIFFERENT ACTS and the third rule reads differently
 // against each. Rule 1 reaches into logs/ and nowhere else, so no expiry can
 // ever reach a transcript or a person's work/ whatever its age. Rule 2 removes a
@@ -50,6 +62,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 const (
@@ -66,10 +79,18 @@ const (
 	placesDirName = "projects"
 )
 
-// SweepHome runs one pass over this machine's session folders. It is the launch
-// door's call ([SweepPlaces] is the testable one underneath it).
-func SweepHome(note func(string)) {
-	SweepPlaces(home.Join("v3", placesDirName), time.Now(), note)
+// SweepHome runs one pass over this machine's session folders and one over the
+// ambient side's own. It is the launch door's call ([SweepPlaces] and
+// [SweepStanding] are the testable ones underneath it).
+//
+// standingRoot is passed in rather than resolved here for the reason every
+// other root in this file is: a pass that computed its own paths could not be
+// pointed at a temp directory and therefore could not be proved. An empty root
+// is a build with no ambient side, and rule 4 does nothing at all.
+func SweepHome(standingRoot string, note func(string)) {
+	now := time.Now()
+	SweepPlaces(home.Join("v3", placesDirName), now, note)
+	SweepStanding(standingRoot, now, note)
 }
 
 // SweepPlaces applies the three rules over one projects root.
@@ -273,4 +294,155 @@ func reapSession(dir string, meta Meta, note func(string)) {
 	if err := os.RemoveAll(dir); err != nil {
 		note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
 	}
+}
+
+// ── rule 4: the ambient side's own litter ───────────────────────────────────
+
+// SweepStanding applies rule 4 over one standing root: the errands that came to
+// nothing, and the runs that delivered nothing.
+//
+// EVERY PATH IT TOUCHES IS ARITHMETIC ON root, and there are exactly two of
+// them — <root>/exchanges/<id>/ and <root>/<item id>/runs/<n>/. It cannot reach
+// v3/projects because it never reads that directory, and an empty or missing
+// root answers silently: a machine with nothing standing has nothing here.
+func SweepStanding(root string, now time.Time, note func(string)) {
+	if note == nil {
+		note = func(string) {}
+	}
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return
+	}
+	sweepExchanges(root, now, note)
+	sweepRuns(root, now, note)
+}
+
+// sweepExchanges reaps the folder behind an errand that came to nothing.
+//
+// An errand said at home lives under exchanges/ until it becomes something: a
+// thing that stands moves it under the item, and `continue as a conversation`
+// moves it into the project's own bucket (tui3's homeexchange.go). What is left
+// here after a week is the third case — a sentence that went nowhere — and it
+// is the one case whose folder nobody will ever open again.
+func sweepExchanges(root string, now time.Time, note func(string)) {
+	exchanges := standing.ExchangesRoot(root)
+	entries, err := os.ReadDir(exchanges)
+	if errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		note(fmt.Sprintf("sweep: could not read %s: %v", exchanges, err))
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(exchanges, entry.Name())
+		if !sweepIsStale(dir, now) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
+		}
+	}
+}
+
+// sweepRuns reaps the run folders of firings that delivered nothing.
+//
+// THE RUN'S OWN MARKER IS THE PERMISSION SLIP. A firing writes what it came to
+// beside its transcript ([standing.CameTo]); this reads it and removes the
+// folder only when that word is [standing.OutcomeNothing]. A run that said
+// something, landed something, failed, or is waiting for the person keeps its
+// folder like any other session — as does a run whose marker is missing, which
+// is every run written before this existed.
+func sweepRuns(root string, now time.Time, note func(string)) {
+	items, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		note(fmt.Sprintf("sweep: could not read %s: %v", root, err))
+		return
+	}
+	for _, item := range items {
+		// Only an item's own folder holds runs. exchanges/ is rule 4's other
+		// half and is skipped by name; the documents, the ledgers, the wake log
+		// and the locks are files and are skipped by not being directories.
+		if !item.IsDir() || item.Name() == filepath.Base(standing.ExchangesRoot(root)) {
+			continue
+		}
+		runs := filepath.Join(root, item.Name(), "runs")
+		entries, err := os.ReadDir(runs)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			note(fmt.Sprintf("sweep: could not read %s: %v", runs, err))
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			dir := filepath.Join(runs, entry.Name())
+			if !standing.RunCameToNothing(dir) || !sweepIsStale(dir, now) {
+				continue
+			}
+			if err := os.RemoveAll(dir); err != nil {
+				note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
+			}
+		}
+	}
+}
+
+// sweepIsStale is rule 2's two questions asked of an ambient folder: is
+// anybody holding it, and has anything in it been touched inside
+// [standing.RunKeep].
+//
+// EVERY UNCERTAINTY ANSWERS "KEEP IT", exactly as [sessionIsOpen] does: a
+// folder that cannot be walked, an entry that cannot be stated, a transcript
+// under a flock. The newest thing in the tree is what is asked about rather
+// than the folder's own mtime, because a run writes its transcript into a
+// directory whose mtime stopped moving the moment the files were created.
+func sweepIsStale(dir string, now time.Time) bool {
+	if sessionIsOpen(dir) {
+		return false
+	}
+	newest, ok := newestUnder(dir)
+	if !ok {
+		return false
+	}
+	return newest.Before(now.Add(-standing.RunKeep))
+}
+
+// newestUnder is the most recent modification time anywhere in a tree, and
+// false when the tree could not be read whole. A folder with nothing in it
+// answers its own time, which is when it was made.
+func newestUnder(dir string) (time.Time, bool) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return time.Time{}, false
+	}
+	newest := info.ModTime()
+	failed := false
+	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			failed = true
+			return err
+		}
+		at, err := entry.Info()
+		if err != nil {
+			failed = true
+			return err
+		}
+		if at.ModTime().After(newest) {
+			newest = at.ModTime()
+		}
+		return nil
+	})
+	if err != nil || failed {
+		return time.Time{}, false
+	}
+	return newest, true
 }
