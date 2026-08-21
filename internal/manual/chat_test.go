@@ -236,6 +236,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the first one wrongly — it described a countdown that is now gone.
 		{"how long do I have to answer the card", "keeping-an-eye"},
 		{"where is the record of a reminder I made from home", "keeping-an-eye"},
+		// The twelfth wave: answering a question from home. Both are asked by
+		// somebody looking at a `▲` row and wondering whether they have to walk
+		// to the terminal it belongs to — which, for the ordinary answers, they
+		// no longer do.
+		{"can I approve a command from home", "home"},
+		{"how do I answer a question in another window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},

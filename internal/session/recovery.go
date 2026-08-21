@@ -336,7 +336,10 @@ func (a *Agent) askAboutLoop(ctx context.Context, hub *eventHub, ep *episode, lo
 	answer, err := a.askAnswer(ctx, hub, looping.call, approval.Decision{
 		Action: approval.ActionPrompt,
 		Rule:   offer.rule(looping),
-	}, false)
+		// AND NO LINE FOR ANOTHER WINDOW: this question is about a turn and has
+		// three answers, and the three chips home would draw under a one-line
+		// gloss are the consent gate's two (taskpresence.go's PresenceQuestion).
+	}, false, "")
 	if err != nil {
 		return
 	}

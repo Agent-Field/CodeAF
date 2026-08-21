@@ -617,6 +617,11 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	a.mu.Unlock()
 
 	notice.ID = id
+	// AND ANOTHER WINDOW LEARNS WHAT THIS ONE IS STOPPED ON (taskpresence.go).
+	// The line is the PERSON'S OWN SENTENCE, which is the anchor every surface
+	// leads this item with ([standing.Item.Words]) — the when and the cost are
+	// the card's to show, in the window where there is room to read them.
+	defer a.presenceAsking(QuestionStanding, id, "wants to keep an eye on: "+strings.TrimSpace(notice.Item.Words))()
 	// SET TO ZERO AND NOT MERELY LEFT ZERO. The field is on the card's shape
 	// and a caller could have filled it; this is the one place the law lives,
 	// so it is applied here rather than trusted upstream.

@@ -604,7 +604,51 @@ closed, stops claiming to need you within a glance — nothing on home asks you 
 something that nobody is waiting for any more.
 
 `enter` on the row opens it under the ordinary rule, so a question in this project is one
-key away and one in another project tells you where to go.
+key away and one in another project tells you where to go. **For the ordinary questions
+you do not have to go at all** — see the next section.
+
+## Answer a question from home — approve a command in another window
+
+**You can answer it here, without opening the window it is in.** Put the cursor on the
+`▲` row. Under the line it is stopped on, the card on the right shows the answers that
+session will take, as chips, and pressing the digit answers it. A click on a chip does
+the same.
+
+The chips are the ones the question has:
+
+- It is **waiting for permission to run something**: `1 allow once · 2 always · 3 deny`.
+- It is **asking whether to start a task**: `1 yes · 2 no`.
+- It is **asking whether to keep an eye on something**: `1 yes · 3 once, not standing`.
+  There is no `2 change when` here, on purpose: that answer is a request for a text box,
+  and a card in a column has no box. There is no outright **no** either — `esc` on home
+  closes home, and a key that could refuse a reminder on the way out of a dashboard would
+  be worse than the walk. To say a different when, or to say no, open the conversation:
+  the card is still standing there, because a standing card never times out.
+
+`2 always` means what it means in the window: **that session stops asking about that
+tool** for the rest of its life. It does not write a permission rule into your settings —
+the card in the window writes that from the command it has in front of it, and home has
+only the one line the session is stopped on. The handful of shapes aforge always asks
+about — the ones that wipe a disk — are asked about again whatever you press here.
+
+The digits are keys **only while nothing is typed and the cursor is on a row that is
+waiting**. Every other moment a `1` is a `1` going into the box, which is a search and a
+new conversation at the same time.
+
+Home then says `answered · deny` at the foot, and the card reads `answered · waiting for
+it to pick that up`. That wait is real and short: the other session looks for your answer
+on the same heartbeat it uses to say what it is doing, every few seconds. When it picks it
+up the row stops needing you and the card goes back to being a card.
+
+**An answer that arrives too late is ignored**, exactly as a late click in the window
+itself is: a task whose countdown already started it, a card somebody answered in its own
+window a moment earlier, a turn that was interrupted. Nothing is said about it — the
+question was simply over.
+
+**A window that has stopped refreshing cannot be answered from here.** A live session
+rewrites its little status file every five seconds; past fifteen it is not believed, the
+chips are not drawn, and the digits go back to being characters. That is the same rule
+that stops home claiming a killed terminal still needs you.
 
 ## Why a task says incomplete on home
 
