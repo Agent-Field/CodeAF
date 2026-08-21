@@ -260,6 +260,20 @@ const (
 	// an agent whose tool root does not exist, and every bash and every relative
 	// path in it would fail in a way nothing on screen explains.
 	homeGoneWord = WorkspaceGoneWord
+	// homeGoneShort is that same fact in the width the left column has for it,
+	// and homeGoneWord is what the card says — two spellings of ONE thing, for
+	// [homeHeldWord] and [homeHeldShort]'s reason exactly: the list column is
+	// forty-six cells wide and a row that spent seventeen of them on a sentence
+	// would have nothing left for the name it is about.
+	//
+	// HOME SAYS THIS BEFORE ANYTHING IS PRESSED, which is the whole of the
+	// repair. The refusal below still fires on the keystroke — it has to, since
+	// a folder can go between the scan and the finger — but a refusal is the
+	// LAST line of the screen, and on a tall terminal somebody pressing enter on
+	// a row four inches above it sees nothing change and reports that enter does
+	// nothing. So the fact is on the row and on the card as well, exactly as
+	// `another window` is ([app.homeHolding] holds the original of this rule).
+	homeGoneShort = "folder gone"
 	// homeElsewhereWord names the block of projects home is not drawing open.
 	//
 	// IT NO LONGER MARKS A ROW THIS WINDOW CANNOT OPEN, because there is no such
@@ -506,6 +520,20 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
+	// gone is which project folders were NOT on the disk when the world was last
+	// read, keyed by the path [homeWhere] answers for a row. A path this map has
+	// never heard of is not gone: the map is filled from the world and only ever
+	// holds real recorded directories, so an older session shape with nothing
+	// recorded stays as lenient here as [homeFolderThere] is about it.
+	//
+	// ONE os.Stat PER PROJECT PER READING, AND NEVER ONE PER FRAME. The column
+	// is repainted on every keystroke and every pointer movement, and the card
+	// beside it with it; a screen that asked the disk from its draw would be
+	// twenty stats times a pointer crossing the column, to re-learn something
+	// that changes about as often as a repository is deleted. So it is read
+	// where the world is ([homeView.readGone]) and thrown away with it, which is
+	// the same bargain [app.homeHeld] strikes over the lock.
+	gone map[string]bool
 	// exchanges is the errands somebody asked from this screen — `ask here` —
 	// as the column draws them. They are real conversations with real
 	// transcripts, kept OUTSIDE v3/projects so that this list can never grow a
@@ -619,6 +647,10 @@ func (a *app) openHome() tea.Cmd {
 		exchanges: a.exchanges,
 	}
 	a.readStandBands()
+	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
+	// bands, because a project home knows only through a watch is one of the
+	// projects this has to answer for ([homeView.readGone]).
+	a.home.readGone()
 	a.home.build()
 	a.home.point(a.file)
 	a.refreshHomeRepo(time.Now())
@@ -693,6 +725,7 @@ func (a *app) landHome() {
 		exchanges: a.exchanges,
 	}
 	a.readStandBands()
+	a.home.readGone()
 	a.home.build()
 	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS IN, which is the
 	// resume picker's law and it matters more here: enter is a confirm key, and
@@ -795,6 +828,10 @@ func (a *app) refreshHome() {
 	// a beat apart would sort a firing item against a world that had not heard of
 	// it yet.
 	a.readStandBands()
+	// AND THE FOLDERS ARE RE-STATTED ON THIS BEAT AND ONLY ON IT. A repository
+	// deleted in another terminal while home is up shows up here, three seconds
+	// later, and never sooner and never oftener ([homeView.gone]).
+	a.home.readGone()
 	// [homeView.build] is the one that keeps the cursor on its conversation, so
 	// this is a rescan and a rebuild and nothing else.
 	a.home.build()
@@ -2185,7 +2222,15 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 // homeFolderThere reports whether a project's directory is still on the disk.
 // An unnamed one is not refused: a row with no recorded project directory is an
 // older session shape, and the door resolves the workspace for it.
-func homeFolderThere(where string) bool {
+//
+// IT IS A VAR SO THAT A TEST CAN COUNT THE SYSCALLS, which is opener.go's
+// [processOpener] device used for opener.go's reason. The law this surface has
+// to keep is not "the answer is right" but "the disk is asked once per reading
+// and never once per frame" ([homeView.gone]), and a law about how often
+// something happens can only be proved by something that counts.
+var homeFolderThere = folderThere
+
+func folderThere(where string) bool {
 	if strings.TrimSpace(where) == "" {
 		return true
 	}
@@ -2195,6 +2240,69 @@ func homeFolderThere(where string) bool {
 	}
 	info, err := os.Stat(filepath.Clean(resolved))
 	return err == nil && info.IsDir()
+}
+
+// readGone stats every project the screen is about to draw, once, and records
+// which of their folders are not there any more ([homeView.gone] says why the
+// answer is kept rather than asked from the draw).
+//
+// IT ASKS ABOUT PATHS AND NEVER ABOUT NAMES. [homeWhere] falls back to the
+// project's NAME for a row that recorded no directory, and a name is not a place
+// — statting `aforge-v2` from whatever directory this process happens to be in
+// would report every older session shape on the machine as gone. Those rows are
+// simply never in the map, and a path the map has not heard of is not gone.
+//
+// The dedupe is the point of the map rather than a nicety: every conversation in
+// a project carries the same recorded directory, so a project with eleven
+// conversations is still one syscall.
+func (h *homeView) readGone() {
+	gone := map[string]bool{}
+	look := func(where string) {
+		if where = strings.TrimSpace(where); where == "" {
+			return
+		}
+		if _, asked := gone[where]; asked {
+			return
+		}
+		gone[where] = !homeFolderThere(where)
+	}
+	for _, project := range h.world.Projects {
+		look(project.Path)
+		for _, row := range project.Sessions {
+			look(row.ProjectDir)
+		}
+	}
+	// AND THE PROJECTS HOME KNOWS ONLY THROUGH A WATCH ([homeBare]). They have
+	// no conversations, so the loop above never reached them, and a workspace
+	// somebody set a reminder on is exactly as deletable as one they talked in.
+	for _, bare := range h.bare {
+		look(bare.project.Path)
+	}
+	h.gone = gone
+}
+
+// homeGone reports whether a project's folder was missing at the last reading of
+// the world. It is what the DRAWING asks — the row's word and the card's
+// sentence — and it never touches the disk. The keystroke that actually opens
+// something asks the disk instead ([homeFolderThere] on the enter path), for
+// [app.homeHeldNow]'s reason: a label may be a few seconds old, an action may
+// not.
+func (a *app) homeGone(where string) bool {
+	if where = strings.TrimSpace(where); where == "" {
+		return false
+	}
+	return a.home.gone[where]
+}
+
+// homeRowGone is the same question asked about one conversation's row.
+//
+// It looks ONLY at the recorded project directory, which is exactly what
+// [homeWhere] would answer for it whenever there is one — and where there is
+// not, [homeWhere] falls back to the project's NAME, which [homeView.readGone]
+// deliberately never statted. So the two agree everywhere it matters and this
+// one does not have to be handed a line to say so.
+func (a *app) homeRowGone(row session.SessionRow) bool {
+	return a.homeGone(row.ProjectDir)
 }
 
 // homeStart is the door: a fresh conversation in this project, carrying the
@@ -3034,7 +3142,8 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// ([app.homeTrue]).
 	row := a.homeTrue(line.row)
 	label := a.homeRowGlyph(row) + " " + homeName(row)
-	note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeFresh(row), h.world.Read)
+	note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeRowGone(row),
+		a.homeFresh(row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -3043,7 +3152,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// The one exception is a row that wants somebody. `waiting on you` is
 	// brought up out of the dim, because a screen whose whole job is triage
 	// cannot render its most urgent fact in the same grey as an age.
-	return overlayRowTinted(label, note, homeNoteInk(row, a.homeHeld(row)),
+	return overlayRowTinted(label, note, homeNoteInk(row, a.homeHeld(row) || a.homeRowGone(row)),
 		at == h.cursor, a.homeMark(row), at == h.hover, width, pal)
 }
 
@@ -3102,8 +3211,11 @@ func (a *app) homeTrue(row session.SessionRow) session.SessionRow {
 // homeNoteInk is how a row's trailing fact is painted. It answers nil for every
 // row that has nothing urgent to say, which is [paintNote]'s way of asking for
 // the ordinary rule.
-func homeNoteInk(row session.SessionRow, held bool) noteInk {
-	if held || !row.NeedsPerson() {
+//
+// `shut` is a door this row does not open: another window is holding it, or its
+// folder is gone. Both are the same paint decision and neither is a thing to do.
+func homeNoteInk(row session.SessionRow, shut bool) noteInk {
+	if shut || !row.NeedsPerson() {
 		// A locked row keeps the ordinary dim. It is a fact about a door, not a
 		// thing anybody has to do, and shouting it would put the loudest ink on
 		// this screen on the one row that cannot be acted on.
@@ -3236,7 +3348,7 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held, ours bool, fresh int, now time.Time) string {
+func homeNote(row session.SessionRow, held, ours, gone bool, fresh int, now time.Time) string {
 	var parts []string
 	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
 	// rung BELOW the states, and that ordering is a fact about what the states
@@ -3250,6 +3362,24 @@ func homeNote(row session.SessionRow, held, ours bool, fresh int, now time.Time)
 	// somebody left sitting idle in another terminal, holding its lock and
 	// claiming nothing — and that is exactly the row this rung catches.
 	switch {
+	case gone:
+		// A FOLDER THAT IS NOT THERE OUTRANKS EVERY OTHER WORD IN THIS RUNG,
+		// because every one of them is a fact you would act on by OPENING the
+		// row — and this is the one that says you cannot. `waiting on you` over a
+		// deleted workspace would be the screen asking for a keystroke it has
+		// already decided to refuse.
+		//
+		// It goes in the same slot and the same dim as `another window`
+		// ([homeNoteInk] keeps it there), and for the same reason: it is a fact
+		// about a door, not a thing anybody has to do.
+		//
+		// IT IS ON THE ROW AND NOT ONLY ON THE HEADING, though the folder belongs
+		// to the whole project and this repeats it down the block. The cursor
+		// stops on ROWS — never on a heading — and a heading scrolls off the top
+		// of a project with nine conversations in it, so a mark that lived only
+		// there would be absent from precisely the row somebody is about to press
+		// enter on. Under the `elsewhere` rule there is no heading at all.
+		parts = append(parts, homeGoneShort)
 	case row.NeedsPerson():
 		// THE CONVERSATION'S OWN WORD, not a second one meaning the same thing.
 		// `waiting on you` is what the presence file says (taskpresence.go's
