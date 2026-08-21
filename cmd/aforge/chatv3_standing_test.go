@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // THE STORE IS UNDER THE STATE ROOT AND NOWHERE ELSE, so AFORGE_HOME moves the
@@ -47,14 +46,3 @@ func TestStandingSeamOpensTheStoreAtThatPath(t *testing.T) {
 // the core lane's seam and answers nil until it lands; a card that offered to
 // keep checking with nothing behind the yes would be a promise this build
 // cannot keep.
-func TestStandingWatchIsAbsentUntilItExists(t *testing.T) {
-	var watch standing.Watch = standingWatch()
-	if watch != nil {
-		t.Fatal("standingWatch answered something; the STUB comment above it is now wrong")
-	}
-	root := filepath.Join(t.TempDir(), "state")
-	t.Setenv("AFORGE_HOME", root)
-	if seam := v3Standing(t.TempDir()); seam == nil || seam.Watch != nil {
-		t.Fatal("the seam offered a timer this build does not have")
-	}
-}

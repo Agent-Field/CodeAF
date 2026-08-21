@@ -74,7 +74,7 @@ func v3Standing(profileDir string) *session.Standing {
 	}
 	return &session.Standing{
 		Store: store,
-		Watch: standingWatch(),
+		Watch: standingWatch(store),
 		// The person's own daily budget is what the card quotes beside the
 		// per-run cap. A profile that cannot be read quotes nothing rather than
 		// a figure nobody set, which is the emptiness law applied to money.
@@ -94,13 +94,18 @@ func v3StandingDailyRail(profileDir string) float64 {
 	return rail
 }
 
-// standingWatch is the OS timer that keeps checking with no window open.
-//
-// STUB (lane core): internal/standing's watch.go is being built beside this and
-// has the constructor. Nil is the honest answer until it lands, and every
-// caller already reads nil as "the offer is never made" — so a build without
-// the timer asks nobody a question it cannot keep.
-func standingWatch() standing.Watch { return nil }
+// standingWatch is the OS timer that keeps checking with no window open: a
+// launchd agent or a systemd user timer running `aforge tick` every five
+// minutes (internal/standing's watch.go). Nil is the honest answer on a host
+// the package cannot arrange one for, and every caller reads nil as "the offer
+// is never made" — a question nobody can keep is a question nobody is asked.
+func standingWatch(store *standing.Store) standing.Watch {
+	watch, err := standing.NewWatch(standing.WatchOptions{WakeLog: store.WakeLogPath()})
+	if err != nil {
+		return nil
+	}
+	return watch
+}
 
 // v3StandingTicker builds one pass. IT IS THE ONE CONSTRUCTOR: a window's
 // goroutine below and `aforge tick` both call exactly this, so the two can
