@@ -156,6 +156,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
 	family := a.newOrchestrateFamily(goal, plannerModel, id)
+	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
+	// (taskname.go). It is asked for HERE, at the door, and not inside the
+	// constructor: the row is published under the goal first, so the roster shows
+	// the run from the moment somebody asked for it, and the name replaces the
+	// sentence when it lands a few seconds later.
+	family.nameRun(goal)
 	// AND THE NODES' MODEL GOES WITH IT, settled here for the run's whole life
 	// the way a task's is settled at admission: every row this family publishes
 	// says which model is doing the work, and the answer must not be able to move
@@ -1343,6 +1349,12 @@ type orchestrateFamily struct {
 	mu   sync.Mutex
 	ids  map[string]uint64
 	said map[string]TaskState
+	// settled says the run's own row has been published in its final state
+	// ([orchestrateFamily.settle]). It is read by exactly one thing — the namer
+	// that arrives late (taskname.go) — and it is the whole of what stops a run
+	// that finished from being republished as running because three words landed
+	// a moment after it ended.
+	settled bool
 	// names is the last goal each node was published with, keyed the way ids is.
 	//
 	// IT EXISTS SO THAT NO ROW OF THIS RUN IS EVER PUBLISHED NAMELESS. A surface
@@ -1568,8 +1580,16 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 		return
 	}
 	f.upsert(snap.Nodes)
+	// THE ROW IS CLOSED, AND IT IS THE LAST THING SAID ABOUT IT. The flag is
+	// raised under the same lock the title is read under, so a namer that comes
+	// back after this point writes its answer and publishes nothing
+	// (taskname.go).
+	f.mu.Lock()
+	f.settled = true
+	title := f.title
+	f.mu.Unlock()
 	notice := TaskNotice{
-		ID: f.root, Run: f.run, Title: f.title, State: TaskDone, Model: f.model,
+		ID: f.root, Run: f.run, Title: title, State: TaskDone, Model: f.model,
 		Report:  strings.TrimSpace(snap.Answer),
 		CostUSD: snap.Fuel.Spent,
 	}

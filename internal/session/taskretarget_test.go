@@ -51,8 +51,10 @@ func retargetAgent(t *testing.T) (*Agent, *TaskNode, *Agent, func()) {
 		node.graph.complete(node, TaskDone)
 		close(landed)
 	})
+	// named, because this stands in for a proposal the model groomed and named
+	// itself — the one kind of work the namer leaves alone (taskname.go).
 	graph.admit(id, taskSpec{
-		title: "Ship the parser fix", brief: "b", acceptance: "a",
+		title: "Ship the parser fix", named: true, brief: "b", acceptance: "a",
 		model: "anthropic/claude-opus-5",
 	})
 

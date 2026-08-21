@@ -228,13 +228,17 @@ verbatim part, and no heading over nothing.
 
 The goal itself carries the rest of the contract, because a run has no separate deliverable
 or acceptance field: what must exist at the end and how it is checked are written into the
-goal, whose first line is also the run's title on the roster and in its room header.
+goal, whose first line is the run's own header on its page — and is what the roster calls the
+run until a **short name** lands for it. A run's row is named the same way a task's is: a
+cheap `taskname` call turns a goal that is still a sentence into two or three lowercase
+words, a few seconds after the run has already started. *Work that runs on its own* has it
+under *Why my task is called something I did not type*.
 
 A run you started with `/task adaptive` has its goal **shaped** first: a model turns what you
 typed into a fuller goal — your words, the constraints the work needs, and a `DONE WHEN` line
 under it — and that shaped text is the goal the planner reads. Your own sentence is still
 carried separately and verbatim, as above, so it still wins where the two disagree, and the
-run's title is still made from your words. If shaping cannot run, the goal is your sentence
+run's row is named from the work either way. If shaping cannot run, the goal is your sentence
 exactly. The *work that runs on its own* page has it under *Why my task's brief is longer
 than what I typed*.
 

@@ -94,8 +94,13 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// words they are, with the rule that theirs win where the two read
 	// differently (task_brief.go). Where nothing shaped it the two halves are
 	// identical and that same function prints them once.
+	// THE NAME IS THE SHAPER'S WHERE IT WROTE ONE, and where it did not the title
+	// above is the mechanical cut of the person's own opening words — which is
+	// what [taskSpec.named] says, and what sends the cheap namer after it once
+	// the node is running (taskname.go).
 	graph.admit(id, taskSpec{
-		title: title, summary: firstLine(brief), request: brief, brief: work,
+		title: title, named: strings.TrimSpace(shaped.Title) != "",
+		summary: firstLine(brief), request: brief, brief: work,
 		acceptance: acceptance, model: a.resolveTaskModel("").model,
 	})
 	return id, title, nil

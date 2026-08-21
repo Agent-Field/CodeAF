@@ -112,6 +112,13 @@ const (
 	// an offer card that was never shown, never money. Registered from
 	// internal/session/route_judge.go, which owns the call.
 	RoleRouter Role = "router"
+	// RoleTaskName is the two or three words a piece of work is CALLED on the
+	// rail, the home card and the task list — made from the node's own gloss and
+	// brief when whoever started it left a raw sentence there instead of a name.
+	// Low, for the title's reason: a wrong name costs a glance at a column and
+	// nothing downstream is decided from it. Registered from
+	// internal/session/taskname.go, which owns the call.
+	RoleTaskName Role = "taskname"
 	// RoleShaper turns the words somebody typed after /task into the brief the
 	// worker is actually handed: it reads one request and writes the paragraphs
 	// and the done-condition around it. It sits HIGH for the auditor's reason
@@ -254,6 +261,7 @@ var roleDescriptions = map[Role]string{
 	RoleReflex:     "reads every turn for memory — routing and keeping",
 	RoleVision:     "reads images for a model that cannot see them",
 	RoleShaper:     "the brief a task you started yourself is given",
+	RoleTaskName:   "the two or three words a task is called",
 }
 
 var (
