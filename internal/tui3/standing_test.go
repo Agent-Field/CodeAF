@@ -513,3 +513,114 @@ func TestHomesChipsAgreeWithTheCard(t *testing.T) {
 		t.Fatalf("a watch's chips are %v, want three", words)
 	}
 }
+
+// ── THE FIRING IS DRAWN WHERE IT LANDED ─────────────────────────────────────
+//
+// [TestAStandingUpdateIsExactlyOneLine] proves the renderer; this proves the
+// ROAD, which is the half that was missing. A firing arrives when no turn is
+// running — that is what ambient means — so it comes off the session's standing
+// lane and has to travel the whole of the program loop to reach the transcript.
+// The real-binary suite watched a reminder reach the conversation's journal and
+// never appear on the screen, because nothing was ever put on this lane.
+
+// firingApp is a surface over a session with the standing lane open, and
+// nothing in flight: this is the state a person is in when a reminder fires —
+// sitting there, not typing, no turn running.
+func firingApp(t *testing.T) (*app, *taskFake, tea.Cmd) {
+	t.Helper()
+	agent := &taskFake{
+		fakeAgent: &fakeAgent{model: "m"},
+		updates:   make(chan session.Event, 8),
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 24
+	cmd := a.watchTasks()
+	if cmd == nil {
+		t.Fatal("the surface did not open the standing lane")
+	}
+	return a, agent, cmd
+}
+
+// A FIRING BETWEEN TURNS IS DRAWN AT ONCE, in the shape the manual promises:
+// `◦ <words> · said: <text>`.
+func TestAFiringOffTheStandingLaneIsDrawnInTheConversation(t *testing.T) {
+	a, agent, cmd := firingApp(t)
+	if a.state != stateIdle {
+		t.Fatalf("this surface is mid-turn (%v); the point is that nothing is running", a.state)
+	}
+	agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Item:   standItem(),
+		Update: "fired",
+		Text:   "the standup note is in notes/standup.md",
+	}}
+	drive(t, a, runCmd(cmd)...)
+
+	want := standWaitGlyph + " every Monday at 9, post the · said: the standup note is in notes/standup.md"
+	if body := standText(a); !strings.Contains(body, want) {
+		t.Fatalf("the firing was never drawn.\nwant a row %q\ngot:\n%s", want, body)
+	}
+}
+
+// AND A RUN THAT STOPPED ON SOMEBODY WEARS THE ACCENT, on the same lane and
+// with no turn to carry it either.
+func TestAFiringThatNeedsSomebodyIsDrawnWithTheAskGlyph(t *testing.T) {
+	a, agent, cmd := firingApp(t)
+	agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Item:   standItem(),
+		Update: "needs-you",
+		Text:   "the fix touches migrations",
+	}}
+	drive(t, a, runCmd(cmd)...)
+
+	want := homeAskGlyph + " every Monday at 9, post the · needs your look: the fix touches migrations"
+	if body := standText(a); !strings.Contains(body, want) {
+		t.Fatalf("the firing was never drawn.\nwant a row %q\ngot:\n%s", want, body)
+	}
+}
+
+// THE FOLD IS DRAWN ON OPEN, one row per thing that was waiting. The engine
+// hands them to the first subscriber of the lane ([session.Agent.TaskUpdates]),
+// so from this side they are simply the first thing that arrives on it.
+func TestWhatFiredWhileTheWindowWasShutIsDrawnWhenTheLaneOpens(t *testing.T) {
+	a, agent, cmd := firingApp(t)
+	for _, waiting := range []struct{ words, update, text string }{
+		{"tell me when CI goes red", "fired", "the last run on main failed"},
+		{"keep main green", "needs-you", "the fix touches migrations"},
+	} {
+		item := standItem()
+		item.Words = waiting.words
+		agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+			Item: item, Update: waiting.update, Text: waiting.text,
+		}}
+	}
+	drive(t, a, runCmd(cmd)...)
+
+	body := standText(a)
+	for _, want := range []string{
+		standWaitGlyph + " tell me when CI goes red · said: the last run on main failed",
+		homeAskGlyph + " keep main green · needs your look: the fix touches migrations",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the fold is missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// THE LANE KEEPS PUMPING. A conversation an item fires into twice draws two
+// rows, or the second reminder of the day is one nobody is ever told about.
+func TestTheStandingLaneRearmsAfterAFiring(t *testing.T) {
+	a, agent, cmd := firingApp(t)
+	for _, text := range []string{"the first thing it said", "the second thing it said"} {
+		agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+			Item: standItem(), Update: "fired", Text: text,
+		}}
+	}
+	drive(t, a, runCmd(cmd)...)
+
+	body := standText(a)
+	for _, said := range []string{"the first thing it said", "the second thing it said"} {
+		if !strings.Contains(body, said) {
+			t.Fatalf("the lane stopped before %q:\n%s", said, body)
+		}
+	}
+}

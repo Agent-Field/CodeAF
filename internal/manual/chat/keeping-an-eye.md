@@ -50,9 +50,32 @@ So a reminder set from home while you are working in a chat in the same window
 arrives **in the chat you are working in**. Nothing is ever delivered only into
 the `ask here` pane, and nothing is ever left in a file no screen reads.
 
-`◦ remind me at 6 to leave: time to leave` is the same line on every one of those
-roads. There is no phone, no email and no desktop notification — see the last
-section of this page.
+**What is drawn, and when.** In whichever chat it reaches, a firing draws one dim
+row of its own:
+
+```
+◦ remind me at 6 to leave · said: time to leave
+▲ keep main green · needs your look: the fix touches migrations
+```
+
+Live — roads 1 and 2, a chat that is open — the row is drawn **the moment the
+firing arrives**. It does not wait for the chat to answer it, and it does not
+wait for you to type: it appears while you are sitting there. The chat is woken
+by the same firing, so a reply usually follows underneath a few seconds later,
+and that reply is an ordinary turn you can read, scroll and interrupt.
+
+Waiting — roads 3 and 4, nothing was open — the rows are drawn **when you open
+the conversation**, one for each thing that was waiting, oldest first, before
+anything you type. The chat is also handed the same news as one `while you were
+away` note so it can answer questions about it.
+
+The row leads with your own sentence cut to its first six words, so
+`remind me in 1 minute to drink water` draws as
+`◦ remind me in 1 minute to · said: 💧 Time to drink water!`. The whole sentence
+is in the transcript, and on the item's own row on home.
+
+There is no phone, no email and no desktop notification — see the last section of
+this page.
 
 ## Why did it run date before setting the reminder — it knows the clock now
 
@@ -343,6 +366,37 @@ Nothing else is ever removed. Not your items, not the ledgers, not a run that
 said something, landed something, failed, or is waiting for you; not a run whose
 folder never said what it came to; not a folder something still holds open; and
 never a conversation under `~/.aforge/v3/projects/`, whatever its age.
+
+## A reminder fired but nothing showed up in my chat
+
+It should show up, and in this build it does. A firing that reaches an open chat
+draws its own row there as it arrives:
+`◦ remind me at 6 to leave · said: time to leave`. If you were away, the rows are
+drawn when you open the conversation. "Where a reminder arrives" above has the
+whole order and what each road draws.
+
+If a firing really did leave nothing on your screen, these are the ordinary
+reasons, in the order worth checking:
+
+- **It went to a different chat.** A firing reaches *you*, not one window. If the
+  chat that set it up was closed, the line went to another chat of the same
+  project that was open — including one in a different pane or a different
+  terminal. It is never delivered into the `ask here` pane on home.
+- **Nothing was open when it fired**, so it is waiting: home shows the project
+  with `◆ N things since you left`, and the rows appear the moment you open a
+  conversation there.
+- **It has not fired yet.** A window checks its items every five minutes, the
+  first check five minutes after it opened, so a one-minute reminder can arrive
+  up to five minutes late. `/status` shows `keeping an eye on N` while something
+  stands.
+- **The check found nothing to say.** A watch or a rule that looked and found
+  nothing writes nothing at all — that is the design, not a fault. The item's own
+  record on home says when it last ran.
+- **Nothing was ever set up.** A card left unanswered sets nothing up:
+  `the card was left unanswered — nothing was set up`.
+
+Ask "what is standing?" in any chat to see the list, when each last ran, and what
+it came to.
 
 ## Why did I get this?
 

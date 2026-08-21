@@ -2356,9 +2356,13 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.proposeStanding(ev)
 
 	case session.EventStandingUpdate:
-		// One dim line and never two (standing.go). It arrives on this lane and
-		// on the standing one, because an item can fire with a turn open and with
-		// nothing open at all.
+		// One dim line and never two (standing.go), and THE ENGINE IS WHAT MAKES
+		// THAT TRUE: an item being set up, paused or stopped is the direct result
+		// of a `stand` call and comes down the turn's own stream — this case —
+		// while a FIRING arrives when no turn is running and comes down the
+		// standing lane instead (session's tools_standing.go, emitStandingNews
+		// beside emitStandingUpdate). The two are exclusive, so this fold has no
+		// de-dup to do; the task lane below is the case that does.
 		a.standingUpdate(ev)
 
 	case session.EventTaskUpdate:

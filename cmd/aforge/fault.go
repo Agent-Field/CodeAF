@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // faultMessage is what the user reads when aforge could not keep going. It is
@@ -17,24 +19,46 @@ const faultMessage = "aforge hit an internal fault and had to stop. Nothing is l
 // reportFault writes the stack where it is useful and the sentence where it is
 // read, and answers with the process exit code.
 func reportFault(stderr io.Writer, detail string, stack []byte) int {
-	path := chatLogPath()
+	// A fault has no settings to read — it is what is left when the launch did
+	// not get that far — so it names the file the way a launch with no profile
+	// of its own does.
+	path := chatLogPath("")
 	writeFaultLog(path, detail, stack)
 	fmt.Fprintf(stderr, faultMessage, displayPath(path))
 	return 1
 }
 
-func chatLogPath() string {
-	return filepath.Join(filepath.Dir(defaultChatDB()), "chat.log")
+// chatLogPath is the ONE name of the file this binary parks the standard logger
+// in: the v3 surface does it for its whole lifetime so a log line cannot tear
+// through the frame (chatv3.go), and a fault appends its stack to the same file
+// so that "what happened" has one answer.
+//
+// AN EMPTY PROFILE IS THE STATE ROOT AND NEVER THE WORKING DIRECTORY. Most
+// launches set no AFORGE_PROFILE_DIR at all, and joining "chat.log" onto an
+// empty string names it RELATIVE — so every repository a person opened a chat in
+// grew an untracked chat.log, and the surface's own repository band then counted
+// that workspace dirty because of a file the surface itself had written. The
+// fallback is [config.BudgetConfigPath]'s, spelled the same way for the same
+// reason: internal/home is the one place that knows where state lives, and
+// AFORGE_HOME moves this with the rest of it (chatv3_layout.go).
+func chatLogPath(profileDir string) string {
+	if profileDir = strings.TrimSpace(profileDir); profileDir != "" {
+		return filepath.Join(profileDir, "chat.log")
+	}
+	return home.Join("chat.log")
 }
 
 // displayPath prefers the ~ form: it is what the user typed to get here and
 // what they will type to read the log.
 func displayPath(path string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	// `base` and not `home`: internal/home is imported into this file now, and a
+	// local shadowing a package is the kind of thing that reads fine until
+	// somebody adds a line under it.
+	base, err := os.UserHomeDir()
+	if err != nil || base == "" {
 		return path
 	}
-	prefix := home + string(os.PathSeparator)
+	prefix := base + string(os.PathSeparator)
 	if strings.HasPrefix(path, prefix) {
 		return "~/" + filepath.ToSlash(strings.TrimPrefix(path, prefix))
 	}
