@@ -691,6 +691,16 @@ type app struct {
 	// be recognized and dropped.
 	stream <-chan session.Event
 	gen    int
+	// streamStop leaves a turn this surface JOINED rather than started
+	// (switcher.go's [app.joinTurn]): the stream came back from
+	// [session.Agent.Attach], which hands out a stop precisely because a reader
+	// that walks away without one parks a pump for the rest of the turn. It is
+	// nil for the ordinary stream, which a Submit handed over and which the hub
+	// closes at turn end.
+	streamStop func()
+	// stops are the standing lanes this surface holds on the conversation in
+	// front, each with the function that leaves it (switcher.go).
+	stops laneStops
 
 	// lastDelta is when text last arrived, and mdAt when the live reply's
 	// prefix was last promoted to markdown.
@@ -781,6 +791,19 @@ type app struct {
 	askAt     time.Time
 	askWait   time.Duration
 	askPaused bool
+	// askResume is a countdown handed back by a switch: what was LEFT of the
+	// clock on a question this surface stopped drawing when it went to another
+	// conversation, and askResumePaused whether that question was already
+	// paused (switcher.go's [aside]).
+	//
+	// IT IS CONSUMED BY THE NEXT QUESTION TO RAISE ITS CLOCK and by nothing
+	// else ([app.startAskClock]), because a question replayed out of the turn's
+	// backlog is the SAME question the person was looking at — the engine is
+	// still blocked on it — and giving it a fresh ten seconds would be the
+	// surface being generous with somebody's attention rather than honest about
+	// it. Zero is the ordinary case and means "stamp the whole clock".
+	askResume       time.Duration
+	askResumePaused bool
 	// askTaps is where the question's answers were last drawn, in columns and
 	// in rows of the block — the same bargain [app.modelSpan] and the strip's
 	// chips make (taskstrip.go's [stripSpan]): the geometry is recorded at
@@ -1571,7 +1594,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case draftSaveMsg:
-		return a, a.saveDraft()
+		return a, a.saveDraft(msg.file)
 
 	case exportedMsg:
 		a.exportDone(msg)
@@ -4305,8 +4328,20 @@ func (a *app) watchRuns() tea.Cmd {
 		return nil
 	}
 	a.orchGen++
-	a.orchLane = agent.Orchestrations()
+	if leavable, ok := agent.(leavableRunner); ok {
+		a.orchLane, a.stops.runs = leavable.WatchOrchestrations()
+	} else {
+		a.orchLane, a.stops.runs = agent.Orchestrations(), nil
+	}
 	return waitRun(a.orchLane, a.orchGen)
+}
+
+// leavableRunner is the orchestration lane WITH A WAY OUT OF IT (session's
+// orchestrate.go). It is asserted separately from [runAgent] for that
+// interface's own reason, and a nil stop is an agent that can only be abandoned
+// (switcher.go's [laneStops]).
+type leavableRunner interface {
+	WatchOrchestrations() (<-chan session.Event, func())
 }
 
 // waitRun takes one event off the lane and asks for the next.

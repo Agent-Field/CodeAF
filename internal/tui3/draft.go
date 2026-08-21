@@ -57,8 +57,17 @@ var draftOwner = os.Getpid()
 // between words.
 const draftDebounce = 300 * time.Millisecond
 
-// draftSaveMsg is the debounce firing.
-type draftSaveMsg struct{}
+// draftSaveMsg is the debounce firing, carrying THE FILE IT WAS ARMED FOR.
+//
+// THE NAME IS ON THE MESSAGE BECAUSE THE SURFACE CAN HAVE MOVED. A person who
+// types half a sentence and switches to another project inside the three
+// hundred milliseconds of the debounce would otherwise have this tick land on a
+// surface whose box holds the OTHER conversation's words and whose draftFile
+// names the other conversation's file — one sentence written under a name that
+// does not belong to it, and the real one lost. The conversation being left
+// writes its own box on the way out (switcher.go), so a tick that no longer
+// matches has nothing left to do.
+type draftSaveMsg struct{ file string }
 
 // DraftFile is where THIS WINDOW's draft on one workspace lives under dir. The
 // name carries a hash of the path rather than the path itself, because a
@@ -90,12 +99,19 @@ func (a *app) edited() tea.Cmd {
 		return lists
 	}
 	a.draftPending = true
-	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{} }))
+	file := a.draftFile
+	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} }))
 }
 
 // saveDraft writes the box as it stands. The write happens in the command and
 // not in the loop: it is small, but nothing on this surface waits on a disk.
-func (a *app) saveDraft() tea.Cmd {
+func (a *app) saveDraft(file string) tea.Cmd {
+	if file != "" && file != a.draftFile {
+		// Armed by a conversation that is no longer the one on screen. It wrote
+		// its own box on the way out, and writing this one under its name would
+		// be the switch losing a sentence in each direction.
+		return nil
+	}
 	a.draftPending = false
 	if a.draftFile == "" {
 		return nil
