@@ -341,6 +341,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	}
 	if runDir != "" {
 		item.LastRun = runDir
+		writeCameTo(runDir, outcome.Kind)
 	}
 	item.Previous = remember(item.Previous, found.line, outcome)
 
@@ -360,6 +361,22 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
 	return errors.Join(ledgerErr, logErr, t.Store.Save(item))
+}
+
+// writeCameTo leaves [CameTo] in the run folder: one word saying what this run
+// delivered, which is what lets the sweep tell a run that came to nothing from
+// one worth keeping.
+//
+// IT IS BEST EFFORT AND SAYS NOTHING WHEN IT FAILS, and the failure is safe in
+// the one direction that matters: a run with no marker is a run the sweep never
+// touches, so a full disk costs a folder that lives forever rather than one
+// that is removed on a guess.
+func writeCameTo(runDir, kind string) {
+	kind = strings.TrimSpace(kind)
+	if runDir == "" || kind == "" {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(runDir, CameTo), []byte(kind+"\n"), 0o600)
 }
 
 // remember keeps the last few judgments with what came of each, newest first.

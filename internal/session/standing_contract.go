@@ -13,8 +13,9 @@ package session
 //
 // NOTHING STANDS UNTIL THE ANSWER IS YES, AND NOBODY PRESENT MEANS NO. A task
 // proposal approves on silence because its work is bounded and watched; a
-// standing item spends forever, which crosses the consequence gate, so its
-// clock — when there is one — DECLINES on expiry, and an unwatched session
+// standing item spends forever, which crosses the consequence gate. So the card
+// carries NO clock while somebody is there to read it — it waits, and a turn
+// that ends with it unanswered leaves nothing behind — and an unwatched session
 // (a headless run, a firing) cannot ratify one at all. The session lane
 // implements askStanding on that law.
 
@@ -48,7 +49,12 @@ type StandingNotice struct {
 	// should follow a yes with the one-time question: keep checking when no
 	// window is open? The answer comes back in StandingAnswer.KeepWatch.
 	OfferWatch bool
-	// Deadline is when an unanswered card DECLINES. Zero draws no bar.
+	// Deadline is ALWAYS ZERO from this build, and a surface draws no meter
+	// for a zero. A standing card is read by a person, and a card that ended
+	// itself while they were reading it was never answered — so the wait ends
+	// on their answer, on an interrupt, or on the session closing, and never on
+	// a clock (tools_standing.go). The field stays because the event's shape
+	// does.
 	Deadline time.Time
 	// Update is set on EventStandingUpdate: "stood", "fired", "paused",
 	// "resumed", "stopped", "needs-you", "failed". Empty on a proposal.

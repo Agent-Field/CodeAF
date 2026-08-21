@@ -852,3 +852,70 @@ func TestPreviousJudgmentsAreCappedAtTheConstant(t *testing.T) {
 		t.Fatalf("it remembers %d judgments, wanted %d", len(back.Previous), Previous)
 	}
 }
+
+// EVERY RUN SAYS WHAT IT CAME TO, IN THE RUN'S OWN FOLDER. The item's
+// LastOutcome is overwritten by the next firing, so the marker is the only
+// thing on disk that can tell a folder full of runs apart — and it is what the
+// sweep reads before it removes one ([RunCameToNothing]).
+func TestTickWritesWhatEachRunCameTo(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	for _, probe := range []struct {
+		kind   string
+		reaped bool
+	}{
+		{"landed", false},
+		{"needs-you", false},
+		{OutcomeNothing, true},
+	} {
+		store := openStore(t, now)
+		runner := &fakeRunner{outcome: Outcome{Kind: probe.kind, Text: "what it came to"}}
+		nightly := reminder("tonight run the full suite", now)
+		nightly.Does = Action{Kind: ActionTask, Brief: "run it"}
+		made, err := store.Create(nightly)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		mustTick(t, newTicker(store, runner, now))
+
+		if len(runner.runDirs) != 1 {
+			t.Fatalf("%s: %d runs", probe.kind, len(runner.runDirs))
+		}
+		runDir := runner.runDirs[0]
+		raw, err := os.ReadFile(filepath.Join(runDir, CameTo))
+		if err != nil {
+			t.Fatalf("%s: the run left no marker: %v", probe.kind, err)
+		}
+		if strings.TrimSpace(string(raw)) != probe.kind {
+			t.Fatalf("%s: the marker says %q", probe.kind, raw)
+		}
+		if got := RunCameToNothing(runDir); got != probe.reaped {
+			t.Fatalf("%s: RunCameToNothing = %v", probe.kind, got)
+		}
+		back, err := store.Get(made.ID)
+		if err != nil || back.LastRun != runDir {
+			t.Fatalf("%s: the item does not name its run: %+v %v", probe.kind, back, err)
+		}
+	}
+}
+
+// A RUN WITH NO MARKER IS A RUN NOBODY MAY REMOVE. That is every run written
+// before the marker existed, and every run whose disk was full when it ended.
+func TestRunCameToNothingIsFalseWithoutAMarker(t *testing.T) {
+	dir := t.TempDir()
+	if RunCameToNothing(dir) {
+		t.Fatal("a run folder with no marker claims it delivered nothing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, CameTo), []byte("landed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if RunCameToNothing(dir) {
+		t.Fatal("a run that landed claims it delivered nothing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, CameTo), []byte(OutcomeNothing+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !RunCameToNothing(dir) {
+		t.Fatal("a run that delivered nothing was not readable as one")
+	}
+}
