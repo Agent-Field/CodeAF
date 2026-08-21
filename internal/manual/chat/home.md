@@ -12,6 +12,10 @@ looking.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
+The left column is **two tiers**: three projects drawn open — the one this window is in
+first, then the two you spoke in most recently — and every other project folded to one line
+each under a dim `elsewhere` rule, `enter` away from opening in place.
+
 Home is a glance you take, not a place you live. It does nothing on its own: no
 notifications, no charts, no history graphs. You open it, you see where things stand, and
 you leave.
@@ -58,9 +62,8 @@ Once you are in a conversation, `/home` opens the screen whenever you want it.
 
 Two columns, no borders.
 
-**On the left**, each project is a dim heading — the last part of its folder, or `~` for
-your home directory — with one line per session under it. **With nothing typed the list
-hangs from the top of the frame**, as a page you are reading should:
+**On the left**, the projects on this machine, in **two tiers**. **With nothing typed the
+list hangs from the top of the frame**, as a page you are reading should:
 
 ```
   aforge-v2                          Pricing Research
@@ -69,14 +72,26 @@ hangs from the top of the frame**, as a page you are reading should:
   ○ Import Cleanup    3h
   ▸ …3 more, quiet…                  open in another window · waiting on you
                                      can I run: rm -rf build/
-  pricing-api
-  ○ Log Rotation     20d             done  Port the Picker            2h
-                                       the roster resumes cleanly
+  pricing-api · elsewhere
+  ○ Log Rotation     20d             Port the Picker                          2h
+                                       the roster resumes cleanly · 14 files
+  ─ elsewhere ────────────
+  ▸ wisp        6 · ▲ 1 waiting      Fix the nil-map                          3h
+  ▸ site-gen           2 · 3d          the parser handles nested tags
+  ▸ notes              1 · 20d
 ```
 
-Projects are ordered by the one you spoke in most recently — and a project whose only
-content is something *keeping an eye* on it is ordered by the newest thing that has done,
-which is the same question asked of the only rows it has (see below).
+**The top tier is three projects, drawn open** — a dim heading, its conversations under
+it, the things keeping an eye on it, and the quiet fold. They are **the project this
+window is in, first**, and then the two projects you spoke in most recently.
+
+**Everything else folds to one line each**, under a dim rule that says `elsewhere`. That
+rule is the only rule on the screen, and what is under it is not another project — it is
+all the rest of them.
+
+Home was an unorganised wall before this: every project on the machine got a heading and
+four rows, most of them saying `elsewhere`, and the one project you could actually act in
+was wherever recency happened to put it.
 
 The cursor opens on the conversation this window is in, and the preview on the right
 follows it.
@@ -97,6 +112,66 @@ then ones with work running, then ones with work left unfinished, then the rest 
 you last spoke. Quiet ones past the first four collapse into one dim line,
 `…3 more, quiet since 2d`.
 
+**The list never touches the rule above the box.** One blank row always sits between the
+last line of the list and the foot of the frame, in both of home's shapes.
+
+## Why are most projects collapsed on home — the elsewhere block
+
+Home opens **three** projects and folds every other one to a single line under a dim rule:
+
+```
+  ─ elsewhere ────────────
+  ▸ wisp        6 · ▲ 1 waiting
+  ▸ site-gen           2 · 3d
+  ▸ notes              1 · 20d
+```
+
+The three that stay open are **the project this window is in — always first, whatever its
+age — and then the two you spoke in most recently.**
+
+A folded line is the fold mark `▸`, the project's name, **how many conversations it
+holds**, and then the one thing worth knowing about it from out here:
+
+- `6 · ▲ 1 waiting` — a conversation in there is stopped waiting on you;
+- `2 · ● 3 running` — work is running in there right now;
+- `2 · 3d` — nothing is happening, so the line says how long since anybody spoke in it.
+
+**A fold never hides the row this screen exists for.** A project with something waiting or
+something running says so on its one line and **sorts above the quiet ones**; the waiting
+mark is brought up out of the dim, the same way it is on a conversation row.
+
+**At most eight folded lines are drawn**, and the rest go behind one more fold —
+`▸ …4 more` — which opens with the same keys as everything else here.
+
+**And searching sees straight through all of it.** While anything is typed there are no
+tiers at all: every project holding a match is drawn open, under its own heading, wherever
+it lives.
+
+## How do I open a collapsed project — enter on the ▸ line
+
+**Put the cursor on the project's line and press `enter` or `→`.** It opens **in place**:
+the line stays exactly where it is, its mark becomes `▾`, and its conversations, its
+standing items and its quiet fold appear under it — the same shape a project in the top
+tier has. `enter` or `←` folds it away again, and **clicking the line toggles it in one
+press**.
+
+It does not move into the top tier and it does not push a project out of it. Nothing about
+which three projects are open changes.
+
+The projects you open by hand stay open for as long as home is up, including across a
+refresh — folding is something you did, not something the data said.
+
+**The cursor stops on those lines and never on the rule.** `↑`/`↓` walk over
+`─ elsewhere ────` as though it were not there, because it names a section rather than a
+thing.
+
+**`enter` still cannot open another project's conversation** — see "What home will not do
+yet" below. Opening a project here shows you what is in it; the rows inside still say
+`elsewhere · <the project's path>` when you press `enter` on one.
+
+The right-hand pane, while the cursor is on a project's line, shows the project's own
+card: its name, and the folder it lives in.
+
 ## The pane on the right of home — the preview of the session under the cursor
 
 **On the right** is a preview of whatever the cursor is on, and it is read top to bottom
@@ -109,7 +184,8 @@ as bands separated by blank lines — no rules and no borders anywhere:
    hyperlinks. A folder that is no longer on this disk is named and not linked;
 3. what it is **doing right now**, and — if it is stopped on a question — that question, in
    full;
-4. the **work it ran**: up to four tasks, each with what it came to underneath;
+4. the **work it ran** — the tasks, name first, with what each came to underneath (its own
+   section below);
 5. the **last thing said** in it;
 6. a dim line of **facts**: `spent $1.25 · 34k tokens · last active 12m`.
 
@@ -120,9 +196,10 @@ it down the screen.
 
 **It follows the cursor through a search as well.** Walking `↑`/`↓` through filtered matches
 switches the card to each one, so you are choosing between conversations by what they are
-rather than by name alone. It goes **empty** — nothing drawn at all — when the cursor is on
-something that is not a conversation: a project's `…13 more` line, or the
-`start a new conversation` row, which has nothing to preview because that chat does not
+rather than by name alone. On a **folded project's line** it shows that project's card
+instead — the project's name, and the folder it lives in. It goes **empty** — nothing drawn
+at all — when the cursor is on something that is neither: a project's `…13 more` line, or
+the `start a new conversation` row, which has nothing to preview because that chat does not
 exist yet.
 
 A frame too short for all of that drops bands from the bottom — the facts go first — and
@@ -161,6 +238,56 @@ nothing standing has no second band at all — not an empty heading.
 
 A frame too short for all three drops whole bands from the bottom — the counting line goes
 first — and never touches the project's name.
+
+## The work on the right of home — what each task came to
+
+The **work band** of the card is the tasks this conversation ran, **name first**, two lines
+each with a blank between them:
+
+```
+Port the Picker                          2h
+  the roster resumes cleanly · 14 files
+
+Fix the nil-map                          3h
+  the parser handles nested tags · 2 files · $0.12
+```
+
+- **The first line is what the task was called**, and how long ago it landed, hard against
+  the right edge.
+- **The second line is what it came to**, indented under the name and clipped to one line —
+  it never wraps. The file count and the cost join it, each **only when it is not zero**.
+
+**A task that is done wears no mark at all.** There is no `✓` and no `done`: on this screen
+a mark means something is *happening*, and done is the absence of one. Every other state
+leads the second line instead, with the glyph it wears everywhere else here:
+
+- `● running · <what it is doing>`
+- `◌ incomplete` — work that was under way when the window went
+- `▲ needs your look · <what it came to>` — brought up out of the dim, because it is asking
+- `✗ failed · <what stopped it>`
+
+## How do I see more tasks on the right — ▸ …5 more tasks
+
+**The band shows three tasks and folds the rest**, saying how many it is holding back:
+
+```
+▸ …5 more tasks
+```
+
+Three ways to open it, and all three fold it again:
+
+- **click the line** — it opens that band alone;
+- **press `m`** with nothing typed — `m` opens **every** folded band on the card at once,
+  and `m` again folds them all. The right column has no cursor of its own, so the key acts
+  on the card rather than on a line. While something *is* typed, `m` is just an `m` going
+  into the box;
+- the opened band says `▾ …5 fewer`, which is the way back.
+
+**The fold always cuts between tasks**, never through one — you will not find a sentence
+under the fold line with nothing above it saying what it was about.
+
+The project's whole history is somewhere else: `ctrl+g` opens the task page, which is the
+record of everything this project has ever run.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
@@ -251,9 +378,9 @@ conversation you were in is untouched.
 ## What home will not do yet — opening another project's work
 
 **`enter` only opens sessions of the project this window is in.** Every other project is
-shown, and its heading carries a dim `elsewhere` to say so. Pressing `enter` on one of its
-rows opens nothing and says `elsewhere · <the project's path>` — the path to start aforge
-in. **That path is clickable**, so you can open the folder from here even though the
+shown — an open one carries a dim ` · elsewhere` on its heading, and the folded ones sit
+under the `─ elsewhere ────` rule — and pressing `enter` on one of their rows opens nothing
+and says `elsewhere · <the project's path>` — the path to start aforge in. **That path is clickable**, so you can open the folder from here even though the
 conversation cannot be; the "what is on the screen" page has which terminals do that.
 
 This is a limit and not a bug. A window's approval rules, its crew, its spend ceiling and
@@ -389,8 +516,10 @@ does applies. On a surface with no fresh-session seam it refuses in `/new`'s own
 
 ## How do I see the collapsed sessions — …13 more
 
-A project shows its first four conversations and folds the rest into one dim line,
-`…13 more, quiet since 1d`, with a `▸` in front of it.
+A project **that home is drawing open** shows its first four conversations and folds the
+rest into one dim line, `…13 more, quiet since 1d`, with a `▸` in front of it. (A project
+folded to a single line under the `─ elsewhere ────` rule is a different fold, one rung up
+— "Why are most projects collapsed on home" is that one.)
 
 **That line is a door.** Put the cursor on it and press `enter` or `→` and the project opens
 in place; the line becomes `▾ …13 fewer`, and `enter` or `←` folds it away again. `←` on any
