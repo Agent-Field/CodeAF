@@ -465,6 +465,21 @@ where you see it without opening the window it is in. The row wears `▲`, its r
 exactly `waiting on you`, and **it sorts to the top of its project** — above work that is
 running, above everything you spoke in more recently.
 
+**Five things count as being asked**, and they are one list so that no window can say
+`working` about a session that is really stopped:
+
+- an **approval question** — a tool call held at the gate;
+- a **connect offer** — a service it wants to sign you in to;
+- a **sub-harness offer** — a saved shape it wants to hand the work to;
+- a **task proposal** waiting for your yes;
+- an **adaptive run out of fuel**, parked at its gate until you top it up, finish on what
+  is done, or stop it.
+
+The run is the one that used to be missing: a run that had spent its tank read as `working`
+to every other window on the machine, which is the one thing this row must never do. It now
+reads `waiting on you` like the rest, and the line beside it is the gate's own — `out of
+fuel · $2.00 of $2.00`.
+
 The right column then shows the one line it is stopped on, and it is the only thing on
 that pane that is not dim: everything else there is a fact about what happened, and this
 is a thing somebody has to do. A session that gave no words for what it is waiting on
