@@ -2355,7 +2355,7 @@ func TestAFoldedProjectSurfacesAStandingItemThatIsFiring(t *testing.T) {
 	a.width, a.height = 100, 40
 	(&standBand{
 		items:   []standing.Item{bandItem("run", "check the deploy", "/tmp/eps", standing.WhenEvery, "every 20 minutes")},
-		running: map[string]bool{"run": true},
+		running: map[string]standing.RunningMark{"run": {What: standing.RunningFiring, Since: time.Now()}},
 	}).wire(a)
 	a.openHome()
 

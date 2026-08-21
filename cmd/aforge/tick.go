@@ -19,16 +19,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
-
-// tickWall is how long one pass may take. It is the same 120 seconds v1's wake
-// allowed itself: long enough for a handful of probes and a small firing, short
-// enough that a timer never has two of itself alive.
-const tickWall = 120 * time.Second
 
 func runTick(args []string) error {
 	if len(args) > 0 {
@@ -42,7 +36,7 @@ func runTick(args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), tickWall)
+	ctx, cancel := context.WithTimeout(context.Background(), standing.TickWindow)
 	defer cancel()
 	if _, err := ticker.Tick(ctx); err != nil {
 		if errors.Is(err, standing.ErrHeld) {

@@ -499,15 +499,21 @@ type StandingSeam struct {
 	// Nil is a home where `p` and `s` say the change cannot be made here.
 	Save func(item standing.Item) error
 
-	// Running reports whether one item is FIRING AT THIS INSTANT, by id. It is
+	// Running reports whether some process is CHECKING OR FIRING one item at
+	// this instant, by id, and what it is doing ([standing.RunningMark]). It is
 	// separate from the item document because it is not a fact the document
-	// holds — a run is in flight in a process, and the store's own contract is
-	// deliberately silent about it.
+	// holds: the pass may be happening in another window, or in the operating
+	// system's timer with no window open at all, and what says so is a marker
+	// the store writes and doubts (internal/standing's running.go).
+	//
+	// IT ANSWERS THE MARK AND NOT A BOOL because the card says which half of a
+	// pass it caught and how long ago it started — `● checking now · since 4s`
+	// — and a surface that were handed only a yes would have to invent both.
 	//
 	// Nil answers no for everything, and a home where no row ever wears `●` is
 	// honest: the glyph is a claim about right now, and a surface with no way to
 	// ask must not make it.
-	Running func(id string) bool
+	Running func(id string) (standing.RunningMark, bool)
 
 	// Watch is what /status prints under `keeping watch`, derived and never
 	// asserted ([standing.WatchStatus]). The bool is whether there is an answer

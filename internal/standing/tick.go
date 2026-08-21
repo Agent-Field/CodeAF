@@ -126,6 +126,20 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		}
 	}
 
+	// THE MARKER GOES UP BEFORE THE LOOK AND COMES DOWN WHEN THIS ITEM'S PASS
+	// ENDS, whatever the pass came to — a firing, a quiet check, an error, or
+	// nothing at all. It is raised HERE and not at the top of the method because
+	// the three rails above are a decision not to look: an item that was skipped
+	// for its budget was never in anybody's hands, and saying otherwise would be
+	// the same dishonesty as writing LastChecked for a check that never happened.
+	//
+	// The defer is the only thing that takes it down in this process, so every
+	// road out of the walk below — including a panic climbing through — leaves
+	// the item unmarked (running.go says what happens to a marker whose process
+	// never got that far).
+	t.Store.markRunning(item.ID, RunningChecking)
+	defer t.Store.clearRunning(item.ID)
+
 	found, err := t.look(ctx, &item, now)
 	if err != nil {
 		return err
@@ -308,6 +322,10 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	if t.Runner == nil {
 		return errors.New("there is nothing in this build to run it with")
 	}
+	// The look said yes, so the marker stops saying "checking" and starts saying
+	// "firing". [Ticker.one] raised it and [Ticker.one] takes it down; this is
+	// the same marker changing its mind, not a second one.
+	t.Store.markRunning(item.ID, RunningFiring)
 	var (
 		outcome Outcome
 		runDir  string

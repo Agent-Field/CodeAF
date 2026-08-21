@@ -80,6 +80,17 @@ const Schema = 1
 // does. It is the cadence the ratification card quotes for "checked every …".
 const Interval = 5 * time.Minute
 
+// TickWindow bounds ONE pass, wherever the pass is run from. It is generous for
+// a pass that found nothing (a stat per item) and short enough that a wedged
+// probe cannot hold the store's lock against every other window on the machine.
+//
+// IT IS ONE NUMBER BECAUSE IT IS ONE QUESTION. A window's own goroutine and
+// `aforge tick` each used to name their own 120 seconds, and [Store.Running]
+// needs a third reading of the same figure — how long a pass may last is how
+// long a marker may be believed. Three copies of a ceiling is three chances for
+// one of them to move.
+const TickWindow = 120 * time.Second
+
 // RunKeep is how long a run that delivered nothing is kept before the sweep
 // reaps it. A run that delivered something — a note, a task landing, a
 // needs-your-look — is kept like any session.
@@ -317,8 +328,9 @@ func (it Item) Validate() error {
 }
 
 // Glyph is the one character a row leads with, decided here so every surface
-// agrees: ▲ needs you, ● firing now, ◦ waiting for its time, ∙ paused or
-// retired. Running is the store's knowledge, not the item's, so it is passed.
+// agrees: ▲ needs you, ● a pass has it in its hands right now — checking it or
+// firing it — ◦ waiting for its time, ∙ paused or retired. Running is the
+// store's knowledge and not the item's, so it is passed ([Store.Running]).
 func (it Item) Glyph(running bool) string {
 	switch {
 	case it.NeedsPerson != "":
@@ -330,6 +342,36 @@ func (it Item) Glyph(running bool) string {
 	}
 	return "◦"
 }
+
+// ── firing now: the one fact that is not in the document ────────────────────
+
+// RunningMark is what a pass leaves behind while it has one item in its hands:
+// which process is doing it, since when, and which half of a pass it is in. It
+// is the answer [Store.Running] gives and the whole of what running.go writes.
+//
+// IT IS A CLAIM ABOUT NOW AND IT IS ALWAYS DOUBTED. A process that was killed
+// mid-firing leaves its marker behind, so every reader treats a dead pid or an
+// age past [TickWindow] as no marker at all (running.go's markLive).
+type RunningMark struct {
+	PID   int       `json:"pid"`
+	Since time.Time `json:"since"`
+	// What is [RunningChecking] or [RunningFiring]. A surface says it in those
+	// words — "checking now", "firing now" — so it is the person's vocabulary
+	// and not a state name.
+	What string `json:"what"`
+}
+
+// The two things a pass can be doing to one item, and the whole of what a
+// marker's What may say. Checking is the look — a probe, a fingerprint, the
+// sentinel's yes-or-no; firing is the work that follows a yes.
+const (
+	RunningChecking = "checking"
+	RunningFiring   = "firing"
+)
+
+// RunningFile is the marker's name inside the item's own folder
+// ([Store.RunningPath]).
+const RunningFile = "running"
 
 // ── the store ───────────────────────────────────────────────────────────────
 

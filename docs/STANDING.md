@@ -1,5 +1,12 @@
 # Standing goals — recognition, ratification, and ambient presence
 
+*This is the v1-era design doc, and it is the ANCESTOR rather than the account:
+what v3 built is docs/AMBIENT.md, and where the two disagree AMBIENT.md and the
+code are right. Three decisions below have been overtaken by what shipped and
+say so where they stand — the card's answers (Decision 2), the ambient rail
+(Decision 3), and probation (Decision 5). Everything else here still holds,
+which is why it is left as written.*
+
 M3's mechanism is settled (ARCHITECTURE.md Decision 5: watches, sentinels,
 rails). This document settles its *interface*, because the interface is the
 feature: a standing responsibility you have to ceremonially declare is one
@@ -51,6 +58,18 @@ option pattern becomes available to *every* compiler askback (the generic
 "meta-prompting" surface — questions arrive with choices whenever choices
 are enumerable, because picking beats composing).
 
+**What shipped (v3):** the card is right, the words moved, and the third chip is
+not always there. The answers are `1 yes, set it up`, `2 change when` and
+`3 once, not standing`, with esc as the decline — and **a one-off reminder
+offers only the first two**, because "once, not standing" said of a thing that
+already fires once and retires is a chip that does nothing. `change when` is
+never one of the engine's answers: it opens the box for the person's own
+correction, and the hint under the card names exactly the keys the card drew
+(`1 yes · 2 change when · esc no`). The model is also told the clock — a `Now:`
+line, refreshed inside a live session, plus `when.in` for a distance from right
+now — and a moment already past is refused with the time it is, never moved on
+to tomorrow.
+
 ## Decision 3 — Ambient presence: felt, not seen
 
 Standing goals are furniture, not conversation. Apple's ambient rule:
@@ -59,6 +78,17 @@ visible exactly when relevant, otherwise one quiet line.
 - The rail gains a **standing** section above tasks: one dim line per
   charter — `⏱ pr-watch · last fired 2h · 3 today`. Breathing only while a
   sentinel is evaluating or a firing is active.
+
+  **What shipped (v3):** the place is HOME and not a rail — one row per item
+  under its own project, `▲` needs you, `●` a pass has it in its hands right
+  now, `◦` waiting for its time, `∙` paused or stopped — plus one status-line
+  segment, `keeping an eye on N`, still while nothing runs and turning while
+  something does. The breathing is real ACROSS PROCESSES rather than local to
+  the window doing the work: a pass writes `standing/<id>/running` (its process
+  id, when it started, and `checking` or `firing`) for as long as it holds an
+  item, and any window reads it — `● checking now · since 4s`, `● firing now`.
+  A marker whose process is gone, or older than the 120 s one pass may last, is
+  a leftover and draws nothing.
 - A **firing is an ordinary job**: it splices with `origin: trigger`
   pointing at its charter, gets a normal card in the thread (dock while
   running, settles in place) — but *charter-born cards land in the thread
@@ -74,6 +104,14 @@ visible exactly when relevant, otherwise one quiet line.
   cost, pause / retire / edit-cadence as options. `/standing` lists; the
   card is the editor.
 
+  **What shipped (v3):** all of it except the slash command, which is not
+  needed — asking "what is standing?" in any chat lists them, and home's own
+  rows take `p` to pause and `s` to stop. There is one more place a person can
+  say it from: `ask here` on home opens a real exchange whose record is kept
+  under the standing root, it OUTLIVES the screen it was asked on, several can
+  be alive at once, and it is filed only once it has settled, been seen, and the
+  cursor has left it (AMBIENT.md Part 5).
+
 ## Decision 4 — The system may propose, through the same door
 
 The retrospective already detects recurring asks. A recurring pattern
@@ -85,7 +123,15 @@ proposal is a notebook fact and is not re-proposed). This is 3.6's
 "standing goals become learned" landing through the only legitimate gate:
 the user's explicit yes.
 
-## Decision 5 — Autonomy is earned after ratification
+## Decision 5 — Autonomy is earned after ratification (SUPERSEDED)
+
+*Not built, and deliberately: v3's law is **rules are the tenure**. A firing runs
+under the rules the person has already banked, with nobody to ask; anything that
+would have asked stops the run as `needs your look` and the item says so. There
+are no probation counters, no tenure threshold and no `AFORGE_TENURE_AFTER` —
+counting three green firings would have been a second permission system beside
+the one a person actually built by answering consent cards. The rest of this
+section is kept as the v1 reasoning it was.*
 
 Ratifying a charter authorizes the standing responsibility, not unattended
 execution on day one. Every new charter begins on **probation**. When its
