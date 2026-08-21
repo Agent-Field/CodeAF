@@ -305,6 +305,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how much has this conversation cost on home", "home"},
 		{"is the ambient side off", "home"},
 		{"how many times did my watch run this week", "keeping-an-eye"},
+		// `●` used to mean only "firing", and only inside the one window doing
+		// it. It is now a marker on disk that every window reads, so a person
+		// can meet the dot without having started anything themselves.
+		{"why does my watch show a filled dot right now", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
