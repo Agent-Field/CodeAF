@@ -79,3 +79,53 @@ func TestCapacityOptionsReadsSettledLeavesByModelAndHonorsSwarm(t *testing.T) {
 		t.Fatalf("capacity options = %+v, want 8 samples at .5", got)
 	}
 }
+
+func TestMeasuredCostGatesOnEvidenceAndRanksBySize(t *testing.T) {
+	// Without measured evidence the fold offers no prediction: the caller must
+	// leave the order it was handed, so ok is false.
+	if cost, ok := MeasuredCost(plan.Node{Size: plan.SizeOversized}, plan.Options{}); ok || cost != 0 {
+		t.Fatalf("no evidence predicted cost=%v ok=%t, want 0/false", cost, ok)
+	}
+	if cost, ok := MeasuredCost(plan.Node{Size: plan.SizeOversized}, plan.Options{CapacitySamples: 0, CapacityOverrunRate: .9}); ok {
+		t.Fatalf("zero samples predicted a cost: %v", cost)
+	}
+	evidence := plan.Options{CapacitySamples: 8, CapacityOverrunRate: .5}
+	// Cheapest-predicted first means atomic before borderline before oversized.
+	atomic, _ := MeasuredCost(plan.Node{Size: plan.SizeAtomic}, evidence)
+	borderline, _ := MeasuredCost(plan.Node{Size: plan.SizeBorderline}, evidence)
+	oversized, _ := MeasuredCost(plan.Node{Size: plan.SizeOversized}, evidence)
+	if !(atomic < borderline && borderline < oversized) {
+		t.Fatalf("costs not ascending atomic<borderline<oversized: %v %v %v", atomic, borderline, oversized)
+	}
+	// An unsized node carries no evidence of bigness, so it ranks with the
+	// baseline rather than ahead of an oversized one.
+	unsized, _ := MeasuredCost(plan.Node{Size: plan.SizeUnknown}, evidence)
+	if unsized != atomic {
+		t.Fatalf("unsized cost=%v, want the atomic baseline %v", unsized, atomic)
+	}
+}
+
+func TestMeasuredCostTracksTheBaseRate(t *testing.T) {
+	// The measured base rate is what makes the prediction honest: an atomic
+	// node carries exactly it, and a borderline node sits between the atomic
+	// rate and an oversized one.
+	for _, rate := range []float64{0, .25, .5, .9} {
+		opts := plan.Options{CapacitySamples: 1, CapacityOverrunRate: rate}
+		atomic, _ := MeasuredCost(plan.Node{Size: plan.SizeAtomic}, opts)
+		borderline, _ := MeasuredCost(plan.Node{Size: plan.SizeBorderline}, opts)
+		oversized, _ := MeasuredCost(plan.Node{Size: plan.SizeOversized}, opts)
+		if atomic != rate {
+			t.Fatalf("atomic rate=%v want %v", atomic, rate)
+		}
+		if borderline != (1+rate)/2 {
+			t.Fatalf("borderline=%v want %v", borderline, (1+rate)/2)
+		}
+		if oversized != 1 {
+			t.Fatalf("oversized=%v want 1", oversized)
+		}
+		// The relative order holds for every rate: it is the size that orders.
+		if !(atomic <= borderline && borderline <= oversized) {
+			t.Fatalf("order broke at rate %v: %v %v %v", rate, atomic, borderline, oversized)
+		}
+	}
+}
