@@ -217,6 +217,42 @@ func TestTheProjectCardListsWhatIsKeepingAnEyeOnTheProject(t *testing.T) {
 	}
 }
 
+// AND THE BAND ENDS WITH WHAT THEY ALL DID THIS WEEK — one line about the whole
+// band, below the fold, because the count includes the items the fold hides.
+func TestTheProjectCardCountsWhatItsWatchesDidThisWeek(t *testing.T) {
+	a := projectCardApp(t)
+	world := projectCardWorld(projectCardRowOf("s1", "pricing research", time.Hour, session.TaskRollup{}))
+	a.home.items = map[string][]StandingItemView{"/buckets/alpha": {
+		{Item: standing.Item{ID: "i1", Words: "check the deploy", Workspace: "/w/alpha",
+			When: standing.When{Kind: standing.WhenEvery, Words: "every morning"}, Status: standing.StatusActive}},
+		{Item: standing.Item{ID: "i2", Words: "remind me on Fridays", Workspace: "/w/alpha",
+			When: standing.When{Kind: standing.WhenEvery, Words: "Fridays"}, Status: standing.StatusActive}},
+	}}
+	ctx := projectCardCtx(a, world, 50)
+
+	// A SURFACE THAT CANNOT ASK THE LEDGER DRAWS NO SUCH LINE.
+	rows := projectCardPlain(drawProjectStandingBand(a, ctx))
+	if strings.Contains(strings.Join(rows, "\n"), homeWeekWord) {
+		t.Fatalf("a surface with no ledger reader drew a weekly line:\n%s", strings.Join(rows, "\n"))
+	}
+
+	a.stands.Runs = func(time.Time) map[string]standing.Spend {
+		return map[string]standing.Spend{
+			"i1": {Fired: 3, USD: 0.04},
+			"i2": {Fired: 1, USD: 0.02},
+			// Another project's item, which this card must not add in.
+			"i9": {Fired: 40, USD: 9},
+		}
+	}
+	rows = projectCardPlain(drawProjectStandingBand(a, ctx))
+	if len(rows) == 0 {
+		t.Fatal("the band drew nothing")
+	}
+	if want := "4 runs this week · $0.06"; rows[len(rows)-1] != want {
+		t.Fatalf("the last row of the band is %q, want %q", rows[len(rows)-1], want)
+	}
+}
+
 // THE FACTS LINE IS ONE LINE, AND EVERY CLAUSE OF IT IS EARNED.
 func TestTheProjectCardCountsWhatTheProjectHasAndOmitsWhatItHasNot(t *testing.T) {
 	a := projectCardApp(t)

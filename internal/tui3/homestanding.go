@@ -88,12 +88,37 @@ const (
 	homeStoppedWhy = "stopped by you"
 	// homeKeepingWord is the status line's segment, with the count after it.
 	homeKeepingWord = " keeping an eye on "
-	// homeWatchLabel is /status's line, and the three things it can say.
+	// homeWatchLabel is /status's line, and the things it can say.
 	homeWatchLabel     = "keeping watch"
 	homeWatchInstalled = "installed"
 	homeWatchWindow    = "while a window is open"
 	homeWatchLastWord  = "last check "
+	// homeWatchNobody is the state /status could not say before: the ambient
+	// side is here and NOTHING IS RUNNING THE CHECKS — no OS timer, and no
+	// window keeping time either. See [app.watchLine] for why it is not the
+	// word "off" and why it is not silence.
+	homeWatchNobody = "nothing is checking"
+	// homeWatchStart is the tail on that line when the person has never been
+	// asked about the timer, and it is the move that starts the whole thing: the
+	// first standing item is what raises the one-time offer
+	// (internal/session's standingMayOfferWatch).
+	homeWatchStart = ` · say "remind me…" to start`
+	// homeWatchSaidNo is the tail when they HAVE been asked and said no. They
+	// are never asked again (the marker under the store root), so the honest
+	// tail is what they chose rather than an invitation to choose it again.
+	homeWatchSaidNo = " · you said not to check with no window open"
+	// homeRanWord and homeRunsWord are the weekly line on an item's card and on
+	// a project's, and they are two spellings on purpose: a card about ONE thing
+	// says what it did, a card about a project counts what its things did.
+	homeRanWord  = "ran "
+	homeWeekWord = " this week"
 )
+
+// homeWeek is how far back `this week` reaches on a card: the last seven days
+// of the ledger, counted from the reading's own clock rather than from a
+// calendar Monday — a person looking at a card on Monday morning is asking what
+// has been happening lately, not what has happened since breakfast.
+const homeWeek = 7 * 24 * time.Hour
 
 // StandingItemView is one item as a row or a card needs it: the document, plus
 // the two facts the document does not hold.
@@ -212,6 +237,26 @@ func standRank(view StandingItemView) int {
 // is exactly as urgent as a conversation wearing it.
 func standHot(view StandingItemView) bool {
 	return view.Item.NeedsPerson != "" || view.Running
+}
+
+// standCounts is one project's items said in the two words a folded project
+// line can carry: how many need somebody, and how many are firing right now.
+//
+// IT IS [standHot]'S OWN PAIR OF FACTS, counted rather than tested, so a project
+// whose only urgent thing is an ITEM sorts and reads exactly like one whose
+// urgent thing is a conversation. Anything else about an item — its cadence,
+// its news mark, when it last went off — is on the item's own row and belongs
+// nowhere near a line standing for a whole project.
+func standCounts(views []StandingItemView) (waiting, running int) {
+	for _, view := range views {
+		switch {
+		case view.Item.NeedsPerson != "":
+			waiting++
+		case view.Running:
+			running++
+		}
+	}
+	return waiting, running
 }
 
 // standSplit divides a project's items into the ones drawn and the ones counted.
@@ -402,6 +447,7 @@ func standFoldWord(count int, folded bool) string {
 //	last went off Mon · the weekly update is in notes/week-34.md
 //
 //	4 runs · spent $0.08
+//	ran 3 times this week · $0.04
 //
 //	enter open where it was asked · p pause · s stop
 //
@@ -450,8 +496,16 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 	}
 	bands = append(bands, state)
 
+	// THE LIFETIME FIGURES, AND THEN THE WEEK. The first is what the item's own
+	// document remembers about itself for as long as it has existed; the second
+	// is the ledger's last seven days, which is the one a person reads to decide
+	// whether a thing is worth keeping. They are two rows and not one line
+	// because they are two different questions with the same units.
 	if facts := standFacts(item); facts != "" {
 		bands = append(bands, []string{pal.dim(fit(facts, width))})
+	}
+	if week := standWeekFacts(a.standWeek(now), []string{item.ID}, true); week != "" {
+		bands = append(bands, []string{pal.dim(fit(week, width))})
 	}
 	bands = append(bands, []string{pal.dim(fit(homeItemActions, width))})
 	return homeBands(bands, room)
@@ -664,32 +718,141 @@ func (a *app) keepingWord() string {
 // watchLine is /status's `keeping watch` fact, derived and never asserted.
 //
 //	keeping watch   installed · last check 4m
-//	keeping watch   while a window is open
+//	keeping watch   while a window is open · last check 4m
+//	keeping watch   nothing is checking · say "remind me…" to start
+//	keeping watch   nothing is checking · you said not to check with no window open
 //
-// WHAT IT WILL NOT SAY IS "off", AND THAT IS DELIBERATE.
-// [standing.WatchStatus] carries whether the OS timer's definition on disk
-// still matches this build, and nothing else — so "installed" and "not
-// installed" are the two things that can be read off it honestly. A machine with
-// no timer is still checked by any window that is open (docs/AMBIENT.md Part 3:
-// a window takes the lock and runs the pass), so that is what the second answer
-// says. A seam that reports it has no answer at all prints NO LINE, which is
-// the honest third state rather than a word invented for it.
+// THE ABSENT STATE AND THE OFF STATE ARE DIFFERENT FACTS, and separating them
+// is the whole of this function. A surface with no standing seam at all — the
+// --host door, a build without the ambient side — cannot know anything about
+// checking, and it prints NO LINE: a capability that cannot work is absent, not
+// broken, and inventing a word for silence would be this screen asserting
+// something it never asked. A surface that HAS the seam can always answer, and
+// a person typing /status about a machine where nothing is keeping time is
+// asking exactly the question the old line could not answer.
+//
+// So the ladder is what is TRUE, in the order it stops being good news:
+//
+//   - the OS timer is installed, so the checking happens with no terminal open
+//     ([standing.WatchStatus] is derived from the definition's own bytes);
+//   - it is not, but this process is running the pass itself
+//     ([StandingSeam.Ticking] — asked, never assumed);
+//   - there is a timer to ask and it could not answer, which is the one state
+//     with nothing honest to say: no line;
+//   - neither, and the honest word for that is that nothing is checking. The
+//     tail says which of the two ways it got here: nobody has been asked about
+//     the timer yet, and arming the first standing item is what raises the
+//     offer; or they were asked and said no, and they are never asked again.
+//
+// It is not spelled "off" because nothing was switched off: the items are still
+// there, still due, and the next window that opens will check them.
 func (a *app) watchLine() (string, bool) {
-	if a.stands.Watch == nil {
+	if !a.standingHere() {
 		return "", false
 	}
-	status, ok := a.stands.Watch()
-	if !ok {
-		return "", false
+	status, known := standing.WatchStatus{}, false
+	if a.stands.Watch != nil {
+		status, known = a.stands.Watch()
 	}
-	word := homeWatchWindow
-	if status.Installed {
+	ticking := a.stands.Ticking != nil && a.stands.Ticking()
+	word := ""
+	switch {
+	case known && status.Installed:
 		word = homeWatchInstalled
+	case ticking:
+		// True whatever the timer turns out to be: this process is running the
+		// pass, so the checks are happening while this window is up.
+		word = homeWatchWindow
+	case a.stands.Watch != nil && !known:
+		// THERE IS A TIMER TO ASK AND IT COULD NOT ANSWER. Nothing here knows
+		// whether it is installed, and "nothing is checking" is a claim, not an
+		// absence — so this is the one case that prints no line at all.
+		return "", false
+	default:
+		word = homeWatchNobody + a.watchTail()
 	}
 	if age := since(status.LastWake); age != "" {
 		word += " · " + homeWatchLastWord + age
 	}
 	return word, true
+}
+
+// standingHere reports that this surface has an ambient side at all. It is the
+// one test every reader of the seam makes ([app.standItems], [app.keepingCount]
+// and [app.readStandBands] all make it about Items), said once so /status and
+// the band can never disagree about whether the thing exists.
+func (a *app) standingHere() bool {
+	return a.stands.Items != nil || a.stands.Watch != nil || a.stands.Ticking != nil
+}
+
+// watchTail is why nothing is checking, in the person's own terms. A seam that
+// cannot say whether the offer was ever made says neither thing — the sentence
+// is already true without a tail.
+func (a *app) watchTail() string {
+	if a.stands.WatchAsked == nil {
+		return ""
+	}
+	keep, asked := a.stands.WatchAsked()
+	switch {
+	case !asked:
+		return homeWatchStart
+	case !keep:
+		return homeWatchSaidNo
+	}
+	// They said yes and the timer is not installed: the install did not take,
+	// or something removed it. Nothing here can tell those apart, and the
+	// sentence above already says the part that matters.
+	return ""
+}
+
+// ── what the week's ledger says ─────────────────────────────────────────────
+
+// standWeek is what everything standing has done in the last [homeWeek], by
+// item id: how many times it fired, and what that cost.
+//
+// IT IS ONE READING FOR THE WHOLE SCREEN, and it is cached for the same reason
+// [app.keepingCount] caches its own: a card is drawn on every frame the cursor
+// rests on a row, and the ledger is a walk of a week of files. One walk answers
+// every card, because the seam answers per item in one call
+// ([StandingSeam.Runs]) — so this is a map lookup after the first draw, and the
+// disk is touched on home's own beat and never on the paint clock.
+func (a *app) standWeek(now time.Time) map[string]standing.Spend {
+	if a.stands.Runs == nil {
+		return nil
+	}
+	if !a.home.weekAt.IsZero() && now.Sub(a.home.weekAt) < keepEvery {
+		return a.home.week
+	}
+	a.home.week, a.home.weekAt = a.stands.Runs(now.Add(-homeWeek)), now
+	return a.home.week
+}
+
+// standWeekFacts is the weekly line for one card, or "" when there is nothing
+// to say. The lead word differs because the two cards are counting different
+// things: an item card says what THAT item did, a project card counts what its
+// items did between them.
+//
+// ZERO DRAWS NOTHING — not `0 runs this week`, not `$0.00` — which is the
+// emptiness law in the same place [standFacts] keeps it for the lifetime
+// figures right above.
+func standWeekFacts(week map[string]standing.Spend, ids []string, one bool) string {
+	var total standing.Spend
+	for _, id := range ids {
+		spend := week[id]
+		total.Fired += spend.Fired
+		total.USD += spend.USD
+	}
+	if total.Fired <= 0 {
+		return ""
+	}
+	line := itoa(total.Fired) + plural(" run", total.Fired) + homeWeekWord
+	if one {
+		line = homeRanWord + itoa(total.Fired) + plural(" time", total.Fired) + homeWeekWord
+	}
+	if total.USD > 0 {
+		line += " · " + dollars(total.USD)
+	}
+	return line
 }
 
 // readStandBands re-reads every project's items into the view, keyed by bucket
