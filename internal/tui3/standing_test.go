@@ -176,6 +176,26 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 		return agent.answered[0].answer
 	}
 
+	// AND THE CARD STAYS IN THE TRANSCRIPT, SETTLED. The block collapses to its
+	// head and its foot, and the foot IS the answer — which is what makes a
+	// conversation read back later say what was decided rather than that
+	// something was once asked.
+	kept, keptAgent, _ := standApp(t)
+	drive(t, kept, streamEventMsg{gen: kept.gen, ev: standProposal(kept, session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+		Deadline: kept.now().Add(30 * time.Second),
+	})})
+	drive(t, kept, key2("1"))
+	if len(keptAgent.answered) != 1 {
+		t.Fatalf("the card was not answered, the engine saw %v", keptAgent.answered)
+	}
+	if kept.stand == nil || !kept.stand.settled() {
+		t.Fatal("the answered card left the transcript")
+	}
+	if page := standText(kept); !strings.Contains(page, standYesWord+" · "+standSetWord) {
+		t.Fatalf("the settled card does not carry the answer and what it came to:\n%s", page)
+	}
+
 	if answer := yes("1"); !answer.Approved || answer.Once || answer.Change != "" {
 		t.Fatalf("1 sent %+v, want a bare approval", answer)
 	}
@@ -335,3 +355,45 @@ func standChipAt(t *testing.T, a *app, want int) (int, int) {
 
 // key2 spells a key the surface's own way, for the digits the chips answer to.
 func key2(s string) tea.KeyPressMsg { return key(s) }
+
+// A CARD WITH NO DEADLINE HAS NO CLOCK AT ALL: no bar, no `ends in`, and no
+// hour of ticking that turns it into `ended · nothing was set up`.
+//
+// The engine holds a watched session's proposal open indefinitely — nobody is
+// in the room to answer it on a thirty-second budget — and a surface that drew a
+// draining bar there would be inventing a deadline, while one that expired the
+// card itself would be a second authority on a clock it does not own.
+func TestACardWithNoDeadlineDrawsNoMeterAndNeverEnds(t *testing.T) {
+	a, agent, tick := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am",
+		CostWords: "about $0.02 a run",
+	})})
+
+	text := standText(a)
+	if strings.Contains(text, standEndsWord) || strings.Contains(text, meterFull) {
+		t.Fatalf("a card with no deadline drew a countdown:\n%s", text)
+	}
+	if strings.Contains(text, taskWaitingWord) {
+		t.Fatalf("a card with no deadline spent a row saying its clock is absent:\n%s", text)
+	}
+	// It is still a question, and it stays one through a minute of frames.
+	if !strings.Contains(text, "[ 1 "+standYesWord+" ]") {
+		t.Fatalf("the card is not asking:\n%s", text)
+	}
+	for i := 0; i < 60; i++ {
+		tick(time.Second)
+		drive(t, a, frameMsg{})
+	}
+	if a.stand.settled() {
+		t.Fatalf("the card ended by itself after a minute: %q", a.stand.verdict)
+	}
+	if after := standText(a); !strings.Contains(after, "[ 1 "+standYesWord+" ]") {
+		t.Fatalf("the card stopped asking after a minute of ticks:\n%s", after)
+	}
+	// And it still answers.
+	drive(t, a, key2("1"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
+		t.Fatalf("a card with no clock could not be answered, the engine saw %v", agent.answered)
+	}
+}
