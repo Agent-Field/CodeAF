@@ -568,6 +568,13 @@ move the caret in the box.
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
 a click on a `…13 more` line toggles it in one press.
 
+**Under 60 columns those two clicks are one.** At phone width home is an inbox and a
+row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
+top row reads `‹ back` and `esc` or a tap on it returns to the list with the cursor where
+it was. The hint line becomes a bar of at most three wide targets — `open · new ·
+ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
+there is no hover on glass. Home's own page has the whole shape.
+
 The top line carries `esc close` on the right. The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`, and the line under it
 changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,

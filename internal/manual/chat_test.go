@@ -309,6 +309,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// it. It is now a marker on disk that every window reads, so a person
 		// can meet the dot without having started anything themselves.
 		{"why does my watch show a filled dot right now", "keeping-an-eye"},
+		// The wave that gave home a phone shape. Three sentences a person types
+		// with the terminal in one hand: what this screen even is at that width,
+		// how to answer another window's question from it, and how to reach a
+		// task without a keyboard.
+		{"how do I use home on my phone", "home"},
+		{"how do I approve a command from my phone", "home"},
+		{"how do I open a task by tapping", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -327,6 +327,9 @@ type homeLine struct {
 	// exchange is doing at this instant, and a copy taken when the line was
 	// built would be a spinner turning beside a state from four seconds ago.
 	ex *homeExchange
+	// note is the phone inbox's `since you left` row — one thing that happened
+	// while you were away — and is nil on every other line (homephone.go).
+	note *homePhoneNote
 	// item is the standing item, for [homeItem], and view carries the two facts
 	// about NOW that the document does not hold (homestanding.go's
 	// [StandingItemView]). They are resolved when the row is built, so a row and
@@ -434,6 +437,19 @@ type homeView struct {
 	// Empty for every other refusal, which name no file.
 	msg     string
 	msgPath string
+
+	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
+	// the inbox, the triage sections somebody folded, the machine's news as the
+	// `since you left` section reads it, and where the action bar landed.
+	phone     bool
+	sheet     homeSheet
+	sheetHits []homeSheetHit
+	sections  map[string]bool
+	inbox     []homePhoneNote
+	inboxAt   time.Time
+	standRoot string
+	bar       []hudSpan
+	barRow    int
 
 	// bandOpen is which list-shaped bands of the right column a person opened,
 	// by band and subject (homebands.go); foldLines is the fold lines painted
@@ -694,7 +710,8 @@ func (h *homeView) build() {
 		h.picked = false
 	}
 	h.lines = h.lines[:0]
-	h.buildWorld()
+	// phone lane: at [tierPhone] the column is an inbox (homephone.go).
+	h.buildFor()
 	// THE CURSOR FOLLOWS THE CONVERSATION AND NOT THE LINE NUMBER. A query typed
 	// one letter at a time, and a rescan that re-sorts around work starting,
 	// both rebuild this list under a cursor — and a cursor that held its
@@ -1494,6 +1511,9 @@ func (l homeLine) stop() bool {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
 		homeProject, homeMoreProjects, homeExchangeRow:
 		return true
+	// phone lane: the inbox's own two stops (homephone.go).
+	case homePhoneNews, homePhoneMore:
+		return true
 	}
 	return false
 }
@@ -1540,6 +1560,10 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	h := &a.home
+	// phone lane: a sheet over the inbox holds the keyboard (homesheet.go).
+	if cmd, took := a.homeSheetKeyFirst(msg); took {
+		return cmd
+	}
 	// AN OPEN ERRAND HOLDS THE KEYBOARD WHILE IT IS FOCUSED, and gives it back on
 	// tab or esc with itself still standing in the right pane (homeexchange.go).
 	// The list underneath is untouched by any of it: it keeps its cursor, its
@@ -1893,14 +1917,31 @@ func (h *homeView) foldItems(dir string, open bool) {
 // are moving it themselves.
 func (h *homeView) rebuild() {
 	h.lines = h.lines[:0]
-	h.buildWorld()
+	// phone lane: at [tierPhone] the column is an inbox (homephone.go).
+	h.buildFor()
 	h.cursor = h.clamp(h.cursor)
+}
+
+// buildFor is which SHAPE the column takes, and it is asked in the two places
+// that fill it ([homeView.build] and [homeView.rebuild]) so the two can never
+// disagree. The phone's inbox is homephone.go's; every wider frame is
+// [homeView.buildWorld]'s, untouched.
+func (h *homeView) buildFor() {
+	if h.phone {
+		h.buildPhone()
+		return
+	}
+	h.buildWorld()
 }
 
 // homeEnter is the one decision this surface makes, and it makes a different
 // one depending on what is in the box.
 func (a *app) homeEnter() tea.Cmd {
 	h := &a.home
+	// phone lane: enter opens the row's card as a sheet (homesheet.go).
+	if cmd, took := a.homePhoneEnter(); took {
+		return cmd
+	}
 	line, ok := h.focusedLine()
 	if !ok {
 		return nil
@@ -2179,6 +2220,11 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if !a.home.open {
 		return nil
 	}
+	// phone lane: the inbox and the sheet resolve their own presses, in one
+	// gesture rather than two (homephone.go).
+	if a.homePhone() {
+		return a.homePhonePress(x, y)
+	}
 	// A CLICK MOVES THE CURSOR, so it is one of the two gestures that can leave
 	// a settled exchange behind ([app.sweepExchanges] is the other half of
 	// [app.homeKey]'s own deferred sweep).
@@ -2346,6 +2392,11 @@ func (a *app) homeHover(x, y int) {
 	if !a.home.open {
 		return
 	}
+	// phone lane: there is no hover on glass, so motion is dropped rather than
+	// hit-tested per cell (homephone.go).
+	if a.homePhone() {
+		return
+	}
 	width, height := a.size()
 	_, hits, _, _ := a.homeFrame(width, height)
 	row, _, inPane := a.homePane(x, y)
@@ -2389,6 +2440,17 @@ func (a *app) homeHover(x, y int) {
 // hover both index what this returned, so a click cannot land on a row the
 // draw did not put there.
 func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
+	// phone lane: under sixty columns this screen is an inbox and a sheet
+	// (homephone.go). THE SHAPE IS SETTLED BEFORE THE FRAME IS DRAWN, so a
+	// terminal dragged across the breakpoint — a phone being rotated — is rebuilt
+	// here, with the cursor kept on whatever row it was on.
+	if phone := layoutTier(width) == tierPhone; phone != a.home.phone {
+		a.home.phone = phone
+		a.home.build()
+	}
+	if a.home.phone {
+		return a.homePhoneFrame(width, height)
+	}
 	pal := a.pal
 	var lines []string
 	var hits []int

@@ -323,12 +323,12 @@ is 60.
 The frame itself clamps to a minimum working size of **8** columns and **1** row. A
 headless boot and a terminal reporting zero size are the same case.
 
-Phone width **reshapes six things and deletes none**. What will not fit is relocated,
+Phone width **reshapes seven things and deletes none**. What will not fit is relocated,
 not truncated away.
 
-## What phone width reshapes: the six
+## What phone width reshapes: the seven
 
-Under 60 columns, six things change shape:
+Under 60 columns, seven things change shape:
 
 1. **The status line becomes a two-row deck**, with a fullscreen status sheet one tap
    away.
@@ -343,6 +343,17 @@ Under 60 columns, six things change shape:
 6. **The consent question becomes a bottom sheet** with full-width answer bands,
    instead of a line of `[y]`/`[n]`/`[a]` targets. Below width **16** the one-line offer
    is used instead of the sheet.
+7. **Home becomes an inbox, a sheet and an action bar.** The column stops being a
+   directory of projects and becomes triage across all of them — `waiting on you`,
+   `running`, `since you left`, three rows each and then `▸ …N more` — with this
+   window's project open under them and every other project folded to one line.
+   `enter`, or a **tap**, opens that row's card as a full-frame sheet whose top row
+   reads `‹ back`; the card's answer chips become full-width answer bands, one per
+   row, that a digit or a tap answers. The hint line under the box becomes one row of
+   at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
+   more` on a sheet. A tap **opens** — there is no second column to preview into, so
+   there is no two-step — and mouse motion is ignored. Below width **24** the plain
+   hint line is drawn instead of the bar.
 
 On top of those six: preview blocks under a pending call are capped at 4 rows instead of
 12; there is no task rail column (that already went at 100); and the legend has already
