@@ -12,8 +12,8 @@ words. Nothing is ever set up without a card you answer.
 
 Say it the way you would say it to a person: "remind me at 6 to leave", "remind
 me on Friday to send the invoice". A card comes up with your own sentence on it,
-when it will fire, and what it costs. Say yes and it stands; say nothing and it
-does **not**.
+when it will fire, and what it costs. Say yes and it stands. The card has **no
+countdown on it** — it waits for you — and nothing is set up until you answer.
 
 A reminder fires once, says one line into this conversation, and retires. Its
 cap is **1 firing a day**, because a moment cannot happen twice.
@@ -46,6 +46,26 @@ carries the last few things it said, so something you have already been told
 about is not raised again every five minutes. When the answer is neither a clear
 yes nor a clear no, aforge treats it as a no and the log says
 `there was no clear answer, so nothing was said`.
+
+## How long do I have to answer the card — the card does not time out
+
+As long as it takes. The card carries **no clock**: no countdown, no bar, and no
+moment when it answers on somebody's behalf. It waits until you press `1` yes,
+`2` change it, or `3` do it once.
+
+That is the opposite of a task proposal's card, which does count down and starts
+the work on silence. A task is bounded work somebody is watching; a standing
+item spends money on its own, at times nobody chose, so silence may never arm
+one.
+
+What ends a card unanswered is the turn ending — `esc`, or the window closing.
+Then **nothing is set up**, and aforge is told exactly that:
+`the card was left unanswered — nothing was set up`. That is not a refusal
+anybody made; it is a card nobody reached.
+
+A session nobody is watching — a headless `--once` run, a task, a firing's own
+run — cannot draw the card at all, and answers
+`nobody is here to say yes — this can only be set up in a conversation`.
 
 ## Every morning, every Monday — routines
 
@@ -116,12 +136,15 @@ whichever window takes the lock first; the others do nothing and say nothing.
 
 For "no terminal open at all", aforge asks **once, ever**, the first time you set
 anything up: keep checking when no window is open? A yes installs an OS user
-timer, and the answer is written down before your machine is touched, so you are
-never asked twice. A no is remembered as a no and never raised again.
+timer that runs `aforge tick` every 5 minutes — a launchd agent on macOS
+(`ai.agentfield.aforge.tick`), a systemd user timer on Linux
+(`aforge-tick.timer`) — and the answer is written down **before** your machine
+is touched, so an install that half-worked is still an install you were asked
+about, and you are never asked twice. A no is remembered as a no and never
+raised again.
 
-**In this build the timer is not installed yet.** The offer is therefore never
-made, and standing items are checked only while a window is open. That is the
-honest state of it; the page will say otherwise when it is true.
+On any other host there is no timer to install, so the offer is never made and
+standing items are checked only while a window is open.
 
 ## How do I stop one?
 
@@ -150,6 +173,45 @@ every aforge screen uses — `▲` needs you, `●` firing now, `◦` waiting fo
 time, `∙` paused or stopped — then your own words, then the cadence in words. A
 project with nothing set up answers `Nothing stands in this project yet.`
 
+## Where is the record of a reminder I made from home
+
+If you set it up from the home screen with `ask here`, the short exchange that
+produced it is a real conversation with a real transcript — home just does not
+list it, so finished errands cannot fill up the screen you typed them at.
+
+The moment something stands, that folder is filed **under the thing it made**:
+
+```
+~/.aforge/v3/standing/<item id>/exchange/transcript.jsonl
+```
+
+and the pane says `kept · this exchange is filed under it`. The item's own
+record points there, so "why did I get this?" opens the exchange that made it,
+the same way an item made in a conversation opens that conversation. Runs of the
+same item are numbered folders beside it, under
+`~/.aforge/v3/standing/<item id>/runs/`.
+
+An errand that came to nothing stays where it was made,
+`~/.aforge/v3/standing/exchanges/<id>/`, until the sweep clears it. See the
+asking-from-home page for the rest of that door.
+
+## What gets cleaned up, and when
+
+Once per launch aforge sweeps its own folders. On the ambient side it removes
+exactly two things, and only after **7 days** with nothing touching them:
+
+- an **errand that came to nothing** — a folder under
+  `~/.aforge/v3/standing/exchanges/` that never became a standing thing and was
+  never continued as a conversation;
+- a **run that delivered nothing** — a firing that said nothing, landed nothing
+  and left nothing waiting for you. Each run writes down what it came to, and
+  only the word `nothing` may be swept.
+
+Nothing else is ever removed. Not your items, not the ledgers, not a run that
+said something, landed something, failed, or is waiting for you; not a run whose
+folder never said what it came to; not a folder something still holds open; and
+never a conversation under `~/.aforge/v3/projects/`, whatever its age.
+
 ## Why did I get this?
 
 Every standing item remembers the conversation that made it, so the answer to
@@ -171,10 +233,11 @@ transcript reads with the same tools as any other conversation.
   run, a task, and a firing's own session all answer
   `nobody is here to say yes — this can only be set up in a conversation`, and
   the tool is not even on the list there.
-- **Silence is a no.** A card nobody answers before its countdown declines, and
-  the answer is `nothing was set up`. This is the opposite of a task proposal,
-  where silence starts the work: a task is bounded work somebody is watching, and
-  a standing item spends money at times nobody chose.
+- **Silence arms nothing.** The card waits with no clock on it, and a turn that
+  ended with it still up leaves nothing behind:
+  `the card was left unanswered — nothing was set up`. This is the opposite of a
+  task proposal, where silence starts the work: a task is bounded work somebody
+  is watching, and a standing item spends money at times nobody chose.
 - **A "do it once" answer sets nothing up.** It answers
   `do it once, now, as an ordinary turn — nothing stands. Nothing was set up.`
   and aforge does the thing in front of you instead.

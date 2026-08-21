@@ -17,17 +17,25 @@ package session
 //     answered; only then is anything created. There is no argument, no phrasing
 //     and no op that arms an item without a yes.
 //
-//   - AN UNANSWERED CARD DECLINES. This is the one place the standing card
-//     parts company with propose_task's, whose silence is a yes (task.go). A
-//     task is bounded work somebody is watching; a standing item spends money on
-//     its own, forever, at times nobody chose — so silence must not arm it. The
-//     countdown is the same setting (task.autoapprove_seconds) because it is the
-//     same person's patience, and zero means no bar and no clock.
+//   - NO CLOCK WHILE SOMEBODY IS THERE. The card is a thing a person reads:
+//     their own sentence, when it would wake, what it would cost. Reading that
+//     takes as long as it takes, and a card that ended itself halfway through
+//     was a card the person watched expire rather than answered. So a WATCHED
+//     session sends NO deadline at all (Notice.Deadline stays zero, and the
+//     surface draws no meter for a zero) and the wait ends on exactly three
+//     things: they answer, the turn is interrupted, or the session closes.
+//
+//   - AND SILENCE STILL ARMS NOTHING. This is where the standing card parts
+//     company with propose_task's, whose silence is a yes (task.go). A task is
+//     bounded work somebody is watching; a standing item spends money on its
+//     own, forever, at times nobody chose. A turn that ended with the card
+//     unanswered therefore leaves NOTHING behind, and the model is told exactly
+//     that rather than a refusal nobody made.
 //
 //   - AN UNWATCHED SESSION CANNOT RATIFY ONE AT ALL. A --once run, a task node,
 //     a firing's own headless session: none of them has anybody to answer, and a
-//     deadline there would be the clock arming an item nobody agreed to. So the
-//     tool refuses in plain words rather than proposing into an empty room.
+//     card drawn into an empty room would be a card only a clock could ever
+//     answer. So the tool refuses in plain words rather than proposing there.
 //     (The door does not even fill Config.Standing for those, so in practice the
 //     tool is absent — this is the belt-and-braces half of the same law.)
 //
@@ -105,6 +113,11 @@ type standingStore interface {
 	Get(id string) (standing.Item, error)
 	ForWorkspace(workspace string) ([]standing.Item, error)
 	Root() string
+	// ExchangeDir is where a home-made item's origin exchange ends up. It is
+	// asked for rather than assembled here for the reason the rest of this
+	// interface exists: every path under the store root is internal/standing's
+	// business, and a second answer to one of them would be a second truth.
+	ExchangeDir(id string) string
 }
 
 // standingItems answers which store this agent writes through: the test's fake
@@ -124,7 +137,7 @@ func (a *Agent) standingItems() standingStore {
 // RECOGNITION rather than mechanics: the tool is useless unless the model
 // notices that an ordinary sentence was a standing one, and nothing else in
 // this build watches for those words.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line into this conversation) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. Nothing stands until they say yes: an unanswered card declines, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line into this conversation) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"What to do: propose a new one, list what stands here, or pause, resume or stop one that already does."},` +
@@ -279,10 +292,11 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		case errors.Is(err, errStandingUnwatched):
 			return "nobody is here to say yes — this can only be set up in a conversation", true, nil
 		case errors.Is(err, errStandingUnanswered):
-			// SILENCE IS A NO AND IT IS SAID AS SILENCE. "They said no" would be
-			// this tool putting a sentence in somebody's mouth that they did not
-			// say, and the model's next line would answer a refusal nobody made.
-			return "nothing was set up: the card went unanswered, so it declined. Say so in one line and leave it there.", false, nil
+			// THE TURN ENDED WITH THE CARD STILL UP, and it is said as exactly
+			// that. "They said no" would be this tool putting a sentence in
+			// somebody's mouth that they did not say, and "it declined on the
+			// clock" would describe a clock this build does not run.
+			return "the card was left unanswered — nothing was set up", false, nil
 		}
 		return "the card was never answered: the turn ended first", true, nil
 	}
@@ -305,6 +319,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// as though something now stands.
 		return "nothing was set up: " + err.Error(), true, nil
 	}
+	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
 	answered := a.standingWatchOffered(notice, answer)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
@@ -508,6 +523,55 @@ func (a *Agent) standingOrigin() standing.Origin {
 	}
 }
 
+// standingAskedFromHome answers whether THIS conversation is an errand said at
+// home — home's `ask here` pane — rather than a project conversation.
+//
+// The only thing that says so is where the transcript sits: `ask here` mints
+// its folder under <standing root>/exchanges/<session id>/ precisely so that
+// home, which lists what is under v3/projects, can never list it (tui3's
+// homeexchange.go). A session file anywhere else is an ordinary conversation.
+func (a *Agent) standingAskedFromHome(store standingStore) bool {
+	transcript := strings.TrimSpace(a.config.SessionFile)
+	if store == nil || transcript == "" {
+		return false
+	}
+	root := strings.TrimSpace(store.Root())
+	if root == "" {
+		return false
+	}
+	return filepath.Clean(filepath.Dir(filepath.Dir(transcript))) ==
+		filepath.Clean(standing.ExchangesRoot(root))
+}
+
+// standingFileTheExchange points a home-made item's origin at where its
+// exchange is ABOUT TO BE, and answers the item as it now reads.
+//
+// THE FOLDER MOVES AND THE ORIGIN NAMES WHERE IT LANDS. An errand's folder is
+// made under exchanges/ and moved under the item the moment something stands
+// ([standing.Store.ExchangeDir]) — the surface does the rename on the "stood"
+// update this call is about to emit — so recording the folder it is leaving
+// would be recording a path that stops existing one instant later, and "why did
+// I get this reminder?" would open nothing.
+//
+// SessionID is untouched: the exchange's own id is still the identity of the
+// conversation that asked, and it is what a live delivery is addressed to
+// (standing_run.go).
+//
+// It is BEST EFFORT on the write. The item already stands — the person answered
+// yes and Create wrote it — so a second write that failed costs the door home
+// opens and never the thing itself; the alternative, failing here, would be a
+// conversation saying nothing was set up when something was.
+func (a *Agent) standingFileTheExchange(store standingStore, item standing.Item) standing.Item {
+	if !a.standingAskedFromHome(store) {
+		return item
+	}
+	filed := store.ExchangeDir(item.ID)
+	item.Origin.Exchange = filed
+	item.Origin.Transcript = filepath.Join(filed, placeTranscript)
+	_ = store.Save(item)
+	return item
+}
+
 // ── the card ────────────────────────────────────────────────────────────────
 
 // The two endings that are NOT an answer, and they are errors rather than a
@@ -519,15 +583,19 @@ var (
 	errStandingUnanswered = errors.New("session: the card went unanswered")
 )
 
-// askStanding emits one proposal and waits for the person, the clock, or the
-// end of the turn.
+// askStanding emits one proposal and waits for the person — for as long as
+// that takes.
 //
-// IT IS [Agent.askTask] WITH THE CLOCK TURNED THE OTHER WAY, and that inversion
-// is the whole point of the file header's second law:
+// IT IS [Agent.askTask] WITH THE CLOCK TAKEN OFF, which is the file header's
+// first law in one function:
 //
-//   - WATCHED, countdown > 0: the deadline is real and DECLINES on expiry.
-//   - WATCHED, countdown 0: no clock at all, and the card draws no bar.
-//   - UNWATCHED: no card, no clock, no item. The caller says so in words.
+//   - WATCHED: no deadline is sent and no timer is started. The card stands
+//     until it is answered, the turn is interrupted, or the session closes.
+//   - UNWATCHED: no card and no item, because there is nobody to answer one.
+//
+// The turn's context is what carries both of the endings that are not an
+// answer: [Agent.Interrupt] and [Agent.Close] each cancel it, so one wait on
+// ctx.Done covers a person who pressed esc and a window that went away.
 func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (StandingAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
@@ -546,33 +614,25 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 		a.standingAnswers = make(map[uint64]chan StandingAnswer, 1)
 	}
 	a.standingAnswers[id] = answers
-	countdown := time.Duration(a.config.TaskAutoApproveSeconds) * time.Second
 	a.mu.Unlock()
 
 	notice.ID = id
-	if countdown > 0 {
-		notice.Deadline = time.Now().Add(countdown)
-	}
+	// SET TO ZERO AND NOT MERELY LEFT ZERO. The field is on the card's shape
+	// and a caller could have filled it; this is the one place the law lives,
+	// so it is applied here rather than trusted upstream.
+	notice.Deadline = time.Time{}
 	card := *notice
 	hub.send(Event{Kind: EventStandingProposal, Tool: "stand", Standing: &card})
 
-	var expiry <-chan time.Time
-	if countdown > 0 {
-		timer := time.NewTimer(countdown)
-		defer timer.Stop()
-		expiry = timer.C
-	}
 	select {
 	case answer := <-answers:
 		return answer, nil
-	case <-expiry:
-		a.forgetStanding(id)
-		// SILENCE IS A NO. Nothing is created, and the caller says so as
-		// silence rather than as a refusal somebody made.
-		return StandingAnswer{}, errStandingUnanswered
 	case <-ctx.Done():
 		a.forgetStanding(id)
-		return StandingAnswer{}, ctx.Err()
+		// THE CARD IS FORGOTTEN AND NOTHING WAS CREATED. The person never
+		// answered, so the model is told that and nothing else — a refusal
+		// reported here would be a sentence nobody said.
+		return StandingAnswer{}, errStandingUnanswered
 	}
 }
 

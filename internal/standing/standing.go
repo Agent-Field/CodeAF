@@ -67,6 +67,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -370,6 +371,17 @@ func (s *Store) RunsDir(id string) string { return filepath.Join(s.ItemDir(id), 
 // ExchangeDir is where a home-made item's origin exchange is kept.
 func (s *Store) ExchangeDir(id string) string { return filepath.Join(s.ItemDir(id), "exchange") }
 
+// ExchangesRoot is where an errand said at home keeps its folder BEFORE
+// anything stands: <root>/exchanges/<session id>/. Home's own `ask here` makes
+// one there so that home never lists it, the session lane reads it to know that
+// a conversation IS an errand, and the sweep reaps the ones that came to
+// nothing after [RunKeep].
+//
+// It takes the root rather than hanging off the store because two of those
+// three callers hold a path and not a store, and opening one to ask a question
+// about a directory would create the directory.
+func ExchangesRoot(root string) string { return filepath.Join(root, "exchanges") }
+
 // LogPath is the item's own one-line-per-event log: checks that found
 // something, firings, pauses. Never a line per quiet check.
 func (s *Store) LogPath(id string) string { return filepath.Join(s.ItemDir(id), "log") }
@@ -446,12 +458,39 @@ type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line strin
 
 // Outcome is what a run came to.
 type Outcome struct {
-	// Kind is "said", "landed", "needs-you", "failed", or "nothing".
+	// Kind is "said", "landed", "needs-you", "failed", or [OutcomeNothing].
 	Kind string
 	Text string
 	USD  float64
 	// NeedsPerson is the one line the run stopped on, when Kind is needs-you.
 	NeedsPerson string
+}
+
+// OutcomeNothing is the [Outcome.Kind] of a run that delivered nothing at all:
+// no line, no landing, nothing waiting for the person. It is the ONE outcome
+// whose run folder the sweep may reap after [RunKeep], so it is a constant
+// rather than a word spelled twice in two packages.
+const OutcomeNothing = "nothing"
+
+// CameTo is the one-word file a firing leaves in its run folder saying what
+// that run came to — the same word as [Outcome.Kind]. The item's own
+// LastOutcome is overwritten by the next firing, so without this nothing on
+// disk would say which of a hundred run folders delivered anything.
+const CameTo = "came-to"
+
+// RunCameToNothing answers whether a run folder's own marker says the run
+// delivered nothing, which is the whole of the sweep's licence over it.
+//
+// EVERYTHING ELSE ANSWERS FALSE: a run that said something, landed something or
+// is waiting for the person; a marker that cannot be read; and a run with no
+// marker at all. A folder that cannot say what it came to is a folder nobody
+// may remove.
+func RunCameToNothing(runDir string) bool {
+	raw, err := os.ReadFile(filepath.Join(runDir, CameTo))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(raw)) == OutcomeNothing
 }
 
 // Runner is supplied by the session lane. It is how a firing touches the

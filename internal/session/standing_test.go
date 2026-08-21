@@ -38,6 +38,13 @@ func newFakeStanding(t *testing.T) *fakeStanding {
 
 func (f *fakeStanding) Root() string { return f.root }
 
+// ExchangeDir is the real store's own arithmetic, because what the tests below
+// check is that the ITEM points at it — not where internal/standing decided to
+// put it.
+func (f *fakeStanding) ExchangeDir(id string) string {
+	return filepath.Join(f.root, id, "exchange")
+}
+
 func (f *fakeStanding) Create(item standing.Item) (standing.Item, error) {
 	if err := item.Validate(); err != nil {
 		return standing.Item{}, err
@@ -225,16 +232,18 @@ func TestStandingApprovedCreatesTheItemItShowed(t *testing.T) {
 	}
 }
 
-// AN UNANSWERED CARD DECLINES. This is where the standing card parts company
-// with propose_task's, whose silence is a yes: an item spends forever, so
-// nobody's silence may arm one.
-func TestStandingProposalDeclinesWhenTheClockRunsOut(t *testing.T) {
+// NO CLOCK WHILE SOMEBODY IS THERE. The card carries no deadline whatever the
+// countdown setting says, because a person reading their own sentence, its
+// cadence and its cost must never watch the thing end itself mid-read.
+func TestStandingProposalCarriesNoClockWhenSomebodyIsWatching(t *testing.T) {
 	store := newFakeStanding(t)
 	completer := &scriptedCompleter{steps: []step{
 		standCall("s1", aReminder()),
-		finalText("nothing was set up"),
+		finalText("set up"),
 	}}
 	agent := standingAgent(t, completer, store, func(config *Config) {
+		// The setting a task proposal would have counted down on. A standing
+		// card ignores it in both directions: no bar, and no expiry.
 		config.TaskAutoApproveSeconds = 1
 	})
 
@@ -242,24 +251,55 @@ func TestStandingProposalDeclinesWhenTheClockRunsOut(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	// Nobody answers.
-	collected := drainAnsweringStanding(t, events, nil)
+	// Answered LATE — well past the countdown that used to decline it — and it
+	// still stands, which is the whole of the fix.
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		time.Sleep(1200 * time.Millisecond)
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+
+	card, found := firstOfKind(collected, EventStandingProposal)
+	if !found {
+		t.Fatalf("no card was drawn: %v", kinds(collected))
+	}
+	if !card.Standing.Deadline.IsZero() {
+		t.Fatalf("the card carried a deadline of %v", card.Standing.Deadline)
+	}
+	if len(store.created) != 1 {
+		t.Fatalf("an answer given after the old countdown created %d items", len(store.created))
+	}
+}
+
+// AND SILENCE STILL ARMS NOTHING. A turn that ended with the card still up —
+// the person pressed esc, or the window went away — leaves nothing behind, and
+// the model is told exactly that rather than a refusal nobody made.
+func TestStandingProposalLeftUnansweredSetsNothingUp(t *testing.T) {
+	store := newFakeStanding(t)
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("nothing was set up"),
+	}}
+	agent := standingAgent(t, completer, store, nil)
+
+	events, err := agent.Submit(context.Background(), "remind me at 6")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(Event) { agent.Interrupt() })
 
 	if len(store.created) != 0 {
-		t.Fatalf("silence created %d items", len(store.created))
+		t.Fatalf("an unanswered card created %d items", len(store.created))
 	}
-	card, found := firstOfKind(collected, EventStandingProposal)
-	if !found || card.Standing.Deadline.IsZero() {
-		t.Fatal("a watched card with a countdown drew no bar")
+	// The card is forgotten, so a click that arrives after the turn has gone
+	// delivers into nothing rather than into a channel with no reader.
+	agent.mu.Lock()
+	waiting := len(agent.standingAnswers)
+	agent.mu.Unlock()
+	if waiting != 0 {
+		t.Fatalf("%d cards are still waiting for an answer nobody will give", waiting)
 	}
-	// AND IT IS SAID AS SILENCE. "The person said no" would be the tool putting
-	// a sentence in somebody's mouth that they did not say.
-	output := toolOutput(t, collected, "stand")
-	if !strings.Contains(output, "nothing was set up: the card went unanswered") {
-		t.Fatalf("tool result = %q, want the decline said plainly", output)
-	}
-	if strings.Contains(output, "said no") {
-		t.Fatalf("silence was reported as a refusal: %q", output)
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "the card was left unanswered — nothing was set up") {
+		t.Fatalf("tool result = %q, want the silence said as silence", output)
 	}
 }
 
@@ -291,6 +331,89 @@ func TestStandingRefusesWhenNobodyIsWatching(t *testing.T) {
 	}
 	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "nobody is here to say yes") {
 		t.Fatalf("tool result = %q, want the refusal in the person's words", output)
+	}
+}
+
+// AN ERRAND SAID AT HOME IS FILED UNDER THE THING IT MADE. The exchange's
+// folder moves under the item the instant something stands (tui3's
+// homeexchange.go does the rename on the "stood" update), so the origin has to
+// name where it LANDS — a record pointing at exchanges/ would point at a path
+// that stops existing one instant later, and "why did I get this reminder?"
+// would open nothing.
+func TestStandingItemMadeFromHomeIsFiledUnderItself(t *testing.T) {
+	store := newFakeStanding(t)
+	exchange := "a1b2c3d4e5f60718"
+	dir := filepath.Join(standing.ExchangesRoot(store.Root()), exchange)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("the exchange folder: %v", err)
+	}
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("set up"),
+	}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "transcript.jsonl")
+	})
+
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	// The item as the store now holds it, which is the one a surface reads.
+	item, err := store.Get(store.created[0].ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	filed := store.ExchangeDir(item.ID)
+	if item.Origin.Exchange != filed {
+		t.Fatalf("origin.Exchange = %q, want %q", item.Origin.Exchange, filed)
+	}
+	if want := filepath.Join(filed, "transcript.jsonl"); item.Origin.Transcript != want {
+		t.Fatalf("origin.Transcript = %q, want %q", item.Origin.Transcript, want)
+	}
+	// AND THE CONVERSATION IS STILL THE CONVERSATION. Its id is what a live
+	// firing is addressed to, and moving a folder does not rename it.
+	if item.Origin.SessionID != agent.id {
+		t.Fatalf("origin.SessionID = %q, want the exchange's own id %q", item.Origin.SessionID, agent.id)
+	}
+}
+
+// AND AN ORDINARY CONVERSATION IS NOT ONE. The only thing that makes a session
+// an errand is a transcript under the standing root's exchanges/, so a session
+// anywhere else keeps its own folder as its record.
+func TestStandingItemMadeInAConversationKeepsItsSessionOrigin(t *testing.T) {
+	store := newFakeStanding(t)
+	dir := t.TempDir()
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("set up"),
+	}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "transcript.jsonl")
+	})
+
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	item := store.created[0]
+	if item.Origin.Exchange != "" {
+		t.Fatalf("a project conversation was filed as an errand: %q", item.Origin.Exchange)
+	}
+	if item.Origin.Transcript != filepath.Join(dir, "transcript.jsonl") {
+		t.Fatalf("origin.Transcript = %q, want the conversation's own journal", item.Origin.Transcript)
 	}
 }
 
