@@ -197,6 +197,17 @@ type Config struct {
 	// it opens. Off is the law's absence, not an instruction to hide.
 	Attribution bool
 
+	// Swarm is the cooperative-decomposition mode. Off (the default) is exactly
+	// today's behaviour: leaves run their brief to settlement, and growth is
+	// failure-driven only (overrun, revision, JIT). On, a leaf gains the
+	// request_split tool and may end its own run early by naming two or more
+	// ownable parts plus the evidence that revealed them; settlement then
+	// routes the request through the same governed growth path an overrun
+	// takes. On also feeds measured capacity statistics (overrun base rates
+	// from the journal) into the sizing and split judgments. Everything gated
+	// by Swarm is inert when it is off.
+	Swarm bool
+
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
 	// harness builds the same single adapter it always did and no routing code
@@ -329,6 +340,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("%s: want a non-negative integer, got %q", knob.name, raw)
 		}
 		*knob.target = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_SWARM")); raw != "" {
+		swarm, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("AFORGE_SWARM: want a boolean (1, true, 0, false), got %q", raw)
+		}
+		config.Swarm = swarm
 	}
 	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
 	if err != nil {
