@@ -69,7 +69,7 @@ import (
 // INTERPOLATED for taskSchemaJSON's reason: a number a model reasons with must
 // be the number the code enforces, and the two drift the moment they are typed
 // twice.
-var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. WHAT YOU WRITE HERE IS THE TASK'S WHOLE WORLD — it never sees this conversation — SO WRITE A CONTRACT, in three parts: brief is the work and everything needed to do it, deliverable is what must exist when it is over and where, acceptance is how anybody checks that. Write each for a colleague joining today: name the files and symbols, the conventions and constraints you have learned here, and what has already been tried. THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU, verbatim, at the top of what the task reads — do not copy it in or summarise it, and do not contradict it. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands."
+var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. WHAT YOU WRITE HERE IS THE TASK'S WHOLE WORLD — it never sees this conversation — SO WRITE A CONTRACT, in three parts: brief is the work and everything needed to do it, deliverable is what must exist when it is over and where, acceptance is how anybody checks that. Write each for a colleague joining today: name the files and symbols, the conventions and constraints you have learned here, and what has already been tried. THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU, verbatim, at the top of what the task reads — do not copy it in or summarise it, and do not contradict it. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands. WHEN THE FILES YOU NAME ARE ALREADY BEING WRITTEN by work another aforge window has out, the result says so on its own line — that is a fact to plan around, not a refusal: nothing is blocked, nothing is queued, and the task you proposed has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -289,7 +289,15 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	}()
 
 	id := graph.reserve()
-	answer, err := a.askTask(ctx, id, spec)
+	// WHO ELSE IS ALREADY IN THESE FILES, ASKED BEFORE THE MONEY. It is one line
+	// or nothing at all (taskpreflight.go), it rides on the proposal so the person
+	// reads it on the card while the countdown is still running, and it comes back
+	// on the result so the model can sequence its next proposal around it. NOTHING
+	// IS PREVENTED BY IT: the work starts on the same answer it would have started
+	// on, because a claim another window wrote is evidence and never an
+	// instruction.
+	elsewhere := a.taskPreflight(spec.title, spec.summary, spec.brief, spec.deliverable, spec.acceptance)
+	answer, err := a.askTask(ctx, id, spec, elsewhere)
 	if err != nil {
 		// The turn ended under the question. Nothing was admitted, so there is
 		// no node to cancel and nothing to clean up — the proposal simply never
@@ -301,9 +309,9 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		// question and got a plain no; handing it a failure would put a red row
 		// in the transcript for a conversation working exactly as intended.
 		if reason := strings.TrimSpace(answer.Redirect); reason != "" {
-			return "the person declined this task: " + reason, false, nil
+			return withElsewhere("the person declined this task: "+reason, elsewhere), false, nil
 		}
-		return "the person declined this task", false, nil
+		return withElsewhere("the person declined this task", elsewhere), false, nil
 	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
@@ -341,9 +349,9 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		on = " on " + spec.model
 	}
 	if state == TaskQueued {
-		return fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, on, spec.title), false, nil
+		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, on, spec.title), elsewhere), false, nil
 	}
-	return fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, on, spec.title), false, nil
+	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, on, spec.title), elsewhere), false, nil
 }
 
 // parseTaskArguments reads one call and says, in plain words, what is missing.
@@ -445,7 +453,10 @@ func (a *Agent) ResolveTask(id uint64, answer TaskAnswer) {
 //   - UNWATCHED: the deadline approves whatever the countdown says, zero
 //     included. There is no one to wait for, and a headless run blocked on a
 //     question nobody can see is a hang, not a safeguard.
-func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec) (TaskAnswer, error) {
+//
+// elsewhere is the preflight's one line about other windows already in these
+// files, or "" — a fact the card draws beside the work, not a reason to wait.
+func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere string) (TaskAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -490,6 +501,7 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec) (TaskAnsw
 				// answer this select is waiting for.
 				Model:        firstTaskModel(spec.modelOptions, spec.model),
 				ModelOptions: append([]string(nil), spec.modelOptions...),
+				Elsewhere:    elsewhere,
 			},
 		})
 	}

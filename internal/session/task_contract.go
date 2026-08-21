@@ -220,6 +220,18 @@ type TaskNotice struct {
 	// the person to confirm and hands the chosen one back on [TaskAnswer].
 	ModelOptions []string
 
+	// Elsewhere is ONE LINE about the work other windows on this project already
+	// have out in the files this brief names, and "" when there is nothing to say
+	// (taskpreflight.go writes it and spells the words).
+	//
+	// IT IS A FACT ON THE CARD, NOT A GATE. The countdown runs the same, the
+	// options are the same three, and a person who ignores it gets exactly the
+	// task they were shown. Empty is the emptiness law and NOT a claim of
+	// clearance: a brief that named no files and a live node that has not written
+	// yet both leave it empty, so a surface must draw nothing rather than "you are
+	// alone in these files".
+	Elsewhere string
+
 	// ── update fields (EventTaskUpdate) ─────────────────────────────────
 
 	// State is queued, running, done, failed or unverified.
