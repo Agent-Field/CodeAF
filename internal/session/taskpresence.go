@@ -215,6 +215,25 @@ func (q PresenceQuestion) Answerable() bool {
 	return q.Kind != "" && q.ID != 0 && len(q.Options) > 0
 }
 
+// Label is the word THIS question offered for one key, and "" for a key it did
+// not offer.
+//
+// IT IS THE WRITER'S LIST AND NOT THE KIND'S. [AnswerLabel] answers what a kind
+// of question can take in general; this answers what the session on the other
+// end of this file said it would take, which is narrower whenever the answers
+// depend on what is being asked ([StandingOptions]). A surface deciding whether
+// a keypress is an answer must ask THIS one, or a digit the chips never drew
+// would still be sent.
+func (q PresenceQuestion) Label(key string) string {
+	key = strings.TrimSpace(key)
+	for _, option := range q.Options {
+		if option.Key == key {
+			return option.Label
+		}
+	}
+	return ""
+}
+
 // SessionPresence is one live session as another window sees it.
 type SessionPresence struct {
 	// Schema is [presenceSchema]. It is first in the struct because it is the
@@ -443,14 +462,22 @@ func (a *Agent) nudgePresence() {
 // IT IS THE ONE HELPER THE THREE LANES USE. consent.go, task.go and
 // tools_standing.go each raise a different card with a different resolver, and
 // what they share is exactly this: a kind, the id their own resolver takes, and
-// one line. The answers are not passed in — they are a property of the KIND
-// (answers.go's [AnswerOptions]), and a lane naming its own would be the second
-// place the keys are decided.
+// one line. The answers are not named by the lane — they are answers.go's to
+// decide ([AnswerOptions] for a kind, [StandingOptions] for one standing item),
+// and a lane spelling its own keys would be the second place they were decided.
 //
 // A lane with nothing to say passes an empty text and is still banked, because
 // the session is still stopped; a question with no id is banked and not
 // offered ([PresenceQuestion.Answerable]).
 func (a *Agent) presenceAsking(kind QuestionKind, id uint64, text string) func() {
+	return a.presenceAskingOptions(kind, id, text, AnswerOptions(kind))
+}
+
+// presenceAskingOptions is the same thing for a lane whose answers depend on
+// WHAT IS BEING ASKED and not only on which lane is asking. A standing card for
+// a one-off reminder offers no `once` (answers.go's [StandingOptions]), and the
+// presence file has to say so or home would draw a chip the session drops.
+func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string, options []AnswerOption) func() {
 	desk := a.presence
 	if desk == nil {
 		return func() {}
@@ -459,7 +486,7 @@ func (a *Agent) presenceAsking(kind QuestionKind, id uint64, text string) func()
 		Kind:    kind,
 		ID:      id,
 		Text:    strings.TrimSpace(text),
-		Options: AnswerOptions(kind),
+		Options: options,
 		Asked:   time.Now(),
 	}
 	desk.mu.Lock()

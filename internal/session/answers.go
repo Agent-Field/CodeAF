@@ -61,6 +61,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // The two refusals this file makes, and both are about the CALLER rather than
@@ -115,6 +117,11 @@ type AnswerOption struct {
 // there is right here. `2 change when` is deliberately NOT on this list: it is a
 // request for a text box, and there is no box on the row this is drawn beside.
 //
+// THIS IS THE ANSWER FOR THE KIND AND NOT FOR AN ITEM. A one-off reminder's
+// card offers no `3` at all, because doing that action "now" is meaningless —
+// [StandingOptions] narrows this list to one item, and that is what a card and
+// a presence file are actually built from.
+//
 // THE CONSENT KEYS ARE NEW AND THE ANSWERS ARE NOT. In its own window the gate
 // is answered y / a / n; those letters cannot be borrowed here, because a letter
 // on home is a character being typed. So the three answers keep their meaning
@@ -139,6 +146,53 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		}
 	}
 	return nil
+}
+
+// StandingOnceKey is the digit "once, not standing" is answered with, on the
+// card and on home alike. It is spelled once, here, because two surfaces and
+// [StandingOptions] all have to agree about which chip is the one that may be
+// missing.
+const StandingOnceKey = "3"
+
+// StandingOnceIsAnAnswer reports whether "once, not standing" MEANS anything
+// for one item, and it is the ONE PLACE that is decided.
+//
+// "Once" means: do the action NOW, as an ordinary turn, and leave nothing
+// behind ([StandingAnswer.Once]). For a watch, a rule, a routine or overnight
+// work that is a real answer — the person wants the thing done, not the
+// arrangement. FOR A ONE-OFF REMINDER IT IS NOT AN ANSWER AT ALL: the whole
+// content of "remind me at six" is the SIX, and doing it now says "time to
+// leave" hours early or says nothing. A person met that chip after asking for a
+// one-minute timer, pressed it because it was the only answer that was not a
+// commitment, and was told the build could not hold a timer — which it can, and
+// does, and had just offered to.
+//
+// So the card does not draw it there. Everywhere else it stays.
+func StandingOnceIsAnAnswer(item standing.Item) bool {
+	return !(item.When.Kind == standing.WhenAt && item.Does.Kind == standing.ActionSay)
+}
+
+// StandingOptions is [AnswerOptions](QuestionStanding) narrowed to ONE item:
+// the answers this particular card offers, in the order chips are drawn.
+//
+// IT IS WHAT BOTH SURFACES DRAW FROM. The engine puts it on the card
+// ([StandingNotice.Options]) and into the presence file another window answers
+// through ([Agent.presenceAsking]), so the conversation's chip row, home's chip
+// row and the keys the session will actually accept are one decision made once
+// — a chip that does nothing is exactly what this file's third law forbids.
+func StandingOptions(item standing.Item) []AnswerOption {
+	options := AnswerOptions(QuestionStanding)
+	if StandingOnceIsAnAnswer(item) {
+		return options
+	}
+	kept := make([]AnswerOption, 0, len(options))
+	for _, option := range options {
+		if option.Key == StandingOnceKey {
+			continue
+		}
+		kept = append(kept, option)
+	}
+	return kept
 }
 
 // AnswerLabel is the word for one key, and "" for a key that kind does not

@@ -2056,12 +2056,10 @@ func (a *app) hintWord() string {
 		// at once, and the keys a person needs are the ones on screen (task.go).
 		return taskProposalHint
 	case a.awaitingStanding():
-		// And the standing card owns its own three, which change to the
-		// follow-up's two the moment the yes is given (standing.go).
-		if a.stand.stage == standWatching {
-			return standWatchHint
-		}
-		return standProposalHint
+		// And the standing card owns the digits it drew — three, or two on a
+		// one-off reminder, and the follow-up's two the moment the yes is given
+		// (standing.go).
+		return standAskHint(a.stand)
 	case a.shaping():
 		// The always is part-way answered and the block is on its second beat
 		// (consent.go): the numbers bank a shape and esc puts the question back.

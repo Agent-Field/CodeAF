@@ -56,8 +56,8 @@ section of this page.
 
 ## Why did it run date before setting the reminder — it knows the clock now
 
-It does not any more. aforge tells the model the time when the session opens, in
-its own instructions, as one line:
+It does not any more. aforge tells the model the time in its own instructions, as
+one line:
 
 ```
 - Now: 2026-08-21 06:52 -04:00 (America/New_York, Friday)
@@ -79,9 +79,70 @@ shows:
 in 2 minutes — 06:54
 ```
 
-so you can check the time it settled on without reading a timestamp. A session
-that has been open for hours cannot drift on this: `Now` is when the session
-started, and anything relative is resolved when you ask, not from that stamp.
+so you can check the time it settled on without reading a timestamp.
+
+A session that has been open for hours cannot drift on this. The `Now` line is
+stamped when a turn opens and **re-stamped** on any turn that opens more than ten
+minutes after the last stamp, anything relative is resolved against the real clock
+when you ask rather than from that line, and every `stand` result ends with
+`now: 07:34 -04:00` whatever else it said. A moment that has already passed is
+refused outright — see "Why did it set my reminder for a time that already
+passed".
+
+## Why is there no once on my reminder card — a one-off reminder has two answers
+
+Because "once" would not be a smaller version of what you asked for; it would be
+a different thing at the wrong moment.
+
+`3 once, not standing` means **do the action now, as an ordinary turn, and leave
+nothing behind**. For a watch, a rule, a routine or overnight work that is a real
+answer: you wanted the tests run, not the arrangement. For "remind me at 6 to
+leave" the whole content of the request is the **6** — doing it now says
+`time to leave` hours early, or says nothing at all. So the card does not offer
+it there:
+
+```
+│ [ 1 yes, set it up ]  [ 2 change when ]
+```
+
+Two chips, `1` and `2`, and `3` does nothing — on the card in the conversation,
+on the card in home's `ask here` pane, and on home's own answer row. The hint
+under the box says so too: `1 yes · 2 change when · esc no`. `esc` still declines
+the whole thing, as it does on every card.
+
+Everything else keeps all three: a watch, a rule, a routine, overnight work.
+
+## Why did it set my reminder for a time that already passed — it cannot any more
+
+It cannot. A moment that has already gone is **refused before the card is ever
+drawn**, and the refusal tells aforge what time it is now so it can work the
+stamp out again:
+
+```
+Invalid arguments: when.at 05:42 -04:00 has already passed — it is now 07:34
+-04:00 (Friday 2026-08-21). For a distance from now send when.in ("1m"); for a
+clock time compute it from now.
+```
+
+A stamp up to **30 seconds** behind the clock is still taken: that is arithmetic
+that was right when it was done, and firing at once is what you asked for. Two
+hours behind is not. An `expires` in the past is refused the same way.
+
+This used to be possible. A session that had been open for hours carried the time
+it *opened* with in its instructions, so "remind me in 1 minute" was worked out
+from a stale stamp and landed in the past. Two things changed:
+
+- The `Now` line in aforge's instructions is **re-stamped** whenever a turn opens
+  more than ten minutes after the last one, so the clock does not drift over a
+  long session.
+- **Every `stand` result ends with the real time**, on its own line:
+  `now: 07:34 -04:00`. Whatever the model was told when the turn opened, it is
+  told the true time at the moment it matters.
+
+And "in 1 minute" no longer needs a stamp at all: aforge sends the **duration**
+and the engine resolves it against the real clock. A one-minute reminder is an
+ordinary standing one-off — if you are ever told aforge "cannot hold a
+1-minute timer", that is wrong, and this is the page that says so.
 
 ## Tell me when something happens
 
@@ -109,14 +170,18 @@ yes nor a clear no, aforge treats it as a no and the log says
 ## How long do I have to answer the card — the card does not time out
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
-moment when it answers on somebody's behalf. It waits until you press `1` yes,
-`2` change it, or `3` do it once.
+moment when it answers on somebody's behalf. It waits until you press `1 yes,
+set it up`, `2 change when`, or — where the card offers it — `3 once, not
+standing`.
+
+A **one-off reminder's card has only two answers**; the next section says why.
 
 It does not have to be answered in that window either. A window sitting on this
-card says so on **home**, and the row there carries its `1 yes` and `3 once`, so
-the card can be answered from the dashboard without opening the conversation
-(home's own page has the whole rule). `2 change it` stays here, where there is a
-box to say the new when into.
+card says so on **home**, and the row there carries the same chips the card is
+offering — `1 yes` and `3 once`, or just `1 yes` on a one-off reminder — so the
+card can be answered from the dashboard without opening the conversation (home's
+own page has the whole rule). `2 change when` stays here, where there is a box to
+say the new when into.
 
 That is the opposite of a task proposal's card, which does count down and starts
 the work on silence. A task is bounded work somebody is watching; a standing
@@ -309,7 +374,11 @@ transcript reads with the same tools as any other conversation.
   is watching, and a standing item spends money at times nobody chose.
 - **A "do it once" answer sets nothing up.** It answers
   `do it once, now, as an ordinary turn — nothing stands. Nothing was set up.`
-  and aforge does the thing in front of you instead.
+  and aforge does the thing in front of you instead. A **one-off reminder's card
+  does not offer that answer** — see "Why is there no once on my reminder card".
+- **It will not set a reminder for a moment that has already passed.** The stamp
+  is refused with the current time in it, and aforge is asked to work it out
+  again from that.
 - **It will not fire while the machine is asleep.** A late check says it was
   late; it does not pretend it happened on time.
 - **It will not reach your phone.** There is no notification, no email, no
