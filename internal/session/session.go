@@ -721,6 +721,13 @@ type Config struct {
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
 
+	// standingItems overrides where [Standing.Store] would be read, and it is
+	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
+	// else: the store is a concrete *standing.Store on the seam a door fills,
+	// and a test that wants to watch what a ratified card actually writes needs
+	// a fake behind the same three methods (tools_standing.go's standingStore).
+	standingItems standingStore
+
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
 	// It is what the settings and change_setting tools are a door onto
@@ -1487,6 +1494,11 @@ type Agent struct {
 	taskAnswers map[uint64]chan TaskAnswer
 	// standingAnswers is the same wait, for standing cards (standing_contract.go).
 	standingAnswers map[uint64]chan StandingAnswer
+	// standingSeq numbers those cards. It is the agent's own sequence and not
+	// the task graph's, because a standing proposal is not a node: nothing is
+	// reserved, nothing is admitted, and the only thing the number has to do is
+	// name one outstanding question until it is answered (tools_standing.go).
+	standingSeq uint64
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
 	// it: a node's most important event lands minutes after the turn that

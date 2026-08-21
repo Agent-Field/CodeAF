@@ -476,8 +476,9 @@ screen full of the wrong machine's projects would be a confident lie.
 
 Yes, every few seconds, by reading the folders again. A task landing in another window,
 work somebody starts in a second terminal, or a session stopping to ask a question all
-show up without you doing anything. There is no file watcher and nothing runs when the
-screen is closed.
+show up without you doing anything. There is no file watcher: home reads, and closing the
+screen stops the reading. (Standing items — reminders, watches, rules — are a different
+mechanism and do keep going; see the keeping-an-eye page.)
 
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto

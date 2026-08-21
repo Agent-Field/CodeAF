@@ -222,6 +222,17 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// owed. It runs AFTER recovery so that a node the graph took back is not
 	// closed out from under it.
 	agent.closeInflightTaskIndexRows()
+	// AND WHAT ARRIVED WHILE THE WINDOW WAS SHUT. A standing item that fired
+	// into a conversation nobody had open left its news in the session's inbox
+	// (internal/standing's Deliver), and this is the moment it is folded into
+	// one "while you were away" line for the first turn to read — the same lane
+	// and the same reason as the interrupt account above (standing_run.go).
+	agent.drainStandingInbox()
+	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a firing knows
+	// to steer its line into a live room instead of writing an inbox line
+	// nobody will see until tomorrow (standing_run.go's registry). Close erases
+	// it.
+	registerLiveSession(agent)
 	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
 	// came to; this is the claim that a PROCESS is alive right now, which no
 	// file on disk could otherwise make (taskpresence.go). It is last of the
@@ -969,6 +980,11 @@ func (a *Agent) Close() error {
 	// job round below cuts it with every other node (harness_task.go).
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
+	// below can take time: a firing that lands during the quit writes to the
+	// inbox rather than onto a queue that will never be drained again
+	// (standing_run.go).
+	forgetLiveSession(a)
 
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)

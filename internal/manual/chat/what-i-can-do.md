@@ -243,6 +243,11 @@ with `jobs kill`. Starting one answers
 Three identical failures in a row end a watch. A watch note wakes an idle
 session, and watches die with the session like any other job.
 
+For something that has to keep an eye on the world **after** this window is
+closed — "tell me when CI goes red", "every Monday draft the update", "keep main
+green" — a watch is the wrong tool and there is a right one: see the
+keeping-an-eye page.
+
 ## Can you tell me when something has finished — when it goes quiet or stops changing?
 
 Yes: `watch` with `on=quiet`. It is the inverse of every other mode — the news is
@@ -703,6 +708,12 @@ Plainly, so you do not have to find out the hard way.
   for this session only and is never written down, so the next session asks
   again.
 - **Which connected services were switched on.** Those are re-asked on a resume.
+
+**What does survive it deliberately** is anything you set up with a card —
+a reminder, a watch on the world, a rule, work that runs overnight. Those are
+not jobs: they outlive the window on purpose, they fire into the conversation
+that asked for them, and they are stopped by saying so. The keeping-an-eye page
+is the whole account of them.
 
 What does survive: the transcript itself, which is written to the session file
 and replayed when you resume; the working state recorded with `track` and
