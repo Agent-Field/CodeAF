@@ -197,7 +197,7 @@ func spinLane(turns int, produce func() *ai.Response, landed string) []step {
 	steps := make([]step, turns)
 	for index := range steps {
 		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if len(messages) > 0 && strings.Contains(messageText(messages[0]), "name this session") {
+			if len(messages) > 0 && strings.Contains(messageText(messages[0]), titleSystem) {
 				return textResponse("the spinning task"), nil
 			}
 			calls := 0

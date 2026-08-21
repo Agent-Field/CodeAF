@@ -12,10 +12,11 @@ import (
 )
 
 // isNameCall reports whether this request is the namer's, by the one thing only
-// it sends: its own instruction as the system message.
+// it sends: its own system line. The instruction itself rides at the END of the
+// user message, where a small model reads it (taskname.go).
 func isNameCall(messages []ai.Message) bool {
 	return len(messages) > 0 && messages[0].Role == "system" &&
-		messageContentText(messages[0]) == taskNamePrompt
+		messageContentText(messages[0]) == taskNameSystem
 }
 
 // nameSettings puts a model on the cheap tier, which is where the namer's role

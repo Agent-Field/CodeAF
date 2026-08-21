@@ -28,6 +28,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
 		{"where are my conversations saved", "sessions-and-rewind"},
+		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
 		{"what does ctrl+b do", "keys"},

@@ -184,6 +184,15 @@ type journalUsage struct {
 	Calls      int     `json:"calls,omitempty"`
 	DurationMS int64   `json:"durationMs,omitempty"`
 	Aux        bool    `json:"aux,omitempty"`
+
+	// Role names WHAT the auxiliary call was for — "title", "taskname" — on the
+	// lines where knowing it changes what a person can do with the record. Aux
+	// says a turn did not ask for the call and Model says which model answered
+	// it; neither says what was being asked, so a name that came back wrong
+	// could not be traced to the model that gave it. Absent from a turn's own
+	// seal and from every auxiliary call that does not name itself, by the same
+	// emptiness law the rest of the line keeps.
+	Role string `json:"role,omitempty"`
 }
 
 // journalPartImage names the one non-text part a person's message can carry
@@ -776,8 +785,11 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
-			// and the file's order is the order it was changed in.
-			if named := strings.TrimSpace(entry.Title); named != "" {
+			// and the file's order is the order it was changed in. A name that
+			// is the namer's own instruction is read as NO name ([healedTitle],
+			// title.go), which is what heals the sessions that were already
+			// written down under one.
+			if named := healedTitle(entry.Title); named != "" {
 				title = named
 			}
 		}
@@ -1235,7 +1247,7 @@ func (s *sessionFile) appendTitle(title string) {
 // The NIL RECEIVER writes nothing, for the reason [sessionFile.isNote] answers
 // false: a memory-only session has no journal, and the caller should not have
 // to test for a file before sealing a turn.
-func (s *sessionFile) appendUsage(used Usage, model string, aux bool) {
+func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role string) {
 	if s == nil {
 		return
 	}
@@ -1254,6 +1266,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool) {
 			Calls:      used.Calls,
 			DurationMS: used.Duration.Milliseconds(),
 			Aux:        aux,
+			Role:       strings.TrimSpace(role),
 		},
 		Timestamp: stamp(),
 	})

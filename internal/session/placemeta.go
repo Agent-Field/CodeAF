@@ -24,6 +24,9 @@ package session
 // that rebuilds it.
 
 import (
+	"bufio"
+	"encoding/json"
+	"os"
 	"strings"
 	"time"
 )
@@ -54,9 +57,60 @@ func (a *Agent) stampUserLocked(text string) {
 	meta = a.fillMetaLocked(meta)
 	meta.LastUserAt = time.Now()
 	if strings.TrimSpace(meta.Title) == "" {
-		meta.Title = clip(strings.Join(strings.Fields(firstLine(text)), " "), metaTitleLimit)
+		meta.Title = placeholderTitle(text)
 	}
 	_ = SaveMeta(dir, meta)
+}
+
+// placeholderTitle cuts the folder's working name out of what a person said:
+// their first line, one space between the words, to the row's length. It is one
+// function because it is asked twice — once when they say it, and once when a
+// name that turned out not to be one is thrown away and the words have to come
+// back ([openingPlaceholder]).
+func placeholderTitle(text string) string {
+	return clip(strings.Join(strings.Fields(firstLine(text)), " "), metaTitleLimit)
+}
+
+// openingPlaceholder reads the person's opening words back off the journal, for
+// the session whose placeholder was overwritten by a name that was not one.
+//
+// IT IS PAID FOR ONLY BY THE FOLDERS THAT NEED IT. [LoadMeta] is asked about
+// every session on the machine when home is drawn, and the whole point of
+// meta.json is that answering does not mean opening a transcript — so this runs
+// only where the stored title was the namer's own instruction ([healedTitle],
+// title.go), and it stops at the first thing the person said rather than
+// reading the file. The next message in that session stamps the words back onto
+// meta.json and nobody reads a journal for it again.
+func openingPlaceholder(dir string) string {
+	file, err := os.Open(Place{Dir: dir}.Transcript())
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	// The buffer [Peek] takes, for its reason: one pasted file in an early line
+	// would otherwise end the scan before the opening message is reached.
+	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal([]byte(line), &entry) != nil {
+			continue
+		}
+		if entry.Type != "message" || entry.Role != "user" {
+			continue
+		}
+		// A MESSAGE WITH NO WORDS IN IT IS NOT A PLACEHOLDER. A picture and
+		// nothing else is an ordinary opening message, and a row named after it
+		// would be a blank row with a stamp on it.
+		if text := strings.TrimSpace(entry.Content); text != "" {
+			return placeholderTitle(text)
+		}
+	}
+	return ""
 }
 
 // stampTitle records the name the session gave itself. It takes no lock of its
