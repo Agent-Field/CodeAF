@@ -394,6 +394,11 @@ The strip is pointer-only and adds no keys or cursor of its own.
 On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn cut and the
 `+N` is dropped: a count of things you cannot identify is worth less than one name.
 
+**Under 60 columns the strip is not chips at all.** It becomes one full-width door —
+`▸ 3 tasks · 1 running` — that a tap anywhere opens into the roster page. A thumb cannot
+land between chips a few cells apart, so the phone tier trades the tab row for one door. See
+*Tasks on a phone*.
+
 ## The roster: the column of all the work
 
 The roster is a column on the right holding every task this session has admitted, not just
@@ -776,17 +781,44 @@ Clicking a row does what `enter` on it does, on the **first** press — the page
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## Open a task by tapping — tasks with a thumb, under 60 columns
+## Tasks on a phone — the ▸ tasks door, the list, and the way back
+
+Under 60 columns the whole task flow is a thumb's, with no keyboard anywhere in it. None of
+the surfaces is new — the strip, the roster page and the record card all exist and all
+answer a key — but each is reshaped so a finger can do the flow end to end:
+
+1. **The strip is one door, and it looks like one.** Instead of a row of tiny chips a few
+   cells apart, the strip at phone width is a single full-width row that says what is there
+   and that it opens: `▸ 3 tasks · 1 running`. The `▸` is the same fold glyph the rest of
+   the phone screen folds with, the count is how many tasks are live, and the tail is the
+   most urgent of them — `running`, or `needs you`, or `idle`. One task still draws the
+   door: `▸ 1 task · running`. A tap **anywhere** on the row opens the roster page.
+2. **The roster is a list of cards.** Each task is a two-line card a thumb goes into — its
+   name and state on top, and what it came to with how long ago under it. The list
+   **scrolls**: walk it with a swipe or the arrows and the card you reach is drawn whole,
+   never clipped at the fold.
+3. **Tap a card to go inside.** A task this session ran opens its room; a task from a
+   conversation that is closed opens its record card.
+4. **Two backs, both bands.** The record card's foot is `‹ back` and `m puts it in your
+   message`; `‹ back` returns to the list. The list's own foot is a `‹ back` bar too, and
+   it drops you back to the conversation. So the way out is `‹ back`, then `‹ back` — a
+   tap each, no `esc` needed.
+
+The door opens the **roster page** — the running tree and the project's record — not the
+overlay column a keyboard drives. Mouse motion is ignored on the glass: a tap opens in one
+gesture, and no row lights up under a finger that is only resting on it.
+
+## Open a task by tapping — the tap targets under 60 columns
 
 Every door onto a piece of work is a tap target at phone width, and none of them is a new
 door — they are the ones above, reshaped:
 
-- **The strip along the top.** A tap on a chip opens that task's room, as it always has. A
-  tap **anywhere else on the strip** opens the roster, which at this width is the page over
-  the whole body. The chips are a few cells apart at 44 columns, and a press that missed one
-  used to mean nothing at all.
-- **The roster's rows.** Every row is a full-width target and one press opens it — a room,
-  or the record card — which is what a click already did at every width.
+- **The strip along the top** is one full-width door — `▸ 3 tasks · 1 running` — and a tap
+  anywhere on it opens the roster page. It is not a row of chips at this width.
+- **The roster's rows** are two-line cards, each a full-width target, and one press opens it
+  — a room, or the record card — which is what a click already did at every width.
+- **The roster's foot** is a `‹ back` band in place of the key legend `esc close · ↑↓
+  move · enter opens its room`. Tap it to go back to the conversation.
 - **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The

@@ -618,6 +618,12 @@ that task's name in your message box. A click on one of those rows opens the sam
 the first press. On a column that has only the record, `ctrl+t` parks the cursor on its
 first row.
 
+**Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
+cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
+move · enter opens its room`, and the strip that opens it is one full-width door
+(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
+in one gesture. The tasks page describes the phone flow in full.
+
 **`ctrl+g` closes the roster's column, and opens it again.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard

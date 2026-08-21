@@ -42,6 +42,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
 		{"can aforge parallelize my task", "tasks"},
+		{"how do I open my tasks on a phone", "tasks"},
+		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
 		// Written from a real run: a task that generated two images was landed
 		// as "6 steps without progress" and the person had to go and find the
