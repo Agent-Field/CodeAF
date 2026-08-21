@@ -134,6 +134,13 @@ func run() error {
 		return runServices(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
+	case "tick":
+		// One bounded pass over the standing items — the reminders, watches and
+		// routines a conversation left behind (tick.go). It is what the OS
+		// timer runs, and it is DELIBERATELY ABSENT from the usage text below
+		// for the same reason `engine` is: it draws nothing, asks nothing, and
+		// on an ordinary machine prints nothing at all.
+		return runTick(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
 	case "rebuild":
