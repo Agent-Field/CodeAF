@@ -4773,7 +4773,15 @@ func (a *app) paste(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	a.input.insert(text)
+	// A DROPPED PICTURE IS A PICTURE. A terminal writes a drag-and-drop into the
+	// clipboard as the file's PATH, and a paste that is nothing but paths to
+	// pictures attaches them and leaves `[image #1]` in the sentence instead —
+	// so the model gets the pixels rather than a string it has to guess about
+	// (imagepaste.go). Anything else falls through and is inserted as the text
+	// it plainly is.
+	if !a.pasteImages(text) {
+		a.input.insert(text)
+	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard
 	// too. consent.go closes both the moment a question arrives, on the grounds

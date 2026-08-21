@@ -579,16 +579,20 @@ func consolidateNoticeLine(tidied standing.Tidied) string {
 // noticeLiveWindow puts one line into the conversation the person most recently
 // touched in this process, and into no other.
 //
-// IT TAKES THE STANDING LANE AND NOT THE TURN'S HUB, for [Agent.emitStandingNews]'s
-// reason: a tidy happens when nobody is typing, so there is by construction no
-// turn, and [Agent.hub] is nil. The lane is the subscription a surface holds for
-// the whole life of a session precisely because the interesting things happen
-// between turns.
+// IT GOES THROUGH [Agent.sayMemory], which is the path `remembered ·`,
+// `forgot ·` and `superseded ·` already travel: the turn's own stream when a
+// turn is open, and held until the next one when there is not. Holding is the
+// ordinary case here — the pass runs precisely because nobody is typing — and
+// it is what keeps the line from being written into a room with no reader.
 //
 // ONE WINDOW AND NOT ALL OF THEM. The store is one brain shared by every
 // conversation on the machine, so a line per open window would be the same
 // piece of news said four times — [standingRunner.deliver]'s law, applied to a
 // pass that has no origin conversation to prefer.
+//
+// AND NO WINDOW AT ALL IS THE ORDINARY CASE, because most passes happen inside
+// `aforge tick` with nothing open anywhere. Then nothing is said, and /memory is
+// where the change is seen.
 func noticeLiveWindow(text string) {
 	liveSessionsMu.Lock()
 	windows := make([]liveWindow, 0, len(liveSessions))
@@ -600,31 +604,18 @@ func noticeLiveWindow(text string) {
 	var best *Agent
 	var bestAt time.Time
 	for _, window := range windows {
+		if window.agent == nil || !window.agent.remembers() {
+			continue
+		}
 		at := liveSessionTouched(window)
 		if best == nil || at.After(bestAt) {
 			best, bestAt = window.agent, at
 		}
 	}
 	if best == nil {
-		// Nobody has a window open in this process — the ordinary case, since
-		// the pass runs when nobody is here. The store's own journal is the
-		// record, and /memory is where it is read.
 		return
 	}
-	best.emitNotice(text)
-}
-
-// emitNotice sends one dim line on the STANDING lane, which is where a note
-// that arrived between turns belongs.
-func (a *Agent) emitNotice(text string) {
-	event := Event{Kind: EventNotice, Text: text}
-	a.mu.Lock()
-	watchers := make([]*eventStream, len(a.taskWatchers))
-	copy(watchers, a.taskWatchers)
-	a.mu.Unlock()
-	for _, watcher := range watchers {
-		watcher.send(event)
-	}
+	best.sayMemory(text)
 }
 
 // ── the watermark ───────────────────────────────────────────────────────────

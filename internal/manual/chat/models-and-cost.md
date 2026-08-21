@@ -128,9 +128,10 @@ case the context window is left alone.
 
 ## The crew — which models aforge uses on my behalf, and /crew
 
-aforge makes calls you did not type: naming a session, the summary a compaction keeps, the
-safety gate, the check on finished task work, the planner of an adaptive run and the nodes
-under it, the designer of a saved harness page, looking at an image. Each of those is a
+aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
+the summary a compaction keeps, the safety gate, the check on finished task work, the planner
+of an adaptive run and the nodes under it, the designer of a saved harness page, looking at an
+image. Each of those is a
 **role**, and every role sits on one of four **classes** — the **crew** — which you set in
 `/settings` → Providers, or in one word with `/crew`:
 
@@ -202,6 +203,7 @@ under the class answering it, saying which model comes out. As shipped:
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | which surface a request belongs to |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
+| `taskname` | small work | the two or three words a task is called |
 | `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
