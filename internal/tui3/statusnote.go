@@ -53,6 +53,15 @@ import (
 //	              written once and read once, so design-law-v2 §16 applies to it
 //	              plainly — and /cost's answer to the same session is "nothing
 //	              spent yet", which this list has to agree with.
+//	the crew      `max · brain kimi-k3:high · hands deepseek-v4-pro · checks
+//	              kimi-k3` is sixty cells of one fact, which a forty-four column
+//	              row would cut in the middle of the third class — and the three
+//	              classes ARE the answer, because "which one of these did I
+//	              change" is why a person is reading it. A note wraps and keeps
+//	              all three. It is here at all because the crew is otherwise
+//	              invisible: /crew writes four models the session picks up on its
+//	              next call, and every row on the frame goes on saying exactly
+//	              what it said before (crew.go's [app.crewWord]).
 func (a *app) statusText() string {
 	// The totals are refreshed FIRST. A command typed between turns must answer
 	// from what the session holds now and not from whatever the last event left
@@ -60,7 +69,8 @@ func (a *app) statusText() string {
 	// move figures forward).
 	a.refreshUsage()
 	sheet := a.deckItems()
-	items := make([]deckItem, 0, len(sheet)+1)
+	items := make([]deckItem, 0, len(sheet)+2)
+	var crew crewLine
 	for _, item := range sheet {
 		if item.label == deckSegWords[segCost] && a.cost <= 0 {
 			continue
@@ -83,6 +93,24 @@ func (a *app) statusText() string {
 			item.value = a.workspace
 		}
 		items = append(items, item)
+		// THE CREW GOES DIRECTLY UNDER THE MODEL, because the two are read
+		// together or not at all: the line above is the model this conversation
+		// talks to, and this one is the four classes aforge makes its own calls
+		// on. A person who has just changed one and is checking whether it took
+		// is looking at exactly this pair, and a crew line anywhere else on the
+		// page would be a fact they have to go and find.
+		if item.label == "model" {
+			crew = a.addCrew(items)
+			items = crew.items
+		}
+	}
+	if !crew.placed {
+		// A SESSION WHOSE MODEL HAS NO NAME STILL HAS A CREW. The model row is
+		// dropped when the id is empty ([app.deckItems] adds nothing blank), and
+		// the crew is not a fact about that id — so it is appended rather than
+		// lost, and it lands where it would have landed anyway: after the
+		// identity, before the file.
+		items = a.addCrew(items).items
 	}
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
@@ -92,6 +120,28 @@ func (a *app) statusText() string {
 		items = append(items, deckItem{label: "file", value: a.hostedPath(a.file)})
 	}
 	return labelledLines(items)
+}
+
+// crewLine is one call to [app.addCrew]: the list it returned, and whether it
+// actually put a row on the end of it. The flag is what keeps the crew from
+// being written twice — [app.statusText] tries the model row first and falls
+// back to the end of the list — and it is a struct rather than two returns so
+// the zero value reads as "not placed yet" at the top of the loop.
+type crewLine struct {
+	items  []deckItem
+	placed bool
+}
+
+// addCrew appends the crew row, or leaves the list exactly as it was. THE
+// EMPTINESS LAW: a door with no profile directory has no four tier rows to read
+// and therefore no crew to name, so it gets no line rather than a label with a
+// guess beside it ([app.crewWord] is the empty string there).
+func (a *app) addCrew(items []deckItem) crewLine {
+	word := a.crewWord()
+	if word == "" {
+		return crewLine{items: items}
+	}
+	return crewLine{items: append(items, deckItem{label: "crew", value: word}), placed: true}
 }
 
 // costText is /cost: what this conversation has spent, and on what.

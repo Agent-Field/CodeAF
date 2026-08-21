@@ -181,8 +181,21 @@ func writeCrew(profileDir, raw string) error {
 // fact that never varies. The ids are shortened to their base names because the
 // vendor prefix is the half nobody reads twice.
 func CrewSummary(profileDir string) string {
-	return "crew → " + CrewAt(profileDir) +
-		" · brain " + shortModel(TierModelAt(profileDir, ModelTierMastermind)) +
+	return "crew → " + CrewAt(profileDir) + " · " + CrewClasses(profileDir)
+}
+
+// CrewClasses is the three class names alone:
+//
+//	brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
+//
+// It is the tail of [CrewSummary] lifted out because a second surface prints the
+// crew now — /status, where the word already has a label of its own and "crew →"
+// in front of it would say the word twice. ONE SOURCE OF TRUTH: the three names,
+// their order and their separator are spelled here once, so the confirmation a
+// person reads after /crew and the line they read in /status cannot drift into
+// naming the same four models differently.
+func CrewClasses(profileDir string) string {
+	return "brain " + shortModel(TierModelAt(profileDir, ModelTierMastermind)) +
 		" · hands " + shortModel(TierModelAt(profileDir, ModelTierLow)) +
 		" · checks " + shortModel(TierModelAt(profileDir, ModelTierHigh))
 }
