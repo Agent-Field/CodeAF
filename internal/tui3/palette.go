@@ -282,7 +282,18 @@ func listTop(cursor, top, count, height int) int {
 // moving, so hover stays one step off the terminal's own black and selection is
 // the stronger band above it.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
-	return overlayRowTinted(label, note, nil, selected, marked, hovered, width, pal)
+	// The two-valued form every list but home draws: marked or not, which is
+	// [markFront] or [markNone].
+	return overlayRowTinted(label, note, nil, selected, markIf(marked), hovered, width, pal)
+}
+
+// markIf is the two-valued mark said in the three-valued type. Only home has a
+// third state, because only home lists conversations this terminal is holding.
+func markIf(marked bool) rowMark {
+	if marked {
+		return markFront
+	}
+	return markNone
 }
 
 // noteInk is how a row's trailing fact is painted, for the one list where the
@@ -307,7 +318,27 @@ func paintNote(tint noteInk, pal palette, note string, selected bool) string {
 	return pal.dim(note)
 }
 
-func overlayRowTinted(label, note string, tint noteInk, selected, marked, hovered bool, width int, pal palette) string {
+// rowMark is how strongly a row is marked as THE ONE THIS TERMINAL IS IN. It is
+// three-valued because a terminal can now hold several conversations: the one on
+// screen, the ones open behind it, and everything else on the machine.
+//
+// IT IS A PAINT AND NOT A WORD, on purpose. Home's left column is forty-six
+// cells wide and every column spent on furniture is a column taken from the name
+// the row is about — which is the argument the short spelling of `another
+// window` already makes one file over.
+type rowMark uint8
+
+const (
+	// markNone is a row this terminal does not hold.
+	markNone rowMark = iota
+	// markOurs is a conversation this terminal has open behind the one on
+	// screen: the same treatment as the front one, at the tier below it.
+	markOurs
+	// markFront is the conversation on screen.
+	markFront
+)
+
+func overlayRowTinted(label, note string, tint noteInk, selected bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(selected, hovered, pal)
 	room := width - 2
 	if note != "" {
@@ -317,8 +348,13 @@ func overlayRowTinted(label, note string, tint noteInk, selected, marked, hovere
 
 	var painted string
 	switch {
-	case marked:
+	case marked == markFront:
 		painted = pal.accent(label)
+	case marked == markOurs:
+		// Open here, and not the one being drawn. The same treatment at dim
+		// strength, so a person's eye reads "this terminal has these" as one
+		// group rather than as two unrelated paints.
+		painted = pal.muted(label)
 	case selected:
 		painted = pal.ink(label)
 	default:
@@ -410,7 +446,7 @@ func overlayLines(label, note string, selected, marked, hovered bool, width int,
 
 func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hovered bool, width int, pal palette) []string {
 	if overlayItemLines(width, note) == 1 {
-		return []string{overlayRowTinted(label, note, tint, selected, marked, hovered, width, pal)}
+		return []string{overlayRowTinted(label, note, tint, selected, markIf(marked), hovered, width, pal)}
 	}
 	head := overlayLead(selected, hovered, pal)
 	painted := fit(label, width-2)

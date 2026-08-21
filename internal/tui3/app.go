@@ -710,6 +710,11 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// homeGen is home's own clock generation. It belongs to the SURFACE rather
+	// than to any conversation, because there is one home — and it is bumped by
+	// every close, so a tick armed by a home that has since been closed cannot
+	// start a second self-rearming chain (home.go's [homeTickMsg]).
+	homeGen int
 	// prev is those keys with the most recently in front LAST — what `tab` walks
 	// and what a close brings forward. Every close filters it, so a key in here
 	// that the keeper no longer has is stepped over rather than trusted.
@@ -1464,7 +1469,7 @@ func (a *app) Init() tea.Cmd {
 	// than thirty a second (home.go's [homeEvery]) — so it is started here
 	// beside the standing lanes rather than folded into the wake above.
 	if a.home.open {
-		standing = append(standing, homeTick())
+		standing = append(standing, homeTick(a.homeGen))
 		// A landing that greets over running work starts with its spinner
 		// already turning — the paint clock's ninth reason ([app.paint]).
 		if a.homeAnimating() {
@@ -2073,7 +2078,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
 		// then ask for one more beat. It rides its own clock rather than the
 		// paint clock for the reason home.go's [homeEvery] gives (home.go).
-		return a, a.homeBeat()
+		return a, a.homeBeat(msg.gen)
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)

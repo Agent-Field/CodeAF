@@ -115,6 +115,22 @@ func (l *homeLab) app(standing string) *app {
 	a.homeRoot = l.root
 	a.file = standing
 	a.resume = func(string) (Agent, error) { return &fakeAgent{model: "m"}, nil }
+	// AND THE WHOLE SEAM, because home is the switcher: enter on another
+	// project's row asks for a conversation in THAT workspace, which the older
+	// door cannot answer (tui3.go's [Options.Open]).
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		return Conversation{
+			Agent: &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
+			SessionFile: transcript, Workspace: workspace, Resumed: true,
+		}, nil
+	}
+	a.start = func(workspace string) (Conversation, error) {
+		return Conversation{
+			Agent:       &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
+			SessionFile: filepath.Join(workspace, "next", "transcript.jsonl"),
+			Workspace:   workspace,
+		}, nil
+	}
 	return a
 }
 
@@ -511,7 +527,9 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
 	a := lab.app(mine)
 	next := &fakeAgent{model: "m"}
-	a.fresh = func() (Agent, string, error) { return next, "/tmp/alpha/next/transcript.jsonl", nil }
+	a.start = func(string) (Conversation, error) {
+		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
+	}
 	a.openHome()
 	for _, r := range "pricing" {
 		a.homeKey(key(string(r)))
@@ -1359,45 +1377,102 @@ func TestTheTitleBandSurvivesAShortFrame(t *testing.T) {
 	}
 }
 
-// Enter opens a conversation of THIS window's project, and says where to go for
-// one that is somewhere else — it never half-opens it.
-func TestHomeOpensThisProjectAndNamesWhereTheOthersLive(t *testing.T) {
+// ENTER OPENS ANY ROW ON THIS SCREEN, whichever project it belongs to, and the
+// conversation you were in stays open behind it.
+//
+// This test replaces the one that asserted the opposite. Home used to refuse
+// every project but this window's own with a dim `elsewhere` and a sentence
+// saying where to go instead; that refusal is the thing this wave removed.
+func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
-	sibling := lab.session("-tmp-alpha", "aaaa000000000002", "the other alpha chat", "/tmp/alpha", now.Add(-time.Minute))
-	lab.session("-tmp-beta", "bbbb000000000001", "somebody else's project", "/tmp/beta", now.Add(-time.Hour))
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	other := lab.session("-tmp-beta", "bbbb000000000001", "the other project", lab.project("-tmp-beta"), now.Add(-time.Hour))
+
+	standing := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := lab.app(mine)
+	a.agent = standing
+	a.openHome()
+	a.home.point(other)
+	a.homeEnter()
+
+	if a.home.open {
+		t.Fatalf("opening another project left home up saying %q", a.home.msg)
+	}
+	if a.file != other {
+		t.Fatalf("home opened %q, want %q", a.file, other)
+	}
+	if standing.closed {
+		t.Fatal("the conversation left behind was closed — it goes on running")
+	}
+	if !a.holding(mine) {
+		t.Fatal("the conversation left behind is not open")
+	}
+	if a.openCount() != 2 {
+		t.Fatalf("this terminal holds %d conversations", a.openCount())
+	}
+	// AND THE WORD `elsewhere` IS GONE FROM THE SCREEN.
+	a.openHome()
+	if text := homeText(a); strings.Contains(text, "elsewhere") {
+		t.Fatalf("home still says elsewhere:\n%s", text)
+	}
+}
+
+// A row this terminal is holding says `open`, never `another window` — the flock
+// it would meet is our own.
+func TestARowThisTerminalHoldsSaysOpenAndNeverAnotherWindow(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	other := lab.session("-tmp-beta", "bbbb000000000001", "the other project", lab.project("-tmp-beta"), now.Add(-time.Hour))
 
 	a := lab.app(mine)
+	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.openHome()
-	a.home.point(sibling)
+	a.home.point(other)
 	a.homeEnter()
-	if a.home.open {
-		t.Fatal("opening a conversation left home on the screen")
-	}
-	if a.file != sibling {
-		t.Fatalf("home opened %q, want %q", a.file, sibling)
-	}
 
-	a = lab.app(mine)
 	a.openHome()
+	text := homeText(a)
+	if strings.Contains(text, homeHeldShort) {
+		t.Fatalf("a conversation this terminal holds was called another window:\n%s", text)
+	}
+	if !strings.Contains(text, " "+homeOpenWord) {
+		t.Fatalf("the row this terminal holds does not say open:\n%s", text)
+	}
 	for at, line := range a.home.lines {
-		if line.kind == homeSession && strings.Contains(line.dir, "beta") {
+		if line.kind == homeSession && line.row.Transcript == mine {
 			a.home.cursor = at
 		}
 	}
 	a.homeEnter()
 	if a.file != mine {
-		t.Fatalf("enter on another project's conversation opened %q", a.file)
+		t.Fatalf("enter on a row we hold went to %q", a.file)
 	}
+}
+
+// A project folder that is gone refuses, home stays up, and the conversation on
+// screen is untouched.
+func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	gone := lab.session("-tmp-gone", "cccc000000000001", "a project that moved",
+		filepath.Join(lab.root, "no-such-repository"), now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(gone)
+	a.homeEnter()
+
 	if !a.home.open {
 		t.Fatal("a refused open closed home")
 	}
-	if !strings.Contains(a.home.msg, homeElsewhereWord) || !strings.Contains(a.home.msg, "/tmp/beta") {
-		t.Fatalf("home said %q, which does not name where to go", a.home.msg)
+	if a.file != mine {
+		t.Fatalf("a refused open moved the surface to %q", a.file)
 	}
-	if !strings.Contains(homeText(a), homeElsewhereWord) {
-		t.Fatalf("the row does not say it is elsewhere:\n%s", homeText(a))
+	if !strings.HasPrefix(a.home.msg, WorkspaceGoneWord+" · ") {
+		t.Fatalf("home said %q", a.home.msg)
 	}
 }
 
@@ -1407,7 +1482,9 @@ func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
 	next := &fakeAgent{model: "m"}
-	a.fresh = func() (Agent, string, error) { return next, "/tmp/alpha/next/transcript.jsonl", nil }
+	a.start = func(string) (Conversation, error) {
+		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
+	}
 	a.openHome()
 	for _, r := range "plan a trip" {
 		a.homeKey(key(string(r)))
@@ -1461,11 +1538,11 @@ func TestHomeBeatStopsWhenHomeCloses(t *testing.T) {
 	if cmd := a.openHome(); cmd == nil {
 		t.Fatal("opening home started no clock")
 	}
-	if cmd := a.homeBeat(); cmd == nil {
+	if cmd := a.homeBeat(a.homeGen); cmd == nil {
 		t.Fatal("a beat on an open home did not ask for the next one")
 	}
 	a.closeHome()
-	if cmd := a.homeBeat(); cmd != nil {
+	if cmd := a.homeBeat(a.homeGen); cmd != nil {
 		t.Fatal("a beat kept the clock turning after home closed")
 	}
 }
@@ -2027,14 +2104,15 @@ func TestASecondEnterOnALockedRowDoesNotStack(t *testing.T) {
 func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
 
 	a := lab.app(mine)
 	// The door answers the way the engine does when it meets the flock, which
 	// is the state a lock taken microseconds ago leaves the surface in.
-	a.resume = func(file string) (Agent, error) {
-		return nil, &session.SessionLockedError{Path: file}
+	a.open = func(_, file string) (Conversation, error) {
+		return Conversation{}, &session.SessionLockedError{Path: file}
 	}
 	a.openHome()
 	a.home.point(theirs)
@@ -2060,13 +2138,14 @@ func TestTheRaceLosesInTheSameWordsNotARawError(t *testing.T) {
 func TestARefusedResumeLeavesThisWindowWhereItWas(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
 
 	a := lab.app(mine)
 	held := a.agent.(*fakeAgent)
-	a.resume = func(file string) (Agent, error) {
-		return nil, &session.SessionLockedError{Path: file}
+	a.open = func(_, file string) (Conversation, error) {
+		return Conversation{}, &session.SessionLockedError{Path: file}
 	}
 	if _, refusal := a.openSession(Session{File: theirs}); refusal != sessionBusyWord {
 		t.Fatalf("openSession answered %q", refusal)
@@ -2084,8 +2163,9 @@ func TestARefusedResumeLeavesThisWindowWhereItWas(t *testing.T) {
 func TestAnUnlockedRowStillOpens(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	free := lab.session("-tmp-alpha", "aaaa000000000002", "nobody has this one", "/tmp/alpha", now.Add(-time.Hour))
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	free := lab.session("-tmp-alpha", "aaaa000000000002", "nobody has this one", where, now.Add(-time.Hour))
 
 	a := lab.app(mine)
 	a.openHome()
@@ -2107,12 +2187,13 @@ func TestAnUnlockedRowStillOpens(t *testing.T) {
 func TestTheOtherDoorsAlsoStopDumpingThePath(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", "/tmp/alpha", now)
-	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", "/tmp/alpha", now.Add(-time.Hour))
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
 
 	a := lab.app(mine)
-	a.resume = func(file string) (Agent, error) {
-		return nil, &session.SessionLockedError{Path: file}
+	a.open = func(_, file string) (Conversation, error) {
+		return Conversation{}, &session.SessionLockedError{Path: file}
 	}
 	a.resumeSession(Session{File: theirs, Title: "the other terminal"})
 	said := homeNotes(a)

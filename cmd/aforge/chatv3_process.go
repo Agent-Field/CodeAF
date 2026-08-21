@@ -262,10 +262,13 @@ type v3Seam struct {
 	seed v3Options
 }
 
-// v3GoneWord is what a door says about a workspace that is not there. It names
-// the path the caller gave and nothing beyond it, because the caller is home and
-// home already prints that path on the row the person pressed.
-const v3GoneWord = "that folder is gone"
+// v3GoneWord is what a door says about a workspace that is not there.
+//
+// IT IS THE SURFACE'S OWN SENTENCE rather than a second spelling of it. Home
+// stats the workspace on the keystroke and refuses there; this catches a
+// directory that disappeared between that stat and this open, and a person must
+// not be able to tell which of the two answered.
+const v3GoneWord = tui3.WorkspaceGoneWord
 
 // v3OpenTarget canonicalises a workspace a caller named, and refuses one that is
 // not a directory.
