@@ -2810,7 +2810,7 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 		}
 		bands := [][]string{{pal.bold(pal.ink(fit(line.project, width)))}}
 		if place := subject.dir; place != "" {
-			bands = append(bands, []string{pal.dim(a.pathLink(place, fit(place, width)))})
+			bands = append(bands, []string{pal.dim(a.pathLink(place, fitLeft(place, width)))})
 		}
 		bands = append(bands, a.drawHomeBands(bandContext{
 			subject: subject, width: width, now: a.home.world.Read, pal: pal,
@@ -2846,7 +2846,7 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	// path are two spellings of one directory and a link that stopped at the
 	// second would be a target a narrow right column had already cut off. A
 	// directory that is not on this disk is drawn plain, as it always was.
-	bands = append(bands, []string{pal.dim(a.pathLink(dir, fit(place, width)))})
+	bands = append(bands, []string{pal.dim(a.pathLink(dir, fitLeft(place, width)))})
 
 	// EVERYTHING UNDER THE PLACE LINE IS A BAND FROM THE REGISTRY (homebands.go):
 	// each band is its own file, says what it is about, and is drawn in the

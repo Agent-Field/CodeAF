@@ -43,7 +43,7 @@ func drawProjectFactsBand(a *app, ctx bandContext) []string {
 	if facts == "" {
 		return nil
 	}
-	return []string{ctx.pal.dim(fit(facts, ctx.width))}
+	return bandClauses(ctx.width, 0, ctx.pal.dim, strings.Split(facts, " · ")...)
 }
 
 // projectFacts is that line, or "" when the project has nothing to say.

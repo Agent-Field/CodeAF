@@ -1,5 +1,7 @@
 package tui3
 
+import "strings"
+
 func init() {
 	registerHomeBand(homeBand{name: "spend", order: bandOrderSpend, draw: drawSpendBand})
 }
@@ -12,5 +14,5 @@ func drawSpendBand(_ *app, ctx bandContext) []string {
 	if facts == "" {
 		return nil
 	}
-	return []string{ctx.pal.dim(fit(facts, ctx.width))}
+	return bandClauses(ctx.width, 0, ctx.pal.dim, strings.Split(facts, " · ")...)
 }
