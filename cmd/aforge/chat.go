@@ -4283,6 +4283,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		if err != nil {
 			return store.Subtree{}, err
 		}
+		gatePlanDivision(graph, compiled.Goal)
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
 		// The same run context the spine and briefs were built with: the contract
@@ -4541,6 +4542,9 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			Undivided: true,
 			Progress:  progress,
 		})
+		if err == nil {
+			gatePlanDivision(graph, goal)
+		}
 		if err != nil {
 			return store.Subtree{Nodes: []store.NodeSpec{{
 				ID:    prefix,

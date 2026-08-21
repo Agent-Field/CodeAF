@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"log"
 	"strings"
@@ -41,13 +42,12 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	if graph == nil || plans == nil || !outcome.SplitRequest.Valid() {
 		return 0, nil
 	}
-	// Split gate: refuse divisions that won't pay for their overhead.
-	if os.Getenv("AFORGE_SPLITGATE") != "0" && !splitEligible(outcome.SplitRequest, node.Brief) {
-		log.Printf("split gate: refused division for %s (too small or not parallel)", node.ID)
-		return 0, nil
-	}
-	if splitOverlaps(outcome.SplitRequest) {
-		log.Printf("split gate: refused division for %s (parts overlap)", node.ID)
+	// Split gate: refuse divisions that won't pay for their overhead. A
+	// leaf's own division earns its keep under the same rule as the
+	// planner's: the work it found enumerates many independent items.
+	if os.Getenv("AFORGE_SPLITGATE") != "0" && !divisionWorthIt(outcome.SplitRequest.Evidence) {
+		log.Printf("split gate: refused division for %s (evidence enumerates %d items, floor %d)",
+			node.ID, enumeratedItems(outcome.SplitRequest.Evidence), divisionFloor)
 		return 0, nil
 	}
 	// The planning client, not the job's. A division is a planning question
@@ -142,37 +142,89 @@ func firstScope(brief string) string {
 
 // splitEligible decides whether a task is big enough and parallel enough to
 // benefit from division. Refuses small tasks (<3 parts) and tasks without
-// evidence of multiple independent items (files, modules, images, etc).
-func splitEligible(req *exec.SplitRequest, brief string) bool {
-	if len(req.Parts) < 3 {
-		return false
-	}
-	evidence := strings.ToLower(req.Evidence)
-	briefLower := strings.ToLower(brief)
-	for _, word := range []string{"file", "module", "image", "item", "component",
-		"function", "test", "bug", "section", "chapter", "document"} {
-		if strings.Contains(evidence, word) || strings.Contains(briefLower, word) {
-			return true
-		}
-	}
-	return false
-}
 
 // splitOverlaps detects when two parts share filenames or paths, meaning
-// workers would duplicate or fight over the same work.
-func splitOverlaps(req *exec.SplitRequest) bool {
-	for i := 0; i < len(req.Parts); i++ {
-		for j := i + 1; j < len(req.Parts); j++ {
-			a := strings.ToLower(req.Parts[i].Brief)
-			b := strings.ToLower(req.Parts[j].Brief)
-			for _, token := range strings.Fields(a) {
-				if len(token) > 3 && strings.Contains(b, token) {
-					if strings.Contains(token, "/") || strings.Contains(token, ".") {
-						return true
-					}
-				}
-			}
+
+// enumeratedItems returns the largest explicit count of independent items an
+// ask names — digits ("12", "img-01 ... img-12") or number words ("twelve").
+// It is the split gate's only evidence: division pays for itself in exactly
+// one shape, the same operation applied to many independent inputs, and the
+// asks that have that shape say so by counting the inputs out loud.
+func enumeratedItems(text string) int {
+	max := 0
+	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
+		return r < '0' || r > '9'
+	}) {
+		n := 0
+		for _, c := range field {
+			n = n*10 + int(c-'0')
+		}
+		if n > max {
+			max = n
 		}
 	}
-	return false
+	lower := strings.ToLower(text)
+	for word, n := range map[string]int{
+		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+		"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+		"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+		"nineteen": 19, "twenty": 20,
+	} {
+		if strings.Contains(lower, word) && n > max {
+			max = n
+		}
+	}
+	return max
+}
+
+// divisionFloor is the smallest item count at which division has ever paid in
+// the bench corpus: twelve image files won, four modules and three bugs lost.
+const divisionFloor = 6
+
+// divisionWorthIt reports whether the ask itself enumerates enough
+// independent items for a division to beat one agent doing them in sequence.
+func divisionWorthIt(evidence string) bool {
+	return enumeratedItems(evidence) >= divisionFloor
+}
+
+// gatePlanDivision collapses a freshly built plan to a single undivided leaf
+// when the goal does not enumerate enough independent items for division to
+// pay. It is the plan-time half of the split gate: the leaf-time half in
+// splitAsAsked only sees divisions a leaf asks for, but most divisions are
+// born here, in the planner's first reading of the ask.
+//
+// The collapse follows collapseAtomicChain's pattern: one work node, the goal
+// as its brief, the fold recorded in Undivided so later passes can see why
+// the graph is one leaf when the spine drew several. It returns the number of
+// leaves folded, zero when the plan stands as drawn.
+func gatePlanDivision(graph *plan.Graph, goal string) int {
+	if os.Getenv("AFORGE_SPLITGATE") == "0" {
+		return 0
+	}
+	if graph == nil || divisionWorthIt(goal) {
+		return 0
+	}
+	leaves := graph.Leaves()
+	if len(leaves) < 2 {
+		return 0
+	}
+	folded := len(leaves)
+	title := graph.Nodes[0].Title
+	summary := graph.Nodes[0].Summary
+	graph.Nodes = graph.Nodes[:0]
+	if len(graph.Stages) > 1 {
+		graph.Stages = graph.Stages[:1]
+	}
+	graph.Add(plan.Node{
+		Kind:  plan.KindWork,
+		Stage: 1,
+		Title: title,
+		Summary: summary,
+		Brief: graph.Goal,
+		Undivided: fmt.Sprintf("split gate: goal enumerates %d items, under the %d-item floor — one sitting",
+			enumeratedItems(goal), divisionFloor),
+	})
+	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
+		folded, enumeratedItems(goal), divisionFloor)
+	return folded
 }
