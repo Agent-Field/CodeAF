@@ -220,7 +220,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// a file beside the profile for the surface's whole lifetime, and comes
 	// back to stderr on the way out. A profile that cannot take the file keeps
 	// stderr — a lost frame is better than a lost warning.
-	if logFile, logErr := os.OpenFile(filepath.Join(settings.ProfileDir, "chat.log"),
+	if logFile, logErr := os.OpenFile(chatLogPath(settings.ProfileDir),
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
 		log.SetOutput(logFile)
 		defer func() {
