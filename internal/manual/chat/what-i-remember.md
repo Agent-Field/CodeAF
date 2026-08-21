@@ -19,8 +19,9 @@ The memory commands have two postures:
 - `/forget <query>` — drop the one thing that best matches.
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
-default; off, nothing is carried, nothing is written, and neither of the two
-calls below is made. With it off, all three commands answer:
+default; off, nothing is carried, nothing is written, neither of the two calls
+below is made, and the background tidy never runs. With it off, all three
+commands answer:
 
 ```
 memory is off · turn it on under /settings
@@ -92,6 +93,72 @@ preference in three sessions from leaving three near-identical lines behind.
 
 Nothing about this is announced. There is no card and no line in the transcript
 when a memory is written by this pass; `/memory` is how you see what it did.
+
+## Why did it say memory tidied — my memories got merged while I was away
+
+Because a third call, quite separate from the two above, went over what is
+remembered while nobody was here and tidied it. When it changes something it
+says so in one dim line and nothing else:
+
+```
+memory tidied · 2 merged · 1 superseded
+```
+
+A half that is zero is left out, and a pass that changed nothing says nothing at
+all — which is most passes. The line arrives in whichever conversation you most
+recently touched, if any is open; on a machine with no window open there is no
+line, and the change is simply there the next time you look at `/memory`.
+
+**When it runs.** It rides the same 5-minute background pass that checks
+everything standing, and three things have to be true at once: memory is **on**,
+**nobody has said anything anywhere for fifteen minutes**, and the last tidy was
+**more than six hours ago**. On top of that at least **two** remembered lines
+must have changed since the last one — one new line has already been settled
+against its neighbours on the turn that wrote it, so there would be nothing to
+merge it with.
+
+**What it may do.** It reads the fifty most recently touched lines, grouped by
+how far each one's truth reaches, and answers with at most **eight** changes:
+
+- **merge** two lines that say the same thing into one clearer line, keeping
+  every fact both of them carried;
+- **retire** a line that another line has replaced, putting the line that is
+  true now in its place.
+
+**What it costs.** One call on the **small work** class — the `consolidate` role
+in `/settings` → Providers — a few times a day at most. It spends under the same
+daily budget as everything else that runs in the background, and it is the first
+thing a spent day stops paying for.
+
+**Where the record is.** Every change is an ordinary memory event, so `/memory`
+is where you see what it did — and because a line it rewrote was last touched by
+the tidy rather than by a conversation, that row's `learned <age>` is the age of
+the rewrite and it names no session. Nothing is deleted: a retired line keeps its
+row and the store keeps what it said before. What the pass spent is one line in
+the day's ledger under `~/.aforge/v3/standing/`, and it counts against the same
+daily budget as everything else that runs in the background.
+
+## Does it clean up or delete old memories on its own?
+
+**It never deletes anything, and it never drops a memory for being old.** There
+is no expiry, no half-life and no floor on how often a memory has to be used.
+Something you told it a year ago is still there.
+
+The only thing the background tidy above ever removes from the active list is a
+line **another line has replaced** — the api moved from v2 to v3, the deploy
+window changed — and even then the old row is kept and stays readable. Age on its
+own is never a reason.
+
+**And it will never replace something you said yourself with something it
+worked out.** A `preference`, a `decision` and a `correction` are your own words
+about how you want things — a correction is you saying aforge had it wrong — and
+the tidy is not allowed to decide any of them has been superseded. It may sharpen
+the wording of one, because you can read that and change it back; it may not
+retire it. Only a plain `fact` and a `project_state` can be retired that way,
+because those are the two that go stale on their own.
+
+If you do want something gone, that is yours to do: `/forget <query>`, or delete
+(or ctrl+d) on a row in `/memory`, with one undo behind it.
 
 ## Can you remember this for me?
 

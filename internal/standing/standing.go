@@ -65,8 +65,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -555,6 +557,52 @@ type Runner interface {
 // than the given duration. The session lane supplies it from the world reader.
 type Idle func(for_ time.Duration) bool
 
+// Tidied is what one consolidation pass over what is remembered came to
+// (internal/session's memory_consolidate.go): how many lines were merged into
+// one clearer line, how many were retired in favour of one that replaced them,
+// and what the single call cost.
+//
+// It is declared HERE rather than in the session lane because the two things a
+// pass owes the person about it — the money on the day's rail and the line in
+// the wake log — are both this package's business.
+type Tidied struct {
+	Merged     int
+	Superseded int
+	USD        float64
+}
+
+// Changed is how many remembered lines the pass actually moved. Zero is a pass
+// that read fifty lines and decided every one of them was already right, which
+// is the ordinary answer.
+func (t Tidied) Changed() int { return t.Merged + t.Superseded }
+
+// Line is the pass's own account of a tidy, THE EMPTINESS LAW APPLIED: a part
+// that is zero is absent rather than printed as a zero, and a pass that changed
+// nothing and spent nothing is no line at all.
+func (t Tidied) Line() string {
+	parts := make([]string, 0, 3)
+	if t.Merged > 0 {
+		parts = append(parts, strconv.Itoa(t.Merged)+" merged")
+	}
+	if t.Superseded > 0 {
+		parts = append(parts, strconv.Itoa(t.Superseded)+" superseded")
+	}
+	if t.USD > 0 {
+		parts = append(parts, fmt.Sprintf("$%.3f", t.USD))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "consolidated · " + strings.Join(parts, " · ")
+}
+
+// Tidy is the one piece of work in a pass that nobody armed: the call that
+// reads what is remembered and answers with the duplicates merged and the
+// replaced lines retired. The session lane supplies it, and a NIL Tidy is the
+// whole of "memory is off on this machine" — a capability that cannot work is
+// absent rather than present and refusing.
+type Tidy func(ctx context.Context) (Tidied, error)
+
 // Pass is what one tick decided, for the wake log and for /status.
 type Pass struct {
 	At       time.Time
@@ -565,6 +613,9 @@ type Pass struct {
 	NeedsYou int
 	Skipped  int
 	Errors   int
+	// Tidied is how many remembered lines the consolidation pass moved, which
+	// is zero on all but a handful of passes a day (see [Tidy]).
+	Tidied int
 	// Notes are one sentence per thing worth saying, for the log.
 	Notes []string
 }
@@ -576,6 +627,9 @@ type Ticker struct {
 	Sentinel Sentinel
 	Runner   Runner
 	Idle     Idle
+	// Tidy is the consolidation pass over what is remembered, run once at the
+	// end of a pass and only when the session lane supplied one.
+	Tidy Tidy
 	// DailyRailUSD is the ceiling on everything standing spends in one day,
 	// from settings. Zero is no rail, which the card says out loud.
 	DailyRailUSD float64

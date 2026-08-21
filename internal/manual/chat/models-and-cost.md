@@ -201,6 +201,7 @@ under the class answering it, saying which model comes out. As shipped:
 | `worker` | small work | one node of an adaptive run |
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | which surface a request belongs to |
+| `consolidate` | small work | tidies what is remembered while nobody is here |
 | `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |

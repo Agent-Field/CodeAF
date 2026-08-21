@@ -562,6 +562,13 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// was waiting in the inbox while the window was shut arrives on this lane
 		// too, as the first thing on it.
 		a.standingUpdate(ev)
+	case session.EventNotice:
+		// ONE DIM LINE THAT ARRIVED BETWEEN TURNS. The turn's own stream carries
+		// these too (app.go draws them there), but a note written while nobody
+		// was typing has no turn to ride — the idle memory tidy is the one that
+		// exists today (session's memory_consolidate.go). Same note, same
+		// dimness, on the lane that outlives every turn.
+		a.note(ev.Text)
 	}
 	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions)
 }
