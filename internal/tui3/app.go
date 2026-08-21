@@ -4773,6 +4773,22 @@ func (a *app) paste(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	// THE HOME SCREEN IS FULLSCREEN, so while it is up the chat's own draft is
+	// not on the page at all — and this is where a paste used to go anyway,
+	// which read as the paste doing nothing: the text sat in a box nobody could
+	// see until home was closed. It goes into the box the caret is actually in
+	// — the exchange pane's while that holds the keyboard, home's own otherwise
+	// — and home's list re-filters exactly as it does for a typed character.
+	if a.home.open {
+		if ex := a.paneExchange(); ex != nil && ex.focused {
+			ex.box.insert(text)
+		} else {
+			a.home.box.insert(text)
+			a.home.build()
+		}
+		a.touch()
+		return nil
+	}
 	// A DROPPED PICTURE IS A PICTURE. A terminal writes a drag-and-drop into the
 	// clipboard as the file's PATH, and a paste that is nothing but paths to
 	// pictures attaches them and leaves `[image #1]` in the sentence instead —
