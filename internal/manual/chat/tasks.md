@@ -635,7 +635,7 @@ cell or the root's `▸ +N` badge to toggle the family; click its title to open 
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
 
-## Seeing every task: task history, old and past tasks, work from other sessions
+## What did we do last week — task history, old and past work from other sessions
 
 `/history`, or `ctrl+.`, opens a full-screen page holding **every task this project has ever
 run** — this conversation's and every conversation's before it. It is the answer the roster

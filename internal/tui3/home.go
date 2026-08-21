@@ -331,6 +331,11 @@ type homeView struct {
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
 	last map[string]session.Summary
+	// news and deliverables cache disk-backed bands by transcript. Both expire
+	// with home's refresh clock so another window's arrivals become visible
+	// without either index being read on the paint clock.
+	news         map[string]homeNewsCache
+	deliverables map[string]homeDeliverablesCache
 
 	// msg is the last refusal, in this surface's own words. msgPath is the
 	// directory that refusal NAMES, kept beside it rather than dug back out of
@@ -387,13 +392,15 @@ func (a *app) openHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
-		open:      true,
-		world:     session.ReadWorld(a.placesRoot()),
-		bucket:    homeBucketOf(a.file),
-		hover:     -1,
-		last:      map[string]session.Summary{},
-		expanded:  map[string]bool{},
-		itemsOpen: map[string]bool{},
+		open:         true,
+		world:        session.ReadWorld(a.placesRoot()),
+		bucket:       homeBucketOf(a.file),
+		hover:        -1,
+		last:         map[string]session.Summary{},
+		news:         map[string]homeNewsCache{},
+		deliverables: map[string]homeDeliverablesCache{},
+		expanded:     map[string]bool{},
+		itemsOpen:    map[string]bool{},
 	}
 	a.readStandBands()
 	a.home.build()

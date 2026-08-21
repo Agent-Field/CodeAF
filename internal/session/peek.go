@@ -46,6 +46,11 @@ type Summary struct {
 	// back to what the agent last answered, for the session whose final message
 	// was a picture with no words in it.
 	Last string
+	// LastUser and LastAssistant keep the two sides of the last exchange apart
+	// for surfaces that show where a conversation left off. Last retains its
+	// picker-compatible fallback above.
+	LastUser      string
+	LastAssistant string
 	// At is the newest timestamp in the file. Zero for a file whose lines carry
 	// none, which a caller fills from the file's own modification time.
 	At time.Time
@@ -118,9 +123,11 @@ func Peek(path string) (Summary, bool) {
 					summary.Opening = text
 				}
 				summary.Last = text
+				summary.LastUser = text
 			case "assistant":
 				if text != "" {
 					answered = text
+					summary.LastAssistant = text
 				}
 			}
 		}
