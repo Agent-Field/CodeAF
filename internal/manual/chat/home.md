@@ -483,3 +483,185 @@ mechanism and do keep going; see the keeping-an-eye page.)
 The cursor stays on the row it was on rather than on the line number — the order genuinely
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
+
+## What is the ◦ row on home — things keeping an eye on your project
+
+Under each project's conversations home draws a **band of the things that keep
+working after a window is closed** — a reminder, a watch on something, a rule, an
+overnight job. Each one is its own row: a glyph, the words you said, and one line
+saying where it stands.
+
+```
+  aforge-v2
+  ▲ Pricing Research  4m
+  ● Port the Picker    12m
+  ○ Import Cleanup     3h
+  ◦ every Monday at 9, post the standup note   Mondays 9am · last Mon
+  ◦ tell me when CI on main goes red         checked 6m ago · nothing
+  ▸ …2 more keeping an eye
+  ▸ …3 more, quiet since 2d
+```
+
+The glyphs share the two loud ones with the conversations above and have three
+of their own: `▲` it needs your look, `●` it is running right now, `◦` it is
+waiting for its time, `∙` it is paused, and `◆` something happened since you last
+spoke in the conversation that asked for it. On a terminal that cannot draw them
+they are `!`, `*`, `-`, `.` and `+`.
+
+`◆` is worked out and never claimed: it means the thing went off *after* the last
+time you spoke in the conversation behind it. Something with no conversation on
+this machine to compare against never wears it.
+
+The tail says where it stands, and it says **only what is true**:
+
+- `Mondays 9am · last Mon` — a reminder or a routine: when it goes off, and when
+  it last did. An item that has never gone off says only when it will.
+- `checked 6m ago · nothing` — a watch on the world: when it last looked, and
+  what it found. `nothing` is a finding, and the commonest one — it is the whole
+  difference between a watch that is working and one that never ran.
+- `needs your look · <what it is stopped on>` — the one line on the band that is
+  not dim.
+- `running · 4m` — it is doing something right now.
+- `paused` — you pressed `p` on it.
+
+**Where the rows sit is triage, not grouping.** An item that needs you or is
+running sits *above* the conversations, with the other rows that want you; one
+still waiting for its time sits under them. A project draws three of them and
+folds the rest into `…2 more keeping an eye`, which is a door — `enter` or `→`
+opens it, `←` folds it away, a click toggles it. Something that needs you or is
+running is drawn whatever that count says: those are the rows the screen exists
+for, and the fold only ever takes the ones still waiting.
+
+**Retired items are not on this band.** Something that fired once and finished,
+or that you stopped, is a thing that happened; the conversation that made it
+still has the whole record.
+
+**Typing hides the band.** The box at the foot searches conversations — by name,
+by project, by what their tasks came to — and rows the query never considered
+would be rows drawn as though it had.
+
+## How do I pause a reminder from home — p and s on an item row
+
+Put the cursor on the row and press **`p` to pause it** or **`s` to stop it for
+good**. Home says `paused · <your words>` or `stopped · <your words>` at the foot
+and redraws the row from the store, so what you see is what is on disk rather
+than what the keypress hoped for.
+
+They are bare letters, and they are only keys **while nothing is typed and the
+cursor is on one of these rows**. With anything in the box a `p` is a `p` — the
+box is a search and a new conversation at the same moment, and the rows are not
+on screen then anyway.
+
+A window whose build cannot write to the store says `this window cannot change
+it` rather than pretending.
+
+`enter` on the row **opens the conversation that asked for it** — that is the
+answer to "why did I get this?", and it is the same door, with the same limit, a
+conversation row has: a project this window is not in says `elsewhere · <path>`.
+Something you set up from home that never became a conversation says
+`made from home — no conversation to open`.
+
+## What is on the right of home when I'm on one of these rows — the item's card
+
+The right column shows the same kind of card it shows for a conversation, about
+the other kind of thing, read downward:
+
+1. **your own words**, the brightest text on the screen;
+2. one dim line of **where it is** — project · path, and that line is a link;
+3. **when it goes off**, and — if it is stopped on something — that line, in the
+   one hue on the card that is not dim;
+4. **what it has done**: `checked 6m ago · nothing`, `last went off Mon · <what
+   came of it>`;
+5. a dim line of **how much**: `4 runs · spent $0.08`;
+6. the keys, dim: `enter open where it was asked · p pause · s stop`.
+
+Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
+place and a cadence, and nothing else — no `0 runs`, no `$0.00`.
+
+## Keeping an eye on — the status line, and /status
+
+When the project this window is in has something standing, the status row at the
+foot of the frame grows one dim segment:
+
+```
+◦ keeping an eye on 2
+```
+
+**Nothing at all when there is nothing** — a line that permanently read
+`keeping an eye on 0` would be a permanent reminder of the absence of a thing.
+The glyph **breathes** — it becomes the same spinner every running thing here
+wears — only while one of them is actually firing. The rest of the time it is
+still.
+
+`/status` adds one line under the same heading:
+
+```
+keeping watch   installed · last check 4m
+```
+
+It says **`installed`** when the machine's own timer is set up, so the checking
+happens with no terminal open at all, and **`while a window is open`** when it is
+not — any aforge window that is up runs the same pass every five minutes. The
+`last check` half is dropped when nothing has ever run. A build that cannot
+answer the question prints no line rather than guessing.
+
+## Why did a card appear asking me about a reminder — saying yes to something standing
+
+When you say something that would keep working after this window closes — "remind
+me at 6 to leave", "tell me when CI on main goes red", "every Monday post the
+standup note" — a card appears in the conversation and **nothing is set up until
+you answer it**:
+
+```
+╭─ ? ◦ every Monday at 9, post the standup ─────────────────
+│ every Monday at 9, post the standup note from the git log
+│ when · Mondays at 9am
+│ costs · about $0.02 a run, at most once a day
+│ [ 1 yes, set it up ]  [ 2 change when ]  [ 3 once, not standing ]
+│ ████████████░░░░░░░░  ends in 24s
+╰───────────────────────────────────────────────────────────
+```
+
+Two bands make it different from the card that proposes a task: **`when ·`**, in
+the words you said or the words it worked out, and **`costs ·`** — what one run
+may spend and how often it may run. A watch that has to *look* at something adds
+`checked every 5 minutes`, because that is when the looking happens; a reminder
+does not, because nothing is examined between now and Monday.
+
+If it made the timing up rather than reading it off what you said, the band asks
+instead of stating: `Mondays at 9am — you didn't say, so that's my guess.
+Right?`
+
+**The three answers**, by key, by `←`/`→` and `enter`, or by clicking one:
+
+- `1 yes, set it up` — it stands.
+- `2 change when` — the box below becomes a place to say when instead; `enter`
+  sends your words back and nothing is set up until a new card comes.
+- `3 once, not standing` — do it now and leave nothing behind.
+
+`esc` says no. **And so does the clock**: the bar drains toward `ends in 0.0s`,
+and when it runs out the card ends with `ended · nothing was set up`. That is the
+opposite of the task card, whose clock approves — something that spends money
+forever with nobody in the room is not a thing silence should agree to.
+
+**The first time you ever set one up** there is one more question, on the same
+card: `keep checking when no window is open?` with `1 yes, always` and
+`2 only while a window is open`. Saying always is what installs the machine's own
+timer. It is asked once, ever.
+
+## What does a ◦ line in the middle of my conversation mean — news from something standing
+
+Once something is set up it writes **one line and never more** into the
+conversation that asked for it:
+
+```
+◦ every Monday at 9 · set up
+◦ every Monday at 9 · said: the standup note is in notes/standup.md
+▲ keep main green · needs your look: the fix touches migrations
+∙ remind me at 6 to leave · stopped
+```
+
+That is the whole of it. **A check that found nothing writes nothing** — a watch
+that ran faithfully for thirty mornings and found nothing leaves your
+conversation exactly as quiet as it was, and the row on home is where you go to
+confirm it really did look.

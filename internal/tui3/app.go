@@ -123,6 +123,15 @@ const (
 	// waiting — with a spinner, and a link a person may need to copy — and closes
 	// minutes later on an event nobody typed.
 	entryConnect
+	// entryStanding is ONE STANDING ITEM touching the conversation (standing.go):
+	// the ratification card while it is a question, and — in its other shape —
+	// the single dim line an item that already stands writes when it has news.
+	//
+	// It is a kind of its own rather than a second [entryTask] because the two
+	// blocks are answered by different engines and settle into different
+	// records, and rather than a note because a note is a static sentence where
+	// this opens as a question with a clock on it.
+	entryStanding
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -295,6 +304,11 @@ type entry struct {
 	// full context is showing — and the row and that state must never disagree.
 	done    *taskDone
 	harness *harnessCard
+	// stand is the standing proposal — or the one line of news — this entry
+	// draws, for kind entryStanding and for nothing else (standing.go). It is a
+	// POINTER for [entry.card]'s reason: the answer lane holds the same card,
+	// and the row and the verdict on it must never be able to disagree.
+	stand *standingCard
 
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
@@ -820,12 +834,26 @@ type app struct {
 	// admission order; taskSeen is the (id, state) de-dup, because an in-turn
 	// update arrives on both the turn's stream and the standing one; taskLane is
 	// that standing subscription and taskGen the generation it belongs to.
-	task      *taskCard
-	tasks     map[uint64]*taskNode
-	taskOrder []uint64
-	taskSeen  map[uint64]session.TaskState
-	taskLane  <-chan session.Event
-	taskGen   int
+	task *taskCard
+	// THE STANDING SIDE (standing.go, homestanding.go). stand is the standing
+	// card that owns the answer lane, or nil; stands is the seam onto the store
+	// home draws items out of and writes a pause or a stop back through. Both
+	// are nil on every surface whose door has not wired the ambient side, which
+	// is a surface where no card is ever drawn and home shows no item band — a
+	// capability that cannot work is absent, not broken.
+	stand  *standingCard
+	stands StandingSeam
+	// keepN, keepFiring and keepAt are the status segment's cached reading of
+	// the store, and keepAt is when it was taken ([app.keepingCount] says why a
+	// segment asked on every frame may not walk a directory).
+	keepN      int
+	keepFiring bool
+	keepAt     time.Time
+	tasks      map[uint64]*taskNode
+	taskOrder  []uint64
+	taskSeen   map[uint64]session.TaskState
+	taskLane   <-chan session.Event
+	taskGen    int
 	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
 	// person has folded or opened AGAINST their default — nil is the design as
 	// shipped, and an absent key is a family nobody has touched, which is why this
@@ -1179,6 +1207,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
+		stands:           opts.Standing,
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
 		memory:           opts.Memory,
@@ -1731,6 +1760,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
+			// the same shape of row and is resolved against ITS OWN spans
+			// (standing.go's [app.standingPress]).
+			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name
 			// is how a person changes it (render.go's [app.identityParts]).
@@ -2025,6 +2060,9 @@ func (a *app) paint() tea.Cmd {
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
+	// AND THE STANDING CARD'S, which drains toward a decline rather than toward
+	// an approval (standing.go).
+	a.tickStanding()
 	// And the approval question's, on the same terms (consent.go). It is the one
 	// clock here that ANSWERS at expiry rather than stopping asking, because it
 	// is the one question the engine is blocked on.
@@ -2042,6 +2080,13 @@ func (a *app) paint() tea.Cmd {
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
 		a.askAnimating() ||
+		// AND THE STANDING SIDE IS THE NINTH: a card's meter draining toward a
+		// decline, and the status segment breathing while a firing is in flight.
+		// The second of them is the only thing on this list that is happening in
+		// ANOTHER PROCESS — the loop closes because a firing emits an update, the
+		// update wakes this clock, and the clock keeps turning while the store
+		// says the run is still out (homestanding.go, standing.go).
+		a.standingAnimating() ||
 		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
 		// with nothing on screen moving at all: the hint slot says "esc again to
 		// rewind" for half a second, and something has to be drawing the frame
@@ -2258,6 +2303,19 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// fullscreen sheet is a turn blocked on keys nobody can reach.
 		a.closeSettings()
 		a.proposeTask(ev)
+
+	case session.EventStandingProposal:
+		// A DECISION OUTRANKS A PANEL, for the reason the task proposal above
+		// states: the card takes the keyboard's answer lane, and a lane behind a
+		// fullscreen sheet is a turn blocked on keys nobody can reach.
+		a.closeSettings()
+		a.proposeStanding(ev)
+
+	case session.EventStandingUpdate:
+		// One dim line and never two (standing.go). It arrives on this lane and
+		// on the standing one, because an item can fire with a turn open and with
+		// nothing open at all.
+		a.standingUpdate(ev)
 
 	case session.EventTaskUpdate:
 		// The same event also arrives on the standing lane; [app.taskUpdate]'s
@@ -3346,10 +3404,11 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// (harnesscard.go), so whatever door it parked has to be handed on — a
 		// room whose lane was never started is a page that never updates.
 		cmd = a.takeRoomPump()
-	case hitChoice, hitModel:
-		// Both rows were offered this click before the body and took it (see
-		// [app.choicePress]); reaching here means the pointer was in a column no
-		// option occupies, and empty space on this surface does nothing.
+	case hitChoice, hitModel, hitStandChoice:
+		// All three rows were offered this click before the body and took it (see
+		// [app.choicePress] and [app.standingPress]); reaching here means the
+		// pointer was in a column no option occupies, and empty space on this
+		// surface does nothing.
 	}
 	return nil
 }

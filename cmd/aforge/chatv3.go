@@ -254,6 +254,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// The ambient side as this surface reads it: home's item band, the
+		// pause and stop keys, and /status's keeping-watch line, all off the
+		// same store the conversation proposes into (chatv3_standing.go).
+		Standing: v3StandingSeam(cfg.Standing),
 		Fresh: func() (tui3.Agent, string, error) {
 			place, err := v3NextSession(cfg.Place, workspace)
 			if err != nil {
