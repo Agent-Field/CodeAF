@@ -334,10 +334,11 @@ survives, the identity is not drawn, and nothing on the row is pressable.
 
 ## What each part of the status line means
 
-Nine segments, right to left of the identity, joined by ` · ` in a fixed order:
+Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
+| 0 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
 | 1 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | 2 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
 | 3 | cost | `$0.14` | the session's running spend | never empty |
@@ -350,6 +351,12 @@ Nine segments, right to left of the identity, joined by ` · ` in a fixed order:
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise.
+
+The `open` count is read from the conversations themselves and not from the files other
+terminals leave behind, so it never lags: a conversation that stops on a question while you
+are looking at a different one is counted in `N waiting` on the next frame. `tab` over an
+empty box goes to the last one — see the keys page, and home's *Switch between projects
+without leaving*.
 
 ## Why the numbers on the status line fade
 
@@ -417,8 +424,11 @@ When the segments do not fit, they are removed one at a time in a fixed order, b
 actionable each one is:
 
 ```
-delta → cache → eta → burn → ambient → cost → context
+delta → open → cache → eta → burn → ambient → cost → context
 ```
+
+`open` goes early because it is the one segment that is not about the conversation in
+front: at forty columns what you need is what **this** conversation is doing.
 
 The **state word and the `YOLO` badge are not in that list at all**. One is why you are
 looking at the line; the other is why you should be.
@@ -748,8 +758,9 @@ This works everywhere a path appears in aforge's own text:
   above an edit's diff, even when the row was too narrow to show the whole path.
 - **the dim line under a picture**, which is the picture's whole absolute path.
 - **on the home screen** — the dim `project · path` line under a conversation's name,
-  and the `elsewhere · …` line that tells you which folder to go and start aforge in.
-  Both open that folder.
+  which opens that folder. (There used to be an `elsewhere · …` line beside it, naming the
+  folder you had to go and start aforge in to open another project's conversation. It is
+  gone: `enter` on home opens any project's row now.)
 
 **It survives wrapping.** A path too long for the pane goes down across several rows,
 and every row of it opens the same file — the terminal is told the target

@@ -477,8 +477,18 @@ notes `close failed: <err>`), clears everything that belonged to it — transcri
 pending questions, follow-ups, folds, meters — and replays the new journal. It ends with a
 note reading `resumed <path>`.
 
-A conversation another window is holding open is reported rather than worked around. See the
-section on two terminals in the same folder.
+**`/resume` follows the project you are in, and it replaces.** Its list is this directory's
+conversations, and opening one closes the one you were in. That is the one place it differs
+from home: `enter` there opens any project's row and leaves the conversation you were in
+**open**, still running. `aforge resume` in a shell follows that shell's folder in exactly
+the same way — the picker it opens is that directory's list.
+
+**Except for a conversation this terminal already holds.** One open behind the screen is not
+reopened and not refused: `enter` goes straight to it, nothing is closed, and the one you
+were in stays open. The lock the door would otherwise meet is our own.
+
+A conversation another *terminal* is holding open is reported rather than worked around. See
+the section on two terminals in the same folder.
 
 ## Two terminals in the same folder
 
@@ -578,8 +588,11 @@ be opened costs you the up arrow and nothing else.
 
 ## Starting a fresh conversation with /new
 
-`/new` (aliases `/clear`, `/clean`, `/reset`) closes this conversation and starts a fresh
-one in the same directory, with a brand-new session file.
+`/new` (aliases `/clear`, `/clean`, `/reset`) starts a fresh conversation in the same
+directory, with a brand-new session file — and **leaves the one you were in open behind
+it**, still streaming its turn and still running its tasks. `tab` over an empty box goes
+back. The exception is a conversation nobody has used yet, which is closed and replaced
+because there is nothing in it to keep.
 
 What carries over: the settings the session was launched with, and **the approval gate as it
 stands right now** rather than as it stood when aforge started. If you have changed what is
@@ -588,7 +601,33 @@ the resume picker is built the same way, for the same reason.
 
 What does not carry over: the conversation itself. The new session starts empty — none of
 the messages, none of the context, no memory of what was said. The old conversation is not
-deleted; it is still on disk and still in the `/resume` list.
+deleted; it is on disk, still in the `/resume` list, and still running.
 
 Nothing on disk changes. Files written and commands run during the old conversation stay
 exactly as they were.
+
+## What switching keeps, and what it forgets
+
+Leaving a conversation is **not** closing it. Nothing is interrupted, no agent is closed, no
+lock is dropped: the surface stops drawing it and everything in it carries on.
+
+Coming back redraws it from its own transcript, which is the one moment you can tell this is
+not several terminals. These come back with it:
+
+- the transcript, the task column, the meters, the model, the title, and any approval
+  question, task proposal or sign-in offer the session is still holding;
+- a turn that is still running, from its **first token** rather than from wherever it had
+  got to;
+- the unsent sentence in the box and the pictures on it — including any message you typed
+  while it was busy, folded back into the box rather than dropped;
+- where you were reading, the room you had open, and how much of an approval countdown was
+  left.
+
+These are forgotten, and each is something you were in the *middle* of or a door onto
+something the whole terminal shares: copy mode, an inline rewind or an open rewind timeline,
+the expand sheet, the deliverables shelf, every picker and panel, the settings panel, the
+status deck, the task page, and the task column's focus.
+
+Contrast that with what `/quit` and `ctrl+c` do, which is close for real: the turn is
+cancelled with a grace wait, background jobs are shut down, running tasks end, and the
+journal is synced and unlocked — see *Will I lose this if it crashes?*.

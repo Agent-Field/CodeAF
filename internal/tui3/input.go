@@ -407,15 +407,42 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// conversation's standing lanes (welcome.go's [app.resumeSession]).
 			return cmd
 		}
-		a.dismissWelcome()
+		if !welcomeKeeps(msg.String()) {
+			a.dismissWelcome()
+		}
 	}
 
-	// tab is the path completion's key, and its only one: "/image " with tab
-	// after it offers this directory's files, and tab again takes the one under
-	// the cursor (files.go). It is read before the lists below because on this
-	// surface tab means nothing else at all.
+	// tab is the path completion's key: "/image " with tab after it offers this
+	// directory's files, and tab again takes the one under the cursor
+	// (files.go). It is read before the lists below because everything above it
+	// has already had its say.
+	//
+	// AND WHEN THE COMPLETION TOOK NOTHING AND THE BOX IS EMPTY, IT IS THE WAY
+	// BACK TO THE LAST CONVERSATION (keeper.go). That is the seventeenth rung of
+	// this router, and its guard is stated positively rather than as an absence:
+	// the completion answered nil, the draft is empty, and none of the sixteen
+	// claims above is holding the keyboard — every one of which is already
+	// handled by having been read first.
+	//
+	// Two of those sixteen needed a change rather than an ordering, and both are
+	// upstream of here: the welcome box now takes tab and refuses to be
+	// dismissed by it (welcome.go), and the rail eats it while it holds the
+	// keyboard (task.go). Without those, one keystroke would do two unrelated
+	// things — one of them irreversible — and a person would arrive in another
+	// conversation with a rail focus they cannot see.
 	if msg.String() == "tab" {
-		return a.completePath()
+		if cmd := a.completePath(); cmd != nil {
+			return cmd
+		}
+		if a.comp.open && a.comp.arg {
+			// The completion is up and simply had nothing to advance to. It is
+			// still the thing this key belongs to.
+			return nil
+		}
+		if !a.input.empty() {
+			return nil
+		}
+		return a.lastConversation()
 	}
 	// And enter belongs to the LINE under that list, not to the list. A person
 	// who typed a path out in full would otherwise have it swapped for whatever

@@ -67,7 +67,7 @@ var commands = []command{
 	// what a terminal person's fingers type, /reset is what a chat person's do,
 	// and both of them mean the thing this surface calls /new — so all three land
 	// on it rather than on "unknown command: /clear".
-	{name: "new", desc: "close this session and start a fresh one", alias: []string{"clear", "clean", "reset"}},
+	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
 	// IT BELONGS BESIDE /resume AND SITS UNDER /compact, and the gap is the
@@ -216,7 +216,7 @@ var commands = []command{
 	// types back correctly.
 	{name: "files", desc: "what has been made for you · open, reveal or copy one"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
-	{name: "quit", desc: "leave", alias: []string{"exit", "q"}},
+	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
 
 // checkCommands is THE TABLE CHECK, run at init over [commands] and by the tests
@@ -616,7 +616,11 @@ func helpText(file string) string {
 		// THE DOOR IS NAMED HERE BECAUSE IT NO LONGER BEHAVES THE WAY THE HABIT
 		// EXPECTS (quitarm.go): one press does not leave, and a person whose
 		// ctrl+c "did nothing" looks here before anywhere else.
-		"ctrl+c         twice quits · mid-turn one press interrupts, like esc",
+		"ctrl+c         twice quits everything · mid-turn one press interrupts, like esc",
+		// tab is the seventeenth rung of the key router (input.go) and does
+		// nothing at all when this terminal holds one conversation — which is
+		// why the line says what it needs rather than promising it always works.
+		"tab            go back to the last conversation, with an empty box",
 		"alt+enter      open a line · enter sends",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",

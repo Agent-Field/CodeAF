@@ -1071,7 +1071,10 @@ func TestTheEllipsisOnlyShowsWhileNothingElseIsMoving(t *testing.T) {
 	}
 }
 
-func TestNewOpensAFreshAgentAndClearsTheTranscript(t *testing.T) {
+// /new ON A CONVERSATION NOBODY HAS USED YET REPLACES IT. Closing it costs
+// nothing — there is nothing in it — and keeping it would spend a slot on a
+// conversation that was never typed in.
+func TestNewOnAFreshConversationReplacesIt(t *testing.T) {
 	first := &fakeAgent{model: "m"}
 	second := &fakeAgent{model: "m2"}
 	a := newApp(context.Background(), Options{
@@ -1081,7 +1084,6 @@ func TestNewOpensAFreshAgentAndClearsTheTranscript(t *testing.T) {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
-	a.note("something old")
 
 	typeLine(t, a, "/new")
 	if first.closes != 1 {
@@ -1090,12 +1092,51 @@ func TestNewOpensAFreshAgentAndClearsTheTranscript(t *testing.T) {
 	if a.agent != Agent(second) || a.file != "/tmp/next.jsonl" {
 		t.Fatal("/new did not take the fresh agent")
 	}
+	if a.openCount() != 1 {
+		t.Fatalf("replacing a fresh conversation left %d open", a.openCount())
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "new session · /tmp/next.jsonl") {
+		t.Fatalf("/new has to name the file:\n%s", got)
+	}
+}
+
+// AND /new ON A CONVERSATION SOMEBODY HAS USED ADDS ONE, leaving the first
+// still open and still running. Every neighbouring door adds — home's enter,
+// home's typed path, the welcome box's rows — and a /new that closed a
+// conversation with work in it would be the one door that punished somebody for
+// using it.
+func TestNewOnAUsedConversationAddsOneAndClearsTheTranscript(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	second := &fakeAgent{model: "m2"}
+	a := newApp(context.Background(), Options{
+		Agent:       first,
+		Workspace:   "/tmp/lab",
+		SessionFile: "/tmp/lab/one/transcript.jsonl",
+		Fresh:       func() (Agent, string, error) { return second, "/tmp/next.jsonl", nil },
+	})
+	a.width, a.height = 60, 20
+	a.pal = newPalette(tokens.ANSI256, false)
+	a.stirs = make(chan string, stirDepth)
+	typeLine(t, a, "something old")
+	drive(t, a, streamClosedMsg{gen: a.gen})
+
+	typeLine(t, a, "/new")
+	if first.closed {
+		t.Fatal("/new closed a conversation somebody had used")
+	}
+	if a.agent != Agent(second) || a.file != "/tmp/next.jsonl" {
+		t.Fatal("/new did not take the fresh agent")
+	}
+	if a.openCount() != 2 {
+		t.Fatalf("this terminal holds %d conversations", a.openCount())
+	}
 	got := plain(frame(a))
 	if strings.Contains(got, "something old") {
 		t.Fatalf("the old conversation survived /new:\n%s", got)
 	}
-	if !strings.Contains(got, "new session · /tmp/next.jsonl") {
-		t.Fatalf("/new has to name the file:\n%s", got)
+	if !strings.Contains(got, "new conversation · lab") {
+		t.Fatalf("/new has to say which of the two happened:\n%s", got)
 	}
 }
 

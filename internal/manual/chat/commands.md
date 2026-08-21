@@ -172,7 +172,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/help` | `/?` | — | prints this list |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
-## /help, /?, /quit, /exit, /q
+## /help, /?, /quit, /exit, /q — how do I close just this chat
 
 `/help` (or `/?`) prints the whole command table into the conversation, name column
 aligned, each row with its alias tail. The first line is the product's own name,
@@ -186,31 +186,52 @@ Under the table `/help` prints the keys that have no slash command, including
 The last line of `/help` is `session · <path>`, and it appears **only when the session
 has a file**. Over `--host` the path is written `machine:/path`.
 
-`/quit` (or `/exit`, `/q`) leaves, **and it leaves at once** — it is typed out on
-purpose, so it is not asked twice. Your draft is written to disk synchronously first,
-with any message still waiting for an answer folded in underneath it, so nothing typed
-in the last moment before quitting is lost. Then the running turn is interrupted, the
-agent is closed, and the program exits.
+`/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
+it is typed out on purpose, so it is not asked twice. Your draft is written to disk
+synchronously first, with any message still waiting for an answer folded in underneath it,
+so nothing typed in the last moment is lost. Then that conversation's running turn is
+interrupted and its agent is closed for real.
 
-`ctrl+c` is the other road out and it takes **two presses**: the first arms the door
-and the hint slot reads `ctrl+c again to quit`, and a second press within 1.5 seconds
-leaves. While a turn is running `ctrl+c` interrupts the turn instead and does not arm
-anything. The keys page has the whole rule under "Quitting aforge".
+**If this terminal is holding another conversation, aforge stays up** and the most recently
+open one comes forward, saying `closed · <the name of the one that went>`. `/quit` leaves
+the program only when the conversation it closed was the last one. Home's page has the
+whole arrangement under *Switch between projects without leaving*.
 
-## /new — close this session and start a fresh one
+`ctrl+c` is the other road out and it takes **two presses**, and it closes **everything**:
+the first arms the door and the hint slot reads `ctrl+c again to quit`, with how many
+conversations and what work a second press would stop — `ctrl+c again to quit ·
+3 conversations · 2 tasks and a job will stop`. A second press within 1.5 seconds leaves.
+While a turn is running `ctrl+c` interrupts the turn instead and does not arm anything. The
+keys page has the whole rule under "Quitting aforge".
 
-`/new` (or `/clear`, `/clean`, `/reset`) closes this conversation and opens the next one
-on the same config. A running turn is interrupted, the agent is closed, and a fresh agent
-and session file are opened.
+## /new — start another conversation in this project
 
-The transcript is cleared. So are selections, thinking, pending approvals, connect offers
-and harness offers, the task rail, the frozen copy viewport, and any open browser sign-in
-— they all belong to the old conversation. The title, model and meters are re-read from
-the new agent.
+`/new` (or `/clear`, `/clean`, `/reset`) opens a fresh conversation on the same config,
+with a fresh agent and a fresh session file.
 
-**Your draft is deliberately not cleared.** The sentence in the box is your next one.
+**It adds one rather than closing this one.** The conversation you were in is left open
+behind it — still streaming its turn, still running its tasks — and `tab` over an empty
+message box goes back. The status line then reads `2 open`.
 
-It ends with a note, `new session · <path>`, or just `new session` when there is no file.
+**The one exception is a conversation nobody has used yet**: no transcript, no turn ever
+run, nothing out and nothing waiting. That one is closed and replaced, because closing it
+costs nothing and keeping it would spend a slot on a conversation you never typed in.
+
+The screen is cleared either way. So are selections, thinking, pending approvals, connect
+offers and harness offers, the task rail, the frozen copy viewport, and any open browser
+sign-in — they all belong to the conversation you were in. The title, model and meters are
+re-read from the new agent.
+
+**Your draft is deliberately not cleared.** `/new` is the one door where the sentence in
+the box goes with **you** rather than with the conversation: it is carried into the new one
+and cleared in the old, along with any message that was waiting for an answer.
+
+It ends with a note that says which of the two happened: `new conversation · <project>`
+when it added one, and `new session · <path>` — or just `new session` with no file — when
+it replaced a fresh empty one.
+
+At eight open it refuses with `8 open is as many as aforge holds — /quit closes this one`,
+and nothing is opened.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -576,6 +597,16 @@ The cursor opens on the conversation you are already in. enter on another row cl
 agent, interrupting a running turn first, opens the chosen transcript, clears everything
 belonging to the old conversation, replays the new one, and notes `resumed <path>`.
 
+**`/resume` follows the project you are in.** Its list is this project's conversations, and
+enter on one of them **replaces** the conversation on screen rather than adding to it —
+which is the one place this differs from home, where `enter` opens any project's row and
+leaves the one you were in running. If you want the conversation you are in kept, go
+through home.
+
+**Except for one this terminal already holds.** A conversation open behind the screen is
+not reopened and not refused: enter goes straight to it, exactly as `tab` would, and
+nothing is closed. The lock the door would meet is our own.
+
 There is no argument form, on purpose: a session is named by a title a model wrote and
 lives in a file named after a timestamp, so the only honest way to ask for one is to be
 shown them. There is no mouse commit on this list either.
@@ -633,11 +664,12 @@ the one-sentence outcome — so `postgres` finds the chat whose work mentioned i
 folds its quiet conversations into `…13 more, quiet since 1d`; that line is a door (`enter`
 or `→` opens it, `←` folds it), and searching sees through the fold.
 
-**The limit, plainly: `enter` opens conversations of the project this window is in.**
-Other projects are shown with a dim `elsewhere` on their heading, and enter on one of
-their rows says `elsewhere · <that project's path>` rather than opening it — a window's
-permissions, crew and spend ceiling all came from the workspace it launched in, and
-carrying a conversation across without them is not something aforge will do quietly.
+**`enter` opens any row on the screen, in any project.** The conversation you were in is
+left **open** behind it — still streaming, still running its tasks — and the new one is
+built on its own workspace with that project's own permissions, crew and spend ceiling.
+Nothing is carried across, because a second project is a second conversation rather than
+this one moving. `tab` over an empty message box goes back. Home's page has the whole of
+it under *Open another project from home*.
 
 Refusals, exactly as written:
 
@@ -646,11 +678,16 @@ home shows this machine's projects, and this session is on another
 nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
+that folder is gone · <path>
+8 open is as many as aforge holds — /quit closes this one
 ```
 
 The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
-session is on the other end. The last is what the typing-to-start box says where no
-fresh-session seam exists.
+session is on the other end, so home refuses over a connection and there is one
+conversation. `/new is unavailable here` is what the typing-to-start box says where no
+fresh-session seam exists. The last two are `enter` on a project whose folder has been
+deleted or moved since its last conversation, and `enter` when this terminal is already
+holding eight — in both cases home stays up and nothing is opened.
 
 ## /permissions — what runs without asking
 

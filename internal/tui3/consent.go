@@ -140,6 +140,17 @@ func (a *app) askConsent(ev session.Event) {
 // here — the keystroke that answered the last one is not an answer to this one.
 func (a *app) startAskClock() {
 	a.askAt, a.askPaused = a.now(), false
+	// A QUESTION COMING BACK FROM ANOTHER CONVERSATION KEEPS THE READING TIME IT
+	// HAD. A switch stops drawing the card and the clock stops with it — there
+	// is nobody reading a conversation that is not on screen, which is the same
+	// argument [app.tickAsk] makes about an unfocused window — so what the
+	// sidecar carried is the REMAINDER, and this rebases it: an askAt that far
+	// in the past leaves exactly that much of askWait to run (switcher.go).
+	if a.askResume > 0 {
+		a.askAt = a.now().Add(a.askResume - a.askWait)
+		a.askPaused = a.askResumePaused
+		a.askResume, a.askResumePaused = 0, false
+	}
 }
 
 // consentWait is the configured countdown as a duration. Zero — the setting's

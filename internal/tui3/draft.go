@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -57,21 +58,57 @@ var draftOwner = os.Getpid()
 // between words.
 const draftDebounce = 300 * time.Millisecond
 
-// draftSaveMsg is the debounce firing.
-type draftSaveMsg struct{}
+// draftSaveMsg is the debounce firing, carrying THE FILE IT WAS ARMED FOR.
+//
+// THE NAME IS ON THE MESSAGE BECAUSE THE SURFACE CAN HAVE MOVED. A person who
+// types half a sentence and switches to another project inside the three
+// hundred milliseconds of the debounce would otherwise have this tick land on a
+// surface whose box holds the OTHER conversation's words and whose draftFile
+// names the other conversation's file — one sentence written under a name that
+// does not belong to it, and the real one lost. The conversation being left
+// writes its own box on the way out (switcher.go), so a tick that no longer
+// matches has nothing left to do.
+type draftSaveMsg struct{ file string }
 
-// DraftFile is where THIS WINDOW's draft on one workspace lives under dir. The
-// name carries a hash of the path rather than the path itself, because a
-// directory name can be longer than a file name may be — and the person never
+// draftOrdinals is how many drafts this process has named on each workspace,
+// keyed by the canonical directory.
+//
+// IT EXISTS BECAUSE ONE TERMINAL CAN HOLD TWO CONVERSATIONS IN ONE PROJECT.
+// The name used to be the workspace and the pid, which is unique among the
+// processes alive at one moment and was therefore enough while a process held
+// one conversation per directory. /new twice in one repository now makes two,
+// and both would have written the same file: one box saved under the other's
+// name, then whichever wrote last winning, then a launch restoring one sentence
+// where there had been two.
+var draftOrdinals = struct {
+	mu sync.Mutex
+	n  map[string]int
+}{n: map[string]int{}}
+
+// DraftFile names the draft file for A NEW CONVERSATION on one workspace, under
+// dir. The name carries a hash of the path rather than the path itself, because
+// a directory name can be longer than a file name may be — and the person never
 // has to find this file, unlike a session transcript.
 //
-// It is stable for the life of the process and different in every other one, so
-// a window may write it without ever asking who else is open.
+// IT IS NOT A PURE FUNCTION AND MUST NOT BE CALLED TWICE FOR ONE CONVERSATION:
+// each call takes the next ordinal for that workspace, which is what stops two
+// conversations of this process colliding. The door calls it exactly once, in
+// the same breath as it builds the agent (cmd/aforge's chatv3_process.go).
+//
+// THE PID STAYS THE LAST TOKEN, which is not a style choice:
+// [draftWindowAlive] parses it out of the name to decide whether the window
+// that left an orphan is gone, and it reads the token after the final dash.
 func DraftFile(dir, workspace string) string {
 	if dir == "" {
 		return ""
 	}
-	return filepath.Join(dir, draftPrefix(workspace)+strconv.Itoa(draftOwner)+".txt")
+	key := filepath.Clean(workspace)
+	draftOrdinals.mu.Lock()
+	ordinal := draftOrdinals.n[key]
+	draftOrdinals.n[key] = ordinal + 1
+	draftOrdinals.mu.Unlock()
+	return filepath.Join(dir,
+		draftPrefix(workspace)+strconv.Itoa(ordinal)+"-"+strconv.Itoa(draftOwner)+".txt")
 }
 
 // draftPrefix is everything in the name before the window: the part two windows
@@ -90,12 +127,19 @@ func (a *app) edited() tea.Cmd {
 		return lists
 	}
 	a.draftPending = true
-	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{} }))
+	file := a.draftFile
+	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} }))
 }
 
 // saveDraft writes the box as it stands. The write happens in the command and
 // not in the loop: it is small, but nothing on this surface waits on a disk.
-func (a *app) saveDraft() tea.Cmd {
+func (a *app) saveDraft(file string) tea.Cmd {
+	if file != "" && file != a.draftFile {
+		// Armed by a conversation that is no longer the one on screen. It wrote
+		// its own box on the way out, and writing this one under its name would
+		// be the switch losing a sentence in each direction.
+		return nil
+	}
 	a.draftPending = false
 	if a.draftFile == "" {
 		return nil
@@ -116,6 +160,48 @@ func (a *app) dropDraft() {
 	_ = os.Remove(a.draftFile)
 }
 
+// dropDraftFile removes one conversation's draft, named rather than taken off
+// the surface. It is what a CLOSE owes: the file is crash insurance for a
+// conversation that can no longer crash, and one left behind is somebody's
+// finished sentence waiting to be adopted into the next window that opens on
+// that directory ([adoptDraft]).
+func dropDraftFile(path string) {
+	if path == "" {
+		return
+	}
+	_ = os.Remove(path)
+}
+
+// draftAdopted is the workspaces this process has already hunted an orphan on.
+//
+// FIRSTNESS CANNOT BE INFERRED FROM THE ORDINAL, which is the trap this closes:
+// the first conversation on workspace B may be the third conversation of the
+// process, and its ordinal is B's own zero. What adoption is for is a window
+// that opened where a dead one left a sentence — the FIRST conversation this
+// process puts on a directory — and a conversation opened from home an hour in
+// must not paste a stranger's unfinished sentence into its box.
+var draftAdopted = struct {
+	mu    sync.Mutex
+	tried map[string]bool
+}{tried: map[string]bool{}}
+
+// draftFirstHere reports whether this process has yet looked for an orphan on
+// this workspace, and records that it now has.
+//
+// The key is the drafts directory AND the workspace, because the pair is what a
+// glob is over: one process writes them all under one directory in the live
+// door, and keying on both keeps the answer true for any door that does not.
+func draftFirstHere(own, workspace string) bool {
+	key := filepath.Dir(own) + "\x00" + filepath.Clean(workspace)
+	draftAdopted.mu.Lock()
+	defer draftAdopted.mu.Unlock()
+	if draftAdopted.tried[key] {
+		return false
+	}
+	draftAdopted.tried[key] = true
+	return true
+}
+
 // restoreDraft puts the file back in the box at startup — this window's own if
 // it is somehow still there, and otherwise the sentence a dead window left.
 func (a *app) restoreDraft() {
@@ -123,8 +209,8 @@ func (a *app) restoreDraft() {
 		return
 	}
 	text := readDraft(a.draftFile)
-	if text == "" {
-		text = adoptDraft(a.draftFile)
+	if text == "" && draftFirstHere(a.draftFile, a.workspace) {
+		text = adoptDraft(a.draftFile, a.workspace)
 	}
 	if text != "" {
 		a.input.setText(text)
@@ -144,16 +230,21 @@ func (a *app) restoreDraft() {
 // words, they cost a few hundred bytes, and each window that opens rescues one
 // more; deleting them to keep the directory tidy would be tidying away the only
 // thing this file exists to protect.
-func adoptDraft(own string) string {
+//
+// IT GLOBS FROM THE WORKSPACE'S OWN PREFIX and not from its own filename. The
+// name gained an ordinal when one process could hold two conversations in one
+// project, and a glob built by trimming the last token off this file's name
+// would then match only drafts whose ORDINAL matches — so conversation 1 would
+// never see the orphan a dead single-conversation window left as ordinal 0,
+// which is the only case this function exists for.
+func adoptDraft(own, workspace string) string {
 	directory := filepath.Dir(own)
-	name := strings.TrimSuffix(filepath.Base(own), filepath.Ext(own))
-	cut := strings.LastIndex(name, "-")
-	if cut < 0 {
-		// A name this file did not make. There is no window in it to compare
-		// against, and globbing on what is left would sweep the directory.
+	if strings.TrimSpace(workspace) == "" {
+		// Nothing to glob from. A hunt with no workspace would either sweep the
+		// directory or match nothing, and matching nothing is the safe half.
 		return ""
 	}
-	candidates, err := filepath.Glob(filepath.Join(directory, name[:cut+1]+"*.txt"))
+	candidates, err := filepath.Glob(filepath.Join(directory, draftPrefix(workspace)+"*.txt"))
 	if err != nil {
 		return ""
 	}

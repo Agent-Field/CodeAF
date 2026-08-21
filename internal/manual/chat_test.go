@@ -90,6 +90,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will you notice work from another terminal", "tasks"},
 		{"what else is running on this project right now", "tasks"},
 
+		// The ninth wave: one terminal, several conversations. The first two are
+		// asked by somebody who read the old refusal and wants to know whether
+		// it still stands; the rest are the four things a person does with the
+		// feature the moment they find it.
+		{"open another project from home", "home"},
+		{"why does it say elsewhere", "home"},
+		{"can I work on two repos in one terminal", "home"},
+		{"can I work on two projects at once", "home"},
+		{"how do I switch back to the last conversation", "home"},
+		{"how do I switch to my other chat", "home"},
+		{"is my other conversation still running", "home"},
+		{"does my draft move when I switch", "home"},
+		{"does closing one conversation quit aforge", "commands"},
+		{"how do I close just this chat", "commands"},
+		{"will ctrl+c kill my other project's tasks", "keys"},
+		{"does my approval question expire while I am in another chat", "permissions"},
+
 		// The fourth wave, and it is the one this build most needs to answer
 		// out of a page rather than out of the model's imagination: aforge
 		// carrying something from one conversation into the next. Every one of
