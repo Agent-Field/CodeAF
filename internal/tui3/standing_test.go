@@ -397,3 +397,119 @@ func TestACardWithNoDeadlineDrawsNoMeterAndNeverEnds(t *testing.T) {
 		t.Fatalf("a card with no clock could not be answered, the engine saw %v", agent.answered)
 	}
 }
+
+// ── a one-off reminder's card has two answers ───────────────────────────────
+
+// standReminder is a one-off reminder as the engine proposes one: a moment, and
+// one line said at it.
+func standReminder() standing.Item {
+	return standing.Item{
+		ID:        "abc",
+		Words:     "remind me to sleep in 1 min",
+		Workspace: "/tmp/lab",
+		When:      standing.When{Kind: standing.WhenAt, Words: "in 1 minute — 07:35", At: time.Now().Add(time.Minute)},
+		Does:      standing.Action{Kind: standing.ActionSay, Say: "time to sleep"},
+		Rails:     standing.Rails{PerRunUSD: 0.05, MaxPerDay: 1},
+		Status:    standing.StatusActive,
+	}
+}
+
+// `ONCE, NOT STANDING` IS NOT AN ANSWER TO A ONE-OFF REMINDER, so the card does
+// not draw the chip and the digit under it does nothing.
+//
+// Written from a person's transcript: they asked for a one-minute reminder, met
+// three chips, pressed `3` because it was the answer that committed to nothing,
+// and were told aforge could not hold a one-minute timer. It can; a standing
+// one-off IS the timer. The chip was the defect.
+func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
+	a, agent, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		Item:      standReminder(),
+		WhenWords: "in 1 minute — 07:35",
+		CostWords: "about a cent, once",
+		Options:   session.StandingOptions(standReminder()),
+	})})
+
+	text := standText(a)
+	for _, want := range []string{"[ 1 " + standYesWord + " ]", "[ 2 " + standChangeWord + " ]"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("a reminder's card is missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, standOnceWord) {
+		t.Fatalf("a one-off reminder's card still offers `%s`:\n%s", standOnceWord, text)
+	}
+	// AND THE DIGIT UNDER THE MISSING CHIP DOES NOTHING. A key that answered a
+	// question the card never asked would be the same defect wearing no paint.
+	drive(t, a, key2("3"))
+	if len(agent.answered) != 0 {
+		t.Fatalf("`3` answered a card that never offered it: %v", agent.answered)
+	}
+	if a.stand.settled() {
+		t.Fatalf("`3` settled the card as %q", a.stand.verdict)
+	}
+	// The hint names the keys the card drew and not one more.
+	if got := standAskHint(a.stand); got != standTwoHint {
+		t.Fatalf("the hint is %q, want %q", got, standTwoHint)
+	}
+	// And the two it did draw still work.
+	drive(t, a, key2("1"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
+		t.Fatalf("`1` did not stand it up, the engine saw %v", agent.answered)
+	}
+}
+
+// AND EVERYWHERE ELSE THE THIRD ANSWER STAYS. A watch is a thing a person may
+// reasonably want done once, now, instead of kept an eye on forever.
+func TestAWatchCardStillDrawsThreeChips(t *testing.T) {
+	a, agent, _ := standApp(t)
+	watch := standItem()
+	watch.When = standing.When{Kind: standing.WhenProbe, Words: "every few minutes"}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		Item:      watch,
+		WhenWords: "every few minutes",
+		CostWords: "about $0.02 a check",
+		Options:   session.StandingOptions(watch),
+	})})
+
+	text := standText(a)
+	if !strings.Contains(text, "[ 3 "+standOnceWord+" ]") {
+		t.Fatalf("a watch lost its `%s` chip:\n%s", standOnceWord, text)
+	}
+	if got := standAskHint(a.stand); got != standProposalHint {
+		t.Fatalf("the hint is %q, want %q", got, standProposalHint)
+	}
+	drive(t, a, key2("3"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Once {
+		t.Fatalf("`3` on a watch did not answer once: %v", agent.answered)
+	}
+}
+
+// HOME DRAWS THE SAME CHIPS, because it draws the ones the waiting session
+// offered ([session.PresenceQuestion.Options]) and the engine writes that list
+// from the same place the card's comes from.
+func TestHomesChipsAgreeWithTheCard(t *testing.T) {
+	reminder, watch := standReminder(), standItem()
+	if session.StandingOptions(reminder) == nil {
+		t.Fatal("a reminder was left with no answers at all")
+	}
+	for _, option := range session.StandingOptions(reminder) {
+		if option.Key == session.StandingOnceKey {
+			t.Fatalf("home would draw %q %s on a one-off reminder", option.Key, option.Label)
+		}
+	}
+	var found bool
+	for _, option := range session.StandingOptions(watch) {
+		found = found || option.Key == session.StandingOnceKey
+	}
+	if !found {
+		t.Fatal("home would drop `once` from a card that offers it")
+	}
+	// And the words this surface draws follow the same list.
+	if words := standAnswerWords(session.StandingNotice{Item: reminder, Options: session.StandingOptions(reminder)}); len(words) != 2 {
+		t.Fatalf("a reminder's chips are %v, want two", words)
+	}
+	if words := standAnswerWords(session.StandingNotice{Item: watch, Options: session.StandingOptions(watch)}); len(words) != 3 {
+		t.Fatalf("a watch's chips are %v, want three", words)
+	}
+}

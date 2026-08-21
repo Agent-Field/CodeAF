@@ -84,6 +84,18 @@ const (
 	standingReminderPerDay = 1
 )
 
+// standingPastGrace is how far behind the clock a named moment may be and still
+// be taken as meant for now.
+//
+// A REMINDER CAN NEVER BE SET FOR A MOMENT THAT HAS PASSED, which is the law
+// [standingAtMoment] enforces; this is the only slack in it. A model works its
+// stamp out from the `Now` line and calls a beat later, so a moment landing a
+// few seconds behind the clock is arithmetic that was right when it was done —
+// firing that immediately is what the person asked for. Half a minute is wide
+// enough for that and nowhere near wide enough to swallow a mistake: the defect
+// this bound exists for was a stamp TWO HOURS behind.
+const standingPastGrace = 30 * time.Second
+
 // standingWatchOffer is the marker file that remembers the one-time question:
 // keep checking when no window is open? It lives under the store root beside
 // the items rather than in the profile, because it is a fact about THIS store
@@ -144,7 +156,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim. Never your paraphrase: every card, row and note leads with it, and they must recognise what they said. On pause, resume and stop this is a way to name an item instead of its id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
 	`"kind":{"type":"string","enum":["at","every","file","idle","probe"],"description":"at fires once at a moment and retires; every is a rhythm; file is a glob changing; idle is the machine having been quiet; probe is a look at the world judged against the person's words."},` +
-	`"at":{"type":"string","description":"The one moment of an at, as a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). You know the time and the offset already — the Project section of your instructions carries a Now line — so work this out from it and NEVER shell out to read a clock. For a relative moment send in instead."},` +
+	`"at":{"type":"string","description":"The one moment of an at, as a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). You know the time and the offset already — the Project section of your instructions carries a Now line — so work this out from it and NEVER shell out to read a clock. A moment that has ALREADY PASSED is refused, and the refusal says what time it is now — work it out again from that, never from the Now line you already used. For a relative moment send in instead."},` +
 	`"in":{"type":"string","description":"An at's moment said as a distance from RIGHT NOW instead: a Go duration (\"2m\", \"90s\", \"1h30m\"). aforge resolves it against the clock at the instant you call and answers with the moment it landed on, so \"remind me in two minutes\" needs no arithmetic from you. Send at or in, never both."},` +
 	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
 	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project."},` +
@@ -168,7 +180,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"rails":{"type":"object","description":"What bounds it. Both figures are quoted on the card before the person answers.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included (default ` + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + `)."},` +
 	`"max_per_day":{"type":"number","description":"How many times it may fire in one local day (default ` + strconv.Itoa(standingMaxPerDay) + `, or ` + strconv.Itoa(standingReminderPerDay) + ` for a one-off reminder)."},` +
-	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never."}` +
+	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, for the same reason when.at is."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back in a person's words — \"Mondays at 9am\", \"every couple of minutes\". The card quotes this and never the spec."},` +
 	`"cost_words":{"type":"string","description":"What it costs, honestly, in a person's words — \"about 2 cents a run, at most once a day\". Work it out from the rails you are sending."},` +
@@ -228,10 +240,54 @@ func (a *Agent) standingTools() []bare.Tool {
 	}}
 }
 
-// standTool dispatches the six ops. Everything it can answer badly is an
+// standTool is the belt's entry point, and it is [Agent.standDispatch] with the
+// CLOCK STAMPED ON THE ANSWER.
+//
+// EVERY RESULT OF THIS TOOL ENDS WITH THE TIME, whichever op it was and whether
+// it worked. This is the one tool whose whole subject is WHEN, and it is called
+// at the exact moment the model most needs the real clock rather than the
+// minute its instructions opened with — a `Now` line is at most [clockRefresh]
+// old (prompt.go), and a model that has just been told a moment has already
+// passed has to recompute from something. So it is told, here, in the shape the
+// prompt uses, on a line of its own.
+func (a *Agent) standTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+	out, failed, err := a.standDispatch(ctx, args)
+	if err != nil {
+		return out, failed, err
+	}
+	return standingWithNow(out, time.Now()), failed, nil
+}
+
+// standingWithNow is that line, appended.
+func standingWithNow(out string, now time.Time) string {
+	out = strings.TrimRight(out, "\n")
+	if out != "" {
+		out += "\n"
+	}
+	return out + "now: " + standingClock(now)
+}
+
+// standingClock is a moment as this tool and its refusals spell one: the local
+// time to the minute and the numeric offset, which is exactly what a model
+// needs to write an RFC3339 stamp back. It is the `Now` line's own shape minus
+// the date (prompt.go's [nowLine]), because the date is carried in the one
+// place a date matters — the refusal that says what day it now is.
+func standingClock(moment time.Time) string { return moment.Format("15:04 -07:00") }
+
+// standingPassed is the refusal a moment already gone earns, in the model's own
+// grammar and carrying THE CURRENT TIME so the recomputation needs no second
+// call. The tail is the field's own, because "send when.in instead" is advice
+// about a reminder and not about an expiry.
+func standingPassed(field string, moment, now time.Time, tail string) string {
+	return "Invalid arguments: " + field + " " + standingClock(moment) +
+		" has already passed — it is now " + standingClock(now) +
+		" (" + now.Format("Monday 2006-01-02") + "). " + tail
+}
+
+// standDispatch dispatches the six ops. Everything it can answer badly is an
 // ordinary tool result rather than a Go error, the way every other tool on this
 // belt answers: a card the model shaped wrongly is a card it can shape again.
-func (a *Agent) standTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) standDispatch(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed standArguments
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &parsed); err != nil {
@@ -270,7 +326,11 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	if store == nil {
 		return "there is nothing here to set one up with", true, nil
 	}
-	item, problem := a.standingItem(parsed)
+	// ONE READING OF THE CLOCK FOR THE WHOLE CALL. `when.in`, the refusal of a
+	// moment that has passed and the refusal of an expiry that has passed all
+	// measure against the SAME instant; two readings a microsecond apart would
+	// be two answers to one question in a function whose whole subject is when.
+	item, problem := a.standingItem(parsed, time.Now())
 	if problem != "" {
 		return problem, true, nil
 	}
@@ -291,6 +351,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		CostWords:  strings.TrimSpace(parsed.CostWords),
 		Guessed:    parsed.Guessed,
 		OfferWatch: a.standingMayOfferWatch(store),
+		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
+		// from this one list, so `once, not standing` is absent from a one-off
+		// reminder's card everywhere at once (answers.go's [StandingOptions]).
+		Options: StandingOptions(item),
 	}
 	answer, err := a.askStanding(ctx, &notice)
 	if err != nil {
@@ -342,12 +406,12 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 // standingItem turns one call into the object internal/standing keeps. Every
 // refusal it can make is in the person's grammar rather than the schema's,
 // because the model is the only reader and it has to fix the call.
-func (a *Agent) standingItem(parsed standArguments) (standing.Item, string) {
+func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Item, string) {
 	words := strings.TrimSpace(parsed.Words)
 	if words == "" {
 		return standing.Item{}, "Invalid arguments: words is required — the person's own sentence, verbatim"
 	}
-	when, problem := standingWhen(parsed)
+	when, problem := standingWhen(parsed, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -355,7 +419,7 @@ func (a *Agent) standingItem(parsed standArguments) (standing.Item, string) {
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	rails, problem := standingRails(parsed, when, does)
+	rails, problem := standingRails(parsed, when, does, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -377,14 +441,14 @@ func (a *Agent) standingItem(parsed standArguments) (standing.Item, string) {
 	}, ""
 }
 
-func standingWhen(parsed standArguments) (standing.When, string) {
+func standingWhen(parsed standArguments, now time.Time) (standing.When, string) {
 	when := standing.When{
 		Kind: standing.WhenKind(strings.ToLower(strings.TrimSpace(parsed.When.Kind))),
 		Hint: strings.TrimSpace(parsed.When.Hint),
 	}
 	switch when.Kind {
 	case standing.WhenAt:
-		moment, echo, problem := standingAtMoment(parsed.When.At, parsed.When.In, time.Now())
+		moment, echo, problem := standingAtMoment(parsed.When.At, parsed.When.In, now)
 		if problem != "" {
 			return when, problem
 		}
@@ -458,7 +522,7 @@ func standingDoes(parsed standArguments) (standing.Action, string) {
 // standingRails fills what the model left out. THE DEFAULTS ARE THIS FILE'S
 // CONSTANTS and never a second set of numbers: the schema quotes them, the card
 // shows them, and the item is created with them.
-func standingRails(parsed standArguments, when standing.When, does standing.Action) (standing.Rails, string) {
+func standingRails(parsed standArguments, when standing.When, does standing.Action, now time.Time) (standing.Rails, string) {
 	rails := standing.Rails{
 		PerRunUSD: parsed.Rails.PerRunUSD,
 		MaxPerDay: parsed.Rails.MaxPerDay,
@@ -478,6 +542,14 @@ func standingRails(parsed standArguments, when standing.When, does standing.Acti
 		moment, err := standingMoment(expires)
 		if err != nil {
 			return rails, "Invalid arguments: rails.expires " + err.Error()
+		}
+		// AND AN EXPIRY ALREADY GONE RETIRES THE ITEM BEFORE IT EVER FIRES, so
+		// it is refused for [standingAtMoment]'s reason and with its wording: a
+		// card answered yes that stood something up already dead is the worst
+		// of both endings.
+		if moment.Before(now.Add(-standingPastGrace)) {
+			return rails, standingPassed("rails.expires", moment, now,
+				"Work it out from that time, or leave it out for something that never expires.")
 		}
 		rails.Expires = moment
 	}
@@ -515,6 +587,17 @@ func standingAtMoment(rawAt, rawIn string, now time.Time) (moment time.Time, ech
 	parsed, err := standingMoment(rawAt)
 	if err != nil {
 		return time.Time{}, "", "Invalid arguments: when.at " + err.Error()
+	}
+	// A REMINDER CAN NEVER BE SET FOR A MOMENT THAT HAS PASSED. The engine used
+	// to take any stamp it could read, so a model whose `Now` line had gone
+	// stale proposed 05:42 at 07:34 and this accepted it — a card the person
+	// answered for a thing that could never fire. The refusal carries the
+	// CURRENT time in the shape the prompt uses, because the model has to
+	// recompute from something and a refusal that only says no costs another
+	// call to find out what now is.
+	if parsed.Before(now.Add(-standingPastGrace)) {
+		return time.Time{}, "", standingPassed("when.at", parsed, now,
+			`For a distance from now send when.in ("1m"); for a clock time compute it from now.`)
 	}
 	return parsed, "", ""
 }
@@ -706,7 +789,8 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	// The line is the PERSON'S OWN SENTENCE, which is the anchor every surface
 	// leads this item with ([standing.Item.Words]) — the when and the cost are
 	// the card's to show, in the window where there is room to read them.
-	defer a.presenceAsking(QuestionStanding, id, "wants to keep an eye on: "+strings.TrimSpace(notice.Item.Words))()
+	defer a.presenceAskingOptions(QuestionStanding, id,
+		"wants to keep an eye on: "+strings.TrimSpace(notice.Item.Words), StandingOptions(notice.Item))()
 	// SET TO ZERO AND NOT MERELY LEFT ZERO. The field is on the card's shape
 	// and a caller could have filled it; this is the one place the law lives,
 	// so it is applied here rather than trusted upstream.

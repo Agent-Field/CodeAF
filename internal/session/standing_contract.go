@@ -49,6 +49,16 @@ type StandingNotice struct {
 	// should follow a yes with the one-time question: keep checking when no
 	// window is open? The answer comes back in StandingAnswer.KeepWatch.
 	OfferWatch bool
+	// Options are the answers THIS card offers, from [StandingOptions].
+	//
+	// THE ENGINE SAYS WHICH CHIPS A CARD HAS, so the conversation's card, home's
+	// answer row and the keys this session will actually take are one decision
+	// made once. A one-off reminder offers no `once`, because doing "say time to
+	// leave" NOW is not a smaller version of doing it at six — it is a different
+	// thing, and usually nothing. A surface reads this rather than reasoning
+	// from the item itself; the zero value means the kind's full row
+	// ([AnswerOptions]).
+	Options []AnswerOption
 	// Deadline is ALWAYS ZERO from this build, and a surface draws no meter
 	// for a zero. A standing card is read by a person, and a card that ended
 	// itself while they were reading it was never answered — so the wait ends

@@ -553,7 +553,10 @@ func TestStandingAmbiguousWordsAnswerWithTheCandidates(t *testing.T) {
 func TestStandingListSpeaksThePersonsWords(t *testing.T) {
 	store := newFakeStanding(t)
 	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
-	if text, _, _ := agent.standTool(context.Background(), json.RawMessage(`{"op":"list"}`)); text != "Nothing stands in this project yet." {
+	// The clock line every result carries is stripped here rather than asserted:
+	// which line this op's answer opens with is what this test is about, and
+	// TestEveryStandResultEndsWithTheTime is what the tail is about.
+	if text, _, _ := agent.standTool(context.Background(), json.RawMessage(`{"op":"list"}`)); standWithoutNow(text) != "Nothing stands in this project yet." {
 		t.Fatalf("an empty list said %q", text)
 	}
 	if _, err := store.Create(standing.Item{
@@ -1106,5 +1109,249 @@ func TestAnOrdinaryOriginStillWaitsInItsOwnConversation(t *testing.T) {
 	}
 	if got := standing.PeekProjectInbox(root, workspace); len(got) != 0 {
 		t.Fatalf("the project inbox was written too: %+v", got)
+	}
+}
+
+// ── a moment that has already passed ────────────────────────────────────────
+
+// standWithoutNow is one `stand` result with the clock line every one of them
+// ends with taken off, so a test about WHAT AN OP SAID is not also a test about
+// the tail ([standingWithNow]).
+func standWithoutNow(text string) string {
+	trimmed := strings.TrimRight(text, "\n")
+	if at := strings.LastIndex(trimmed, "\nnow: "); at >= 0 {
+		return trimmed[:at]
+	}
+	if strings.HasPrefix(trimmed, "now: ") {
+		return ""
+	}
+	return trimmed
+}
+
+// A REMINDER CAN NEVER BE SET FOR A MOMENT THAT HAS PASSED, and the refusal
+// carries the current time so the model can work the stamp out again without
+// spending another call to find out what now is.
+//
+// The defect this pins: a session two hours old proposed 05:42 at 07:34, the
+// engine took it, and the person answered a card for a thing that could never
+// fire.
+func TestAMomentAlreadyPassedIsRefusedWithTheTimeItIsNow(t *testing.T) {
+	now := time.Date(2026, 8, 21, 7, 34, 0, 0, time.Local)
+	gone := time.Date(2026, 8, 21, 5, 42, 0, 0, time.Local)
+	moment, echo, problem := standingAtMoment(gone.Format("2006-01-02T15:04:05"), "", now)
+	want := "Invalid arguments: when.at " + standingClock(gone) +
+		" has already passed — it is now " + standingClock(now) +
+		" (Friday 2026-08-21). " +
+		`For a distance from now send when.in ("1m"); for a clock time compute it from now.`
+	if problem != want {
+		t.Fatalf("the refusal is\n%q\nwant\n%q", problem, want)
+	}
+	if !moment.IsZero() || echo != "" {
+		t.Fatalf("a refused moment answered %s / %q", moment.Format(time.RFC3339), echo)
+	}
+}
+
+// THE GRACE IS FOR ARITHMETIC AND NOT FOR MISTAKES. A stamp a few seconds
+// behind the clock was right when it was worked out a beat ago; half a minute
+// is where that stops being the honest reading.
+func TestTheGraceTakesASecondsOldStampAndNotAnOlderOne(t *testing.T) {
+	now := time.Date(2026, 8, 21, 7, 34, 0, 0, time.Local)
+	for _, probe := range []struct {
+		name    string
+		behind  time.Duration
+		refused bool
+	}{
+		{name: "right now", behind: 0},
+		{name: "a beat ago", behind: 5 * time.Second},
+		{name: "at the edge", behind: standingPastGrace},
+		{name: "past the edge", behind: standingPastGrace + time.Second, refused: true},
+		{name: "two hours ago", behind: 2 * time.Hour, refused: true},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			at := now.Add(-probe.behind)
+			moment, _, problem := standingAtMoment(at.Format("2006-01-02T15:04:05"), "", now)
+			if probe.refused {
+				if !strings.Contains(problem, "has already passed") {
+					t.Fatalf("%s behind was taken: problem = %q", probe.behind, problem)
+				}
+				return
+			}
+			if problem != "" {
+				t.Fatalf("%s behind was refused: %q", probe.behind, problem)
+			}
+			if !moment.Equal(at) {
+				t.Fatalf("moment = %s, want %s", moment.Format(time.RFC3339), at.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
+// AND THE DISTANCE STILL WORKS, which is the answer the refusal points at: "in
+// 1 minute" is resolved against the clock at the instant of the call and can
+// never land behind it.
+func TestADistanceFromNowIsUntouchedByTheRefusal(t *testing.T) {
+	now := time.Date(2026, 8, 21, 7, 34, 0, 0, time.Local)
+	moment, echo, problem := standingAtMoment("", "1m", now)
+	if problem != "" {
+		t.Fatalf("when.in was refused: %q", problem)
+	}
+	if !moment.Equal(now.Add(time.Minute)) {
+		t.Fatalf("moment = %s, want one minute on", moment.Format(time.RFC3339))
+	}
+	if echo != "in 1 minute — 07:35" {
+		t.Fatalf("echo = %q", echo)
+	}
+}
+
+// AN EXPIRY ALREADY GONE WOULD RETIRE THE ITEM BEFORE IT EVER FIRED, so it is
+// refused in the same grammar and with the same time on it.
+func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
+	now := time.Date(2026, 8, 21, 7, 34, 0, 0, time.Local)
+	gone := time.Date(2026, 8, 21, 5, 42, 0, 0, time.Local)
+	var parsed standArguments
+	parsed.Rails.Expires = gone.Format("2006-01-02T15:04:05")
+	when := standing.When{Kind: standing.WhenEvery, Every: "24h"}
+	does := standing.Action{Kind: standing.ActionSay, Say: "hello"}
+
+	rails, problem := standingRails(parsed, when, does, now)
+	want := "Invalid arguments: rails.expires " + standingClock(gone) +
+		" has already passed — it is now " + standingClock(now) +
+		" (Friday 2026-08-21). Work it out from that time, or leave it out for something that never expires."
+	if problem != want {
+		t.Fatalf("the refusal is\n%q\nwant\n%q", problem, want)
+	}
+	if !rails.Expires.IsZero() {
+		t.Fatal("a refused expiry was kept anyway")
+	}
+	// And one in the future is untouched.
+	parsed.Rails.Expires = now.Add(time.Hour).Format("2006-01-02T15:04:05")
+	if rails, problem = standingRails(parsed, when, does, now); problem != "" {
+		t.Fatalf("a future expiry was refused: %q", problem)
+	}
+	if !rails.Expires.Equal(now.Add(time.Hour)) {
+		t.Fatalf("expires = %s", rails.Expires.Format(time.RFC3339))
+	}
+}
+
+// THE REFUSAL REACHES THE MODEL AS A TOOL RESULT and never as a card: nothing
+// is proposed, so there is nothing for the person to answer.
+func TestProposingAPastMomentNeverDrawsACard(t *testing.T) {
+	store := newFakeStanding(t)
+	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
+	body := `{"op":"propose","words":"remind me to sleep in 1 min",` +
+		`"when":{"kind":"at","at":"2020-01-01T05:42:00"},` +
+		`"does":{"kind":"say","say":"time to sleep"}}`
+	text, isError, err := agent.standTool(context.Background(), json.RawMessage(body))
+	if err != nil {
+		t.Fatalf("standTool: %v", err)
+	}
+	if !isError || !strings.Contains(text, "has already passed") {
+		t.Fatalf("a moment in 2020 was taken: %q (isError=%v)", text, isError)
+	}
+	if len(store.created) != 0 {
+		t.Fatal("something was created for a moment that has passed")
+	}
+}
+
+// EVERY RESULT OF THIS TOOL ENDS WITH THE TIME — every op, and whether it
+// worked or not. It is called at the moment the clock matters most, and the
+// `Now` line in the instructions may be minutes old (prompt.go's clockRefresh).
+func TestEveryStandResultEndsWithTheTime(t *testing.T) {
+	store := newFakeStanding(t)
+	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
+	for _, body := range []string{
+		`{"op":"list"}`,
+		`{"op":"change"}`,
+		`{}`,
+		`{"op":"nonsense"}`,
+		`{"op":"stop","id":"nothing-like-this"}`,
+		`{"op":"propose","words":"x","when":{"kind":"at","at":"2020-01-01T05:42:00"},"does":{"kind":"say","say":"x"}}`,
+	} {
+		text, _, err := agent.standTool(context.Background(), json.RawMessage(body))
+		if err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+		last := lines[len(lines)-1]
+		if !strings.HasPrefix(last, "now: ") {
+			t.Fatalf("%s ended with %q, not the clock:\n%s", body, last, text)
+		}
+		if _, err := time.Parse("15:04 -07:00", strings.TrimPrefix(last, "now: ")); err != nil {
+			t.Fatalf("%s ended with %q, which is not a time: %v", body, last, err)
+		}
+	}
+}
+
+// ── which answers a card offers ─────────────────────────────────────────────
+
+// `ONCE, NOT STANDING` IS NOT AN ANSWER TO A ONE-OFF REMINDER. Doing a `say` at
+// a moment "now" says the wrong thing at the wrong time, or nothing at all — so
+// the engine does not offer the chip, and both surfaces read that from here.
+func TestAOneOffReminderOffersNoOnce(t *testing.T) {
+	reminder := standing.Item{
+		When: standing.When{Kind: standing.WhenAt},
+		Does: standing.Action{Kind: standing.ActionSay},
+	}
+	if StandingOnceIsAnAnswer(reminder) {
+		t.Fatal("a one-off reminder was offered `once`")
+	}
+	for _, option := range StandingOptions(reminder) {
+		if option.Key == StandingOnceKey {
+			t.Fatalf("StandingOptions still carries %q for a one-off reminder", option.Key)
+		}
+	}
+	if len(StandingOptions(reminder)) == 0 {
+		t.Fatal("a one-off reminder was left with no answers at all")
+	}
+}
+
+// AND EVERYWHERE ELSE IT KEEPS IT: a watch, a rule, a routine and overnight
+// work are all things a person may reasonably want done once, now.
+func TestEverythingButAOneOffReminderKeepsOnce(t *testing.T) {
+	for _, item := range []standing.Item{
+		{When: standing.When{Kind: standing.WhenProbe}, Does: standing.Action{Kind: standing.ActionSay}},
+		{When: standing.When{Kind: standing.WhenEvery}, Does: standing.Action{Kind: standing.ActionTask}},
+		{When: standing.When{Kind: standing.WhenFile}, Does: standing.Action{Kind: standing.ActionTask}},
+		{When: standing.When{Kind: standing.WhenIdle}, Does: standing.Action{Kind: standing.ActionTask}},
+		{When: standing.When{Kind: standing.WhenAt}, Does: standing.Action{Kind: standing.ActionTask}},
+	} {
+		if !StandingOnceIsAnAnswer(item) {
+			t.Fatalf("%s/%s lost its `once` answer", item.When.Kind, item.Does.Kind)
+		}
+		var found bool
+		for _, option := range StandingOptions(item) {
+			found = found || option.Key == StandingOnceKey
+		}
+		if !found {
+			t.Fatalf("%s/%s draws no `once` chip", item.When.Kind, item.Does.Kind)
+		}
+	}
+}
+
+// THE CARD SAYS WHICH ANSWERS IT HAS, so the conversation's chips, home's chips
+// and the keys this session will take are one decision made once.
+func TestTheCardCarriesTheAnswersItOffers(t *testing.T) {
+	store := newFakeStanding(t)
+	body := `{"op":"propose","words":"remind me in 1 min to sleep",` +
+		`"when":{"kind":"at","in":"1m"},"when_words":"in a minute",` +
+		`"does":{"kind":"say","say":"time to sleep"},"cost_words":"a cent"}`
+	completer := &scriptedCompleter{steps: []step{standCall("s1", body), finalText("set up")}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "remind me in 1 min to sleep")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	var offered []AnswerOption
+	drainAnsweringStanding(t, events, func(event Event) {
+		offered = event.Standing.Options
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(offered) == 0 {
+		t.Fatal("the card named no answers at all")
+	}
+	for _, option := range offered {
+		if option.Key == StandingOnceKey {
+			t.Fatalf("a one-minute reminder's card offered %q %s", option.Key, option.Label)
+		}
 	}
 }

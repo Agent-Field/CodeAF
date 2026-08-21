@@ -1174,6 +1174,15 @@ type Agent struct {
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
+	// systemAt is when [Agent.system] was rendered, and systemOwn says this
+	// agent rendered it rather than being handed one. Together they are what
+	// lets a turn move the prompt's `Now` line forward when it has gone stale
+	// ([Agent.refreshClockLocked]) — and what stops it doing that to a prompt
+	// somebody else wrote, where there may be no `Now` line to move and
+	// rendering our own would throw theirs away. Both sit under mu with
+	// [Agent.system].
+	systemAt  time.Time
+	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction — rebuilding them per step would re-marshal every schema on
 	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
