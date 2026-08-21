@@ -586,6 +586,13 @@ top.
 The right-hand preview is there in both shapes and never moves. It follows the cursor
 through a filter too, and is empty while the cursor is on the action row.
 
+**On an `ask here` row** — one of the `?` rows an errand leaves on the column — the preview
+is the exchange itself, and the line under the box reads
+`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
+keyboard to the pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
+`esc` or `tab` hands it back. On a window too narrow for two columns that pane is drawn over
+the list instead of beside it, and `esc` brings the list back (*Asking from home*).
+
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it.
 

@@ -322,6 +322,11 @@ type homeLine struct {
 	// [homeLine.row]'s reason — a rescan replaces the world underneath and an
 	// index into it would go stale.
 	proj session.Project
+	// ex is the errand this line stands for, for [homeExchangeRow]. It is the
+	// live object and not a reading of one: the row's tail says what the
+	// exchange is doing at this instant, and a copy taken when the line was
+	// built would be a spinner turning beside a state from four seconds ago.
+	ex *homeExchange
 	// item is the standing item, for [homeItem], and view carries the two facts
 	// about NOW that the document does not hold (homestanding.go's
 	// [StandingItemView]). They are resolved when the row is built, so a row and
@@ -401,11 +406,17 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
-	// exchange is the errand somebody asked from this screen — `ask here` — and
-	// nil when nobody has. It is a real conversation with a real transcript,
-	// kept OUTSIDE v3/projects so that this list can never grow a row for it,
-	// and it lives exactly as long as home does (homeexchange.go).
-	exchange *homeExchange
+	// exchanges is the errands somebody asked from this screen — `ask here` —
+	// as the column draws them. They are real conversations with real
+	// transcripts, kept OUTSIDE v3/projects so that this list can never grow a
+	// session row for one, and they belong to the APP rather than to this view:
+	// an exchange outlives the screen it was asked on, and this field is a copy
+	// of the app's slice handed over by [app.showExchanges] whenever the list
+	// itself changes (homeexchange.go's header states the whole lifecycle).
+	exchanges []*homeExchange
+	// exchangeIn is which project block each of those rows is drawn in, decided
+	// once per build ([homeView.placeExchanges]).
+	exchangeIn map[*homeExchange]string
 	// last caches the tail of a conversation's journal by transcript path.
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
@@ -481,6 +492,11 @@ func (a *app) openHome() tea.Cmd {
 		deliverables: map[string]homeDeliverablesCache{},
 		expanded:     map[string]bool{},
 		itemsOpen:    map[string]bool{},
+		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
+		// screen, so opening home again finds every one that was still going —
+		// with its row, its tail and its pane exactly as they were left
+		// (homeexchange.go).
+		exchanges: a.exchanges,
 	}
 	a.readStandBands()
 	a.home.build()
@@ -547,6 +563,7 @@ func (a *app) landHome() {
 		last:      map[string]session.Summary{},
 		expanded:  map[string]bool{},
 		itemsOpen: map[string]bool{},
+		exchanges: a.exchanges,
 	}
 	a.readStandBands()
 	a.home.build()
@@ -601,10 +618,14 @@ func (a *app) closeHome() {
 	if len(a.home.world.Projects) > 0 {
 		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
 	}
-	// AN ERRAND DIES WITH THE SCREEN IT WAS ASKED ON, and its folder does not:
-	// the agent is closed, the transcript stays under the standing root, and the
-	// sweep law reaps one that came to nothing (homeexchange.go).
-	a.dropExchange()
+	// AN ERRAND DOES NOT DIE WITH THE SCREEN IT WAS ASKED ON, and that is the
+	// repair this whole wave is about. It used to: closing home closed the
+	// agent, so opening another conversation to check something ended the errand
+	// mid-question and the engine answered the person's own card with "the card
+	// was left unanswered — nothing was set up". The exchanges live on the app
+	// ([app.exchanges]); this assignment takes away the SCREEN and nothing else,
+	// and opening home again finds every one of them still going
+	// (homeexchange.go's header).
 	a.home = homeView{}
 	a.touch()
 }
@@ -655,6 +676,12 @@ func (h *homeView) build() {
 	// any other, and the second tier re-sorts when something starts running in a
 	// project nobody has touched for a week.
 	previousProject := h.focusedProject()
+	// AND SO IS THE ERRAND. An exchange row re-sorts the moment its own state
+	// changes — a card arriving lifts it over everything else in the block — and
+	// the pane is about the row under the cursor, so a cursor that held its line
+	// number would take the exchange off the screen at the instant it asked a
+	// question (homeexchange.go).
+	previousExchange := h.focusedExchange()
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -684,6 +711,10 @@ func (h *homeView) build() {
 			h.pointAction()
 			return
 		}
+	}
+	if previousExchange != nil {
+		h.pointExchange(previousExchange)
+		return
 	}
 	if previous.Transcript != "" {
 		h.point(previous.Transcript)
@@ -842,7 +873,11 @@ func (h *homeView) buildWorld() {
 				hit.score = score
 			}
 		}
-		if len(hit.rows) == 0 {
+		// A PROJECT HOLDING AN ERRAND IS ON THE SCREEN whether or not any of its
+		// conversations survived the box. The exchange row has to be somewhere —
+		// it is a live thing with a question in it — and its own project's block
+		// is where it belongs ([homeView.placeExchanges] carries the fallback).
+		if len(hit.rows) == 0 && !h.holdsExchange(project.Dir) {
 			continue
 		}
 		hit.at = project.At()
@@ -882,6 +917,13 @@ func (h *homeView) buildWorld() {
 		// open, wherever it lives, because a filter that folded away half of what
 		// it found would be a filter lying about the machine — the same law the
 		// quiet tail already keeps ([homeView.split]).
+		//
+		// AND THE ERRAND ROWS ARE DRAWN UNDER A QUERY TOO, unlike the standing
+		// bands. A band is a description of something at rest that the query
+		// never considered; an exchange is a conversation happening right now
+		// with the person's own question in it, and a filter that hid one would
+		// be this screen losing an errand because somebody typed three letters.
+		h.placeExchanges(found)
 		for _, hit := range found {
 			h.blank()
 			h.lines = append(h.lines, homeLine{
@@ -926,6 +968,11 @@ func (h *homeView) buildWorld() {
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.After(found[j].at) })
 	// AT REST, TWO TIERS ([homeOpenProjects] says why).
 	open, folded := homeTiers(found, h.bucket)
+	// THE ERRAND ROWS GO IN THE BLOCKS THAT ARE ACTUALLY DRAWN OPEN, which is
+	// why this is asked here and not inside one of them: an exchange asked in a
+	// project that ended up folded away under `elsewhere` still needs a row, and
+	// only a caller holding the whole tier can say where it goes.
+	h.placeExchanges(open)
 	for _, hit := range open {
 		h.blank()
 		h.lines = append(h.lines, homeLine{
@@ -1015,6 +1062,12 @@ func (h *homeView) projectBlock(hit homeHit, query string) {
 			cold = append(cold, view)
 		}
 	}
+	// AND THE ERRANDS SIT ABOVE ALL OF IT. An exchange is the hottest thing a
+	// block can hold — it is a conversation this person started seconds ago and
+	// it may be holding a question for them — so it takes the top of the block,
+	// above the items that are firing and above the conversations
+	// (homeexchange.go's [homeView.exchangeLines] carries the order inside).
+	h.lines = append(h.lines, h.exchangeLines(hit.project)...)
 	for _, view := range hot {
 		h.lines = append(h.lines, h.itemLine(hit.project, view))
 	}
@@ -1098,6 +1151,16 @@ func (h *homeView) buildElsewhere(folded []homeHit) {
 			folded: !h.expanded[homeElsewhereKey],
 		})
 	}
+}
+
+// holdsExchange reports whether an errand was asked in one project's bucket.
+func (h *homeView) holdsExchange(dir string) bool {
+	for _, ex := range h.exchanges {
+		if ex.bucket == dir {
+			return true
+		}
+	}
+	return false
 }
 
 // homeProjectHot reports whether a project holds anything a person would want
@@ -1406,7 +1469,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeMoreProjects:
+		homeProject, homeMoreProjects, homeExchangeRow:
 		return true
 	}
 	return false
@@ -1474,17 +1537,26 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	//
 	// AND THE ARROWS ALWAYS MOVE THE ZONE THAT HAS THE KEYBOARD. With the list
 	// focused ↑/↓, ctrl+p/ctrl+n and pgup/pgdown walk the column exactly as they
-	// do with no exchange on screen, and THE PANE KEEPS DRAWING THE EXCHANGE
-	// while they do (home.go's [app.homeDetail]) rather than flicking back to a
-	// preview of whatever row is passing under the cursor. That is the trade
-	// this surface makes and it is deliberate: an exchange is a conversation
-	// happening NOW, and a pane that showed it only while it held the keyboard
-	// would hide the reply at the exact moment somebody looked away to check
-	// which project they were in.
-	if h.exchange != nil && h.exchange.focused {
+	// do with no exchange on screen, and THE PANE FOLLOWS THE CURSOR while they
+	// do (home.go's [app.homeDetail]): the exchange's own row keeps its place in
+	// the column with its state in the tail, and every other row gets its
+	// ordinary card back. That is the trade this surface makes now, and it is
+	// the one the report asked for — "once the reminder is set I am unable to
+	// see other previews on the right".
+	//
+	// THE KEYBOARD IS SETTLED BEFORE THE KEY IS READ. An exchange holds it only
+	// while the cursor is on that exchange's row, so walking away can never
+	// leave the arrows moving a pane nobody is looking at (homeexchange.go's
+	// [app.settleExchangeFocus]).
+	a.settleExchangeFocus()
+	// AND THE SWEEP RUNS AFTER THE KEY, not before it: what a key does is move
+	// the cursor, and "have they moved off it" is a question only answerable
+	// once they have (homeexchange.go's [app.sweepExchanges]).
+	defer a.sweepExchanges()
+	if ex := a.paneExchange(); ex != nil && ex.focused {
 		defer a.touch()
 		h.say("", "")
-		return a.exchangeKey(msg)
+		return a.exchangeKey(ex, msg)
 	}
 	defer a.touch()
 	h.say("", "")
@@ -1541,11 +1613,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch msg.String() {
 	case "tab":
-		// THE OTHER HALF OF THE TOGGLE. With no exchange there is one zone and
-		// nothing to toggle, so tab does here what it has always done on this
-		// screen: nothing. It never was a character the box could take.
-		if h.exchange != nil {
-			h.exchange.focused = true
+		// THE OTHER HALF OF THE TOGGLE, and it is about the row under the
+		// cursor: tab takes the keyboard into the exchange the pane is drawing.
+		// With the cursor anywhere else there is one zone and nothing to toggle,
+		// so tab does what it has always done on this screen — nothing. It never
+		// was a character the box could take.
+		if ex := a.paneExchange(); ex != nil {
+			ex.focused = true
 		}
 		return nil
 
@@ -1816,6 +1890,16 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
+	case homeExchangeRow:
+		// ENTER ON AN ERRAND HANDS IT THE KEYBOARD. There is nothing to open —
+		// the exchange is already drawn beside the row, or on a narrow frame is
+		// about to take the whole screen — so the one thing enter can mean here
+		// is "I am talking to this one now", which is what tab means from the
+		// same row and what a second click on it means.
+		if line.ex != nil {
+			line.ex.focused = true
+		}
+		return nil
 	case homeQuiet:
 		h.fold(line.dir, line.folded)
 		return nil
@@ -2072,6 +2156,10 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if !a.home.open {
 		return nil
 	}
+	// A CLICK MOVES THE CURSOR, so it is one of the two gestures that can leave
+	// a settled exchange behind ([app.sweepExchanges] is the other half of
+	// [app.homeKey]'s own deferred sweep).
+	defer a.sweepExchanges()
 	// A CHIP ON THE CARD IS PRESSED WHERE IT IS DRAWN. It is read before the
 	// list below because the two answer different halves of the frame — the
 	// chips are in the right column, which nothing else here claims — and a
@@ -2161,7 +2249,7 @@ func (a *app) homePress(x, y int) tea.Cmd {
 // the pane exactly as it was. It is what a click on a row does and what tab and
 // esc do from the other side.
 func (a *app) homeTakeList() {
-	if ex := a.home.exchange; ex != nil {
+	for _, ex := range a.exchanges {
 		ex.focused = false
 	}
 }
@@ -2175,11 +2263,19 @@ func (a *app) homeTakeList() {
 // gutter differently from the press would light up a row that clicking does not
 // reach.
 func (a *app) homePane(x, y int) (row, column int, ok bool) {
-	if a.home.exchange == nil || y < 0 || y >= len(a.home.pane) {
+	if a.paneExchange() == nil || y < 0 || y >= len(a.home.pane) {
+		return 0, 0, false
+	}
+	if a.home.pane[y] < 0 {
 		return 0, 0, false
 	}
 	width, _ := a.size()
 	left, right := homeColumns(width)
+	// STACKED, THE PANE IS THE WHOLE FRAME and every column of it belongs to the
+	// pane — there is no list beside it to have missed ([app.homeStacked]).
+	if _, stacked := a.homeStacked(); stacked {
+		return a.home.pane[y], x, true
+	}
 	if right <= 0 {
 		return 0, 0, false
 	}
@@ -2189,10 +2285,35 @@ func (a *app) homePane(x, y int) (row, column int, ok bool) {
 	if x < left {
 		return 0, 0, false
 	}
-	if a.home.pane[y] < 0 {
-		return 0, 0, false
-	}
 	return a.home.pane[y], x - left - homeGutter, true
+}
+
+// homeStacked is the narrow frame's answer to `ask here`, and it is the phone's
+// own pattern rather than a refusal.
+//
+// THE EXCHANGE *IS* THE RIGHT PANE, so a window with no second column used to
+// turn the whole door down: `ask here needs a wider window`, which is a person
+// on a narrow terminal being told that the one feature they reached for is for
+// other people. What a narrow frame does instead is STACK the two zones rather
+// than sitting them side by side — the list is the screen until you enter an
+// exchange, the exchange is the screen while it holds the keyboard, and `esc`
+// or `tab` puts the list back with the row still on it wearing its tail. It is
+// the same two zones and the same keys; only the geometry changed.
+//
+// IT IS THE SAME [homeExchange.focused] FLAG that decides it, which is what
+// makes a resize between the two shapes cost nothing: a window dragged narrow
+// while the pane has the keyboard keeps the pane, and dragged wide again puts
+// it back beside the list with everything in it.
+func (a *app) homeStacked() (*homeExchange, bool) {
+	width, _ := a.size()
+	if _, right := homeColumns(width); right > 0 {
+		return nil, false
+	}
+	ex := a.paneExchange()
+	if ex == nil || !ex.focused {
+		return nil, false
+	}
+	return ex, true
 }
 
 // homeHover records which line the pointer is over, repainting only when the
@@ -2292,7 +2413,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
-	if ex := a.home.exchange; ex != nil && ex.focused {
+	if ex := a.paneExchange(); ex != nil && ex.focused {
 		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed into
 		// home's own box would re-filter the list behind the pane, so the exchange
 		// brings its own line and the caret sits in it (homeexchange.go).
@@ -2388,6 +2509,23 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// share is the layout winning an argument with the only words on screen.
 	if len(a.home.lines) == 0 {
 		left, right = left+right+2, 0
+	}
+	// STACKED: the exchange takes the frame and the list stands down behind it
+	// ([app.homeStacked] says why a narrow window no longer refuses). The rows
+	// carry no list hit at all — there is no list on the screen to press — and
+	// every one of them is the pane's, so the pointer resolves against it
+	// exactly as it does on a wide frame.
+	if ex, stacked := a.homeStacked(); stacked {
+		drawn := make([]homeDrawn, 0, room)
+		pane := a.exchangePane(ex, left, room, pal)
+		for i := 0; i < room; i++ {
+			text := ""
+			if i < len(pane) {
+				text = pane[i]
+			}
+			drawn = append(drawn, homeDrawn{text: text, hit: -1, pane: i})
+		}
+		return drawn
 	}
 	// THE DROP-UP LIFTS THE LIST AND LEAVES THE CARD WHERE IT IS. While something
 	// is typed the left column hangs from the BOTTOM of the region so that its
@@ -2555,6 +2693,10 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		}
 		return overlayRow(mark+" "+standFoldWord(line.quiet, line.folded), "",
 			at == h.cursor, false, at == h.hover, width, pal)
+	case homeExchangeRow:
+		// ONE ERRAND, ONE ROW, wearing what it is doing (homeexchange.go's
+		// [app.exchangeRowLine]).
+		return a.exchangeRowLine(line, at, width, pal)
 	case homeAskHere:
 		// The same shape as the action row under it and the same words quoted
 		// back, because they are the two readings of one sentence
@@ -2824,15 +2966,14 @@ func homeName(row session.SessionRow) string {
 // ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
 	a.resetBandFoldLines()
-	// AN OPEN ERRAND TAKES THIS PANE, whole. It is a conversation happening now
-	// rather than a description of one that already did, and the two cannot share
-	// the column: a card about the row under the cursor drawn beside a live
-	// exchange would be two things claiming to be what the screen is about
-	// (homeexchange.go).
-	if a.home.exchange != nil {
-		return a.exchangePane(width, room, pal)
-	}
 	line, ok := a.home.previewLine()
+	if ok && line.kind == homeExchangeRow && line.ex != nil {
+		// THE ERRAND UNDER THE CURSOR, drawn where every other row's card is
+		// drawn. It used to take this column for as long as an exchange existed
+		// anywhere, which is how setting one reminder blanked every preview on
+		// the screen until home was closed (homeexchange.go's [app.exchangePane]).
+		return a.exchangePane(line.ex, width, room, pal)
+	}
 	if ok && line.kind == homeItem {
 		// THE OTHER KIND OF CARD, in the same column and the same bands
 		// (homestanding.go's [StandingItemCard]). It is a card about an item
@@ -3047,15 +3188,15 @@ func (a *app) homeLast(row session.SessionRow) string {
 // homeHint is the line under the foot: what the keyboard does, and what the box
 // will do with what is in it.
 func (a *app) homeHint() string {
-	if ex := a.home.exchange; ex != nil {
+	if ex := a.paneExchange(); ex != nil {
 		if ex.focused {
 			return exchangeHint(ex)
 		}
-		// THE WAY BACK IS NAMED WHILE THE LIST HAS THE KEYBOARD. An exchange
-		// standing in the pane with no line saying how to reach it again is the
-		// half of the toggle nobody finds; the list's own three verbs come
-		// first, because that is the zone the hand is in.
-		return "↑↓ move · enter open · tab back to " + homeAskHereWord + " · esc close"
+		// THE WAY IN IS NAMED WHILE THE LIST HAS THE KEYBOARD. An exchange
+		// standing beside the column with no line saying how to reach it is the
+		// half of the toggle nobody finds; the list's own verbs come first,
+		// because that is the zone the hand is in.
+		return "↑↓ move · enter or tab answer this " + homeAskHereWord + " · esc close"
 	}
 	line, _ := a.home.focusedLine()
 	switch {
