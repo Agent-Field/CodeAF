@@ -877,8 +877,10 @@ timer. It is asked once, ever.
 
 ## What does a ◦ line in the middle of my conversation mean — news from something standing
 
-Once something is set up it writes **one line and never more** into the
-conversation that asked for it:
+Once something is set up it writes **one line and never more** into a
+conversation you have open — the one that asked for it when that is open, and
+otherwise whichever one of that project you are sitting in (the keeping-an-eye
+page has the whole order):
 
 ```
 ◦ every Monday at 9 · set up
@@ -913,6 +915,9 @@ list, and how to turn the exchange into an ordinary conversation — is on its o
 ## What happened in this conversation while I was away — news since I last looked
 
 A conversation with queued news draws `◆ N things since you left` in its home preview.
+So does a **project** whose card is up, for news that belongs to the project rather than to
+one chat — what a reminder you set up with `ask here` left waiting when no window of that
+project was open. Opening any conversation there folds it in and the line goes.
 Each item underneath reads `<age> · <words> · <text>`, for example
 `4m · keep main green · the tests passed`. Home shows three items, then a
 `▸ …N more things` door; `m` opens or closes the preview's folds. An absent or empty inbox
