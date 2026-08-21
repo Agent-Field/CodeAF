@@ -3,6 +3,8 @@ package tui3
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // REPLAY ON RESUME: a resumed conversation opens showing itself.
@@ -31,21 +33,180 @@ import (
 // the defect this wave came to end, and offering one for a row that genuinely
 // has nothing behind it would be the same defect wearing the fix's clothes.
 
-// replayTail is how much of a resumed conversation is drawn. Forty entries is
-// about two screens of scrollback — enough to remember where you were, short of
-// re-rendering an hour of work nobody is going to scroll back through.
+// replayTail is how much of a resumed conversation is drawn AT ONCE. Forty
+// entries is about two screens of scrollback — enough to remember where you
+// were, short of re-rendering an hour of work through markdown layout before
+// the first frame.
+//
+// IT IS NO LONGER A CEILING ON WHAT CAN BE READ, and that distinction is the
+// whole of this wave. It used to be both: the surface drew the last forty
+// blocks and had no way to ask for the forty above them, so scrolling up hit
+// the top of an hour-old conversation's last two screens and stopped, with the
+// rest of it sitting in the journal underneath. Now it is the size of ONE
+// helping — the opening one, and every one [app.backfill] hands up afterwards.
 const replayTail = 40
 
-// replay folds the agent's transcript into entries. It runs once, at
-// construction, before the surface has drawn anything.
+// replay folds the tail of the agent's transcript into entries. It runs once,
+// at construction, before the surface has drawn anything — and again whenever
+// the drawn conversation is thrown away and rebuilt from the session's own
+// record (rewind.go's [app.rebuildTranscript], welcome.go's resume).
 func (a *app) replay() {
+	// THE BACKFILL'S BOOKKEEPING IS SET HERE, on every path including the one
+	// with nothing to replay. A fresh session that inherited a mark from the
+	// conversation before it would offer to scroll back into somebody else's
+	// history — so the mark is cleared first and earned second.
+	a.replayFrom, a.replayFloor = 0, a.turn
 	if a.agent == nil {
 		return
 	}
-	entries := a.agent.Transcript()
-	if len(entries) > replayTail {
-		entries = entries[len(entries)-replayTail:]
+	all := a.agent.Transcript()
+	from := 0
+	if len(all) > replayTail {
+		from = len(all) - replayTail
 	}
+	blocks, turns := a.replayBlocks(all[from:], a.turn)
+	a.entries = append(a.entries, blocks...)
+	a.turn += turns
+	a.replayFrom = from
+	a.touch()
+}
+
+// moreHistory reports whether the conversation on screen starts part-way
+// through — whether the journal holds anything ABOVE the first block drawn.
+//
+// It is the one question three separate things ask: the scroll, which backfills
+// rather than stopping; the marker at the top of the frame, which says so; and
+// the tests, which is how the two stay one answer.
+func (a *app) moreHistory() bool { return a.agent != nil && a.replayFrom > 0 }
+
+// backfill materializes the helping of conversation immediately ABOVE what is
+// drawn, and reports whether it drew anything. It is what a scroll that runs
+// out of transcript calls (view.go's [app.scroll]).
+//
+// IT IS LAZY RATHER THAN EAGER because the cost it is avoiding is real: every
+// block goes through markdown layout, and a session with a thousand entries in
+// it would spend that on all of them before its first frame, to draw two
+// screens. Handing them up a tailful at a time spends it only on the history
+// somebody actually walked back into.
+//
+// THE READER DOES NOT MOVE. Blocks are prepended and nothing else changes, so
+// the row a person is reading is exactly as many rows further down as were put
+// in front of it — which is the arithmetic [app.scroll] does, and the reason
+// this returns rather than adjusting a scroll it does not own.
+func (a *app) backfill() bool {
+	if !a.moreHistory() {
+		return false
+	}
+	// A ROOM IS THE BODY REGION WHILE IT IS OPEN, and while it is, the selection
+	// and the phone's detail sheet index ITS list rather than the conversation's
+	// (render.go's [app.bodyDeck]). Renumbering the conversation underneath them
+	// would move a page nobody is looking at and take the one they are with it.
+	// Nothing is lost by refusing: a room routes its own scroll (room.go), so
+	// this is unreachable from the keyboard anyway, and the conversation is
+	// still there to scroll back into the moment esc gives the frame back.
+	if a.room != nil {
+		return false
+	}
+	all := a.agent.Transcript()
+	to := a.replayFrom
+	if to > len(all) {
+		// A transcript that got SHORTER than the mark is one a rewind cut under
+		// us. There is nothing honest to hand up; the next rebuild sets the mark
+		// again from what is actually there.
+		a.replayFrom = 0
+		return false
+	}
+	from := 0
+	if to > replayTail {
+		from = to - replayTail
+	}
+	if from >= to {
+		a.replayFrom = 0
+		return false
+	}
+	// EARLIER TURNS NUMBER DOWNWARD FROM THE ONES ALREADY DRAWN, which is the
+	// only numbering that can be handed out without renumbering anything. The
+	// turn is a grouping id — it decides what folds together and what ctrl+o
+	// opens (render.go) — so shifting the turns already on screen to make room
+	// would silently move every fold the person had opened onto somebody else's
+	// cluster. Counting down instead leaves them alone.
+	//
+	// The chunk's LAST turn is made to equal the drawn conversation's floor
+	// because they are the same turn: the blocks just above the old top are the
+	// beginning of the turn whose tail was already showing.
+	blocks, turns := a.replayBlocks(all[from:to], 0)
+	shift := a.replayFloor - turns
+	for i := range blocks {
+		blocks[i].turn += shift
+	}
+	// AND EVERY POSITION THIS SURFACE HOLDS IN THE BLOCK LIST MOVES WITH IT.
+	a.shiftBlockIndices(len(blocks))
+	a.entries = append(blocks, a.entries...)
+	a.replayFrom, a.replayFloor = from, shift
+	// The pointer was over a row of a list that has just been rebuilt around it,
+	// which is the same claim [app.dropHover] makes wherever the rows are
+	// replaced.
+	a.dropHover()
+	a.touch()
+	return true
+}
+
+// shiftBlockIndices moves everything this surface stores as a POSITION in the
+// block list, because [app.backfill] has just put blocks in front of all of
+// them. An index that stayed behind would point at somebody else's row: the
+// streaming reply would append into a finished one, and an approval question
+// would be asked about the wrong call.
+//
+// Every field here is an index into [app.entries] and there are no others — the
+// hover is dropped rather than moved, the folds are keyed by turn rather than
+// by position, and the rewind timeline indexes the SESSION's transcript, which
+// this does not touch.
+func (a *app) shiftBlockIndices(by int) {
+	if by <= 0 {
+		return
+	}
+	move := func(at *int) {
+		if *at >= 0 {
+			*at += by
+		}
+	}
+	move(&a.live)
+	move(&a.think)
+	move(&a.sel)
+	move(&a.expand.entry)
+	for i := range a.asks {
+		move(&a.asks[i].entry)
+	}
+}
+
+// earlierMark is the one line at the top of a part-drawn conversation, and it
+// is there so the seam is honest: a top row with an hour of conversation behind
+// it looks exactly like the beginning of the session without it.
+//
+// It is spelled in the dim "· " lane this surface says everything of its own in
+// (render.go's entryNote), and it is a ROW rather than a block on purpose — it
+// is a fact about the SCREEN, not about the conversation, so a rewind cannot
+// cut it and an export cannot carry it.
+const earlierMark = "· earlier · keep scrolling"
+
+// earlierRow is the marker painted, or "" when the beginning is already drawn.
+func (a *app) earlierRow(width int) string {
+	if width < 1 || !a.moreHistory() {
+		return ""
+	}
+	return a.pal.dim(fit(earlierMark, width))
+}
+
+// replayBlocks turns a window of the journal into blocks, numbering the turns
+// from `turn`. It returns the blocks and how many of the person's messages were
+// in them, which is what the caller needs to keep its own counter straight.
+//
+// IT IS THE ONE PLACE A TRANSCRIPT BECOMES BLOCKS. The opening replay and every
+// backfill above it go through here, so a conversation scrolled back into
+// cannot be drawn differently from the same conversation opened onto.
+func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, int) {
+	blocks := make([]entry, 0, len(entries))
+	turns := 0
 	for _, e := range entries {
 		text := strings.TrimSpace(e.Text)
 		switch e.Role {
@@ -59,15 +220,16 @@ func (a *app) replay() {
 			}
 			// The turn counter moves with the person's messages, exactly as it
 			// does live: it is what groups a cluster and what ctrl+o folds.
-			a.turn++
-			a.entries = append(a.entries, entry{kind: entryUser, text: line, turn: a.turn})
+			turn++
+			turns++
+			blocks = append(blocks, entry{kind: entryUser, text: line, turn: turn})
 
 		case "assistant":
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
-			a.entries = append(a.entries, entry{
-				kind: entryAssistant, text: text, turn: a.turn, settled: true,
+			blocks = append(blocks, entry{
+				kind: entryAssistant, text: text, turn: turn, settled: true,
 			})
 
 		case "tool":
@@ -76,8 +238,8 @@ func (a *app) replay() {
 			if strings.TrimSpace(e.Tool) == "" {
 				continue
 			}
-			a.entries = append(a.entries, entry{
-				kind: entryTool, tool: e.Tool, text: e.Hint, turn: a.turn, status: toolOK,
+			blocks = append(blocks, entry{
+				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: toolOK,
 				// The detail is carried through UNPARSED, which is what makes a
 				// replayed row the same row: everything the expansion shows — the
 				// diff, the content preview, the highlighted command and its
@@ -91,8 +253,8 @@ func (a *app) replay() {
 			if text == "" {
 				continue
 			}
-			a.entries = append(a.entries, entry{
-				kind: entryDivider, text: firstLine(text), turn: a.turn,
+			blocks = append(blocks, entry{
+				kind: entryDivider, text: firstLine(text), turn: turn,
 			})
 
 		case "aside":
@@ -112,12 +274,12 @@ func (a *app) replay() {
 			// now (its sessionfile.go), so the two views of one conversation agree.
 			// A note from a file written before the mark arrives as "user" and
 			// draws exactly as it always did.
-			a.entries = append(a.entries, entry{
-				kind: entryNote, text: firstLine(text), turn: a.turn,
+			blocks = append(blocks, entry{
+				kind: entryNote, text: firstLine(text), turn: turn,
 			})
 		}
 	}
-	a.touch()
+	return blocks, turns
 }
 
 // replayUserLine is a replayed message as the person sent it: their words, and

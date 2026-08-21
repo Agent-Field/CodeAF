@@ -864,14 +864,32 @@ func (a *app) offsetFor(total, height int) int {
 // scroll moves the window by delta rows and re-decides whether the reader is
 // following the live edge. Reaching the bottom re-arms sticking: leaving it
 // off would mean a reader who scrolled up once never sees a new reply again.
+//
+// AND A SCROLL THAT RUNS OFF THE TOP ASKS THE JOURNAL FOR MORE CONVERSATION
+// (replay.go's [app.backfill]) rather than stopping there. A resumed session
+// draws its last tailful and nothing else, so without this the top of that
+// tailful was where an hour-old conversation ended for the reader — which is
+// the defect this is here for. It is asked HERE, in the one function every
+// upward gesture goes through — the wheel, pgup, ↑ past the end of the draft —
+// so no route into the history can be the route that does not work.
 func (a *app) scroll(delta int) {
 	height := a.viewHeight()
 	total := len(a.visible(a.bodyWidth()))
+	at := a.offsetFor(total, height) + delta
+	if at <= 0 && a.backfill() {
+		// THE READER STAYS ON THE LINE THEY WERE READING. The helping went in
+		// ABOVE everything already drawn and nothing else moved, so every row is
+		// exactly as many rows further down as arrived in front of it — and the
+		// gesture that asked for the history carries on into it as though it had
+		// been there all along.
+		grown := len(a.visible(a.bodyWidth()))
+		at += grown - total
+		total = grown
+	}
 	bottom := total - height
 	if bottom < 0 {
 		bottom = 0
 	}
-	at := a.offsetFor(total, height) + delta
 	switch {
 	case at >= bottom:
 		a.offset, a.stick = bottom, true
