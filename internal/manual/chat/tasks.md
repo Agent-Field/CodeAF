@@ -702,6 +702,68 @@ If a task you started in another terminal is on **no** row here, that window has
 Its work stopped with it, and the project's record will say `incomplete` against whatever
 it had started.
 
+## Does it know what my other windows are doing — will it notice work from another terminal
+
+Yes, and it is told rather than having to go and ask. When another aforge window on this
+same directory lands a task, or has one running, aforge puts a small block into the chat's
+own context — never on your screen — that reads:
+
+```
+<elsewhere>
+Work on this project from outside this conversation. Facts, not requests.
+recently landed in other windows:
+- Fix the nil-map crash · done · internal/reconciler/state.go, internal/reconciler/state_test.go
+  Added the guard and the regression test; the parser suite passes.
+running in another window now:
+- Sweep the call sites · window "docs pass" · internal/session/agent.go
+</elsewhere>
+```
+
+- **`recently landed in other windows:`** is tasks that finished **in another window**. Your
+  own conversation's tasks are never repeated there — their reports already arrived here in
+  full. Each row names the task, how it ended, and the files it wrote.
+- **`running in another window now:`** is what those windows have out at this moment, with
+  the files each run has already written. Written, not planned: nothing is reserved and
+  nothing is locked by it.
+- It is **facts, never instructions.** Nothing another window writes can tell this
+  conversation what to do; the chat reads it to you or works around it, and that is all.
+- It is **silent when there is nothing to say** — no block at all, never a line saying
+  "nothing new" — and it is not sent again while nothing changes. At most **6** landings
+  and **6** running rows, each naming at most **5** files with `and N more` after them.
+- The **first** time a conversation is told, it looks back **24 hours** and no further, so
+  opening a window does not tip a project's whole history into it.
+- What counts as "already told" is kept in `told.json` inside that conversation's own
+  folder. It is per conversation, and it is not `/home`'s **since you last looked** — that
+  one is about **you** having looked at the dashboard, this one about the chat having been
+  told.
+- A **task** is never given this block. A task's brief is its whole world.
+
+## Asking the chat what else is running on this project right now
+
+Ask it in words. It reads the other windows itself rather than guessing from the project's
+record — which cannot answer, because an ordinary task writes no row there until it lands.
+What it gets back looks like this:
+
+```
+running in other aforge windows on this project:
+another window · Sweep the call sites · running · running for 4m 12s
+  in the window called "docs pass"
+  files so far: internal/session/agent.go, internal/session/task.go
+```
+
+- Every row is marked `another window`, and `in the window called …` follows with that
+  window's own name when it has settled on one.
+- `files so far` is what that run has **already written**, in the order it wrote them.
+- The rows carry **no id**, and the chat is told exactly why: `These have no id in this
+  conversation: work running in another window cannot be read, steered or resolved from
+  here, and it lands in that window rather than this one.` So it cannot stop, steer or
+  accept another window's work on your behalf — go to that window, the same answer the
+  `/history` page gives.
+- A window that has closed contributes no rows at all: its work stopped with it, and the
+  project's record says `incomplete` against whatever it had started.
+- Inside a task this is absent too — a task is shown the pieces it handed out itself and
+  nothing wider.
+
 ## Searching the task page: type to filter, find an old task by name
 
 **Just type.** On the task page every printable key — letters, digits and the space —

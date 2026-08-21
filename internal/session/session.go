@@ -1313,11 +1313,23 @@ type Agent struct {
 	// rendered into the transcript's first message, and message[0] is rebuilt
 	// from a.system plus the two of them rather than appended to.
 	cardText string
-	usage    Usage
-	running  bool
-	cancel   context.CancelFunc
-	steering []userMessage
-	closed   bool
+	// elsewhereText is the <elsewhere> block message[0] currently carries
+	// (taskdelta.go): what the OTHER windows on this project landed and are
+	// running. It sits under mu beside the two above for their reason, and it
+	// is REPLACED only when the facts in it move — an unchanged block leaves
+	// message[0] byte-identical, which is what keeps the prompt prefix cached.
+	elsewhereText string
+	// elsewhereTold is the short memory of landings this session's model has
+	// already been handed, newest first and capped at [deltaLandedRows]. The
+	// stamp on disk advances the moment the block goes out, so without this the
+	// block would name a landing on one turn and forget it on the next —
+	// see [deltaRemember].
+	elsewhereTold []deltaLanding
+	usage         Usage
+	running       bool
+	cancel        context.CancelFunc
+	steering      []userMessage
+	closed        bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding
