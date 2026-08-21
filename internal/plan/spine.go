@@ -93,7 +93,9 @@ automatically after you.
 
 ` + titleRule + `
 
-` + proportionRule
+` + proportionRule + `
+
+` + verdictRule
 
 var spineSchema = json.RawMessage(`{
   "type": "object",

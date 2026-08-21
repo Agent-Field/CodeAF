@@ -127,7 +127,9 @@ code". List every one, however many that is. Do not round the list down to look
 tidy: it is used to judge how big the part really is, and an honest long list is
 more useful than a short one.
 
-` + proportionRule
+` + proportionRule + `
+
+` + verdictRule
 
 var fanoutSchema = json.RawMessage(`{
   "type": "object",

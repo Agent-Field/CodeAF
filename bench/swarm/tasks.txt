@@ -1,11 +1,11 @@
 # task|category|verdict|fixture|tier
 # fixture: script in fixtures/ that builds the task's inputs, or `-` for
 # prose-only tasks. tier: S=small (<2min), M=medium, L=large (full-only).
-codegen-multi|codegen|codegen_multi|-|S
-bugfix-repo|bugfix|bugfix_repo|bugfix-repo.sh|M
-review-diff|review|review_diff|review-diff.sh|S
-prose-report|prose|prose_report|-|S
-research-synthesis|research|research_synthesis|research-synthesis.sh|M
-refactor-api|refactor|refactor_api|refactor-api.sh|M
-doc-coverage|docs|doc_coverage|doc-coverage.sh|S
-image-caption-suite|multimodal|image_caption|image-caption-suite.sh|L
+codegen modules|codegen|codegen_multi|-|S
+bugfix repo|bugfix|bugfix_repo|bugfix-repo.sh|M
+review diff|review|review_diff|review-diff.sh|S
+prose report|prose|prose_report|-|S
+research synthesis|research|research_synthesis|research-synthesis.sh|M
+api refactor|refactor|refactor_api|refactor-api.sh|M
+doc coverage|docs|doc_coverage|doc-coverage.sh|S
+image captions|multimodal|image_caption|image-caption-suite.sh|L
