@@ -265,6 +265,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open a collapsed project", "home"},
 		{"how do I see more tasks on the right", "home"},
 		{"why did the end of a narrow home card move to another line", "home"},
+		{"why doesn't hovering change the right side", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

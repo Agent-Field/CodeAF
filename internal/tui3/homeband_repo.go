@@ -35,8 +35,11 @@ func drawRepoBand(a *app, ctx bandContext) []string {
 	return bandClauses(ctx.width, 0, ctx.pal.dim, strings.Split(cached.line, " · ")...)
 }
 
-// refreshHomeRepo takes the one bounded reading when the cursor arrives on a
-// card. Drawing then remains pure no matter how often the terminal repaints.
+// refreshHomeRepo takes the one bounded reading when a card arrives — under the
+// cursor, or under the pointer, because the card follows whichever of them is
+// pointing at a row (home.go's [homeView.previewLine]). Drawing then remains
+// pure no matter how often the terminal repaints, and a reading is taken once
+// per workspace per [homeRepoTTL] however the arrival happened.
 func (a *app) refreshHomeRepo(now time.Time) {
 	subject, ok := a.homeSubject()
 	if !ok || subject.kind != bandKindSession {
