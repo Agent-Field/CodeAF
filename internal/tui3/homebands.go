@@ -242,24 +242,82 @@ func (a *app) bandFold(ctx bandContext, band string, rows []string, show int, wh
 		return rows
 	}
 	folded := a.bandFolded(band, ctx.subject)
-	glyph, rest := bandFoldGlyph, rows[:show]
+	rest := rows[:show]
 	if !folded {
-		glyph, rest = bandFoldOpenGlyph, rows
+		rest = rows
 	}
-	if ctx.pal.ascii {
-		glyph = ">"
-		if !folded {
-			glyph = "v"
-		}
-	}
-	label := "…" + strconv.Itoa(len(rows)-show) + " more " + what
-	if !folded {
-		label = "…" + strconv.Itoa(len(rows)-show) + " fewer"
-	}
+	label := bandFoldWord(len(rows)-show, what, folded)
 	out := append([]string(nil), rest...)
-	out = append(out, ctx.pal.dim(fit(glyph+" "+label, ctx.width)))
+	out = append(out, ctx.pal.dim(fit(bandFoldMark(ctx.pal, folded)+" "+label, ctx.width)))
 	a.noteBandFoldLine(band, ctx.subject, strings.TrimSpace(label))
 	return out
+}
+
+// bandFoldGroups is [app.bandFold] over GROUPS rather than over rows, and it is
+// the right shape for any band whose entries are taller than one line.
+//
+// A ROW-COUNTED FOLD CUTS WHEREVER THE ARITHMETIC LANDS, and on a band that
+// draws a task as a name with its outcome under it that is a cut straight
+// through a task: a sentence left hanging under the fold line with nothing
+// above it saying what it was about. So the caller hands its entries whole, the
+// cut is always at a boundary, and `show` is a number of THINGS — three tasks —
+// which is also the number a person would say out loud.
+//
+// The groups are joined with ONE BLANK ROW between them and none after the
+// last, which is the separation the card uses between its bands, one rung down.
+func (a *app) bandFoldGroups(ctx bandContext, band string, groups [][]string, show int, what string) []string {
+	join := func(groups [][]string) []string {
+		var out []string
+		for _, group := range groups {
+			if len(group) == 0 {
+				continue
+			}
+			if len(out) > 0 {
+				out = append(out, "")
+			}
+			out = append(out, group...)
+		}
+		return out
+	}
+	if len(groups) <= show {
+		return join(groups)
+	}
+	folded := a.bandFolded(band, ctx.subject)
+	rest := groups[:show]
+	if !folded {
+		rest = groups
+	}
+	label := bandFoldWord(len(groups)-show, what, folded)
+	out := join(rest)
+	out = append(out, ctx.pal.dim(fit(bandFoldMark(ctx.pal, folded)+" "+label, ctx.width)))
+	a.noteBandFoldLine(band, ctx.subject, strings.TrimSpace(label))
+	return out
+}
+
+// bandFoldMark is the arrow a fold line wears: shut when it is hiding things,
+// open when somebody opened it. One gesture, one mark, everywhere on this
+// surface.
+func bandFoldMark(pal palette, folded bool) string {
+	if pal.ascii {
+		if folded {
+			return ">"
+		}
+		return "v"
+	}
+	if folded {
+		return bandFoldGlyph
+	}
+	return bandFoldOpenGlyph
+}
+
+// bandFoldWord is what a fold line SAYS: how many are hidden and what they are,
+// or how many are being held open. It is one function because two folds spell
+// it, and two spellings of one sentence is two things to keep in step.
+func bandFoldWord(hidden int, what string, folded bool) string {
+	if !folded {
+		return "…" + strconv.Itoa(hidden) + " fewer"
+	}
+	return "…" + strconv.Itoa(hidden) + " more " + what
 }
 
 // bandFoldLine is one fold line drawn this frame, so a click can find it by
@@ -288,11 +346,10 @@ func (a *app) bandFoldAt(rowText string) (bandFoldLine, bool) {
 	return bandFoldLine{}, false
 }
 
-// ── the four bands that were home.go's own, now registered ─────────────────
+// ── the bands that were home.go's own, now registered ──────────────────────
 
 func init() {
 	registerHomeBand(homeBand{name: "state", order: bandOrderState, draw: drawStateBand})
-	registerHomeBand(homeBand{name: "work", order: bandOrderWork, draw: drawWorkBand})
 	registerHomeBand(homeBand{name: "last", order: bandOrderLeftOff, draw: drawLastBand})
 	registerHomeBand(homeBand{name: "facts", order: bandOrderSpend, draw: drawFactsBand})
 }
@@ -316,24 +373,6 @@ func drawStateBand(a *app, ctx bandContext) []string {
 		}
 	}
 	return state
-}
-
-// drawWorkBand: THE WORK, WITH WHAT IT CAME TO. The outcome sentence is the most
-// informative text this program holds about a finished task and nothing used to
-// draw it; a row that says "done" and nothing else makes a person open the
-// conversation to find out what "done" meant. The layout lane replaces this
-// body (name first, the outcome under it, a blank between tasks, and the fold).
-func drawWorkBand(a *app, ctx bandContext) []string {
-	row, width, now, pal := ctx.subject.row, ctx.width, ctx.now, ctx.pal
-	var work []string
-	for _, entry := range row.Tasks.Rows {
-		work = append(work, homeTaskLine(entry, row, now, width, pal))
-		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && width > homeOutcomeIndent+16 {
-			work = append(work, strings.Repeat(" ", homeOutcomeIndent)+
-				pal.dim(fit(outcome, width-homeOutcomeIndent)))
-		}
-	}
-	return a.bandFold(ctx, "work", work, homeTaskRows*2, "tasks")
 }
 
 // drawLastBand is the last thing said in the conversation.
