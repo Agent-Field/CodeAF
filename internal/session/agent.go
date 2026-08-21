@@ -536,6 +536,59 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	return events, nil
 }
 
+// Attach is a reader arriving at a turn IT DID NOT ASK FOR: the whole of what
+// this turn has said so far, then its live tail, on one channel.
+//
+// It is the door for a surface that keeps several sessions alive and shows one
+// at a time. Such a surface comes back to a conversation it detached from
+// minutes ago and finds a turn half way through an answer; it holds no channel,
+// because the caller that started that turn was a window that is no longer
+// drawing it. [Agent.Submit] cannot serve it — a steering Submit deliberately
+// starts where it spoke, and it would also put a message in the transcript,
+// which is not what looking at something is.
+//
+// WHAT COMES BACK IS ONE STREAM WITH NO GAP AND NO REPEAT. The backlog and the
+// subscription are taken under one hold of the hub's lock ([eventHub.attach]),
+// so an event that lands during the call is on exactly one side of the join.
+// Text deltas arrive folded — a paragraph rather than the two hundred words it
+// streamed as — which a surface that appends delta text draws identically.
+//
+// running is false, and the channel nil, when NO TURN IS IN FLIGHT. That is not
+// an error and not an empty stream: there is nothing to watch, the history is
+// the journal, and a caller told "nothing is running" draws what it already has
+// rather than waiting on a channel that would never carry anything. It is also
+// the answer for a closed session.
+//
+// stop is how the reader leaves, and it is never nil — a caller may call it
+// without checking running, and calling it twice is calling it once. After it
+// the channel closes, the pump ends and the hub stops holding the subscriber.
+// A SURFACE THAT DETACHES MUST CALL IT: nothing else can tell a reader that has
+// gone from one that is redrawing, and a stream nobody says goodbye to is a
+// parked goroutine and a queue that grows for the rest of the turn.
+func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
+	a.mu.Lock()
+	// The hub is read under a.mu for the reason a steering Submit subscribes
+	// under it: the turn's goroutine clears running under this same lock BEFORE
+	// it closes the hub, so a hub read here with running set cannot already be
+	// closed. Closed or nil is handled anyway, because Close does not run
+	// through the turn seam.
+	if a.closed || !a.running || a.hub == nil {
+		a.mu.Unlock()
+		return nil, false, func() {}
+	}
+	hub := a.hub
+	a.mu.Unlock()
+
+	stream, live := hub.attach()
+	if !live {
+		// The turn ended between the two locks. Its channel is already closed,
+		// and saying "not running" is the honest answer to a question that was
+		// about watching something happen.
+		return nil, false, func() {}
+	}
+	return stream.out, true, func() { hub.drop(stream) }
+}
+
 // userMessage is a person's message on its way into the transcript: the message
 // the model reads, and the durable references the JOURNAL writes in place of
 // the parts it must not hold.
@@ -1449,15 +1502,53 @@ func (a *Agent) wakeLocked() bool {
 // stopped reading misses wakes rather than freezing the agent that is trying to
 // tell it something. It closes with the session.
 func (a *Agent) Wakes() <-chan (<-chan Event) {
+	lane, _ := a.WatchWakes()
+	return lane
+}
+
+// WatchWakes is [Agent.Wakes] with a way to stop. It is the same subscription —
+// one channel per woken turn, buffered, never blocking the session — and stop
+// takes it back off the session's list and closes it, so a surface that has
+// detached from this conversation is not a lane the next wake has to try to
+// send into.
+//
+// It is a SECOND DOOR rather than a changed one because [Agent.Wakes]' shape is
+// the one internal/tui3 declares in its own interface, and a surface moves onto
+// this when it has something to do with the stop.
+//
+// stop is never nil and calling it twice is calling it once. The closed channel
+// it leaves behind is the same thing the session's own close hands every wake
+// lane, so a reader needs no second rule for "this lane has ended".
+func (a *Agent) WatchWakes() (<-chan (<-chan Event), func()) {
 	lane := make(chan (<-chan Event), wakeLaneDepth)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
 		close(lane)
-		return lane
+		return lane, func() {}
 	}
 	a.wakeLanes = append(a.wakeLanes, lane)
-	return lane
+	var once sync.Once
+	return lane, func() { once.Do(func() { a.dropWakeLane(lane) }) }
+}
+
+// dropWakeLane takes one wake lane off the session and ends it.
+//
+// The close happens UNDER a.mu, and it has to: [Agent.wakeLocked] hands the
+// turn's stream to every lane on this list while holding the same lock, so a
+// close taken outside it could land on a lane that call is mid-send into. A
+// lane already gone — the session closed under it — is left alone, because the
+// close it is owed has already happened.
+func (a *Agent) dropWakeLane(lane chan (<-chan Event)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for at, held := range a.wakeLanes {
+		if held == lane {
+			a.wakeLanes = append(a.wakeLanes[:at], a.wakeLanes[at+1:]...)
+			close(lane)
+			return
+		}
+	}
 }
 
 // wakeLaneDepth is how many woken turns a subscriber may be behind on before it
@@ -1477,14 +1568,38 @@ func textMessage(role, text string) ai.Message {
 //
 // Subscribers are independent queues rather than one queue with many readers
 // because the events are a narrative, not work: a slow surface must fall
-// behind on its own channel, not steal deltas from the surface beside it. A
-// late subscriber starts empty — the events before it spoke belong to a stream
-// somebody was already reading, and replaying them would make the second
-// caller re-draw the first caller's turn.
+// behind on its own channel, not steal deltas from the surface beside it.
+//
+// THERE ARE TWO WAYS IN AND THEY ANSWER TWO DIFFERENT PEOPLE. [eventHub.
+// subscribe] starts empty, which is what a Submit wants: the events before it
+// spoke belong to a stream somebody was already reading, and replaying them
+// would make the second caller re-draw the first caller's turn.
+// [eventHub.attach] replays this turn from its first event, which is what a
+// surface arriving at a conversation MID-TURN wants: it holds no stream, it
+// never saw the events, and starting empty would leave it looking at a session
+// that is visibly working and saying nothing.
 type eventHub struct {
 	mu          sync.Mutex
 	subscribers []*eventStream
 	closed      bool
+
+	// backlog is every event this turn has sent, in order, kept for whoever
+	// attaches next and dropped whole when the hub closes.
+	//
+	// WHAT BOUNDS IT IS THE TURN. The data here is the reply the model is
+	// writing plus one entry per tool boundary, so a backlog is one turn's text
+	// and it is let go of at [eventHub.close] — a session is never holding more
+	// than the turn in flight.
+	//
+	// AND CONSECUTIVE TEXT FOLDS INTO ONE ENTRY ([foldsInto]). A long answer
+	// arrives as thousands of one-word deltas, and keeping thousands of Events
+	// to hold the same string is paying a slice header and a struct per word for
+	// nothing: a surface appends delta text, so one delta carrying a paragraph
+	// and a hundred carrying its words draw identically. It is the only
+	// reshaping done here, it is deliberately not a summary, and it stops at
+	// every event that is not text — so a tool call in the middle of an answer
+	// still lands between the two halves it landed between live.
+	backlog []Event
 }
 
 func newEventHub() *eventHub { return &eventHub{} }
@@ -1504,6 +1619,68 @@ func (h *eventHub) subscribe() <-chan Event {
 	h.subscribers = append(h.subscribers, stream)
 	h.mu.Unlock()
 	return stream.out
+}
+
+// attach is subscribe FOR SOMEBODY WHO WAS NOT HERE: the turn's events from its
+// first one, then the live tail, on one channel with no gap and no repeat.
+//
+// THE BACKLOG AND THE SUBSCRIPTION ARE ONE ACT, under one hold of the lock, and
+// that is the whole of why this is a method on the hub rather than two calls
+// from outside it. An event that landed between copying the backlog and joining
+// the subscribers would be an event nobody ever sees; one that landed the other
+// way round would be drawn twice. Seeding under the lock is safe for
+// [eventHub.send]'s own reason — an eventStream send is an append and a signal,
+// never a wait.
+//
+// false is a hub that has already closed, and the stream is closed with it: the
+// turn whose events it would carry is over, and a caller is owed that answer
+// rather than a channel that never ends. It is the same shape [taskRoom.join]
+// answers a landed node with.
+func (h *eventHub) attach() (*eventStream, bool) {
+	stream := newEventStream()
+	if h == nil {
+		stream.close()
+		return stream, false
+	}
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		stream.close()
+		return stream, false
+	}
+	for _, event := range h.backlog {
+		stream.send(event)
+	}
+	h.subscribers = append(h.subscribers, stream)
+	h.mu.Unlock()
+	return stream, true
+}
+
+// drop is a subscriber LEAVING: it stops being fanned out to and its pump ends.
+//
+// It exists because a surface that detaches from a conversation must be able to
+// stop draining. Without it the two halves both leak — the hub holds a stream
+// nobody will ever read, and that stream's pump parks forever on its next send
+// (see [eventStream.pump]) — and a process holding several conversations pays
+// both costs per detach rather than once per session.
+//
+// A stream this hub does not hold is left alone rather than refused: a caller
+// that dropped twice, or that dropped after the turn ended, is asking for a
+// state this already is.
+func (h *eventHub) drop(stream *eventStream) {
+	if h == nil || stream == nil {
+		stream.leave()
+		return
+	}
+	h.mu.Lock()
+	for at, held := range h.subscribers {
+		if held == stream {
+			h.subscribers = append(h.subscribers[:at], h.subscribers[at+1:]...)
+			break
+		}
+	}
+	h.mu.Unlock()
+	stream.leave()
 }
 
 // adopt hands an ALREADY-BUILT stream to this hub. It is subscribe for a
@@ -1544,13 +1721,44 @@ func (h *eventHub) send(event Event) {
 	if h.closed {
 		return
 	}
+	// The backlog is written BEFORE the fan-out and under the same lock, so what
+	// the next attacher is handed is exactly what the subscribers already have —
+	// one funnel, one order, two readers. It is the rule [taskRoom.publish]
+	// already keeps for the same reason one file over.
+	if last := len(h.backlog) - 1; last >= 0 && foldsInto(h.backlog[last], event) {
+		h.backlog[last].Text += event.Text
+	} else {
+		h.backlog = append(h.backlog, event)
+	}
 	for _, stream := range h.subscribers {
 		stream.send(event)
 	}
 }
 
+// foldsInto reports whether a new event may be folded into the one before it in
+// a backlog — which is true for exactly the two kinds that are a STREAM OF TEXT
+// and carry nothing else.
+//
+// EventTextDelta and EventReasoning are each emitted as `Event{Kind: …, Text: …}`
+// and nothing more, at every one of the six places that emit them (loop.go,
+// image.go, harness.go, task_room.go). THAT IS THE LAW THIS DEPENDS ON: a kind
+// that ever grows a second field must come off this list in the same change, or
+// the fold will quietly drop it for whoever attaches next.
+func foldsInto(prev, next Event) bool {
+	if prev.Kind != next.Kind {
+		return false
+	}
+	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
+}
+
 // close ends every subscriber's channel. It runs after the turn's last event,
 // so each channel closes once its queue has drained.
+//
+// THE BACKLOG GOES WITH IT, and that is what keeps this turn's text from being
+// this session's memory footprint: nothing can attach to a finished turn — the
+// history is the journal, and [eventHub.attach] answers a closed hub with a
+// closed channel — so a kept backlog would be a copy of the reply nobody could
+// ever ask for.
 func (h *eventHub) close() {
 	h.mu.Lock()
 	if h.closed {
@@ -1560,6 +1768,7 @@ func (h *eventHub) close() {
 	h.closed = true
 	subscribers := h.subscribers
 	h.subscribers = nil
+	h.backlog = nil
 	h.mu.Unlock()
 	for _, stream := range subscribers {
 		stream.close()
@@ -1576,6 +1785,10 @@ func (h *eventHub) close() {
 // which are the one event whose loss is visible as corruption rather than as
 // latency. So the producer never waits and never drops, and the cost is one
 // goroutine per turn.
+// A READER MAY ALSO LEAVE, which is the other half of the same bargain. The
+// producer never waits, so an abandoned stream costs a queue that grows and a
+// pump parked on its next send; [eventStream.leave] is how a surface that has
+// detached from a conversation says it is gone and gets both back.
 type eventStream struct {
 	out chan Event
 
@@ -1583,6 +1796,17 @@ type eventStream struct {
 	cond   *sync.Cond
 	queue  []Event
 	closed bool
+
+	// left says the READER has gone, where closed says the PRODUCER has. They
+	// are two different ends of the same channel and neither implies the other:
+	// a turn that ends while nobody is reading closes a stream that was already
+	// left, and a surface that detaches mid-turn leaves one that is still being
+	// sent to.
+	left bool
+	// gone is closed with left, so a pump already blocked on its send has
+	// something to select on — the flag alone would only be read once the send
+	// it is parked on completed, which is the case that never comes.
+	gone chan struct{}
 }
 
 // refusedStream is one event and a closed channel: a turn that was refused
@@ -1602,7 +1826,7 @@ func refuseOn(stream *eventStream, err error) <-chan Event {
 }
 
 func newEventStream() *eventStream {
-	stream := &eventStream{out: make(chan Event)}
+	stream := &eventStream{out: make(chan Event), gone: make(chan struct{})}
 	stream.cond = sync.NewCond(&stream.mu)
 	go stream.pump()
 	return stream
@@ -1610,7 +1834,10 @@ func newEventStream() *eventStream {
 
 func (s *eventStream) send(event Event) {
 	s.mu.Lock()
-	if !s.closed {
+	// A STREAM THE READER LEFT IS NOT QUEUED INTO. Dropping here is the point of
+	// leaving: everything this fan-out is careful never to drop is careful on
+	// behalf of somebody who is going to read it, and nobody is.
+	if !s.closed && !s.left {
 		s.queue = append(s.queue, event)
 		s.cond.Signal()
 	}
@@ -1624,26 +1851,55 @@ func (s *eventStream) close() {
 	s.mu.Unlock()
 }
 
+// leave is the READER saying it is gone: the queue is dropped, the pump ends
+// and the channel closes, whether or not the turn behind it is over.
+//
+// It is idempotent and safe on a nil stream, because both are the ordinary case
+// for a caller that stops twice or stops something that never started. A stream
+// this is called on is finished for good — there is no coming back, and a
+// surface that wants the turn again attaches for a fresh one.
+func (s *eventStream) leave() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if !s.left {
+		s.left = true
+		s.queue = nil
+		close(s.gone)
+		s.cond.Signal()
+	}
+	s.mu.Unlock()
+}
+
 // pump drains the queue into the channel and closes it when the turn is over
-// and nothing is left. A consumer that abandons the channel parks this
-// goroutine on its last send: the Event contract gives a reader no way to say
-// "I am gone", and parking one goroutine is the cheap end of that tradeoff —
-// the turn itself has already finished.
+// and nothing is left.
+//
+// A consumer that SAYS it is gone ([eventStream.leave]) ends this goroutine at
+// once, from either place it can be waiting: the cond var it sleeps on, and the
+// send it is parked on. A consumer that merely walks away without saying so
+// still parks it forever, exactly as it always did — nothing here can tell that
+// case from a surface that is slow — which is why every lane that can be left
+// now has a way to say it.
 func (s *eventStream) pump() {
 	defer close(s.out)
 	for {
 		s.mu.Lock()
-		for len(s.queue) == 0 && !s.closed {
+		for len(s.queue) == 0 && !s.closed && !s.left {
 			s.cond.Wait()
 		}
-		if len(s.queue) == 0 {
+		if s.left || len(s.queue) == 0 {
 			s.mu.Unlock()
 			return
 		}
 		event := s.queue[0]
 		s.queue = s.queue[1:]
 		s.mu.Unlock()
-		s.out <- event
+		select {
+		case s.out <- event:
+		case <-s.gone:
+			return
+		}
 	}
 }
 
