@@ -321,10 +321,17 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// The precedence law input.go states, restated rather than relied on: the
 	// door, the question the SESSION is blocked on, the modal overlays and the
 	// typed lists all outrank this, exactly as they outrank the room.
+	//
+	// HOME IS ON THAT LIST BESIDE THE OTHER FULLSCREEN PAGES, and was missing
+	// from it. Its box is a search AND a new conversation at the same moment
+	// (home.go), so at home an `x` is a character somebody is typing — and a stop
+	// card raised over a screen the frame is not drawing would be a question
+	// nobody can see, answered by the next key they press.
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
-		a.sheet.open, a.taskSheet.open, a.deckShowing(), a.pick.open, a.roster.open,
-		a.copy.on, a.welcome.open, a.menu.open, a.comp.open, a.rew.on, a.rewSheet.open:
+		a.sheet.open, a.taskSheet.open, a.home.open, a.deckShowing(), a.pick.open,
+		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
+		a.rew.on, a.rewSheet.open:
 		return nil, false
 	}
 	if a.stopping() {
