@@ -1018,6 +1018,12 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
+	// errand builds the agent behind `ask here` and standingRoot is where its
+	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
+	// A nil seam is a window that cannot ask from home and says so, which is a
+	// capability that is absent rather than broken.
+	errand       func(dir, workspace string) (Agent, error)
+	standingRoot string
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1185,6 +1191,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		ctx:              ctx,
 		agent:            opts.Agent,
 		fresh:            opts.Fresh,
+		errand:           opts.Errand,
+		standingRoot:     opts.StandingRoot,
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
@@ -2016,6 +2024,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.note(msg.kind + " task " + msg.id + " started · " + msg.title)
 		}
 		return a, nil
+
+	case errandMsg:
+		// Everything the errand lane moves on, in ONE case rather than three
+		// (homeexchange.go's [errandMsg] says why): the stream a Submit answered,
+		// one event off it, and the stream ending.
+		return a, a.errandUpdate(msg)
 
 	case frameMsg:
 		return a, a.paint()
