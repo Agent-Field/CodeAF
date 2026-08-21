@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -166,6 +167,19 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // nothing shaped it, because the note was about the attempt.
 func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea.Cmd {
 	ctx := a.ctx
+	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
+	// proposal card — the person typed the brief, so there is nothing to consent
+	// to — which means this note is the only place the fact can reach them, and
+	// this is the last line before the door is opened and the shaping call is
+	// paid for. It is a note and NOT a gate: the very next statement hands the
+	// work over regardless, because a claim another window wrote is evidence and
+	// never an instruction (internal/session's taskpreflight.go).
+	//
+	// The reading is the cached one the roster already keeps, so this costs a
+	// readdir at most once every three seconds (taskview.go's [app.elsewhere]).
+	if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
+		a.note(line)
+	}
 	a.beginPreflight(taskShapingNote)
 	return func() tea.Msg {
 		if mode == "adaptive" {

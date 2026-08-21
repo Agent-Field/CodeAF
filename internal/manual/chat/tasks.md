@@ -288,6 +288,68 @@ line — it is the only place your own pick is recorded.
 card. `ctrl+e` and `ctrl+o` on a settled card do nothing you can see. The whole of a task's
 life is in its room instead.
 
+## Why it warned me another window is already in these files — two windows working on the same files
+
+Before a brief becomes a paid run, aforge compares the paths that brief **spells out**
+against what every other aforge window open on this directory has already written. Where
+they overlap, one dim line appears — on the proposal card, between the brief and the
+answers, and as a note when you start work yourself with `/task`:
+
+```
+another window is already in internal/tui3/home.go · Port the picker
+```
+
+The path is the file both pieces of work are in; the name after the `·` is what that other
+window called its task. At most three paths and two names are spelled, and the rest are
+counted: `+2 more`.
+
+**It is a fact, not a gate.** Nothing is blocked, nothing is queued, no clock changes and
+no option disappears. The countdown still runs toward yes, and `yes` starts the work. The
+line is there so you can `redirect` it or say `no` in the seconds before the money is
+spent, rather than finding out at merge time. The model that proposed the task reads the
+same line on the end of its result, so it can sequence its next proposal around it.
+
+When the brief **names no files**, there is nothing to intersect, so the line says only
+what is still true — and where those windows have been so far:
+
+```
+another window has work out in this project · internal/tui3/home.go, internal/session/task.go
+```
+
+When another window's work **has not written anything yet**, nobody can say whether it is
+in your files, and the line says exactly that instead of guessing:
+
+```
+another window has work out in this project · it has not said which files yet
+```
+
+## What the other-window warning can and cannot see — and why it stayed quiet
+
+**aforge never tells you that a file is yours alone.** No line means nothing was found, not
+that the files are clear: the brief may have named no paths, or the other window may simply
+not have written anything yet. Silence here is never an all-clear.
+
+The rest of the limits, plainly:
+
+- **Only paths spelled with a directory on them count.** `internal/tui3/home.go` is a
+  place; `home.go` on its own is not, because it cannot be matched against a claim that
+  spells its directory. A brief that describes the work without naming a file gets the
+  general line above and no guess about where it will land.
+- **Claims are about files already written, never files intended.** A task ten minutes in
+  that has not saved anything yet is invisible to this check — nothing anywhere records
+  what work *means* to touch.
+- **Reads are not claims.** A task that read your file and has been thinking about it for
+  twenty minutes raises no line. Only writes are recorded.
+- **The files everything touches raise nothing.** An overlap that is only in `go.mod`,
+  `go.sum`, a lockfile or `CLAUDE.md` is not drawn, because it would be drawn on nearly
+  every proposal and the line would become furniture within a day.
+- **Closed windows stop warning anybody.** A claim goes stale within a few seconds of the
+  window that made it going away, and a stale claim is not believed.
+
+The check runs at the moment work is proposed and never again. Nothing re-checks a task
+while it runs, and nothing waits: two windows that decide to work the same file both work
+it, and the merge is still yours.
+
 ## The states a task passes through
 
 These are the exact words on screen.
