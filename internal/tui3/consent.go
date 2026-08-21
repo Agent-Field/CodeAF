@@ -182,14 +182,52 @@ func (a *app) pauseAsk() {
 // question would leave a tool call parked forever on a prompt nobody can see.
 // Denying is the only expiry that is safe in both directions — the call does not
 // run, and the model is handed a refusal it can act on and try something else.
+//
+// AND IT DOES NOT RUN ON A WINDOW NOBODY IS LOOKING AT. Ten seconds is "long
+// enough to read a command and a rule" (config's DefaultConsentTimeout says so
+// in those words), which is a claim about a person READING — and there is
+// nobody reading a terminal that does not have the keyboard. A person who
+// starts a turn in one window and steps over to another is the ordinary way
+// this surface is used, and until this line existed every call that turn made
+// through the gate was refused ten seconds later by a clock they could not have
+// beaten. From where they were sitting the unfocused session simply stopped
+// working, and the reason was on a screen behind them.
+//
+// So the countdown is HELD while the window is blurred and starts again whole
+// when the keyboard comes back ([app.refocusAsk]) — the same bargain
+// [app.pauseAsk] already makes for a person whose hands are on the keys, told
+// about the other half of the same fact. What keeps the held question from
+// being a session parked in silence is that it says so out loud: the presence
+// file's "waiting on you" reaches every other window and home
+// (session's taskpresence.go), and a banner reaches the desktop the moment it
+// goes up ([app.notifyAsk]).
 func (a *app) tickAsk() {
-	if !a.asking() || a.askPaused || a.askWait <= 0 {
+	if !a.asking() || a.askPaused || a.askWait <= 0 || !a.focused {
 		return
 	}
 	if a.now().Before(a.askAt.Add(a.askWait)) {
 		return
 	}
 	a.answerWith(false, session.ConsentOnce, consentExpiredWord)
+}
+
+// refocusAsk hands a waiting question its whole countdown back, because the
+// window it is drawn on has just got the keyboard.
+//
+// THE CLOCK MEASURES READING TIME AND NOT WALL TIME. A person returning to a
+// window that has been blurred for an hour has read nothing yet, so restamping
+// is what gives them the ten seconds the setting promises rather than an expiry
+// on their first frame back.
+//
+// A PAUSED QUESTION STAYS PAUSED. [app.pauseAsk] is a one-way door — somebody
+// has touched the keys and is deciding — and alt-tabbing away and back is not
+// them changing their mind.
+func (a *app) refocusAsk() {
+	if !a.asking() || a.askPaused {
+		return
+	}
+	a.askAt = a.now()
+	a.touch()
 }
 
 // consentExpiredWord is what the row keeps when the clock answered. It says
