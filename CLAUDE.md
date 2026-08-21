@@ -110,5 +110,9 @@ Several Claude sessions often work this repo at once, in the same working tree.
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
-`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, and four `internal/swepro`
-packages. Confirm with a stash-and-rerun before chasing anything in that list.
+`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, four `internal/swepro`
+packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, and four
+`cmd/harness-design` tests. Two more FLAKE under full-suite load on a clean tree and pass
+alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
+`TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
+believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
