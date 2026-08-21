@@ -339,6 +339,12 @@ type homeView struct {
 	// Empty for every other refusal, which name no file.
 	msg     string
 	msgPath string
+
+	// bandOpen is which list-shaped bands of the right column a person opened,
+	// by band and subject (homebands.go); foldLines is the fold lines painted
+	// this frame, so a click can find one. Both die with the screen.
+	bandOpen  map[string]bool
+	foldLines []bandFoldLine
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -1168,6 +1174,15 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
+	// MORE. The right column has no cursor, so `m` acts on the card: it opens
+	// every folded band on the row under the cursor, and folds them again
+	// (homebands.go). Only with nothing typed — in the box an m is an m.
+	if msg.String() == "m" && h.box.empty() {
+		if subject, ok := a.homeSubject(); ok {
+			a.toggleAllBandFolds(subject)
+			return nil
+		}
+	}
 	switch msg.String() {
 	case "esc":
 		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
@@ -2096,6 +2111,7 @@ func homeName(row session.SessionRow) string {
 // the card exists to stop. It is the LIST that becomes a drop-up while typing
 // ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
+	a.resetBandFoldLines()
 	// AN OPEN ERRAND TAKES THIS PANE, whole. It is a conversation happening now
 	// rather than a description of one that already did, and the two cannot share
 	// the column: a card about the row under the cursor drawn beside a live
@@ -2143,54 +2159,16 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	// directory that is not on this disk is drawn plain, as it always was.
 	bands = append(bands, []string{pal.dim(a.pathLink(dir, fit(place, width)))})
 
-	// STATE IS THE LOUDEST CONTENT LINE, because it is the only band that is
-	// about right now. A conversation stopped on a question says so here and
-	// then says what it is stopped on, in ink.
-	var state []string
-	if word := a.homeHolding(row); word != "" {
-		ink := pal.dim
-		if row.NeedsPerson() {
-			ink = pal.accent
-		}
-		state = append(state, ink(fit(word, width)))
-	}
-	if reason := row.Reason(); reason != "" {
-		for _, wrapped := range wrap(reason, width) {
-			state = append(state, pal.ink(wrapped))
-		}
-	}
-	bands = append(bands, state)
-
-	// THE WORK, WITH WHAT IT CAME TO. The outcome sentence is the most
-	// informative text this program holds about a finished task and nothing has
-	// ever drawn it; a row that says "done" and nothing else makes a person open
-	// the conversation to find out what "done" meant.
-	var work []string
-	shown := row.Tasks.Rows
-	if len(shown) > homeTaskRows {
-		shown = shown[:homeTaskRows]
-	}
-	for _, entry := range shown {
-		work = append(work, homeTaskLine(entry, row, now, width, pal))
-		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && width > homeOutcomeIndent+16 {
-			work = append(work, strings.Repeat(" ", homeOutcomeIndent)+
-				pal.dim(fit(outcome, width-homeOutcomeIndent)))
-		}
-	}
-	bands = append(bands, work)
-
-	if last := a.homeLast(row); last != "" {
-		var said []string
-		for _, wrapped := range wrap(last, width) {
-			said = append(said, pal.dim(wrapped))
-		}
-		bands = append(bands, said)
-	}
-
-	if facts := homeFacts(row, now); facts != "" {
-		bands = append(bands, []string{pal.dim(fit(facts, width))})
-	}
-
+	// EVERYTHING UNDER THE PLACE LINE IS A BAND FROM THE REGISTRY (homebands.go):
+	// each band is its own file, says what it is about, and is drawn in the
+	// order its key gives it. This function owns only the title and the place,
+	// which are the two lines no band may displace.
+	bands = append(bands, a.drawHomeBands(bandContext{
+		subject: bandSubject{kind: bandKindSession, row: row, project: line.project, dir: dir},
+		width:   width,
+		now:     now,
+		pal:     pal,
+	})...)
 	return homeBands(bands, room)
 }
 
@@ -2436,4 +2414,20 @@ func sinceAt(at, now time.Time) string {
 	default:
 		return at.Format("2 Jan")
 	}
+}
+
+// homeSubject is the thing under the cursor as the band registry sees it, or
+// false on a row that has no card (the action row, a folded tail).
+func (a *app) homeSubject() (bandSubject, bool) {
+	line, ok := a.home.focusedLine()
+	if !ok {
+		return bandSubject{}, false
+	}
+	switch line.kind {
+	case homeSession:
+		return bandSubject{kind: bandKindSession, row: line.row, project: line.project, dir: strings.TrimSpace(line.row.ProjectDir), world: a.home.world}, true
+	case homeItem:
+		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+	}
+	return bandSubject{}, false
 }
