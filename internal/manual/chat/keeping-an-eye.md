@@ -330,20 +330,80 @@ with its rails; home's card is where the counts are.
 
 ## Does it keep working when I close the terminal or shut the laptop?
 
+**Yes — background checks are on out of the box, and nobody asks you first.**
+
 While any aforge window is open, one of them runs the pass every **5 minutes** —
 whichever window takes the lock first; the others do nothing and say nothing.
+For "no terminal open at all", the **first thing you ever set up** installs one
+small timer under your own login that runs `aforge tick` every 5 minutes: a
+launchd agent called `ai.agentfield.aforge.tick` on a Mac, a systemd user timer
+called `aforge-tick.timer` on Linux. Nothing else is installed, ever — no
+server, no port, no account.
 
-For "no terminal open at all", aforge asks **once, ever**, the first time you set
-anything up: keep checking when no window is open? A yes installs an OS user
-timer that runs `aforge tick` every 5 minutes — a launchd agent on macOS
-(`ai.agentfield.aforge.tick`), a systemd user timer on Linux
-(`aforge-tick.timer`) — and the answer is written down **before** your machine
-is touched, so an install that half-worked is still an install you were asked
-about, and you are never asked twice. A no is remembered as a no and never
-raised again.
+You are told, once, in one dim line under the card you just said yes to:
 
-On any other host there is no timer to install, so the offer is never made and
-standing items are checked only while a window is open.
+```
+checks every 5 minutes, window or not · background checks under /settings
+```
+
+If the install did not take, the line says that instead, with the reason:
+
+```
+could not install the background check · <what your machine said> · background checks under /settings
+```
+
+Either way it is said **once, ever**. The fact is written down beside your items
+**before** your machine is touched, so an install that half-worked is still one
+you were told about rather than one you are told about again tomorrow.
+
+**The limits are real.** Nothing runs while the machine is **asleep** — a late
+check says it was late rather than pretending it happened on time. Nothing runs
+when **you are not logged in**: it is a per-user timer, not a system service. And
+on any host that is neither macOS nor Linux there is no timer to install, so
+things are checked only while a window is open and the settings row is not there
+at all.
+
+## Turn background checks off
+
+`/settings` → **Workspace** → **background checks**, or just say "turn off the
+background checks" and the chat will do it. It is a two-word row — `on` or
+`off` — and `on` is the default.
+
+- **on** installs the timer named above and things are checked with no window
+  open.
+- **off** removes it. Nothing is lost: your reminders, watches and routines are
+  all still there, still due, and still checked every 5 minutes by any window you
+  have open. What stops is the checking that happens when you have none.
+
+**The row reads your machine, not a file.** It says `on` when the timer's own
+definition is actually on disk, so if something removed the agent by hand the row
+says `off` — it cannot tell you the checks are running when they are not.
+
+`/status` says the same thing in a line: `keeping watch  installed`,
+`keeping watch  while a window is open`, or
+`keeping watch  nothing is checking · background checks are off · /settings`.
+
+## Does aforge keep running when my terminal is closed — closing the terminal app
+
+Half of it does. **The aforge you are talking to does not run when the terminal
+is closed**: close the terminal and that conversation ends, mid-answer work
+stops, and nothing of the chat stays resident.
+
+What does run with the terminal closed is the **standing side** — reminders,
+watches, rules, overnight work — and only that. Every 5 minutes, terminal closed
+or not, the timer runs `aforge tick`, which takes a few seconds, does whatever is
+due, and exits. There is no daemon sitting in memory between those moments, and
+closing the terminal app changes nothing about it.
+
+When something fires with nothing open, it waits for you: it is on home the next
+time you open it, and it folds into the next conversation you open in that
+project under one "while you were away". Nothing reaches your phone, your email,
+or a notification — there is no outward lane at all.
+
+If the program itself moves — you rebuild it somewhere else, or install a new
+one — the timer would be pointing at a program that is gone. Every launch checks
+for exactly that and quietly puts the timer back on the program you are actually
+running. You are not asked and nothing is said on screen.
 
 ## Do reminders work over --host — yes, on the far machine
 
@@ -361,8 +421,9 @@ everything you set up from it:
   devbox's own profile rules, not this laptop's.
 - It keeps working after this window closes **and after the connection drops**.
   Nothing about it needs the terminal you are sitting at.
-- The one-time question `keep checking when no window is open?` installs the OS
-  timer **on devbox**. Saying yes there never touches this machine.
+- Background checks belong to devbox: the first thing you set up over the
+  connection installs the timer **on devbox**, and turning the `background
+  checks` row turns devbox's. Neither ever touches this machine.
 
 Three things are missing over a connection, and each says nothing rather than
 guessing:
@@ -553,8 +614,9 @@ transcript reads with the same tools as any other conversation.
 - **It will not set a reminder for a moment that has already passed.** The stamp
   is refused with the current time in it, and aforge is asked to work it out
   again from that.
-- **It will not fire while the machine is asleep.** A late check says it was
-  late; it does not pretend it happened on time.
+- **It will not fire while the machine is asleep**, and it will not fire when you
+  are not logged in. A late check says it was late; it does not pretend it
+  happened on time.
 - **It will not reach your phone.** There is no notification, no email, no
   outward lane at all. News lands in a chat you have open, or waits on home and
   in the next chat you open in that project ("Where a reminder arrives").
