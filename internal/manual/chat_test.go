@@ -225,6 +225,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answers — that there is a second row, that the exchange is stored
 		// somewhere home does not list, and how to turn it into an ordinary
 		// conversation — are all on one page.
+		// The twelfth wave: what the card actually does while somebody is
+		// reading it, and where an errand said at home leaves its record. Both
+		// were asked by the first person to use this, and the corpus answered
+		// the first one wrongly — it described a countdown that is now gone.
+		{"how long do I have to answer the card", "keeping-an-eye"},
+		{"where is the record of a reminder I made from home", "keeping-an-eye"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},

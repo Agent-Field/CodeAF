@@ -621,7 +621,6 @@ you answer it**:
 │ when · Mondays at 9am
 │ costs · about $0.02 a run, at most once a day
 │ [ 1 yes, set it up ]  [ 2 change when ]  [ 3 once, not standing ]
-│ ████████████░░░░░░░░  ends in 24s
 ╰───────────────────────────────────────────────────────────
 ```
 
@@ -642,10 +641,12 @@ Right?`
   sends your words back and nothing is set up until a new card comes.
 - `3 once, not standing` — do it now and leave nothing behind.
 
-`esc` says no. **And so does the clock**: the bar drains toward `ends in 0.0s`,
-and when it runs out the card ends with `ended · nothing was set up`. That is the
-opposite of the task card, whose clock approves — something that spends money
-forever with nobody in the room is not a thing silence should agree to.
+`esc` says no. **There is no clock on this one**: no bar, no countdown, and no
+moment where it answers on your behalf — it waits while you read it. That is the
+opposite of the task card, whose clock approves on silence: something that spends
+money forever with nobody in the room is not a thing silence should agree to. If
+the turn ends with the card still up — you interrupt it, or the window closes —
+it says `ended · nothing was set up`, and nothing was.
 
 **The first time you ever set one up** there is one more question, on the same
 card: `keep checking when no window is open?` with `1 yes, always` and
