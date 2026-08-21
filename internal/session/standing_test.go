@@ -630,7 +630,9 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	if queued != 1 {
 		t.Fatalf("the live conversation has %d queued lines", queued)
 	}
-	if line != "◦ tell me when CI goes red: the last run on main failed" {
+	// The news, whole, inside the framing that keeps the model from reading it
+	// as a request ([TestTheSteeringLineReadsAsNewsAndNotAsARequest]).
+	if !strings.Contains(line, "◦ tell me when CI goes red: the last run on main failed") {
 		t.Fatalf("steering line = %q", line)
 	}
 }
@@ -952,8 +954,11 @@ func TestAFiringNeverStreersIntoAnErrandAndReachesTheRoomInstead(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("the conversation the person is in has %d queued lines", len(queued))
 	}
-	if want := "◦ remind me in 1 min to eat medicines: Time to eat your medicines."; queued[0] != want {
-		t.Fatalf("steering line = %q, want %q", queued[0], want)
+	// The news itself, whole. What is around it is the framing that stops the
+	// model re-proposing the item it just fired
+	// ([TestTheSteeringLineReadsAsNewsAndNotAsARequest]).
+	if want := "◦ remind me in 1 min to eat medicines: Time to eat your medicines."; !strings.Contains(queued[0], want) {
+		t.Fatalf("steering line = %q, want it to carry %q", queued[0], want)
 	}
 }
 
@@ -1352,6 +1357,183 @@ func TestTheCardCarriesTheAnswersItOffers(t *testing.T) {
 	for _, option := range offered {
 		if option.Key == StandingOnceKey {
 			t.Fatalf("a one-minute reminder's card offered %q %s", option.Key, option.Label)
+		}
+	}
+}
+
+// ── THE FIRING IS DRAWN WHERE IT LANDED ─────────────────────────────────────
+//
+// The defect the real-binary suite found: a reminder fired into the
+// conversation the person was sitting in, the line went onto the steering queue,
+// the model answered it — AND THE SCREEN SHOWED NOTHING. Nothing ever emitted
+// EventStandingUpdate, so internal/tui3's `◦ <words> · said: <text>` row was
+// unreachable in production and the manual's promise could not come true.
+//
+// It takes the STANDING lane and not a turn's hub, because a firing arrives
+// when no turn is running — which is the whole of what ambient means.
+func TestAFiringIntoALiveConversationIsDrawnAtOnce(t *testing.T) {
+	workspace := t.TempDir()
+	room := standingLiveAgent(t, workspace, nil)
+	lane := room.TaskUpdates()
+
+	runner := &standingRunner{root: t.TempDir()}
+	item := standing.Item{
+		ID:        "item1",
+		Words:     "remind me in 1 minute to drink water",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: room.id, Transcript: room.config.SessionFile},
+	}
+	if _, err := runner.Say(context.Background(), item, "💧 Time to drink water!"); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+
+	event := standingNextUpdate(t, lane)
+	if event.Standing.Update != "fired" {
+		t.Fatalf("the firing reported %q, want \"fired\"", event.Standing.Update)
+	}
+	if event.Standing.Item.Words != item.Words || event.Standing.Item.ID != item.ID {
+		t.Fatalf("the row has nothing to name the item with: %+v", event.Standing.Item)
+	}
+	if event.Standing.Text != "💧 Time to drink water!" {
+		t.Fatalf("the row carries %q, not what the firing said", event.Standing.Text)
+	}
+	// AND THE MODEL IS TOLD TOO. The row is the news; the steering line is what
+	// makes the conversation able to talk about it.
+	if queued := standingQueued(room); len(queued) != 1 {
+		t.Fatalf("the conversation has %d queued lines, want the steering line as well", len(queued))
+	}
+}
+
+// A run that stopped on something only a person can allow wears the accent, and
+// one that broke says so. Both are the same lane and the same row.
+func TestAFiringThatNeedsSomebodyReportsItOnTheStandingLane(t *testing.T) {
+	for _, probe := range []struct{ kind, want string }{
+		{"said", "fired"},
+		{"landed", "fired"},
+		{"needs-you", "needs-you"},
+		{"failed", "failed"},
+	} {
+		if word := standingUpdateWord(probe.kind); word != probe.want {
+			t.Fatalf("a %q outcome draws %q, want %q", probe.kind, word, probe.want)
+		}
+	}
+
+	workspace := t.TempDir()
+	room := standingLiveAgent(t, workspace, nil)
+	lane := room.TaskUpdates()
+	runner := &standingRunner{root: t.TempDir()}
+	item := standing.Item{
+		ID:        "item2",
+		Words:     "keep main green",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: room.id, Transcript: room.config.SessionFile},
+	}
+	runner.deliver(item, "needs-you", "the fix touches migrations", "")
+	event := standingNextUpdate(t, lane)
+	if event.Standing.Update != "needs-you" || event.Standing.Text != "the fix touches migrations" {
+		t.Fatalf("the row is %+v", event.Standing)
+	}
+}
+
+// ── "WHILE YOU WERE AWAY" IS VISIBLE ON OPEN ────────────────────────────────
+//
+// The fold reached the MODEL and nobody else: enqueueAmbientNote queues and
+// never wakes, so a person opening a conversation with news in its inbox saw an
+// empty screen until they next typed. The same rows the live road draws are
+// handed to the first surface that opens the lane.
+func TestWhatFiredWhileTheWindowWasShutIsDrawnWhenItOpens(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	dir := t.TempDir()
+	now := time.Now()
+	for _, note := range []standing.Note{
+		{At: now, ItemID: "item1", Words: "tell me when CI goes red", Kind: "said", Text: "the last run on main failed"},
+		{At: now.Add(time.Minute), ItemID: "item2", Words: "keep main green", Kind: "needs-you", Text: "the fix touches migrations"},
+	} {
+		if err := standing.Deliver(dir, note); err != nil {
+			t.Fatalf("Deliver: %v", err)
+		}
+	}
+
+	store := &fakeStanding{root: root, items: map[string]standing.Item{}}
+	agent := standingAgent(t, &scriptedCompleter{}, store, func(config *Config) {
+		config.Workspace = workspace
+		config.Place = Place{Dir: dir, Workspace: workspace}
+		config.SessionFile = config.Place.Transcript()
+	})
+
+	// THE LANE IS OPENED AFTER THE AGENT EXISTS, which is the ordering that made
+	// the fold invisible: the drain runs inside New, where nobody is subscribed.
+	lane := agent.TaskUpdates()
+	first := standingNextUpdate(t, lane)
+	if first.Standing.Update != "fired" || first.Standing.Item.Words != "tell me when CI goes red" {
+		t.Fatalf("the first row is %+v", first.Standing)
+	}
+	if first.Standing.Text != "the last run on main failed" {
+		t.Fatalf("the first row says %q", first.Standing.Text)
+	}
+	second := standingNextUpdate(t, lane)
+	if second.Standing.Update != "needs-you" || second.Standing.Item.Words != "keep main green" {
+		t.Fatalf("the second row is %+v", second.Standing)
+	}
+	// AND THE MODEL STILL GETS ONE FOLD AND NOT TWO NOTES. The two readers have
+	// two different laws (standing_run.go's queueStandingNews).
+	queued := standingQueued(agent)
+	if len(queued) != 1 || !strings.HasPrefix(queued[0], "while you were away") {
+		t.Fatalf("the model was handed %d notes: %q", len(queued), queued)
+	}
+}
+
+// ── THE MODEL DOES NOT RE-PROPOSE ITS OWN FIRING ────────────────────────────
+//
+// Both end-to-end suites watched the model read `◦ remind me in 1 min to eat
+// medicines: …` as a fresh request and call `stand` again, so a one-off reminder
+// proposed itself a second time the moment it fired. The fix is the text the
+// engine injects, and this pins it there.
+func TestTheSteeringLineReadsAsNewsAndNotAsARequest(t *testing.T) {
+	item := standing.Item{Words: "remind me in 1 minute to drink water"}
+	line := standingSteeringLine(item, "💧 Time to drink water!")
+	if !strings.HasPrefix(line, standingNewsFrame) {
+		t.Fatalf("the injected line does not open by saying what it is: %q", line)
+	}
+	if !strings.Contains(line, "◦ remind me in 1 minute to drink water: 💧 Time to drink water!") {
+		t.Fatalf("the injected line lost the news itself: %q", line)
+	}
+	if !strings.Contains(line, "Do not call stand again") {
+		t.Fatalf("the injected line does not forbid setting it up again: %q", line)
+	}
+	// AND THE PROMPT SAYS THE SAME THING IN ONE SENTENCE, so the framing is not
+	// the only place the model can learn it (CLAUDE.md's manual law applies to
+	// system.md too: it must not lie, and it must not be silent about a rule the
+	// engine enforces).
+	if !strings.Contains(systemPrompt, standingNewsFrame) {
+		t.Fatalf("system.md never mentions %q", standingNewsFrame)
+	}
+	if !strings.Contains(systemPrompt, "never call `stand`\nagain for it") {
+		t.Fatal("system.md does not tell the model to leave a fired item alone")
+	}
+}
+
+// standingNextUpdate takes the next EventStandingUpdate off a standing lane, or
+// fails. A lane that says nothing is the defect itself, so the wait is short and
+// the failure is the point.
+func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event, ok := <-lane:
+			if !ok {
+				t.Fatal("the standing lane closed with no firing on it")
+			}
+			if event.Kind != EventStandingUpdate {
+				continue
+			}
+			if event.Standing == nil {
+				t.Fatal("an update with no card on it")
+			}
+			return event
+		case <-deadline:
+			t.Fatal("nothing was drawn: no EventStandingUpdate reached the standing lane")
 		}
 	}
 }

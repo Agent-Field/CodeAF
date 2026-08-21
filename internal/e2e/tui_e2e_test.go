@@ -409,11 +409,18 @@ func testFiringReachesThePerson(t *testing.T) {
 		wait = time.Minute
 	}
 	t.Logf("waiting %s for the window's own standing pass", wait.Round(time.Second))
+	// TWO NEEDLES, BECAUSE THE JOURNAL AND THE SCREEN SAY IT DIFFERENTLY. The
+	// steering line the engine injects carries the person's whole sentence; the
+	// ROW the surface draws wears the head's six-word cut of it and then what the
+	// firing said (internal/tui3's standName, pinned by
+	// TestAStandingUpdateIsExactlyOneLine). So the transcript is searched for the
+	// sentence and the screen for the row.
 	line := "◦ remind me in 1 minute to drink water"
+	drawnRow, said := "◦ remind me in 1 minute to", "said:"
 	deadline := time.Now().Add(wait)
 	drawn := false
 	for time.Now().Before(deadline) {
-		if strings.Contains(r.capture(), line) {
+		if screen := r.capture(); strings.Contains(screen, drawnRow) && strings.Contains(screen, said) {
 			drawn = true
 			break
 		}
@@ -434,7 +441,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	if !drawn {
 		t.Errorf("DEFECT: the firing reached the conversation but was never DRAWN in it.\n"+
 			"The journal holds the line as a session-authored note, and the model answered it, "+
-			"but no row for it appears on the screen the person is looking at:\n%s", screen)
+			"but no `%s … %s` row appears on the screen the person is looking at:\n%s", drawnRow, said, screen)
 	} else {
 		t.Logf("the firing is drawn in the conversation:\n%s", screen)
 	}

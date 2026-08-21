@@ -1531,6 +1531,13 @@ type Agent struct {
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
+	// standingNews is what fired while this window was SHUT, waiting for a
+	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
+	// the fold is built inside New — before the caller holds the agent, before
+	// any surface has subscribed to anything — so a send there would go to an
+	// empty list of watchers and the person would open a conversation with news
+	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
+	standingNews []Event
 
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the

@@ -1643,6 +1643,13 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // The channel is never closed by a turn ending — a turn's end is not the end of
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
+//
+// AND THE FIRST SUBSCRIBER IS HANDED WHAT ARRIVED WHILE THE WINDOW WAS SHUT.
+// The fold was built inside New ([Agent.drainStandingInbox]), where there was
+// nobody to send it to, so it waited here for the surface to open the lane; the
+// stream is unbounded, so handing it over is an append and never a wait. It is
+// handed over ONCE — a second lane on the same session is a second view of the
+// same conversation, not a second person arriving.
 func (a *Agent) TaskUpdates() <-chan Event {
 	stream := newEventStream()
 	a.mu.Lock()
@@ -1652,7 +1659,12 @@ func (a *Agent) TaskUpdates() <-chan Event {
 		return stream.out
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
+	news := a.standingNews
+	a.standingNews = nil
 	a.mu.Unlock()
+	for _, event := range news {
+		stream.send(event)
+	}
 	return stream.out
 }
 

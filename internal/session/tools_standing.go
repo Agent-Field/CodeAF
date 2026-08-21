@@ -831,9 +831,16 @@ func (a *Agent) forgetStanding(id uint64) {
 	a.mu.Unlock()
 }
 
-// emitStandingUpdate reports one item moving to whoever is watching the turn.
-// It is a REPORT AND NEVER A QUESTION (standing_contract.go), so a session with
-// no hub simply says nothing.
+// emitStandingUpdate reports one item moving to whoever is watching the turn:
+// it was just set up, paused, resumed, stopped. It is a REPORT AND NEVER A
+// QUESTION (standing_contract.go), so a session with no hub simply says nothing.
+//
+// THE TURN'S HUB IS THE RIGHT LANE FOR THESE AND THE ONLY ONE. Every update
+// this function carries is the direct consequence of a `stand` call the model
+// just made, so there is by construction a turn running and somebody reading
+// its stream — including home's `ask here` pane, whose only channel is the one
+// Submit handed it (homeexchange.go). A firing is the opposite case and takes
+// the opposite lane; see [Agent.emitStandingNews].
 func (a *Agent) emitStandingUpdate(update string, item standing.Item, text string) {
 	a.mu.Lock()
 	hub := a.hub
@@ -846,6 +853,38 @@ func (a *Agent) emitStandingUpdate(update string, item standing.Item, text strin
 		Update: update,
 		Text:   text,
 	}})
+}
+
+// emitStandingNews reports one item FIRING into this conversation, so that the
+// surface sitting on it draws the row the manual promises — `◦ <words> · said:
+// <text>` — at the moment the news arrives (internal/tui3's standing.go).
+//
+// A FIRING ARRIVES BETWEEN TURNS, WHICH IS WHY IT IS NOT THE HUB'S. That is the
+// whole of the defect this exists to close: [standingRunner.deliver] steered the
+// line onto the queue and nothing else, so the transcript grew a note the model
+// answered and THE SCREEN SHOWED NOTHING. There is no turn when an item fires —
+// that is what ambient means — so [Agent.hub] is nil and a hub send would be a
+// send into no lane at all.
+//
+// So the news takes the STANDING LANE ([Agent.TaskUpdates]), which is the
+// subscription a surface holds for the whole life of the session for exactly
+// this reason: a node's "done" and an item's firing both happen when no turn is
+// running. It goes there and NOWHERE ELSE, even when a turn happens to be in
+// flight — one line and never two (standing.go) is a law about the screen, and
+// a surface reading both lanes would draw the same firing twice.
+func (a *Agent) emitStandingNews(update string, item standing.Item, text string) {
+	event := Event{Kind: EventStandingUpdate, Tool: "stand", Standing: &StandingNotice{
+		Item:   item,
+		Update: update,
+		Text:   text,
+	}}
+	a.mu.Lock()
+	watchers := make([]*eventStream, len(a.taskWatchers))
+	copy(watchers, a.taskWatchers)
+	a.mu.Unlock()
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }
 
 // ── the one-time offer to keep checking with no window open ─────────────────
