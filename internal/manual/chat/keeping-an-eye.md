@@ -392,7 +392,9 @@ stops, and nothing of the chat stays resident.
 What does run with the terminal closed is the **standing side** — reminders,
 watches, rules, overnight work — and only that. Every 5 minutes, terminal closed
 or not, the timer runs `aforge tick`, which takes a few seconds, does whatever is
-due, and exits. There is no daemon sitting in memory between those moments, and
+due, and exits. The same pass also tidies what is remembered — at most once every
+six hours, only while nobody has been here for a quarter of an hour, and only
+with memory on (`what I remember`). There is no daemon sitting in memory between those moments, and
 closing the terminal app changes nothing about it.
 
 When something fires with nothing open, it waits for you: it is on home the next
