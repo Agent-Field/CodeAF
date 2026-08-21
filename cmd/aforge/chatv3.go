@@ -267,6 +267,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			}
 			return replacement, fresh.SessionFile, nil
 		},
+		// ── lane errand, for the merge: this pair and nothing else ──────────
+		// Home's `ask here` — the errand answered in the right pane, whose
+		// transcript lives under the standing root and never under v3/projects
+		// (chatv3_exchange.go, tui3's homeexchange.go).
+		Errand:       v3Errand(cfg, workspace, settings.ProfileDir, *yolo),
+		StandingRoot: v3StandingRoot(),
 		// The conversations this directory has had, and the door back into one
 		// of them. They are the welcome box's right column and the /resume
 		// picker's rows; the walk happens on the keystroke that asks for it and
