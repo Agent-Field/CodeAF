@@ -660,6 +660,15 @@ var OperatorEnvPins = []string{
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
+	// AFORGE_SWARM is the cooperative-decomposition wave's arming switch
+	// (config.go's Settings.Swarm): on, leaves gain request_split and the
+	// sizing judgments read measured overrun base rates; off, the tree is
+	// byte-identical to before the wave. It is plumbing for the reason
+	// AFORGE_CHAT_V2 is — it decides which decomposition doctrine the binary
+	// runs, not a preference the product has an opinion about — and it has
+	// the same lifetime: it disappears when swarm becomes the default, which
+	// is exactly the lifetime a persisted setting must not have.
+	"AFORGE_SWARM",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
