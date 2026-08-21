@@ -42,20 +42,20 @@ func TestAdaptiveLimiterCutsOnRateLimitAndRecovers(t *testing.T) {
 	}
 	ctx := context.Background()
 	_ = l.acquire(ctx)
-	l.release(true)
+	l.release(true, 0)
 	if l.capacity != limiterCeiling/2 {
 		t.Fatalf("one 429 should halve capacity: %d", l.capacity)
 	}
 	// A burst of 429s inside the cooldown is one signal, not many.
 	_ = l.acquire(ctx)
-	l.release(true)
+	l.release(true, 0)
 	if l.capacity != limiterCeiling/2 {
 		t.Fatalf("cooldown ignored: %d", l.capacity)
 	}
 	// Sustained success grows capacity back one slot per stretch.
 	for i := 0; i < limiterGrowthEvery; i++ {
 		_ = l.acquire(ctx)
-		l.release(false)
+		l.release(false, 0)
 	}
 	if l.capacity != limiterCeiling/2+1 {
 		t.Fatalf("growth after %d successes: %d", limiterGrowthEvery, l.capacity)
@@ -79,13 +79,13 @@ func TestAdaptiveLimiterBlocksAtCapacityAndReleases(t *testing.T) {
 		t.Fatal("second acquire should block at capacity 1")
 	case <-time.After(50 * time.Millisecond):
 	}
-	l.release(false)
+	l.release(false, 0)
 	select {
 	case <-acquired:
 	case <-time.After(time.Second):
 		t.Fatal("waiter never woke after release")
 	}
-	l.release(false)
+	l.release(false, 0)
 
 	// A cancelled waiter must not leak or deadlock the queue.
 	_ = l.acquire(ctx)
@@ -97,11 +97,11 @@ func TestAdaptiveLimiterBlocksAtCapacityAndReleases(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("cancelled acquire should error")
 	}
-	l.release(false)
+	l.release(false, 0)
 	if err := l.acquire(ctx); err != nil {
 		t.Fatal("limiter wedged after cancelled waiter")
 	}
-	l.release(false)
+	l.release(false, 0)
 }
 
 func TestAdaptiveLimiterBalancesAcquireAndRelease(t *testing.T) {
@@ -116,7 +116,7 @@ func TestAdaptiveLimiterBalancesAcquireAndRelease(t *testing.T) {
 		t.Fatalf("five acquires should be five in flight: %d", inFlight)
 	}
 	for i := 0; i < 5; i++ {
-		l.release(false)
+		l.release(false, 0)
 	}
 	if inFlight, _, waiting := inspect(l); inFlight != 0 || waiting != 0 {
 		t.Fatalf("balanced churn left inFlight=%d waiting=%d", inFlight, waiting)
@@ -146,11 +146,11 @@ func TestAdaptiveLimiterInFlightSurvivesCancellationChurn(t *testing.T) {
 		go func() {
 			defer waiter.Done()
 			if err := l.acquire(cancelCtx); err == nil {
-				l.release(false)
+				l.release(false, 0)
 			}
 		}()
 		go cancel()
-		l.release(false)
+		l.release(false, 0)
 		waiter.Wait()
 		cancel()
 
@@ -170,7 +170,7 @@ func TestAdaptiveLimiterInFlightSurvivesCancellationChurn(t *testing.T) {
 	if inFlight, _, _ := inspect(l); inFlight != 1 {
 		t.Fatalf("limiter lost count of a live slot: %d", inFlight)
 	}
-	l.release(false)
+	l.release(false, 0)
 }
 
 // The ceiling has to hold under real contention, which is the thing a negative
@@ -244,7 +244,7 @@ func TestAdaptiveLimiterWakesOneWaiterPerSlot(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	l.release(false)
+	l.release(false, 0)
 	select {
 	case <-admitted:
 	case <-time.After(time.Second):
@@ -261,14 +261,14 @@ func TestAdaptiveLimiterWakesOneWaiterPerSlot(t *testing.T) {
 
 	// Drain, so the goroutines end rather than leak into the next test.
 	for i := 0; i < 2; i++ {
-		l.release(false)
+		l.release(false, 0)
 		select {
 		case <-admitted:
 		case <-time.After(time.Second):
 			t.Fatal("a queued waiter was never admitted")
 		}
 	}
-	l.release(false)
+	l.release(false, 0)
 	if inFlight, _, waiting := inspect(l); inFlight != 0 || waiting != 0 {
 		t.Fatalf("drain left inFlight=%d waiting=%d", inFlight, waiting)
 	}
@@ -293,7 +293,7 @@ func TestAdaptiveLimiterFaultUnderTheLockDoesNotWedgeAcquire(t *testing.T) {
 
 	recovered := func() (recovered any) {
 		defer func() { recovered = recover() }()
-		l.release(false)
+		l.release(false, 0)
 		return nil
 	}()
 	if recovered == nil {
@@ -316,8 +316,8 @@ func TestAdaptiveLimiterFaultUnderTheLockDoesNotWedgeAcquire(t *testing.T) {
 	if inFlight, _, waiting := inspect(l); inFlight != 2 || waiting != 0 {
 		t.Fatalf("after the fault inFlight=%d waiting=%d, want 2 and 0", inFlight, waiting)
 	}
-	l.release(false)
-	l.release(false)
+	l.release(false, 0)
+	l.release(false, 0)
 	if inFlight, _, _ := inspect(l); inFlight != 0 {
 		t.Fatalf("release after the fault left inFlight=%d", inFlight)
 	}
@@ -339,5 +339,114 @@ func TestRetryAfterParsesSecondsAndDate(t *testing.T) {
 	response.Header.Set("Retry-After", "garbage")
 	if retryAfter(response) != 0 {
 		t.Fatal("unparseable should mean zero")
+	}
+}
+
+// atClock hands the limiter a clock the test moves by hand, so healing written
+// in minutes is measured in microseconds. The pacing it describes is real time
+// on a real account; nothing about the arithmetic needs to be.
+func atClock(l *adaptiveLimiter, now *time.Time) {
+	l.now = func() time.Time { return *now }
+}
+
+// THE RATCHET. Several aforge processes share one API key on this machine, so a
+// burst of 429s a sibling caused arrives here as if this process had caused it.
+// Halvings compound; the successes that undo them are earned only by traffic
+// this process may not have. A cut that can never heal is a sibling's minute
+// shaping every later hour, and this is the test that it heals.
+func TestASiblingsBurstDoesNotRatchetCapacityDownForGood(t *testing.T) {
+	l := newAdaptiveLimiter()
+	clock := time.Now()
+	atClock(l, &clock)
+	ctx := context.Background()
+
+	// Six windows of somebody else's traffic take the ceiling to the floor.
+	for cut := 0; cut < 6; cut++ {
+		if err := l.acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+		l.release(true, 0)
+		clock = clock.Add(limiterCutCooldown + time.Second)
+	}
+	if l.capacity != limiterFloor {
+		t.Fatalf("six windows of 429s left capacity %d, want the floor %d", l.capacity, limiterFloor)
+	}
+
+	// Then quiet — and no successes to earn anything back with, because the
+	// traffic was never this process's to begin with.
+	clock = clock.Add(limiterHealQuiet + limiterCutCooldown)
+	if err := l.acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	giveBack(l)
+	if l.capacity <= limiterFloor {
+		t.Fatalf("capacity was still %d after %s of quiet — the cut never healed", l.capacity, limiterHealQuiet)
+	}
+
+	// And a process left alone long enough comes all the way back: an
+	// hour-old halving says nothing about now.
+	clock = clock.Add(time.Hour)
+	if err := l.acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	giveBack(l)
+	if l.capacity != limiterCeiling {
+		t.Fatalf("an idle hour left capacity at %d, want the ceiling %d", l.capacity, limiterCeiling)
+	}
+}
+
+// ONE WINDOW, ONE HALVING. A 429 that names a Retry-After has described how long
+// this account is paced for; every 429 inside that window is the same fact
+// restated by a request that was already in the air, and cutting again for each
+// of them is how one burst becomes six halvings.
+func TestARetryAfterNamesTheWindowAndTheBurstInsideItCutsOnce(t *testing.T) {
+	l := newAdaptiveLimiter()
+	base := time.Now()
+	clock := base
+	atClock(l, &clock)
+	ctx := context.Background()
+
+	if err := l.acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	l.release(true, 30*time.Second)
+	want := limiterCeiling / 2
+	if l.capacity != want {
+		t.Fatalf("the first 429 left capacity %d, want %d", l.capacity, want)
+	}
+
+	// The rest of the burst, well past the two-second floor that would
+	// otherwise have let every one of them cut again.
+	for _, at := range []time.Duration{3 * time.Second, 10 * time.Second, 29 * time.Second} {
+		clock = base.Add(at)
+		if err := l.acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+		l.release(true, 0)
+	}
+	if l.capacity != want {
+		t.Fatalf("a burst inside the named window cut capacity to %d, want the single halving %d", l.capacity, want)
+	}
+
+	// And the way back out survives the burst too: a suppressed 429 used to
+	// zero the growth counter anyway, so the halving was ignored once and the
+	// recovery was thrown away four times.
+	for success := 0; success < limiterGrowthEvery-1; success++ {
+		if err := l.acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+		l.release(false, 0)
+	}
+	if err := l.acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	l.release(true, 0)
+	if err := l.acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	l.release(false, 0)
+	if l.capacity != want+1 {
+		t.Fatalf("capacity %d after %d successes across one suppressed 429, want %d",
+			l.capacity, limiterGrowthEvery, want+1)
 	}
 }

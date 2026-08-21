@@ -15,6 +15,13 @@ import (
 // requests allowed in flight (multiplicative decrease), every stretch of
 // clean successes adds one back (additive increase), so admission converges
 // on whatever rate the account actually sustains — no constant to mistune.
+//
+// EVERY CUT HEALS, and that is not decoration. A halving is a guess about a
+// moment, and this process is not the only thing spending the account's rate:
+// sibling aforge processes share the key, so a cut here is often a report about
+// somebody else's second. A guess that can only ever tighten is a ratchet. So
+// capacity comes back two ways — in successes under load, and on the clock when
+// there is no load to earn them with (healLocked).
 const (
 	// limiterCeiling is not a policy cap; it is a memory/socket sanity bound
 	// far above any realistic account rate.
@@ -25,7 +32,21 @@ const (
 	limiterGrowthEvery = 8
 	// limiterCutCooldown ignores further 429s just after a cut: a burst of
 	// rate limits from requests already in flight is one signal, not many.
+	// It is the FLOOR under that window, not the whole of it — a 429 that named
+	// a Retry-After names its own window instead (see release).
 	limiterCutCooldown = 2 * time.Second
+	// limiterHealQuiet is how long the pacing has to have been over before a cut
+	// starts being given back, measured from the end of the cut's own window.
+	// Twenty seconds is a third of the minute most provider windows are counted
+	// in: long enough that the burst is genuinely finished, short enough that a
+	// person waiting out somebody else's burst is not still paying for it a
+	// minute later.
+	limiterHealQuiet = 20 * time.Second
+	// limiterHealEvery is one slot returned per this much continued quiet. Five
+	// seconds walks the floor back to the ceiling in about five minutes, which
+	// is slow enough that the climb cannot re-trigger the burst it is climbing
+	// out of, and fast enough that one burst does not shape the next hour.
+	limiterHealEvery = 5 * time.Second
 )
 
 // adaptiveLimiter is shared by every request a client sends.
@@ -34,12 +55,21 @@ type adaptiveLimiter struct {
 	capacity  int
 	inFlight  int
 	successes int
-	lastCut   time.Time
-	waiters   []chan struct{}
+	// cutUntil is the end of the window the last cut covers. Every 429 arriving
+	// before it is the same signal as the one that caused the cut.
+	cutUntil time.Time
+	// healFrom is the first instant a cut slot may come back, and it is zero
+	// while there is no cut to undo. Zero therefore means "never healed", which
+	// is what keeps a limiter nobody has paced from drifting.
+	healFrom time.Time
+	waiters  []chan struct{}
+	// now is the clock, injectable so the healing above can be tested in
+	// microseconds rather than in the minutes it describes.
+	now func() time.Time
 }
 
 func newAdaptiveLimiter() *adaptiveLimiter {
-	return &adaptiveLimiter{capacity: limiterCeiling}
+	return &adaptiveLimiter{capacity: limiterCeiling, now: time.Now}
 }
 
 // acquire blocks until a slot is free or the context ends.
@@ -73,6 +103,10 @@ func (l *adaptiveLimiter) acquire(ctx context.Context) error {
 func (l *adaptiveLimiter) enter() chan struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// Quiet is earned on the clock and not in requests, so a limiter that was
+	// cut and then went idle has to be asked here — it will never reach a
+	// release to be asked there.
+	l.healLocked()
 	if l.inFlight < l.capacity {
 		l.inFlight++
 		return nil
@@ -99,19 +133,48 @@ func (l *adaptiveLimiter) abandon(wait chan struct{}) {
 }
 
 // release returns the slot and adapts: rateLimited cuts capacity in half,
-// success accumulates toward growth.
-func (l *adaptiveLimiter) release(rateLimited bool) {
+// success accumulates toward growth. namedWait is the Retry-After the provider
+// sent with a 429, and zero when it sent none.
+//
+// ── ONE WINDOW, ONE HALVING ──
+//
+// The window a cut covers is the provider's own instruction when it gave one:
+// a 429 that says "come back in thirty seconds" has already described how long
+// this account is paced for, and every 429 arriving inside those thirty seconds
+// is that same fact restated by a request that was already in the air. Halving
+// again for each of them is how a single burst becomes six halvings and a
+// process pinned at one slot. Below the header, limiterCutCooldown is the floor
+// under the same idea.
+//
+// The growth counter is cleared only by a cut that LANDED, for the same reason.
+// It used to be cleared by every 429 including the ones the cooldown ignored,
+// so a burst that was supposed to count once still zeroed the way back out of
+// it once per response — the halvings were suppressed and the recovery was not.
+func (l *adaptiveLimiter) release(rateLimited bool, namedWait time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if rateLimited {
-		if time.Since(l.lastCut) > limiterCutCooldown {
+		now := l.now()
+		if now.After(l.cutUntil) {
 			l.capacity = l.capacity / 2
 			if l.capacity < limiterFloor {
 				l.capacity = limiterFloor
 			}
-			l.lastCut = time.Now()
+			hold := limiterCutCooldown
+			if namedWait > hold {
+				hold = namedWait
+			}
+			// The same ceiling the wait itself is held to (retry.go): a
+			// Retry-After may be an HTTP date naming tomorrow morning, and a
+			// limiter that took it literally would refuse to cut again for
+			// hours.
+			if hold > maxProviderWait {
+				hold = maxProviderWait
+			}
+			l.cutUntil = now.Add(hold)
+			l.healFrom = l.cutUntil.Add(limiterHealQuiet)
+			l.successes = 0
 		}
-		l.successes = 0
 	} else {
 		l.successes++
 		if l.successes >= limiterGrowthEvery && l.capacity < limiterCeiling {
@@ -119,8 +182,49 @@ func (l *adaptiveLimiter) release(rateLimited bool) {
 			l.successes = 0
 		}
 	}
+	l.healLocked()
 	l.releaseLocked()
 	l.wakeLocked()
+}
+
+// healLocked gives back slots that a cut took and quiet has since made
+// meaningless.
+//
+// ── THE RATCHET THIS UNDOES ──
+//
+// Growth is earned in successes, and a 429 zeroes the counter. That is a fair
+// bargain when the 429 is ours; it is not one on this machine, where several
+// aforge processes — windows, task nodes, the resident — share ONE API KEY, and
+// a sibling's burst arrives here as if this process had caused it. Under that
+// contention the halvings compound while the successes that would undo them
+// never accumulate, so one minute of somebody else's traffic ratchets every
+// session's throughput down and leaves it there. An idle process is worse
+// still: it earns no successes at all, so without a clock its capacity never
+// comes back at any speed.
+//
+// So quiet is the second currency, and it is the one a sibling cannot spend.
+// The success path above is still the fast way back under load; this is the way
+// back for a process that has been cut and then given nothing to do.
+func (l *adaptiveLimiter) healLocked() {
+	if l.healFrom.IsZero() || l.capacity >= limiterCeiling {
+		return
+	}
+	now := l.now()
+	if now.Before(l.healFrom) {
+		return
+	}
+	// One slot for arriving at healFrom at all, then one per interval since.
+	// A process that was idle for an hour heals in a single step here, which is
+	// the point: an hour-old halving carries no information about now.
+	slots := 1 + int(now.Sub(l.healFrom)/limiterHealEvery)
+	l.capacity += slots
+	if l.capacity >= limiterCeiling {
+		l.capacity = limiterCeiling
+		// Nothing left to give back; disarm until the next cut arms it again.
+		l.healFrom = time.Time{}
+		return
+	}
+	l.healFrom = l.healFrom.Add(time.Duration(slots) * limiterHealEvery)
 }
 
 // wakeLocked admits waiters into slots that are free because the ceiling moved
@@ -179,4 +283,16 @@ func retryAfter(response *http.Response) time.Duration {
 // sharedLimiter is process-global: many clients (talk, work, boost, media,
 // vision) share one OpenRouter account, and the account's rate limit is the
 // thing being adapted to — per-client limiters would each rediscover it.
+//
+// IT IS SHARED NO FURTHER THAN THE PROCESS, and that is a decision rather than
+// an oversight. The contention is per-KEY: several aforge processes on this
+// machine send under one account, so each of them adapts alone to a rate all of
+// them are spending. A file-coordinated limiter could close that gap — the
+// presence files are already there to build it on — and it would buy a lock on
+// the hot path of every provider call, a stale-holder problem every time a
+// process is killed, and a shared number that is wrong the moment somebody
+// opens a session on a second machine with the same key. The cheaper answer is
+// the one above: assume the cut may not be ours, and heal it on the clock. If
+// the sharing ever needs to be exact rather than merely un-ratcheted, that is
+// where the work starts.
 var sharedLimiter = newAdaptiveLimiter()
