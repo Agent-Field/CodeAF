@@ -1123,6 +1123,141 @@ func TestAgentsFileTruncationKeepsRunesWhole(t *testing.T) {
 	}
 }
 
+// THE MODEL IS TOLD WHAT TIME IT IS, and told it completely enough to write an
+// RFC3339 stamp back without asking anybody.
+//
+// Written from a person's own transcripts: every "remind me in 2 mins" opened
+// with a `bash date +"%Y-%m-%dT%H:%M:%S%z"`, because the prompt carried a bare
+// date and nothing else. Four facts have to be there — the minute, the numeric
+// offset, the zone by name and the weekday — and a test that checked only that
+// the line existed would pass on any three of them.
+func TestTheSystemPromptSaysWhatTimeItIsWithOffsetAndZone(t *testing.T) {
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("this machine has no zone database: %v", err)
+	}
+	moment := time.Date(2026, 8, 21, 6, 52, 39, 0, zone)
+	if got, want := nowLine(moment), "- Now: 2026-08-21 06:52 -04:00 (America/New_York, Friday)\n"; got != want {
+		t.Fatalf("nowLine = %q, want %q", got, want)
+	}
+
+	rendered := renderSystem(Config{Workspace: t.TempDir()})
+	if !strings.Contains(rendered, "\n- Now: ") {
+		t.Fatalf("the rendered prompt carries no Now line:\n%s", rendered)
+	}
+	// The bare date it replaces is gone: two answers to "what day is it" is the
+	// one thing worse than none.
+	if strings.Contains(rendered, "- Today: ") {
+		t.Fatal("the prompt still carries the old Today line beside Now")
+	}
+	line := ""
+	for _, candidate := range strings.Split(rendered, "\n") {
+		if strings.HasPrefix(candidate, "- Now: ") {
+			line = candidate
+		}
+	}
+	// It is the machine's real clock, to the minute, in the machine's own zone.
+	now := time.Now()
+	if !strings.Contains(line, now.Format("2006-01-02 15:04")) {
+		t.Fatalf("Now line %q does not carry the local time to the minute", line)
+	}
+	if !strings.Contains(line, now.Format("-07:00")) {
+		t.Fatalf("Now line %q does not carry the numeric offset", line)
+	}
+	if !strings.Contains(line, now.Format("Monday")) {
+		t.Fatalf("Now line %q does not carry the weekday", line)
+	}
+}
+
+// THE MODEL'S CLOCK MUST NOT GO STALE INSIDE ONE SESSION — and it must not cost
+// a cold prompt cache to keep it fresh.
+//
+// Written from a person's own transcript: at 09:41 the model read the clock, and
+// TWO HOURS LATER, in the same session, it worked "in 1 minute" out from that
+// stamp and proposed a moment already gone. So the prompt is re-rendered when
+// its render is older than [clockRefresh], and NOT ONE BYTE MOVES BEFORE THAT:
+// inside the threshold the prefix is identical and the cache is hit exactly as
+// it was.
+func TestThePromptsClockMovesOnlyOnceItHasGoneStale(t *testing.T) {
+	// The prompt has to be the REAL one here: the fixed one every other test
+	// runs against has no Now line to move.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.System = ""
+	})
+	opened := time.Now()
+	agent.systemAt = opened
+	before := agent.system
+	if !strings.Contains(before, "\n- Now: ") {
+		t.Fatalf("the agent rendered no Now line:\n%s", before)
+	}
+
+	// A turn a minute later re-renders NOTHING: the same bytes are the same
+	// cache key.
+	agent.refreshClockLocked(opened.Add(time.Minute))
+	if agent.system != before {
+		t.Fatalf("the prompt moved after a minute:\n%s", agent.system)
+	}
+	agent.refreshClockLocked(opened.Add(clockRefresh - time.Second))
+	if agent.system != before {
+		t.Fatalf("the prompt moved just inside the threshold:\n%s", agent.system)
+	}
+
+	// Past it, exactly ONE line is different, and it is the Now line.
+	later := opened.Add(clockRefresh + 2*time.Hour)
+	agent.refreshClockLocked(later)
+	if agent.system == before {
+		t.Fatal("the prompt still carries the minute the session opened, two hours on")
+	}
+	oldLines, newLines := strings.Split(before, "\n"), strings.Split(agent.system, "\n")
+	if len(oldLines) != len(newLines) {
+		t.Fatalf("the re-render changed the prompt's shape: %d lines became %d", len(oldLines), len(newLines))
+	}
+	var moved []string
+	for at := range oldLines {
+		if oldLines[at] != newLines[at] {
+			moved = append(moved, newLines[at])
+		}
+	}
+	if len(moved) != 1 || !strings.HasPrefix(moved[0], "- Now: ") {
+		t.Fatalf("the re-render changed %v, want only the Now line", moved)
+	}
+	if want := strings.TrimRight(nowLine(later), "\n"); moved[0] != want {
+		t.Fatalf("the Now line is %q, want %q", moved[0], want)
+	}
+	if !agent.systemAt.Equal(later) {
+		t.Fatalf("the render stamp is %s, want %s", agent.systemAt, later)
+	}
+}
+
+// A PROMPT SOMEBODY ELSE WROTE IS NEVER RE-RENDERED OVER. A caller that handed
+// [Config.System] in has its own idea of what the worker is told, and there may
+// be no Now line in it at all; replacing it with ours would be this file
+// deciding what another door's session reads.
+func TestAHandedInPromptIsLeftAlone(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.System = "you are somebody else's worker"
+	})
+	agent.refreshClockLocked(time.Now().Add(clockRefresh + time.Hour))
+	if agent.system != "you are somebody else's worker" {
+		t.Fatalf("a handed-in prompt was rewritten:\n%s", agent.system)
+	}
+}
+
+// A machine whose zone has no name in the database still gets a name it can
+// use. "Local" is the name of a Go variable and would be the prompt telling the
+// model about this program's internals instead of about its clock.
+func TestTheNowLineNamesAZoneEvenWithNoZoneDatabase(t *testing.T) {
+	line := nowLine(time.Date(2026, 8, 21, 6, 52, 0, 0, time.FixedZone("EDT", -4*60*60)))
+	if !strings.Contains(line, "(EDT, Friday)") {
+		t.Fatalf("nowLine = %q, want the zone's own abbreviation", line)
+	}
+	if strings.Contains(line, "Local") {
+		t.Fatalf("nowLine = %q names a Go variable rather than a zone", line)
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // blockingTool is a belt tool that reports it started and then waits for the

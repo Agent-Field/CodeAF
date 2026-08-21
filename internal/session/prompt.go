@@ -62,10 +62,36 @@ const agentsFileLimit = 8 << 10
 // root exactly as omp discovers it.
 const agentsFileName = "AGENTS.md"
 
-// renderSystem builds the final system prompt: the embedded prompt plus the
+// clockRefresh is how old the rendered prompt may get before a turn re-renders
+// it to move the `Now` line forward ([Agent.refreshClockLocked]).
+//
+// THE THRESHOLD IS THE PROMPT CACHE'S OWN LIFETIME, WHICH IS WHY THE RE-RENDER
+// IS FREE. A cached prefix is what a stable message[0] buys, and every provider
+// this build talks to expires an untouched one in MINUTES — Anthropic's default
+// cache entry lives five minutes from its last read, and the automatic caches
+// the others run are of the same order. Ten minutes is comfortably past all of
+// them: a conversation that has been quiet that long was going to pay for a
+// cold prefix on its next turn whatever this line said, so moving the clock
+// costs nothing that was not already spent. Inside the threshold the prompt is
+// BYTE-IDENTICAL and the cache is hit exactly as before.
+//
+// It is not a live clock either way, and the prompt says so: the minute a turn
+// opens with is the minute it reasons with, and anything that must be resolved
+// against the real clock goes through `stand`'s own `when.in`
+// (tools_standing.go).
+const clockRefresh = 10 * time.Minute
+
+// renderSystem builds the final system prompt as of right now.
+func renderSystem(config Config) string { return renderSystemAt(config, time.Now()) }
+
+// renderSystemAt builds the final system prompt: the embedded prompt plus the
 // project footer — the facts that are true of this machine, this workspace and
-// today, none of which can be embedded.
-func renderSystem(config Config) string {
+// this minute, none of which can be embedded.
+//
+// The moment is a PARAMETER and not a call to the clock inside, because this is
+// rendered more than once in a long conversation and a caller that can say when
+// is a caller a test can hold still.
+func renderSystemAt(config Config, now time.Time) string {
 	workspace := config.Workspace
 	var out strings.Builder
 	out.WriteString(strings.TrimRight(systemPrompt, "\n"))
@@ -82,7 +108,7 @@ func renderSystem(config Config) string {
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
-	fmt.Fprintf(&out, "- Today: %s\n", time.Now().Format("2006-01-02"))
+	out.WriteString(nowLine(now))
 
 	if instructions, truncated := readAgentsFile(workspace); instructions != "" {
 		fmt.Fprintf(&out, "\n# %s\n\nThe project's own instructions, from %s at the workspace root. They rank above your defaults and below what the person says now.\n\n",
@@ -100,6 +126,69 @@ func renderSystem(config Config) string {
 		}
 	}
 	return out.String()
+}
+
+// nowLine is the one thing in the footer that a model used to have to SHELL OUT
+// for. Without it the prompt carried a bare date, so every "remind me in two
+// minutes" opened with a `bash date +%Y-%m-%dT%H:%M:%S%z` — a tool row the
+// person saw and asked about, spending a call and a step to learn something the
+// process already knew.
+//
+// It carries four facts because a reminder needs all four: the local time TO
+// THE MINUTE, the numeric offset the model has to write back into an RFC3339
+// stamp, the zone by name so "tomorrow 9am" lands in the person's morning, and
+// the weekday so "Friday" needs no arithmetic.
+//
+// THE MINUTE COSTS NOTHING. [renderSystemAt]'s answer is [Agent.system] — the
+// stable half of message[0] that a refresh re-renders around (memory.go's
+// refreshSystemLocked) — and a finer stamp is not a finer cache key.
+//
+// IT IS THE TURN'S MINUTE AND STILL NOT A LIVE CLOCK. The prompt is rendered
+// when the agent is made and again at the start of any turn that opens more
+// than [clockRefresh] after the last render ([Agent.refreshClockLocked]), so a
+// conversation left open over lunch does not go on telling the model it is
+// still morning — the defect this line exists to prevent was a session whose
+// `Now` was two hours stale proposing a reminder for a moment already gone.
+// Inside the threshold nothing moves and the prompt is byte-identical.
+//
+// A stamp that is minutes old is still a stamp, so an ABSOLUTE moment is
+// computed from it and a RELATIVE one — "in two minutes" — goes to `stand`'s
+// own `when.in`, which resolves against the real clock at the moment of the
+// call (tools_standing.go).
+func nowLine(now time.Time) string {
+	zone := now.Location().String()
+	if zone == "" || zone == "Local" {
+		// A machine with no zone database, or one whose TZ nobody set, still has
+		// an abbreviation the clock itself reports. Naming that is honest; naming
+		// "Local" would be telling the model the name of a Go variable.
+		zone = now.Format("MST")
+	}
+	return fmt.Sprintf("- Now: %s (%s, %s)\n", now.Format("2006-01-02 15:04 -07:00"), zone, now.Format("Monday"))
+}
+
+// refreshClockLocked moves the prompt's `Now` line forward when it has gone
+// stale, and does nothing at all when it has not.
+//
+// THE MODEL'S CLOCK MUST NOT GO STALE INSIDE ONE SESSION. A conversation opened
+// at breakfast and spoken to at lunch used to carry breakfast's minute in its
+// instructions, so "remind me in 1 minute" was worked out from a stamp two
+// hours behind the wall clock and landed in the PAST. Re-rendering here is the
+// fix at the source; tools_standing.go's refusal is the net under it.
+//
+// AND THE COMMON PATH IS BYTE-IDENTICAL. Inside [clockRefresh] this returns
+// without touching a.system, so the cached prefix of a busy conversation is
+// never disturbed; past it, the cache had expired anyway (clockRefresh states
+// the reasoning). It re-renders the WHOLE footer rather than editing one line,
+// because a prompt assembled in two different ways is a prompt that will one
+// day disagree with itself.
+//
+// It is called with a.mu held, from [Agent.startTurnLocked].
+func (a *Agent) refreshClockLocked(now time.Time) {
+	if !a.systemOwn || now.Sub(a.systemAt) < clockRefresh {
+		return
+	}
+	a.system = renderSystemAt(a.config, now)
+	a.systemAt = now
 }
 
 // readAgentsFile reads at most agentsFileLimit bytes of the workspace's

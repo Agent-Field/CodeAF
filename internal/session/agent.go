@@ -80,14 +80,19 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
-	system := config.System
+	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
-		system = renderSystem(config)
+		system, own = renderSystem(config), true
 	}
 	agent := &Agent{
 		config: config,
 		system: system,
-		model:  config.Model,
+		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
+		// theirs, and re-rendering ours over the top of it later would be this
+		// file deciding what another door's worker is told.
+		systemAt:  time.Now(),
+		systemOwn: own,
+		model:     config.Model,
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
 		// with the header's id, which survives every resume.
@@ -178,6 +183,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// that reached it yesterday is still over it today. A rail that reset with
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
+		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
+		// above came out of the file's own usage lines, so this costs the read
+		// of a meta.json and — only when it has no figure at all — one write
+		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
+		// that has not spoken since the field arrived would read as free on
+		// home forever.
+		agent.stampRestoredSpend(agent.usage)
 	}
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named
@@ -222,6 +234,17 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// owed. It runs AFTER recovery so that a node the graph took back is not
 	// closed out from under it.
 	agent.closeInflightTaskIndexRows()
+	// AND WHAT ARRIVED WHILE THE WINDOW WAS SHUT. A standing item that fired
+	// into a conversation nobody had open left its news in the session's inbox
+	// (internal/standing's Deliver), and this is the moment it is folded into
+	// one "while you were away" line for the first turn to read — the same lane
+	// and the same reason as the interrupt account above (standing_run.go).
+	agent.drainStandingInbox()
+	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a firing knows
+	// to steer its line into a live room instead of writing an inbox line
+	// nobody will see until tomorrow (standing_run.go's registry). Close erases
+	// it.
+	registerLiveSession(agent)
 	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
 	// came to; this is the claim that a PROCESS is alive right now, which no
 	// file on disk could otherwise make (taskpresence.go). It is last of the
@@ -614,6 +637,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if a.remembers() {
 		a.memoryText = ""
 	}
+	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
+	// when it has gone stale enough to be worth the cold prefix (prompt.go's
+	// clockRefresh says why that is free).
+	a.refreshClockLocked(time.Now())
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
@@ -969,6 +996,11 @@ func (a *Agent) Close() error {
 	// job round below cuts it with every other node (harness_task.go).
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
+	// below can take time: a firing that lands during the quit writes to the
+	// inbox rather than onto a queue that will never be drained again
+	// (standing_run.go).
+	forgetLiveSession(a)
 
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)

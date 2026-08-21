@@ -1,0 +1,613 @@
+// Package standing is the ambient side of v3: the things a conversation leaves
+// behind that keep working after the window is closed — a reminder, a watch, a
+// rule, an overnight job — and the small, honest machinery that wakes them.
+//
+// THIS FILE IS THE CONTRACT. It was written by hand before any lane started, and
+// every lane codes against it: the core lane fills in the store and the ticker,
+// the session lane supplies the sentinel and the runner and arms the belt tool,
+// the home lane draws items, the errand lane hosts the exchange at home. A field
+// or a method added here mid-build is a change every lane has to hear about, so
+// the shape is deliberately small and deliberately complete.
+//
+// ── THE LAWS ──
+//
+//   - ONE OBJECT, MANY SHAPES. A reminder, a routine, a watch, a rule, an
+//     overnight job and a self-proposed follow-up are all an [Item]: the person's
+//     words, what wakes it ([When]), what it does ([Action]), and what bounds it
+//     ([Rails]). The product's variety is in two fields, not in six mechanisms.
+//
+//   - THE MECHANISMS ARE CLOSED; THE CONDITION IS OPEN. There are five ways an
+//     item can be woken ([WhenKind]) and that list does not grow per feature. But
+//     [WhenProbe] is general: the model writes the probe — any shell command, or
+//     any tool on the belt with any arguments, including a tool a connected
+//     account brought — and a cheap yes/no judgment ([Sentinel]) reads its output
+//     against the person's words. "Is CI red", "did Priya reply", "is the cert
+//     under 14 days" are all probes; none of them is a kind.
+//
+//   - FILES, NOT A DATABASE. One JSON document per item, written temp+rename under
+//     a per-item flock; an append-only daily ledger for the rails; one folder per
+//     run. docs/AMBIENT.md Part 4 has the numbers. Every path is answered by this
+//     package and nowhere else, so an index could be added behind it later
+//     without a caller changing.
+//
+//   - NOTHING STANDS UNTIL THE PERSON SAYS YES. [Store.Create] is only ever
+//     called after a ratification card was answered yes (a StandingProposal in
+//     internal/session). There is no path that arms an item silently.
+//
+//   - UNATTENDED MEANS WHAT WAS ALREADY ALLOWED. A firing runs under the person's
+//     banked approval rules with nobody to ask; anything that would have asked
+//     stops the run as "needs your look". There are no probation counters: the
+//     rules are the tenure.
+//
+//   - QUIET IS THE DESIGN. A check that found nothing rewrites LastChecked and
+//     LastCheckLine in the item and writes NO line anywhere else. A run that
+//     delivered nothing is reaped after [RunKeep].
+//
+//   - STATUS IS DERIVED, NEVER ASSERTED. Whether the OS timer is installed is
+//     whether its definition file still matches byte for byte what this build
+//     would write; last wake and next due come from the wake log and the fixed
+//     cadence. Nothing shells out to ask.
+//
+// ── WHERE THE BODIES ARE ──
+//
+// This file is the shape. The work is in store.go (the documents, the item log,
+// the locks), ledger.go (the daily lines the rails are summed from), inbox.go
+// (news for a window that is not open), every.go (the rhythm), tick.go (the
+// pass) and watch.go (the operating system's timer).
+//
+// Every name a caller holds is declared here, with ONE exception the contract
+// could not carry: [Watch] is an interface with no way to make one, so watch.go
+// adds NewWatch and the WatchOptions it takes. Nothing else outside this file
+// is reachable.
+package standing
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// Schema is the document version every [Item] carries. Bump it when a field
+// changes meaning; a reader that meets a newer schema than it knows skips the
+// document and says so in the pass.
+const Schema = 1
+
+// Interval is how often a pass runs, whether a window runs it or the OS timer
+// does. It is the cadence the ratification card quotes for "checked every …".
+const Interval = 5 * time.Minute
+
+// TickWindow bounds ONE pass, wherever the pass is run from. It is generous for
+// a pass that found nothing (a stat per item) and short enough that a wedged
+// probe cannot hold the store's lock against every other window on the machine.
+//
+// IT IS ONE NUMBER BECAUSE IT IS ONE QUESTION. A window's own goroutine and
+// `aforge tick` each used to name their own 120 seconds, and [Store.Running]
+// needs a third reading of the same figure — how long a pass may last is how
+// long a marker may be believed. Three copies of a ceiling is three chances for
+// one of them to move.
+const TickWindow = 120 * time.Second
+
+// RunKeep is how long a run that delivered nothing is kept before the sweep
+// reaps it. A run that delivered something — a note, a task landing, a
+// needs-your-look — is kept like any session.
+const RunKeep = 7 * 24 * time.Hour
+
+// Previous is how many of an item's last sentinel judgments ride in the next
+// judgment's prompt. It is what stops a declined firing being proposed again
+// every wake forever: the sentinel sees what it said last time and what came
+// of it.
+const Previous = 5
+
+// ── the item ────────────────────────────────────────────────────────────────
+
+// Status is where an item is in its life. There is no "proposed": a proposal is
+// a card in a conversation, and only a yes makes an item.
+type Status string
+
+const (
+	StatusActive  Status = "active"
+	StatusPaused  Status = "paused"
+	StatusRetired Status = "retired"
+)
+
+// WhenKind is one of the five ways an item is woken. The list is closed.
+type WhenKind string
+
+const (
+	// WhenAt fires once, at a moment, then retires. A reminder is this.
+	WhenAt WhenKind = "at"
+	// WhenEvery fires on a rhythm — a cron line or an interval — forever.
+	WhenEvery WhenKind = "every"
+	// WhenFile fires when files matching a glob change (a fingerprint of
+	// names, sizes and mtimes, as v1's file watch did).
+	WhenFile WhenKind = "file"
+	// WhenIdle fires when the machine has been quiet — no window busy, no
+	// task running anywhere — for [When.IdleFor]. "Learn this later" is this.
+	WhenIdle WhenKind = "idle"
+	// WhenProbe fires when a probe's output, judged by the sentinel against
+	// the person's words, says yes. Anything the belt can do is a probe.
+	WhenProbe WhenKind = "probe"
+)
+
+// When is what wakes an item. Exactly the fields its Kind names are read; the
+// rest are left empty and never consulted. Words are always kept: they are the
+// person's own cadence or condition, and every surface speaks them back rather
+// than the spec.
+type When struct {
+	Kind  WhenKind `json:"kind"`
+	Words string   `json:"words,omitempty"`
+	// At is the one moment of a WhenAt.
+	At time.Time `json:"at,omitempty"`
+	// Every is a WhenEvery's rhythm: a five-field cron line ("0 9 * * 1") or
+	// a Go duration ("20m", "2h"). [ParseEvery] is the one reader of it.
+	Every string `json:"every,omitempty"`
+	// Glob is a WhenFile's pattern, relative to the item's workspace.
+	Glob string `json:"glob,omitempty"`
+	// IdleFor is how quiet the machine must have been for a WhenIdle.
+	IdleFor time.Duration `json:"idleFor,omitempty"`
+	// Probe is a WhenProbe's look at the world, taken every ProbeEvery.
+	Probe      Probe         `json:"probe,omitempty"`
+	ProbeEvery time.Duration `json:"probeEvery,omitempty"`
+	// Hint tells the sentinel what a yes looks like, in the model's words at
+	// proposal time: "yes when any run on main shows conclusion=failure".
+	Hint string `json:"hint,omitempty"`
+}
+
+// Probe is one look at the world: a shell command in the workspace, OR a belt
+// tool with arguments. Exactly one is set. Output is what the sentinel reads,
+// clipped to [ProbeClip] bytes from the tail.
+type Probe struct {
+	Command string          `json:"command,omitempty"`
+	Tool    string          `json:"tool,omitempty"`
+	Args    json.RawMessage `json:"args,omitempty"`
+}
+
+// ProbeClip bounds what one probe may put in front of the sentinel.
+const ProbeClip = 8 * 1024
+
+// ActionKind is what a firing does.
+type ActionKind string
+
+const (
+	// ActionSay delivers one line to the person — into the conversation that
+	// asked, and onto home. A reminder, "CI is red", "Priya replied".
+	ActionSay ActionKind = "say"
+	// ActionTask runs a task: a brief in the item's workspace, with a worktree,
+	// a landing and a cost row, exactly as propose_task's work runs.
+	ActionTask ActionKind = "task"
+)
+
+// Action is what a firing does. Say is read for ActionSay; Brief, Acceptance,
+// Model and MaxSteps for ActionTask. Either kind may template the probe's
+// evidence into its text with {{evidence}}.
+type Action struct {
+	Kind       ActionKind `json:"kind"`
+	Say        string     `json:"say,omitempty"`
+	Brief      string     `json:"brief,omitempty"`
+	Acceptance string     `json:"acceptance,omitempty"`
+	Model      string     `json:"model,omitempty"`
+	MaxSteps   int        `json:"maxSteps,omitempty"`
+}
+
+// Rails bound an item. They are mandatory by construction: [Store.Create]
+// refuses an item whose PerRunUSD or MaxPerDay is zero, and the proposal card
+// quotes both before the person answers.
+type Rails struct {
+	// PerRunUSD is the most one firing may spend, probe and sentinel included.
+	PerRunUSD float64 `json:"perRunUsd"`
+	// MaxPerDay is how many times it may fire in one local day.
+	MaxPerDay int `json:"maxPerDay"`
+	// Expires retires the item at that moment. Zero is never. A WhenAt item
+	// expires a day after its moment whatever this says.
+	Expires time.Time `json:"expires,omitempty"`
+}
+
+// Origin is where an item was asked for. It is provenance and it is the door
+// home opens: "why did I get this?" opens the conversation that made it.
+type Origin struct {
+	// SessionID and Transcript name the conversation the card was answered in.
+	SessionID  string `json:"sessionId,omitempty"`
+	Transcript string `json:"transcript,omitempty"`
+	// Exchange is set instead when the item was made from home's own box: the
+	// short exchange that produced it is kept under the item's folder
+	// ([Store.ExchangeDir]) and not as a project session. Promoting it to a
+	// conversation moves the folder and fills SessionID.
+	Exchange string `json:"exchange,omitempty"`
+	// TaskID is set when a finishing task proposed the item itself.
+	TaskID int `json:"taskId,omitempty"`
+	// TurnIDs are the turns of the origin session that were about making or
+	// changing this item. Home uses them to tell a conversation that was only
+	// ever about this item from one that merely contains it.
+	TurnIDs []string `json:"turnIds,omitempty"`
+}
+
+// Item is one standing thing. The top half is what the person agreed to and
+// never changes without another card; the bottom half is the item's own
+// present, rewritten on every check.
+type Item struct {
+	Schema int    `json:"schema"`
+	ID     string `json:"id"`
+	// Words are the person's verbatim sentence. Permanent anchor; every
+	// surface leads with it.
+	Words string `json:"words"`
+	// Workspace is the REAL project root the item belongs to — the resolved git
+	// root, an owned work/ directory, or the person's home for a machine-wide
+	// item. It is what home groups by and where a task firing runs.
+	Workspace string `json:"workspace"`
+	Origin    Origin `json:"origin"`
+	When      When   `json:"when"`
+	Does      Action `json:"does"`
+	Rails     Rails  `json:"rails"`
+
+	Status  Status    `json:"status"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	// RetiredWhy says why a retired item retired: "fired", "expired",
+	// "stopped by you", or the sentence the last failure left.
+	RetiredWhy string `json:"retiredWhy,omitempty"`
+
+	// The quiet half. LastChecked and LastCheckLine are what let a watch that
+	// checked faithfully for thirty mornings and found nothing read differently
+	// from one that never ran.
+	LastChecked   time.Time `json:"lastChecked,omitempty"`
+	LastCheckLine string    `json:"lastCheckLine,omitempty"`
+	NextDue       time.Time `json:"nextDue,omitempty"`
+	// Fingerprint is a WhenFile's last reading.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Previous are the last [Previous] sentinel lines, newest first, each with
+	// what came of it.
+	Previous []string `json:"previous,omitempty"`
+
+	// The ledger half, kept on the item for the card; the daily ledger is the
+	// truth for the rails.
+	Runs        int       `json:"runs"`
+	LastFired   time.Time `json:"lastFired,omitempty"`
+	LastOutcome string    `json:"lastOutcome,omitempty"`
+	LastRun     string    `json:"lastRun,omitempty"`
+	SpentUSD    float64   `json:"spentUsd"`
+	// NeedsPerson is set while the latest run is stopped waiting on the person,
+	// with the one line it is stopped on. Home sorts on it.
+	NeedsPerson string `json:"needsPerson,omitempty"`
+}
+
+// Validate is what [Store.Create] and [Store.Save] refuse on. It is the whole
+// admission law in one place: words, a workspace, a kind with its fields, an
+// action with its text, and rails that are not zero.
+func (it Item) Validate() error {
+	switch {
+	case it.Words == "":
+		return errors.New("an item needs the person's words")
+	case it.Workspace == "":
+		return errors.New("an item needs a workspace")
+	case it.Rails.PerRunUSD <= 0:
+		return errors.New("an item needs a per-run budget")
+	case it.Rails.MaxPerDay <= 0:
+		return errors.New("an item needs a max per day")
+	}
+	switch it.When.Kind {
+	case WhenAt:
+		if it.When.At.IsZero() {
+			return errors.New("an at item needs its moment")
+		}
+	case WhenEvery:
+		if _, err := ParseEvery(it.When.Every); err != nil {
+			return err
+		}
+	case WhenFile:
+		if it.When.Glob == "" {
+			return errors.New("a file item needs a glob")
+		}
+	case WhenIdle:
+		if it.When.IdleFor <= 0 {
+			return errors.New("an idle item needs how long")
+		}
+	case WhenProbe:
+		if (it.When.Probe.Command == "") == (it.When.Probe.Tool == "") {
+			return errors.New("a probe is exactly one of a command or a tool")
+		}
+	default:
+		return errors.New("unknown when: " + string(it.When.Kind))
+	}
+	switch it.Does.Kind {
+	case ActionSay:
+		if it.Does.Say == "" {
+			return errors.New("a say item needs what to say")
+		}
+	case ActionTask:
+		if it.Does.Brief == "" {
+			return errors.New("a task item needs a brief")
+		}
+	default:
+		return errors.New("unknown action: " + string(it.Does.Kind))
+	}
+	return nil
+}
+
+// Glyph is the one character a row leads with, decided here so every surface
+// agrees: ▲ needs you, ● a pass has it in its hands right now — checking it or
+// firing it — ◦ waiting for its time, ∙ paused or retired. Running is the
+// store's knowledge and not the item's, so it is passed ([Store.Running]).
+func (it Item) Glyph(running bool) string {
+	switch {
+	case it.NeedsPerson != "":
+		return "▲"
+	case running:
+		return "●"
+	case it.Status != StatusActive:
+		return "∙"
+	}
+	return "◦"
+}
+
+// ── firing now: the one fact that is not in the document ────────────────────
+
+// RunningMark is what a pass leaves behind while it has one item in its hands:
+// which process is doing it, since when, and which half of a pass it is in. It
+// is the answer [Store.Running] gives and the whole of what running.go writes.
+//
+// IT IS A CLAIM ABOUT NOW AND IT IS ALWAYS DOUBTED. A process that was killed
+// mid-firing leaves its marker behind, so every reader treats a dead pid or an
+// age past [TickWindow] as no marker at all (running.go's markLive).
+type RunningMark struct {
+	PID   int       `json:"pid"`
+	Since time.Time `json:"since"`
+	// What is [RunningChecking] or [RunningFiring]. A surface says it in those
+	// words — "checking now", "firing now" — so it is the person's vocabulary
+	// and not a state name.
+	What string `json:"what"`
+}
+
+// The two things a pass can be doing to one item, and the whole of what a
+// marker's What may say. Checking is the look — a probe, a fingerprint, the
+// sentinel's yes-or-no; firing is the work that follows a yes.
+const (
+	RunningChecking = "checking"
+	RunningFiring   = "firing"
+)
+
+// RunningFile is the marker's name inside the item's own folder
+// ([Store.RunningPath]).
+const RunningFile = "running"
+
+// ── the store ───────────────────────────────────────────────────────────────
+
+// Root is where everything standing lives: <aforge home>/v3/standing.
+// Callers pass it in rather than this package reading internal/home, so a
+// test's store is a temp dir and nothing else.
+type Store struct {
+	root string
+	// clock is the store's now. It exists so a test can stamp documents from a
+	// held clock; nothing outside this package sets it and it is nil in every
+	// real build, which reads as time.Now.
+	clock func() time.Time
+}
+
+// Open answers the store at root, creating the directory. It holds no handles.
+func Open(root string) (*Store, error) {
+	if root == "" {
+		return nil, errors.New("standing: an empty root")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, err
+	}
+	return &Store{root: root}, nil
+}
+
+// Root is the directory the store was opened on.
+func (s *Store) Root() string { return s.root }
+
+// ItemPath is <root>/<id>.json.
+func (s *Store) ItemPath(id string) string { return filepath.Join(s.root, id+".json") }
+
+// ItemDir is <root>/<id>/ — the item's own folder: runs/, exchange/, log.
+func (s *Store) ItemDir(id string) string { return filepath.Join(s.root, id) }
+
+// RunsDir is where an item's firings live, one session folder each, numbered.
+// They live here and NOT under v3/projects so home never scans them.
+func (s *Store) RunsDir(id string) string { return filepath.Join(s.ItemDir(id), "runs") }
+
+// ExchangeDir is where a home-made item's origin exchange is kept.
+func (s *Store) ExchangeDir(id string) string { return filepath.Join(s.ItemDir(id), "exchange") }
+
+// ExchangesRoot is where an errand said at home keeps its folder BEFORE
+// anything stands: <root>/exchanges/<session id>/. Home's own `ask here` makes
+// one there so that home never lists it, the session lane reads it to know that
+// a conversation IS an errand, and the sweep reaps the ones that came to
+// nothing after [RunKeep].
+//
+// It takes the root rather than hanging off the store because two of those
+// three callers hold a path and not a store, and opening one to ask a question
+// about a directory would create the directory.
+func ExchangesRoot(root string) string { return filepath.Join(root, "exchanges") }
+
+// LogPath is the item's own one-line-per-event log: checks that found
+// something, firings, pauses. Never a line per quiet check.
+func (s *Store) LogPath(id string) string { return filepath.Join(s.ItemDir(id), "log") }
+
+// LedgerPath is the append-only daily ledger the rails are summed from.
+func (s *Store) LedgerPath(day time.Time) string {
+	return filepath.Join(s.root, "ledger-"+day.Format("2006-01-02")+".jsonl")
+}
+
+// LockPath is the flock one ticker at a time holds. A window takes it for the
+// length of a pass; `aforge tick` refuses when it is held.
+func (s *Store) LockPath() string { return filepath.Join(s.root, "tick.lock") }
+
+// WakeLogPath is where every pass writes one line, and where "last wake" is
+// read from.
+func (s *Store) WakeLogPath() string { return filepath.Join(s.root, "wake.log") }
+
+// ErrNotFound is Get's answer for an id that is not here.
+var ErrNotFound = errors.New("standing: no such item")
+
+// ── the ledger ──────────────────────────────────────────────────────────────
+
+// Entry is one line of the daily ledger: one firing, or one sentinel call, with
+// what it cost. The rails are sums over today's lines.
+type Entry struct {
+	At     time.Time `json:"at"`
+	ItemID string    `json:"item"`
+	// Kind is "check" (a probe + sentinel), "say", or "task".
+	Kind string  `json:"kind"`
+	USD  float64 `json:"usd"`
+	// Run is the run folder, for a firing.
+	Run string `json:"run,omitempty"`
+}
+
+// Spend is what today's ledger says, for one item or for all.
+type Spend struct {
+	USD   float64
+	Fired int
+}
+
+// ── the inbox: how news reaches a conversation that is not open ─────────────
+
+// Note is one line of news for a conversation: a firing's delivery, a
+// needs-your-look, a failure. It is appended to <session dir>/inbox.jsonl
+// when the conversation's window is not open, and drained into one "while you
+// were away" fold the next time it is.
+type Note struct {
+	At     time.Time `json:"at"`
+	ItemID string    `json:"item"`
+	Words  string    `json:"words"`
+	// Kind is "said", "landed", "needs-you", or "failed".
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+	// Run is the run folder a person can open for the whole story.
+	Run string `json:"run,omitempty"`
+}
+
+// InboxPath is the inbox inside a session folder.
+func InboxPath(sessionDir string) string { return filepath.Join(sessionDir, "inbox.jsonl") }
+
+// ── the pass ────────────────────────────────────────────────────────────────
+
+// Judgment is what the sentinel is asked: the person's words, the hint, the
+// evidence a probe gathered, and what the sentinel said the last few times.
+type Judgment struct {
+	Item     Item
+	Evidence string
+	Previous []string
+}
+
+// Sentinel is one cheap yes/no call. The line is kept on the item and in the
+// log; it is read by the person, so it is one plain sentence.
+type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line string, usd float64, err error)
+
+// Outcome is what a run came to.
+type Outcome struct {
+	// Kind is "said", "landed", "needs-you", "failed", or [OutcomeNothing].
+	Kind string
+	Text string
+	USD  float64
+	// NeedsPerson is the one line the run stopped on, when Kind is needs-you.
+	NeedsPerson string
+}
+
+// OutcomeNothing is the [Outcome.Kind] of a run that delivered nothing at all:
+// no line, no landing, nothing waiting for the person. It is the ONE outcome
+// whose run folder the sweep may reap after [RunKeep], so it is a constant
+// rather than a word spelled twice in two packages.
+const OutcomeNothing = "nothing"
+
+// CameTo is the one-word file a firing leaves in its run folder saying what
+// that run came to — the same word as [Outcome.Kind]. The item's own
+// LastOutcome is overwritten by the next firing, so without this nothing on
+// disk would say which of a hundred run folders delivered anything.
+const CameTo = "came-to"
+
+// RunCameToNothing answers whether a run folder's own marker says the run
+// delivered nothing, which is the whole of the sweep's licence over it.
+//
+// EVERYTHING ELSE ANSWERS FALSE: a run that said something, landed something or
+// is waiting for the person; a marker that cannot be read; and a run with no
+// marker at all. A folder that cannot say what it came to is a folder nobody
+// may remove.
+func RunCameToNothing(runDir string) bool {
+	raw, err := os.ReadFile(filepath.Join(runDir, CameTo))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(raw)) == OutcomeNothing
+}
+
+// Runner is supplied by the session lane. It is how a firing touches the
+// world: a probe run in the item's workspace, a line delivered, a task run
+// headless under the person's banked rules in a fresh session folder at
+// runDir.
+type Runner interface {
+	// Probe runs the item's probe and answers its output, clipped.
+	Probe(ctx context.Context, item Item) (string, error)
+	// Say delivers one line: into the origin conversation if it is open in
+	// this process, else into its inbox, and always onto the item.
+	Say(ctx context.Context, item Item, text string) (Outcome, error)
+	// Run runs the item's task brief in a fresh headless session at runDir,
+	// with the evidence available to the brief, bounded by the item's rails.
+	Run(ctx context.Context, item Item, runDir, evidence string) (Outcome, error)
+}
+
+// Idle answers whether the machine is quiet enough for a WhenIdle: no live
+// presence file says busy, and the last person activity anywhere is older
+// than the given duration. The session lane supplies it from the world reader.
+type Idle func(for_ time.Duration) bool
+
+// Pass is what one tick decided, for the wake log and for /status.
+type Pass struct {
+	At       time.Time
+	Examined int
+	Checked  int
+	Fired    int
+	Said     int
+	NeedsYou int
+	Skipped  int
+	Errors   int
+	// Notes are one sentence per thing worth saying, for the log.
+	Notes []string
+}
+
+// Ticker runs passes. One is built per process that may tick — a window, or
+// `aforge tick` — and [Ticker.Tick] is what both call.
+type Ticker struct {
+	Store    *Store
+	Sentinel Sentinel
+	Runner   Runner
+	Idle     Idle
+	// DailyRailUSD is the ceiling on everything standing spends in one day,
+	// from settings. Zero is no rail, which the card says out loud.
+	DailyRailUSD float64
+	// Now is the clock, injectable for tests.
+	Now func() time.Time
+}
+
+// ErrHeld is Tick's answer when another process holds the lock.
+var ErrHeld = errors.New("standing: another aforge is ticking")
+
+// ── the rhythm ──────────────────────────────────────────────────────────────
+
+// ParseEvery, in every.go, is the one reader of a WhenEvery's Every: a
+// five-field cron line or a Go duration, in, and a function from a moment to
+// the next moment, out. Nothing else in the product parses a cadence.
+
+// ── keeping watch with no window open ───────────────────────────────────────
+
+// WatchStatus is what /status prints, derived and never asserted.
+type WatchStatus struct {
+	// Installed means the OS timer's definition on disk matches byte for byte
+	// what this build writes.
+	Installed bool
+	LastWake  time.Time
+	NextDue   time.Time
+}
+
+// Watch is the OS timer: a launchd agent or a systemd user timer running
+// `aforge tick` every [Interval]. The core lane builds it on internal/watchdog's
+// shape with its own unit names, so it can coexist with v1's.
+type Watch interface {
+	Install(ctx context.Context) error
+	Uninstall(ctx context.Context) error
+	Status() (WatchStatus, error)
+}

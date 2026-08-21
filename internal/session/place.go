@@ -159,6 +159,24 @@ type Meta struct {
 	// file is not a person returning to a conversation
 	// (internal/store/session_rooms.go holds the original of this law).
 	LastUserAt time.Time `json:"lastUserAt,omitempty"`
+	// SpentUSD and Tokens are WHAT THE TALKING HAS COST — this conversation's
+	// own running total, every turn and every auxiliary call beside it, as
+	// [Usage] holds it while the session is open.
+	//
+	// THEY ARE HERE SO THAT A READER CAN ANSWER WITHOUT OPENING THE JOURNAL.
+	// The transcript's usage lines are the record and stay the record; a
+	// session's price is recoverable from them and nothing else. But a surface
+	// asking about every conversation on the machine (world.go) reads a folder,
+	// a meta.json and a presence file per session and must not grow a transcript
+	// scan per row — so the running total is stamped here at the end of every
+	// turn (placemeta.go's [Agent.stampSpend]) and read from here.
+	//
+	// Zero is "nobody has said", exactly as an absent Title is, and every
+	// surface draws nothing for it rather than $0.00 (the emptiness law).
+	// Tokens is input plus output as ONE sum, which is the spelling
+	// [TaskIndexEntry.Tokens] already uses for the same fact about a task.
+	SpentUSD float64 `json:"spentUsd,omitempty"`
+	Tokens   int     `json:"tokens,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

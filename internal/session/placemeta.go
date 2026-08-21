@@ -104,3 +104,86 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	}
 	return meta
 }
+
+// stampSpend records the conversation's running total — what the talking has
+// cost so far, and what it weighed — on the session's own meta.json.
+//
+// IT RIDES THE END OF A TURN AND NOTHING ELSE. [Agent.sealTurn] is the one
+// place a turn's cost reaches the journal, for the reason stated there: every
+// turn shape in the package ends through it. So it is also the one place the
+// total can be written down without a shape of turn silently keeping no record,
+// and stamping anywhere else would be a second answer to "what has this cost".
+//
+// THE FIGURE IS THE SESSION'S OWN AND NEVER ITS TASKS'. [Agent.usage] is this
+// agent's talking: its turns, and the auxiliary calls beside them (the namer,
+// the guardian, a look at a picture). A task node runs on an agent of its own
+// with no Place at all (task_run.go's newTaskAgent), so its spending reaches
+// its own row of the project's index and cannot reach this file — which is
+// exactly the separation home's spend band adds back up in one place
+// (internal/tui3's homeFacts).
+//
+// A STANDING FIRING HAS A PLACE OF ITS OWN and so stamps its own run folder
+// (standing_run.go's standingRunConfig). That is the right file for it: the
+// folder lives under the standing store rather than under v3/projects, nothing
+// home reads ever scans it, and what an item has spent is the ledger's answer
+// (internal/standing) and not this one.
+//
+// ONE SMALL ATOMIC WRITE PER TURN. There is no other end-of-turn write to a
+// session's meta.json to ride — [Agent.stampUserLocked] runs at the START of a
+// turn, before the cost exists — so this is a read and a temp-and-rename of a
+// file of a few hundred bytes, once per turn of a conversation, beside a
+// provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
+// stated reason: the total is a citation and the transcript is the record.
+func (a *Agent) stampSpend() {
+	dir := strings.TrimSpace(a.config.Place.Dir)
+	if dir == "" {
+		return
+	}
+	a.mu.Lock()
+	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+	a.mu.Unlock()
+	a.writeSpend(dir, spent, tokens)
+}
+
+// stampRestoredSpend fills the total in for a conversation resumed from a
+// journal written before this field existed.
+//
+// IT FOLDS NOTHING AND READS NOTHING EXTRA. The resume already replayed the
+// file and already summed its usage lines ([sessionFile.RestoredUsage], which
+// is what the agent's live counters are restored from — agent.go), so this
+// takes that sum and writes it once. A session with nothing restored, or one
+// whose meta already carries a figure, writes nothing at all: the stamp above
+// keeps it true from here on, and a rewrite per open would be a file touched by
+// every window that merely looked.
+func (a *Agent) stampRestoredSpend(restored Usage) {
+	dir := strings.TrimSpace(a.config.Place.Dir)
+	if dir == "" {
+		return
+	}
+	tokens := restored.Input + restored.Output
+	if restored.CostUSD <= 0 && tokens <= 0 {
+		return
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.SpentUSD > 0 || meta.Tokens > 0 {
+		return
+	}
+	a.writeSpend(dir, restored.CostUSD, tokens)
+}
+
+// writeSpend is the write both stamps share, so the two can never disagree
+// about which fields a total is.
+func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
+	if spent <= 0 && tokens <= 0 {
+		return
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	meta = a.fillMetaLocked(meta)
+	a.mu.Unlock()
+	meta.SpentUSD, meta.Tokens = spent, tokens
+	_ = SaveMeta(dir, meta)
+}
