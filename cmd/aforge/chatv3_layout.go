@@ -360,18 +360,18 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 // engine` is the one door that does and it does so before it opens anything
 // (engine.go), so its first call captures the workspace it moved into, exactly
 // as the per-call read did.
-var v3Standing struct {
+var v3LaunchWhere struct {
 	once sync.Once
 	dir  string
 }
 
 func v3LaunchDir() string {
-	v3Standing.once.Do(func() {
+	v3LaunchWhere.once.Do(func() {
 		if dir, err := os.Getwd(); err == nil {
-			v3Standing.dir = dir
+			v3LaunchWhere.dir = dir
 		}
 	})
-	return v3Standing.dir
+	return v3LaunchWhere.dir
 }
 
 // v3StampLaunchDir is what a new session folder RECORDS as the launch directory,

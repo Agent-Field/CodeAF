@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // A session agent is what the wire serves, and this is where the two are held
@@ -115,6 +116,26 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// shared assembly still fills, and it works over a connection today.
 	cfg.HarnessStore = nil
 
+	// AND THE AMBIENT SIDE IS ON, which is the one capability on this list that
+	// a connection does not take away. It arrives already filled, from the
+	// shared assembly every v3 door goes through (chatv3.go's [openV3Launch]
+	// sets Config.Standing and starts this process ticking), and it is left
+	// alone here rather than rebuilt — one source of truth about where the store
+	// lives and what a pass may do.
+	//
+	// IT IS SAFE BECAUSE THE ENGINE IS THE MACHINE. Everything the two
+	// capabilities above lack is present here: the store is a directory under
+	// THIS machine's AFORGE_HOME ([v3StandingRoot]), a firing runs under THIS
+	// machine's profile rules (chatv3_standing.go's header states that law), the
+	// OS timer a first yes offers to install is THIS machine's timer, and the
+	// work an item does happens where the workspace is. And the card is not
+	// raised into an empty room the way a harness design would be: the standing
+	// proposal crosses as an ordinary event (internal/remote's EventWire) and
+	// the answer crosses back as ResolveStanding, so the person sitting on the
+	// other end of this wire is the person who says yes. A session that could
+	// leave nothing behind over --host would have made the ambient side a
+	// property of which terminal somebody happened to open.
+
 	// AN ADAPTIVE RUN IS OFF OVER A CONNECTION, for the same reason and by the
 	// same road. A run's notes, its gauge and — the one that matters — its FUEL
 	// GATE all arrive on a standing subscription the surface opens on the agent
@@ -197,6 +218,18 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			}
 			return replacement, statErr == nil, nil
 		},
+		// The engine machine's ambient side, as a remote surface reads it, off
+		// the SAME store this session proposes into. What a surface does with
+		// them is the surface's business and is stated where it wires them
+		// (chatv3_host.go's [hostStanding]: over --host the live reader is the
+		// status line's `keeping an eye on` segment, because home does not open
+		// on a remote session at all). They are closures on the store rather
+		// than the store itself for [tui3.StandingSeam]'s own reason — the door
+		// owns where it lives and how it is opened — and they are absent
+		// entirely when the ambient side could not be built, which the surface
+		// reads as nothing to show rather than as an empty list.
+		StandingItems: engineStandingItems(cfg.Standing),
+		StandingSave:  engineStandingSave(cfg.Standing),
 		Recent: func() []session.Summary {
 			// Both shapes, exactly as the local list reads them
 			// ([v3RecentSessions]): the far machine's disk is under the same
@@ -205,6 +238,27 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
+}
+
+// engineStandingItems and engineStandingSave are the two standing doors, or nil.
+//
+// NIL IS THE AMBIENT SIDE OFF AND IT IS NEVER A CLOSURE THAT FAILS, which is
+// the same reading [v3Standing] already asks every caller for: an engine with no
+// store hands the surface nothing, the surface draws no band, and the model
+// never had the `stand` verb either. A pair of closures that answered an error
+// on every call would be a capability that is present and broken.
+func engineStandingItems(seam *session.Standing) func(string) ([]standing.Item, error) {
+	if seam == nil || seam.Store == nil {
+		return nil
+	}
+	return seam.Store.ForWorkspace
+}
+
+func engineStandingSave(seam *session.Standing) func(standing.Item) error {
+	if seam == nil || seam.Store == nil {
+		return nil
+	}
+	return seam.Store.Save
 }
 
 // engineWorkspace resolves the directory the surface asked for.

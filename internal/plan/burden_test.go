@@ -197,6 +197,19 @@ func TestJudgeSplitIsAtomicUntilProven(t *testing.T) {
 	}
 }
 
+func TestJudgeSplitUsesMeasuredCapacityOnlyAtTheAtomicBoundary(t *testing.T) {
+	node := Node{Kind: KindWork, Size: SizeAtomic, Parts: []string{"one", "two"}}
+	if got := JudgeSplit(&node, Options{MaxDepth: 3}); got.Divide || got.Reason != RefusalWithinReach {
+		t.Fatalf("zero capacity changed the atomic verdict: %+v", got)
+	}
+	if got := JudgeSplit(&node, Options{MaxDepth: 3, CapacitySamples: 7, CapacityOverrunRate: .9}); got.Divide {
+		t.Fatalf("thin capacity divided an atomic node: %+v", got)
+	}
+	if got := JudgeSplit(&node, Options{MaxDepth: 3, CapacitySamples: 8, CapacityOverrunRate: .26}); !got.Divide {
+		t.Fatalf("sufficient high overrun history did not divide: %+v", got)
+	}
+}
+
 // A specialist that takes the node whole is the one refusal that is an
 // inversion rather than a shortfall, and it has to survive a named part list —
 // the parts were named against a ruler that no longer applies to this node.

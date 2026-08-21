@@ -175,6 +175,36 @@ contradicting a claim in another is invisible to a reader who was handed only
 one of them. Divide repeated operations over items that stand alone; never
 divide one act of comprehension.`
 
+// verdictRule is the meta-judgment the qualitative guards above do not make.
+//
+// proportionRule asks whether the plan deserves to exist at all, checkingRule
+// forbids a node that exists to look at another, and the subject test forbids
+// phases passed off as parts. None of them states the ledger test a division
+// has to pass once it is past all of those: that each part buys back, in
+// parallel time saved, more than the fixed cost a worker pays before it
+// produces, that no deliverable is sacrificed to buy width, that two parts
+// covering the same ground are one, and that the verdict is read off the
+// accounting rather than off how the split reads. It rides the same two prompts
+// proportionRule does, at their end, because those are where a division is
+// actually decided.
+const verdictRule = `A split is valid only when each part's expected parallel saving exceeds the
+fixed cost a worker pays before it produces — the orientation, setup, and
+delivery it owes before any work leaves it. A part that does not pay back that
+cost is the same wait made more expensive, not a saving.
+
+Do not drop a deliverable to buy parallelism. If a thing cannot be divided
+without losing the whole, the whole is the part: its pieces would not stand
+alone, and one of them would then owe the whole anyway.
+
+Duplicate work is not parallelism. Two parts that each re-read or re-explain the
+same subject are one part charged twice; a split counts only when each part
+works on material the others do not touch.
+
+Judge a part against the ledger, not against how reasonable the split sounds.
+What decides it is what the part costs to run and what it produces — a division
+that reads well but shortens no wait and lightens no one worker's load is a
+division nobody owed.`
+
 // Completer is the slice of the provider adapter this package needs. Depending
 // on the method rather than the concrete client keeps the prompts testable
 // without a network.
@@ -351,6 +381,14 @@ type Options struct {
 	// be one snapshot frozen for the build rather than a figure that moves under
 	// passes still running. See Graph.Invoice and invoice.go.
 	Invoice string
+
+	// CapacitySamples and CapacityOverrunRate are the journal's measured answer
+	// to how often one-worker leaves exceeded their envelope. Zero is no
+	// measurement and preserves the old decision exactly; callers only populate
+	// them behind the swarm gate. The sample count remains separate because a
+	// dramatic rate from one run is an anecdote, not a reason to buy more work.
+	CapacitySamples     int
+	CapacityOverrunRate float64
 
 	Report Report
 

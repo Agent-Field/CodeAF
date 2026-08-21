@@ -34,6 +34,12 @@ takes two presses and does not arm while a turn is running.
 answer. The recovery lane borrows the same block without it, and there the
 always key is absent and a press does nothing.
 
+**It does not have to be answered in this window.** A conversation stopped on
+this question says so on **home**, with the same three answers on the row —
+`1 allow once · 2 always · 3 deny` — so a question raised in a terminal you are
+not looking at can be answered from the dashboard (home's own page states the
+limits, and what `2 always` banks when it is pressed there).
+
 When more than one question is queued a `N more` line appears. Questions are
 answered oldest first, and each gets its own countdown when it reaches the
 front. While a question is up your draft is suspended and the typed lists close.

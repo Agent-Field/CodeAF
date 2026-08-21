@@ -139,6 +139,15 @@ const (
 	// no such message, [fromTranscript] steps over it so a rewind cannot cut it,
 	// and a rebuild earns it again from scratch.
 	entrySeam
+	// entryStanding is ONE STANDING ITEM touching the conversation (standing.go):
+	// the ratification card while it is a question, and — in its other shape —
+	// the single dim line an item that already stands writes when it has news.
+	//
+	// It is a kind of its own rather than a second [entryTask] because the two
+	// blocks are answered by different engines and settle into different
+	// records, and rather than a note because a note is a static sentence where
+	// this opens as a question with a clock on it.
+	entryStanding
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -323,6 +332,11 @@ type entry struct {
 	// full context is showing — and the row and that state must never disagree.
 	done    *taskDone
 	harness *harnessCard
+	// stand is the standing proposal — or the one line of news — this entry
+	// draws, for kind entryStanding and for nothing else (standing.go). It is a
+	// POINTER for [entry.card]'s reason: the answer lane holds the same card,
+	// and the row and the verdict on it must never be able to disagree.
+	stand *standingCard
 
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
@@ -950,12 +964,26 @@ type app struct {
 	// admission order; taskSeen is the (id, state) de-dup, because an in-turn
 	// update arrives on both the turn's stream and the standing one; taskLane is
 	// that standing subscription and taskGen the generation it belongs to.
-	task      *taskCard
-	tasks     map[uint64]*taskNode
-	taskOrder []uint64
-	taskSeen  map[uint64]session.TaskState
-	taskLane  <-chan session.Event
-	taskGen   int
+	task *taskCard
+	// THE STANDING SIDE (standing.go, homestanding.go). stand is the standing
+	// card that owns the answer lane, or nil; stands is the seam onto the store
+	// home draws items out of and writes a pause or a stop back through. Both
+	// are nil on every surface whose door has not wired the ambient side, which
+	// is a surface where no card is ever drawn and home shows no item band — a
+	// capability that cannot work is absent, not broken.
+	stand  *standingCard
+	stands StandingSeam
+	// keepN, keepFiring and keepAt are the status segment's cached reading of
+	// the store, and keepAt is when it was taken ([app.keepingCount] says why a
+	// segment asked on every frame may not walk a directory).
+	keepN      int
+	keepFiring bool
+	keepAt     time.Time
+	tasks      map[uint64]*taskNode
+	taskOrder  []uint64
+	taskSeen   map[uint64]session.TaskState
+	taskLane   <-chan session.Event
+	taskGen    int
 	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
 	// person has folded or opened AGAINST their default — nil is the design as
 	// shipped, and an absent key is a family nobody has touched, which is why this
@@ -1113,6 +1141,33 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
+	// errand builds the agent behind `ask here` and standingRoot is where its
+	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
+	// A nil seam is a window that cannot ask from home and says so, which is a
+	// capability that is absent rather than broken.
+	errand       func(dir, workspace string) (Agent, error)
+	standingRoot string
+	// exchanges is every errand this window has open, oldest first.
+	//
+	// IT IS ON THE APP AND NOT ON [homeView] BECAUSE AN EXCHANGE OUTLIVES THE
+	// SCREEN IT WAS ASKED ON. It used to be one field on the view, which
+	// [app.closeHome] assigns the zero value to — so opening another
+	// conversation to check something ended the errand mid-question, and the
+	// engine answered the card the person had not got to with "the card was left
+	// unanswered — nothing was set up". Here they survive home closing, several
+	// are open at once, and the window takes them all with it on the way out
+	// ([app.fileEveryExchange]). homeexchange.go's header states the lifecycle.
+	exchanges []*homeExchange
+	// leaveAnswer leaves one answer on another session's doorstep, and answered
+	// is what this window has already sent, by session folder, so the band can
+	// say so while it waits for that session to pick it up (homeband_answer.go).
+	// A nil seam is a window that can read a question from home and not answer
+	// it — the chips are simply not drawn, which is the absence law. It is
+	// `leaveAnswer` and not `answer` because [app.answer] is already the consent
+	// block's own verb, and one word for two doors is how the wrong one gets
+	// called.
+	leaveAnswer func(dir string, kind session.QuestionKind, id uint64, key string) error
+	answered    map[string]homeAnswered
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -1279,6 +1334,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:            opts.Fresh,
 		start:            opts.Start,
 		open:             opts.Open,
+		errand:           opts.Errand,
+		standingRoot:     opts.StandingRoot,
+		leaveAnswer:      opts.Answer,
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
@@ -1301,6 +1359,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
+		stands:           opts.Standing,
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
 		memory:           opts.Memory,
@@ -1776,7 +1835,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call nobody
 			// can see (taskview.go, home.go).
 			if a.taskSheet.open {
-				return a, a.taskSheetPress(msg.Mouse().Y)
+				// phone lane: the record card's foot is two bands, so the press
+				// needs the column as well as the row (taskphone.go).
+				return a, a.taskSheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			if a.home.open {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)
@@ -1922,6 +1983,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
+			// the same shape of row and is resolved against ITS OWN spans
+			// (standing.go's [app.standingPress]).
+			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name
 			// is how a person changes it (render.go's [app.identityParts]).
@@ -1968,7 +2035,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.home.open {
-			a.homeHover(msg.Mouse().Y)
+			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.rewSheet.open {
@@ -2177,6 +2244,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case errandMsg:
+		// Everything the errand lane moves on, in ONE case rather than three
+		// (homeexchange.go's [errandMsg] says why): the stream a Submit answered,
+		// one event off it, and the stream ending.
+		return a, a.errandUpdate(msg)
+
 	case frameMsg:
 		return a, a.paint()
 	}
@@ -2220,6 +2293,9 @@ func (a *app) paint() tea.Cmd {
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
+	// AND THE STANDING CARD'S, which drains toward a decline rather than toward
+	// an approval (standing.go).
+	a.tickStanding()
 	// And the approval question's, on the same terms (consent.go). It is the one
 	// clock here that ANSWERS at expiry rather than stopping asking, because it
 	// is the one question the engine is blocked on.
@@ -2241,6 +2317,13 @@ func (a *app) paint() tea.Cmd {
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
 		a.askAnimating() ||
+		// AND THE STANDING SIDE IS THE NINTH: a card's meter draining toward a
+		// decline, and the status segment breathing while a firing is in flight.
+		// The second of them is the only thing on this list that is happening in
+		// ANOTHER PROCESS — the loop closes because a firing emits an update, the
+		// update wakes this clock, and the clock keeps turning while the store
+		// says the run is still out (homestanding.go, standing.go).
+		a.standingAnimating() ||
 		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
 		// with nothing on screen moving at all: the hint slot says "esc again to
 		// rewind" for half a second, and something has to be drawing the frame
@@ -2271,7 +2354,15 @@ func (a *app) paint() tea.Cmd {
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
-		(a.roomOpen() && !a.room.done) {
+		(a.roomOpen() && !a.room.done) ||
+		// AND AN ERRAND ASKED FROM HOME IS THE TENTH. Its turn runs against its
+		// own session, so [app.state] says nothing about it — and without this
+		// the pane's `⠹ thinking · 4s`, the strip under it and the row's own
+		// `⠹ working · 4s` would all be still photographs of the second the last
+		// event arrived, which is exactly the complaint the liveness was built
+		// for (homeexchange.go). Only while home is up: the whole of what turns
+		// is drawn on that screen.
+		a.exchangeAnimating() {
 		return a.frameTick()
 	}
 	a.painting = false
@@ -2483,6 +2574,23 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// fullscreen sheet is a turn blocked on keys nobody can reach.
 		a.closeSettings()
 		a.proposeTask(ev)
+
+	case session.EventStandingProposal:
+		// A DECISION OUTRANKS A PANEL, for the reason the task proposal above
+		// states: the card takes the keyboard's answer lane, and a lane behind a
+		// fullscreen sheet is a turn blocked on keys nobody can reach.
+		a.closeSettings()
+		a.proposeStanding(ev)
+
+	case session.EventStandingUpdate:
+		// One dim line and never two (standing.go), and THE ENGINE IS WHAT MAKES
+		// THAT TRUE: an item being set up, paused or stopped is the direct result
+		// of a `stand` call and comes down the turn's own stream — this case —
+		// while a FIRING arrives when no turn is running and comes down the
+		// standing lane instead (session's tools_standing.go, emitStandingNews
+		// beside emitStandingUpdate). The two are exclusive, so this fold has no
+		// de-dup to do; the task lane below is the case that does.
+		a.standingUpdate(ev)
 
 	case session.EventTaskUpdate:
 		// The same event also arrives on the standing lane; [app.taskUpdate]'s
@@ -3682,10 +3790,11 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// (harnesscard.go), so whatever door it parked has to be handed on — a
 		// room whose lane was never started is a page that never updates.
 		cmd = a.takeRoomPump()
-	case hitChoice, hitModel:
-		// Both rows were offered this click before the body and took it (see
-		// [app.choicePress]); reaching here means the pointer was in a column no
-		// option occupies, and empty space on this surface does nothing.
+	case hitChoice, hitModel, hitStandChoice:
+		// All three rows were offered this click before the body and took it (see
+		// [app.choicePress] and [app.standingPress]); reaching here means the
+		// pointer was in a column no option occupies, and empty space on this
+		// surface does nothing.
 	}
 	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
 	// away the one command this switch parks — the design room's pump above —
@@ -4470,6 +4579,11 @@ func (a *app) quit() tea.Cmd {
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
 	a.closeEverything()
+	// AND EVERY ERRAND WITH IT. An exchange is a session with a lock on a
+	// transcript; one left open by a process that has gone is a conversation
+	// nobody can reopen, and a stood one's folder would never reach the item it
+	// made (homeexchange.go's [app.fileEveryExchange]).
+	a.fileEveryExchange()
 	return tea.Quit
 }
 

@@ -280,7 +280,7 @@ func (e JITExpander) admit(node store.Node, target JITTarget, children []plan.No
 		minted[child.ID] = fmt.Sprintf("%s-n%d", target.Prefix, child.ID)
 	}
 	spliced := 0
-	for _, child := range order(children) {
+	for _, child := range order(children, target.Options) {
 		spec := store.NodeSpec{
 			ID:         minted[child.ID],
 			Brief:      nodeBrief(child),
@@ -413,7 +413,24 @@ func growPlan(target JITTarget, sub *plan.Graph) ([]plan.Node, map[int]bool, err
 // order sorts children so a child is admitted after the siblings it consumes.
 // The store checks that a declared dependency exists, and a division is a small
 // DAG, so the cheapest correct answer is repeated passes over what is left.
-func order(children []plan.Node) []plan.Node {
+//
+// When the capacity fold has measured evidence (see capacity.go), the
+// cheapest-predicted sibling is admitted first — the one whose measured overrun
+// base rate and the planner's own size judgment say is least likely to exceed
+// one worker's envelope — so the runner claims the work most likely to land
+// cheaply before a costlier part. Without evidence the order the expander was
+// handed is returned untouched, which is every non-swarm job and every cold
+// journal: the fifo invariant a measurement could only have perturbed.
+func order(children []plan.Node, options plan.Options) []plan.Node {
+	if options.CapacitySamples <= 0 {
+		return orderByDependency(children)
+	}
+	return orderByCost(children, options)
+}
+
+// orderByDependency is the fifo topological sort: a child lands after the
+// siblings it consumes, and ties keep the order the expander handed.
+func orderByDependency(children []plan.Node) []plan.Node {
 	inside := make(map[int]bool, len(children))
 	for _, child := range children {
 		inside[child.ID] = true
@@ -450,6 +467,56 @@ func order(children []plan.Node) []plan.Node {
 			}
 			break
 		}
+	}
+	return sorted
+}
+
+// orderByCost admits the cheapest-predicted sibling first, still behind any
+// sibling it consumes. Among siblings the planner sized equally the cost is
+// equal, so the lower index — the order the expander handed — is the tiebreak,
+// and the only thing the measurement reordered is which sized-differently part
+// the runner reaches first.
+func orderByCost(children []plan.Node, options plan.Options) []plan.Node {
+	inside := make(map[int]bool, len(children))
+	cost := make([]float64, len(children))
+	for i, child := range children {
+		inside[child.ID] = true
+		cost[i], _ = MeasuredCost(child, options)
+	}
+	admitted := make(map[int]bool, len(children))
+	sorted := make([]plan.Node, 0, len(children))
+	for len(sorted) < len(children) {
+		pick := -1
+		for i, child := range children {
+			if admitted[child.ID] {
+				continue
+			}
+			ready := true
+			for _, need := range child.Needs {
+				if inside[need] && !admitted[need] {
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				continue
+			}
+			// Cheapest-predicted first; a tie keeps the lower index.
+			if pick < 0 || cost[i] < cost[pick] {
+				pick = i
+			}
+		}
+		if pick < 0 {
+			// A cycle the plan package should have refused.
+			for _, child := range children {
+				if !admitted[child.ID] {
+					sorted = append(sorted, child)
+				}
+			}
+			break
+		}
+		admitted[children[pick].ID] = true
+		sorted = append(sorted, children[pick])
 	}
 	return sorted
 }

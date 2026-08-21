@@ -309,6 +309,13 @@ const (
 // fit inside what one worker can carry, which is what a size beyond atomic says.
 // Everything else is a refusal with its reason attached.
 //
+// Measured capacity sharpens only the last boundary. When enough journaled
+// leaves show that atomic-sized work often overruns, an atomic node that has
+// already cleared every refusal above and named independent parts may divide.
+// This does not rescue an unnamed split, bypass a specialist, or invert the
+// null hypothesis. Zero measurements — including every non-swarm caller —
+// therefore take the old branches byte for byte.
+//
 // It is a free function over a node and the options rather than a step inside
 // the level loop, and that shape is the point: the same question has to be
 // asked again later, when a worker claims a leaf and the graph has moved on
@@ -344,9 +351,19 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	switch node.Size {
 	case SizeOversized, SizeBorderline:
 		return SplitVerdict{Divide: true}
+	case SizeAtomic:
+		if options.CapacitySamples >= capacityEvidenceFloor &&
+			options.CapacityOverrunRate > capacityOverrunThreshold {
+			return SplitVerdict{Divide: true}
+		}
 	}
 	return SplitVerdict{Reason: RefusalWithinReach}
 }
+
+const (
+	capacityEvidenceFloor    = 8
+	capacityOverrunThreshold = 0.25
+)
 
 // JournalRefusal writes why a node was left whole, on the node. It is diagnosis
 // and never control: nothing reads the field back to decide anything, and a

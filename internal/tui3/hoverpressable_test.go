@@ -82,13 +82,16 @@ func TestAStripChipLightsWithoutLightingTheRow(t *testing.T) {
 // row of tabs, and a rectangle round them would be the one boxed thing here.
 func TestTheStripsOverflowMarkBrightensUnderThePointer(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.width = 44
+	// WIDE ENOUGH THAT THE STRIP IS STILL A STRIP. Under sixty columns the row
+	// stops drawing chips at all and becomes the one-line rollup `▸ 5 tasks ·
+	// 5 running` (taskstrip.go), which has no +N to point at.
+	a.width = 60
 	for i := 1; i <= 5; i++ {
 		a.taskUpdate(update(uint64(i), "node number "+itoa(i), session.TaskRunning, session.TaskNotice{}))
 	}
 	_ = stripText(a)
 	if !a.stripMore.pressable() {
-		t.Fatal("five nodes in forty-four columns dropped none of them")
+		t.Fatal("five nodes in sixty columns dropped none of them")
 	}
 	word := stripMoreWord(5 - len(a.stripSpans))
 

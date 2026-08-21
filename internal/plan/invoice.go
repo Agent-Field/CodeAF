@@ -75,6 +75,16 @@ type InvoiceShape struct {
 	Cost   float64
 }
 
+// CapacityEvidence is the measured failure rate that rides beside prices.
+// It belongs in the invoice because it answers the same economic question:
+// what happened here when work was kept as one worker's job.
+type CapacityEvidence struct {
+	Worker   string
+	Runs     int
+	Overruns int
+	Rate     float64
+}
+
 // Priced reports whether this invoice says anything at all. An invoice with no
 // shape rows is one nobody has enough evidence for, and it renders to nothing.
 func (i Invoice) Priced() bool { return len(i.Shapes) > 0 }
@@ -273,6 +283,26 @@ func withInvoice(tail, invoice string) string {
 		return invoice
 	}
 	return strings.TrimRight(tail, "\n") + "\n\n" + invoice
+}
+
+// AppendCapacityEvidence extends an already-rendered invoice with measured
+// capacity, or starts the same measured block when prices have not accumulated
+// yet. An empty observation returns the input byte for byte, which keeps cold
+// start and non-swarm prompts unchanged.
+func AppendCapacityEvidence(invoice string, evidence CapacityEvidence) string {
+	if evidence.Runs <= 0 {
+		return invoice
+	}
+	worker := strings.TrimSpace(evidence.Worker)
+	if worker == "" {
+		worker = LinearSubharness
+	}
+	line := fmt.Sprintf("%s: on this machine, %d settled leaves ran and %.0f%% overran",
+		worker, evidence.Runs, evidence.Rate*100)
+	if strings.TrimSpace(invoice) == "" {
+		return invoicePreamble + "\n\n" + line
+	}
+	return strings.TrimRight(invoice, "\n") + "\n" + line
 }
 
 // thousands groups a token count so a reader can tell 40,000 from 400,000 at a

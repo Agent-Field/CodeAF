@@ -426,6 +426,17 @@ func (a *app) deckItems() []deckItem {
 		}
 	}
 	add("tasks", a.deckTaskWord(), deckActNone)
+	// phone lane: AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It
+	// is the one fact here that is not a status-line segment at any width — the
+	// segment above says how MANY things are standing, and this says whether they
+	// are still looked at once every terminal is closed (homestanding.go's
+	// [app.watchLine]). A seam with no answer adds no line. It was /status's
+	// alone; the phone's sheet is the other half of that surface and was the one
+	// place a person could not reach it (statusnote.go says why the two lists are
+	// one list).
+	if word, ok := a.watchLine(); ok {
+		add(homeWatchLabel, word, deckActNone)
+	}
 
 	// WHERE YOU ARE LIVES HERE NOW. The legend under the input used to carry the
 	// path and gave the slot up to the conversation's own name (render.go's
@@ -452,6 +463,10 @@ func (a *app) deckItems() []deckItem {
 // label. The words are the ones the code comments already use for them.
 var deckSegWords = [segCount]string{
 	segAmbient: "background",
+	// phone lane: the standing side had NO word at all here, so its segment came
+	// out of the loop above with an empty label and hung in the value column
+	// under nothing (homestanding.go's [app.keepingSegment] writes the fact).
+	segKeeping: "watching",
 	segDelta:   "changes",
 	segCost:    "spend",
 	segCtx:     "context",

@@ -98,6 +98,8 @@ The **far** machine owns the conversation and everything it touches:
 - connected accounts
 - the harness registry
 - the session file the conversation is written to
+- **everything you set up that keeps working** — reminders, watches, rules, overnight work:
+  the store they live in, the clock that checks them, and the machine they run on
 
 The **near** machine — the one you are sitting at — owns the surface:
 
@@ -206,6 +208,38 @@ The second half of the list, with the exact sentence each one says.
     thing your terminal could open is a path of the same name on this one — so no path
     is a link over `--host`. They are drawn in full instead, and `/status` names them
     the way you would have to name them to reach them: `devbox:/srv/app/session.jsonl`.
+
+## Reminders and watches over --host — they work, and they belong to that machine
+
+**Standing items are the one ambient capability a connection does not take away.** A
+sub-harness design and an adaptive run are both switched off at the engine because their
+card would arrive in an empty room; this card does not — it crosses the wire as an
+ordinary event and your answer crosses back as its own frame.
+
+So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
+all work over `--host`. What to know is **whose machine they are on**:
+
+- The item is created, checked and fired on the **far** machine, in the far machine's
+  workspace, under the far machine's own profile rules — not this laptop's.
+- It keeps working after this window closes and after the connection drops.
+- The one-time `keep checking when no window is open?` question installs the OS timer on
+  the **far** machine. Answering yes here never touches the machine you are sitting at.
+- Pausing or stopping one writes to the far machine's store, and a write that store
+  refuses is shown as its own refusal rather than redrawn as done.
+
+Three readings are absent over a connection, and each says nothing rather than guessing:
+
+- **Home does not open at all.** It says exactly:
+  `home shows this machine's projects, and this session is on another`
+  — so a remote session has no `◦` item band and no `p`/`s` keys on one. The status line's
+  `◦ keeping an eye on 2` still counts, and it counts the **far** machine's items for the
+  workspace this window is on, because over `--host` that path is the far machine's own.
+- **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
+  state is read from a file on that disk. A line drawn from this laptop's timer would be a
+  status about a machine nobody consulted.
+- **No row ever shows the firing mark `●`.** Nothing on any disk says an item is firing at
+  this instant — a run is in flight inside whichever process holds the tick lock — so the
+  surface does not claim it. That is true locally too.
 
 ## Connecting an account over --host
 

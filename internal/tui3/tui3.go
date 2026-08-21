@@ -46,11 +46,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -269,6 +271,49 @@ type Options struct {
 	// what the hosted door and every test that predates this seam are.
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
+
+	// Errand builds the agent behind home's `ask here` (tui3's homeexchange.go):
+	// the same launch config [Fresh] uses, pointed at a transcript inside dir and
+	// working in workspace.
+	//
+	// IT IS A SECOND SEAM AND NOT AN ARGUMENT ON THE FIRST, because the two
+	// build different things. [Fresh] mints a session folder in THIS project's
+	// bucket and hands back where it put it; an errand's folder is made by the
+	// surface, under the standing root, and is deliberately not a place [Fresh]
+	// is allowed to put anything — a conversation home would then list is exactly
+	// what asking from home exists to avoid. So the caller names the folder, and
+	// the door only has to point a config at it.
+	//
+	// The workspace is the project the cursor was on, or the person's home
+	// directory when it was on none (docs/AMBIENT.md Part 5).
+	//
+	// Nil is a window that cannot ask from home: the row says so and nothing is
+	// created. A test and the --host door are both that window.
+	Errand func(dir, workspace string) (Agent, error)
+
+	// Answer leaves one answer on ANOTHER session's doorstep: the question home
+	// read out of that session's presence file, answered by the key the chips
+	// offered (internal/session's answers.go, tui3's homeband_answer.go). The
+	// session picks it up on its own heartbeat and applies it through the same
+	// resolver its own card would have called.
+	//
+	// IT IS A SEAM AND NOT A DIRECT CALL for the reason every write on this
+	// surface is one: the door decides where state lives, and a surface that
+	// wrote into another process's folder on its own would be a second place
+	// that knows the layout. The live door passes [session.WriteAnswer].
+	//
+	// Nil is a window that can SEE another session's question and not answer it
+	// — the band draws no chips, which is the absence law. A test is that
+	// window. A --host session never reaches the question either, for a reason
+	// one level up: home refuses to open at all over --host, because the state
+	// root under this process belongs to the wrong machine (home.go).
+	Answer func(dir string, kind session.QuestionKind, id uint64, key string) error
+
+	// StandingRoot is where the ambient side keeps its things —
+	// ~/.aforge/v3/standing — which is where an errand's folder is made and where
+	// one that came to nothing stays. Empty falls through to the sibling of the
+	// projects root, which is what that path is by construction (internal/standing).
+	StandingRoot string
 
 	// Workspace is the directory the agent works in; its base name is the
 	// place shown in the status line. Empty takes the process's cwd.
@@ -507,6 +552,17 @@ type Options struct {
 	Input  io.Reader
 	Output io.Writer
 
+	// Standing is the ambient side's seam: what home reads to draw the band of
+	// items under a project, what a pause or a stop is written back through, and
+	// what /status derives its `keeping watch` line from ([StandingSeam] says
+	// what each function owes).
+	//
+	// The zero value is a surface with the ambient side OFF, and it is off the
+	// way every optional capability here is off: home draws no item band at all,
+	// the status line grows no segment, and /status says nothing about keeping
+	// watch. Nothing half-works and nothing claims to.
+	Standing StandingSeam
+
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
@@ -516,6 +572,96 @@ type Options struct {
 // sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
 // [forwardSignals] for why this surface catches them itself.
 type sigQuitMsg struct{}
+
+// StandingSeam is everything this surface needs from internal/standing, as
+// FUNCTIONS rather than as a store.
+//
+// It is functions for the reason [Options.Models] is one: the door owns where
+// the store lives and how it is opened, and a test owns neither. Handing the
+// surface a *standing.Store would make "home with three items on it" a test
+// that writes JSON documents into a temp directory to assert a row's spacing.
+//
+// EVERY FIELD IS INDEPENDENTLY OPTIONAL. A door that can list items but cannot
+// install an OS timer wires Items and leaves Watch nil, and what a person then
+// sees is item rows and no `keeping watch` line — which is exactly the truth.
+type StandingSeam struct {
+	// Items answers the items belonging to one workspace, in whatever order the
+	// store holds them; this surface applies its own triage order
+	// (homestanding.go's [standTriage]). It must NOT block: home calls it on
+	// every three-second beat and on the keystroke that opens the screen.
+	//
+	// Nil is a home with no item band, which is the ambient side switched off.
+	Items func(workspace string) []standing.Item
+
+	// Save writes one item back — the pause and the stop keys on a home row, and
+	// nothing else on this surface. It returns the write's error and home says
+	// so on its own message line rather than swallowing it: a row that redrew as
+	// paused over a store that refused the write would be the screen lying about
+	// the disk.
+	//
+	// Nil is a home where `p` and `s` say the change cannot be made here.
+	Save func(item standing.Item) error
+
+	// Running reports whether some process is CHECKING OR FIRING one item at
+	// this instant, by id, and what it is doing ([standing.RunningMark]). It is
+	// separate from the item document because it is not a fact the document
+	// holds: the pass may be happening in another window, or in the operating
+	// system's timer with no window open at all, and what says so is a marker
+	// the store writes and doubts (internal/standing's running.go).
+	//
+	// IT ANSWERS THE MARK AND NOT A BOOL because the card says which half of a
+	// pass it caught and how long ago it started — `● checking now · since 4s`
+	// — and a surface that were handed only a yes would have to invent both.
+	//
+	// Nil answers no for everything, and a home where no row ever wears `●` is
+	// honest: the glyph is a claim about right now, and a surface with no way to
+	// ask must not make it.
+	Running func(id string) (standing.RunningMark, bool)
+
+	// Watch is what /status prints under `keeping watch`, derived and never
+	// asserted ([standing.WatchStatus]). The bool is whether there is an answer
+	// at all — a build with no OS timer support, a remote engine — and a false
+	// prints nothing, which is the emptiness law applied to a whole line.
+	Watch func() (standing.WatchStatus, bool)
+
+	// WatchAsked is the person's answer to the ONE-TIME offer to keep checking
+	// with no window open: whether they were ever asked, and what they said
+	// (internal/session's standingWatchAsked reads the marker the card writes).
+	//
+	// /status uses it for one word and one word only — why nothing is checking.
+	// "Nobody has asked you yet" and "you said no" are two different situations
+	// for the person in front of the screen, and the first has a move in it.
+	//
+	// Nil is a surface that cannot tell them apart, and it says neither.
+	WatchAsked func() (keep bool, asked bool)
+
+	// Ticking reports that THIS PROCESS is running the standing pass itself —
+	// the every-five-minutes walk any open window takes when it gets the store's
+	// lock (cmd/aforge's startStandingTicks).
+	//
+	// IT IS WHAT LETS /status SAY THE AMBIENT SIDE IS NOT BEING CHECKED. Without
+	// it the line could only say `installed` or assert `while a window is open`
+	// about a window it had not asked, and a person asking /status about a
+	// machine where nothing is keeping time would be told a window was.
+	//
+	// Nil answers no, on [StandingSeam.Running]'s law: this is a claim about
+	// right now, and a surface with no way to ask must not make it.
+	Ticking func() bool
+
+	// Runs is the standing ledger since a moment, summed per item id — how many
+	// times each thing fired and what it spent ([standing.Store.RunsSince]). It
+	// is what a card means by `ran 3 times this week`.
+	//
+	// IT ANSWERS THE WHOLE MACHINE IN ONE CALL, deliberately: the ledger is one
+	// file per day, so a surface asking item by item would open the same seven
+	// files once per row it drew. The surface reads it on home's own beat and
+	// sums whichever ids the card it is drawing owns.
+	//
+	// It must not block — it is a walk of at most a month of small files — and
+	// nil is a surface that simply draws no weekly line, which is the emptiness
+	// law applied to a fact nobody can answer.
+	Runs func(since time.Time) map[string]standing.Spend
+}
 
 // Run opens the surface and blocks until it closes. A cancelled context closes
 // it the same way ctrl+c does.

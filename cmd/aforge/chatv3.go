@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -143,6 +142,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
+		// AND NOTHING MAY BE SET UP HERE. A standing item spends money at times
+		// nobody chose, so it needs a yes; a headless run has nobody to give
+		// one, and a clock that armed it anyway would be the harness agreeing on
+		// somebody's behalf. The tool is simply absent (internal/session's
+		// tools.go), which is the same law --once already applies to consent.
+		cfg.Standing = nil
 		return runChatV3Once(cfg, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
@@ -235,7 +240,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// a file beside the profile for the surface's whole lifetime, and comes
 	// back to stderr on the way out. A profile that cannot take the file keeps
 	// stderr — a lost frame is better than a lost warning.
-	if logFile, logErr := os.OpenFile(filepath.Join(settings.ProfileDir, "chat.log"),
+	if logFile, logErr := os.OpenFile(chatLogPath(settings.ProfileDir),
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
 		log.SetOutput(logFile)
 		defer func() {
@@ -276,6 +281,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// there is nothing per-conversation to hand back.
 		Start: seam.start,
 		Open:  seam.resume,
+		// The ambient side as this surface reads it: home's item band, the
+		// pause and stop keys, and /status's keeping-watch line, all off the
+		// same store the conversation proposes into (chatv3_standing.go).
+		Standing: v3StandingSeam(cfg.Standing),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {
@@ -283,6 +292,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			}
 			return conv.Agent, conv.SessionFile, nil
 		},
+		// ── lane errand, for the merge: this pair and nothing else ──────────
+		// Home's `ask here` — the errand answered in the right pane, whose
+		// transcript lives under the standing root and never under v3/projects
+		// (chatv3_exchange.go, tui3's homeexchange.go).
+		Errand:       v3Errand(cfg, workspace, settings.ProfileDir, *yolo),
+		StandingRoot: v3StandingRoot(),
+		// Answering another window's question from home: the answer is left in
+		// that session's own folder and it picks it up on its heartbeat
+		// (internal/session's answers.go, tui3's homeband_answer.go).
+		Answer: session.WriteAnswer,
 		// The conversations this directory has had, and the door back into one
 		// of them. They are the welcome box's right column and the /resume
 		// picker's rows; the walk happens on the keystroke that asks for it and
@@ -538,6 +557,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// generation verb off the belt. The RESOLVER (MediaModel) is wired
 		// after governance lands, because its pin rung reads RolesSource.
 		Media: v3ImageGen(settings),
+		// THE AMBIENT SIDE (chatv3_standing.go). It is filled for every door
+		// that is a CONVERSATION — chat, resume, engine — and taken away again
+		// on the --once path below, because nothing unwatched may set up
+		// something that spends forever. A task node and a firing's own session
+		// never see it: neither copies this config.
+		Standing: v3Standing(settings.ProfileDir),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -571,6 +596,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// readers (internal/session's harness_belt.go). It is wired here rather than
 	// in the literal above because the resolver it needs is one line up.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel)
+
+	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
+	// lock and runs the pass; the OS timer is the backup for "no terminal open"
+	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
+	// v3 door assembles through this function — and the first pass is a whole
+	// interval away, so a launch that exits immediately has ticked nothing.
+	if cfg.Standing != nil {
+		startStandingTicks(cfg.Standing.Store)
+	}
 
 	return &v3Launch{
 		Settings:    settings,

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
@@ -426,6 +427,41 @@ func (c *Client) OpenSession(path string) (Welcome, error) {
 	return c.swap(MethodSessionOpen, path)
 }
 
+// StandingItems is the engine machine's standing items for one workspace: the
+// far half of what a local surface reads straight off its own disk
+// (cmd/aforge's [v3StandingSeam]).
+//
+// IT ANSWERS AN ERROR RATHER THAN AN EMPTY LIST, which is the one place it
+// differs from [Client.Recent], and the difference is what the caller does with
+// it: this list is asked for again and again on a beat, so a caller that keeps
+// the last good answer must be able to tell "there is nothing here" from "the
+// round trip failed" — a fault redrawn as an empty band would be the screen
+// saying the person's watches had gone away.
+func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
+	payload, err := c.call(nil, MethodStandingItems, workspace)
+	if err != nil {
+		return nil, err
+	}
+	var items []standing.Item
+	if err := json.Unmarshal(payload, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// SaveStanding writes one item back to the engine machine's store — the pause
+// and the stop keys, and nothing else on this surface.
+//
+// THE REFUSAL TRAVELS. internal/tui3's StandingSeam.Save returns the write's
+// error and home prints it rather than swallowing it, because a row that redrew
+// as paused over a store that refused the write would be the screen lying about
+// somebody else's disk. So the engine's error comes back as this call's error
+// and nothing is invented here.
+func (c *Client) SaveStanding(item standing.Item) error {
+	_, err := c.call(nil, MethodStandingSave, item)
+	return err
+}
+
 func (c *Client) swap(method string, args any) (Welcome, error) {
 	payload, err := c.call(nil, method, args)
 	if err != nil {
@@ -562,6 +598,19 @@ func (a *Agent) ResolveConsent(id uint64, allow bool) {
 // ResolveConsentRemember answers one and says how long the answer lasts.
 func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
 	_, _ = a.c.call(nil, MethodConsentRemember, ConsentArgs{ID: id, Allow: allow, Scope: scope})
+}
+
+// ResolveStanding answers one standing card: set it up, set it up once, or a
+// correction in the person's own words.
+//
+// IT IS THE METHOD THAT MAKES A STANDING CARD ANSWERABLE OVER A CONNECTION.
+// internal/tui3's standing.go asserts an OPTIONAL interface on whatever agent it
+// is holding ([standingAgent]) and draws no chips at all for one that does not
+// implement it, so a remote handle without this would have shown the person a
+// proposal they could look at and could not answer. Adding it here is the whole
+// of the difference.
+func (a *Agent) ResolveStanding(id uint64, answer session.StandingAnswer) {
+	_, _ = a.c.call(nil, MethodStandingResolve, StandingArgs{ID: id, Answer: answer})
 }
 
 // ResolveHarness answers one sub-harness offer.

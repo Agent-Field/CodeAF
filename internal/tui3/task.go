@@ -552,6 +552,16 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 	case session.EventTaskUpdate:
 		pilot = a.taskUpdate(ev)
 		mentions = a.refreshTasks()
+	case session.EventStandingProposal:
+		a.proposeStanding(ev)
+	case session.EventStandingUpdate:
+		// AN ITEM FIRES WITH NOBODY IN THE ROOM, which is the whole of the
+		// ambient side — so a FIRING reaches this surface here and only here,
+		// on the lane that outlives every turn (standing.go, and session's
+		// [Agent.emitStandingNews] for why the turn's hub cannot carry it). What
+		// was waiting in the inbox while the window was shut arrives on this lane
+		// too, as the first thing on it.
+		a.standingUpdate(ev)
 	}
 	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions)
 }

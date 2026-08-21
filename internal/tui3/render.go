@@ -68,6 +68,11 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
+	// hitStandChoice is the standing card's row of answers (standing.go). It is
+	// a hit of its own rather than another [hitChoice] for that constant's own
+	// reason: two blocks answer the same gesture with different questions, and
+	// the press must not be resolved against the other card's columns.
+	hitStandChoice
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -329,7 +334,8 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		if len(rows) == 0 {
 			continue
 		}
-		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask {
+		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask ||
+			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) {
 			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
 			// surface that interrupts a reply to ask something, and a question
 			// wedged against the sentence above it reads as part of that sentence.
@@ -362,6 +368,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 					at = hitModel
 				}
 			}
+			// AND THE STANDING CARD'S ANSWERS ROW, which is the only row of that
+			// block a click acts on: the block itself has no fold to open, so
+			// pressing anywhere else on it does nothing (standing.go).
+			if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && n == e.stand.choiceRow {
+				at = hitStandChoice
+			}
 			drawn := row{text: text, entry: i, hit: at}
 			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
 			// (markdown.go). It is applied HERE — after the block was rendered and
@@ -393,7 +405,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			out = append(out, drawn)
 		}
 		wasCluster = false
-		wasBlock = e.kind == entryTask
+		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
 	}
 	// THE LAST TURN'S RECEIPT, which has no next turn to be drawn at the seam
 	// with. A turn still running has no stamp yet, so this draws nothing until
@@ -478,6 +490,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// its spinner is a function of the frame (connect.go). It rejoins the cache
 	// the moment it settles, which is the moment it stops moving.
 	if e.kind == entryConnect && e.conn != nil && e.conn.state == connectWaiting {
+		return a.renderEntry(i, e, width)
+	}
+	// AND AN OPEN STANDING CARD, for the reason the proposal above is not: its
+	// meter drains toward the moment the engine declines it (standing.go). It
+	// rejoins the cache the moment it is answered.
+	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
 	// AND A TASK COMMAND'S PRE-FLIGHT, for the reason all three of those are not:
@@ -577,6 +595,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryTask:
 		return a.taskCardRows(e.card, width, a.sel == i)
+
+	case entryStanding:
+		return StandingCardRows(a, e.stand, width, a.sel == i)
 
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
@@ -965,6 +986,12 @@ const (
 	// the only segment that is not about the conversation in front.
 	segOpen hudSeg = iota
 	segAmbient
+	// segKeeping is the standing side's own presence: how many things are
+	// keeping an eye on this project (homestanding.go). It sits beside segAmbient
+	// because they answer one question — what is alive out there that nobody is
+	// watching — and it is separate because they are two mechanisms with two
+	// lifetimes: a background job dies with the window, and an item does not.
+	segKeeping
 	segDelta
 	segCost
 	segCtx
@@ -1324,6 +1351,7 @@ func (a *app) telemetry(width int) []hudPart {
 	}
 	add(segOpen, a.openSegment())
 	add(segAmbient, a.ambientSegment())
+	add(segKeeping, a.keepingSegment())
 	// THE DELTA IS THE LOWEST PRIORITY ON THE LINE and it says so twice: it is
 	// drawn only on a comfortable frame, and it is the first thing [dropSegment]
 	// takes when even that frame turns out to be full.
@@ -1389,10 +1417,11 @@ func (a *app) openSegment() string {
 //
 // The state word and the safety posture are not in this list at all: one is why
 // a person is looking at the line, and the other is why they should be.
+//
 //	open     how many other conversations this terminal holds — true, and about
 //	         somewhere else; at forty columns what a person needs is what THIS
 //	         conversation is doing
-var dropOrder = []hudSeg{segDelta, segOpen, segCache, segETA, segBurn, segAmbient, segCost, segCtx}
+var dropOrder = []hudSeg{segDelta, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
 
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.
@@ -1444,6 +1473,13 @@ func (a *app) paintPart(part hudPart) string {
 		// ALIVENESS AND THE DECISION, both of which the state word owns.
 		_, painted := a.stateSegment()
 		return painted
+	case segKeeping:
+		// DIM, ALWAYS, AND THE ONE SEGMENT THAT MOVES WITHOUT CHANGING. It is
+		// re-derived here rather than taken from part.text because its glyph
+		// breathes while a firing is in flight and its TEXT must not, or the fade
+		// ramp would paint it bright forever (homestanding.go's [app.keepingWord]
+		// says the whole of it).
+		return a.pal.dim(a.keepingWord())
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.
@@ -1884,7 +1920,7 @@ func (a *app) stateWord() (string, string) {
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
 	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() {
+	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
 	word := a.state.String()
@@ -1972,7 +2008,7 @@ func (a *app) legend(width int) string {
 	// is bottom-anchored and so is this border — the two of them framing the
 	// question is the surface pointing at it with both hands (consent.go).
 	paint := a.pal.dim
-	if a.asking() || a.awaitingTask() {
+	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
 		paint = a.pal.ask
 	}
 	// THE LADDER, in the order of what a person can recover elsewhere. Each rung
@@ -2366,6 +2402,11 @@ func (a *app) hintWord() string {
 		// the consent letters below: a card and a consent question cannot be open
 		// at once, and the keys a person needs are the ones on screen (task.go).
 		return taskProposalHint
+	case a.awaitingStanding():
+		// And the standing card owns the digits it drew — three, or two on a
+		// one-off reminder, and the follow-up's two the moment the yes is given
+		// (standing.go).
+		return standAskHint(a.stand)
 	case a.shaping():
 		// The always is part-way answered and the block is on its second beat
 		// (consent.go): the numbers bank a shape and esc puts the question back.

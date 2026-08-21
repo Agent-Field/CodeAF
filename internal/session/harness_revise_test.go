@@ -126,8 +126,15 @@ func TestOnlyADesignsOwnThreadCarriesTheReviseVerb(t *testing.T) {
 	if hasTool(agent, "revise_design") {
 		t.Fatal("the conversation was given a verb for changing a page it is not holding")
 	}
-	submitBuild(t, agent)
+	// THE LANE IS SUBSCRIBED BEFORE THE BUILD IS ASKED FOR. A design outlives
+	// its turn and runs on its own goroutine, so with a scripted model its
+	// "designing" and card events can both be emitted before a subscription
+	// taken AFTER the build is registered — and [Agent.emitHarness] fans out
+	// only to the watchers present at emit time, so a late subscriber meets an
+	// empty lane and the read hangs. Every other test in this file subscribes
+	// first for exactly this reason; this one did not, which is the flake.
 	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
 	done := designDone(t, lane)
 	node := designNode(t, agent)
 	waitForPhase(t, node, HarnessPhaseAsking)
@@ -247,7 +254,7 @@ func TestARewriteIsGivenTheStandingPageAndThePersonsOwnWords(t *testing.T) {
 	var history []ai.Message
 	select {
 	case history = <-seen:
-	case <-time.After(10 * time.Second):
+	case <-time.After(harnessTestPatience):
 		t.Fatal("the rewrite call never happened")
 	}
 	if len(history) != 4 {
@@ -495,7 +502,7 @@ func TestDroppingTheFirstCardStillDrops(t *testing.T) {
 // surface reads is this lane, so what this asserts is what a surface would draw.
 func waitForPhaseOnTheWire(t *testing.T, lane <-chan Event, id uint64, phase string) {
 	t.Helper()
-	deadline := time.After(10 * time.Second)
+	deadline := time.After(harnessTestPatience)
 	for {
 		select {
 		case event, open := <-lane:
