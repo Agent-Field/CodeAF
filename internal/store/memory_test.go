@@ -756,14 +756,28 @@ func TestMemoryCandidatesFuseRelevanceImportanceAndRecency(t *testing.T) {
 			t.Errorf("%s is not in the pool: %+v", name, pool)
 		}
 	}
-	// The lexical hit leads, because it is the only row the message's own words
-	// rank and it is carried by the fusion's first list.
-	if pool[0].ID != lexical.ID {
-		t.Errorf("the pool leads with %q, want the lexical hit %q", pool[0].Title, lexical.Title)
+	// AND THE THREE OF THEM LEAD IT. Each is rank one somewhere — the lexical
+	// hit in relevance, the tried line in importance, the last write in recency
+	// — and the fifteen rows nothing ranks come after all three. That is the
+	// whole claim fusion makes: a row carried by a signal of its own beats a row
+	// carried by nothing.
+	leaders := map[string]bool{pool[0].ID: true, pool[1].ID: true, pool[2].ID: true}
+	for name, id := range map[string]string{
+		"the lexical hit": lexical.ID, "the memory that has helped": important.ID,
+		"the newest memory": recent.ID,
+	} {
+		if !leaders[id] {
+			t.Errorf("%s is not in the leading three: %+v", name, pool[:3])
+		}
 	}
 	// A stub carries what the router picks by and never the body.
-	if pool[0].Title != lexical.Title || pool[0].Type != MemoryFact || pool[0].Scope != MemoryScopeProject {
-		t.Errorf("stub = %+v, want the memory's title, type and scope", pool[0])
+	for _, stub := range pool {
+		if stub.ID != lexical.ID {
+			continue
+		}
+		if stub.Title != lexical.Title || stub.Type != MemoryFact || stub.Scope != MemoryScopeProject {
+			t.Errorf("stub = %+v, want the memory's title, type and scope", stub)
+		}
 	}
 }
 

@@ -640,15 +640,25 @@ const rrfK = 60
 //   - RELEVANCE, bm25(memories_fts) over the words of the message. ftsQueryFrom
 //     ORs its terms rather than ANDing them, and tags are indexed alongside
 //     title and text, so a partial match still ranks.
-//   - IMPORTANCE, use_count descending — how often this line has actually
-//     helped. It is what keeps a HIGH-VALUE HEAD in the pool whose words appear
-//     nowhere in the message, which is the one failure mode a lexical index has
-//     and cannot fix. miss_count breaks its ties the other way, so among lines
-//     that have never yet helped the one that has been tried and bore on
-//     nothing ranks below the one that has never been shown.
+//   - IMPORTANCE, over the lines that have ACTUALLY HELPED at least once,
+//     ranked by help less miss. It is what keeps a HIGH-VALUE HEAD in the pool
+//     whose words appear nowhere in the message, which is the one failure mode
+//     a lexical index has and cannot fix. Counting the miss inside the ordering
+//     is what makes an injection that bore on nothing cost something: a line
+//     that helped twice and missed ten times sinks to where its contribution is
+//     smallest, the way fixstore.go sinks a patch it offered that then failed.
 //   - RECENCY, updated_seq descending — the transaction-time ordering, so
 //     something corrected this morning is in the pool on the strength of that
 //     alone.
+//
+// A LIST ONLY CONTAINS ROWS IT HAS SOMETHING TO SAY ABOUT, and that is what
+// makes the fusion honest rather than a weighting in disguise. RRF combines
+// RANKINGS OF CANDIDATES, not total orders over a corpus: an importance list
+// that ran on past its evidence — ordering the rows that have never once helped
+// by how recently they changed — would be a second copy of the recency list,
+// and two thirds of the score would be one signal wearing two hats. So a row
+// with no retrieval history is simply absent from the importance ranking, and
+// a message with no matchable words produces no lexical ranking at all.
 //
 // THE LIMIT BOUNDS THE POOL, NEVER THE STORE. The read it replaces was capped
 // at two hundred titles, which quietly made memory two hundred and one
@@ -687,8 +697,8 @@ func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) 
 		lexical AS (` + lexical + `),
 		important AS (
 			SELECT id, ROW_NUMBER() OVER (
-				ORDER BY use_count DESC, miss_count ASC, updated_seq DESC, id) AS rank
-			FROM active
+				ORDER BY use_count - miss_count DESC, use_count DESC, updated_seq DESC, id) AS rank
+			FROM active WHERE use_count > 0
 		),
 		recent AS (
 			SELECT id, ROW_NUMBER() OVER (ORDER BY updated_seq DESC, id) AS rank
