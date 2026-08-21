@@ -54,15 +54,9 @@ const notifyTitle = product
 func (a *app) notifyBody() string {
 	// The name a person READS, which is the same one the status line draws
 	// (names.go): a banner is the one place this conversation is named outside
-	// its own window, so it must not be the one place a machine name shows.
-	name := a.sessionName()
-	if name == "" {
-		name = a.place
-	}
-	if name == "" {
-		return "turn done"
-	}
-	return name + " · turn done"
+	// its own window, so it must not be the one place a machine name shows. It
+	// is spelled once, in [app.notifyName], because there are two banners now.
+	return a.notifyName() + "turn done"
 }
 
 // notifyDone is the command a finished turn returns, or nil when the person is
@@ -72,6 +66,51 @@ func (a *app) notifyDone() tea.Cmd {
 		return nil
 	}
 	return tea.Raw(notifySeq(notifyTitle, a.notifyBody()))
+}
+
+// ── THE SECOND BANNER: A QUESTION NOBODY CAN SEE ────────────────────────────
+//
+// A finished turn is not the only thing that happens on a screen a person has
+// walked away from. The approval gate stops one tool call and BLOCKS it
+// (session's consent.go), and while that question is up the session is doing
+// nothing at all — which is the one state where "you will find out when you next
+// look" is the wrong bargain, because nothing is going to happen in the meantime
+// to make the looking worthwhile.
+//
+// It used to be answered FOR them: the countdown denied the call ten seconds
+// later on a window nobody was reading, so an unfocused session looked like a
+// session that had simply stopped working. [app.tickAsk] no longer runs that
+// clock while the window is blurred, which is right and which is also why this
+// banner has to exist — a question that now waits indefinitely must be a
+// question the person was told about.
+
+// notifyAskWord is what the banner says a conversation is doing. It is the
+// presence file's own word for the same state (session's taskpresence.go's
+// PresenceWaiting), because the sentence on the desktop and the row on another
+// window's home page are describing one fact and must not spell it two ways.
+const notifyAskWord = "waiting on you"
+
+// notifyAsk is the command a raised question returns, or nil when the person is
+// already looking at the question.
+func (a *app) notifyAsk() tea.Cmd {
+	if a.focused {
+		return nil
+	}
+	return tea.Raw(notifySeq(notifyTitle, a.notifyName()+notifyAskWord))
+}
+
+// notifyName is the conversation's name and the separator that follows it, or
+// "" when nothing here has a name worth putting in a banner. Both banners are
+// built from it so that a session named in one is named in the other.
+func (a *app) notifyName() string {
+	name := a.sessionName()
+	if name == "" {
+		name = a.place
+	}
+	if name == "" {
+		return ""
+	}
+	return name + " · "
 }
 
 // notifySeq builds the sequence. The two fields are sanitized for the one

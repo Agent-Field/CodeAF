@@ -70,7 +70,60 @@ Any key press, and any mouse press inside the block, pauses the clock
 ` · paused` and the question waits for you. Setting the countdown to `0` turns
 the clock off entirely, and every question waits forever.
 
+The clock **only runs while that terminal window has the keyboard**. Switch to
+another window and it stops where it is; come back and it starts again from the
+full 10 seconds. See "Does my other window keep working when I switch away".
+
 The clock is drawn in whole seconds.
+
+## Does my other window keep working when I switch away — why my other session looked frozen
+
+Yes, and this used to be the one thing that stopped it.
+
+The work itself never depended on you looking. A turn runs in the session, not
+on the screen: the model keeps streaming, tools keep running, and tasks keep
+going whether the window is in front of you, behind another one, or on another
+desktop. Nothing about drawing the picture is tied to which window has focus.
+
+The approval countdown was the exception, and it is fixed. It used to run on a
+window nobody was looking at, so a session that hit the gate ten seconds after
+you walked away had that call **denied** — by a clock you could not have beaten,
+about a question on a screen behind you. The model was handed a refusal, tried
+something else, was refused again, and the session you came back to had spent
+your absence getting nowhere. That is what "my other window stopped working"
+was.
+
+Now the countdown is a clock about **reading**, not about wall time. It is held
+for as long as the window is unfocused, and starts again whole the moment you
+come back — so a question you never saw is still there when you get to it.
+
+Two things tell you a window is waiting while you are elsewhere:
+
+- **A desktop notification**, sent the instant the question goes up. The banner
+  is headed `aforge` and reads `<conversation> · waiting on you`.
+- **Home**, and every other aforge window, where the session's row wears `▲`,
+  reads `waiting on you`, and sorts to the top of its project.
+
+If your terminal does not report focus to the programs inside it, aforge
+assumes the window is focused — so the countdown runs as it always did and no
+banner is sent. There is no setting for either; both are on.
+
+## Why did my session stop after I switched windows — what to check
+
+Work does not stop because you looked away, so if a session really is going
+nowhere, it is one of these:
+
+- **A question is up.** The most common one. The row it is about says
+  `allow?`; the session is blocked until you answer, and the countdown is held
+  while you are away rather than answering for you.
+- **A call was already denied while you were gone** on a build from before this
+  changed. The row says `denied · no answer`. Say so and the model will ask
+  again.
+- **The turn finished.** A turn that ends on an unfocused window sends its own
+  desktop banner, `<conversation> · turn done`.
+
+Nothing here is a pause you can resume: aforge has no key that suspends a
+session and none that wakes one.
 
 ## How long an answer lasts: once, this session, or written down
 

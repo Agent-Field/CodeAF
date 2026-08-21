@@ -442,8 +442,10 @@ Home remembers when you last closed it, and marks what finished after that. A re
 session whose tasks landed while you were not looking wears `✓` instead of `○`, its line
 reads `2 landed` where the task count would be, and its card captions those rows with a
 dim `since you last looked` — their ticks lit up out of the grey. That is the whole
-mechanism: no notification, no badge, no list of unread things. You open home and the
-ticks show you where work accumulated.
+mechanism **on home**: no badge, no list of unread things. You open home and the ticks
+show you where work accumulated. (A session's own window does send a desktop notification
+when its turn finishes or it stops on a question while you are looking elsewhere — see
+"Why a session says it needs you" below. Home itself never does.)
 
 The marks are measured from the moment home was last **closed** — looking at the screen
 is what counts as seeing, so nothing is marked seen the instant it appears. They hold
@@ -475,6 +477,13 @@ something that nobody is waiting for any more.
 
 `enter` on the row opens it under the ordinary rule, so a question in this project is one
 key away and one in another project tells you where to go.
+
+You do not have to be on home to find out. A session that stops on an approval question
+while its window is unfocused also sends a **desktop notification** — headed `aforge`,
+reading `<conversation> · waiting on you` — and so does a turn that finishes on a window
+you are not looking at, reading `<conversation> · turn done`. Terminals that do not know
+the sequence print nothing. See "Does my other window keep working when I switch away" in
+the permissions page for the whole of what an unfocused window does and does not do.
 
 ## Why a task says incomplete on home
 
