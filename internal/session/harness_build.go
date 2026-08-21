@@ -763,10 +763,19 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 	// the repair turn below is written to believe it: told "this did not parse",
 	// a repairer handed half an object will close the braces and hand back a
 	// page with nodes that were never written — a design made up by the pass that
-	// was meant to be transcribing. So a cut-off reply skips the repair entirely
-	// and goes to the retry loop with the truth on it, where the model can write
-	// a SMALLER page instead of a shorter one.
+	// was meant to be transcribing.
+	//
+	// BUT A PAGE THAT STOPPED MID-SENTENCE WAS STILL BEING WRITTEN, and the
+	// cheapest true answer to that is to let its own author keep writing it
+	// ([Agent.harnessContinue]). Only when that fails too does the attempt go to
+	// the retry loop with the truth on it, where the model is asked for a
+	// SMALLER page instead of a shorter one — a demand that used to be the FIRST
+	// answer, which meant the ceiling systematically punished exactly the
+	// complex designs a person asks for on purpose.
 	if cut {
+		if data, whole, ok := a.harnessContinue(ctx, history, raw, model, maxTokens, progress); ok {
+			return data, whole, nil
+		}
 		return nil, raw, errors.New(harnessRanOut(raw))
 	}
 
@@ -799,6 +808,48 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 		return nil, second, fmt.Errorf("neither the reply nor its repair parsed: %w", err)
 	}
 	return salvaged.JSON, second, nil
+}
+
+// harnessContinue gives a cut-off reply the one thing a repair turn cannot: the
+// rest of itself, written by the model that was writing it. The partial goes
+// back as the assistant's own turn and the model is asked for the remaining
+// characters only, so the whole completion budget funds the tail of the page
+// instead of a second beginning.
+//
+// IT IS ONE TURN AND IT PROVES ITSELF OR IT IS DISCARDED. Models asked to
+// continue sometimes start the object over from the top, so the stitched text
+// is only trusted if it salvages — and the fresh reply is tried alone too,
+// because a model that restarted and FINISHED has also answered the question.
+// Anything else falls back to the retry loop's truth ([harnessRanOut]), exactly
+// as if this turn had never run.
+//
+// A REPLY THAT NEVER ARRIVED CANNOT BE CONTINUED. The empty case is the
+// reasoning model that spent its whole budget thinking — there is no partial to
+// hand back, and "continue" from nothing is just the same request again.
+func (a *Agent) harnessContinue(ctx context.Context, history []ai.Message, raw, model string, maxTokens int, progress harnessProgressCall) ([]byte, string, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, "", false
+	}
+	asked := append(append([]ai.Message{}, history...),
+		textMessage("assistant", raw),
+		textMessage("user", "Your reply was CUT OFF by the transport mid-object — it was not rejected. "+
+			"Continue it from the exact character it stopped at: reply with ONLY the remaining characters of that same JSON object, "+
+			"no repetition of what you already wrote, no prose, no code fence, until the object is closed."))
+	// Temperature zero, like the repair turn: this is transcription of a page
+	// already designed, not a second opinion about its shape.
+	rest, cut, err := a.harnessComplete(ctx, asked, model, maxTokens, 0, progress)
+	// The call finished and had nothing to say to a person; the room's catch-up
+	// still has to be told the step is over ([designSeat.noted]).
+	progress.seat.noted("")
+	if err != nil || cut {
+		return nil, "", false
+	}
+	for _, whole := range []string{raw + rest, rest} {
+		if salvaged, salvageErr := subharness.SalvageDetail(whole); salvageErr == nil {
+			return salvaged.JSON, whole, true
+		}
+	}
+	return nil, "", false
 }
 
 // harnessRanOut is what a design that hit the completion ceiling is told, and it

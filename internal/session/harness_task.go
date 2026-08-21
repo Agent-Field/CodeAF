@@ -196,8 +196,21 @@ func (s designSeat) says(kind provider.StreamEventKind, delta string) {
 // ([Agent.designHarnessNode] says why) — and a turn that priced nothing is one
 // the roster's own fold ignores (internal/tui3's pilotEvent).
 func (s designSeat) noted(milestone string) {
-	if s.thread != nil && strings.TrimSpace(milestone) != "" {
-		s.thread.journalOnly(textMessage("assistant", milestone))
+	if strings.TrimSpace(milestone) != "" {
+		if s.thread != nil {
+			s.thread.journalOnly(textMessage("assistant", milestone))
+		}
+		// AND THE PERSON STANDING IN THE ROOM IS TOLD NOW, not on their next
+		// visit. journalOnly writes the file the room's HISTORY is read from, but
+		// a live watcher draws only what crosses the lane — so before this line,
+		// the one person actually watching a design saw the reasoning stream and
+		// then nothing, while the draft note with the card in it went straight to
+		// disk. They had to leave the room and walk back in to read the thing
+		// they had been waiting for. The narrow window in which a joiner could
+		// read this paragraph off both the file and the catch-up is the
+		// compaction note's accepted trade (task_room.go's taskCatchup), an
+		// instant wide here because EventTurnDone follows immediately below.
+		s.room.publish(Event{Kind: EventTextDelta, Text: milestone})
 	}
 	s.room.publish(Event{Kind: EventTurnDone})
 }
