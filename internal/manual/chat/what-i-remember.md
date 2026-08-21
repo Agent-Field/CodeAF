@@ -2,11 +2,16 @@
 
 ## Do you remember me between conversations?
 
-Yes. A handful of durable things are carried from one conversation to the next:
-something you asked to be remembered, a preference you stated, a correction you
-made, a decision that still binds. It is **not** a copy of the transcript — the
-conversation itself is not carried anywhere, and a new session starts with an
-empty screen.
+Yes, in two different ways. A handful of durable things are carried from one
+conversation to the next: something you asked to be remembered, a preference you
+stated, a correction you made, a decision that still binds. Those are short lines
+and a new session starts with an empty screen — none of the old conversation is
+put back on it.
+
+The words themselves are not gone, though. Everything said in every conversation
+on this machine is kept and can be **searched** — see "Can you look up what we
+said in an earlier conversation" below. What is carried automatically is the
+handful of lines; what was actually said is looked up when it is asked for.
 
 The memory commands have two postures:
 
@@ -32,11 +37,12 @@ memory is off · turn it on under /settings
 Open `/memory`. Its twelve-row list starts with the most recently updated
 memories. Type to filter title, text and tags; the same prefix, substring
 and fuzzy subsequence ranking as the model picker is applied to the list loaded
-when the panel opened. A `*` marks a memory used at least five times. Press tab
+when the panel opened. A `*` marks a memory that has helped at least five
+times. Press tab
 to cycle the scope shown: all, user, project, env, then all again.
 
-Enter expands the selected memory to show its full text, tags, use count, age,
-and where it came from. Esc returns to the list; esc from the list closes the
+Enter expands the selected memory to show its full text, tags, how many times it
+has helped (`used · 7`), age, and where it came from. Esc returns to the list; esc from the list closes the
 panel. `/memory <query>` prints matching lines into the conversation.
 
 ## How do I edit a memory?
@@ -60,15 +66,28 @@ forgetting is one key, and an accidental forget has one undo.
 
 ## How does it decide what to put in front of the model?
 
-Before each message, a small model on its own cheap tier reads what you just
-typed against an index of **titles only** — never the full text — and answers
-which two or three remembered lines bear on this message. Only those are put in
-front of the model, as a short `<memory>` block. Most messages need none, and an
-empty answer is the ordinary one.
+It happens in two steps, and only the second one is a model.
 
-That is why a hundred remembered things do not make every message more
-expensive: the index is titles, the block is what the router asked for, and
-nothing else travels.
+First, **a ranking in the database picks the eight lines most likely to matter**
+to what you just typed. It fuses three orderings the store already keeps: the
+words themselves (a full-text match over title, text and tags), **how often each
+line has actually helped before**, and how recently it changed. They fail in
+different directions, which is the point — something you have leaned on for
+months reaches the shortlist even when it shares no word with your message, and
+something you corrected this morning reaches it on the strength of that alone.
+
+Then **a small model on its own cheap tier reads those eight lines** — titles
+only, never the full text — and answers which two or three of them bear on this
+message. Only those are put in front of the model, as a short `<memory>` block.
+Most messages need none, and an empty answer is the ordinary one.
+
+The split is deliberate. Arithmetic is good at finding candidates and bad at
+telling a near-miss from a match; a model is the opposite. So the model's whole
+job is to throw out the lines that merely sound related — one
+plausible-but-wrong line in the prompt costs more than the right one gains.
+
+That is why a thousand remembered things cost the same as eight, and the eight
+is a shortlist rather than a cap: anything remembered can reach it.
 
 Two messages are never routed at all, because there would be nothing to match:
 an empty message, and a continuation shorter than three words — `yes`, `go on`,
@@ -77,6 +96,106 @@ an empty message, and a continuation shorter than three words — `yes`, `go on`
 **If that small model is unreachable, the message goes out unchanged.** No
 error, no warning, no memory in the prompt. A memory failure is never allowed to
 break the thing you actually asked for.
+
+## Does a remembered line show its age?
+
+Yes, and it is told. Every line in the `<memory>` block carries when it was last
+written, in the same words `/memory` uses:
+
+```
+- deploys on Fridays: Deploys go out on Friday afternoons. (learned 3mo ago)
+```
+
+Something learned in the last hour reads `just now`, then hours, days, weeks and
+months. A memory old enough to be worth doubting is a memory that says so, which
+is the difference between a standing preference and a fact about a project that
+has moved on since.
+
+A line whose age is unknown — an old row from before this was recorded — simply
+carries no age rather than a zero. Nothing here asks a model to work out a date
+range for itself; it is only ever shown one.
+
+## Why did it say superseded?
+
+Because a memory was **replaced by one that contradicts it**. It is one of the
+two things here that change what is remembered without you asking — the other is
+the background tidy further down — and it is the riskier one:
+
+```
+superseded · deploys on Fridays → deploys on Tuesdays
+```
+
+It happens when the pass that reads an exchange finds something durable, and
+what the store already holds nearest to it says the opposite. The old line is
+retired and the new one takes its place, in one step, so there is never a moment
+where nothing at all is remembered about the subject.
+
+This used to happen in complete silence, and that was wrong. Retiring something
+true is the riskiest thing this feature does — it is a small model deciding, out
+of ordinary conversation and with nobody asked, that something you said has
+stopped being true. So it now says one dim line, exactly as `remember` and
+`forget` do.
+
+**The old line is not destroyed.** It is retired, not deleted: it leaves every
+list, every search and every message, and the record of what it said survives.
+If the replacement is wrong, `/remember` the original and it is written back.
+
+The background tidy can retire a line the same way, and says so in the same dim
+register — `memory tidied · 2 merged · 1 superseded`. It is held to a narrower
+rule than this pass is: it may never retire a preference, a decision or a
+correction.
+
+## Does a memory count as used when it actually helped?
+
+It asks. When a message was answered with remembered lines in front of it, the
+same cheap pass that reads the exchange afterwards is also shown those lines and
+asked which of them **bore on the answer** — as in, would the reply have been
+different without it. It costs no extra call and about ten words of answer.
+
+That number is what `used · 7` counts in `/memory`, and it is one of the three
+things the shortlist is ranked by. It counts **help, not retrieval**: a line put
+in front of a model that then had nothing to do with the reply is counted
+*against* itself, so something that keeps sounding relevant and never once
+changes an answer stops being offered. It is the same bargain aforge already
+keeps with a suggested fix that gets offered and then fails.
+
+Nothing is counted either way when that pass could not run. A provider outage is
+not evidence that a memory failed to help.
+
+## Can you look up what we said in an earlier conversation — searching old chats
+
+Yes. aforge has a tool called `search_conversations`, and it searches **every
+message of every conversation on this machine, verbatim** — what you typed, what
+was answered, and what the tools came back with. Ask for something that was said
+somewhere else — "what did we decide about the retry limit", "what did I tell you
+about the deploy last week", "search my old conversations for the flag name" —
+and it goes and looks instead of answering from memory.
+
+Each result is one line: how long ago it was said, the conversation it was said
+in, who said it, and the words themselves — plus the transcript file that
+conversation lives in, which aforge can then open and read around the excerpt.
+
+The limits are worth knowing:
+
+- **Excerpts are bounded** at 400 bytes each, and there are eight of them by
+  default (twenty at most). A search result is a pointer back into a
+  conversation, not a replay of it — when the excerpt is not enough, the
+  transcript named under it is read for the rest.
+- **A search is words, not meaning.** It matches the words that were actually
+  typed, newest first among equally good matches, so the person's own phrasing
+  finds more than a paraphrase of it. Nothing found is said plainly rather than
+  guessed at.
+- **It is off when memory is off.** The conversations are kept in the same place
+  the memories are, so the `memory` row in `/settings` turned off means nothing
+  is written and there is nothing to search. Work handed to a task cannot search
+  them either.
+- **It is not the same as what is remembered.** The remembered lines are a few
+  durable facts, extracted and rewritten; this is the conversation in its own
+  words. Asked what was decided, aforge searches and quotes rather than
+  reciting a memory, because the words somebody actually used are the answer and
+  a summary of them is not.
+
+There is no slash command for it — you ask in the conversation, and it searches.
 
 ## How does something get remembered without me asking?
 
@@ -91,8 +210,11 @@ existing line, it replaces a line that has stopped being true, or it is skipped
 because something already says it. That is what keeps telling aforge the same
 preference in three sessions from leaving three near-identical lines behind.
 
-Nothing about this is announced. There is no card and no line in the transcript
-when a memory is written by this pass; `/memory` is how you see what it did.
+Nothing is announced when a memory is **added or refined** by this pass — no
+card, no line in the transcript; `/memory` is how you see what it did. The one
+exception is a line that **replaces** something that contradicts it, which says
+`superseded · old → new`, because retiring something you said is not a thing to
+do quietly.
 
 ## Why did it say memory tidied — my memories got merged while I was away
 
@@ -204,7 +326,10 @@ list, every search and every message from that instant.
 
 ## What does remembering cost?
 
-Two calls per message, both on the cheapest of the four crew classes — the
+Two calls per message — plus one that is not per message at all: the background
+tidy, on the **small work** class, a few times a day at most while nobody is
+here. The two that ride every message are both on the cheapest of the four crew
+classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
 `nex-agi/nex-n2-mini`. Each goes out with a short
@@ -240,7 +365,9 @@ pair uses it.
 It is kept in `~/.aforge/graph.db`, which is per person rather than per
 conversation or per project — so something remembered in one repository is
 remembered in the next. `AFORGE_HOME` moves it with everything else aforge
-keeps.
+keeps. The same file holds every message of every conversation, which is what
+`search_conversations` searches; the transcripts themselves stay in each
+conversation's own folder.
 
 **A task gets the same treatment as a message.** When work is handed off to a
 task, the router is asked once against that task's brief, and whatever it names

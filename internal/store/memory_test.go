@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestMemoryProvenanceNamesItsSourceSessionAndOldEventsRemainUnknown(t *testing.T) {
@@ -79,7 +80,7 @@ func TestMemoryIndexRanksOlderUsedMemoryAheadOfNewerUnusedMemory(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "rank.db"))
 	older := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Older", Text: "Used before."})
 	newer := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Newer", Text: "Never used."})
-	if err := graph.BumpMemoryUse([]string{older.ID}); err != nil {
+	if err := graph.RecordMemoryOutcome([]string{older.ID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	index, err := graph.MemoryIndex(0)
@@ -408,9 +409,10 @@ func TestRebuildReproducesMemoriesAndTheirIndex(t *testing.T) {
 	}
 }
 
-// Use counts are telemetry, not journaled truth: they move on retrieval and
-// Rebuild deliberately resets them, including the index ranking they inform.
-func TestMemoryUseCountsAreTelemetryRebuildResets(t *testing.T) {
+// The two ranking counters measure HELP and MISS separately, and a rebuild
+// with no snapshot behind it still lands on zero — which is the whole reason
+// the snapshot exists.
+func TestMemoryOutcomesCountHelpAndMissSeparately(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "uses.db"))
 
 	first := mustAddMemory(t, graph, Memory{
@@ -421,15 +423,25 @@ func TestMemoryUseCountsAreTelemetryRebuildResets(t *testing.T) {
 		Type: MemoryFact, Scope: MemoryScopeUser,
 		Title: "Handle", Text: "Goes by santosh everywhere.",
 	})
-	if err := graph.BumpMemoryUse([]string{first.ID, first.ID, second.ID, "mem_nothing", ""}); err != nil {
-		t.Fatalf("BumpMemoryUse: %v", err)
+	if err := graph.RecordMemoryOutcome(
+		[]string{first.ID, first.ID, "mem_nothing", ""},
+		[]string{second.ID}); err != nil {
+		t.Fatalf("RecordMemoryOutcome: %v", err)
 	}
 	got, err := graph.GetMemories([]string{first.ID, second.ID})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(got), err)
 	}
-	if got[0].UseCount != 2 || got[1].UseCount != 1 {
-		t.Fatalf("use counts = (%d, %d), want (2, 1)", got[0].UseCount, got[1].UseCount)
+	if got[0].UseCount != 2 || got[0].MissCount != 0 {
+		t.Fatalf("the memory that helped reads %d/%d, want 2 helps and no misses",
+			got[0].UseCount, got[0].MissCount)
+	}
+	// AND THE INJECTION THAT BORE ON NOTHING IS COUNTED AGAINST IT. A store
+	// that only ever counted successes would rank a line that has never once
+	// mattered exactly where it ranks a line nobody has tried.
+	if got[1].UseCount != 0 || got[1].MissCount != 1 {
+		t.Fatalf("the unused memory reads %d/%d, want no helps and one miss",
+			got[1].UseCount, got[1].MissCount)
 	}
 
 	if err := graph.Rebuild(); err != nil {
@@ -439,9 +451,64 @@ func TestMemoryUseCountsAreTelemetryRebuildResets(t *testing.T) {
 	if err != nil || len(rebuilt) != 2 {
 		t.Fatalf("GetMemories after rebuild = (%v, %v)", memoryIDs(rebuilt), err)
 	}
-	if rebuilt[0].UseCount != 0 || rebuilt[1].UseCount != 0 {
-		t.Fatalf("use counts after rebuild = (%d, %d), want both reset to 0",
-			rebuilt[0].UseCount, rebuilt[1].UseCount)
+	if rebuilt[0].UseCount != 0 || rebuilt[1].MissCount != 0 {
+		t.Fatalf("counts after an unsnapshotted rebuild = (%d, %d), want both at zero",
+			rebuilt[0].UseCount, rebuilt[1].MissCount)
+	}
+}
+
+// A snapshot is what makes the ranking survive a replay. Ranking is
+// load-bearing now — MemoryCandidates picks the shortlist by it — so a rebuild
+// that landed on zero would silently change what the router is shown.
+func TestASnapshotGivesARebuildARankingFloor(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "snapshot.db"))
+	helped := mustAddMemory(t, graph, Memory{
+		Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Timezone", Text: "Works from Pacific time.",
+	})
+	missed := mustAddMemory(t, graph, Memory{
+		Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Handle", Text: "Goes by santosh everywhere.",
+	})
+	if err := graph.RecordMemoryOutcome([]string{helped.ID, helped.ID, helped.ID}, []string{missed.ID}); err != nil {
+		t.Fatalf("RecordMemoryOutcome: %v", err)
+	}
+	wrote, err := graph.SnapshotMemoryRanking(time.Hour)
+	if err != nil || !wrote {
+		t.Fatalf("SnapshotMemoryRanking = (%v, %v), want one written", wrote, err)
+	}
+	// AND ONLY ONE PER INTERVAL. The counters are the most frequent write in the
+	// feature; a journal that took a photograph of every one of them is the
+	// thing this scheme exists instead of.
+	if wrote, err := graph.SnapshotMemoryRanking(time.Hour); err != nil || wrote {
+		t.Fatalf("a second snapshot inside the interval = (%v, %v), want none", wrote, err)
+	}
+	// Counting after the photograph is counting that the photograph does not
+	// hold, and the floor is the photograph.
+	if err := graph.RecordMemoryOutcome([]string{helped.ID}, nil); err != nil {
+		t.Fatalf("RecordMemoryOutcome: %v", err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatalf("Rebuild: %v", err)
+	}
+	rebuilt, err := graph.GetMemories([]string{helped.ID, missed.ID})
+	if err != nil || len(rebuilt) != 2 {
+		t.Fatalf("GetMemories after rebuild = (%v, %v)", memoryIDs(rebuilt), err)
+	}
+	if rebuilt[0].UseCount != 3 || rebuilt[1].MissCount != 1 {
+		t.Fatalf("counts after rebuild = (%d helps, %d misses), want the snapshot's (3, 1)",
+			rebuilt[0].UseCount, rebuilt[1].MissCount)
+	}
+}
+
+// A store nobody has retrieved from has no ranking to preserve, and a periodic
+// event saying so forever is the journal noise this scheme avoids.
+func TestAnUnusedStoreWritesNoSnapshot(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "quiet.db"))
+	mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Timezone", Text: "Works from Pacific time."})
+	if wrote, err := graph.SnapshotMemoryRanking(0); err != nil || wrote {
+		t.Fatalf("SnapshotMemoryRanking on an unused store = (%v, %v), want none", wrote, err)
 	}
 }
 
@@ -641,4 +708,199 @@ func memoryFTSRows(t *testing.T, graph *Store) []memoryIndexRow {
 		t.Fatalf("read memory index: %v", err)
 	}
 	return indexed
+}
+
+// ── the router's shortlist ──────────────────────────────────────────────────
+
+// RRF fuses three rankings that fail in different directions, and the test is
+// that each one can carry a memory into the pool ON ITS OWN: the lexical hit,
+// the memory that has helped before but shares no word with the message, and
+// the one changed a moment ago.
+func TestMemoryCandidatesFuseRelevanceImportanceAndRecency(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "candidates.db"))
+
+	// Fifteen memories nothing will ever rank, so the pool has to choose.
+	for index := 0; index < 15; index++ {
+		mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+			Title: fmt.Sprintf("Filler %d", index),
+			Text:  fmt.Sprintf("An unremarkable line number %d about nothing.", index)})
+	}
+	// The lexical hit: written first, never retrieved, and it says the words.
+	lexical := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeProject,
+		Title: "Postgres runs locally", Text: "The local database is postgres 16."})
+	// The high-value head: it has helped, and it shares no word with the
+	// message. THIS IS THE GUARANTEE BM25 CANNOT MAKE on its own.
+	important := mustAddMemory(t, graph, Memory{Type: MemoryPreference, Scope: MemoryScopeUser,
+		Title: "Wants terse replies", Text: "Answers short, conclusion first, no preamble."})
+	for turn := 0; turn < 12; turn++ {
+		if err := graph.RecordMemoryOutcome([]string{important.ID}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The recent one, written last and about something else again.
+	recent := mustAddMemory(t, graph, Memory{Type: MemoryProjectState, Scope: MemoryScopeProject,
+		Title: "Migration is next", Text: "The import landed; the migration is the next piece."})
+
+	pool, err := graph.MemoryCandidates("can you connect to postgres for me", MemoryCandidatesDefault)
+	if err != nil {
+		t.Fatalf("MemoryCandidates: %v", err)
+	}
+	if len(pool) != MemoryCandidatesDefault {
+		t.Fatalf("pool holds %d rows, want %d", len(pool), MemoryCandidatesDefault)
+	}
+	for name, id := range map[string]string{
+		"the lexical hit": lexical.ID, "the memory that has helped": important.ID,
+		"the newest memory": recent.ID,
+	} {
+		if !containsMemoryStub(pool, id) {
+			t.Errorf("%s is not in the pool: %+v", name, pool)
+		}
+	}
+	// AND THE THREE OF THEM LEAD IT. Each is rank one somewhere — the lexical
+	// hit in relevance, the tried line in importance, the last write in recency
+	// — and the fifteen rows nothing ranks come after all three. That is the
+	// whole claim fusion makes: a row carried by a signal of its own beats a row
+	// carried by nothing.
+	leaders := map[string]bool{pool[0].ID: true, pool[1].ID: true, pool[2].ID: true}
+	for name, id := range map[string]string{
+		"the lexical hit": lexical.ID, "the memory that has helped": important.ID,
+		"the newest memory": recent.ID,
+	} {
+		if !leaders[id] {
+			t.Errorf("%s is not in the leading three: %+v", name, pool[:3])
+		}
+	}
+	// A stub carries what the router picks by and never the body.
+	for _, stub := range pool {
+		if stub.ID != lexical.ID {
+			continue
+		}
+		if stub.Title != lexical.Title || stub.Type != MemoryFact || stub.Scope != MemoryScopeProject {
+			t.Errorf("stub = %+v, want the memory's title, type and scope", stub)
+		}
+	}
+}
+
+// A message with nothing to match on — a continuation, a punctuation mark, a
+// word too short for the index — is not an empty pool. The two arithmetic
+// rankings still answer.
+func TestMemoryCandidatesAnswerWithoutAnyLexicalMatch(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "nomatch.db"))
+	helped := mustAddMemory(t, graph, Memory{Type: MemoryPreference, Scope: MemoryScopeUser,
+		Title: "Wants terse replies", Text: "Answers short, conclusion first."})
+	newest := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Works from Pacific", Text: "Works from Pacific time."})
+	if err := graph.RecordMemoryOutcome([]string{helped.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := graph.MemoryCandidates("!!! ?", 0)
+	if err != nil {
+		t.Fatalf("MemoryCandidates: %v", err)
+	}
+	if len(pool) != 2 || !containsMemoryStub(pool, helped.ID) || !containsMemoryStub(pool, newest.ID) {
+		t.Fatalf("pool without a lexical match = %+v, want both memories", pool)
+	}
+	if pool[0].ID != helped.ID {
+		t.Fatalf("pool leads with %q, want the memory that has helped", pool[0].Title)
+	}
+}
+
+// The limit bounds the POOL, never the store: the read this replaced was capped
+// at two hundred titles, which made memory two hundred and one unreachable
+// forever however well it matched.
+func TestMemoryCandidatesBoundThePoolAndNotTheStore(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "deep.db"))
+	for index := 0; index < 240; index++ {
+		mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+			Title: fmt.Sprintf("Filler %d", index),
+			Text:  fmt.Sprintf("An unremarkable line number %d.", index)})
+	}
+	buried := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeEnv,
+		Title: "Amber key", Text: "The amber key opens the archive."})
+	for index := 0; index < 40; index++ {
+		mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+			Title: fmt.Sprintf("Later %d", index),
+			Text:  fmt.Sprintf("Something else entirely, number %d.", index)})
+	}
+	pool, err := graph.MemoryCandidates("where is the amber archive key", 0)
+	if err != nil {
+		t.Fatalf("MemoryCandidates: %v", err)
+	}
+	if len(pool) != MemoryCandidatesDefault {
+		t.Fatalf("pool holds %d rows, want %d", len(pool), MemoryCandidatesDefault)
+	}
+	if pool[0].ID != buried.ID {
+		t.Fatalf("pool leads with %q, want the buried memory that matched", pool[0].Title)
+	}
+}
+
+// A forgotten or superseded memory leaves the pool at the instant it stops
+// being true, because memories_fts and the active view are refreshed inside the
+// event's own transaction.
+func TestMemoryCandidatesHoldOnlyActiveMemories(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "active.db"))
+	forgotten := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Amber key", Text: "The amber key opens the archive."})
+	retired := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Deploys on Fridays", Text: "Deploys go out on Friday afternoons."})
+	replacement, err := graph.SupersedeMemory(retired.ID, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Deploys on Tuesdays", Text: "Deploys go out on Tuesday mornings."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ForgetMemory(forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := graph.MemoryCandidates("when do we deploy the amber archive", 0)
+	if err != nil {
+		t.Fatalf("MemoryCandidates: %v", err)
+	}
+	if len(pool) != 1 || pool[0].ID != replacement.ID {
+		t.Fatalf("pool = %+v, want only the replacement %q", pool, replacement.ID)
+	}
+}
+
+// A memory carries when it was last written, resolved from the journal in the
+// same statement that read the row — because a reader that has to ask a second
+// time is a reader that renders no age at all.
+func TestAMemoryCarriesWhenItWasLastWritten(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "age.db"))
+	before := time.Now().UTC().Add(-time.Second)
+	written := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Amber key", Text: "The amber key opens the archive."})
+	got, err := graph.GetMemories([]string{written.ID})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(got), err)
+	}
+	if got[0].UpdatedAt.Before(before) || got[0].UpdatedAt.After(time.Now().UTC().Add(time.Second)) {
+		t.Fatalf("UpdatedAt = %v, want the instant the add was journaled", got[0].UpdatedAt)
+	}
+	if err := graph.UpdateMemory(written.ID, "Amber key", "The amber key opens the east archive.", nil); err != nil {
+		t.Fatal(err)
+	}
+	after, err := graph.GetMemories([]string{written.ID})
+	if err != nil || len(after) != 1 {
+		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(after), err)
+	}
+	if !after[0].UpdatedAt.After(got[0].UpdatedAt) {
+		t.Fatalf("UpdatedAt after a correction = %v, want later than %v", after[0].UpdatedAt, got[0].UpdatedAt)
+	}
+	// AN UNKNOWN AGE IS ZERO AND RENDERS AS NOTHING. A row whose journal entry
+	// predates this column has no timestamp to resolve, and that is not an error.
+	legacy := memoryPayload{ID: "mem_legacy_age", Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Legacy", Text: "An old row with no event behind its sequence."}
+	tx, err := graph.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMemoryAdd(tx, legacy, 1<<40); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := graph.GetMemories([]string{legacy.ID})
+	if err != nil || len(orphan) != 1 || !orphan[0].UpdatedAt.IsZero() {
+		t.Fatalf("a row with no event behind it = (%+v, %v), want an unknown age", orphan, err)
+	}
 }

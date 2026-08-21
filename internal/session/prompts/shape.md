@@ -67,15 +67,15 @@ brief made of them is a brief that constrains nothing.
 
 ## What you write
 
-**The title:** what this work will be called on a list beside a dozen others. At most six
+**The title:** what this work will be called on a list beside a dozen others. Two or three
 words, lowercase, no quotes and no full stop. Name the WORK — the thing that will exist
 when it is done — in the person's own vocabulary, not yours: `frieren pdf summary`,
-`nil-map crash in the reconciler`, `q3 pricing email`.
+`nil-map crash fix`, `q3 pricing email`.
 
-Only the first two or three words are usually visible, so the identifying words come
-first. Never open with the verb somebody happened to type — `can you`, `please`, `have a
-look at`, `write me` — and never with a category word that would fit any task at all:
-`task`, `request`, `work`, `analysis of`, `report on`.
+The column it is drawn in shows three words, so a fourth word is a word nobody reads.
+Never open with the verb somebody happened to type — `can you`, `please`, `have a look
+at`, `write me` — never with a file path, and never with a category word that would fit
+any task at all: `task`, `request`, `work`, `analysis of`, `report on`.
 
 **The brief:** tight paragraphs addressed to the worker in the second person. Not a form,
 not a questionnaire, not headings for their own sake. It opens with the person's request

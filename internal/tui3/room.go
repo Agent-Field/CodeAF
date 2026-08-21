@@ -1610,10 +1610,18 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// steered the node instead of opening the line under the cursor, which is the
 	// door a phone-tier press on the task's model chip now arrives through
 	// (statusdeck.go's [app.deckModelRow]).
+	//
+	// AND HOME IS ON IT FOR THE SAME REASON, and was missing from it. It takes
+	// the whole frame (view.go's [app.frame]), so while it is up there is nothing
+	// of the room on screen — and every key this function takes is a key home's
+	// own foot advertises: esc closed the room out from under the screen a person
+	// was reading instead of closing home, enter STEERED THE NODE with the
+	// sentence they had typed into home's box, and ↑↓ scrolled a page nobody
+	// could see rather than walking the column.
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.taskSheet.open, a.deckShowing(), a.pick.open, a.roster.open,
-		a.copy.on, a.welcome.open, a.menu.open, a.comp.open:
+		a.sheet.open, a.taskSheet.open, a.home.open, a.deckShowing(), a.pick.open,
+		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open:
 		return nil, false
 	}
 	// THE GUARD IS READ BEFORE THE ROOM, and it is the same rung: it is a

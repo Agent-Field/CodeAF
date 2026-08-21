@@ -197,7 +197,9 @@ func TestTasksToolReadsALandedNodeAsARow(t *testing.T) {
 		node.graph.complete(node, TaskDone)
 	})
 	id := graph.reserve()
-	graph.admit(id, taskSpec{title: "Fix the nil-map crash", brief: "b", acceptance: "a"})
+	// named, because this stands in for a proposal the model groomed and named
+	// itself — the one kind of work the namer leaves alone (taskname.go).
+	graph.admit(id, taskSpec{title: "Fix the nil-map crash", named: true, brief: "b", acceptance: "a"})
 	waitDoneNode(t, graph.node(id))
 
 	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d}`, id))
@@ -282,7 +284,10 @@ func runningStubbedNode(t *testing.T, title string) (*Agent, *TaskNode, uint64) 
 		node.graph.complete(node, TaskDone)
 	})
 	id := graph.reserve()
-	graph.admit(id, taskSpec{title: title, brief: "b", acceptance: "a"})
+	// named, because the caller passes the name it wants the row drawn under —
+	// which is what a groomed proposal does, and the one kind of work the namer
+	// leaves alone (taskname.go).
+	graph.admit(id, taskSpec{title: title, named: true, brief: "b", acceptance: "a"})
 	<-started
 	node := graph.node(id)
 	t.Cleanup(func() {

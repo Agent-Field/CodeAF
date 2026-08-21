@@ -610,6 +610,13 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// with the node the person approved, queued.
 	g.checkpoint()
 	g.runFrontier()
+	// AND THE WORK IS NAMED, on a goroutine of its own, after it has started
+	// (taskname.go). This is the one door every task in this package comes
+	// through, whoever opened it, so a node admitted with a raw sentence where
+	// its name should be gets a name whatever started it — and the node is
+	// already on the frontier before the namer is asked anything, so nothing
+	// waits for it.
+	g.nameNode(node)
 	return node.stateNow()
 }
 

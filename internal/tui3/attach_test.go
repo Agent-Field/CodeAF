@@ -128,7 +128,7 @@ func TestChoosingAPictureAttachesItInsteadOfTypingIt(t *testing.T) {
 	}
 	// The tray is a row of the input block, which is what keeps the frame, the
 	// hit-testing and the height from disagreeing about where it is.
-	if !strings.Contains(plain(frame(a)), "▣ shot.png") {
+	if !strings.Contains(plain(frame(a)), "▣ #1 shot.png") {
 		t.Fatalf("the tray is not on screen:\n%s", plain(frame(a)))
 	}
 }
@@ -202,7 +202,9 @@ func TestSubmitSendsTheAttachedBytesAndEmptiesTheTray(t *testing.T) {
 	if agent.calls != 1 {
 		t.Fatalf("SubmitImage was called %d times, want once", agent.calls)
 	}
-	if agent.text != "what is this" {
+	// The picture came off /image, so it had no token in the sentence and gets one
+	// appended: "image 1" has to mean something whichever door it came in by.
+	if agent.text != "what is this [image #1]" {
 		t.Fatalf("the message read %q", agent.text)
 	}
 	if len(agent.images) != 1 {
@@ -227,18 +229,24 @@ func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	// (pathlink.go), and TERM is whatever the shell that ran the tests exported.
 	// This test asserts on both the dim paint and the link, so it says which.
 	a.pathLinks = true
+	// Wide enough that the sentence, its two tokens and its two markers land on
+	// one row: this test is about what is drawn, not about where it wraps.
+	a.width = 100
 	a.attach(filepath.Join(dir, "shot.png"))
 	a.attach(filepath.Join(dir, "chart.png"))
 	typeLine(t, a, "what is wrong here")
 
 	body := strings.Join(plainRows(a), "\n")
-	for _, want := range []string{"what is wrong here", "[shot.png]", "[chart.png]"} {
+	// The markers carry the NUMBER as well as the name, because the sentence that
+	// went with them carries `[image #1]` and a reader has to be able to see
+	// which file that was (imagepaste.go).
+	for _, want := range []string{"what is wrong here", "[#1 shot.png]", "[#2 chart.png]"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the transcript is missing %q:\n%s", want, body)
 		}
 	}
 	// The markers follow the words rather than replacing them.
-	if strings.Index(body, "[shot.png]") < strings.Index(body, "what is wrong here") {
+	if strings.Index(body, "[#1 shot.png]") < strings.Index(body, "what is wrong here") {
 		t.Fatalf("the markers landed before the sentence:\n%s", body)
 	}
 	// And they are DIM inside the person's own bold line: the sentence is what
@@ -249,7 +257,7 @@ func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	// so the run carries an anchor and an underline the dim span did not use to
 	// have. What this test is about is unchanged: the dim opens before the
 	// markers and closes after them, with only the sentence's own bytes between.
-	if !strings.Contains(unlinked(frame(a)), a.pal.dim("[shot.png] [chart.png]")) {
+	if !strings.Contains(unlinked(frame(a)), a.pal.dim("[#1 shot.png] [#2 chart.png]")) {
 		t.Fatal("the markers are not drawn dim")
 	}
 	// AND THEY ARE DOORS. A person who attached the wrong screenshot finds out
@@ -350,8 +358,11 @@ func TestEnterSendsAPictureWithNoWords(t *testing.T) {
 	if agent.calls != 1 {
 		t.Fatalf("SubmitImage was called %d times, want once", agent.calls)
 	}
-	if agent.text != "" {
-		t.Fatalf("the message read %q, want the words empty", agent.text)
+	// It goes out as its token alone. The picture still has to be nameable — a
+	// follow-up turn saying "crop image 1" has to resolve — and a bare token is
+	// what a message of no words and one picture honestly is.
+	if agent.text != "[image #1]" {
+		t.Fatalf("the message read %q, want the picture's token alone", agent.text)
 	}
 	if len(agent.images) != 1 {
 		t.Fatalf("the message carried %d images", len(agent.images))

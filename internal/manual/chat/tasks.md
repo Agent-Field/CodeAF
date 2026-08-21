@@ -100,35 +100,49 @@ The same guidance reaches briefs the conversation model writes with `propose_tas
 part of that tool rather than as a second call: it already has the whole conversation, so
 nothing needs to be re-read for it.
 
-## Why my task is called something I did not type — who names a task, and can I rename it
+## Why my task is called something I did not type — who names a task, why a row is named after a folder path or the first few words I typed, and can I rename it
 
 The name on the roster is written by a model, not cut out of your sentence.
 
 The roster draws **three words**, and the first three words of a typed sentence are almost
-never the useful ones — “can you have…”, “please look into…”, “write me a…”. Every task
-would be named after the way you cleared your throat, and a column of them would be
-unreadable. So the same call that shapes the brief also names the work: it has just read
-the job closely enough to brief a worker about it, and it answers with a short lowercase
-name for the thing that will exist when the job is done — `frieren pdf summary`,
-`nil-map crash in the reconciler`. It is asked for at most six words and the identifying
-ones first, because only the first two or three are usually on screen.
+never the useful ones — "can you have…", "please look into…", "read /Users/…". Every task
+would be named after the way you cleared your throat, or after a path you pasted, and a
+column of them would be unreadable. So the same call that shapes the brief also names the
+work: it has just read the job closely enough to brief a worker about it, and it answers
+with a short lowercase name for the thing that will exist when the job is done —
+`frieren pdf summary`, `nil-map crash fix`. That part costs nothing extra: it is one more
+field in an answer aforge was already paying for and already waiting on.
 
-**This costs nothing extra.** It is one more field in an answer aforge was already paying
-for and already waiting on — there is no second call and no second wait.
+**Where nothing named it, a small call does.** Some work reaches the roster with no name at
+all — only the sentence it was started from: a `/task` whose shaping could not run, work
+offered on a card you said yes to, an adaptive run's own row. That title is handed to the
+cheap `taskname` role, which reads the work and answers with two or three lowercase words.
 
-**Where no model named it, your own words are used**, cut to the first eight of the first
-line. That is what happens when shaping could not run at all: no model resolved for the
-`shaper` role, a timeout, an unreadable answer. So a task named exactly what you typed is
-usually a sign the shaper did not run.
+**Work a model already named is left alone.** A task the conversation proposed with
+`propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose
+shaping ran carries the shaper's. Neither is renamed — a second call to disagree with a name
+aforge itself just wrote would be a bill for nothing. A title that is already two or three
+words with no file path in it is left alone for the same reason.
 
-**There is no command to rename a task.** The name is settled when the work is admitted and
-does not change afterwards. What you can always see is the summary underneath it, which is
-the first line of what you typed, word for word — and the room holds your whole sentence
-under `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS`. If a name is wrong, nothing about
-the work is wrong with it: the worker read the brief, not the name.
+**The work does not wait for the name.** The task is admitted, checkpointed and started
+before that call is made. Until the name lands — usually a few seconds — the roster, the
+home card, the tasks list and the task's card all show the fallback they showed before: your
+own words, cut to the first eight of the first line. When the name arrives the row simply
+changes to it. If it never arrives — no model on the class, a timeout, an answer that was
+itself a path — the fallback stays, nothing is reported, and nothing about the work is
+affected.
 
-Tasks the conversation proposes with `propose_task` are named by the model in the same
-breath, as an argument to that tool rather than by this call.
+**The name is kept with the task**, so a task that is still running when you quit comes back
+under the same name after a restart.
+
+**There is no command to rename a task.** Once a task has its name it does not change again.
+What you can always see is the summary underneath it, which is the first line of what you
+typed, word for word — and the room holds your whole sentence under `WHAT THE PERSON ASKED
+FOR, IN THEIR OWN WORDS`. If a name is wrong, nothing about the work is wrong with it: the
+worker read the brief, not the name.
+
+**A sub-harness being designed keeps its own title** — `harness · <what you asked for>` —
+because its row is read as a design and not as a task.
 
 ## Stopping the adaptive-or-single question — making adaptive or single the default
 
@@ -503,10 +517,12 @@ end — and the id stands down when the name would be left under 12 cells.
 
 **The name is the task's own title, cut to its first three words** — `Fix the nil-map`,
 `Collect the sources` — and that is the name it wears everywhere: the column, the strip
-above the conversation, its room's header, the card that lands, and the task page. A row
-reading **`task 19`** means one thing only: nothing has told aforge what that task is
-called yet. It is a name you can still say out loud, and the row takes the real one the
-moment the title arrives — including a room you already have open on it. Under the row, at
+above the conversation, its room's header, the card that lands, the home card and the task
+page. Three words is also what the `taskname` call is asked for, so a named task fits the
+column whole rather than being cut to fit it. A row reading **`task 19`** means one thing
+only: nothing has told aforge what that task is called yet. It is a name you can still say
+out loud, and the row takes the real one the moment the title arrives — including a room you
+already have open on it. Under the row, at
 most two more: what it is doing, what is holding it, what it waits on, or how its branch
 came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on the column.
 
@@ -838,6 +854,45 @@ another window · Sweep the call sites · running · running for 4m 12s
   project's record says `incomplete` against whatever it had started.
 - Inside a task this is absent too — a task is shown the pieces it handed out itself and
   nothing wider.
+
+## What is running in my other projects — ask, and the tasks tool answers everywhere
+
+The section above is about **this** project. Ask about the rest of the machine — "what
+tasks are running outside this chat", "what is running in my other projects", "is anything
+going anywhere else" — and the chat widens the same tool: it calls `tasks` with
+`scope: "everywhere"`. That word is the whole of the feature. `scope` takes `project`,
+which is the default and exactly what a search has always done, or `everywhere`.
+
+`everywhere` keeps this project's rows and this project's other windows, then adds under
+them **one group for each other project that has live work**: the project's name, its path,
+and one row for each task running there — the title, the state word, how long it has been
+going, and the files that run has already written where it says.
+
+```
+running in other projects on this machine:
+wisp · /Users/ada/code/wisp
+  another window · Port the parser · running · running for 2m 3s
+    in the window called "parser work"
+    files so far: internal/parse/lex.go
+  open here · Rewrite the docs · queued
+```
+
+- **`another window`** is a terminal somewhere else. **`open here`** is a conversation
+  *this* terminal is already holding behind this one, in that other project — reached with
+  `tab` or from `/home`, not by going and finding a window. When any row says it, one more
+  line spells that out.
+- **A project with nothing running is not listed at all** — no heading, no zero, no line.
+  Only live work is here, so a quiet machine answers with this section missing entirely.
+- A window that has closed contributes nothing: rows are read from what each conversation
+  says about itself every few seconds, and a claim nobody has refreshed is not believed.
+- **These rows carry no id**, and the chat is told why in one line: `These have no id in
+  this conversation: work running in another project cannot be read, steered or resolved
+  from here, and it lands where it is running rather than in this conversation.` So it
+  cannot stop, steer or accept another project's work for you — go to that project.
+- The whole reading is only taken when `everywhere` is asked for. An ordinary turn, and an
+  ordinary search, never look outside this project at all.
+- Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
+  itself and nothing wider.
 
 ## Searching the task page: type to filter, find an old task by name
 
