@@ -225,3 +225,94 @@ func TestWatchRefusesAPlatformItCannotKeep(t *testing.T) {
 		t.Fatal("a platform with neither launchd nor systemd was accepted")
 	}
 }
+
+// ── the drift a launch repairs ──────────────────────────────────────────────
+
+// THE DEFINITION EMBEDS THE PROGRAM'S PATH, so a binary that moves leaves a
+// timer that runs nothing. This is the reading a launch repairs on
+// (cmd/aforge's repairBackgroundChecks), on both platforms.
+func TestDriftSeesADefinitionPointingAtAnotherProgram(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		home := t.TempDir()
+		runner := &recordingRunner{}
+		// A REAL FILE, because a definition naming a program that is not there
+		// is itself drift — the case the test below is about.
+		program := filepath.Join(t.TempDir(), "aforge")
+		if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		timer, err := NewWatch(WatchOptions{
+			Platform: platform, HomeDir: home, Executable: program, UID: 501, Runner: runner,
+		})
+		if err != nil {
+			t.Fatalf("%s: NewWatch: %v", platform, err)
+		}
+		// Nothing installed at all is nothing to repair, and it is not a fault.
+		drift, err2 := timer.Drift()
+		if err2 != nil || drift.Present || drift.Stale {
+			t.Fatalf("%s: a machine with no timer = %+v (%v)", platform, drift, err2)
+		}
+		if err := timer.Install(context.Background()); err != nil {
+			t.Fatalf("%s: Install: %v", platform, err)
+		}
+		drift, err = timer.Drift()
+		if err != nil || !drift.Present || drift.Stale {
+			t.Fatalf("%s: a fresh install reads as drifted: %+v (%v)", platform, drift, err)
+		}
+		if drift.Executable != program {
+			t.Fatalf("%s: the definition names %q", platform, drift.Executable)
+		}
+		// The same machine, a program that has moved: the definition is still
+		// there and it is stale.
+		moved, err := NewWatch(WatchOptions{
+			Platform: platform, HomeDir: home, Executable: "/opt/aforge/bin/aforge",
+			UID: 501, Runner: runner,
+		})
+		if err != nil {
+			t.Fatalf("%s: NewWatch: %v", platform, err)
+		}
+		drift, err = moved.Drift()
+		if err != nil || !drift.Present || !drift.Stale {
+			t.Fatalf("%s: a moved program did not read as drift: %+v (%v)", platform, drift, err)
+		}
+		if drift.Executable != program {
+			t.Fatalf("%s: the drift did not say what it was pointing at: %q", platform, drift.Executable)
+		}
+		// And Status agrees the honest way: nothing is checking.
+		if status, err := moved.Status(); err != nil || status.Installed {
+			t.Fatalf("%s: a drifted timer claimed to be installed: %+v (%v)", platform, status, err)
+		}
+	}
+}
+
+// AND A DEFINITION THAT STILL READS RIGHT CAN STILL POINT AT NOTHING. The
+// bytes match when the program was replaced in place under its own name; they
+// also match when that name was deleted, and a timer firing at a path with no
+// program on it fails every five minutes in silence.
+func TestDriftSeesADefinitionWhoseProgramIsGone(t *testing.T) {
+	home := t.TempDir()
+	program := filepath.Join(t.TempDir(), "aforge")
+	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	timer, err := NewWatch(WatchOptions{
+		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
+		Runner: &recordingRunner{},
+	})
+	if err != nil {
+		t.Fatalf("NewWatch: %v", err)
+	}
+	if err := timer.Install(context.Background()); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if drift, err := timer.Drift(); err != nil || drift.Stale {
+		t.Fatalf("a program that is there read as drift: %+v (%v)", drift, err)
+	}
+	if err := os.Remove(program); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	drift, err := timer.Drift()
+	if err != nil || !drift.Present || !drift.Stale {
+		t.Fatalf("a program that is gone did not read as drift: %+v (%v)", drift, err)
+	}
+}

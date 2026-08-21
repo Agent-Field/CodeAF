@@ -796,7 +796,12 @@ func (a *app) registry() *config.Settings {
 			a.switchModel(slug, 0)
 			return nil
 		},
-		Applied: func(string) { a.touch() },
+		// The `background checks` row's own hand: this machine's timer, read for
+		// the row's value and turned by its write. Nil on a machine that cannot
+		// have one, and the row is then absent rather than present and refusing
+		// (internal/config's backgroundRow).
+		BackgroundChecks: a.stands.Background,
+		Applied:          func(string) { a.touch() },
 	})
 	return a.settings
 }

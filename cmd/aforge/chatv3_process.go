@@ -119,6 +119,11 @@ func openV3Process(door string) (*v3Process, error) {
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
+	// AND THE BACKGROUND CHECKS ARE PUT BACK IF THEY DRIFTED, once per process,
+	// in the background, saying nothing on screen (chatv3_standing.go). A timer
+	// naming a program that has moved is a timer that runs nothing, and this is
+	// the one moment this build knows where the program actually is.
+	startBackgroundRepair(settings.ProfileDir)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `aforge` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away

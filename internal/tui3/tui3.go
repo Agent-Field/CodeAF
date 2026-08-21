@@ -624,16 +624,30 @@ type StandingSeam struct {
 	// prints nothing, which is the emptiness law applied to a whole line.
 	Watch func() (standing.WatchStatus, bool)
 
-	// WatchAsked is the person's answer to the ONE-TIME offer to keep checking
-	// with no window open: whether they were ever asked, and what they said
-	// (internal/session's standingWatchAsked reads the marker the card writes).
+	// BackgroundTold reports whether this machine has already been told, once,
+	// that background checks are on — the marker the first standing item writes
+	// under the store root (internal/session's BackgroundTold).
 	//
 	// /status uses it for one word and one word only — why nothing is checking.
-	// "Nobody has asked you yet" and "you said no" are two different situations
-	// for the person in front of the screen, and the first has a move in it.
+	// "Nothing has ever stood here" and "the row is off" are two different
+	// situations for the person in front of the screen, and the first has a
+	// different move in it from the second.
 	//
 	// Nil is a surface that cannot tell them apart, and it says neither.
-	WatchAsked func() (keep bool, asked bool)
+	BackgroundTold func() bool
+
+	// Background is this machine's timer itself, and it is the `background
+	// checks` settings row's own hand: what the row reads is derived from
+	// [standing.Watch.Status], and turning the row installs or removes it
+	// (internal/config's backgroundRow).
+	//
+	// It is a second field beside [StandingSeam.Watch] rather than a widening
+	// of it because they answer different questions. Watch is a READING for the
+	// /status line and may one day come from somewhere this process cannot
+	// reach; this is a timer on THIS machine that can be turned on and off, and
+	// nil means there is none to turn — the row is then absent from the sheet
+	// entirely.
+	Background standing.Watch
 
 	// Ticking reports that THIS PROCESS is running the standing pass itself —
 	// the every-five-minutes walk any open window takes when it gets the store's

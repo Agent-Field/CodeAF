@@ -690,7 +690,7 @@ func TestAStandingProposalReachesTheSurfaceWithItsItemIntact(t *testing.T) {
 			Rails:     standing.Rails{PerRunUSD: 0.01, MaxPerDay: 8},
 			Status:    standing.StatusActive,
 		},
-		WhenWords: "every hour", CostWords: "about a cent a run", OfferWatch: true,
+		WhenWords: "every hour", CostWords: "about a cent a run",
 	}
 	card.Options = session.StandingOptions(card.Item)
 	e.after = func(e *engine, stream uint64) {
@@ -723,8 +723,7 @@ func TestTheStandingDoorsTravelAsTheirOwnPayloads(t *testing.T) {
 	client, e := newEngine(t)
 	agent := client.Agent()
 
-	no := false
-	agent.ResolveStanding(9, session.StandingAnswer{Change: "make it 8pm", KeepWatch: &no})
+	agent.ResolveStanding(9, session.StandingAnswer{Change: "make it 8pm"})
 	calls := e.calls(MethodStandingResolve)
 	if len(calls) != 1 {
 		t.Fatalf("ResolveStanding travelled %d times", len(calls))
@@ -735,9 +734,6 @@ func TestTheStandingDoorsTravelAsTheirOwnPayloads(t *testing.T) {
 	}
 	if answered.ID != 9 || answered.Answer.Change != "make it 8pm" {
 		t.Fatalf("standing args = %+v", answered)
-	}
-	if answered.Answer.KeepWatch == nil || *answered.Answer.KeepWatch {
-		t.Fatalf("a declined watch did not travel as a decline: %+v", answered.Answer.KeepWatch)
 	}
 
 	e.answers[MethodStandingItems] = []standing.Item{{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app"}}
