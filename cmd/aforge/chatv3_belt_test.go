@@ -22,7 +22,12 @@ func TestTheV3DoorFillsEverySeamTheBigHandsNeed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 
-	launch, err := openV3Launch(v3Options{Model: "test/model", Workspace: t.TempDir()})
+	proc, err := openV3Process("chat")
+	if err != nil {
+		t.Fatalf("the process every v3 door builds once did not open: %v", err)
+	}
+	t.Cleanup(proc.closeAll)
+	launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatalf("the launch every v3 door assembles through did not open: %v", err)
 	}

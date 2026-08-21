@@ -1,6 +1,9 @@
 package tui3
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // ── A SESSION ON ANOTHER MACHINE ────────────────────────────────────────────
 //
@@ -121,6 +124,34 @@ func (a *app) hosted() bool { return a.host != "" }
 // used to see ~/.aforge/v3/projects/-home-someone/9f3c…/work, which is a true
 // path and a useless sentence.
 const ownedWord = "aforge"
+
+// placeShown is the whole rule for what the status line calls a conversation's
+// directory, in one function because there are now two moments that ask it: the
+// surface being built, and a conversation being taken up in front of the one
+// that was there ([app.takeUp]). A second spelling of this would drift, and the
+// way it would drift is that a conversation opened later would print a path
+// where the first one printed a name.
+//
+// THE PLACE CARRIES THE MACHINE (this file's header): on a remote session every
+// rendering of where-you-are reads `devbox:app`, because the connection is shown
+// as the place and is shown nowhere else.
+//
+// AND AN OWNED SESSION IS NAMED, NOT PATHED ([ownedWord]). The base name of an
+// owned workspace is the literal word "work", which is the least informative
+// thing the status line could possibly say about where a person is.
+func placeShown(workspace string, owned bool, host string) string {
+	shown := ""
+	if workspace != "" {
+		shown = filepath.Base(workspace)
+	}
+	if owned {
+		shown = ownedWord
+	}
+	if host != "" && shown != "" {
+		shown = host + ":" + shown
+	}
+	return shown
+}
 
 // placeWord is the place as it should be READ: the workspace's own name when
 // the session borrowed a project, and [ownedWord] when it owns its workspace.
