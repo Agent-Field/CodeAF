@@ -74,11 +74,15 @@ func (a *app) progressHarnessRoom(ev session.Event) {
 	if ev.Attempts > 1 {
 		parts = append(parts, fmt.Sprintf("attempt %d/%d", ev.Attempt, ev.Attempts))
 	}
-	tail := strings.TrimSpace(ev.ThoughtTail)
-	if tail != "" {
-		tail = firstLineOf(tail)
-	} else {
-		tail = strings.TrimSpace(ev.Hint)
+	// THE HINT COMES FIRST IN HERE, the opposite of the feed card's order. The
+	// room already streams the designer's reasoning in full, so a snippet of
+	// ThoughtTail on this row would repeat the prose scrolling right above it —
+	// while the hint ("naming it: X", "4 steps so far", "receiving · 12.3 KB")
+	// is the JSON half of the stream, which the room deliberately never shows
+	// (session's designSeat.says) and this row is the only place to read.
+	tail := strings.TrimSpace(ev.Hint)
+	if tail == "" {
+		tail = firstLineOf(strings.TrimSpace(ev.ThoughtTail))
 	}
 	if tail != "" {
 		parts = append(parts, tail)
