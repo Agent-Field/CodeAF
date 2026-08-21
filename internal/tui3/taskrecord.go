@@ -93,6 +93,9 @@ const (
 	// because a card with no close button to aim at has to make its edges mean
 	// something.
 	taskCardHitBack
+	// phone lane: taskCardHitMention is the foot's second band, where the keys
+	// line becomes two targets a thumb can hit (taskphone.go).
+	taskCardHitMention
 )
 
 // ── opening, and reading the journal ────────────────────────────────────────
@@ -283,10 +286,18 @@ func (a *app) taskCardScroll(delta int) {
 
 // taskCardPress resolves a click on the card. Its edges are the way back and
 // its body is read, which is [app.expandPress]'s own shape.
-func (a *app) taskCardPress(y int) {
+func (a *app) taskCardPress(x, y int) {
 	width, height := a.size()
 	_, hits, _, _ := a.taskCardFrame(width, height)
-	if y < 0 || y >= len(hits) || hits[y] != taskCardHitBack {
+	if y < 0 || y >= len(hits) {
+		return
+	}
+	// phone lane: the foot is two bands rather than one way out (taskphone.go).
+	if hits[y] == taskCardHitMention {
+		a.taskCardBarPress(x)
+		return
+	}
+	if hits[y] != taskCardHitBack {
 		return
 	}
 	a.closeTaskRecord()
@@ -338,7 +349,13 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
-	add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitBack)
+	// phone lane: the keys line becomes bands a thumb can hit (taskphone.go).
+	if taskCardPhone(width) {
+		line, _ := a.taskCardBar(width)
+		add(line, taskCardHitMention)
+	} else {
+		add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitBack)
+	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
 	// this is, and how to leave. It is [app.taskSheetFrame]'s own trim.

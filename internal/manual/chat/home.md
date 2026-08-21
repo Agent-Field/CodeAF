@@ -1054,3 +1054,89 @@ off. Whole facts move onto following rows: the final key, branch fact, file age,
 time, news text, task file count or cost, and answer chip remain visible. A single clause
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
+
+## Home on a phone — waiting on you, running, since you left
+
+Under **60 columns** home stops being a directory of projects and becomes an **inbox**
+across all of them. It is the same screen and the same data; the shape is what changes,
+because a phone-width frame is walked one row at a time rather than scanned.
+
+Top to bottom:
+
+1. `waiting on you` — every conversation stopped on a question, every standing item that
+   needs a look, and every `ask here` errand holding a card, from **any** project.
+2. `running` — everything with work in flight, wherever it is.
+3. `since you left` — what landed while you were not in the room: a note left in a
+   conversation's inbox or in a project's, and any task that finished after the last
+   thing you said in that conversation.
+4. **The projects.** This window's own project is drawn open with its remaining rows; every
+   other project is one folded line — `▸ wisp   6 · 2d` — exactly as the `elsewhere`
+   block draws them, without the rule line.
+
+Each section shows **three rows** and folds the rest into `▸ …N more`; `enter` or a tap on
+that line opens it in place. A section with nothing in it is not drawn at all, so a quiet
+machine shows only its projects. **A row appears once**: a conversation lifted into
+`waiting on you` is not drawn again under its project.
+
+Every row is **two lines** — the label, and its dim tail indented under it — which is the
+two-line law every list keeps at this width.
+
+**Typing still searches**, and a search has no sections and no tiers: the matches rise out
+of the box exactly as they do at every other width, with `? ask here` and
+`+ start a new conversation` against it at the foot.
+
+A tap on a section's heading folds that section away. Mouse motion does nothing at this
+width — there is no hover on glass — and every key still works, because a phone with a
+hardware keyboard is a laptop.
+
+## Opening a row on a phone — the sheet, and ‹ back
+
+There is no second column under 60 columns, so `enter` — or a **tap**, in one gesture
+rather than two — opens the row's card over the **whole frame**. The top row reads
+`‹ back`, the title and the place are under it, and everything below is the same bands
+the card draws on a wide screen.
+
+The order is what you can act on first: the answers, then the state, then
+`since you left`, then the work, then what is next, then where it left off, then the
+files it produced. The repository, the keys and the spend are behind one `▸ more` at the
+foot; `m`, or a tap on that line, opens it.
+
+Keys on the sheet:
+
+| key | what it does |
+| --- | --- |
+| `esc`, `←`, or a tap on `‹ back` | back to the inbox, with the cursor exactly where it was |
+| `enter`, or a tap on the title | open the conversation this card is about |
+| `↑` `↓` `PgUp` `PgDn` `g` `G` | scroll the card |
+| a digit | answer the question the card is showing |
+| `m` | open everything behind `▸ more` |
+| `p` / `s` | on a standing item: pause it, stop it |
+
+A frame too short for all the bands **drops them from the bottom** — never the title and
+never the answers.
+
+An `ask here` errand is one kind of sheet rather than a shape of its own: it opens the
+exchange pane over the frame, the box at the foot is the errand's, and `tab` or `esc`
+gives the keyboard back to the inbox with the row still standing on it.
+
+**Rotating the phone costs nothing.** Crossing 60 columns swaps the inbox for the
+two-column screen and back; a sheet open at 55 columns is simply the right pane's subject
+at 90, and the cursor, what you typed and any errands are all still there.
+
+## Approve a command from your phone — the answer bands
+
+On a wide screen the answers to another window's question are chips on one row —
+`1 allow once · 2 always · 3 deny`. Under 60 columns the same answers are drawn as
+**full-width bands on the sheet**, one to a row, in the consent sheet's own shape: the
+digit on the left, the label beside it, and the **whole row** is the target. A tap
+anywhere on the band gives that answer, and so does the digit.
+
+It is the same act and the same rules as at any width: the answers are the ones **that
+session offered**, a window this one cannot reach is not answered, and once a key lands
+the band reads `answered · waiting for it to pick that up` until the other session takes
+it. A window with no way to leave an answer draws no bands at all.
+
+The bar under the box is the phone's legend: at most three wide targets, drawn like the
+answer bands but dim — `open · new · ask here` on the inbox, `‹ back · open · more` on a
+sheet, `‹ back · send · more` on an errand. Tap one, or press the key it names. Below
+width **24** the plain hint line is drawn instead.

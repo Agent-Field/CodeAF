@@ -287,6 +287,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never drawn in it. The page now says what is drawn and when, and this
 		// is the sentence a person types when it looks like nothing happened.
 		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		// The wave that gave home a phone shape. Three sentences a person types
+		// with the terminal in one hand: what this screen even is at that width,
+		// how to answer another window's question from it, and how to reach a
+		// task without a keyboard.
+		{"how do I use home on my phone", "home"},
+		{"how do I approve a command from my phone", "home"},
+		{"how do I open a task by tapping", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
