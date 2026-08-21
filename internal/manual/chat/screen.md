@@ -1007,7 +1007,9 @@ settle: neither is waiting on the other's row.
 **The turn ended around it.** An interrupt, a lost connection, or an attempt the session
 retried can leave a call with no result coming. That row stops where it is, keeps a dim
 `·`, and shows no duration — nobody measured one. It is not marked failed, because
-nobody watched what became of it.
+nobody watched what became of it. A request the session **cut and sent again** — a model
+that went quiet, a reply that came apart — settles its rows the same way, in the same
+breath as it drops that attempt's text.
 
 If a row is spinning and the state word at the bottom says `idle`, that is a bug worth
 reporting: nothing spins on an idle session.
@@ -1429,8 +1431,9 @@ moving, two spaces then a pulsing ellipsis cycles `·` → `··` → `···` i
 is appended in dim. It is suppressed entirely while text is actively streaming, while
 any tool call is spinning, and while a sub-harness run has a step on the row under it
 (see *Saved shapes of work*) — two answers to "is this alive?" is one too many. It says
-"still working" and never "retrying": this screen does not know whether the session is
-retrying, only that the stream has been silent. When the reply has not started at all —
+"still working" and never "trying again": a silence is only a silence to this suffix, and
+the words change to "trying again" solely when the session has actually cut the request
+and re-sent it, which it says outright. When the reply has not started at all —
 a request is out and nothing has come back — the more specific waiting line below
 replaces this suffix instead of sitting beside it.
 
@@ -1464,22 +1467,61 @@ The model is its **basename**, the way the status deck's chip spells it — `kim
 `moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
 
 **What it claims, and what it does not.** It claims only that a request went out and the
-stream has said nothing since. It never says "retrying", "the network is slow", or "the
-model is thinking" — this screen cannot see the wire and does not pretend to. So
+stream has said nothing since. It never says "the network is slow" or "the model is
+thinking" — this screen cannot see the wire and does not pretend to. So
 `waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
 it is still there and still waiting, which is the one thing a bare ellipsis could not tell
 you apart from a hung program.
 
 **Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
-painting; a clock that has stopped means it is not. Nothing here kills the request on your
-behalf and there is no cancel-and-ask-again — the wait runs until the answer starts, the
-session's own retries resolve it, or you stop it. `esc` interrupts the turn.
+painting; a clock that has stopped means it is not. `esc` interrupts the turn at any point.
 
 **It never runs under a tool call.** A tool that is executing has its own spinner and its
 own count-up, and the ellipsis stands down for it entirely. This clock is only for the
 window between a request going out and the stream first speaking, so after a three-minute
 `go test` the request that follows starts the clock at zero rather than inheriting the
 call's runtime.
+
+## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go
+
+Sometimes the wait line stops naming a model and reads this instead:
+
+```
+  ··· trying again · 12s
+```
+
+That is the session having **cut the request and sent it again**, and it is the one thing
+this line ever says that it did not work out for itself — it is reported, never guessed.
+Two things get a request cut: the model stopped writing (see *Models, context, and what it
+costs* for the exact clocks), or the reply came apart into repetition or jumbled text.
+A dim line lands in the conversation saying which:
+
+```
+  nothing came back from the model — asking again
+  the model went quiet mid-reply — asking again
+  the reply lost its thread — that text was dropped, asking again
+```
+
+The model is **not** named on `trying again`. The name was on the line that was just cut,
+and repeating it would suggest the second attempt went somewhere else; it did not. There
+is no grace on this one either — the plain wait hides its clock for four seconds, and this
+appears at once, because you have just watched something disappear and are owed the reason.
+
+**Where the text went.** If the reply had started, what you were reading is **removed from
+the screen**, and it is removed because it was removed everywhere: none of it is in the
+conversation, none of it is in the session file, and none of it is sent back to the model
+on the retry. Any tool call that was still arriving when the cut happened stops where it
+is and keeps its row.
+
+This is the one place aforge takes something off the page that you watched arrive, and the
+difference from an interrupt is exactly that. When **you** press `esc`, the half-written
+reply is kept — it is real work you watched happen, and it stays in the conversation. When
+the session cuts a request, nothing of that attempt exists anywhere, so leaving it on
+screen would show you an answer the model never gave and will never read.
+
+**Anything you typed is untouched.** A message you sent while the reply was coming is held
+above the message box exactly as before (see *Keys, typing, and the mouse*); the retry has
+no opinion about it.
 
 ## The dim line under a finished turn
 

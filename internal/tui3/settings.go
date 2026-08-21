@@ -304,6 +304,16 @@ var settingUI = map[string]settingMeta{
 		about: "where a conversation goes when no endpoint will take the request: " +
 			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
 	},
+	// It sits with the model rows and not with the approval ones because the
+	// question it answers is about a MODEL'S OUTPUT rather than about what aforge
+	// is allowed to do on your behalf: the row decides what happens when the
+	// model on the row above stops writing language.
+	config.KeyReplyGuard: {
+		tab: tabProviders, label: "reply guard", widget: widgetCycle,
+		about: "on cuts a reply that has come apart — one line or one letter " +
+			"repeated, alphabets mixed inside words — throws it away and asks " +
+			"once more. Code blocks are never judged.",
+	},
 	config.KeySpendRail: {
 		tab: tabSession, label: "session ceiling", widget: widgetText,
 		about: "what one conversation may spend before it stops starting turns. " +

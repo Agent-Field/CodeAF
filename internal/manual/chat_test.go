@@ -262,6 +262,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I close aforge", "keys"},
 		{"ctrl+c didn't quit", "keys"},
 		{"why doesn't ctrl+c close it", "keys"},
+
+		// The sixteenth wave: the reply that came apart. A real conversation on
+		// 2026-08-20 watched deepseek-v4-pro collapse twice at 150k tokens —
+		// paragraphs of mixed-alphabet soup, then several thousand repetitions of
+		// one line — and both were recorded and re-sent. aforge now cuts a reply
+		// like that, drops it everywhere including the screen, and asks again. So
+		// a person watches an answer they were reading VANISH, sees words they
+		// have never seen before in its place, and asks these. The two halves are
+		// on two pages on purpose: what is on the screen is the screen's, and what
+		// the model did is the model's.
+		{"why did the reply restart", "screen"},
+		{"it says trying again", "screen"},
+		{"where did the answer that was on screen go", "screen"},
+		{"the text it was writing disappeared", "screen"},
+		{"stuck on waiting for the model", "screen"},
+		{"the model was printing garbage", "models-and-cost"},
+		{"the reply came back as gibberish", "models-and-cost"},
+		{"it started repeating the same line over and over", "models-and-cost"},
+		{"how do I turn off the reply guard", "models-and-cost"},
+		{"the model stopped answering halfway through", "models-and-cost"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

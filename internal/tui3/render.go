@@ -651,6 +651,7 @@ const stillWorkingWord = " · still working"
 //	···                                                    under four seconds
 //	··· waiting for kimi-k3 · 12s                          past them
 //	··· waiting for kimi-k3 · 47s · nothing has come back yet
+//	··· trying again · 12s                                 after a cut stream
 //
 // THE DEFECT THIS FIXES: [stillWorking] above is measured from [app.lastDelta],
 // which is the last thing the stream SAID — so it describes a turn that spoke
@@ -663,9 +664,15 @@ const stillWorkingWord = " · still working"
 // WHAT THE LINE IS ALLOWED TO CLAIM is bounded by what the surface can see, and
 // the surface cannot see the wire. It knows a request went out ([app.awaited]),
 // it knows the stream has said nothing since, and it knows which model the
-// conversation is pointed at. So it says exactly that and no more: not
-// "retrying", not "the network is slow", not "the model is thinking" — the
-// surface does not know any of those and two of them are frequently false.
+// conversation is pointed at. So it says exactly that and no more: not "the
+// network is slow", not "the model is thinking" — the surface does not know
+// either of those and both are frequently false.
+//
+// "TRYING AGAIN" IS THE ONE EXCEPTION, and only because it stopped being a
+// guess. The engine cuts a request that has gone quiet or come apart and says so
+// (session.EventRetrying, internal/provider's streamguard.go), so on that one
+// event — and never by inference from a long wait — the words change. A wait
+// nobody reported a retry for still reads "waiting for", however long it runs.
 //
 // IT NEVER RUNS UNDER A CALL. A tool that is executing has its own spinner and
 // its own count-up (toolview.go), and [app.ellipsis] has already stood the
@@ -694,6 +701,12 @@ const (
 	// than an alarm: the request is out, and the answer is that nothing has
 	// arrived. It deliberately does not say whose fault that is.
 	waitLongWord = " · nothing has come back yet"
+	// retryWord replaces the whole "waiting for <model>" half while the request
+	// on the wire is a SECOND attempt. The model is not named on it: the name was
+	// on the line that was just cut, and naming it again would suggest the retry
+	// went somewhere else. It waits out no grace, because the person has just
+	// watched an answer disappear and is owed the reason immediately.
+	retryWord = " trying again"
 )
 
 // waitingWords is the dim tail on the pulse while a model request is
@@ -710,12 +723,15 @@ func (a *app) waitingWords() string {
 		return ""
 	}
 	waited := time.Since(a.awaited)
-	if waited < waitingGrace {
+	if waited < waitingGrace && !a.retrying {
 		return ""
 	}
 	word := waitBareWord
-	if name := modelBase(a.model); name != "" {
-		word = waitForWord + name
+	switch {
+	case a.retrying:
+		word = retryWord
+	case modelBase(a.model) != "":
+		word = waitForWord + modelBase(a.model)
 	}
 	if clock := countUpWord(waited); clock != "" {
 		word += " · " + clock

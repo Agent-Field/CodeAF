@@ -346,6 +346,24 @@ const (
 	//
 	// A surface that ignores this kind is exactly what it was.
 	EventToolFinished
+	// EventRetrying says THIS STEP IS BEING ASKED AGAIN, and that whatever the
+	// dead attempt streamed is void. Text carries the one line explaining why —
+	// "nothing came back from the model — asking again", "the reply lost its
+	// thread — that text was dropped, asking again".
+	//
+	// It fires when the stream guard cut a request (internal/provider's
+	// streamguard.go): the endpoint went quiet, or the reply stopped being
+	// language. The turn loop has already thrown away that attempt's partial
+	// text, its early reads and its half-arrived calls, so A SURFACE MUST THROW
+	// AWAY WHAT IT DREW FOR THEM TOO — everything after the last thing the person
+	// typed belongs to a response that will never exist, and leaving it on screen
+	// would show half a dead answer above the live one.
+	//
+	// It is also the one place a surface learns that a wait is a RETRY rather
+	// than a first attempt, which is the difference between "waiting for" and
+	// "trying again". It never ends a turn: either the next attempt streams, or
+	// EventError arrives with the sentence about giving up.
+	EventRetrying
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -723,6 +741,14 @@ type Config struct {
 	// 'done' stops meaning 'proven'. The config row (task.audit) defaults on.
 	TaskAudit bool
 	Guardian  bool
+
+	// ReplyGuardOff turns off the watch on replies that stop being language
+	// (internal/provider's streamguard.go). The config row (reply.guard)
+	// defaults ON, and this field is spelled as the OFF state so that a Config
+	// nobody filled in keeps the guard rather than silently losing it.
+	//
+	// It says nothing about the silence watchdog beside it, which has no switch.
+	ReplyGuardOff bool
 
 	// TaskSettle is who decides a task that landed needing a look — the
 	// `task.settle` row, as the person set it ([TaskSettle]). Empty is
