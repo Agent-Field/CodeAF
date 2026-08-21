@@ -57,8 +57,8 @@ func TestAnUnreadableToldStampIsNoOriginRatherThanAGuess(t *testing.T) {
 func TestTheDeltaLeavesThisSessionsOwnLandingsOut(t *testing.T) {
 	ended := time.Now().Add(-10 * time.Minute)
 	rows := []TaskIndexEntry{
-		landedRow("1", "mine", "Fix the nil-map crash", ended),
-		landedRow("4", "theirs", "Sweep the call sites", ended),
+		deltaLandedRow("1", "mine", "Fix the nil-map crash", ended),
+		deltaLandedRow("4", "theirs", "Sweep the call sites", ended),
 	}
 	got := landedElsewhere(rows, []string{"mine"}, ended.Add(-time.Hour), deltaLandedRows)
 	if len(got) != 1 {
@@ -73,7 +73,7 @@ func TestTheDeltaSaysNothingWhenNothingHappened(t *testing.T) {
 	now := time.Now()
 	rows := []TaskIndexEntry{
 		// Landed BEFORE the moment this session was told, so it is not news.
-		landedRow("1", "theirs", "Sweep the call sites", now.Add(-2*time.Hour)),
+		deltaLandedRow("1", "theirs", "Sweep the call sites", now.Add(-2*time.Hour)),
 		// Still running, so it is the present half's to report and not this one's.
 		{ID: "2", Label: "Port the parser", Status: string(TaskRunning), SessionID: "theirs"},
 	}
@@ -89,7 +89,7 @@ func TestTheDeltaKeepsTheNewestLandingsAndCapsTheRest(t *testing.T) {
 	now := time.Now()
 	var rows []TaskIndexEntry
 	for at := 0; at < deltaLandedRows+4; at++ {
-		rows = append(rows, landedRow(string(rune('a'+at)), "theirs", "Task", now.Add(-time.Duration(at)*time.Minute)))
+		rows = append(rows, deltaLandedRow(string(rune('a'+at)), "theirs", "Task", now.Add(-time.Duration(at)*time.Minute)))
 	}
 	got := landedElsewhere(rows, []string{"mine"}, now.Add(-time.Hour), deltaLandedRows)
 	if len(got) != deltaLandedRows {
@@ -180,7 +180,7 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 		PresenceTask{ID: "4", Title: "Sweep the call sites", State: string(TaskRunning),
 			Files: []string{"internal/session/agent.go"}})
 	appendTaskIndex(filepath.Join(bucket, taskIndexName),
-		landedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
+		deltaLandedRow("1", "theirs", "Fix the nil-map crash", time.Now().Add(-time.Minute)))
 
 	agent := &Agent{config: Config{Place: Place{Dir: mine, Workspace: "/work/aforge"}}}
 	agent.messages = []ai.Message{textMessage("system", "base")}
@@ -318,10 +318,10 @@ func TestAQueuedRowInAnotherWindowCarriesNoAge(t *testing.T) {
 	}
 }
 
-// landedRow is one FINISHED row of the project's index, as another window wrote
+// deltaLandedRow is one FINISHED row of the project's index, as another window wrote
 // it. It is [indexRow] with the two facts the delta reads: when it ended, and
 // what it wrote.
-func landedRow(id, session, title string, ended time.Time) TaskIndexEntry {
+func deltaLandedRow(id, session, title string, ended time.Time) TaskIndexEntry {
 	row := indexRow(id, session, title, string(TaskDone))
 	row.EndedAt = ended
 	row.Outcome = "Added the guard and the regression test; the parser suite passes."
