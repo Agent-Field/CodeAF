@@ -283,6 +283,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I ask two things from home at once", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
+		// The e2e suite found the firing that reached a conversation and was
+		// never drawn in it. The page now says what is drawn and when, and this
+		// is the sentence a person types when it looks like nothing happened.
+		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

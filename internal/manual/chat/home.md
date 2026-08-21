@@ -932,6 +932,13 @@ page has the whole order):
 ∙ remind me at 6 to leave · stopped
 ```
 
+**When the line appears.** If the chat is open when the thing fires, the line is
+drawn **at once**, the moment the firing arrives — not when the reply comes, and
+not when you next type. Whatever the chat then says about it is a separate turn
+underneath. If the chat was **shut** when it fired, the same line is drawn when
+you open it: one row for each thing that was waiting, oldest first, above the
+first thing you type.
+
 That is the whole of it. **A check that found nothing writes nothing** — a watch
 that ran faithfully for thirty mornings and found nothing leaves your
 conversation exactly as quiet as it was, and the row on home is where you go to
@@ -1027,11 +1034,18 @@ Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are presen
 adds a dim `▸ …N more items` door; `m` opens it. Paused, stopped, and absent items draw
 nothing.
 
-## What has this conversation cost — tokens and last activity on home
+## What has this conversation cost — what the spend band on home counts
 
 The dim spend band can read `spent $1.25 · 34k tokens · last active 12m`. Each clause is
 independent: zero or unknown spend and tokens are omitted, and a line with no true fact
 is not drawn. Home has no additional run-count clause when that fact is unavailable.
+
+**It counts the tasks this conversation ran, and not the talking.** The figure comes from
+the project's task index — every task and every unattended run this conversation started —
+so a chat that only talked shows no spend band at all, however many turns it took. Home
+reads a session folder without opening its transcript, and the transcript is the only
+place a turn's own price is written. To see what the talking cost, open the conversation
+and type `/cost` or `/status`: those read the live session and answer for the turns too.
 
 ## What a narrow home card does with a long row
 

@@ -383,6 +383,15 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
 	}
 	if agent != nil {
+		// THE ROW FIRST, THE MODEL SECOND. The person is owed the news itself —
+		// one dim line in the conversation they are sitting in — and they are
+		// owed it whether or not the model has anything to add and whether or
+		// not the wake below is even allowed to start a turn (the rail, a turn
+		// already running, a session mid-close all decline it). Drawing it here,
+		// before the steering line goes on the queue, is what makes the order on
+		// screen the order it happened in: the firing, then whatever is said
+		// about it.
+		agent.emitStandingNews(standingUpdateWord(kind), item, text)
 		agent.enqueueSteering(standingSteeringLine(item, text))
 		return
 	}
@@ -410,12 +419,56 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 	_ = standing.Deliver(dir, note)
 }
 
+// standingUpdateWord maps a firing's outcome onto the word a surface draws a
+// row with ([StandingNotice.Update], and internal/tui3's standUpdateWord for
+// the four shapes it turns into).
+//
+// TWO KINDS OF SUCCESS ARE ONE PIECE OF NEWS. A reminder that SAID something
+// and overnight work that LANDED something are different work and the same
+// sentence to the person reading the row — "it ran, here is what it came to" —
+// so both wear "fired" and the text carries the difference.
+func standingUpdateWord(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "needs-you":
+		return "needs-you"
+	case "failed":
+		return "failed"
+	}
+	return "fired"
+}
+
 // standingSteeringLine is the shape a firing takes in a live conversation: the
 // glyph every surface leads a standing row with, the person's own words, and
 // what happened. It reads as one line of news and not as a machine reporting.
+//
+// ── AND IT SAYS, IN WORDS, THAT IT IS NEWS ──
+//
+// THE MODEL MUST NOT RE-PROPOSE ITS OWN FIRING. A bare `◦ remind me in 1 minute
+// to drink water: 💧 Time to drink water!` arriving as a user-role message is,
+// read cold, indistinguishable from somebody typing that sentence — and both
+// end-to-end suites watched the model read it exactly that way and call `stand`
+// again, so a one-off reminder proposed itself a second time the moment it
+// fired. The fix belongs here, at the source, and not in a rule downstream: the
+// text the engine injects is the only thing the model sees.
+//
+// The framing is for the MODEL ALONE. A surface draws the row from the item's
+// own words and the outcome's text ([Agent.emitStandingNews]), never from this
+// string, so nothing a person reads carries the brackets.
 func standingSteeringLine(item standing.Item, text string) string {
-	return "◦ " + item.Words + ": " + strings.TrimSpace(text)
+	return standingNewsFrame + " ◦ " + item.Words + ": " + strings.TrimSpace(text) +
+		"\n" + standingNewsRule
 }
+
+const (
+	// standingNewsFrame opens the injected line, so the very first tokens of the
+	// message say what kind of message it is.
+	standingNewsFrame = "[something you set up fired]"
+	// standingNewsRule is the one sentence under it: what to do, and what not to
+	// do. It names the tool it is forbidding, because a model that has `stand`
+	// on its belt reads a reminder as a request to make one.
+	standingNewsRule = "— this already happened. Relay it to the person in one line. " +
+		"Do not call stand again for it; it is already set up."
+)
 
 // standingSessionDir is the folder the origin conversation keeps its inbox in.
 // It is derived from the transcript rather than stored, because the transcript
@@ -788,6 +841,45 @@ func (a *Agent) drainStandingInbox() {
 	// folds with two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
 	a.enqueueAmbientNote(standingAwayNote(notes))
+	a.queueStandingNews(notes)
+}
+
+// queueStandingNews turns the fold into what the SCREEN reads: one dim row per
+// thing that fired, in the order it fired, exactly as a firing into a live
+// window draws ([Agent.emitStandingNews]).
+//
+// ONE FOLD FOR THE MODEL, ONE ROW PER FIRING FOR THE PERSON, and the two counts
+// differ on purpose. The note above is context nobody asked for and it is one
+// paragraph because six of them would be six things to read before the sentence
+// the person came for. The rows are the conversation's own record of what
+// happened in it, and a person scrolling back is owed the same line for a
+// reminder that fired at 3am as for one that fired while they watched — the
+// alternative is a screen on which "where did that come from" has two answers.
+//
+// It is QUEUED AND NOT SENT: this runs inside New, where nobody is subscribed
+// yet (see [Agent.standingNews]).
+func (a *Agent) queueStandingNews(notes []standing.Note) {
+	news := make([]Event, 0, len(notes))
+	for _, note := range notes {
+		// A note with nothing to say keeps nothing to say. The row's own word for
+		// that is "ran" (internal/tui3's standUpdateWord), and the run folder —
+		// which the fold above does carry, because the model can open it — is a
+		// path and not a sentence a person reads off a dim line.
+		news = append(news, Event{Kind: EventStandingUpdate, Tool: "stand", Standing: &StandingNotice{
+			// The note is all that survived the firing: the item itself may have
+			// retired hours ago, so the row is built from the words and the id
+			// the note kept rather than from a store lookup that can fail.
+			Item:   standing.Item{ID: note.ItemID, Words: note.Words},
+			Update: standingUpdateWord(note.Kind),
+			Text:   strings.TrimSpace(note.Text),
+		}})
+	}
+	if len(news) == 0 {
+		return
+	}
+	a.mu.Lock()
+	a.standingNews = append(a.standingNews, news...)
+	a.mu.Unlock()
 }
 
 // drainProjectInbox empties the PROJECT's inbox — what fired for this workspace
