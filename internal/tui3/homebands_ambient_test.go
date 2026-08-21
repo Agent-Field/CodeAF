@@ -29,7 +29,7 @@ func TestNewsBandReadsWithoutDrainingFoldsAndFits(t *testing.T) {
 	a := newTestApp(nil)
 	rows := drawNewsBand(a, ambientBandContext(a, row, now, 34))
 	got := plain(strings.Join(rows, "\n"))
-	if !strings.Contains(got, "◆ 4 things since you left") || !strings.Contains(got, "1m · keep main green · report") || !strings.Contains(got, "▸ …1 more things") {
+	if !strings.Contains(got, "◆ 4 things since you left") || !strings.Contains(got, "1m · keep main green") || !strings.Contains(got, "report landed") || !strings.Contains(got, "▸ …1 more things") {
 		t.Fatalf("news band:\n%s", got)
 	}
 	if _, err := os.Stat(standing.InboxPath(dir)); err != nil {
@@ -40,6 +40,7 @@ func TestNewsBandReadsWithoutDrainingFoldsAndFits(t *testing.T) {
 			t.Fatalf("news row is %d cells: %q", ansi.StringWidth(line), plain(line))
 		}
 	}
+	assertNarrowRows(t, "news", drawNewsBand(a, ambientBandContext(a, row, now, 30)), 30, "report landed")
 	empty := session.SessionRow{Transcript: filepath.Join(t.TempDir(), session.TranscriptName)}
 	if got := drawNewsBand(newTestApp(nil), ambientBandContext(newTestApp(nil), empty, now, 34)); len(got) != 0 {
 		t.Fatalf("empty news drew %q", got)
@@ -63,7 +64,7 @@ func TestDeliverablesBandFiltersSessionFoldsAndFits(t *testing.T) {
 	row := session.SessionRow{ID: "mine", Transcript: filepath.Join(dir, "mine", session.TranscriptName)}
 	rows := drawDeliverablesBand(a, ambientBandContext(a, row, now, 24))
 	got := plain(strings.Join(rows, "\n"))
-	if !strings.Contains(got, "four.txt · 4h") || !strings.Contains(got, "▸ …1 more files") || strings.Contains(got, "other.txt") {
+	if !strings.Contains(got, "four.txt") || !strings.Contains(got, "· 4h") || !strings.Contains(got, "▸ …1 more files") || strings.Contains(got, "other.txt") {
 		t.Fatalf("deliverables band:\n%s", got)
 	}
 	for _, line := range rows {
@@ -71,6 +72,7 @@ func TestDeliverablesBandFiltersSessionFoldsAndFits(t *testing.T) {
 			t.Fatalf("deliverable row is %d cells: %q", ansi.StringWidth(line), plain(line))
 		}
 	}
+	assertNarrowRows(t, "deliverables", drawDeliverablesBand(a, ambientBandContext(a, row, now, 30)), 30, "4h")
 	empty := session.SessionRow{ID: "none", Transcript: filepath.Join(dir, "none", session.TranscriptName)}
 	if got := drawDeliverablesBand(a, ambientBandContext(a, empty, now, 24)); len(got) != 0 {
 		t.Fatalf("empty deliverables drew %q", got)

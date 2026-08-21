@@ -115,6 +115,16 @@ func TestHomeDrawsTheAnswersToAnotherWindowsQuestion(t *testing.T) {
 	}
 }
 
+func TestANarrowAnswerBandKeepsEveryChip(t *testing.T) {
+	question := consentQuestion(7, "needs your ok to run bash")
+	lab := newAnswerLab(t, question, time.Now())
+	rows := lab.a.answerChipLines(question, 30, lab.a.pal)
+	assertNarrowRows(t, "answer", rows, 30, "3 deny")
+	if len(rows) < 2 {
+		t.Fatalf("narrow chips stayed on one row: %q", plain(strings.Join(rows, "\n")))
+	}
+}
+
 // A WINDOW WITH NOWHERE TO LEAVE AN ANSWER OFFERS NONE. The absence law: chips
 // that did nothing would be worse than the walk they promised to save.
 func TestHomeOffersNoAnswerWithNoSeamToLeaveOneOn(t *testing.T) {
