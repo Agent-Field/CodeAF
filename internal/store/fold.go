@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -25,7 +24,7 @@ func (s *Store) Fold(subtreeRoot, digest string, pointers []string) error {
 	digest = strings.TrimSpace(digest)
 	pointers = uniqueStrings(pointers)
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("fold %q: %w", subtreeRoot, err)
 	}

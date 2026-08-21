@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -157,7 +156,7 @@ func (s *Store) RaiseTaskCeiling(root string, amount float64, origin string) err
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return fmt.Errorf("raise task ceiling: %w: positive amount is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("raise task ceiling: %w", err)
 	}
@@ -197,7 +196,7 @@ func (s *Store) ClearTaskCeiling(root, origin string) error {
 }
 
 func (s *Store) journalTaskCeiling(ceiling TaskCeiling) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("journal task ceiling: %w", err)
 	}
@@ -305,7 +304,7 @@ func (s *Store) PauseTaskRail(nodeID, sessionID string, additional float64) (Tas
 	if !governed {
 		return TaskRail{}, false, nil
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return TaskRail{}, false, fmt.Errorf("pause task rail: %w", err)
 	}

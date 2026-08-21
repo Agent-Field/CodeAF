@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,7 @@ import (
 // the immutable event journal. The replacement happens in one transaction, so
 // readers never observe a half-rebuilt graph.
 func (s *Store) Rebuild() error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("rebuild: %w", err)
 	}

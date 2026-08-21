@@ -504,7 +504,11 @@ and no staleness check: after a crash the next launch opens the file again.
 **Closing cleanly** — `/quit`, `ctrl+c` twice, a `kill -INT`, or any other road out — disarms the idle timer,
 drops queued follow-ups, closes the wake lanes, cancels the turn with a grace wait, shuts
 down background jobs — which is where a task still running ends, a harness still being
-designed among them — and finally syncs and closes the journal, releasing the lock. Calling it twice is safe, and a session that returns by any
+designed among them — waits up to two seconds for the second copy of the conversation to
+finish landing where memory keeps it, and finally syncs and closes the journal, releasing
+the lock. Nothing on that road waits without a clock on it: if that second copy is still
+being written when the two seconds are up, quitting goes ahead without it and says so in
+the log file, because the journal on disk is the whole transcript either way. Calling it twice is safe, and a session that returns by any
 other road still flushes the file.
 
 **A dropped connection**, when the session is running on another machine, loses nothing that

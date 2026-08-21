@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -69,7 +68,7 @@ func (s *Store) MarkResidentWatermark(lane ResidentLane, cursor int64) (Resident
 	if cursor < 0 {
 		return ResidentWatermark{}, fmt.Errorf("mark resident watermark: %w: negative cursor", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return ResidentWatermark{}, fmt.Errorf("mark resident watermark: %w", err)
 	}
@@ -142,7 +141,7 @@ func (s *Store) CheckpointRetrospective(settledJobs int) (RetrospectiveWatermark
 	if settledJobs < 0 {
 		return RetrospectiveWatermark{}, fmt.Errorf("checkpoint retrospective: %w: negative settled job count", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return RetrospectiveWatermark{}, fmt.Errorf("checkpoint retrospective: %w", err)
 	}

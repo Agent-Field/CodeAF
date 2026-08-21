@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -46,7 +45,7 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)
 	gate.Refused = bounded(strings.TrimSpace(gate.Refused), MaxDigestBytes)
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record delivery gate: %w", err)
 	}

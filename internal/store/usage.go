@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -198,7 +197,7 @@ func (s *Store) RecordUsage(usage NodeUsage) error {
 	if usage.NodeID == "" {
 		return fmt.Errorf("record usage: %w: empty node id", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record usage: %w", err)
 	}
@@ -230,7 +229,7 @@ func (s *Store) RecordSurprise(surprise NodeSurprise) error {
 		math.IsNaN(surprise.Surprise) || math.IsInf(surprise.Surprise, 0) {
 		return fmt.Errorf("record surprise: %w: invalid measurement", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record surprise: %w", err)
 	}
@@ -345,7 +344,7 @@ func (s *Store) RaiseDailyRail(amount float64, origin string) error {
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) || origin == "" {
 		return fmt.Errorf("raise daily rail: %w: positive amount and origin are required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("raise daily rail: %w", err)
 	}
@@ -366,7 +365,7 @@ func (s *Store) RaiseDailyRailUnlimited(origin string) error {
 	if origin == "" {
 		return fmt.Errorf("raise daily rail unlimited: %w: origin is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("raise daily rail unlimited: %w", err)
 	}
@@ -395,7 +394,7 @@ func (s *Store) PauseDailyRailWithAdditionalSpend(base float64, sessionID string
 	if additional < 0 || math.IsNaN(additional) || math.IsInf(additional, 0) {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w: invalid additional spend", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
 	}

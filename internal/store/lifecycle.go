@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -60,7 +59,7 @@ func (s *Store) Claim(id, owner string) (Claim, bool, error) {
 		return Claim{}, false, fmt.Errorf("claim %q: token exhausted", id)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Claim{}, false, fmt.Errorf("claim %q: %w", id, err)
 	}
@@ -112,7 +111,7 @@ func (s *Store) Claim(id, owner string) (Claim, bool, error) {
 
 // Start moves a claimed node to running.
 func (s *Store) Start(claim Claim) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("start %q: %w", claim.ID, err)
 	}
@@ -145,7 +144,7 @@ func (s *Store) Start(claim Claim) error {
 // cannot complete while any child remains open.
 func (s *Store) Complete(claim Claim, summary string) error {
 	summary = bounded(summary, MaxSummaryBytes)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("complete %q: %w", claim.ID, err)
 	}
@@ -206,7 +205,7 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 		return Command{}, fmt.Errorf("complete %q with follow-up: %w: follow-up must be an ordinary splice targeted at the completed node", claim.ID, ErrInvalid)
 	}
 	summary = bounded(summary, MaxSummaryBytes)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
 	}
@@ -281,7 +280,7 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 // stranded.
 func (s *Store) Fail(claim Claim, message string) error {
 	message = bounded(message, MaxDigestBytes)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("fail %q: %w", claim.ID, err)
 	}
@@ -328,7 +327,7 @@ func (s *Store) Release(claim Claim) error {
 	if claim.Token >= math.MaxInt64 {
 		return fmt.Errorf("release %q: token exhausted", claim.ID)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("release %q: %w", claim.ID, err)
 	}

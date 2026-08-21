@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -88,7 +87,7 @@ func (s *Store) RecordCraftForged(forged CraftForged) (int64, error) {
 		return 0, fmt.Errorf("record craft forged: %w: a craft has a name", ErrInvalid)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return 0, fmt.Errorf("record craft forged: %w", err)
 	}

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -83,7 +82,7 @@ func (s *Store) RecordTurnUsage(nodeID, model string, turns []TurnUsage) error {
 				ErrInvalid, turn.Turn)
 		}
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record turn usage: %w", err)
 	}

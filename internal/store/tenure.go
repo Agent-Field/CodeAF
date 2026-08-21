@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -60,7 +59,7 @@ func (s *Store) ProposeCharterFiring(id string, wakeSeq int64, intent string) (b
 	if intent == "" {
 		return false, fmt.Errorf("propose charter firing: %w: intent is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, err
 	}
@@ -146,7 +145,7 @@ const ProbationProposalWindow = 20 * time.Hour
 // unsupervised firing on its next three approvals — the refusals reset the
 // consecutive run and left no other trace. This is that trace.
 func (s *Store) CharterFiringRefusals(id string) (int, error) {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return 0, fmt.Errorf("count charter firing refusals: %w", err)
 	}
@@ -243,7 +242,7 @@ func (s *Store) DeclineCharterFiring(id string, wakeSeq int64, reason string, pa
 	if reason == "" {
 		reason = "user declined the probation firing"
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -289,7 +288,7 @@ func (s *Store) PromoteCharter(id, reason string, override bool) error {
 	if reason == "" {
 		return fmt.Errorf("promote charter: %w: reason is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -329,7 +328,7 @@ func (s *Store) ReturnCharterToProbation(id, reason string) error {
 	if reason == "" {
 		reason = "user asked to return to supervised firing"
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
@@ -370,7 +369,7 @@ func (s *Store) RecordCharterFiringOutcome(assessment CharterFiringAssessment, t
 			reason = "firing failed independent verification"
 		}
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, err
 	}
