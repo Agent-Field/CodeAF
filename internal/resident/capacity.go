@@ -22,6 +22,41 @@ func ShrinkOverrunRate(local, global float64, samples int) float64 {
 	return weight*local + (1-weight)*global
 }
 
+// MeasuredCost predicts one node's overrun cost from the capacity fold's
+// measured base rate and the planner's own size judgment of the node. It is the
+// ordering signal for claim-time scheduling: a cheaper-predicted node is one
+// the measured history says is less likely to exceed one worker's envelope, so
+// the runner fills the pool with the work most likely to land cheaply while a
+// costlier part is still being divided.
+//
+// The base rate is the same for every node of one model, so it does not reorder
+// siblings the planner sized equally — those tie, and the caller keeps the order
+// it was handed. The size does the ordering, and only once the fold has
+// measured evidence to back it: a node the planner called oversized is predicted
+// to overrun (it already exceeds one worker), an atomic one carries only the
+// measured residual rate, and a borderline one falls between. ok is false when
+// the fold has no evidence, and the caller must leave the order untouched.
+func MeasuredCost(node plan.Node, options plan.Options) (cost float64, ok bool) {
+	if options.CapacitySamples <= 0 {
+		return 0, false
+	}
+	rate := options.CapacityOverrunRate
+	if rate < 0 {
+		rate = 0
+	}
+	if rate > 1 {
+		rate = 1
+	}
+	switch node.Size {
+	case plan.SizeOversized:
+		return 1, true
+	case plan.SizeBorderline:
+		return (1 + rate) / 2, true
+	default: // SizeAtomic, SizeUnknown — no evidence of bigness, the residual rate
+		return rate, true
+	}
+}
+
 type capacityCount struct {
 	runs     int
 	overruns int

@@ -521,3 +521,63 @@ func feeds(t *testing.T, graph *store.Store, from, to string) bool {
 	}
 	return false
 }
+
+// A division's claimable parts are admitted cheapest-predicted first when the
+// capacity fold has measured evidence, and left in the expander's own order
+// when it does not — the fifo invariant a measurement could only have perturbed.
+func TestOrderAdmitsTheCheapestPredictedSiblingFirst(t *testing.T) {
+	// Three independent parts, sized small to large in the order the expander
+	// handed them. With evidence the cheapest is admitted first; without it the
+	// handed order is returned untouched.
+	children := []plan.Node{
+		{ID: 1, Size: plan.SizeAtomic, Title: "atomic"},
+		{ID: 2, Size: plan.SizeOversized, Title: "oversized"},
+		{ID: 3, Size: plan.SizeBorderline, Title: "borderline"},
+	}
+	evidence := plan.Options{CapacitySamples: 8, CapacityOverrunRate: .5}
+	got := order(children, evidence)
+	if len(got) != 3 || got[0].ID != 1 || got[1].ID != 3 || got[2].ID != 2 {
+		t.Fatalf("evidence order = %v, want atomic(1) borderline(3) oversized(2)", titles(got))
+	}
+	// No evidence: the order is the one the expander handed.
+	if got := order(children, plan.Options{}); len(got) != 3 || got[0].ID != 1 || got[1].ID != 2 || got[2].ID != 3 {
+		t.Fatalf("no-evidence order = %v, want the handed order 1 2 3", titles(got))
+	}
+}
+
+func TestOrderRespectsDependenciesBeforeCost(t *testing.T) {
+	// The cheapest part depends on the costliest one, so the costliest must be
+	// admitted first — cost only orders among siblings already free to run.
+	children := []plan.Node{
+		{ID: 1, Size: plan.SizeAtomic, Needs: []int{2}, Title: "atomic"},
+		{ID: 2, Size: plan.SizeOversized, Title: "oversized"},
+	}
+	evidence := plan.Options{CapacitySamples: 8, CapacityOverrunRate: .5}
+	got := order(children, evidence)
+	if len(got) != 2 || got[0].ID != 2 || got[1].ID != 1 {
+		t.Fatalf("order = %v, want oversized(2) before its atomic dependent(1)", titles(got))
+	}
+}
+
+func TestOrderKeepsFifoAmongEquallySizedSiblings(t *testing.T) {
+	// The base rate is the same for every node of one model, so siblings the
+	// planner sized equally tie and keep the order the expander handed.
+	children := []plan.Node{
+		{ID: 1, Size: plan.SizeAtomic, Title: "first"},
+		{ID: 2, Size: plan.SizeAtomic, Title: "second"},
+		{ID: 3, Size: plan.SizeAtomic, Title: "third"},
+	}
+	evidence := plan.Options{CapacitySamples: 8, CapacityOverrunRate: .9}
+	got := order(children, evidence)
+	if len(got) != 3 || got[0].ID != 1 || got[1].ID != 2 || got[2].ID != 3 {
+		t.Fatalf("order = %v, want the handed order among equal costs", titles(got))
+	}
+}
+
+func titles(nodes []plan.Node) []string {
+	out := make([]string, len(nodes))
+	for i, n := range nodes {
+		out[i] = n.Title
+	}
+	return out
+}
