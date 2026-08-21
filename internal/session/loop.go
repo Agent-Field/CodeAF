@@ -529,7 +529,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.mu.Lock()
 	a.usage.Duration += turn.Duration
 	a.mu.Unlock()
-	a.file.appendUsage(turn, model, false)
+	a.file.appendUsage(turn, model, false, "")
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
@@ -2099,6 +2099,27 @@ func approxTokens(tokens int) string {
 // call that reports no usage at all still folds — into nothing — and writes no
 // line, by the same emptiness law the turn seal keeps.
 func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int) {
+	a.addAuxiliaryUsageAs(response, model, calls, "")
+}
+
+// The roles an auxiliary line can name. A line is journaled with the role that
+// made the call so a bad answer can be traced to the model that gave it: the
+// session's name and a piece of work's name are the two that a person SEES, and
+// the two whose failure ("name this session in ≤8 words, lowercase, no quotes"
+// as a session's name) is otherwise unattributable — the aux mark says a turn
+// did not ask for the call, and the model says which model answered, but
+// neither says what was being asked for.
+const (
+	auxRoleTitle    = "title"
+	auxRoleTaskName = "taskname"
+)
+
+// addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a
+// second door rather than a fourth argument on the first because thirty callers
+// fold auxiliary usage and only the two namers have anything to say here; an
+// empty role journals no field at all, by the emptiness law the rest of the
+// line keeps.
+func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls int, role string) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -2127,5 +2148,5 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
-	a.file.appendUsage(aux, model, true)
+	a.file.appendUsage(aux, model, true, role)
 }

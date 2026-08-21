@@ -99,8 +99,10 @@ func Peek(path string) (Summary, bool) {
 		switch entry.Type {
 		case "title":
 			// LAST one wins, exactly as the replay reads it: a name written twice
-			// is a name that was changed.
-			if named := strings.TrimSpace(entry.Title); named != "" {
+			// is a name that was changed — and a name that is the namer's own
+			// instruction is read as no name at all ([healedTitle], title.go),
+			// so the row falls back to Opening like any unnamed session's.
+			if named := healedTitle(entry.Title); named != "" {
 				summary.Title = named
 			}
 		case "message":
