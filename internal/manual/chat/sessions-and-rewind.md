@@ -406,12 +406,13 @@ The name is written by a model, once, and it is the first thing on the legend ab
 message box: `porting the parser · chat-v3-task*`.
 
 **It arrives one turn in.** As soon as your first exchange finishes, the model on the
-`title` role — small work, so a cheap one — is asked to
-`name this session in ≤8 words, lowercase, no quotes`, reading the opening question and
-answer only. That is **one call per conversation** — it is never retried, so
-a provider having a bad minute costs you a name and nothing else. Until it lands, the
-legend shows only the branch and the status line falls back to the folder's name; nothing
-says "untitled".
+`title` role — small work, so a cheap one — is shown the opening question and answer and
+then asked, at the end of that same message,
+`Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
+**one call per conversation** — it is never retried inside a conversation, so a provider
+having a bad minute costs you a name and nothing else. Until it lands, the legend shows
+only the branch and the status line falls back to the folder's name; nothing says
+"untitled".
 
 The name is capped at **80 characters**, and a longer one is cut with an `…` on the
 legend rather than pushing the branch or the key hints off the line.
@@ -425,6 +426,32 @@ A name that arrived from somewhere else as one welded token — `port_b_parser_f
 `fix-the-nil-map` — is read back as words where it is drawn (`Port B Parser Fix`) and left
 exactly as it is in the file. A name that is plainly an id — a timestamp, a hex tail — is
 never prettied.
+
+## Why is my session called "name this session in 8 words" — a name thrown away, and the opening words that stand in
+
+Because the model that was asked to name it answered with the question instead of the
+answer. The small models the `title` role lands on sometimes hand the instruction straight
+back, and a conversation on this machine really was called
+`Name This Session in ≤8 Words, Lowercase, No Quotes` for a whole evening.
+
+**That answer is now thrown away.** A name is refused when it repeats the instruction — the
+session namer's or the one that names a piece of work — or when it is only throat-clearing
+with nothing behind it: `Sure, here is the title:`, `Title:`, `sure`. A leading label is cut
+off first, so `Title: tokenizer speed` is kept as `tokenizer speed`; a colon you meant
+survives, so `fix: nil map crash` is kept whole.
+
+**A refused name is not a blank row.** The conversation simply has no name of its own, and
+the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
+opening words**, the first line you typed, exactly as they do for a conversation whose
+first turn has not finished yet. The legend above the message box shows only the branch
+until a real name lands.
+
+**The ones already named badly heal themselves.** A transcript or a folder that was written
+down under the instruction is read back as having no name at all, and the folder's row gets
+your opening words back — they are read out of the transcript, where they have been all
+along. Nothing is rewritten: the old line stays in the file, which is append-only. The next
+time you open that conversation the namer gets its one call again, on your next completed
+turn, appending the good name the way every name is appended.
 
 ## /resume — opening an earlier conversation
 

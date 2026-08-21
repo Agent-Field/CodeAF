@@ -54,7 +54,7 @@ func nodeLane(turns int, run func(repairing, wrote bool) *ai.Response) []step {
 	steps := make([]step, turns)
 	for index := range steps {
 		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if len(messages) > 0 && strings.Contains(messageText(messages[0]), "name this session") {
+			if len(messages) > 0 && strings.Contains(messageText(messages[0]), titleSystem) {
 				return textResponse("the greeting task"), nil
 			}
 			repairing, wrote := false, false
@@ -114,7 +114,7 @@ func (c *routedCompleter) childWorkTurns() int {
 	defer c.mu.Unlock()
 	turns := 0
 	for _, request := range c.childRequests {
-		if len(request) > 0 && strings.Contains(messageText(request[0]), "name this session") {
+		if len(request) > 0 && strings.Contains(messageText(request[0]), titleSystem) {
 			continue
 		}
 		turns++
