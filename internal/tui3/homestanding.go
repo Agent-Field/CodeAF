@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -698,10 +700,11 @@ func (a *app) watchLine() (string, bool) {
 // directory of documents ([app.homeHeld] states the same law about the lock).
 func (a *app) readStandBands() {
 	if a.stands.Items == nil {
-		a.home.items = nil
+		a.home.items, a.home.bare = nil, nil
 		return
 	}
 	bands := make(map[string][]StandingItemView, len(a.home.world.Projects))
+	known := make(map[string]bool, len(a.home.world.Projects))
 	for _, project := range a.home.world.Projects {
 		// THE PROJECT'S REAL PATH IS THE KEY THE STORE ANSWERS TO
 		// ([standing.Item.Workspace] is the resolved workspace, never the bucket),
@@ -709,9 +712,96 @@ func (a *app) readStandBands() {
 		// Machine-wide items — a reminder that belongs to no project — carry the
 		// person's home directory as their workspace, which is the `~` project's
 		// own path, so they land under `~` with no special case here.
-		if views := a.standItems(project.Path); len(views) > 0 {
+		path := strings.TrimSpace(project.Path)
+		if path == "" {
+			continue
+		}
+		known[filepath.Clean(path)] = true
+		if views := a.standItems(path); len(views) > 0 {
 			bands[project.Dir] = views
 		}
 	}
 	a.home.items = bands
+	a.home.bare = a.readBareBands(bands, known)
+}
+
+// readBareBands is the OTHER kind of project: a workspace this machine holds
+// standing things for and NO conversation at all.
+//
+// A watch is content. Home is read off the projects root, so a workspace whose
+// only content is something keeping an eye on it had no heading, no band and no
+// row — the person set a thing up and the screen that exists to show them what
+// is true showed them nothing. So the two workspaces that can be in that state
+// without anybody having spoken in them are asked about by name, and each one
+// that answers with items becomes a heading of its own ([homeBare]).
+//
+// IT IS TWO NAMES AND NOT EVERY WORKSPACE ON THE MACHINE, and that is the seam
+// rather than a choice: [StandingSeam.Items] answers for ONE workspace and
+// nothing enumerates them, so the honest thing is to ask about the places an
+// item can be made from a window that never held a conversation there — the
+// home directory, which is where a machine-wide reminder's work runs
+// ([standing.Item.Workspace]), and the directory THIS window is standing in.
+func (a *app) readBareBands(bands map[string][]StandingItemView, known map[string]bool) []homeBare {
+	var out []homeBare
+	for _, path := range []string{errandHomeDir(), strings.TrimSpace(a.workspace)} {
+		if path == "" {
+			continue
+		}
+		clean := filepath.Clean(path)
+		if known[clean] {
+			continue
+		}
+		known[clean] = true
+		views := a.standItems(path)
+		if len(views) == 0 {
+			continue
+		}
+		// THE KEY IS THE WORKSPACE ITSELF, because there is no bucket to key it
+		// by — nothing was ever opened here. It is a path and a bucket is a path,
+		// so the two can never collide: buckets live under the state root and a
+		// workspace is where somebody works.
+		bands[clean] = views
+		out = append(out, homeBare{
+			project: session.Project{
+				Dir: clean, Path: path, Name: standBareName(path),
+			},
+			at: standBareAt(views),
+		})
+	}
+	return out
+}
+
+// standBareName is what such a heading says: the workspace's last element, and
+// `~` for the home directory itself. It is [session.projectName]'s answer said
+// again on this side of the seam, because that function is unexported and a
+// heading that named the same directory two different ways on two rows of one
+// screen would be the screen arguing with itself.
+func standBareName(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return path
+	}
+	if house, err := os.UserHomeDir(); err == nil && filepath.Clean(house) == filepath.Clean(path) {
+		return "~"
+	}
+	if name := filepath.Base(path); name != "" && name != "." && name != string(filepath.Separator) {
+		return name
+	}
+	return path
+}
+
+// standBareAt is where such a project sits in the recency order: the newest
+// thing any of its items has done. It is the same question
+// [session.Project.At] answers for a project with conversations in it — when
+// was anything last true here — asked of the only rows this one has.
+func standBareAt(views []StandingItemView) time.Time {
+	var newest time.Time
+	for _, view := range views {
+		for _, at := range []time.Time{view.Item.LastChecked, view.Item.LastFired, view.Item.Created} {
+			if at.After(newest) {
+				newest = at
+			}
+		}
+	}
+	return newest
 }

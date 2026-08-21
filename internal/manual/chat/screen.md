@@ -1007,7 +1007,7 @@ and a row that repaints ten times a second all cost the same after the first fra
 Resize the terminal, switch your theme, or overwrite the file on disk and it is drawn
 again — those are the only three things that make it re-read anything.
 
-## When the image preview is not drawn — why don't I see the image, and where did my generated picture go?
+## When the image preview is not drawn — you only gave me text, why don't I see the image, and where did my generated picture go?
 
 If a row shows only words — something like
 `/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
