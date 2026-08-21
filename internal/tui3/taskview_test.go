@@ -977,3 +977,49 @@ func TestANodeTakesItsNameFromALaterUpdateInTheSameState(t *testing.T) {
 		t.Fatalf("a nameless update renamed the node to %q", node.label)
 	}
 }
+
+// A ROW DRAWN UNDER A SENTENCE TAKES THE SHORT NAME WHEN IT LANDS.
+//
+// This is the other half of the case above, and it is the one people complained
+// about: a node admitted with no name of its own is published under whatever
+// sentence its door had — the person's opening words, a path they pasted — and
+// the column, which shows three words, names the work after the front of that
+// sentence. The engine names it a moment later (internal/session's taskname.go)
+// and republishes the row, which reaches this surface as an ordinary update in
+// the state it was already in.
+func TestARowDrawnUnderASentenceTakesTheShortNameWhenItArrives(t *testing.T) {
+	a, _, _ := taskApp(t)
+	const sentence = "read /Users/me/src and say what the parser does"
+	a.taskUpdate(update(4, sentence, session.TaskRunning, session.TaskNotice{}))
+	node := a.tasks[4]
+	if node == nil {
+		t.Fatal("the update admitted no node")
+	}
+	// Until the name lands the row is the front of the sentence, which is exactly
+	// what it was before — the fallback, and never a placeholder word.
+	if node.title != "read /Users/me/src and" {
+		t.Fatalf("the row is drawn as %q before the name lands", node.title)
+	}
+
+	a.taskUpdate(update(4, "parser recon", session.TaskRunning, session.TaskNotice{}))
+	if node.title != "parser recon" {
+		t.Fatalf("the row is called %q, want the short name", node.title)
+	}
+	// AND IT IS ON THE COLUMN WHOLE. The engine asks for as many words as this
+	// surface draws ([taskTitleWords] is session.TaskNameWords), so a name that
+	// was made to fit the column is never cut to fit it.
+	if !strings.Contains(rosterText(a, a.viewHeight()), "parser recon") {
+		t.Fatalf("the column does not carry the whole name:\n%s", rosterText(a, a.viewHeight()))
+	}
+}
+
+// THE COLUMN'S WORD CAP AND THE NAMER'S ARE ONE FIGURE. Two copies would drift,
+// and the drift is invisible in both directions: a namer asked for more words
+// than the column shows pays for words nobody reads, and one asked for fewer
+// leaves the column half empty.
+func TestTheNameCapIsTheEnginesOwnFigure(t *testing.T) {
+	if taskTitleWords != session.TaskNameWords {
+		t.Fatalf("the column cuts to %d words and the namer asks for %d",
+			taskTitleWords, session.TaskNameWords)
+	}
+}

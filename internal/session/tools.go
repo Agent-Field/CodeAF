@@ -33,7 +33,10 @@ import (
 // beside it to look
 // at what was started and watch beside that to be TOLD instead of looking
 // (tools_jobs.go, tools_watch.go), remember carries the person's durable memory
-// (memory.go) when there is a store to keep it in, track, commit and recall hold
+// (memory.go) when there is a store to keep it in and search_conversations reads
+// the other half of that store — the verbatim words of every earlier
+// conversation, which were indexed and unreachable until it existed
+// (tools_conversations.go) — track, commit and recall hold
 // the working state a compaction must not lose (state.go — the same file's three
 // records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and
@@ -132,6 +135,14 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.standingTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	// search_conversations (tools_conversations.go) is the other half of memory
+	// and is conditional for the same reason `remember` is: what it reads is the
+	// FTS index over every message ever posted, which lives in the store, and
+	// a session opened with memory off has opened no store. A task node is
+	// handed no store either (task_run.go sets no Config.Memory), so it does not
+	// get the verb — which is the same wall that already keeps a node from
+	// writing memories, read from the other side.
+	tools = append(tools, a.conversationTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
 	tools = append(tools, a.settingsTools()...)

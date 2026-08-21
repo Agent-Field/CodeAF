@@ -62,6 +62,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -96,21 +97,54 @@ const (
 // this bound exists for was a stamp TWO HOURS behind.
 const standingPastGrace = 30 * time.Second
 
-// standingWatchOffer is the marker file that remembers the one-time question:
-// keep checking when no window is open? It lives under the store root beside
-// the items rather than in the profile, because it is a fact about THIS store
-// — a machine whose standing folder was thrown away has been asked nothing.
+// standingWatchOffer is the marker file that remembers the one-time NOTICE:
+// background checks are on, said once, ever. It lives under the store root
+// beside the items rather than in the profile, because it is a fact about THIS
+// store — a machine whose standing folder was thrown away has been told
+// nothing.
+//
+// The name is the one the file has always had, and it is left alone: renaming
+// it would say the sentence again to everybody who already heard the question
+// it used to remember.
 const standingWatchOffer = "watch-offer.json"
 
 // standingWatchAnswer is that marker's whole content. It is journaled BEFORE
-// [standing.Watch.Install] is called, so a person who said yes and then met a
-// launchd that would not take the file is somebody this build knows it asked —
-// rather than somebody it asks again tomorrow.
+// [standing.Watch.Install] is called, so a person whose launchd would not take
+// the file is somebody this build knows it has already spoken to — rather than
+// somebody it tells again tomorrow.
+//
+// Told separates the two eras. Asked and Answer are what the one-time QUESTION
+// wrote — keep checking when no window is open? — and a marker without Told is
+// somebody who answered it; Told says this build put the timer on and said so,
+// which is a different thing to have happened to a person and worth being able
+// to tell apart in a folder somebody is reading a year from now.
 type standingWatchAnswer struct {
 	Asked  bool      `json:"asked"`
 	Answer bool      `json:"answer"`
+	Told   bool      `json:"told"`
 	At     time.Time `json:"at"`
 }
+
+// The one dim line the conversation says the first time anything ever stands,
+// and its honest other half.
+//
+// THEY ARE THE WHOLE OF WHAT IS SAID ABOUT THIS, EVER. The timer is installed
+// without asking, so the person is owed the fact and the switch in one line
+// they cannot miss and never have to read twice — and the cadence in it is
+// [standing.IntervalWords] rather than a typed figure, because a sentence that
+// spelled out five minutes would be the second place that number lived.
+var (
+	standingBackgroundLine = "checks every " + standing.IntervalWords() +
+		", window or not · background checks under /settings"
+	standingBackgroundFailed = "could not install the background check · "
+	standingBackgroundWhere  = " · background checks under /settings"
+)
+
+// standingBackgroundUpdate is the update word that line travels under. It is
+// the ONE piece of news that is not about an item — the item is only what
+// occasioned it — and internal/tui3 draws it as the bare sentence with no
+// glyph and no name in front of it (standing.go's [standUpdateRow]).
+const standingBackgroundUpdate = "background"
 
 // standingStore is the slice of [standing.Store] this file uses, named as an
 // interface so a test can watch what a ratified card writes. *standing.Store
@@ -143,6 +177,17 @@ func (a *Agent) standingItems() standingStore {
 		return nil
 	}
 	return a.config.Standing.Store
+}
+
+// standingWatch is this machine's timer, or nil where there is none. It is the
+// same object the first ratified item installs and the same one the settings
+// row turns, said once here so those two can never come to hold different
+// timers.
+func (a *Agent) standingWatch() standing.Watch {
+	if a.config.Standing == nil || a.config.Standing.Watch == nil {
+		return nil
+	}
+	return a.config.Standing.Watch
 }
 
 // standDescription is what the model reads before it calls, and most of it is
@@ -347,10 +392,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// this tool answers with all read [standing.When.Words], which is the
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
-		WhenWords:  item.When.Words,
-		CostWords:  strings.TrimSpace(parsed.CostWords),
-		Guessed:    parsed.Guessed,
-		OfferWatch: a.standingMayOfferWatch(store),
+		WhenWords: item.When.Words,
+		CostWords: strings.TrimSpace(parsed.CostWords),
+		Guessed:   parsed.Guessed,
 		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
 		// from this one list, so `once, not standing` is absent from a one-off
 		// reminder's card everywhere at once (answers.go's [StandingOptions]).
@@ -391,15 +435,16 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
-	answered := a.standingWatchOffered(notice, answer)
+	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. It
+	// is said to the person and not to the model: the line goes on the screen
+	// as its own dim row, and the model's whole reply is still the one sentence
+	// about what now stands ([standingRatifiedLine]).
+	a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		line += "\nit wakes: " + when
 	}
 	line += "\n" + standingRatifiedLine
-	if answered != "" {
-		line += "\n" + answered
-	}
 	return line, false, nil
 }
 
@@ -887,57 +932,69 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 	}
 }
 
-// ── the one-time offer to keep checking with no window open ─────────────────
+// ── background checks, on by default, said once ─────────────────────────────
 
-// standingMayOfferWatch reports whether the card should carry the offer: there
-// is a timer to install, and nobody has been asked yet.
-func (a *Agent) standingMayOfferWatch(store standingStore) bool {
-	if a.config.Standing == nil || a.config.Standing.Watch == nil {
-		return false
-	}
-	_, asked := standingWatchAsked(store.Root())
-	return !asked
-}
-
-// standingWatchOffered acts on the answer to that offer, and answers the one
-// line the model should mention if anything happened.
+// standingBackgroundOn installs this machine's timer the first time anything
+// ever stands, and says the one dim line about it.
 //
-// THE YES IS WRITTEN DOWN BEFORE THE HOST IS TOUCHED. An install is a change to
+// NOBODY IS ASKED, AND IT HAPPENS ONCE, EVER. There used to be a question here
+// — keep checking when no window is open? — and it had one sensible answer:
+// something you asked to happen every morning is something you asked to happen
+// on the mornings you do not open a terminal. So the timer goes on, the person
+// is told in one line where the question used to be, and the switch is a
+// settings row from then on (internal/config's KeyStandingBackground).
+//
+// THE NOTICE IS JOURNALED BEFORE THE HOST IS TOUCHED. An install is a change to
 // the person's machine; a marker written afterwards would be lost by exactly
-// the failure that makes the question worth remembering.
-func (a *Agent) standingWatchOffered(notice StandingNotice, answer StandingAnswer) string {
-	if !notice.OfferWatch || answer.KeepWatch == nil {
-		return ""
-	}
-	store := a.standingItems()
+// the failure that makes remembering worth doing, and they would be told all
+// over again tomorrow.
+func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
 	if store == nil || a.config.Standing == nil || a.config.Standing.Watch == nil {
-		return ""
+		return
 	}
-	keep := *answer.KeepWatch
-	standingRememberWatch(store.Root(), keep)
-	if !keep {
-		return "they said not to check while no window is open, and will not be asked again."
+	if _, told := standingWatchAsked(store.Root()); told {
+		return
 	}
+	// THE ROW OUTRANKS THE DEFAULT. Somebody who turned background checks off
+	// before anything ever stood has answered this already, and installing a
+	// timer over that answer would make the switch a suggestion.
+	if !config.BackgroundChecksWantedAt(a.config.ProfileDir) {
+		standingRememberWatch(store.Root(), false)
+		return
+	}
+	standingRememberWatch(store.Root(), true)
 	if err := a.config.Standing.Watch.Install(context.Background()); err != nil {
-		return "it will only be checked while a window is open: " + err.Error()
+		// SAID HONESTLY AND NOT SWALLOWED. The person is about to walk away from
+		// a machine they think is watching something for them.
+		a.emitStandingUpdate(standingBackgroundUpdate, item,
+			standingBackgroundFailed+oneLine(err.Error())+standingBackgroundWhere)
+		return
 	}
-	return "it will be checked from now on even with no window open."
+	a.emitStandingUpdate(standingBackgroundUpdate, item, standingBackgroundLine)
 }
 
-// WatchAsked is that marker read from outside this package: whether the person
-// has been asked the one-time question, and what they answered.
+// oneLine flattens whatever the operating system said into the single row this
+// surface has for it. launchctl's complaints arrive with newlines in them.
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
+// BackgroundTold reports whether this store has already been told, once, that
+// background checks are on.
 //
 // IT IS EXPORTED FOR ONE READER — the surface's /status line, which says WHY
-// nothing is checking (internal/tui3's watchLine). The marker's shape and its
-// path stay this file's business; a second package parsing the same JSON would
-// be the one place the two could come to disagree about what "asked" means.
-func WatchAsked(root string) (keep bool, asked bool) {
-	marker, ok := standingWatchAsked(root)
-	return marker.Answer, ok
+// nothing is checking (internal/tui3's watchLine). Never told is a machine
+// where nothing stands yet; told, with no timer installed, is a person who
+// turned the row off or an install that did not take, and /status points at the
+// row for both because the row reads `off` in both.
+func BackgroundTold(root string) bool {
+	_, told := standingWatchAsked(root)
+	return told
 }
 
 // standingWatchAsked reads the marker. A missing or unreadable one is "nobody
-// has been asked", which is the safe direction: the worst case is one question.
+// has been told", which is the safe direction: the worst case is one line said
+// twice.
 func standingWatchAsked(root string) (standingWatchAnswer, bool) {
 	if strings.TrimSpace(root) == "" {
 		return standingWatchAnswer{}, false
@@ -953,13 +1010,13 @@ func standingWatchAsked(root string) (standingWatchAnswer, bool) {
 	return marker, true
 }
 
-// standingRememberWatch journals the answer. A write that fails costs one
-// repeated question and nothing else, so it is not reported.
-func standingRememberWatch(root string, keep bool) {
+// standingRememberWatch journals the notice. A write that fails costs one
+// repeated line and nothing else, so it is not reported.
+func standingRememberWatch(root string, on bool) {
 	if strings.TrimSpace(root) == "" {
 		return
 	}
-	raw, err := json.Marshal(standingWatchAnswer{Asked: true, Answer: keep, At: time.Now()})
+	raw, err := json.Marshal(standingWatchAnswer{Asked: true, Answer: on, Told: true, At: time.Now()})
 	if err != nil {
 		return
 	}

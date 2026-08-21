@@ -96,8 +96,19 @@ func (a *app) sendParked() tea.Cmd {
 		// The tray is refilled for exactly as long as the submit takes to read
 		// it, because [app.submitImages] is the door and the tray is what it
 		// reads. It empties the tray itself.
-		a.chips = append(a.chips, next.chips...)
-		return a.submitImages(next.text)
+		//
+		// IT HOLDS THE PARKED MESSAGE'S OWN PICTURES AND NOTHING ELSE, and what
+		// was attached while it waited is put back afterwards. The parked
+		// sentence says `[image #1]` about the first picture IT was written with
+		// (imagepaste.go), so a tray that still carried something attached
+		// during the wait would renumber the person's own words underneath them
+		// — and would spend, on a message they had already sent, pictures they
+		// were plainly still composing with.
+		held := a.chips
+		a.chips = next.chips
+		cmd := a.submitImages(next.text)
+		a.chips = held
+		return cmd
 	}
 	return a.submit(next.text)
 }

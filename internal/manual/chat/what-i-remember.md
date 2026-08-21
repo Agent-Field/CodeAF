@@ -2,11 +2,16 @@
 
 ## Do you remember me between conversations?
 
-Yes. A handful of durable things are carried from one conversation to the next:
-something you asked to be remembered, a preference you stated, a correction you
-made, a decision that still binds. It is **not** a copy of the transcript — the
-conversation itself is not carried anywhere, and a new session starts with an
-empty screen.
+Yes, in two different ways. A handful of durable things are carried from one
+conversation to the next: something you asked to be remembered, a preference you
+stated, a correction you made, a decision that still binds. Those are short lines
+and a new session starts with an empty screen — none of the old conversation is
+put back on it.
+
+The words themselves are not gone, though. Everything said in every conversation
+on this machine is kept and can be **searched** — see "Can you look up what we
+said in an earlier conversation" below. What is carried automatically is the
+handful of lines; what was actually said is looked up when it is asked for.
 
 The memory commands have two postures:
 
@@ -150,6 +155,41 @@ keeps with a suggested fix that gets offered and then fails.
 Nothing is counted either way when that pass could not run. A provider outage is
 not evidence that a memory failed to help.
 
+## Can you look up what we said in an earlier conversation — searching old chats
+
+Yes. aforge has a tool called `search_conversations`, and it searches **every
+message of every conversation on this machine, verbatim** — what you typed, what
+was answered, and what the tools came back with. Ask for something that was said
+somewhere else — "what did we decide about the retry limit", "what did I tell you
+about the deploy last week", "search my old conversations for the flag name" —
+and it goes and looks instead of answering from memory.
+
+Each result is one line: how long ago it was said, the conversation it was said
+in, who said it, and the words themselves — plus the transcript file that
+conversation lives in, which aforge can then open and read around the excerpt.
+
+The limits are worth knowing:
+
+- **Excerpts are bounded** at 400 bytes each, and there are eight of them by
+  default (twenty at most). A search result is a pointer back into a
+  conversation, not a replay of it — when the excerpt is not enough, the
+  transcript named under it is read for the rest.
+- **A search is words, not meaning.** It matches the words that were actually
+  typed, newest first among equally good matches, so the person's own phrasing
+  finds more than a paraphrase of it. Nothing found is said plainly rather than
+  guessed at.
+- **It is off when memory is off.** The conversations are kept in the same place
+  the memories are, so the `memory` row in `/settings` turned off means nothing
+  is written and there is nothing to search. Work handed to a task cannot search
+  them either.
+- **It is not the same as what is remembered.** The remembered lines are a few
+  durable facts, extracted and rewritten; this is the conversation in its own
+  words. Asked what was decided, aforge searches and quotes rather than
+  reciting a memory, because the words somebody actually used are the answer and
+  a summary of them is not.
+
+There is no slash command for it — you ask in the conversation, and it searches.
+
 ## How does something get remembered without me asking?
 
 After a message has been answered — off your path entirely, with nothing waiting
@@ -249,7 +289,9 @@ pair uses it.
 It is kept in `~/.aforge/graph.db`, which is per person rather than per
 conversation or per project — so something remembered in one repository is
 remembered in the next. `AFORGE_HOME` moves it with everything else aforge
-keeps.
+keeps. The same file holds every message of every conversation, which is what
+`search_conversations` searches; the transcripts themselves stay in each
+conversation's own folder.
 
 **A task gets the same treatment as a message.** When work is handed off to a
 task, the router is asked once against that task's brief, and whatever it names
