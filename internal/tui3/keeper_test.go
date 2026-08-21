@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE KEEPER: conversations this process holds and is not drawing.
@@ -149,5 +151,160 @@ func TestTheKeeperRecordsWhenAConversationWasLeft(t *testing.T) {
 	}
 	if !a.behindSince("/tmp/lab/nowhere/transcript.jsonl").IsZero() {
 		t.Fatal("a conversation this process does not hold was given a leaving time")
+	}
+}
+
+// ── closing, quitting, and the count ────────────────────────────────────────
+
+// /quit closes the conversation in front and brings the previous one forward.
+// aforge leaves only when it was the last one.
+func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+
+	cmd, more := a.closeFront()
+	if !more {
+		t.Fatal("/quit with two open left aforge")
+	}
+	drain(t, a, cmd)
+	if !second.closed {
+		t.Fatal("the conversation in front was not closed")
+	}
+	if a.agent != Agent(first) {
+		t.Fatal("the previous conversation did not come forward")
+	}
+	if a.openCount() != 1 {
+		t.Fatalf("this terminal holds %d conversations", a.openCount())
+	}
+	// AND THE CLOSED ONE IS GONE FROM THE WAY BACK.
+	for _, key := range a.prev {
+		if key == convKey("/tmp/lab/two/transcript.jsonl") {
+			t.Fatal("a closed conversation is still on the previous stack")
+		}
+	}
+	if _, more := a.closeFront(); more {
+		t.Fatal("/quit on the last conversation found another one to come forward")
+	}
+}
+
+// ctrl+c twice closes everything, and closing everything is idempotent.
+func TestQuittingClosesEveryConversation(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+
+	a.closeEverything()
+	a.closeEverything()
+	if !first.closed || !second.closed {
+		t.Fatalf("closed: front=%v behind=%v", second.closed, first.closed)
+	}
+	if len(a.behind) != 0 || len(a.prev) != 0 {
+		t.Fatal("the keeper survived the quit")
+	}
+}
+
+// The armed line counts conversations before it counts work: a person who has
+// forgotten they left something open in another project needs the first number
+// before the second one means anything.
+func TestTheArmedLineCountsAcrossEveryConversation(t *testing.T) {
+	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+
+	// A quiet single conversation reads exactly the bare sentence.
+	if got := a.quitHint(); got != quitArmWord {
+		t.Fatalf("a quiet single conversation armed %q", got)
+	}
+
+	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/two/transcript.jsonl")
+	if got := a.quitHint(); got != quitArmWord+" · 2 conversations" {
+		t.Fatalf("two open armed %q", got)
+	}
+
+	a.tasks = map[uint64]*taskNode{7: {id: 7, state: session.TaskRunning}}
+	a.taskOrder = []uint64{7}
+	if got := a.quitHint(); got != quitArmWord+" · 2 conversations · a task will stop" {
+		t.Fatalf("two open with work armed %q", got)
+	}
+}
+
+// The count segment is absent at one conversation and present at two, and the
+// waiting clause is absent when nothing is waiting.
+func TestTheOpenCountIsAbsentAtOneAndPresentAtTwo(t *testing.T) {
+	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	if got := a.openSegment(); got != "" {
+		t.Fatalf("one conversation drew %q", got)
+	}
+	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/two/transcript.jsonl")
+	if got := a.openSegment(); got != "2 open" {
+		t.Fatalf("two conversations drew %q", got)
+	}
+}
+
+// tab over an empty box is the way back, and it does nothing at all when there
+// is nowhere to go.
+func TestTabGoesBackToTheLastConversationAndIsSilentWhenThereIsNone(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	a.dismissWelcome()
+
+	if cmd := a.lastConversation(); cmd != nil {
+		t.Fatal("tab did something with one conversation open")
+	}
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+
+	drive(t, a, key("tab"))
+	if a.agent != Agent(first) {
+		t.Fatal("tab did not go back to the conversation before this one")
+	}
+	drive(t, a, key("tab"))
+	if a.agent != Agent(second) {
+		t.Fatal("tab again did not come back")
+	}
+}
+
+// AND IT IS SWALLOWED BY THE TWO CLAIMS THAT USED TO COLLIDE WITH IT: a rail
+// holding the keyboard eats it, and the welcome box neither takes it nor is
+// dismissed by it.
+func TestTabIsEatenByTheRailAndNeverDismissesTheWelcomeBox(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	a.welcome = welcome{open: true, sel: -1}
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+	a.welcome = welcome{open: true, sel: -1}
+
+	drive(t, a, key("tab"))
+	if !a.welcome.open || a.welcome.spent {
+		t.Fatal("tab dismissed the welcome box on its way past")
+	}
+	if a.agent != Agent(first) {
+		t.Fatal("tab did not switch with the welcome box up")
+	}
+
+	// AND THE RAIL EATS IT while it holds the keyboard: a person who arrived
+	// somewhere else with a rail focus they cannot see would be one keystroke
+	// doing two things. The box is put away first, because the roster stands
+	// down while it is up (task.go's [app.railKey]).
+	a.dismissWelcome()
+	held := a.agent
+	a.railHold = true
+	drive(t, a, key("tab"))
+	if a.agent != held {
+		t.Fatal("tab switched while the rail held the keyboard")
 	}
 }

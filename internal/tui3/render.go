@@ -960,7 +960,11 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
-	segAmbient hudSeg = iota
+	// segOpen is how many conversations this terminal is holding, and how many
+	// of them want a person (keeper.go). It comes FIRST on the row because it is
+	// the only segment that is not about the conversation in front.
+	segOpen hudSeg = iota
+	segAmbient
 	segDelta
 	segCost
 	segCtx
@@ -1300,6 +1304,7 @@ func modelBase(id string) string {
 // telemetry assembles the right cluster IN ORDER, and the order is the question
 // each segment answers about the run:
 //
+//	2 open · 1 waiting   how many conversations this terminal is holding
 //	2 jobs · 1 watch     what is still alive out there
 //	Σ +128 −14           what this session has written
 //	$0.14                what it has cost
@@ -1317,6 +1322,7 @@ func (a *app) telemetry(width int) []hudPart {
 			parts = append(parts, hudPart{kind: kind, text: text})
 		}
 	}
+	add(segOpen, a.openSegment())
 	add(segAmbient, a.ambientSegment())
 	// THE DELTA IS THE LOWEST PRIORITY ON THE LINE and it says so twice: it is
 	// drawn only on a comfortable frame, and it is the first thing [dropSegment]
@@ -1340,6 +1346,36 @@ func (a *app) telemetry(width int) []hudPart {
 	return parts
 }
 
+// openSegment is how many conversations this terminal holds and how many of
+// them want somebody:
+//
+//	2 open · 1 waiting
+//
+// IT IS ABSENT WHENEVER ONLY ONE IS OPEN, which is the ordinary case and the
+// emptiness law's plainest application — a permanent `1 open` would be a
+// permanent reminder of the absence of a feature. The `· N waiting` clause is
+// absent when nothing is waiting, on the same terms.
+//
+// The deliberate $0.00 exception on this line is NOT extended here. That
+// exception exists so a cost segment does not jump sideways as its width
+// changes; this one appears and disappears with a real change in what is true,
+// and a placeholder would be a lie about how many conversations are open.
+//
+// THE COUNT IS ASKED OF THE AGENTS AND NOT OF THE PRESENCE FILE, for the reason
+// home's own rows are ([app.homeTrue]): the file lags by up to five seconds, and
+// this is a pointer we are holding.
+func (a *app) openSegment() string {
+	open := a.openCount()
+	if open < 2 {
+		return ""
+	}
+	word := itoa(open) + " " + homeOpenWord
+	if waiting := a.waitingCount(); waiting > 0 {
+		word += " · " + itoa(waiting) + " waiting"
+	}
+	return word
+}
+
 // dropOrder is what the line gives up, first to last, when it does not fit,
 // and it is ordered by how ACTIONABLE each segment is:
 //
@@ -1353,7 +1389,10 @@ func (a *app) telemetry(width int) []hudPart {
 //
 // The state word and the safety posture are not in this list at all: one is why
 // a person is looking at the line, and the other is why they should be.
-var dropOrder = []hudSeg{segDelta, segCache, segETA, segBurn, segAmbient, segCost, segCtx}
+//	open     how many other conversations this terminal holds — true, and about
+//	         somewhere else; at forty columns what a person needs is what THIS
+//	         conversation is doing
+var dropOrder = []hudSeg{segDelta, segOpen, segCache, segETA, segBurn, segAmbient, segCost, segCtx}
 
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.
@@ -2171,10 +2210,26 @@ func (a *app) legendRight(width int) string {
 	// state of the slot names them both, and neither costs a row: this is the
 	// legend, which is on the frame either way (home.go).
 	if a.homeDoorShowing() {
+		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
+		// terminal holds only one conversation, which is the emptiness law again:
+		// a key that cannot act says so by not being advertised (keeper.go's
+		// [app.lastConversation]). It sits between the two doors because it is
+		// the same kind of thing — somewhere else to be — and it is dropped first
+		// when the slot is tight, by [app.homeDoorShowing]'s own rule about the
+		// box being empty.
+		if _, ok := a.lastBehind(); ok {
+			return homeDoorWord + " · " + lastDoorWord + " · " + microcopy
+		}
 		return homeDoorWord + " · " + microcopy
 	}
 	return microcopy
 }
+
+// lastDoorWord advertises the key back to the conversation before this one. It
+// is the shortest true sentence about it: `tab` is the key, and `last` is what
+// it goes to — the conversation you were in last, which is the same promise
+// `cd -` makes.
+const lastDoorWord = "tab last"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //

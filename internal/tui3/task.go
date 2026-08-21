@@ -3263,6 +3263,15 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case "enter":
 		return a.railEnter(), true
+	case "tab":
+		// EATEN AND NOTHING DONE. tab over an empty box switches conversations
+		// (input.go's seventeenth rung), and the roster is read before the box is
+		// — so without this case a person would arrive in another conversation
+		// holding a rail focus they cannot see. The rail's rule is that explicit
+		// focus outranks ambient place, and this is that rule applied to one more
+		// key; the way out is esc, which the hint already advertises
+		// ([railHoldHint]).
+		return nil, true
 	}
 	return nil, false
 }

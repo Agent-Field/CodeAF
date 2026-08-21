@@ -190,6 +190,18 @@ func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// welcomeKeeps is the one key that goes past the box WITHOUT putting it away.
+//
+// Everything else dismisses, and that is the box's contract: any key but the
+// walk through the recent list is the person starting work here, which is what
+// dismissal means ([app.welcomeKey]). tab over an empty box is the opposite of
+// starting work here — it is leaving for the conversation you were in before
+// (keeper.go) — and dismissal is irreversible ([app.dismissWelcome] sets spent),
+// so one keystroke would do two unrelated things and only one of them could be
+// undone. The box is still standing when they come back, because the sidecar
+// kept it.
+func welcomeKeeps(name string) bool { return name == "tab" }
+
 // resumeSession swaps this surface onto an earlier conversation.
 //
 // It is [app.renew] with the sign flipped: the same close, the same wholesale

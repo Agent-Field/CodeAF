@@ -1005,8 +1005,16 @@ func TestAnUnknownSlashStillReachesTheOldAnswer(t *testing.T) {
 func TestTheDraftIsWrittenRestoredAndClearedOnSubmit(t *testing.T) {
 	dir := t.TempDir()
 	path := DraftFile(dir, "/tmp/lab")
-	if path != DraftFile(dir, "/tmp/lab/") {
-		t.Fatal("one directory has to name one draft file")
+	// ONE DIRECTORY IS ONE PREFIX, whichever way it is spelled — the trailing
+	// slash is cleaned away before the hash is taken. The names themselves
+	// differ, because each call takes the next ordinal for that workspace: one
+	// terminal can hold two conversations in one project, and two boxes cannot
+	// share one file (draft.go).
+	if draftPrefix("/tmp/lab") != draftPrefix("/tmp/lab/") {
+		t.Fatal("one directory has to name one family of draft files")
+	}
+	if second := DraftFile(dir, "/tmp/lab/"); second == path {
+		t.Fatalf("two conversations were given one draft file: %s", path)
 	}
 
 	agent := &fakeAgent{model: "m"}
