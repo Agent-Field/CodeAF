@@ -45,7 +45,7 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 		DailyBudgetUSD: settings.DailyBudgetUSD,
 		ContextTokens:  planContextTokens,
 		Resolve: func(node store.Node) (resident.JITTarget, bool) {
-			return plans.divisionTarget(node.ID, settings, planner, planContextTokens)
+			return plans.divisionTarget(graph, node.ID, settings, planner, planContextTokens)
 		},
 	}
 }
@@ -69,7 +69,7 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 // against what is really there. The document draws the distinction the id
 // cannot (resident.SoleWorkNode), and the judgment is the free predicate's, as
 // everywhere else.
-func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner func() plan.Completer, planContextTokens int) (resident.JITTarget, bool) {
+func (j *jobPlans) divisionTarget(graph *store.Store, nodeID string, settings config.Config, planner func() plan.Completer, planContextTokens int) (resident.JITTarget, bool) {
 	prefix, planID, named := planNodeID(nodeID)
 	if !named {
 		// The other id a plan node can wear: its job's own namespace, unadorned.
@@ -104,24 +104,31 @@ func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner
 		return resident.JITTarget{}, false
 	}
 	locks := j.locksFor(entry.graph)
+	options := plan.Options{
+		// The ceilings the job was planned under. The division raises the
+		// depth one of them for itself — a build's depth ceiling is a
+		// statement about how much shape to decide in advance, which is the
+		// question this wave moved.
+		MaxDepth:   settings.MaxDepth + 1,
+		NodeBudget: settings.NodeBudget,
+		// The window the sub-plan is written through. It is the same one
+		// the build used, because it is the same model: a division is a
+		// planning question asked of the planning model.
+		ContextTokens: planContextTokens,
+	}
+	// Measured capacity rides the division the way it rides the build: the
+	// worker's own base rates, read off the journal, fold into the sizing and
+	// split judgments when swarm arms them. The model the evidence is
+	// segmented by is the worker's — capacity is a fact about leaves, and the
+	// planning model is only asking about them.
+	options = resident.CapacityOptions(graph, settings.Swarm, settings.Model, options)
 	return resident.JITTarget{
 		Plan:     entry.graph,
 		Lock:     &locks.document,
 		Prefix:   prefix,
 		PlanNode: planID,
 		Client:   structuring,
-		Options: plan.Options{
-			// The ceilings the job was planned under. The division raises the
-			// depth one of them for itself — a build's depth ceiling is a
-			// statement about how much shape to decide in advance, which is the
-			// question this wave moved.
-			MaxDepth:   settings.MaxDepth + 1,
-			NodeBudget: settings.NodeBudget,
-			// The window the sub-plan is written through. It is the same one
-			// the build used, because it is the same model: a division is a
-			// planning question asked of the planning model.
-			ContextTokens: planContextTokens,
-		},
+		Options:  options,
 		// The deeper document is journaled so a restart, and every reader that
 		// rehydrates from the journal, sees the shape the job actually has. The
 		// document lock is taken for the same reason put takes it: journalling
