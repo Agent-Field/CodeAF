@@ -170,6 +170,22 @@ func (e JITExpander) expand(ctx context.Context, node store.Node) (int, error) {
 		return 0, nil
 	}
 
+	// EV-lookahead: JudgeSplit only asks "could this divide"; it never asks
+	// "should it"?* — the expected-value half the measured-capacity fold was
+	// built to carry. Once the fold has evidence, refuse a division whose
+	// named parts do not buy back the fixed cost a second worker pays before
+	// it produces. Without evidence the predicate is unchanged: a division
+	// JudgeSplit already accepted proceeds exactly as before, so non-swarm
+	// jobs and cold journals take the old branches byte-for-byte.
+	if !splitPays(judged, options) {
+		underLock(target.Lock, func() {
+			if live := target.Plan.Node(target.PlanNode); live != nil {
+				plan.JournalRefusal(live, RefusalNotPaying)
+			}
+		})
+		return 0, nil
+	}
+
 	criterion := DecodeSpec(node.Spec).Done
 	request := GrowRequest{
 		JobRoot: jobRootID(e.Graph, node), Node: node,
@@ -421,6 +437,45 @@ func growPlan(target JITTarget, sub *plan.Graph) ([]plan.Node, map[int]bool, err
 // cheaply before a costlier part. Without evidence the order the expander was
 // handed is returned untouched, which is every non-swarm job and every cold
 // journal: the fifo invariant a measurement could only have perturbed.
+// RefusalNotPaying is the resident-side name for the EV-lookahead's verdict.
+// It is exported here so the expansion caller can journal the reason without
+// importing the plan package's internal constant set.
+var RefusalNotPaying = plan.RefusalNotPaying
+
+// splitPays is the expected-value half of the claim-time decision. JudgeSplit
+// only asks "could this divide"; this asks "should it" against the measured
+// ledger. A node's named parts (plan.Node.Parts) are the candidate split; a
+// split pays only if the parts are predicged to buy back the fixed worker cost
+// they add, using the same measured base overrun rate the claim-order uses.
+//
+// Without capacity evidence it returns true — the EV gate is inert exactly as
+// the claim-order is, so a cold journal and every non-swarm job take the old
+// path byte-for-byte.
+func splitPays(node *plan.Node, options plan.Options) bool {
+	if options.CapacitySamples <= 0 {
+		return true
+	}
+	if node == nil || len(node.Parts) < 2 {
+		return true
+	}
+	// The fixed cost of adding a worker is the per-brief overhead the
+	// planner already accounts for (orientation + setup + delivery) plus the
+	// retry whose expectation is the measured overrun rate. A split pays
+	// only when the node's own predicted overrun cost is above that added
+	// threshold — the point at which splitting shifts work off a worker that
+	// is measured to overrun. Below it, the single worker already carries
+	// the node at its measured rate and the split only re-pays orientation.
+	cost, ok := MeasuredCost(*node, options)
+	if !ok {
+		return true
+	}
+	// Threshold: the fold's measured base overrun rate itself. A node whose
+	// predicted cost beats the base rate by division (it is oversized or
+	// borderline, i.e. ≈ that rate) pays; an atomic node at the base rate
+	// does not — the second brief only re-buys the same wait.
+	return cost > options.CapacityOverrunRate
+}
+
 func order(children []plan.Node, options plan.Options) []plan.Node {
 	if options.CapacitySamples <= 0 {
 		return orderByDependency(children)
