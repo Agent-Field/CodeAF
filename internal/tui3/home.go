@@ -2428,6 +2428,13 @@ func (a *app) homeSubject() (bandSubject, bool) {
 		return bandSubject{kind: bandKindSession, row: line.row, project: line.project, dir: strings.TrimSpace(line.row.ProjectDir), world: a.home.world}, true
 	case homeItem:
 		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+	case homeHeading, homeProjectLineKind:
+		// A WHOLE PROJECT, for the bands that draw one (homeband_project*.go).
+		// Neither of these is a cursor stop in this build — a heading never has
+		// been ([homeHeading] says why), and [homeProjectLineKind] is a stub for
+		// the lane making one — so this case is what the card will be built from
+		// the moment either becomes one, and nothing until then.
+		return bandSubject{kind: bandKindProject, project: line.project, dir: line.dir, world: a.home.world}, true
 	}
 	return bandSubject{}, false
 }
