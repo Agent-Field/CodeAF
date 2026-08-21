@@ -100,6 +100,13 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	page := *ev.Harness
 	c.page, c.phase, c.hint, c.thought = &page, "", "", ""
 	c.ended = time.Now()
+	// The room's one-line ticker is stale news the moment the page lands: left
+	// alone it kept saying "harness · reviewing · …" under a design that was
+	// already awaiting the person's look, because no further progress event was
+	// ever coming to replace it.
+	if a.room != nil && c.task != 0 && a.room.id == c.task {
+		a.room.harnessProgress = ""
+	}
 	a.entries[i].stale = true
 	a.follow()
 	a.touch()

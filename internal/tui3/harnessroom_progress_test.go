@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 func TestHarnessProgressReplacesOneRowInTheDesignRoom(t *testing.T) {
@@ -41,6 +42,23 @@ func TestHarnessRoomRowPrefersTheHintOverTheThinking(t *testing.T) {
 	got := roomText(a)
 	if !strings.Contains(got, "designing · attempt 1/3 · 4 steps so far") || strings.Contains(got, "reconsider") {
 		t.Fatalf("the room row repeated the thinking instead of showing the hint:\n%s", got)
+	}
+}
+
+// TestTheRoomTickerGoesAwayWhenThePageLands: no further progress event is
+// coming once the design is awaiting the person's look, so a ticker left in
+// place kept saying "reviewing" under a finished page forever.
+func TestTheRoomTickerGoesAwayWhenThePageLands(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 30
+	a.tasks = map[uint64]*taskNode{}
+	a.tasks[4] = &taskNode{id: 4, title: "design helper"}
+	a.room = &taskRoom{id: 4, title: "design helper", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Text: "design helper", Task: &session.TaskNotice{ID: 4}})
+	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "reviewing", Hint: "checking the draft"})
+	a.finishHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Harness: &subharness.Harness{}})
+	if a.room.harnessProgress != "" {
+		t.Fatalf("the ticker outlived the design: %q", a.room.harnessProgress)
 	}
 }
 

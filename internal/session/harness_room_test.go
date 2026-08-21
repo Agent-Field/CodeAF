@@ -13,8 +13,10 @@ package session
 // content deltas showed a wall of braces — and a journal handed the same text
 // replayed that wall to whoever opened the design tomorrow. What the room gets
 // live is the THINKING, over the replacing progress row the chat already draws
-// off the same stream; what the journal gets is a MILESTONE per stage, in a
-// person's words, with the card in a fence so markdown leaves its columns alone.
+// off the same stream, and each stage's MILESTONE the moment it closes — in a
+// person's words, with the card in a fence so markdown leaves its columns
+// alone. The journal keeps the same milestones, so live watching and reading
+// back tomorrow are the same story; the envelope itself reaches neither.
 
 import (
 	"context"
@@ -29,7 +31,10 @@ import (
 // THE ROOM HEARS THE DESIGNER THINK AND NEVER SEES IT TYPE. The reasoning is
 // prose and is drawn exactly as a worker's is (internal/tui3's roomThink); the
 // content is the page's own JSON, and the live account of THAT is the replacing
-// progress row (harness_build.go's harnessProgress), never a text delta.
+// progress row (harness_build.go's harnessProgress) — the only text that
+// crosses is each stage's finished MILESTONE, in a person's words, so the one
+// person actually watching reads the draft note and its card the moment the
+// draft passes rather than on their next visit ([designSeat.noted]).
 func TestADesignRoomHearsTheDesignerThinkAndNeverSeesTheJSON(t *testing.T) {
 	agent, _ := buildAgent(t, streamingDesigner(), t.TempDir())
 	room := newTaskRoom()
@@ -41,14 +46,14 @@ func TestADesignRoomHearsTheDesignerThinkAndNeverSeesTheJSON(t *testing.T) {
 	}
 	room.close()
 
-	var thought strings.Builder
-	turns, typed := 0, 0
+	var thought, typed strings.Builder
+	turns := 0
 	for _, event := range drainRoom(t, lane) {
 		switch event.Kind {
 		case EventReasoning:
 			thought.WriteString(event.Text)
 		case EventTextDelta:
-			typed++
+			typed.WriteString(event.Text)
 		case EventTurnDone:
 			turns++
 		}
@@ -59,8 +64,14 @@ func TestADesignRoomHearsTheDesignerThinkAndNeverSeesTheJSON(t *testing.T) {
 	if !strings.Contains(thought.String(), reviewThinking) {
 		t.Fatalf("the review pass thought in private: %q", thought.String())
 	}
-	if typed != 0 {
-		t.Fatalf("%d chunks of the designer's JSON were typed into the room", typed)
+	// The milestones arrive live, and nothing of the envelope does. `"cues"` is
+	// the first key of the designer's reply, so its presence is the wall of
+	// JSON coming back.
+	if !strings.Contains(typed.String(), "The draft is written") {
+		t.Fatalf("the draft milestone never reached a live watcher: %q", typed.String())
+	}
+	if strings.Contains(typed.String(), `"cues"`) {
+		t.Fatalf("the designer's JSON was typed into the room: %q", typed.String())
 	}
 	if turns != 2 {
 		t.Fatalf("%d calls said they were finished, not 2", turns)
