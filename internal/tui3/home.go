@@ -1332,6 +1332,29 @@ func (h *homeView) focusedLine() (homeLine, bool) {
 	return h.lines[h.cursor], true
 }
 
+// previewLine is the line THE CARD IS ABOUT, which is not always the line the
+// cursor is on: it is the row under the POINTER while the pointer is resting on
+// one, and the cursor's row every other moment.
+//
+// THE POINTER PREVIEWS AND THE CURSOR SELECTS, and the two are allowed to
+// disagree. Reading about a neighbouring conversation should cost nothing —
+// moving the pointer down the column swaps the card without moving the
+// selection, so the hand that was about to press enter is still aimed at the
+// same chat when it gets there. The cursor keeps its selected look on the left
+// while this happens and the hovered row keeps its hover look, which is the
+// screen saying plainly that they are two different things.
+//
+// The pointer's row is only ever a line the cursor could stop on
+// ([app.homeHover] refuses everything else), so a hover this finds always has a
+// card; and the moment the pointer leaves the column the hover is dropped and
+// the card is the cursor's again, with nothing to remember on either side.
+func (h *homeView) previewLine() (homeLine, bool) {
+	if h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.lines[h.hover], true
+	}
+	return h.focusedLine()
+}
+
 // point puts the cursor on the row holding a transcript, and leaves it where it
 // is when that conversation is not on the list any more.
 func (h *homeView) point(transcript string) {
@@ -2188,12 +2211,26 @@ func (a *app) homeHover(x, y int) {
 	a.exchangeHover(row)
 	was := a.home.hover
 	a.home.hover = -1
-	if !inPane && y >= 0 && y < len(hits) {
+	// THE LIST'S HOVER BELONGS TO THE LIST'S COLUMN. The hover is what the card
+	// previews ([homeView.previewLine]), so a pointer resting on the CARD must
+	// not count as a hover on the list row that happens to share its screen line
+	// — the card would then be about a row nobody is pointing at, and it would
+	// change under the very pointer that came to read it. The gutter counts as
+	// the pane's side, exactly as it does for a press ([app.homePane]).
+	left, right := homeColumns(width)
+	if !inPane && (right <= 0 || x < left) && y >= 0 && y < len(hits) {
 		if at := hits[y]; at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
 	}
 	if a.home.hover != was {
+		// A HOVER THAT MOVED MOVED THE CARD, so the card's reading of the
+		// repository is taken for the row now under the pointer — hovering a row
+		// in another project shows THAT project's branch (homeband_repo.go). It
+		// is behind the same cache and the same one-second bound the cursor's
+		// own arrival is, and it is taken here rather than on every motion event
+		// because this is the only branch where the answer changed.
+		a.refreshHomeRepo(time.Now())
 		a.touch()
 	}
 }
@@ -2774,8 +2811,13 @@ func homeName(row session.SessionRow) string {
 //     the facts go first and the title never goes at all. A pane that truncated
 //     its own title would be a preview that cannot say what it is previewing.
 //
+// AND THE CARD FOLLOWS THE POINTER WHEN THERE IS ONE ([homeView.previewLine]).
+// Hovering a row on the left previews that row here, without moving the cursor;
+// a pointer that leaves the column, or rests on a heading, gives the card back
+// to the cursor's row. Everything below is true of whichever row that is.
+//
 // THERE ARE ALWAYS TWO PANES, and only the LEFT one changes shape with the state
-// of the box. The card follows the focused row through every keystroke of a
+// of the box. The card follows the previewed row through every keystroke of a
 // filter exactly as it does at rest — a person walking ↑ through matches is
 // choosing between conversations, and choosing between them by name alone is what
 // the card exists to stop. It is the LIST that becomes a drop-up while typing
@@ -2790,7 +2832,7 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	if a.home.exchange != nil {
 		return a.exchangePane(width, room, pal)
 	}
-	line, ok := a.home.focusedLine()
+	line, ok := a.home.previewLine()
 	if ok && line.kind == homeItem {
 		// THE OTHER KIND OF CARD, in the same column and the same bands
 		// (homestanding.go's [StandingItemCard]). It is a card about an item
@@ -3087,10 +3129,17 @@ func sinceAt(at, now time.Time) string {
 	}
 }
 
-// homeSubject is the thing under the cursor as the band registry sees it, or
+// homeSubject is the thing THE CARD IS ABOUT as the band registry sees it, or
 // false on a row that has no card (the action row, a folded tail).
+//
+// It reads [homeView.previewLine] rather than the cursor so that everything
+// hanging off the card — `m`, a click on one of its fold lines, the chips it
+// draws, the repository reading it takes — acts on the card a person is
+// LOOKING AT. A card previewing the row under the pointer while `m` opened the
+// folds of the row under the cursor would be one screen answering to two
+// different rows.
 func (a *app) homeSubject() (bandSubject, bool) {
-	line, ok := a.home.focusedLine()
+	line, ok := a.home.previewLine()
 	if !ok {
 		return bandSubject{}, false
 	}

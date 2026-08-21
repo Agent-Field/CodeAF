@@ -94,7 +94,9 @@ four rows, most of them saying `elsewhere`, and the one project you could actual
 was wherever recency happened to put it.
 
 The cursor opens on the conversation this window is in, and the preview on the right
-follows it.
+follows it — **or follows your mouse pointer**, whenever the pointer is resting on a row of
+the list. The pane shows the row under the pointer while the pointer is on one, and the
+cursor's row otherwise.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
 spoke in it — or `another window` where another terminal is sitting on that conversation
@@ -172,10 +174,12 @@ yet" below. Opening a project here shows you what is in it; the rows inside stil
 The right-hand pane, while the cursor is on a project's line, shows the project's own
 card: its name, and the folder it lives in.
 
-## The pane on the right of home — the preview of the session under the cursor
+## The pane on the right of home — the preview of the session under the cursor or pointer
 
-**On the right** is a preview of whatever the cursor is on, and it is read top to bottom
-as bands separated by blank lines — no rules and no borders anywhere:
+**On the right** is a preview of one row of the left column: **the row under your mouse
+pointer while the pointer is on one, and the row the cursor is on otherwise** (its own
+section, below). It is read top to bottom as bands separated by blank lines — no rules and
+no borders anywhere:
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    highlighted row on the left wears, so the eye travels between them;
@@ -198,8 +202,8 @@ it down the screen.
 switches the card to each one, so you are choosing between conversations by what they are
 rather than by name alone. On a **folded project's line** it shows that project's card
 instead — the project's name, and the folder it lives in. It goes **empty** — nothing drawn
-at all — when the cursor is on something that is neither: a project's `…13 more` line, or
-the `start a new conversation` row, which has nothing to preview because that chat does not
+at all — when the row it is about is neither: a project's `…13 more` line, or the
+`start a new conversation` row, which has nothing to preview because that chat does not
 exist yet.
 
 A frame too short for all of that drops bands from the bottom — the facts go first — and
@@ -209,6 +213,36 @@ takes the whole frame, because an index you can read beats a preview you cannot.
 Nothing that is zero is drawn, anywhere. A chat that ran no tasks says nothing about tasks;
 one that spent nothing says nothing about spending; a facts line with no facts is not
 drawn at all.
+
+## Why doesn't hovering change the right side — the mouse pointer previews a row
+
+It does, and this is the rule: **the right side shows the row under the pointer while your
+mouse is over one, and the cursor's row otherwise.**
+
+Move the pointer onto a row on the left and the card on the right becomes **that row's**
+card, at once. The cursor does not move: the hovered row takes the hover highlight, the
+cursor's row keeps the selected one, and the two are allowed to be different rows. Move the
+pointer off the column — onto the card itself, onto a project's heading, onto a blank line,
+or out of the frame — and the card goes **straight back to the row the cursor is on**.
+There is nothing to press and nothing to remember.
+
+**The pointer never moves the cursor** — only a click does that — and **the keyboard never
+moves the pointer**. `↑`/`↓` walk the cursor and the card follows the cursor whenever the
+pointer is not on a row; `enter`, `tab` and `esc` always act on the cursor's row.
+
+Every row the cursor can stop on can be previewed this way: a conversation, a `◦` standing
+item, a folded project's line — which shows that **project's** card. Rows the cursor cannot
+stop on, like a project's dim heading, preview nothing and leave the card where it was.
+
+The card is the real card and not a sketch. Hovering a conversation in another project
+shows **that project's** branch and dirty files, its work, its last exchange and its
+figures; `m` opens every fold on the card you are looking at, so while you are pointing at
+a row it acts on **that** row.
+
+Two cases where the right side does not move under the pointer, both of them by design:
+under 80 columns there is no right column at all, and while your terminal owns the pointer
+— after `ctrl+s`, or with the `ui.mouse` setting off — there is no hover anywhere, so the
+card is always the cursor's.
 
 ## The project card — what the right side shows for a whole project
 

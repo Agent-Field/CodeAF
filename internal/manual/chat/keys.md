@@ -755,7 +755,9 @@ on the pinned header that names them. **A click in copy mode acts on nothing**, 
 the rows there are a frozen snapshot.
 
 **Hover** raises the row under the pointer one step in background and brightens its
-marker. Rows that answer to nothing do not react. There is no hover in copy mode, on
+marker. Rows that answer to nothing do not react. On home it does one thing more: the
+preview on the right becomes the row you are pointing at, and returns to the cursor's row
+when you point somewhere else (see the home page). There is no hover in copy mode, on
 the linear/screen-reader tier, or in the phone tool sheet.
 
 ## Scrolling
