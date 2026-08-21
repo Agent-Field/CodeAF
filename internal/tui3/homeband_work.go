@@ -17,9 +17,9 @@ package tui3
 //     rather than dim — it is the one piece of text on this band somebody is
 //     scanning for. The age hangs off the right in dim, which is where every
 //     other age on this surface hangs.
-//   - THE SECOND LINE IS WHAT IT CAME TO, indented under the name so it reads
-//     as a continuation, dim, and CLIPPED TO ONE LINE. An outcome that wrapped
-//     would make one task as tall as three and put the fold in the wrong place.
+//   - THE NEXT LINE IS WHAT IT CAME TO, indented under the name so it reads as
+//     a continuation and dim. Its sentence stays whole; file count and cost
+//     move to following indented rows when the card is too narrow for them.
 //   - DONE IS THE ABSENCE OF A MARK. There is no `✓` and no `done` on a landed
 //     task: this surface's glyphs say what is HAPPENING, and a tick on every
 //     finished row would spend the loudest ink on the rows that want nothing.
@@ -36,8 +36,6 @@ package tui3
 import (
 	"strings"
 	"time"
-
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -61,10 +59,8 @@ func drawWorkBand(a *app, ctx bandContext) []string {
 	row, width, now, pal := ctx.subject.row, ctx.width, ctx.now, ctx.pal
 	var groups [][]string
 	for _, entry := range row.Tasks.Rows {
-		group := []string{homeWorkName(entry, width, now, pal)}
-		if under := homeWorkUnder(entry, row, width, pal); under != "" {
-			group = append(group, under)
-		}
+		group := homeWorkName(entry, width, now, pal)
+		group = append(group, homeWorkUnder(entry, row, width, pal)...)
 		groups = append(groups, group)
 	}
 	return a.bandFoldGroups(ctx, "work", groups, homeWorkTasks, "tasks")
@@ -72,40 +68,21 @@ func drawWorkBand(a *app, ctx bandContext) []string {
 
 // homeWorkName is a task's first line: what it is CALLED, and how long ago it
 // landed, hard against the right edge.
-func homeWorkName(entry session.TaskIndexEntry, width int, now time.Time, pal palette) string {
+func homeWorkName(entry session.TaskIndexEntry, width int, now time.Time, pal palette) []string {
 	label := strings.TrimSpace(entry.Label)
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
 	}
-	age := sinceAt(entry.EndedAt, now)
-	room := width
-	if age != "" {
-		room -= ansi.StringWidth(age) + 1
-	}
-	if room < 8 {
-		// Too narrow to hold both, and the NAME is the one worth keeping: an age
-		// with no name beside it is a fact about nothing.
-		return pal.muted(fit(label, width))
-	}
-	label = fit(label, room)
-	line := pal.muted(label)
-	if age != "" {
-		gap := width - ansi.StringWidth(label) - ansi.StringWidth(age)
-		if gap < 1 {
-			gap = 1
-		}
-		line += strings.Repeat(" ", gap) + pal.dim(age)
-	}
-	return line
+	return bandSides(width, homeWorkIndent, 8, label, sinceAt(entry.EndedAt, now), pal.muted, pal.dim)
 }
 
-// homeWorkUnder is a task's second line, and "" when there is nothing true to
+// homeWorkUnder is a task's outcome rows, and nil when there is nothing true to
 // put there — a landed task with no outcome, no files and no cost says nothing
 // rather than drawing an empty indent (the emptiness law).
-func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width int, pal palette) string {
+func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width int, pal palette) []string {
 	room := width - homeWorkIndent
 	if room < 8 {
-		return ""
+		return nil
 	}
 	word := homeTaskWord(entry, row)
 	outcome := strings.TrimSpace(entry.Outcome)
@@ -141,16 +118,19 @@ func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width i
 		parts = append(parts, dollars(entry.Cost))
 	}
 	if len(parts) == 0 {
-		return ""
+		return nil
 	}
-	// ONE LINE, CLIPPED AND NEVER WRAPPED (this file's header says why).
 	ink := pal.dim
 	if needs {
 		// The one thing on this band that is asking for a hand takes the accent,
 		// the same way the left column brings `waiting on you` up out of the dim.
 		ink = pal.accent
 	}
-	return strings.Repeat(" ", homeWorkIndent) + ink(fit(strings.Join(parts, " · "), room))
+	rows := bandClauses(room, 0, ink, parts...)
+	for i := range rows {
+		rows[i] = strings.Repeat(" ", homeWorkIndent) + rows[i]
+	}
+	return rows
 }
 
 // homeWorkGlyph is the mark that leads a task that is not simply done. They are

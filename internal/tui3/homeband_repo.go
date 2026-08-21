@@ -32,7 +32,7 @@ func drawRepoBand(a *app, ctx bandContext) []string {
 	if !ok || cached.line == "" {
 		return nil
 	}
-	return []string{ctx.pal.dim(fit(cached.line, ctx.width))}
+	return bandClauses(ctx.width, 0, ctx.pal.dim, strings.Split(cached.line, " · ")...)
 }
 
 // refreshHomeRepo takes the one bounded reading when the cursor arrives on a

@@ -35,6 +35,7 @@ func TestRepoBandDrawsKnownFactsCachesAndObeysWidth(t *testing.T) {
 	if got := plain(rows[0]); !strings.Contains(got, "feature/home · 2 files dirty") || ansi.StringWidth(got) > 34 {
 		t.Fatalf("repo row = %q", got)
 	}
+	assertNarrowRows(t, "repo", drawRepoBand(a, ambientBandContextAt(a, 30, now)), 30, "behind 1")
 	a.refreshHomeRepo(now.Add(time.Second))
 	if calls != 1 {
 		t.Fatalf("git status ran %d times inside its cache", calls)
@@ -60,6 +61,7 @@ func TestKeysBandDrawsBothLegendsAndObeysWidth(t *testing.T) {
 	if got := plain(rows[0]); !strings.HasPrefix(got, "enter open · n new") || ansi.StringWidth(got) > 28 {
 		t.Fatalf("session keys = %q", got)
 	}
+	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "m more")
 	ctx.subject.kind = bandKindItem
 	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, "enter open where") {
 		t.Fatalf("item keys = %q", got)
@@ -83,12 +85,13 @@ func TestNextUpDrawsSoonestTwoFoldsAndDrawsNothingEmpty(t *testing.T) {
 	ctx := ambientBandContextAt(a, 32, now)
 	rows := drawNextUpBand(a, ctx)
 	got := strings.Join([]string{plain(rows[0]), plain(rows[1]), plain(rows[2])}, "\n")
-	if !strings.Contains(got, "◦ first · in 4m") || !strings.Contains(got, "…1 more items") {
+	if !strings.Contains(got, "◦ first") || !strings.Contains(got, "· in 4m") || !strings.Contains(got, "…1 more items") {
 		t.Fatalf("next up = %q", got)
 	}
 	if ansi.StringWidth(plain(rows[0])) > 32 {
 		t.Fatalf("next up exceeded width: %q", plain(rows[0]))
 	}
+	assertNarrowRows(t, "next up", drawNextUpBand(a, ambientBandContextAt(a, 30, now)), 30, "in 4m")
 	a.home.items = nil
 	if rows := drawNextUpBand(a, ctx); len(rows) != 0 {
 		t.Fatalf("empty next up drew %q", rows)
@@ -103,6 +106,7 @@ func TestSpendBandPreservesFactsAndEmptiness(t *testing.T) {
 	if got := plain(drawSpendBand(a, ctx)[0]); !strings.Contains(got, "spent $1.25 · 34k tokens") || ansi.StringWidth(got) > 30 {
 		t.Fatalf("spend = %q", got)
 	}
+	assertNarrowRows(t, "spend", drawSpendBand(a, ctx), 30, "34k tokens")
 	ctx.subject.row = session.SessionRow{}
 	if rows := drawSpendBand(a, ctx); len(rows) != 0 {
 		t.Fatalf("empty spend drew %q", rows)

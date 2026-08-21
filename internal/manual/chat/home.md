@@ -967,3 +967,11 @@ nothing.
 The dim spend band can read `spent $1.25 · 34k tokens · last active 12m`. Each clause is
 independent: zero or unknown spend and tokens are omitted, and a line with no true fact
 is not drawn. Home has no additional run-count clause when that fact is unavailable.
+
+## What a narrow home card does with a long row
+
+A card too narrow for a line breaks it between its clauses rather than cutting the end
+off. Whole facts move onto following rows: the final key, branch fact, file age, scheduled
+time, news text, task file count or cost, and answer chip remain visible. A single clause
+wider than the card is still clipped. The card's place line clips from the left so the
+path's basename remains visible.

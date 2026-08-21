@@ -195,11 +195,12 @@ func TestTheProjectCardListsWhatIsKeepingAnEyeOnTheProject(t *testing.T) {
 
 	ctx := projectCardCtx(a, world, 50)
 	rows := projectCardPlain(drawProjectStandingBand(a, ctx))
-	if len(rows) != homeItemsShown+1 {
-		t.Fatalf("the band drew %d rows, want %d:\n%s", len(rows), homeItemsShown+1, strings.Join(rows, "\n"))
+	if len(rows) != homeItemsShown+2 {
+		t.Fatalf("the band drew %d rows, want %d:\n%s", len(rows), homeItemsShown+2, strings.Join(rows, "\n"))
 	}
 	want := []string{
-		homeAskGlyph + " keep main green  needs your look · the fix touc…",
+		homeAskGlyph + " keep main green",
+		"      needs your look · the fix touches migrations",
 		standWaitGlyph + " remind me on Fridays                     Fridays",
 		standWaitGlyph + " remind me on Sundays                     Sundays",
 		bandFoldGlyph + " …1 more " + projectItemsWord,
@@ -274,6 +275,20 @@ func TestTheProjectCardClipsEveryRowToItsWidth(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestNarrowProjectBandsKeepTheirTrailingFacts(t *testing.T) {
+	a := projectCardApp(t)
+	world := projectCardWorld(projectCardRowOf("s1", "a conversation with a long name", time.Hour,
+		session.TaskRollup{Rows: make([]session.TaskIndexEntry, 3), Spend: 2.5}))
+	a.home.items = map[string][]StandingItemView{"/buckets/alpha": {{Item: standing.Item{
+		ID: "i1", Words: "keep the release branch green", Workspace: "/w/alpha",
+		When: standing.When{Kind: standing.WhenEvery, Words: "every weekday morning"}, Status: standing.StatusActive,
+	}}}}
+	ctx := projectCardCtx(a, world, 30)
+	assertNarrowRows(t, "project conversations", drawProjectSessionsBand(a, ctx), 30, "1h")
+	assertNarrowRows(t, "project standing", drawProjectStandingBand(a, ctx), 30, "every weekday morning")
+	assertNarrowRows(t, "project facts", drawProjectFactsBand(a, ctx), 30, "last active 1h")
 }
 
 // THE THREE BANDS ARE REGISTERED FOR A PROJECT AND IN THIS ORDER: what is going

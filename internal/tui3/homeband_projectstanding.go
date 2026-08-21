@@ -57,11 +57,11 @@ func drawProjectStandingBand(a *app, ctx bandContext) []string {
 		// reminder of the absence of a thing.
 		return nil
 	}
-	rows := make([]string, 0, len(views))
+	groups := make([][]string, 0, len(views))
 	for _, view := range views {
 		label := standGlyph(view.Item, view.Running, view.News, ctx.pal.ascii) +
 			" " + strings.TrimSpace(view.Item.Words)
-		rows = append(rows, projectCardRow(label, standRollup(view, ctx.now), ctx.width, ctx.pal))
+		groups = append(groups, projectCardRows(label, standRollup(view, ctx.now), ctx.width, ctx.pal))
 	}
-	return a.bandFold(ctx, "projectstanding", rows, homeItemsShown, projectItemsWord)
+	return a.bandFoldPacked(ctx, "projectstanding", groups, homeItemsShown, projectItemsWord)
 }

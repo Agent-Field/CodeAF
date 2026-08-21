@@ -33,18 +33,13 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 	if len(cached.notes) == 0 {
 		return nil
 	}
-	rows := make([]string, 0, len(cached.notes))
+	groups := make([][]string, 0, len(cached.notes))
 	for _, note := range cached.notes {
-		parts := []string{sinceAt(note.At, ctx.now), strings.TrimSpace(note.Words), strings.TrimSpace(note.Text)}
-		var kept []string
-		for _, part := range parts {
-			if part != "" {
-				kept = append(kept, part)
-			}
-		}
-		rows = append(rows, ctx.pal.dim(fit(strings.Join(kept, " · "), ctx.width)))
+		lead := joinDot(sinceAt(note.At, ctx.now), strings.TrimSpace(note.Words))
+		groups = append(groups, bandClauses(ctx.width, 2, ctx.pal.dim,
+			lead, strings.TrimSpace(note.Text)))
 	}
-	rows = a.bandFold(ctx, "news", rows, 3, "things")
+	rows := a.bandFoldPacked(ctx, "news", groups, 3, "things")
 	heading := "◆ " + itoa(len(cached.notes)) + " things since you left"
 	return append([]string{ctx.pal.accent(fit(heading, ctx.width))}, rows...)
 }

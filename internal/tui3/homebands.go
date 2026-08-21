@@ -39,9 +39,105 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
+
+// bandClauses lays whole facts into the fewest rows that hold them. THE LAST
+// FACT NEVER PAYS FOR A NARROW CARD: only a fact that cannot fit on an empty
+// row is clipped, because there is no honest boundary inside it to break at.
+func bandClauses(width, indent int, ink func(string) string, clauses ...string) []string {
+	if width < 1 {
+		return nil
+	}
+	kept := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		if clause = strings.TrimSpace(clause); clause != "" {
+			kept = append(kept, clause)
+		}
+	}
+	var rows []string
+	for at := 0; at < len(kept); {
+		lead := 0
+		if len(rows) > 0 {
+			lead = indent
+		}
+		room := width - lead
+		if room < 1 {
+			room = width
+			lead = 0
+		}
+		run := kept[at]
+		at++
+		for at < len(kept) {
+			candidate := run + " · " + kept[at]
+			if ansi.StringWidth(candidate) > room {
+				break
+			}
+			run = candidate
+			at++
+		}
+		rows = append(rows, strings.Repeat(" ", lead)+ink(fit(run, room)))
+	}
+	return rows
+}
+
+// bandSides keeps a label and its trailing fact on one row when both retain
+// the label's floor. When they cannot share, the fact gets a complete row of
+// its own, aligned to the right whenever it fits there.
+func bandSides(width, indent, floor int, label, tail string, labelInk, tailInk func(string) string) []string {
+	return bandSidesWithSeparator(width, indent, floor, "", label, tail, labelInk, tailInk)
+}
+
+func bandSidesWithSeparator(width, indent, floor int, separator, label, tail string, labelInk, tailInk func(string) string) []string {
+	label, tail = strings.TrimSpace(label), strings.TrimSpace(tail)
+	if width < 1 || (label == "" && tail == "") {
+		return nil
+	}
+	if tail == "" {
+		return []string{labelInk(fit(label, width))}
+	}
+	sharedTail := separator + tail
+	tailWidth := ansi.StringWidth(sharedTail)
+	labelRoom := width - tailWidth - 1
+	if label != "" && labelRoom >= floor {
+		shown := fit(label, labelRoom)
+		gap := width - ansi.StringWidth(shown) - tailWidth
+		return []string{labelInk(shown) + strings.Repeat(" ", gap) + tailInk(sharedTail)}
+	}
+	rows := []string{labelInk(fit(label, width))}
+	room := width - indent
+	if room < 1 {
+		room, indent = width, 0
+	}
+	shown := fit(tail, room)
+	lead := width - ansi.StringWidth(shown)
+	if lead < indent {
+		lead = indent
+	}
+	return append(rows, strings.Repeat(" ", lead)+tailInk(shown))
+}
+
+// fitLeft clips a place from the left because the basename at its end is the
+// part that distinguishes it from its neighbours.
+func fitLeft(text string, width int) string {
+	if width < 1 {
+		return ""
+	}
+	if ansi.StringWidth(text) <= width {
+		return text
+	}
+	if width == 1 {
+		return glyphMore
+	}
+	runes := []rune(text)
+	for len(runes) > 0 && ansi.StringWidth(glyphMore+string(runes)) > width {
+		runes = runes[1:]
+	}
+	return glyphMore + string(runes)
+}
 
 // bandKind is what a band is about. A band declares the kinds it draws for and
 // is skipped for every other subject.
@@ -275,6 +371,32 @@ func (a *app) bandFoldGroups(ctx bandContext, band string, groups [][]string, sh
 			if len(out) > 0 {
 				out = append(out, "")
 			}
+			out = append(out, group...)
+		}
+		return out
+	}
+	if len(groups) <= show {
+		return join(groups)
+	}
+	folded := a.bandFolded(band, ctx.subject)
+	rest := groups[:show]
+	if !folded {
+		rest = groups
+	}
+	label := bandFoldWord(len(groups)-show, what, folded)
+	out := join(rest)
+	out = append(out, ctx.pal.dim(fit(bandFoldMark(ctx.pal, folded)+" "+label, ctx.width)))
+	a.noteBandFoldLine(band, ctx.subject, strings.TrimSpace(label))
+	return out
+}
+
+// bandFoldPacked is the group-counted fold for compact rows. It preserves a
+// multi-row item's boundary without inserting the blank line the work band
+// deliberately uses between tasks.
+func (a *app) bandFoldPacked(ctx bandContext, band string, groups [][]string, show int, what string) []string {
+	join := func(groups [][]string) []string {
+		var out []string
+		for _, group := range groups {
 			out = append(out, group...)
 		}
 		return out

@@ -32,7 +32,7 @@ func drawNextUpBand(a *app, ctx bandContext) []string {
 		}
 		return !a.IsZero() && a.Before(b)
 	})
-	var rows []string
+	var groups [][]string
 	for _, view := range views {
 		item := view.Item
 		if item.Status != standing.StatusActive {
@@ -44,9 +44,10 @@ func drawNextUpBand(a *app, ctx bandContext) []string {
 		} else if item.When.Kind == standing.WhenProbe && !item.LastChecked.IsZero() {
 			when = "checked " + sinceAt(item.LastChecked, ctx.now) + " ago"
 		}
-		rows = append(rows, ctx.pal.muted(fit(joinDot("◦ "+strings.TrimSpace(item.Words), when), ctx.width)))
+		groups = append(groups, bandSidesWithSeparator(ctx.width, 2, standWordsFloor, "· ",
+			"◦ "+strings.TrimSpace(item.Words), when, ctx.pal.muted, ctx.pal.dim))
 	}
-	return a.bandFold(ctx, "nextup", rows, 2, "items")
+	return a.bandFoldPacked(ctx, "nextup", groups, 2, "items")
 }
 
 func nextUpAge(d time.Duration) string {
