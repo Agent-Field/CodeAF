@@ -3089,7 +3089,15 @@ func (t taskTree) comeHome(title string) (string, string) {
 	_ = commitTaskWork(t.dir, title)
 
 	defer lockGitRoot(t.place, t.root)()
-	if out, err := git(t.root, "merge", "--no-edit", t.branch); err != nil {
+	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
+	// ([commitTaskWork]). A merge that is not a fast-forward writes a commit,
+	// and git refuses to write one for a checkout with no user.name — which is
+	// every hermetic HOME and some fresh machines — so without these two flags
+	// a clean merge came back as "conflicted: Committer identity unknown" and
+	// the branch was kept for a conflict that never existed.
+	if out, err := git(t.root,
+		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+		"merge", "--no-edit", t.branch); err != nil {
 		// --abort is best-effort: a merge that never started (git refused
 		// before touching the index) has nothing to abort, and it says so.
 		_, _ = git(t.root, "merge", "--abort")
