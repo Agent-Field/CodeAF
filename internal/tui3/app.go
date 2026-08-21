@@ -1024,6 +1024,17 @@ type app struct {
 	// capability that is absent rather than broken.
 	errand       func(dir, workspace string) (Agent, error)
 	standingRoot string
+	// exchanges is every errand this window has open, oldest first.
+	//
+	// IT IS ON THE APP AND NOT ON [homeView] BECAUSE AN EXCHANGE OUTLIVES THE
+	// SCREEN IT WAS ASKED ON. It used to be one field on the view, which
+	// [app.closeHome] assigns the zero value to — so opening another
+	// conversation to check something ended the errand mid-question, and the
+	// engine answered the card the person had not got to with "the card was left
+	// unanswered — nothing was set up". Here they survive home closing, several
+	// are open at once, and the window takes them all with it on the way out
+	// ([app.fileEveryExchange]). homeexchange.go's header states the lifecycle.
+	exchanges []*homeExchange
 	// leaveAnswer leaves one answer on another session's doorstep, and answered
 	// is what this window has already sent, by session folder, so the band can
 	// say so while it waits for that session to pick it up (homeband_answer.go).
@@ -2131,7 +2142,15 @@ func (a *app) paint() tea.Cmd {
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
-		(a.roomOpen() && !a.room.done) {
+		(a.roomOpen() && !a.room.done) ||
+		// AND AN ERRAND ASKED FROM HOME IS THE TENTH. Its turn runs against its
+		// own session, so [app.state] says nothing about it — and without this
+		// the pane's `⠹ thinking · 4s`, the strip under it and the row's own
+		// `⠹ working · 4s` would all be still photographs of the second the last
+		// event arrived, which is exactly the complaint the liveness was built
+		// for (homeexchange.go). Only while home is up: the whole of what turns
+		// is drawn on that screen.
+		a.exchangeAnimating() {
 		return a.frameTick()
 	}
 	a.painting = false
@@ -4011,6 +4030,11 @@ func (a *app) quit() tea.Cmd {
 		a.agent.Interrupt()
 		_ = a.agent.Close()
 	}
+	// AND EVERY ERRAND WITH IT. An exchange is a session with a lock on a
+	// transcript; one left open by a process that has gone is a conversation
+	// nobody can reopen, and a stood one's folder would never reach the item it
+	// made (homeexchange.go's [app.fileEveryExchange]).
+	a.fileEveryExchange()
 	return tea.Quit
 }
 

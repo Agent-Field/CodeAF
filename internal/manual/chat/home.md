@@ -895,20 +895,37 @@ confirm it really did look.
 
 While you are typing, the row directly above `start a new conversation` is
 `ask here: "…"`. It answers the sentence **in the pane on the right** — a real conversation
-with a real transcript, kept outside `~/.aforge/v3/projects` so this list never grows a row
-for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does it without
-leaving the box.
+with a real transcript, kept outside `~/.aforge/v3/projects` so this list never grows a
+session row for a one-off errand. One `↑` reaches it, and `ctrl+enter` (or `alt+enter`) does
+it without leaving the box.
 
-While an exchange is up, home has **two zones** — the list on the left and the pane on the
-right — and exactly one of them has the keyboard. `tab` toggles them, `esc` in the pane
-hands it to the list, a click on a row selects that row and takes the keyboard with it, a
-click in the pane brings it back, and answering `1` on a card hands it back by itself. With
-the keyboard on the list every walking key still walks the list, and the pane goes on
-showing the exchange rather than the preview of whatever row you pass.
+**Every exchange is a row on this column**, marked `?`, in its project's block above the
+conversations, with what it is doing in the tail:
 
-The whole of it — where the record goes, how the card is answered, how to get back to the
-list, and how to turn the exchange into an ordinary conversation — is on its own page:
-*Asking from home*.
+```
+ ? remind me at 6 to leave                          ▲ waiting on you
+ ? what did we decide about pricing                 ⠹ working · 4s
+ ? tell me when CI goes red                         ∙ stood
+```
+
+They sort with the hot things — what wants you, then what is moving, then what is done —
+and **several can be open at once**: a second `ask here` adds a row rather than replacing
+the first.
+
+The pane on the right is **about the row under the cursor**, exactly like every other card
+in that column: walk onto an exchange row and you get the exchange, walk off it and the row
+you land on draws its own preview again. `enter` or `tab` on the row hands the keyboard to
+the pane; `esc` or `tab` hands it back. On a window too narrow for two columns the pane is
+**stacked** over the list instead of drawn beside it, and `esc` brings the list back.
+
+**An exchange outlives home.** Closing this screen does not end it, and neither does opening
+another conversation; the row is still here, still waiting, when home opens again. It is
+filed only once it is over, you have seen what it came to, and you have moved off its row —
+or when you quit.
+
+The whole of it — where the record goes, how the card is answered, what the spinner and the
+live strip say, how to get back to the list, and how to turn the exchange into an ordinary
+conversation — is on its own page: *Asking from home*.
 
 ## What happened in this conversation while I was away — news since I last looked
 
