@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# prose_report: present sections out of required structure (4 strategies+verdict).
+d="$1"
+[ -f "$d/REPORT.md" ] || { echo 0; exit 0; }
+body=$(tr '[:upper:]' '[:lower:]' < "$d/REPORT.md")
+n=0
+echo "$body" | grep -qE "flat" && echo "$body" | grep -qE "single.agent" && n=$((n+1))
+echo "$body" | grep -qE "pipeline" && n=$((n+1))
+echo "$body" | grep -qE "static" && echo "$body" | grep -qE "dag" && n=$((n+1))
+echo "$body" | grep -qE "adaptive|claim.time" && n=$((n+1))
+echo "$body" | grep -qE "## verdict" && n=$((n+1))
+echo "$n"

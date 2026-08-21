@@ -245,7 +245,9 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	// subtree's provenance — so it flows to the deferred record at the rail and
 	// re-applies idempotently on resume. The dead leaf's envelope is on its node
 	// record; the caller's judgement rides the worker parameter.
-	worker = escalateContinuation(node.Subharness, worker, node.Provenance.Subharness)
+	if !growth.KeepEnvelope {
+		worker = escalateContinuation(node.Subharness, worker, node.Provenance.Subharness)
+	}
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
@@ -289,7 +291,13 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
 	planCtx = withPlanRecords(planCtx, growth.Records)
-	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap, growth.State, growth.Records...), prefix)
+	// The caller's own phrasing when it has one; see Growth.Goal for why an
+	// exhaustion's words are not a template.
+	goal := strings.TrimSpace(growth.Goal)
+	if goal == "" {
+		goal = OverrunGoal(node, partial, artifacts, gap, growth.State, growth.Records...)
+	}
+	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}

@@ -293,6 +293,11 @@ type Linear struct {
 	// it is the only honest input to the observation window. Zero means nobody
 	// could say; see observationWindow, which has a default for exactly that.
 	contextTokens int
+	// swarm arms the cooperative division tool. Off — the default, and the
+	// whole product until somebody sets AFORGE_SWARM — the leaf does not have
+	// the verb, which is this codebase's rule for a capability with no path
+	// behind it: absent, never present and refused.
+	swarm bool
 }
 
 // WithStore enables the optional persistent-memory pull tool. It mutates the
@@ -337,6 +342,18 @@ func (l *Linear) ContextLength() int { return l.contextTokens }
 // told nothing about attribution does not attribute.
 func (l *Linear) WithAttribution(on bool) *Linear {
 	l.attribution = on
+	return l
+}
+
+// WithSwarm arms the cooperative division tool for this loop.
+//
+// It is a setter carrying a settings row, exactly as WithAttribution is, and
+// for the same reason: the surface owns config and this package is handed
+// facts. Off is the absence of request_split from the schema rather than a
+// paragraph saying not to divide — a worker that has never been told it can
+// hand work back does not hand work back, and the belt is where that is said.
+func (l *Linear) WithSwarm(on bool) *Linear {
+	l.swarm = on
 	return l
 }
 
@@ -576,6 +593,13 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		if task.Reflex {
 			current = append(current, reflexPromotionDefinition())
 		}
+		// A reflex is one obvious micro-action and already has the verb for
+		// "this is bigger than it looked": promote. Offering it a second way to
+		// say so would be two answers to one question, and the first thing to
+		// go wrong with a second answer is that it disagrees.
+		if l.swarm && !task.Reflex {
+			current = append(current, requestSplitDefinition())
+		}
 		return current
 	}
 	trace := newTracer(l.workspace, task.leafKey())
@@ -754,6 +778,35 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					outcome.Text = "The quick pass found that this needs a full job."
 				}
 				trace.turn(outcome.Turns, response, calls, nil, "promoted")
+				return l.land(ctx, task, outcome, started), nil
+			}
+		}
+		// The cooperative ending, and it is terminal by contract: a leaf that
+		// asked to divide does not continue, because the parts it just described
+		// are planned against the partial it is holding, and a leaf that carried
+		// on would be producing work its own children were already commissioned
+		// to produce. The tool description says so in the same words.
+		//
+		// Every other call in the same turn is dropped with it. A model that
+		// asks to stop and to run a command in one breath has said two things;
+		// the stop is the one that was checked, and executing the rest would be
+		// spending a budget the leaf has already handed back.
+		if l.swarm && !task.Reflex {
+			if request, asked := requestedSplit(calls); asked {
+				outcome.Stop = StopSplit
+				outcome.SplitRequest = request
+				// The partial is what the parts consume, so it is taken from
+				// the same two places the promotion path takes it from — the
+				// leaf's own words this turn, and failing that the last thing
+				// it said. A split with nothing behind it still divides; its
+				// parts simply start from the assignment, as they would have if
+				// the build had cut it this way in the first place.
+				outcome.Text = strings.TrimSpace(response.Text())
+				if outcome.Text == "" {
+					outcome.Text = strings.TrimSpace(lastAssistantText(messages))
+				}
+				trace.turn(outcome.Turns, response, calls, nil, fmt.Sprintf(
+					"asked to divide into %d parts", len(request.Parts)))
 				return l.land(ctx, task, outcome, started), nil
 			}
 		}
@@ -1195,6 +1248,13 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 	case StopTurnCap:
 		return provider.VerdictTurnCap
 	case StopPromote:
+		return provider.VerdictUnverifiedSuccess
+	case StopSplit:
+		// A leaf that handed its budget back because it had found several jobs
+		// inside one did not fail to converge — it declined to converge on the
+		// wrong thing. Grading it as a budget stop would teach the ruler that
+		// this worker could not do the work, from the one run where it read the
+		// work correctly.
 		return provider.VerdictUnverifiedSuccess
 	case StopPaused, StopCancelled:
 		// User-directed stops say nothing about model capability.

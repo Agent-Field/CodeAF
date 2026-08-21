@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# review_diff: count of distinct defect classes found in REVIEW.md.
+d="$1"
+[ -f "$d/REVIEW.md" ] || { echo 0; exit 0; }
+body=$(tr '[:upper:]' '[:lower:]' < "$d/REVIEW.md")
+n=0
+echo "$body" | grep -qE "sql injection|sqli" && n=$((n+1))
+echo "$body" | grep -qE "off.by.one|off by one|pagination" && n=$((n+1))
+echo "$body" | grep -qE "unclosed|resource leak|file handle|not closed" && n=$((n+1))
+echo "$body" | grep -qE "race|race condition|synchroniz|atomic" && n=$((n+1))
+echo "$n"

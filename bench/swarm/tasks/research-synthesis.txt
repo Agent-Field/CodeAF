@@ -1,0 +1,3 @@
+This directory contains five markdown notes (`note-1.md` … `note-5.md`) of raw, overlapping excerpts about retrieval-augmented generation: chunking strategies, embedding choices, rerankers, evaluation metrics, and latency budgets. They overlap heavily and disagree on a few numbers.
+
+Synthesize them into a single coherent `SYNTHESIS.md` that: (1) has one `##` section per theme (chunking, embeddings, reranking, evaluation, latency); (2) reconciles each numeric disagreement explicitly by stating both values and which note each came from; (3) removes redundancy so no claim appears twice; (4) ends with a `## Open Questions` section listing what the notes leave unresolved. Cite the source note inline as `(note-N)` for every load-bearing claim.

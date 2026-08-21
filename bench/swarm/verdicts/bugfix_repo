@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# bugfix_repo: fraction of test files passing, out of the suite's own count.
+d="$1"
+[ -d "$d/tests" ] || { echo "ungradable"; exit 1; }
+cd "$d"
+total=$(ls tests/test_*.py 2>/dev/null | wc -l)
+[ "$total" -eq 0 ] && { echo "ungradable"; exit 1; }
+out=$(python3 -m pytest tests/ -q 2>/dev/null | tail -1)
+passed=$(echo "$out" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
+echo "${passed:-0}/$total"
