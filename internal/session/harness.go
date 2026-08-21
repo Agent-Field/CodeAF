@@ -57,7 +57,7 @@ import (
 // about what "opus" means.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	a.mu.Lock()
-	answers, waiting := a.harnessAsks[id]
+	ask, waiting := a.harnessAsks[id]
 	if waiting {
 		delete(a.harnessAsks, id)
 	}
@@ -67,7 +67,7 @@ func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	}
 	// Buffered to one and read at most once, so this never blocks and never
 	// needs the lock held across it.
-	answers <- harnessAnswer{run: run, model: model}
+	ask.answers <- harnessAnswer{run: run, model: model}
 }
 
 // harnessAnswer is one answer to one offer: whether to run it, and the model the
@@ -454,9 +454,9 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 	id := a.harnessSeq
 	answers := make(chan harnessAnswer, 1)
 	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
+		a.harnessAsks = make(map[uint64]harnessAsk, 1)
 	}
-	a.harnessAsks[id] = answers
+	a.harnessAsks[id] = harnessAsk{answers: answers}
 	a.mu.Unlock()
 
 	hub.send(Event{

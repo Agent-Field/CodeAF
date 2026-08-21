@@ -75,6 +75,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 const (
@@ -238,11 +240,37 @@ type taskRecord struct {
 	// got as far as a working copy" would be a sentence about machinery it was
 	// never going to have (see [interrupt]).
 	//
-	// A RESUMED DESIGN IS NEVER RE-RUN. It was running when the session ended and
-	// a recovery turns it into a failed node before the graph holds it, so nothing
-	// here has to rebuild the goal it was designing from — the node is history,
-	// and this is the one word its history needs.
+	// A DESIGN STILL WRITING IS NEVER RE-RUN. It was running when the session
+	// ended and a recovery turns it into a failed node before the graph holds
+	// it, so nothing here has to rebuild the goal it was designing from. The one
+	// exception is a design whose page was FINISHED and waiting on a person —
+	// that one carries its page in Offer and comes back to ask again.
 	Kind TaskKind `json:"kind,omitempty"`
+
+	// Offer is a finished harness page waiting on the person's answer, carried
+	// whole so that closing aforge under the card does not throw away minutes of
+	// finished model work ([harnessOfferRecord]). It is set for exactly as long
+	// as the card is up — written when the page lands, cleared the moment the
+	// wait ends in an answer or a rewrite — so on every other record it is
+	// absent, and a checkpoint written before it existed reads exactly as it
+	// always did: the design fails with nothing saved.
+	Offer *harnessOfferRecord `json:"offer,omitempty"`
+}
+
+// harnessOfferRecord is one finished page as the checkpoint carries it: enough
+// to raise the same card again in the next session and to save the same entry
+// if the person says yes. The page travels as the bytes subharness.Encode
+// writes; cues and justification ride beside it because a page has no field for
+// either (harness_build.go's harnessDesign says why); goal, model and effort
+// are what rebuild the node's design spec, which is deliberately not
+// checkpointed anywhere else (task.go's taskSpec.design).
+type harnessOfferRecord struct {
+	Goal          string          `json:"goal"`
+	Model         string          `json:"model,omitempty"`
+	Effort        string          `json:"effort,omitempty"`
+	Page          json.RawMessage `json:"page"`
+	Cues          []string        `json:"cues,omitempty"`
+	Justification string          `json:"justification,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, and the
@@ -392,6 +420,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Noted:       n.noted,
 		Interrupted: n.interrupted,
 		Kind:        n.kind,
+		Offer:       n.offer,
 	}
 }
 
@@ -518,6 +547,11 @@ type taskRecovery struct {
 	// neither — it is over, and nothing was saved ([interrupt]). Filing it under
 	// "interrupted" would promise a person the next session will pick it up.
 	designs int
+	// asking is the third kind of design ending: the page was FINISHED and the
+	// card was up when the session closed, so it comes back and asks again
+	// ([interrupt]'s Offer branch). Counted apart from designs because the two
+	// sentences are opposites — one kept everything, the other kept nothing.
+	asking int
 	// branches are the interrupted nodes' branches that are still on disk. They
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
@@ -530,7 +564,7 @@ type taskRecovery struct {
 // any reports whether the recovery restored anything at all. A checkpoint that
 // held an empty graph — a session that proposed nothing — is not news.
 func (r taskRecovery) any() bool {
-	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.waiting > 0
+	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.asking+r.waiting > 0
 }
 
 // note is the ONE line the person and the model read about a resumed graph,
@@ -568,6 +602,13 @@ func (r taskRecovery) note() string {
 			word = " designs did not finish (nothing saved)"
 		}
 		parts = append(parts, strconv.Itoa(r.designs)+word)
+	}
+	if r.asking > 0 {
+		word := " design asks again"
+		if r.asking > 1 {
+			word = " designs ask again"
+		}
+		parts = append(parts, strconv.Itoa(r.asking)+word)
 	}
 	if r.waiting > 0 {
 		parts = append(parts, strconv.Itoa(r.waiting)+" waiting")
@@ -647,12 +688,17 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 			var kept string
 			harness := record.Kind == TaskKindHarness
 			record, kept = interrupt(record, workspace)
-			// A DESIGN IS COUNTED APART. It comes back over rather than resumable,
-			// so counting it beside work the frontier will pick up again would be
-			// the summary promising something that is not going to happen.
-			if harness {
+			// A DESIGN IS COUNTED APART, and which way it went is read off what
+			// the interrupt made of it: back on the frontier with its page (it
+			// asks again), or over with nothing saved. Counting either beside
+			// ordinary interrupted work would be the summary promising a resume
+			// that is not that kind of resume.
+			switch {
+			case harness && record.State == TaskQueued:
+				recovery.asking++
+			case harness:
 				recovery.designs++
-			} else {
+			default:
 				recovery.interrupted++
 			}
 			if kept != "" {
@@ -748,6 +794,24 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
 		interrupted: record.Interrupted,
+		offer:       record.Offer,
+	}
+	// A QUEUED DESIGN IS ONLY EVER A FINISHED PAGE ASKING AGAIN ([interrupt]'s
+	// Offer branch), and the Offer is the one record that can rebuild the design
+	// spec the checkpoint otherwise never carries — without this line the
+	// frontier would hand the node to an ordinary worker in a worktree, which is
+	// the exact failure task.go's taskSpec.design warns about.
+	if record.Kind == TaskKindHarness && record.State == TaskQueued && record.Offer != nil {
+		effort, ok := provider.ParseEffort(record.Offer.Effort)
+		if !ok {
+			effort = provider.EffortNone
+		}
+		node.spec.design = &harnessDesignSpec{
+			goal:   record.Offer.Goal,
+			model:  record.Offer.Model,
+			effort: effort,
+			resume: record.Offer,
+		}
 	}
 	if record.State != TaskQueued {
 		close(node.done)
@@ -776,17 +840,32 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	record.Noted = false
 
 	if record.Kind == TaskKindHarness {
-		// A DESIGN IS NEVER RE-RUN, AND THIS IS THE LINE THAT MAKES IT TRUE.
+		// A DESIGN WHOSE PAGE WAS FINISHED COMES BACK AND ASKS AGAIN. The card is
+		// a question, and closing the terminal is not an answer to it: the page
+		// on the Offer is minutes of finished model work that nothing but the
+		// person's word may throw away. It goes back on the frontier as the
+		// design it is — [restoreNode] rebuilds the design spec from the Offer,
+		// which is the one record that CAN rebuild it — and the next session
+		// raises the same card over the same page.
+		if record.Offer != nil && len(record.Offer.Page) > 0 {
+			record.State = TaskQueued
+			record.Report = ""
+			return record, ""
+		}
+
+		// A DESIGN STILL WRITING IS NEVER RE-RUN, AND THIS IS THE LINE THAT
+		// MAKES IT TRUE.
 		//
 		// A design has nothing on disk to point at, ever: no worktree, no branch,
 		// no files, and nothing reaches the registry until somebody approves the
-		// card (harness_task.go). It also has nothing to re-enter — what tells
-		// [Agent.runTaskNode] to hand a node to the designer instead of a worker
-		// is [taskSpec.design], which is deliberately not in the checkpoint
-		// (task.go says why). So a design put back on the frontier is a node the
-		// next session would run as an ORDINARY WORKER, in a worktree, against the
-		// designer's brief — which is not the work anybody asked for, and it would
-		// spend real money doing it.
+		// card (harness_task.go). Half-written, it also has nothing to re-enter —
+		// what tells [Agent.runTaskNode] to hand a node to the designer instead
+		// of a worker is [taskSpec.design], which is only rebuilt from a finished
+		// Offer (task.go says why it is otherwise not checkpointed). So a
+		// mid-write design put back on the frontier is a node the next session
+		// would run as an ORDINARY WORKER, in a worktree, against the designer's
+		// brief — which is not the work anybody asked for, and it would spend
+		// real money doing it.
 		//
 		// It settles instead, with the same sentence a design that ran out of time
 		// says, because the two are the same fact from the person's side: the page

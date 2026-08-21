@@ -554,23 +554,33 @@ That line is the truth about the clock as well: the 30-minute window was on the 
 and it stopped when the page landed. The card below it waits with no clock at all — see
 *Why a design timed out even though the page was there* below.
 
-## What happens to a design being written when aforge closes or restarts
+## What happens to a design when aforge closes or restarts — does a design survive closing the chat
 
-**A design does not resume.** Every other kind of task that was running when a session
-ended comes back queued and is picked up once; a design is the one exception, and it comes
-back **failed**, saying:
+Two different things, depending on how far the design had got.
+
+**A finished page waiting on your answer survives.** If the page was written and the card
+was up — the phase read `awaiting your look` — closing aforge (quit, `ctrl+c`, a crash)
+does not throw it away. The page rides the task checkpoint, and the next session raises
+**the same card over the same page**: approve it and it saves exactly as it would have
+last night. The recovered-graph line counts it as coming back:
+
+```
+recovered task graph: 2 done · 1 design asks again · 1 waiting
+```
+
+**A design still writing does not resume.** Cut off mid-page, it comes back **failed**,
+saying:
 
 ```
 the design did not finish before aforge closed; nothing was saved
 ```
 
 That is the literal truth rather than a soft ending. Nothing reaches the harness registry
-until you approve the save-or-discard card, so a design cut off while it was still writing
-left nothing behind to continue from — no page, no half-saved entry, no worktree, no
-branch. The design room and its thread stay on disk and are still readable; there is just
-nothing in the registry.
+until you approve the card, and a design cut off while still writing left nothing behind
+to continue from — no page, no half-saved entry, no worktree, no branch. The design room
+and its thread stay on disk and are still readable; there is just nothing in the registry.
 
-The recovered-graph line counts it apart from resumable work, because it is not resumable:
+That case shows on the recovered-graph line as:
 
 ```
 recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting

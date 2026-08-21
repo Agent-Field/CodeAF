@@ -1528,7 +1528,7 @@ type Agent struct {
 	// answered by two methods and neither may be able to answer the other's
 	// question by guessing a number.
 	harnessSeq  uint64
-	harnessAsks map[uint64]chan harnessAnswer
+	harnessAsks map[uint64]harnessAsk
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

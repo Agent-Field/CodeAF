@@ -113,6 +113,11 @@ type harnessDesignSpec struct {
 	goal   string
 	model  string
 	effort provider.Effort
+	// resume is a finished page a previous session was showing when it closed,
+	// carried back in from the checkpoint (task_store.go's restoreNode). The
+	// node it rides on writes nothing on its first round: it decodes this page
+	// and raises the same card again. Nil on every fresh design.
+	resume *harnessOfferRecord
 }
 
 // ── WHO IS WATCHING THE PAGE BEING WRITTEN ──────────────────────────────────
@@ -354,6 +359,18 @@ func (s taskSpec) kind() TaskKind {
 	return ""
 }
 
+// carryOffer puts a finished page on this node's checkpoint — or takes it off,
+// with nil — and writes the checkpoint in the same breath, because the whole
+// point of the offer is to be ON DISK when the process dies without warning
+// (task_store.go's harnessOfferRecord). It is set for exactly as long as the
+// design's card is up.
+func (n *TaskNode) carryOffer(offer *harnessOfferRecord) {
+	n.graph.mu.Lock()
+	n.offer = offer
+	n.graph.mu.Unlock()
+	n.graph.checkpoint()
+}
+
 // harnessNodeTitle is what a design node is called on the roster and in the
 // stop card: the harness word, then the goal.
 //
@@ -463,6 +480,27 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 		model:   model,
 		changes: changes,
 	}
+	// A PAGE CARRIED OVER FROM A CLOSED SESSION IS RAISED, NOT REWRITTEN. The
+	// checkpoint brought the finished page back (task_store.go's restoreNode),
+	// so the first round skips the writing and asks the same question again.
+	// A page that cannot be read back is a corrupt checkpoint entry, and it is
+	// reported as exactly that rather than silently redesigned — a redesign
+	// spends minutes of model time nobody asked to spend twice.
+	if design.resume != nil {
+		page, decodeErr := subharness.Decode(design.resume.Page)
+		if decodeErr != nil {
+			node.carryOffer(nil)
+			return a.landHarnessNode(node, child,
+				"the page from the last session could not be read back; nothing was saved", TaskFailed)
+		}
+		run.pending = &harnessAccepted{page: page, cues: design.resume.Cues, justification: design.resume.Justification}
+		// The surface never saw this design begin — the announcement went out in
+		// a session that is gone — so it is said again, ahead of the card, in
+		// the order the law demands (see [Agent.reserveHarnessDesign]).
+		a.emitHarness(Event{Kind: EventHarnessDesign, ID: node.id, Text: goal,
+			Hint: harnessDesigningWord, Model: model, Task: &TaskNotice{ID: node.id}})
+		fmt.Fprintf(log, "page carried over: %s\n", page.Id.Name)
+	}
 	// ── A DESIGN IS A LOOP NOW, AND THAT IS THE WHOLE OF WHAT THIS FILE LEARNED ─
 	//
 	// It used to be a straight line: write a page, raise a card, take the yes or
@@ -519,6 +557,10 @@ type designRun struct {
 	// standing is the page as it stands: what the first round drafted, and then
 	// whatever each rewrite made of it. It is the thing a rewrite is a rewrite OF.
 	standing harnessAccepted
+	// pending is a page that arrived already written — carried over from a
+	// session that closed under its card — and it is spent by the first round,
+	// which raises it instead of writing one ([Agent.designHarnessNode]).
+	pending *harnessAccepted
 }
 
 // round is one write-and-ask: the page written (or written again), the card
@@ -554,30 +596,39 @@ func (r *designRun) round(ctx context.Context, change string) (TaskState, bool, 
 	// middle of the third rewrite — cutting somebody off for having worked on the
 	// design rather than waved it through. Each attempt at writing a page gets
 	// the window whole, and it is given back the instant a page exists.
-	writing, cut := context.WithTimeout(ctx, a.harnessWritingWindow())
-	// AND THE DESIGNER WRITES INTO THIS ROOM, which is the whole of what the seat
-	// is for: the room to stream into while it thinks and drafts, and the thread
-	// whose journal keeps that discussion after the card has scrolled away
-	// ([designSeat]). Every milestone a first draft journals, a rewrite journals
-	// too — the draft that passed, an attempt the law turned down, what the review
-	// made of it — because they are the same stages happening again.
-	accepted, err := r.write(writing, change)
-	if err != nil {
-		// The window is given back on the way out rather than here, so that the
-		// report below can still ask it whether it was the thing that ran out.
-		defer cut()
-		if ctx.Err() != nil && !node.stoppedByPerson() {
-			return a.pauseHarnessNode(node, child), true, ""
+	var accepted harnessAccepted
+	if r.pending != nil && change == "" {
+		// THE PAGE IS ALREADY WRITTEN — the last session wrote it and closed
+		// under its card — so this round spends no clock and no model call
+		// getting back to the question ([Agent.designHarnessNode] seeds this).
+		accepted, r.pending = *r.pending, nil
+	} else {
+		writing, cut := context.WithTimeout(ctx, a.harnessWritingWindow())
+		// AND THE DESIGNER WRITES INTO THIS ROOM, which is the whole of what the seat
+		// is for: the room to stream into while it thinks and drafts, and the thread
+		// whose journal keeps that discussion after the card has scrolled away
+		// ([designSeat]). Every milestone a first draft journals, a rewrite journals
+		// too — the draft that passed, an attempt the law turned down, what the review
+		// made of it — because they are the same stages happening again.
+		var err error
+		accepted, err = r.write(writing, change)
+		if err != nil {
+			// The window is given back on the way out rather than here, so that the
+			// report below can still ask it whether it was the thing that ran out.
+			defer cut()
+			if ctx.Err() != nil && !node.stoppedByPerson() {
+				return a.pauseHarnessNode(node, child), true, ""
+			}
+			fmt.Fprintf(r.log, "design failed: %v\n", err)
+			return a.landHarnessNode(node, child, harnessDesignEnding(writing, node, harnessWriteFailed(change, err)), TaskFailed), true, ""
 		}
-		fmt.Fprintf(r.log, "design failed: %v\n", err)
-		return a.landHarnessNode(node, child, harnessDesignEnding(writing, node, harnessWriteFailed(change, err)), TaskFailed), true, ""
+		// THE WRITING IS OVER, SO ITS CLOCK IS OVER. Cutting it here rather than
+		// leaving it to a deferred call is what makes the paragraph above true: from
+		// this line to the answer there is no timer anywhere in this node, and no
+		// ending it could reach can say the design ran out of time — because a page
+		// exists.
+		cut()
 	}
-	// THE WRITING IS OVER, SO ITS CLOCK IS OVER. Cutting it here rather than
-	// leaving it to a deferred call is what makes the paragraph above true: from
-	// this line to the answer there is no timer anywhere in this node, and no
-	// ending it could reach can say the design ran out of time — because a page
-	// exists.
-	cut()
 	r.standing = accepted
 	page := accepted.page
 
@@ -607,19 +658,45 @@ func (r *designRun) round(ctx context.Context, change string) (TaskState, bool, 
 	// moment before the person needed it — the room being where they can ask the
 	// design about the page they are being shown, and where they can say what
 	// they want changed about it.
-	node.doingNow(HarnessPhaseAsking)
-	word, err := a.askHarnessDesign(ctx, node.id, page, r.model, r.changes)
-	if err != nil {
-		// TWO THINGS END THIS WAIT WITHOUT AN ANSWER, and neither of them is the
-		// design failing: a person pressed ✕, or the session closed under the card.
-		// The page was written either way, so the report says what became of the
-		// page rather than pretending the work never happened, and this node
-		// SETTLES instead of pausing — a design has no goal on its checkpoint to
-		// resume from, and there is nobody left to answer a card whose process is
-		// gone (task_store.go's interrupt says the same).
-		fmt.Fprintf(r.log, "card unanswered: %s\n", page.Id.Name)
-		return a.landHarnessNode(node, child, harnessCardEnding(node, page), TaskDone), true, ""
+	//
+	// AND THE PAGE GOES ON THE CHECKPOINT FOR AS LONG AS THE CARD IS UP
+	// ([TaskNode.carryOffer]): a card is a question, and closing the terminal is
+	// not an answer to it, so the next session raises the same card over the
+	// same page. Every way this wait ends takes the offer back off — the page is
+	// then either saved, dropped, or about to be replaced by a rewrite, and a
+	// checkpoint still carrying it would resurrect a page that was answered.
+	if encoded, encodeErr := subharness.Encode(page); encodeErr == nil {
+		node.carryOffer(&harnessOfferRecord{
+			Goal:          r.goal,
+			Model:         r.model,
+			Effort:        string(node.spec.design.effort),
+			Page:          encoded,
+			Cues:          accepted.cues,
+			Justification: accepted.justification,
+		})
 	}
+	node.doingNow(HarnessPhaseAsking)
+	word, err := a.askHarnessDesign(ctx, node, page, r.model, r.changes)
+	if err != nil {
+		// TWO THINGS END THIS WAIT WITHOUT AN ANSWER, and they end differently.
+		// A person pressed ✕: the page dies with their decision, and the node
+		// settles saying so. The SESSION closed under the card: the node is left
+		// exactly as it is — running, with the page on its checkpoint — so the
+		// next session finds it and asks again (task_store.go's interrupt, and
+		// [Agent.runTaskNode]'s empty-state return is what keeps the record
+		// running).
+		if node.stoppedByPerson() {
+			node.carryOffer(nil)
+			fmt.Fprintf(r.log, "card unanswered: %s\n", page.Id.Name)
+			return a.landHarnessNode(node, child, harnessCardEnding(node, page), TaskDone), true, ""
+		}
+		fmt.Fprintf(r.log, "card carried to the next session: %s\n", page.Id.Name)
+		return "", true, ""
+	}
+	// THE QUESTION IS OVER, whichever word ended it, so the page comes off the
+	// checkpoint here — before anything lands — or a crash between the answer
+	// and the landing would resurrect a card that was already answered.
+	node.carryOffer(nil)
 	if word.change != "" {
 		// ANOTHER ROUND, AND NOTHING HAS LANDED. The card was withdrawn at the
 		// instant those words were taken (harness_build.go), the registry is
@@ -673,16 +750,18 @@ func harnessWriteFailed(change string, err error) string {
 	return "the rewrite failed and nothing was saved: " + err.Error()
 }
 
-// pauseHarnessNode is what a design says when the PROCESS ended under it — the
-// session closed while the page was still being written, or while the card was
-// still up.
+// pauseHarnessNode is what a design says when the PROCESS ended while the page
+// was STILL BEING WRITTEN. (A session closing under a finished card is the
+// other ending, and it is not this one: that node is left running with its page
+// on the checkpoint and asks again next session — [designRun.round].)
 //
-// IT DOES NOT PROMISE A RESUME, because a design does not get one. The node is
-// deliberately left running so the checkpoint carries it, and the next session
-// settles it with this same sentence (task_store.go's [interrupt], which also
-// says why it must not go back on the frontier). A room that said "paused — it
-// resumes" tonight and a recovery note that said nothing was saved tomorrow
-// would be the harness telling somebody two different things about one page.
+// IT DOES NOT PROMISE A RESUME, because a half-written design does not get one.
+// The node is deliberately left running so the checkpoint carries it, and the
+// next session settles it with this same sentence (task_store.go's [interrupt],
+// which also says why it must not go back on the frontier). A room that said
+// "paused — it resumes" tonight and a recovery note that said nothing was saved
+// tomorrow would be the harness telling somebody two different things about one
+// page.
 func (a *Agent) pauseHarnessNode(node *TaskNode, child *Agent) TaskState {
 	const report = harnessInterruptedReport
 	child.record(textMessage("assistant", report))
