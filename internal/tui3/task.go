@@ -3203,12 +3203,21 @@ func (a *app) railTake(hold bool) {
 // TWO KEYS ARE READ WITHOUT THE HOLD, and they are the two that are about the
 // roster rather than inside it: ctrl+t, which asks for it, and ctrl+g, which
 // takes the column off the frame and puts it back ([app.railStow]).
+//
+// HOME IS ON THE STAND-DOWN LIST BESIDE THE OTHER FULLSCREEN PAGES, and it was
+// missing from it. Under [railSlimFloor] a held roster is drawn OVER the body
+// ([app.railFull]) — and home is drawn INSTEAD of the body (view.go's
+// [app.frame] returns home's frame long before the roster is asked for), so a
+// hold carried in from the conversation underneath was a list nobody could see
+// taking the six keys home's own foot advertises: `↑↓ move · enter open · esc
+// close`, and the follow-up enter of a stacked `ask here` with them. The only
+// thing left that moved the selection was the pointer.
 func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.taskSheet.open, a.pick.open, a.copy.on, a.welcome.open,
-		a.menu.open, a.comp.open:
+		a.sheet.open, a.taskSheet.open, a.home.open, a.pick.open, a.copy.on,
+		a.welcome.open, a.menu.open, a.comp.open:
 		return nil, false
 	}
 	if key == railStowKey {
