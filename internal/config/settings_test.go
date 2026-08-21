@@ -1,12 +1,15 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 func registry(t *testing.T, dir string) *Settings {
@@ -859,3 +862,98 @@ func mustRow(t *testing.T, rows *Settings, key string) Setting {
 	}
 	return row
 }
+
+// ── background checks ───────────────────────────────────────────────────────
+
+// THE ROW READS THE MACHINE AND NEVER THE FILE. What it shows is derived from
+// the timer's own definition on disk, so a person who removed the agent by hand
+// is told `off` in the one place they went to check — and turning the row is
+// what installs and removes it.
+func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	program := filepath.Join(t.TempDir(), "aforge")
+	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	timer, err := standing.NewWatch(standing.WatchOptions{
+		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
+		Runner: quietRunner{},
+	})
+	if err != nil {
+		t.Fatalf("NewWatch: %v", err)
+	}
+	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
+	row, ok := registry.Row(KeyStandingBackground)
+	if !ok {
+		t.Fatal("a machine with a timer has no background checks row")
+	}
+	if row.Category != CategoryPractice || row.Kind != SettingChoice {
+		t.Fatalf("row = %+v", row)
+	}
+	// Nothing installed yet, so the row says so however the file reads.
+	if row.Value() != BackgroundOff {
+		t.Fatalf("an uninstalled timer reads %q", row.Value())
+	}
+	if err := row.Apply(BackgroundOn); err != nil {
+		t.Fatalf("turning it on: %v", err)
+	}
+	if row.Value() != BackgroundOn {
+		t.Fatalf("an installed timer reads %q", row.Value())
+	}
+	if BackgroundChecksAt(dir) != BackgroundOn {
+		t.Fatalf("the intent on disk = %q", BackgroundChecksAt(dir))
+	}
+	if err := row.Apply(BackgroundOff); err != nil {
+		t.Fatalf("turning it off: %v", err)
+	}
+	if row.Value() != BackgroundOff {
+		t.Fatalf("a removed timer reads %q", row.Value())
+	}
+	if BackgroundChecksWantedAt(dir) {
+		t.Fatal("the launch repair would put back a timer the person turned off")
+	}
+	// AND THE HINT NAMES THE THING IT INSTALLS. "aforge installs a launchd
+	// agent" is a sentence nobody can check.
+	for _, want := range []string{standing.DarwinTickLabel, standing.LinuxTickTimer, standing.IntervalWords()} {
+		if !strings.Contains(row.Hint, want) {
+			t.Fatalf("the hint does not name %q: %s", want, row.Hint)
+		}
+	}
+	// And a model may turn it: this is a preference, not a rail on the model.
+	if !row.SelfService() {
+		t.Fatal("the chat cannot turn off the background checks somebody asked it to")
+	}
+}
+
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. On a machine with no
+// timer to install there is nothing for this switch to switch, so the sheet has
+// no row rather than a row that reads nothing and refuses every write.
+func TestTheBackgroundChecksRowIsAbsentWithNoTimer(t *testing.T) {
+	registry := NewSettings(SettingsOptions{ProfileDir: t.TempDir()})
+	if _, ok := registry.Row(KeyStandingBackground); ok {
+		t.Fatal("a machine with no timer offered a switch for one")
+	}
+	for _, row := range registry.Rows() {
+		if row.Key == KeyStandingBackground {
+			t.Fatal("the row is in the sheet after all")
+		}
+	}
+}
+
+// A REPOSITORY MAY NOT TURN THIS ON. Installing a timer is a change to
+// somebody's machine, and a checked-in file that could make one is a clone
+// arranging to run a program on every laptop it lands on.
+func TestBackgroundChecksAreProfileOnly(t *testing.T) {
+	for _, key := range ProjectKeys {
+		if key == KeyStandingBackground {
+			t.Fatal("a repository can install a timer on the reader's machine")
+		}
+	}
+}
+
+// quietRunner is this machine's scheduler, stood in for. Nothing in these tests
+// goes near launchctl.
+type quietRunner struct{}
+
+func (quietRunner) Run(context.Context, string, ...string) error { return nil }

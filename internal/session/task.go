@@ -133,7 +133,15 @@ type taskArguments struct {
 // a person may still move afterwards is `model`, and only from inside the node's
 // own room — see the field itself.
 type taskSpec struct {
-	title   string
+	title string
+	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
+	// door cutting one out of a sentence it had to hand. It is the whole of what
+	// decides whether the work is named again (taskname.go): a name the shaper
+	// or the grooming model wrote is what naming this work looks like, and
+	// paying a second call to rename it would be the harness disagreeing with
+	// its own answer. False is the honest default, so a new door that says
+	// nothing gets a name made for it.
+	named   bool
 	summary string
 	// request is THE PERSON'S OWN MESSAGE, captured by the code that admits this
 	// proposal rather than asked of the model (task_brief.go). It is the first
@@ -373,7 +381,10 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title:       strings.TrimSpace(parsed.Title),
+		title: strings.TrimSpace(parsed.Title),
+		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
+		// namer leaves it alone (taskname.go).
+		named:       strings.TrimSpace(parsed.Title) != "",
 		summary:     strings.TrimSpace(parsed.Summary),
 		brief:       strings.TrimSpace(parsed.Brief),
 		deliverable: strings.TrimSpace(parsed.Deliverable),

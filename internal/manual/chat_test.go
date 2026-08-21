@@ -78,6 +78,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
+		// The wave that made a dropped file attach: the words people use for it
+		// are "drag", "drop" and the token they then find in their own sentence.
+		{"can I drag and drop an image into the message box", "keys"},
+		{"what does image #1 in my message mean", "keys"},
+		{"why did the path I pasted turn into a token", "keys"},
 		{"where do I change settings", "commands"},
 		{"what is openaf", "starting-aforge"},
 		{"can you access my email", "accounts"},
@@ -91,6 +96,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"do you know what my other windows are doing", "tasks"},
 		{"will you notice work from another terminal", "tasks"},
 		{"what else is running on this project right now", "tasks"},
+		{"what tasks are running outside this chat", "tasks"},
+		{"what is running in my other projects", "tasks"},
 
 		// The ninth wave: one terminal, several conversations. The first two are
 		// asked by somebody who read the old refusal and wants to know whether
@@ -127,6 +134,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did a memory come from", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},
 		{"does it know if a memory actually helped", "what-i-remember"},
+
+		// The eleventh wave: the words are no longer only carried, they can be
+		// SEARCHED. Somebody asking either of these is asking about the
+		// conversation itself rather than about a task that ran, and the answer
+		// is the page that names the tool — never the task history, which is a
+		// record of work and not of what was said.
+		{"what did we decide last week", "what-i-remember"},
+		{"search my old conversations", "what-i-remember"},
 
 		// The third wave: aforge changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where
@@ -230,6 +245,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"cmd backspace does nothing", "keys"},
 		{"why does my task have a weird name", "tasks"},
 		{"who decides what my task is called", "tasks"},
+		// The naming wave. A row that shows a path or the front of somebody's
+		// sentence is the thing people actually see, and they say it in the words
+		// of what is on screen — a folder, a file path, "the first few words" —
+		// long before they would say "title".
+		{"my task is named after a folder path", "tasks"},
+		{"the task on the right is called /var/folders", "tasks"},
+		{"why is the task named the first few words of what I typed", "tasks"},
+		{"the name on the task changed by itself a few seconds later", "tasks"},
+		{"can I give a task a short name", "tasks"},
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
@@ -419,6 +443,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I use home on my phone", "home"},
 		{"how do I approve a command from my phone", "home"},
 		{"how do I open a task by tapping", "tasks"},
+		// Background checks are on out of the box now, and the two sentences a
+		// person says about that are the plain question and the plain wish.
+		{"does it run when my terminal is closed", "keeping-an-eye"},
+		{"turn off background checks", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -1104,13 +1104,12 @@ func standingCard() session.StandingNotice {
 		NeedsPerson:   "the branch is gone",
 	}
 	return session.StandingNotice{
-		ID:         7,
-		Item:       item,
-		WhenWords:  "every ten minutes while CI is running",
-		CostWords:  "about $0.05 a run, at most six times a day",
-		Guessed:    true,
-		OfferWatch: true,
-		Options:    session.StandingOptions(item),
+		ID:        7,
+		Item:      item,
+		WhenWords: "every ten minutes while CI is running",
+		CostWords: "about $0.05 a run, at most six times a day",
+		Guessed:   true,
+		Options:   session.StandingOptions(item),
 	}
 }
 
@@ -1145,14 +1144,13 @@ func TestAStandingCardCrossesTheWireAndIsAnsweredBack(t *testing.T) {
 		t.Fatalf("the probe did not travel: %+v", arrived.Standing.Item.When)
 	}
 
-	yes := true
-	l.ok(2, MethodStandingResolve, StandingArgs{ID: 7, Answer: session.StandingAnswer{Approved: true, KeepWatch: &yes}})
+	l.ok(2, MethodStandingResolve, StandingArgs{ID: 7, Answer: session.StandingAnswer{Approved: true}})
 	agent.mu.Lock()
 	defer agent.mu.Unlock()
 	if len(agent.standings) != 1 {
 		t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
 	}
-	if !agent.standings[0].Approved || agent.standings[0].KeepWatch == nil || !*agent.standings[0].KeepWatch {
+	if !agent.standings[0].Approved {
 		t.Fatalf("the answer arrived as %+v", agent.standings[0])
 	}
 	if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
@@ -1164,37 +1162,6 @@ func TestAStandingCardCrossesTheWireAndIsAnsweredBack(t *testing.T) {
 	}).Payload).Unwire()
 	if news.Standing == nil || news.Standing.Update != "stood" || news.Standing.Text != "watching CI" {
 		t.Fatalf("the update line did not travel: %+v", news.Standing)
-	}
-}
-
-// KEEPWATCH HAS THREE STATES AND ALL THREE ARE LOAD-BEARING: nil is nobody was
-// asked, false is a decline that is remembered and never asked again, true
-// installs the OS timer. A wire that flattened nil into false would answer a
-// question on the person's behalf, in the negative, for ever.
-func TestAKeepWatchAnswerArrivesAsItselfInAllThreeStates(t *testing.T) {
-	yes, no := true, false
-	for i, want := range []*bool{nil, &yes, &no} {
-		agent := &fakeAgent{}
-		l := dialAgent(t, engineOn(agent))
-		l.hello(Hello{Version: Version})
-		l.ok(1, MethodStandingResolve, StandingArgs{
-			ID:     uint64(i + 1),
-			Answer: session.StandingAnswer{Approved: true, KeepWatch: want},
-		})
-		agent.mu.Lock()
-		got := agent.standings
-		agent.mu.Unlock()
-		if len(got) != 1 {
-			t.Fatalf("case %d: the answer did not arrive", i)
-		}
-		switch {
-		case want == nil && got[0].KeepWatch != nil:
-			t.Fatalf("case %d: nobody was asked and the engine heard %v", i, *got[0].KeepWatch)
-		case want != nil && got[0].KeepWatch == nil:
-			t.Fatalf("case %d: %v arrived as nobody-was-asked", i, *want)
-		case want != nil && *got[0].KeepWatch != *want:
-			t.Fatalf("case %d: %v arrived as %v", i, *want, *got[0].KeepWatch)
-		}
 	}
 }
 

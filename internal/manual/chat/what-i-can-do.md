@@ -404,9 +404,15 @@ watch, so `read` either watches the file or says no model can.
 **It depends on the model you are using.** Some models read images directly;
 some cannot see at all.
 
-You attach pictures to a message you type. The accepted formats are exactly
-**png, jpeg, webp and gif**. Limits: **10MB** per image and **20MB** for all the
-images on one message.
+You attach pictures to a message you type. **Drag a file onto the terminal, or
+paste one you copied as a file**, and it is attached — your sentence gets a short
+`[image #1]` token where the path would have gone, and you can then talk about
+"image #1" and be understood. `/image <path>` and the `@` completion attach one
+too. The picture travels **inside the message as the picture**, not as a path
+somebody has to go and open. The "what the keys do" page has the whole of it.
+
+The accepted formats are exactly **png, jpeg, webp and gif**. Limits: **10MB** per
+image and **20MB** for all the images on one message.
 
 - Over the per-image limit: `session: <path> is over the 10MB image limit`
 - Over the per-message limit:
@@ -672,13 +678,16 @@ pieces and nothing else.
 
 Plainly, so you do not have to find out the hard way.
 
-- **It does not carry a conversation into the next one.** The transcript stays
-  where it was written; a new session opens on an empty screen and knows nothing
-  about what was said in the last one. What it *does* carry is a handful of
-  durable lines — a preference you stated, something you asked it to remember —
-  and only those; see the what-i-remember page for what is kept and how to read
-  it. Working state recorded with `track` survives a resume of *this*
-  conversation and nothing further.
+- **It does not carry a conversation into the next one — but it can go and look
+  one up.** The transcript stays where it was written; a new session opens on an
+  empty screen with none of it in front of it. What it carries by itself is a
+  handful of durable lines — a preference you stated, something you asked it to
+  remember — and only those. What was actually *said* in an earlier conversation
+  is searched for when you ask for it, with `search_conversations`, and quoted
+  back from the words themselves; that is a look-up and not something it walks in
+  already knowing. Both halves are on the what-i-remember page. Working state
+  recorded with `track` survives a resume of *this* conversation and nothing
+  further.
 - **It cannot make media without a model for it.** `generate_image`, `speak`,
   `generate_music` and `generate_video` are each on the list only when this
   machine has a model for that kind of media; when there is none, the tool is

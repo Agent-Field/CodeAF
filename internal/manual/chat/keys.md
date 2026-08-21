@@ -245,7 +245,7 @@ caret is on the first logical line, and `down` only when it is on the last.
 
 | Chord | What it does |
 |---|---|
-| `backspace` | Delete the character behind the caret. Over an empty box with attachments, it removes the last attached picture instead |
+| `backspace` | Delete the character behind the caret. Over an empty box with attachments, it removes the last attached picture instead — and its `[image #n]` token with it |
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
@@ -380,20 +380,21 @@ meanings.
 
 ## Attaching a picture
 
-There are exactly two ways in, and no third.
+There are three ways in.
 
-1. **`/image <path>`.** `~` becomes your home directory, a relative path is resolved
+1. **Drag a file in, or paste one.** Drop a screenshot on the terminal — or copy a
+   file in Finder or your file manager and press `cmd+v` / `ctrl+shift+v` — and
+   aforge attaches it. See "Dragging or pasting a screenshot in" below, which is
+   the way most people do this.
+2. **`/image <path>`.** `~` becomes your home directory, a relative path is resolved
    against the conversation's directory — or against **your own machine's** working
    directory over `--host` — and an absolute path is left alone.
-2. **The `@` completion.** An image row in the list is tagged `img`. Choosing it
+3. **The `@` completion.** An image row in the list is tagged `img`. Choosing it
    **removes the half-typed `@token` from your sentence** and puts the file in the
    tray, instead of typing a path.
 
-**Drag-and-drop does not attach, and pasting an image does not attach.** A terminal
-drag-drop arrives as pasted *text*, and aforge inserts it into the message as text.
-Nothing in the paste path looks at the text for a picture. Typing out an `@` path to
-an image by hand does not attach either — attaching happens when you choose the
-completion row.
+Typing out an `@` path to an image by hand does not attach — attaching happens when
+you choose the completion row.
 
 **What is accepted:** `.png`, `.jpg`, `.jpeg`, `.webp` and `.gif`, case-insensitive.
 Those five are exactly what aforge will send. The ceiling is **10 MB per picture**,
@@ -407,9 +408,44 @@ answers every picture question here, whether you attached the file or not.
 Attaching is for a picture you are handing over as part of what you are saying.
 
 **The tray.** Attached pictures sit in a one-row tray directly above the message box,
-one dim chip each, drawn as `▣ name.png` — `*` on an ASCII terminal. The message box
-stays the sentence. `backspace` over an empty box drops the last chip, and clicking a
-chip removes that one.
+one dim chip each, drawn as `▣ #1 name.png` — `*` in place of the square on an ASCII
+terminal. The number is the picture's place in the message and the number `[image #1]`
+in your sentence refers to. The message box stays the sentence. `backspace` over an
+empty box drops the last chip, and clicking a chip removes that one — and takes its
+`[image #n]` out of your sentence, counting the ones behind it down so the numbers
+stay true.
+
+## Dragging or pasting a screenshot in
+
+**Drag a picture onto the terminal, or paste one you copied as a file, and aforge
+attaches it.** What the terminal actually hands over is the file's *path* as pasted
+text — `/var/folders/.../Screenshot 2026-08-21 at 5.21.40 PM.png`, usually with its
+spaces backslashed, sometimes quoted, sometimes as a `file://` URL. aforge reads all
+three shapes, and reads several files dropped at once, separated by spaces or by
+newlines.
+
+**Your sentence gets `[image #1]`, not the path.** The picture goes on the tray and a
+short token takes its place in the message box, numbered in the order the pictures
+were attached. It is ordinary text: type around it, delete it, move it. And it is
+what you say out loud — "what font is image #1", "compare image #1 with image #2" —
+because **the token goes to aforge inside your message, in the position you left it,
+and the picture itself travels with it.** aforge is told that `[image #1]` marks the
+first picture in the message, so the number you read is the picture it is looking at.
+
+**A picture attached by `/image` or the `@` completion gets its token too**, appended
+to the end of your sentence when you press `enter`, so "image 2" means the same thing
+whichever way the picture got there.
+
+**It is all or nothing, on purpose.** A paste is treated as pictures only when *every*
+word in it names one of the five picture types **and that file exists on this machine**.
+A sentence that mentions a `.png`, a diff, a stack trace, a log — all of it goes into
+the message box as the text it plainly is, which is what pasting has always done.
+A paste over a line that starts with `/` is left as text too, so `/image ` and
+`/export ` still take a path.
+
+**Raw image data on the clipboard is not read.** Copying a picture out of a browser or
+a screenshot tool — as *pixels* rather than as a file — pastes nothing here. Save it to
+a file first, then drag that in, or use `/image <path>`.
 
 ## What aforge says when a picture is refused
 
@@ -419,8 +455,18 @@ chip removes that one.
 | Not one of the five types | `<basename> is not a picture · png, jpeg, webp and gif are` |
 | Missing file, or a directory | `no such picture: <path as typed>` |
 | Already in the tray | `<basename> is already attached` |
+| Dragged or pasted in over the ceiling | `<basename> is over the 10MB image limit` |
 | Unreadable when you send | `could not read <basename>` |
 | Over the ceiling when you send | `<basename> is over the 10MB image limit` |
+
+A dragged or pasted picture is measured **at the moment you drop it**, and one over the
+ceiling is refused there rather than attached and refused later. Nothing is lost when
+that happens: the path stays in your message box as the text it arrived as, so you can
+still ask aforge to look at the file where it lies.
+
+A picture that is dragged in but **does not exist on this machine** is not refused at
+all — the paste was never a picture, so the text goes into the message box unchanged
+and nothing is said about it.
 
 **A refusal keeps your pictures.** The tray is emptied while the message is in
 flight; if sending fails, the chips are put back, in front of anything attached in
@@ -429,13 +475,19 @@ the meantime, without duplicating.
 ## Sending a message that has pictures
 
 `enter` with a full tray sends. The files are read at the moment you press `enter`.
-The line in the conversation becomes your sentence plus the file names in dim square
-brackets — `› what is wrong with this  [chart.png]`. A message with pictures and no
-words is still a message.
+The line in the conversation becomes your sentence — tokens and all — plus the file
+names in dim square brackets, numbered to match:
+`› what is wrong with this [image #1]  [#1 chart.png]`. A message with pictures and no
+words is still a message; it goes out as its tokens alone.
 
-A picture never travels as a path. It travels as bytes alongside the message, which
-is why the path is rooted on your **local** machine even on a remote session. The
-tray is not rendered as a picture — a terminal cell is not a place to show one.
+**aforge really sees the picture.** It does not receive the path and go and open it:
+the bytes travel inside the message as the picture itself, base64-encoded, beside your
+words, which is why the path is rooted on your **local** machine even on a remote
+session. If the model you are talking to cannot see, the picture is shown to a model
+that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
+can see, the message is refused before anything is sent and your pictures stay on the
+tray. The tray is not rendered as a picture — a terminal cell is not a place to show
+one.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.

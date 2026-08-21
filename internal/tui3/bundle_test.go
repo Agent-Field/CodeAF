@@ -3969,7 +3969,7 @@ func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
 	clickRail(t, a, 0)
 
 	page := roomText(a)
-	if !strings.Contains(page, "[chart.png]") {
+	if !strings.Contains(page, "[#1 chart.png]") {
 		t.Fatalf("a page dropped the message's picture:\n%s", page)
 	}
 	if strings.Contains(page, "/tmp/lab/chart.png") {

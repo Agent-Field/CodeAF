@@ -340,6 +340,11 @@ bytes travel with the message.
 A full attachment tray does not stop the command: `/image` adds a second picture rather
 than sending the first.
 
+The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
+to your sentence when you press `enter`**, so you can refer to it by number the same way
+you would one you dragged in. Dragging or pasting a file over a line that already starts
+with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
+
 Refusals, exactly as written:
 
 ```
@@ -1005,8 +1010,12 @@ errands on two screens.
 
 **Workspace** — what aforge may do and spend while it works for you. Rows: "daily
 budget", "ask before spending", "practice budget", "quiet before practice", "arrival
-brief after", "tenure after", "attribution", "google sign-in id", "google sign-in
-secret".
+brief after", "tenure after", "background checks", "attribution", "google sign-in id",
+"google sign-in secret".
+
+**"background checks"** is on by default: one small timer under your own login checks
+your reminders, watches and routines every 5 minutes with no window open. Off removes it
+and nothing standing is lost — see *Keeping an eye on things* for the whole of it.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
