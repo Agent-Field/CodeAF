@@ -226,8 +226,19 @@ func (a *app) watchWakes() tea.Cmd {
 		return nil
 	}
 	a.wakeGen++
-	a.wakeLane = agent.Wakes()
+	if leavable, ok := agent.(leavableWaker); ok {
+		a.wakeLane, a.stops.wakes = leavable.WatchWakes()
+	} else {
+		a.wakeLane, a.stops.wakes = agent.Wakes(), nil
+	}
 	return waitWake(a.wakeLane, a.wakeGen)
+}
+
+// leavableWaker is the wake lane WITH A WAY OUT OF IT (session's agent.go). It
+// is asserted separately from [wakeAgent] for that interface's own reason, and
+// a nil stop is an agent that can only be abandoned (switcher.go's [laneStops]).
+type leavableWaker interface {
+	WatchWakes() (<-chan (<-chan session.Event), func())
 }
 
 // waitWake takes one woken turn's stream off the lane and asks for the next.

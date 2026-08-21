@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -349,6 +350,17 @@ type elsewhereAgent interface {
 	Elsewhere() session.Elsewhere
 }
 
+// keeperAwareAgent is [elsewhereAgent] told which other windows are OURS
+// (session's taskelsewhere.go).
+//
+// A second conversation of this process on the same project writes the same
+// presence file every other terminal reads, so without this it would arrive on
+// our own away rows as `another window` — and `go to that window to act on it`
+// is the wrong answer when the window is this one and the way there is `tab`.
+type keeperAwareAgent interface {
+	ElsewhereExcept(others ...string) session.Elsewhere
+}
+
 // elsewhere is the reading this surface is currently drawing from. IT NEVER
 // TOUCHES THE DISK except the very first time it is asked — every later refresh
 // is the paint clock's ([app.refreshElsewhere]) — so it is safe to ask from
@@ -376,11 +388,36 @@ func (a *app) refreshElsewhere() {
 		return
 	}
 	a.away = elsewhereCache{at: a.now(), read: true}
+	if aware, ok := a.agent.(keeperAwareAgent); ok {
+		a.away.held = aware.ElsewhereExcept(a.behindIDs()...)
+		return
+	}
 	agent, ok := a.agent.(elsewhereAgent)
 	if !ok {
 		return
 	}
 	a.away.held = agent.Elsewhere()
+}
+
+// behindIDs is the session id of every conversation this process holds and is
+// not drawing.
+//
+// THE ID IS THE SESSION FOLDER'S NAME, which is what [session.Place.ID] answers
+// and what the presence file carries — so it is arithmetic on the transcript
+// path rather than a question for the agent. A legacy flat journal has no
+// folder to name and contributes nothing, which costs at most one stale
+// `another window` row on a session shape that predates presence entirely.
+func (a *app) behindIDs() []string {
+	if len(a.behind) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(a.behind))
+	for _, held := range a.behind {
+		if dir := homeBucketOf(held.conv.SessionFile); dir != "" {
+			out = append(out, filepath.Base(filepath.Dir(held.conv.SessionFile)))
+		}
+	}
+	return out
 }
 
 // recordRuns is THE judgement about one row of the project's record: is this

@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -49,6 +51,12 @@ import (
 // program it came from.
 const notifyTitle = product
 
+// notifyDoneWord is what the banner says about a turn that has ended. It is
+// spelled once so that a turn ending in the conversation on screen and one
+// ending in a conversation this process holds but is not drawing cannot be
+// described in two different ways.
+const notifyDoneWord = "turn done"
+
 // notifyBody is the sentence in the banner. It names the conversation, which is
 // the one fact that tells a person WHICH terminal to go back to.
 func (a *app) notifyBody() string {
@@ -56,16 +64,49 @@ func (a *app) notifyBody() string {
 	// (names.go): a banner is the one place this conversation is named outside
 	// its own window, so it must not be the one place a machine name shows. It
 	// is spelled once, in [app.notifyName], because there are two banners now.
-	return a.notifyName() + "turn done"
+	return a.notifyName() + notifyDoneWord
 }
 
 // notifyDone is the command a finished turn returns, or nil when the person is
 // already looking at the answer.
+//
+// A FOCUSED TERMINAL IS NO LONGER EVIDENCE THAT ANYBODY IS LOOKING AT THIS
+// CONVERSATION. This process can hold several, and the person may be sitting in
+// front of a different one — so the suppression is `focused AND in front`, and
+// this door is the in-front half of it. The other half is [app.notifyBehind],
+// which never suppresses, because a conversation in the keeper is by
+// construction not the one being read.
 func (a *app) notifyDone() tea.Cmd {
 	if a.focused {
 		return nil
 	}
 	return tea.Raw(notifySeq(notifyTitle, a.notifyBody()))
+}
+
+// notifyBehind is the banner for a conversation this process holds and is not
+// drawing: the same two sentences, named with that conversation rather than
+// with the one on screen.
+func (a *app) notifyBehind(held *kept, word string) tea.Cmd {
+	name := humanName(Session{File: held.conv.SessionFile})
+	if title := agentTitle(held.conv.Agent); title != "" {
+		name = title
+	}
+	if name == "" {
+		name = held.conv.Place
+	}
+	if name != "" {
+		name += " · "
+	}
+	return tea.Raw(notifySeq(notifyTitle, name+word))
+}
+
+// agentTitle is the name a conversation gave itself, or "" for one that has not
+// been named yet.
+func agentTitle(agent Agent) string {
+	if agent == nil {
+		return ""
+	}
+	return strings.TrimSpace(agent.Title())
 }
 
 // ── THE SECOND BANNER: A QUESTION NOBODY CAN SEE ────────────────────────────

@@ -430,7 +430,7 @@ func (a *app) resumeKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.roster.close()
 		switch {
 		case !ok:
-		case chosen.File != "" && chosen.File == a.file:
+		case chosen.File != "" && convKey(chosen.File) == convKey(a.file):
 			// The row that was already marked. Closing the agent and reopening the
 			// same file would drop the lock, replay the journal and land exactly
 			// here — a second of work to arrive where the person already was.

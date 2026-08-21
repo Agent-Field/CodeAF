@@ -502,8 +502,30 @@ func (a *app) watchTasks() tea.Cmd {
 		return nil
 	}
 	a.taskGen++
-	a.taskLane = agent.TaskUpdates()
+	a.taskLane, a.stops.tasks = taskLaneOf(agent)
 	return waitTask(a.taskLane, a.taskGen)
+}
+
+// leavableTasker is the standing task lane WITH A WAY OUT OF IT (session's
+// task_run.go). It is asserted separately from [taskAgent] rather than folded
+// into it for that interface's own reason: a scripted agent in this package's
+// tests offers the lane and has never heard of the door, and a surface driven
+// by one must stay representable.
+type leavableTasker interface {
+	WatchTaskUpdates() (<-chan session.Event, func())
+}
+
+// taskLaneOf opens the lane and hands back whatever way out the agent offers.
+//
+// A NIL STOP IS AN AGENT THAT CANNOT BE LEFT, and the surface may then only
+// abandon the channel — which is what every door did before conversations could
+// be detached, and which is safe exactly as long as the agent is being closed in
+// the same breath (switcher.go's [laneStops] states the cost when it is not).
+func taskLaneOf(agent taskAgent) (<-chan session.Event, func()) {
+	if leavable, ok := agent.(leavableTasker); ok {
+		return leavable.WatchTaskUpdates()
+	}
+	return agent.TaskUpdates(), nil
 }
 
 // waitTask takes one event off the standing lane and asks for the next.
@@ -568,6 +590,11 @@ type taskPilot struct {
 	id   uint64
 	gen  int
 	lane <-chan session.Event
+	// stop LEAVES that lane, and is nil for an agent that offers no way out of
+	// one. A pilot is landed while its conversation goes on running — and, under
+	// a switch, while the whole rail is put down with the agent still alive — so
+	// there is nobody to close the channel for us (switcher.go's [laneStops]).
+	stop func()
 }
 
 // flyPilot opens the watcher on one running node, or answers nil when there is
@@ -578,7 +605,7 @@ func (a *app) flyPilot(id uint64) tea.Cmd {
 	if !ok || a.pilots[id] != nil {
 		return nil
 	}
-	lane, err := doors.WatchTask(id)
+	lane, stop, err := roomLaneOf(doors, id)
 	if err != nil {
 		return nil
 	}
@@ -586,7 +613,7 @@ func (a *app) flyPilot(id uint64) tea.Cmd {
 		a.pilots = map[uint64]*taskPilot{}
 	}
 	a.pilotGen++
-	pilot := &taskPilot{id: id, gen: a.pilotGen, lane: lane}
+	pilot := &taskPilot{id: id, gen: a.pilotGen, lane: lane, stop: stop}
 	a.pilots[id] = pilot
 	return waitPilot(lane, pilot.gen, id)
 }
@@ -675,6 +702,14 @@ func taskCallWord(tool, args, hint string) string {
 func (a *app) landPilot(id uint64) {
 	if node := a.tasks[id]; node != nil {
 		node.tool, node.toolBegan = "", time.Time{}
+	}
+	if pilot := a.pilots[id]; pilot != nil && pilot.stop != nil {
+		// The lane usually closes itself here — the node is finished — and
+		// saying goodbye to a stream that has already ended is saying nothing
+		// (session's [eventHub.drop] answers a stream it no longer holds by
+		// leaving it alone). It is said anyway for the other order: a landing
+		// the surface learned from the update rather than from the close.
+		pilot.stop()
 	}
 	delete(a.pilots, id)
 }
@@ -3228,6 +3263,15 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case "enter":
 		return a.railEnter(), true
+	case "tab":
+		// EATEN AND NOTHING DONE. tab over an empty box switches conversations
+		// (input.go's seventeenth rung), and the roster is read before the box is
+		// — so without this case a person would arrive in another conversation
+		// holding a rail focus they cannot see. The rail's rule is that explicit
+		// focus outranks ambient place, and this is that rule applied to one more
+		// key; the way out is esc, which the hint already advertises
+		// ([railHoldHint]).
+		return nil, true
 	}
 	return nil, false
 }
@@ -4823,7 +4867,14 @@ func (a *app) dropTasks() {
 	// written to disk.
 	// THE WATCHERS GO TOO, and the generation is bumped so an event already in
 	// flight on one of their lanes cannot write a current tool into the session
-	// that replaced them (see [taskPilot]).
+	// that replaced them (see [taskPilot]). Each is given back rather than
+	// dropped: under a switch the agent they are watching is still running, so
+	// nothing else will ever close their channels.
+	for _, pilot := range a.pilots {
+		if pilot != nil && pilot.stop != nil {
+			pilot.stop()
+		}
+	}
 	a.pilots = nil
 	a.pilotGen++
 	// The "@" list's snapshot goes with them. The project's index survives — it

@@ -705,7 +705,7 @@ func ReadSessionPresence(dir string, now time.Time) (SessionPresence, bool) {
 // of this has one: a rail drawing "what else is running" must not draw the
 // window it is being drawn in, and making that the caller's business would be
 // making it the caller's bug. An empty exclude drops nothing.
-func ReadProjectPresence(bucket string, now time.Time, exclude string) []SessionPresence {
+func ReadProjectPresence(bucket string, now time.Time, exclude ...string) []SessionPresence {
 	bucket = strings.TrimSpace(bucket)
 	if bucket == "" {
 		return nil
@@ -716,14 +716,22 @@ func ReadProjectPresence(bucket string, now time.Time, exclude string) []Session
 		// an answer and not a failure — [SweepPlaces]'s own reading.
 		return nil
 	}
-	exclude = strings.TrimSpace(exclude)
+	// SEVERAL IDS MAY BE THE CALLER'S OWN. One process can hold several sessions
+	// on one project, each writing its own presence file, and none of them is
+	// "another window" from inside that process ([ReadElsewhere] says why).
+	mine := make(map[string]bool, len(exclude))
+	for _, id := range exclude {
+		if id = strings.TrimSpace(id); id != "" {
+			mine[id] = true
+		}
+	}
 	var out []SessionPresence
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		presence, ok := ReadSessionPresence(filepath.Join(bucket, entry.Name()), now)
-		if !ok || (exclude != "" && presence.SessionID == exclude) {
+		if !ok || mine[presence.SessionID] {
 			continue
 		}
 		out = append(out, presence)

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,7 +77,7 @@ func TestALiveWindowsDraftIsNeverAdopted(t *testing.T) {
 	writeDraft(live, "still being typed")
 
 	own := asWindow(t, deadPid(t), func() string { return DraftFile(dir, "/tmp/lab") })
-	if got := adoptDraft(own); got != "" {
+	if got := adoptDraft(own, "/tmp/lab"); got != "" {
 		t.Fatalf("a live window's draft was adopted: %q", got)
 	}
 	if got := readDraft(live); got != "still being typed" {
@@ -93,7 +94,7 @@ func TestAnotherWorkspacesOrphanIsLeftAlone(t *testing.T) {
 	writeDraft(elsewhere, "about a different project")
 
 	own := DraftFile(dir, "/tmp/lab")
-	if got := adoptDraft(own); got != "" {
+	if got := adoptDraft(own, "/tmp/lab"); got != "" {
 		t.Fatalf("another workspace's draft was adopted: %q", got)
 	}
 	if got := readDraft(elsewhere); got != "about a different project" {
@@ -116,7 +117,7 @@ func TestOnlyTheNewestOrphanIsAdopted(t *testing.T) {
 	// Two files written in the same millisecond would make "newest" a coin toss.
 	touchOlder(t, older)
 
-	if got := adoptDraft(DraftFile(dir, "/tmp/lab")); got != "the newer sentence" {
+	if got := adoptDraft(DraftFile(dir, "/tmp/lab"), "/tmp/lab"); got != "the newer sentence" {
 		t.Fatalf("adopted %q", got)
 	}
 	if got := readDraft(older); got != "the older sentence" {
@@ -153,5 +154,97 @@ func touchOlder(t *testing.T, path string) {
 	older := info.ModTime().Add(-time.Minute)
 	if err := os.Chtimes(path, older, older); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// ── one process, two conversations in one project ───────────────────────────
+
+// THE COLLISION THIS CLOSES: the name used to be the workspace and the pid,
+// which is unique among the PROCESSES alive at one moment and was therefore
+// enough while a process held one conversation per directory. /new twice in one
+// repository now makes two live boxes, and both would have written one file.
+func TestTwoConversationsInOneProjectKeepTheirOwnDrafts(t *testing.T) {
+	dir := t.TempDir()
+	first := DraftFile(dir, "/tmp/lab")
+	second := DraftFile(dir, "/tmp/lab")
+	if first == second {
+		t.Fatalf("both conversations were given one draft file: %s", first)
+	}
+	writeDraft(first, "the first conversation's sentence")
+	writeDraft(second, "the second conversation's sentence")
+	if got := readDraft(first); got != "the first conversation's sentence" {
+		t.Fatalf("the first conversation's draft reads %q", got)
+	}
+	if got := readDraft(second); got != "the second conversation's sentence" {
+		t.Fatalf("the second conversation's draft reads %q", got)
+	}
+}
+
+// AND THE PID STAYS THE LAST TOKEN, which is not decoration:
+// [draftWindowAlive] parses it out to decide whether the window that left an
+// orphan is gone, and it reads the token after the final dash.
+func TestTheDraftNameKeepsThePidLast(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Base(DraftFile(dir, "/tmp/lab"))
+	tail := strings.TrimSuffix(name, ".txt")
+	if got := tail[strings.LastIndex(tail, "-")+1:]; got != strconv.Itoa(draftOwner) {
+		t.Fatalf("the last token of %q is %q, not this window", name, got)
+	}
+	if !draftWindowAlive(filepath.Join(dir, name)) {
+		t.Fatalf("this window's own draft was read as an orphan: %s", name)
+	}
+}
+
+// The orphan hunt globs from the WORKSPACE's prefix, so a conversation whose
+// ordinal is 1 still finds the sentence a dead single-conversation window left
+// under ordinal 0 — which is the only case adoption exists for.
+func TestAnOrphanIsAdoptedWhateverOrdinalItWore(t *testing.T) {
+	dir := t.TempDir()
+	orphan := asWindow(t, deadPid(t), func() string { return DraftFile(dir, "/tmp/attic") })
+	writeDraft(orphan, "what they were saying yesterday")
+
+	// Two conversations of this process on the same workspace: the second one
+	// is the one doing the hunting.
+	DraftFile(dir, "/tmp/attic")
+	own := DraftFile(dir, "/tmp/attic")
+	if got := adoptDraft(own, "/tmp/attic"); got != "what they were saying yesterday" {
+		t.Fatalf("the orphan was not adopted: %q", got)
+	}
+}
+
+// AND ONLY THE FIRST CONVERSATION ON A WORKSPACE HUNTS. Firstness cannot be
+// inferred from the ordinal — the first conversation on workspace B may be the
+// third of the process — so the process records which workspaces it has already
+// looked on. A conversation opened from home an hour in must not paste a
+// stranger's unfinished sentence into its box.
+func TestTheSecondConversationOnAWorkspaceDoesNotAdopt(t *testing.T) {
+	dir := t.TempDir()
+	orphan := asWindow(t, deadPid(t), func() string { return DraftFile(dir, "/tmp/cellar") })
+	writeDraft(orphan, "somebody else's unfinished sentence")
+
+	first := newApp(t.Context(), Options{
+		Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/cellar",
+		DraftFile: DraftFile(dir, "/tmp/cellar"),
+	})
+	if first.input.String() != "somebody else's unfinished sentence" {
+		t.Fatalf("the first conversation did not adopt: %q", first.input.String())
+	}
+	second := newApp(t.Context(), Options{
+		Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/cellar",
+		DraftFile: DraftFile(dir, "/tmp/cellar"),
+	})
+	if got := second.input.String(); got != "" {
+		t.Fatalf("the second conversation adopted %q", got)
+	}
+}
+
+// And a hunt with no workspace to glob from matches nothing rather than
+// sweeping the directory.
+func TestAnAdoptionWithNoWorkspaceMatchesNothing(t *testing.T) {
+	dir := t.TempDir()
+	orphan := asWindow(t, deadPid(t), func() string { return DraftFile(dir, "/tmp/loft") })
+	writeDraft(orphan, "not yours")
+	if got := adoptDraft(DraftFile(dir, "/tmp/loft"), ""); got != "" {
+		t.Fatalf("a hunt with no workspace adopted %q", got)
 	}
 }

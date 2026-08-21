@@ -190,6 +190,18 @@ func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// welcomeKeeps is the one key that goes past the box WITHOUT putting it away.
+//
+// Everything else dismisses, and that is the box's contract: any key but the
+// walk through the recent list is the person starting work here, which is what
+// dismissal means ([app.welcomeKey]). tab over an empty box is the opposite of
+// starting work here — it is leaving for the conversation you were in before
+// (keeper.go) — and dismissal is irreversible ([app.dismissWelcome] sets spent),
+// so one keystroke would do two unrelated things and only one of them could be
+// undone. The box is still standing when they come back, because the sidecar
+// kept it.
+func welcomeKeeps(name string) bool { return name == "tab" }
+
 // resumeSession swaps this surface onto an earlier conversation.
 //
 // It is [app.renew] with the sign flipped: the same close, the same wholesale
@@ -252,6 +264,16 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		// twice in two different words would read as two different faults.
 		return nil, resumeUnavailableWord
 	}
+	// IDENTITY IS ASKED BEFORE THE LOCK IS. A transcript this process already
+	// holds — on screen or open behind the screen — answers [session.InUse] TRUE
+	// about itself, because a flock rides the open file description rather than
+	// the process. Asking the door for it would meet our own lock and refuse
+	// `open in another window` about a conversation one keystroke away, so the
+	// keeper is consulted first and a hit is a switch rather than an open
+	// (keeper.go's [app.bringForward]).
+	if cmd, ours := a.bringForward(chosen.File); ours {
+		return cmd, ""
+	}
 	conv, whole, err := a.openConversation(chosen.File)
 	if err != nil {
 		if errors.Is(err, session.ErrSessionLocked) {
@@ -259,47 +281,48 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		}
 		return nil, "resume failed: " + err.Error()
 	}
-	if a.state == stateWorking && a.agent != nil {
-		a.agent.Interrupt()
-	}
-	if a.agent != nil {
-		if err := a.agent.Close(); err != nil {
+	// THE OLD CONVERSATION IS DETACHED AND THEN CLOSED, IN THAT ORDER, and the
+	// two halves are separate for the whole of this wave's reason: detaching is
+	// what a switch does and closing is what /resume does, and there is exactly
+	// one implementation of "make this conversation the front one"
+	// (switcher.go). Everything between the two lines below is what /resume
+	// means that a switch does not.
+	// A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT WAS
+	// TYPED AT (park.go), and it is dropped BEFORE the detach so that the note
+	// lands rather than the words being folded silently into the box. It was
+	// parked against a reply that is about to stop existing, and there is no
+	// turn end coming to send it — but the person typed those words, so this
+	// says that it went. A SWITCH does the other thing, because there the turn
+	// is still running (switcher.go's [aside]).
+	a.dropParked()
+	leaving := a.agent
+	side := a.detachConversation()
+	if leaving != nil {
+		leaving.Interrupt()
+		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}
 	}
-	a.takeUp(conv, whole)
-	agent := a.agent
-	a.entries = nil
-	a.live, a.sel, a.think = -1, -1, -1
-	a.asks, a.follows = nil, nil
-	// Same rule as /new for the door's arm: a warm ctrl+c names what a second
-	// press would stop in THIS conversation, and this is a different one
-	// (quitarm.go).
-	a.disarmQuit()
-	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
-	// WAS TYPED AT (park.go). It was parked against a reply that no longer
-	// exists, and there is no turn end coming to send it — but the person typed
-	// those words, so this says that it went rather than dropping it in silence.
-	a.dropParked()
-	// Same rule as /new: the conversation being replaced takes its offers and
-	// its open sign-ins with it (connect.go).
-	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks = nil
-	a.abandonConnects()
-	a.turn = 0
-	a.unfolded = map[int]bool{}
-	a.dropHover()
-	a.stream = nil
-	a.gen++
-	a.state = stateIdle
-	a.resetMeters()
-	a.model = agent.Model()
-	a.title = strings.TrimSpace(agent.Title())
+	if !whole {
+		// The older seam hands back an agent alone, and a bundle with nine zero
+		// fields would clear the recent list, the draft and the approval trio
+		// ([app.takeUp] states this). The surface keeps what it was holding.
+		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
+			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
+			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
+	}
+	cmd := a.attachConversation(conv, nil)
+	// THE DRAFT GOES WITH THE PERSON RATHER THAN WITH THE CONVERSATION, which is
+	// the promise /new already makes in those words ([app.renew]: "the sentence
+	// in the box is the person's next one"). /resume closed a session; the
+	// sentence somebody was part way through typing is still theirs.
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
 	a.resumed = true
-	a.endRecall()
-	a.offset, a.stick = 0, true
-	a.replay()
-	a.measureContext()
 	a.note("resumed " + a.hostedPath(a.file))
 	if conv.Notice != "" {
 		// The door had something to say about how this conversation came to be
@@ -307,13 +330,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		// ([Options.Notice]).
 		a.note(conv.Notice)
 	}
-	//nolint:staticcheck // the batch below is this function's whole result.
-	// The conversation that just opened subscribes to its OWN lanes: the rail's
-	// updates and the turns the session starts by itself. A resumed session is
-	// exactly where the second one earns its keep — the node that lands is
-	// usually one this session started before it was closed (session's
-	// recovery.go continues the frontier).
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns()), ""
+	return cmd, ""
 }
 
 // welcomePress is a click inside the box: on a recent row it opens that
@@ -329,7 +346,7 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
-	if chosen.File != "" && chosen.File == a.file {
+	if chosen.File != "" && convKey(chosen.File) == convKey(a.file) {
 		// The conversation this window is already in. It is the picker's rule
 		// (resume.go), and here it is also what keeps [app.openSession]'s
 		// open-before-close safe: asking the door for our own journal would meet
