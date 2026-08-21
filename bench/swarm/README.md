@@ -39,14 +39,14 @@ anything to measure.
 
 | task | category | width it supplies | verdict (what `verdicts/<name>` returns) |
 |---|---|---|---|
-| `codegen-multi` | codegen | 4 independent modules | modules that import & run (0–4) |
-| `bugfix-repo` | bug-fixing | 3 independent bugs in one repo | test files passing (`N/total`) |
-| `review-diff` | code review | several independent defects to find | defect classes found (0–4) |
-| `prose-report` | prose | 4 independent sections + verdict | required sections present (0–5) |
-| `research-synthesis` | research | 5 themes + citations + open questions | themes covered (0–7) |
-| `refactor-api` | refactoring | 8 independent call sites | clean cutover (0/1) |
-| `doc-coverage` | documentation | many independent public names | docstring coverage % (0–100) |
-| `image-caption-suite` | multimodal | 12 independent images | images captioned (+INDEX) |
+| `codegen modules` | codegen | 4 independent modules | modules that import & run (0–4) |
+| `bugfix repo` | bug-fixing | 3 independent bugs in one repo | test files passing (`N/total`) |
+| `review diff` | code review | several independent defects to find | defect classes found (0–4) |
+| `prose report` | prose | 4 independent sections + verdict | required sections present (0–5) |
+| `research synthesis` | research | 5 themes + citations + open questions | themes covered (0–7) |
+| `api refactor` | refactoring | 8 independent call sites | clean cutover (0/1) |
+| `doc coverage` | documentation | many independent public names | docstring coverage % (0–100) |
+| `image captions` | multimodal | 12 independent images | images captioned (+INDEX) |
 
 The hard version of each is the `L` tier and is gated out below `full`
 because a single cell there costs minutes; power without repetition is
