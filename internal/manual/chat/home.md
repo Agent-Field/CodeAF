@@ -133,6 +133,35 @@ Nothing that is zero is drawn, anywhere. A chat that ran no tasks says nothing a
 one that spent nothing says nothing about spending; a facts line with no facts is not
 drawn at all.
 
+## The project card — what the right side shows for a whole project
+
+Put the cursor on a **project** rather than on one of its conversations — its name, or the
+line that stands for it when it is folded away — and the right side stops being about one
+chat and becomes about the whole container. The name is the title, its folder is the dim
+line under it, and then three bands:
+
+1. **its conversations**, the same rows the left column draws them as: the state glyph, the
+   name, and the dim tail — `▲ Fix Flaky Auth Test    waiting on you · 2m`,
+   `● Task Bar View More         1 running · 12m`. They are in the order home always puts
+   them in: what needs you, then what is running, then what was left unfinished, then the
+   rest by when you last spoke in them. Past four the rest go behind one line,
+   `▸ …3 more conversations`;
+2. **what is keeping an eye on it** — the reminders, watches and rules standing in this
+   project, each `◦ every Monday at 9, draft the weekly update      Mondays 9am · last Mon`,
+   with the same glyph and the same tail its row on the left wears. Past three:
+   `▸ …2 more keeping an eye`;
+3. one dim line of **how big the project is** and when anybody was last in it —
+   `12 conversations · 34 tasks · spent $4.10 · last active 2h`. That line is where to look
+   for **how many conversations** a project has and how many tasks have run in it.
+
+**Nothing that is zero is drawn.** A project nobody has run a task in says nothing about
+tasks; one that has spent nothing says nothing about spending; a project with a single chat
+in it and no work reads `1 conversation · last active 5m` and no more. A project with
+nothing standing has no second band at all — not an empty heading.
+
+A frame too short for all three drops whole bands from the bottom — the counting line goes
+first — and never touches the project's name.
+
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
 Home has **two panes and two shapes**, and only the left pane changes shape.
