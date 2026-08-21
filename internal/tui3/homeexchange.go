@@ -23,11 +23,34 @@ package tui3
 //     ([Options.Errand]) with its transcript in a folder under the standing
 //     root rather than under v3/projects — so home never lists it, and the
 //     record still exists.
-//   - The exchange itself in home's RIGHT PANE: the person's line, the reply as
-//     it streams, one dim line per tool call, and the ratification card when
-//     one arrives. Answering it is 1 / 2 / 3, a follow-up is typing and enter,
-//     and esc puts the keyboard back on the list with the exchange still alive
-//     beside it.
+//   - A ROW IN THE LEFT COLUMN for every exchange, in its project's block where
+//     the hot things go, wearing what it is doing right now — `working`,
+//     `waiting on you`, `stood`. It is a cursor stop like any other row.
+//   - The exchange itself in home's RIGHT PANE **while the cursor is on that
+//     row**: the person's line, the reply as it streams, one line per tool call,
+//     a live strip of what is happening this second, and the ratification card
+//     when one arrives. Answering it is 1 / 2 / 3, a follow-up is typing and
+//     enter, and esc puts the keyboard back on the list with the exchange still
+//     alive beside it.
+//
+// ── AN EXCHANGE IS A ROW, AND IT OUTLIVES THE SCREEN IT WAS ASKED ON ────────
+//
+// It used to live on [homeView], which [app.closeHome] assigns the zero value
+// to — so opening another conversation to check something ended the errand
+// mid-question, and the engine answered the card nobody could see any more with
+// "the card was left unanswered — nothing was set up". The exchange DIED
+// because somebody looked elsewhere. So the list of them is on the APP
+// ([app.exchanges]), home merely draws it, and the four rules are:
+//
+//	several at once   a second `ask here` ADDS one; nothing is replaced
+//	the pane is the ROW's   the exchange pane is drawn only while the cursor is
+//	                        on an exchange row, so every other row keeps its
+//	                        ordinary card
+//	it never dies of neglect   closing home, walking away, opening another
+//	                           conversation — none of them touch the agent
+//	it goes when it is over AND SEEN   a settled exchange is filed once its pane
+//	                                   has been drawn after it settled and the
+//	                                   cursor has left it ([app.sweepExchanges])
 //
 // WHERE THE FOLDER LIVES, AT EVERY STAGE. There is one folder and it only ever
 // MOVES; nothing here copies a transcript and nothing here deletes one.
@@ -50,13 +73,15 @@ package tui3
 // screen going dead just after they said yes. So a stood exchange only
 // REMEMBERS the item it made ([homeExchange.itemID]); the agent stays open,
 // follow-ups keep working, and the folder is filed under the item when the
-// exchange ends — home closing, or a second `ask here` replacing it
-// ([app.dropExchange]) — after the agent has been closed there.
+// exchange is FILED ([app.fileExchange]) — swept off the list after it settled
+// and was seen, or taken with the window on the way out — after the agent has
+// been closed there.
 
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -65,6 +90,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The words this door says. Each is quoted in the manual exactly as it is
@@ -83,11 +109,6 @@ const (
 	// wired — a capability that cannot work is absent, not broken, and this is
 	// the honest half of that for a row that is drawn before the seam is asked.
 	homeAskUnavailableWord = "this window cannot ask from home"
-	// homeAskNarrowWord is the refusal on a frame with no second column. The
-	// exchange IS the right pane; a window too narrow to draw one would take the
-	// sentence, open a session for it and show none of it, which is the one
-	// failure worse than saying no.
-	homeAskNarrowWord = "ask here needs a wider window"
 	// homeAskChangeWord is what the card says after `2`: the correction is
 	// typed into the box, not into a second card.
 	homeAskChangeWord = "type the change and press enter"
@@ -96,6 +117,54 @@ const (
 	// homeAskPromotedWord is the refusal for a second promotion of one folder.
 	homeAskPromotedWord = "this exchange is already a conversation"
 )
+
+// What an exchange's ROW says it is doing, and what the pane says while a turn
+// is in flight. They are the conversation's own words, not a second vocabulary:
+// `working` is [runState.String]'s own (app.go), `waiting on you` is the phrase
+// a conversation stopped on a question wears in this column (homebands.go), and
+// `running` is what an unfinished call says about itself (toolview.go's
+// [liveWord]).
+const (
+	// homeAskWorkingWord is the tail of a row whose turn is in flight, and it is
+	// the same word the status line spends on the same fact.
+	homeAskWorkingWord = "working"
+	// homeAskWaitingWord is the tail of a row with a card up and unanswered. It
+	// is the one tail on this row that takes the accent, for the reason a
+	// conversation that needs somebody does: a screen whose whole job is triage
+	// cannot draw its most urgent fact in the same grey as an age.
+	homeAskWaitingWord = "waiting on you"
+	// homeAskAnsweredTail and homeAskStoodTail are the two ways an exchange is
+	// over: it came to nothing anybody has to answer, or something stands.
+	homeAskAnsweredTail = "answered"
+	homeAskStoodTail    = "stood"
+	// homeAskThinkWord is what the pane says before the first token of a turn
+	// has arrived, and homeAskWriteWord once the reply is streaming. Two words
+	// and not one, because "is it stuck or is it typing" is exactly the question
+	// a person watching a still pane is asking.
+	homeAskThinkWord = "thinking"
+	homeAskWriteWord = "writing"
+	// homeAskRunWord is the third of them: a call of this turn is executing, and
+	// the strip under the line says which one.
+	homeAskRunWord = "running"
+)
+
+// homeExchangeRow is the row kind an exchange wears in the left column.
+//
+// IT IS DECLARED HERE FOR [homeAskHere]'S REASON and given the next value above
+// it, so neither can collide with the iota block another lane is editing. The
+// name carries `Row` because [homeExchange] is the thing itself and this is its
+// line on the screen — two names for two objects that must not be confused.
+const homeExchangeRow homeRowKind = 201
+
+// exchangeStripRows is how many lines of the live strip the pane shows: the
+// newest two, and never a third.
+//
+// A STRIP AND NOT A LOG. Everything that happens is already a row above it —
+// this is a WINDOW onto the moment, two lines tall, so that a follow-up typed
+// into a settled exchange visibly does something before the reply lands. Two,
+// because one shows a tool call and hides the reply growing under it, and three
+// starts to be a second transcript in a pane forty cells wide.
+const exchangeStripRows = 2
 
 // homeAskHere is the row kind of that second action row.
 //
@@ -146,6 +215,16 @@ type exchangeRow struct {
 	// done marks a tool row that has its result, so a second call of the same
 	// verb opens its own row instead of overwriting the first one's.
 	done bool
+	// failed says the call came back an error, which is the ONE thing a tool row
+	// here spends a glyph on — the conversation's own rule, where a call that
+	// succeeded says so by saying nothing (toolview.go's [app.mark]).
+	failed bool
+	// began is when a tool row's call started and took is how long it ran, so
+	// the row can carry a clock while it is alive and its own figure after. They
+	// are the pane's reduced reading of what a tool line in the conversation
+	// says with [app.countClock] and [elapsedWord].
+	began time.Time
+	took  time.Duration
 	// card is the proposal this row draws, for [exchangeCard]. It is the SAME
 	// object [homeExchange.view] holds while it is the current one, so the row
 	// and the keyboard can never disagree about what was decided.
@@ -156,9 +235,8 @@ type exchangeRow struct {
 // been said, and what the exchange came to.
 //
 // THE ZERO VALUE IS NOT A STATE ANYBODY REACHES. An exchange exists only when
-// [app.askHere] built an agent, and [homeView.exchange] is nil until then and
-// again after home closes — which is why every method here may assume the agent
-// is there.
+// [app.askHere] built an agent and put it on [app.exchanges] — which is why
+// every method here may assume the agent is there.
 type homeExchange struct {
 	agent Agent
 	// view is the card as the shared renderer reads it, built once per notice
@@ -233,6 +311,59 @@ type homeExchange struct {
 	// said is when the person last said something, the ordering law everywhere
 	// in this codebase ([session.Meta.LastUserAt]).
 	said time.Time
+
+	// turnBegan is when the turn in flight started and turnAt is where its rows
+	// begin, which is the whole of what the live strip needs to know: it is a
+	// window onto THIS turn and not a second copy of the transcript.
+	turnBegan time.Time
+	turnAt    int
+	// seen says the pane was drawn at least once after this exchange settled.
+	// It is what makes filing safe to do behind somebody's back: a row that
+	// disappears before anybody read what it came to is a row that took its
+	// answer with it ([app.sweepExchanges] states the lifecycle whole).
+	seen bool
+	// filed says the agent has been closed and the folder put where it belongs.
+	// It is checked rather than assumed because two doors reach it — the sweep,
+	// and the window closing — and closing one agent twice is a grace period
+	// spent for nothing.
+	filed bool
+}
+
+// ── what an exchange IS at this moment ──────────────────────────────────────
+//
+// THREE STATES AND NO FOURTH, and every one of them is a thing a person can
+// act on: it is waiting for you, it is working, or it is over. They are asked
+// as questions rather than held as a field because each of them is already
+// true of something else on the object — a card that is still a question, a
+// turn in flight — and a fourth copy of a fact is a fourth thing to keep in
+// step.
+
+// waiting reports whether a card is up and unanswered. It is the state that
+// sorts first everywhere on this screen.
+func (ex *homeExchange) waiting() bool { return ex.asking() }
+
+// over reports whether the exchange has nothing left to do: the card, if there
+// was one, has been answered — stood, once, or declined — and the agent is
+// idle.
+func (ex *homeExchange) over() bool { return !ex.working && !ex.asking() }
+
+// spent reports whether the exchange may be filed: it is over AND the person
+// has seen it that way. [app.sweepExchanges] adds the third condition, which is
+// that they have moved off it.
+func (ex *homeExchange) spent() bool { return ex.over() && ex.seen }
+
+// exchangeRank is the triage order of the rows: what wants you, then what is
+// moving, then what is done. It is [homeState]'s law at the scale of one
+// errand, and the ties under it are settled by when the exchange began.
+func exchangeRank(ex *homeExchange) int {
+	switch {
+	case ex.waiting():
+		return 0
+	case ex.working:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // ── the messages this lane moves on ─────────────────────────────────────────
@@ -266,17 +397,32 @@ func (m errandStartedMsg) errand() *homeExchange { return m.ex }
 func (m errandEventMsg) errand() *homeExchange   { return m.ex }
 func (m errandClosedMsg) errand() *homeExchange  { return m.ex }
 
-// errandUpdate folds one of those messages in. A message for an exchange that
-// is no longer the one on screen is dropped for the reason [streamEventMsg]'s
-// generation check drops a late turn's events: home closed, or a second errand
-// replaced the first, and painting the old one over the new one would be a pane
-// answering for a conversation nobody is in.
+// errandUpdate folds one of those messages in.
+//
+// IT DOES NOT ASK WHETHER HOME IS OPEN, and that is the whole repair. It used
+// to fold only into the exchange the pane happened to be drawing, so closing
+// home — which is what opening another conversation does — stopped the pump
+// dead and the card the person had not answered yet was answered for them.
+// The only message dropped now is one for an exchange this window has already
+// FILED: its agent is closed, its folder has moved, and painting into it would
+// be a lane writing to a record nobody can reach.
 func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
-	ex := a.home.exchange
-	if ex == nil || ex != msg.errand() {
+	ex := msg.errand()
+	if ex == nil || !a.holdsExchange(ex) {
 		return nil
 	}
 	defer a.touch()
+	// THE ROW RE-SORTS WHEN ITS STATE DOES AND NEVER OFTENER. A card arriving
+	// lifts an exchange over everything else in its block and a turn finishing
+	// lets it settle down again, so the column is rebuilt exactly on those two
+	// moments — rebuilding on every text delta would re-walk the world once per
+	// token for a row whose tail is already redrawn every frame.
+	rank := exchangeRank(ex)
+	defer func() {
+		if a.home.open && exchangeRank(ex) != rank {
+			a.home.build()
+		}
+	}()
 	switch m := msg.(type) {
 	case errandStartedMsg:
 		if m.err != nil {
@@ -302,9 +448,35 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 	return nil
 }
 
+// exchangeAnimating reports whether anything on the home screen is turning
+// because an errand is working. It is what keeps the frame clock running while
+// the conversation underneath is idle ([app.paint] names it among the ten).
+func (a *app) exchangeAnimating() bool {
+	if !a.home.open {
+		return false
+	}
+	for _, ex := range a.exchanges {
+		if ex.working {
+			return true
+		}
+	}
+	return false
+}
+
+// holdsExchange reports whether this window is still driving an exchange. A
+// filed one is gone from the list, which is the same answer said once.
+func (a *app) holdsExchange(ex *homeExchange) bool {
+	for _, open := range a.exchanges {
+		if open == ex {
+			return true
+		}
+	}
+	return false
+}
+
 // errandWait is [waitEvent] for this lane. It carries the exchange itself
 // rather than a generation number, because an exchange IS its own generation:
-// there is one at a time and it is a pointer nothing else can be.
+// it is a pointer nothing else can be, and several of them are open at once.
 func errandWait(ex *homeExchange, ch <-chan session.Event) tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-ch
@@ -334,10 +506,12 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 
 	case session.EventToolBegin:
 		ex.live = -1
-		ex.rows = append(ex.rows, exchangeRow{kind: exchangeTool, text: firstNonEmpty(ev.Hint, ev.Tool)})
+		ex.rows = append(ex.rows, exchangeRow{
+			kind: exchangeTool, text: exchangeToolLine(ev), began: a.now(),
+		})
 
 	case session.EventToolEnd, session.EventToolFailed:
-		ex.closeTool(ev)
+		a.closeExchangeTool(ex, ev)
 
 	case session.EventStandingProposal:
 		if ev.Standing != nil {
@@ -408,22 +582,97 @@ func (ex *homeExchange) settle(verdict, answer string) {
 	ex.view.typing = false
 }
 
-// closeTool puts a call's result on the row that opened it — the newest row of
+// closeExchangeTool puts a call's result on the row that opened it — the newest row of
 // that verb with nothing back yet — and opens a fresh row when there is none,
 // so a result can never land on the wrong call.
-func (ex *homeExchange) closeTool(ev session.Event) {
+//
+// AND NOTHING HERE EVER SAYS "unknown". It used to reach for [errText] as the
+// fallback gloss, and [errText] answers "unknown" for a nil error — so every
+// successful call whose hint the engine left empty drew `stand · unknown`,
+// which is this surface telling a person something went wrong with a call that
+// went perfectly. A call that came back with nothing to say says nothing: the
+// emptiness law, applied to a word rather than to a number.
+func (a *app) closeExchangeTool(ex *homeExchange, ev session.Event) {
+	failed := ev.Kind == session.EventToolFailed || ev.Err != nil
+	// The result gloss, and on a failure the fault itself, which is the one
+	// thing a person genuinely cannot read the row without.
+	hint := strings.TrimSpace(ev.Hint)
+	if failed && ev.Err != nil {
+		hint = strings.TrimSpace(ev.Err.Error())
+	}
 	for i := len(ex.rows) - 1; i >= 0; i-- {
 		row := &ex.rows[i]
 		if row.kind != exchangeTool || row.done {
 			continue
 		}
-		row.done = true
-		row.hint = strings.TrimSpace(firstNonEmpty(ev.Hint, errText(ev.Err)))
+		row.done, row.failed, row.hint = true, failed, hint
+		if !row.began.IsZero() {
+			row.took = a.now().Sub(row.began)
+		}
 		return
 	}
 	ex.rows = append(ex.rows, exchangeRow{
-		kind: exchangeTool, text: firstNonEmpty(ev.Hint, ev.Tool), done: true,
+		kind: exchangeTool, text: exchangeToolLine(ev), hint: hint,
+		done: true, failed: failed,
 	})
+}
+
+// exchangeToolLine is what ONE call reads as in a pane forty cells wide: the
+// tool's own name, and what it is pointed at.
+//
+// IT IS THE CONVERSATION'S OWN TWO-PART READING, reduced (toolview.go's
+// [toolWords] and toolstat.go's [toolTarget]): the name is chrome, the target
+// is the substance, and the payload is asked before the hint because session's
+// hint is a one-liner built for a log column. What the row must never be is
+// what it was — the bare registered name of a tool, with nothing a person can
+// read beside it.
+func exchangeToolLine(ev session.Event) string {
+	name, target := exchangeToolWords(ev)
+	if strings.TrimSpace(target) == "" {
+		return name
+	}
+	return name + " · " + target
+}
+
+// exchangeToolWords splits one call into those two parts.
+func exchangeToolWords(ev session.Event) (name, target string) {
+	tool := strings.TrimSpace(ev.Tool)
+	if tool == "stand" {
+		// THE AMBIENT TOOL SAYS WHAT IT IS DOING AND NOT WHAT IT IS CALLED. It
+		// has no entry in either gloss table, so the engine's hint for it is the
+		// bare word `stand` — and `stand` beside `stand` is a row that costs a
+		// line and says nothing.
+		return tool, exchangeStandWords(ev.Args)
+	}
+	name, gloss := toolWords(tool, ev.Hint)
+	if target := toolTarget(tool, ev.Args, ev.Hint); target != "" {
+		return name, target
+	}
+	return name, gloss
+}
+
+// exchangeStandWords is what a `stand` call is doing, in the words this screen
+// already uses for the thing it is doing it to (standing.go's verdicts and
+// homestanding.go's rows). An op nobody named draws nothing, which is honest:
+// the card that follows says what it was about.
+func exchangeStandWords(args string) string {
+	fields := argsOf(args)
+	switch strings.ToLower(strings.TrimSpace(argString(fields, "op"))) {
+	case "propose":
+		if words := strings.TrimSpace(firstLine(argString(fields, "words"))); words != "" {
+			return "proposing " + words
+		}
+		return "proposing something to keep"
+	case "list":
+		return "reading what already stands"
+	case "pause":
+		return "pausing one"
+	case "resume":
+		return "starting one again"
+	case "stop":
+		return "stopping one"
+	}
+	return ""
 }
 
 // errandUpdated is what a standing update does to the exchange.
@@ -463,15 +712,41 @@ func (a *app) errandUpdated(ex *homeExchange, notice session.StandingNotice) tea
 	return nil
 }
 
-// fileExchange moves a stood exchange's folder under the item it made. It is
-// called from the one place the agent has just been closed, because the
-// transcript's flock rides the open file (this file's header).
+// fileExchange ENDS one exchange: the agent is closed, and THEN the folder is
+// moved under the thing the exchange made, if it made one.
+//
+// THE ORDER IS THE WHOLE OF IT. The rename carries the transcript's inode, so
+// it must happen after the writer is gone (this file's header), and "stood"
+// arrives while the writer is still mid-turn — which is why the move waits for
+// this call rather than happening at the moment the news lands.
+//
+// THE FOLDER IS THE RECORD AND IT IS NEVER REMOVED HERE. An exchange that came
+// to nothing keeps its transcript under the standing root's exchanges/, where
+// the sweep law reaps it after [standing.RunKeep] — the record outlives the
+// window, which is the whole reason it is a folder and not a buffer.
+func (a *app) fileExchange(ex *homeExchange) {
+	if ex == nil || ex.filed {
+		return
+	}
+	ex.filed = true
+	// A working exchange is only ever filed by the window closing, and a turn
+	// left running into a closed agent's grace period is the pause a person
+	// feels on the way out.
+	if ex.working {
+		ex.agent.Interrupt()
+	}
+	_ = ex.agent.Close()
+	a.moveFiled(ex)
+}
+
+// moveFiled puts a stood exchange's folder under the item it made, which is
+// what makes "why did I get this reminder?" a door ([standing.Store.ExchangeDir]).
 //
 // A STOOD ITEM WITH NO ID, AND AN EXCHANGE THAT CAME TO NOTHING, BOTH STAY PUT.
 // The folder is a record in the right place with the wrong name on it, which is
 // better than a move to a directory nobody can find again — and the sweep law
 // reaps what came to nothing after [standing.RunKeep].
-func (a *app) fileExchange(ex *homeExchange) {
+func (a *app) moveFiled(ex *homeExchange) {
 	if ex == nil || !ex.stood || ex.promoted || ex.itemID == "" {
 		return
 	}
@@ -537,19 +812,14 @@ func (a *app) askHere(text string) tea.Cmd {
 		h.say(homeAskUnavailableWord, "")
 		return nil
 	}
-	// THE PANE HAS TO EXIST BEFORE THE SESSION DOES. Under [homeMinDetail] the
-	// left column takes the whole frame ([homeColumns]) and there is nowhere for
-	// an exchange to be drawn — so the refusal comes before the folder, and
-	// nothing half-made is left behind by a window somebody had not widened yet.
-	width, _ := a.size()
-	if _, right := homeColumns(width); right <= 0 {
-		h.say(homeAskNarrowWord, "")
-		return nil
-	}
-	// ONE ERRAND AT A TIME. A second `ask here` closes the first, because the
-	// pane holds one and an agent nobody can reach is an agent holding a lock
-	// on a transcript for as long as the window lives.
-	a.dropExchange()
+	// A NARROW WINDOW NO LONGER REFUSES. It used to: the exchange WAS the right
+	// pane, and a frame with no second column ([homeColumns]) had nowhere to
+	// draw one — so the sentence was taken, a session opened, and none of it
+	// shown, which is the one failure worse than saying no. The answer is the
+	// phone's own pattern instead of a refusal: on a narrow frame the pane is
+	// STACKED, taking the whole screen while it holds the keyboard, with the
+	// list one esc away and the row still standing on it (home.go's
+	// [app.homeStacked]).
 	workspace, bucket := a.errandPlace()
 	id := session.NewSessionID()
 	dir := filepath.Join(a.errandsDir(), id)
@@ -572,14 +842,25 @@ func (a *app) askHere(text string) tea.Cmd {
 		focused: true, live: -1, working: true,
 		offerAt: -1, cardAt: -1,
 		spoke: text, began: now, said: now,
+		turnBegan: now,
 	}
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
-	h.exchange = ex
+	// A SECOND `ask here` ADDS ONE. It used to close the first, because the pane
+	// held one — and what that meant in a person's hands was that asking a
+	// second thing killed the first question before they had answered it. They
+	// are rows now, and a column holds as many rows as somebody asks for.
+	a.exchanges = append(a.exchanges, ex)
 	// THE BOX IS CLEARED AND THE LIST GOES BACK TO ITS RESTING SHAPE. The words
 	// are in the exchange now; leaving them in the box would keep the drop-up up
 	// and keep filtering the column behind a pane nobody is reading it through.
 	h.box.reset()
-	h.build()
+	a.showExchanges()
+	// AND THE CURSOR LANDS ON THE ROW THAT WAS JUST MADE, with the pane focused
+	// — which is exactly the first experience this door always had, now said in
+	// the vocabulary the column uses for everything else. The pane is about the
+	// row under the cursor, so a cursor left where it was would have opened an
+	// exchange and shown a preview of something else.
+	h.pointExchange(ex)
 	a.touch()
 	return errandSend(ex, text)
 }
@@ -657,30 +938,76 @@ func errandHomeDir() string {
 	return "."
 }
 
-// dropExchange ends whatever errand is open: the agent is closed, and THEN the
-// folder is filed under the thing the exchange made, if it made one. It is what
-// home closing does, and what a second `ask here` does.
+// forgetExchange takes one exchange off the list and off the column. It is the
+// half of ending an exchange that is about the SCREEN; [app.fileExchange] is
+// the half that is about the disk, and every caller does both.
+func (a *app) forgetExchange(ex *homeExchange) {
+	for i, open := range a.exchanges {
+		if open != ex {
+			continue
+		}
+		a.exchanges = append(a.exchanges[:i], a.exchanges[i+1:]...)
+		break
+	}
+	a.showExchanges()
+}
+
+// showExchanges hands the column the list it draws rows from. The app owns the
+// exchanges — they outlive home ([homeView] is assigned the zero value when the
+// screen closes) — and this is the one line that keeps the two in step, called
+// wherever the list itself changes rather than on every frame.
+func (a *app) showExchanges() {
+	a.home.exchanges = a.exchanges
+	if a.home.open {
+		a.home.build()
+	}
+}
+
+// sweepExchanges files the exchanges that are over, and it is the whole answer
+// to "when does one go away?".
 //
-// THIS IS WHERE THE MOVE LIVES, and it is the one place it can live: the
-// rename carries the transcript's inode, so it must happen after the writer is
-// gone (this file's header), and "stood" arrives while the writer is still
-// mid-turn.
+// THREE THINGS HAVE TO BE TRUE, and each of them is a way of saying that
+// nothing disappears out from under somebody:
 //
-// THE FOLDER IS THE RECORD AND IT IS NEVER REMOVED HERE. An exchange that came
-// to nothing keeps its transcript under the standing root's exchanges/, where
-// the sweep law reaps it after [standing.RunKeep] — the record outlives the
-// window, which is the whole reason it is a folder and not a buffer.
-func (a *app) dropExchange() {
-	ex := a.home.exchange
-	if ex == nil {
+//  1. IT IS OVER. The card, if there was one, has been answered — stood, once,
+//     or declined — and no turn is in flight. A working exchange and one
+//     holding a question are never swept, whatever the cursor is doing.
+//  2. THEY HAVE SEEN IT THAT WAY. The pane was drawn at least once after it
+//     settled ([app.exchangePane] sets the flag), so the answer the exchange
+//     came to was on the screen before the row that carried it went.
+//  3. THEY HAVE MOVED OFF IT. The row under the cursor is never swept — the
+//     pane a person is reading does not vanish while they are reading it.
+//
+// And an exchange that STOOD leaves an ordinary item row on this same screen,
+// under the same project, so the row going is not the fact going.
+func (a *app) sweepExchanges() {
+	var filed []*homeExchange
+	keep := a.paneExchange()
+	for _, ex := range a.exchanges {
+		if ex != keep && ex.spent() {
+			filed = append(filed, ex)
+		}
+	}
+	if len(filed) == 0 {
 		return
 	}
-	a.home.exchange = nil
-	if ex.working {
-		ex.agent.Interrupt()
+	for _, ex := range filed {
+		a.fileExchange(ex)
+		a.forgetExchange(ex)
 	}
-	_ = ex.agent.Close()
-	a.fileExchange(ex)
+	a.touch()
+}
+
+// fileEveryExchange is the window closing: everything still open is ended, the
+// way the conversation's own agent is ([app.quit]). An errand is a session with
+// a lock on a transcript, and a lock held by a process that has gone is a
+// conversation nobody can reopen.
+func (a *app) fileEveryExchange() {
+	for _, ex := range a.exchanges {
+		a.fileExchange(ex)
+	}
+	a.exchanges = nil
+	a.home.exchanges = nil
 }
 
 // ── the keyboard, while the exchange holds it ───────────────────────────────
@@ -693,8 +1020,7 @@ func (a *app) dropExchange() {
 // every state this pane has — the box, the offer row, a card, a half-written
 // correction — because a pane that had one way out and a state that did not
 // offer it is exactly the trap somebody reports as "stuck".
-func (a *app) exchangeKey(msg tea.KeyPressMsg) tea.Cmd {
-	ex := a.home.exchange
+func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 	if ex == nil {
 		return nil
 	}
@@ -709,8 +1035,9 @@ func (a *app) exchangeKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "esc":
 		// ONE LAYER AT A TIME, home's own rule: a half-typed follow-up is
-		// cleared first and the second esc hands the keyboard back. The
-		// exchange is not closed by either — it closes when home does.
+		// cleared first and the second esc hands the keyboard back. NEITHER
+		// CLOSES THE EXCHANGE — it stands as a row on the column, which on a
+		// narrow frame is also how the list comes back over the stacked pane.
 		if !ex.box.empty() {
 			ex.box.reset()
 			return nil
@@ -784,6 +1111,10 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 		ex.settle(standChangedWord, standChangeWord)
 		ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 		ex.said = a.now()
+		// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view:
+		// the model is going to answer it, so the strip and the state line have
+		// to start counting or the screen sits still while it does.
+		ex.startTurn(a.now())
 		a.resolveStanding(ex, card, session.StandingAnswer{Change: text})
 		return nil
 	case ex.onOffer:
@@ -794,8 +1125,26 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	ex.box.reset()
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	ex.said = a.now()
-	ex.working, ex.live = true, -1
+	ex.startTurn(a.now())
 	return errandSend(ex, text)
+}
+
+// startTurn is the pane admitting that something is now happening, and it is
+// called on the SUBMIT rather than on the first event back.
+//
+// THE SIGNAL HAS TO EXIST BEFORE THE ANSWER DOES. A follow-up typed into a
+// settled exchange used to draw the sentence and then nothing at all until the
+// first token arrived seconds later — which is a person pressing enter and
+// watching a still screen, the exact complaint this lane exists to answer. The
+// state word, the clock and the strip all hang off these three fields, so they
+// are set the moment the words leave the box.
+func (ex *homeExchange) startTurn(now time.Time) {
+	ex.working, ex.live = true, -1
+	ex.turnBegan, ex.turnAt = now, len(ex.rows)
+	// A row settled by the last turn has been seen; a new turn is a new thing to
+	// see, and an exchange swept while it is answering would be the pane going
+	// out from under the person who typed into it.
+	ex.seen = false
 }
 
 // answerCard is 1 / 2 / 3 on the ratification card.
@@ -906,7 +1255,11 @@ func (a *app) promoteExchange(ex *homeExchange) tea.Cmd {
 		LastUserAt: ex.said,
 	})
 	transcript := filepath.Join(dest, "transcript.jsonl")
-	a.home.exchange = nil
+	// The exchange is now a conversation, so it stops being a row: its folder
+	// has already moved and its agent is already closed, which is everything
+	// [app.fileExchange] would have done.
+	ex.filed = true
+	a.forgetExchange(ex)
 	cmd, refusal := a.openSession(Session{
 		Title: exchangeTitle(ex.spoke),
 		File:  transcript,
@@ -944,18 +1297,31 @@ func exchangeTitle(said string) string {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// exchangePane is home's right column while an errand is open: the conversation
-// itself, the card, and the two rows under it.
+// exchangePane is the exchange under the cursor drawn whole: the conversation
+// itself, the card, the live strip while a turn is in flight, and the offer row
+// under them.
 //
-// IT IS A TAIL AND NOT A CARD. The preview beside a session row is assembled
-// top-down and drops whole bands off the bottom ([homeBands]) because it is a
-// description of something that already happened; this is a conversation
-// happening now, so it keeps the LAST rows that fit — the newest thing said is
-// the thing being read.
-func (a *app) exchangePane(width, room int, pal palette) []string {
-	ex := a.home.exchange
+// IT IS THE PANE OF ONE ROW AND NOT OF THE SCREEN. It used to be drawn for as
+// long as an exchange existed, which meant that setting one reminder took the
+// right-hand column hostage — every other row on the list lost its preview
+// until home was closed. It is a card about the row under the cursor now, like
+// every other card in this column ([app.homeDetail]).
+//
+// IT IS A TAIL AND NOT A CARD, though. The preview beside a session row is
+// assembled top-down and drops whole bands off the bottom ([homeBands]) because
+// it is a description of something that already happened; this is a
+// conversation happening now, so it keeps the LAST rows that fit — the newest
+// thing said is the thing being read.
+func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []string {
 	if ex == nil || width <= 0 || room <= 0 {
 		return nil
+	}
+	// SEEING IT SETTLED IS WHAT LETS IT GO. The sweep files an exchange that is
+	// over only once its pane has been drawn that way, so the row cannot vanish
+	// before the answer it came to was on somebody's screen
+	// ([app.sweepExchanges]).
+	if ex.over() {
+		ex.seen = true
 	}
 	// The hit targets are rebuilt with the rows that carry them, and cleared
 	// first: a stale offer row is a click that promotes an exchange the frame
@@ -979,13 +1345,13 @@ func (a *app) exchangePane(width, room int, pal palette) []string {
 			out = append(out, "")
 			continue
 		}
-		out = append(out, exchangeRowLines(row, width, pal)...)
+		out = append(out, a.exchangeRowLines(row, width, pal)...)
 	}
 	if ex.changing {
 		out = append(out, pal.accent(fit(homeAskChangeWord, width)))
 	}
 	if ex.working {
-		out = append(out, pal.dim(fit("…", width)))
+		out = append(out, a.exchangeLive(ex, width, pal)...)
 	}
 	if ex.offering() {
 		out = append(out, "")
@@ -1019,7 +1385,7 @@ func (a *app) exchangePane(width, room int, pal palette) []string {
 // and plain, and what it DID is indented and dim — which is THE INDENT LAW the
 // conversation's own renderer keeps (render.go), kept here at one column
 // instead of two because the pane has forty cells and not a hundred.
-func exchangeRowLines(row exchangeRow, width int, pal palette) []string {
+func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string {
 	var out []string
 	switch row.kind {
 	case exchangeSaid:
@@ -1035,11 +1401,7 @@ func exchangeRowLines(row exchangeRow, width int, pal palette) []string {
 			out = append(out, pal.ink(wrapped))
 		}
 	case exchangeTool:
-		word := row.text
-		if row.hint != "" {
-			word += " · " + row.hint
-		}
-		out = append(out, " "+pal.dim(fit(word, width-1)))
+		out = append(out, a.exchangeToolLine(row, row.hint, width, pal))
 	case exchangeNote:
 		for _, wrapped := range wrap(row.text, width) {
 			out = append(out, pal.dim(wrapped))
@@ -1049,6 +1411,343 @@ func exchangeRowLines(row exchangeRow, width int, pal palette) []string {
 		out = append(out, "")
 	}
 	return out
+}
+
+// exchangeToolLine draws one call: its mark, what it is doing, whatever came
+// back, and its clock.
+//
+//	⠹ bash · go test ./…               running, with its age once it has one
+//	  bash · go test ./… · 2.4s        finished, quietly
+//	✗ stand · proposing … · no store   failed, loudly
+//
+// THE MARKS ARE THE CONVERSATION'S OWN (toolview.go's [app.mark]) and there are
+// only two of them: the braille spinner while a call is executing, and the
+// failure glyph when one did not. A call that succeeded says so by saying
+// nothing — the cell is a space, so the words underneath stay in one column.
+func (a *app) exchangeToolLine(row exchangeRow, hint string, width int, pal palette) string {
+	word := row.text
+	if hint = strings.TrimSpace(hint); hint != "" {
+		word += " · " + hint
+	}
+	if clock := a.exchangeClock(row); clock != "" {
+		word += " · " + clock
+	}
+	return a.exchangeToolMark(row, pal) + " " + pal.dim(fit(word, width-2))
+}
+
+// exchangeToolMark is that one cell.
+func (a *app) exchangeToolMark(row exchangeRow, pal palette) string {
+	switch {
+	case row.failed:
+		return pal.bad(pal.badGlyph())
+	case row.done:
+		return " "
+	default:
+		return pal.muted(a.exchangeSpin())
+	}
+}
+
+// exchangeClock is a call's one figure of time: its age while it runs, its own
+// duration once it is over, and NOTHING under the floors either of those keep
+// (toolview.go's [countUpFloor] and [elapsedFloor]). Two spellings for two
+// questions, exactly as a tool line in the conversation has.
+func (a *app) exchangeClock(row exchangeRow) string {
+	if row.done {
+		return tookWord(row.took)
+	}
+	if row.began.IsZero() {
+		return ""
+	}
+	return countUpWord(a.now().Sub(row.began))
+}
+
+// exchangeSpin is the one moving glyph this pane spends, on the house grid so
+// it never beats against the spinners elsewhere on the screen ([spinnerStep]).
+// Linear mode and a terminal with no braille both get the still `*`, for the
+// reason every spinner here does: a claim made thirty times a second is heard
+// thirty times a second by a surface being read aloud.
+func (a *app) exchangeSpin() string {
+	if a.linear || a.pal.ascii {
+		return glyphRunASCII
+	}
+	return tokens.Spinner(a.paints / spinnerStep)
+}
+
+// ── the live block: what is happening RIGHT NOW ─────────────────────────────
+//
+//	⠹ thinking · 4s          the turn has started and nothing has come back
+//	⠹ writing · 12s          the reply is streaming
+//	⠹ running · 12s          a call is executing, and the strip says which
+//	  ⠹ bash · go test ./…
+//	  read · session.go · 0.3s
+//
+// THE COMPLAINT THIS ANSWERS, VERBATIM: "I am unable to see what's happening —
+// no waiting or thinking or any UI response to know something is happening."
+// The pane drew a single dim `…` for the whole of a turn, which is the same
+// character a stalled surface would draw and the same character it drew four
+// seconds and four minutes in. So it says WHAT it is doing and FOR HOW LONG, in
+// the conversation's own words and on the conversation's own clock.
+//
+// AND THE STRIP UNDER IT IS A WINDOW, NOT A SECOND RECORD. Everything in it is
+// already a row above; what it adds is that the newest two lines of THIS turn
+// are always at the foot, against the box, where somebody who just pressed
+// enter is looking — which is what a follow-up into a settled exchange had
+// none of.
+
+// exchangeLive is that block: the state line, and the strip under it.
+func (a *app) exchangeLive(ex *homeExchange, width int, pal palette) []string {
+	out := []string{a.exchangeStateLine(ex, width, pal)}
+	return append(out, a.exchangeStrip(ex, width, pal)...)
+}
+
+// exchangeStateLine is the spinner and the word.
+func (a *app) exchangeStateLine(ex *homeExchange, width int, pal palette) string {
+	word := homeAskThinkWord
+	switch {
+	case ex.running():
+		word = homeAskRunWord
+	case ex.writing():
+		word = homeAskWriteWord
+	}
+	if !ex.turnBegan.IsZero() {
+		if clock := countUpWord(a.now().Sub(ex.turnBegan)); clock != "" {
+			word += " · " + clock
+		}
+	}
+	return pal.muted(a.exchangeSpin()) + " " + pal.dim(fit(word, width-2))
+}
+
+// exchangeStrip is the newest [exchangeStripRows] lines of this turn: a call
+// starting, a call finishing, and the growing tail of the reply.
+func (a *app) exchangeStrip(ex *homeExchange, width int, pal palette) []string {
+	var lines []string
+	for _, row := range ex.turnRows() {
+		switch row.kind {
+		case exchangeTool:
+			// The hint is left off here: the strip is about what is HAPPENING,
+			// and the row above already carries what came back.
+			lines = append(lines, "  "+a.exchangeToolLine(row, "", width-2, pal))
+		case exchangeReply:
+			// THE LAST LINE OF THE REPLY AND NOT THE FIRST, so that a long answer
+			// visibly grows instead of sitting still under a spinner.
+			if tail := exchangeLastLine(row.text, width-4); tail != "" {
+				lines = append(lines, "  "+pal.dim(fit(tail, width-2)))
+			}
+		}
+	}
+	if len(lines) > exchangeStripRows {
+		lines = lines[len(lines)-exchangeStripRows:]
+	}
+	return lines
+}
+
+// turnRows is the rows this turn has put down, and none of the ones before it.
+func (ex *homeExchange) turnRows() []exchangeRow {
+	from := ex.turnAt
+	if from < 0 || from > len(ex.rows) {
+		return nil
+	}
+	return ex.rows[from:]
+}
+
+// writing reports whether the reply is streaming: there is a live row and it
+// has something in it.
+func (ex *homeExchange) writing() bool {
+	return ex.live >= 0 && ex.live < len(ex.rows) &&
+		strings.TrimSpace(ex.rows[ex.live].text) != ""
+}
+
+// running reports whether a call of this turn is still executing.
+func (ex *homeExchange) running() bool {
+	for _, row := range ex.turnRows() {
+		if row.kind == exchangeTool && !row.done {
+			return true
+		}
+	}
+	return false
+}
+
+// exchangeLastLine is the tail of a block of text at a width — the line the
+// next character will land on.
+func exchangeLastLine(text string, width int) string {
+	lines := wrap(text, width)
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+// ── the row in the left column ──────────────────────────────────────────────
+
+// paneExchange is the exchange the pane is about, which is whichever one the
+// CURSOR is on and nothing else.
+//
+// IT IS THE WHOLE OF THE THIRD REPAIR. "Once the reminder is set I am unable to
+// see other previews on the right" — because the pane was drawn for as long as
+// an exchange existed. One question, asked in one place, answers it for the
+// pointer, the keyboard, the foot and the draw together.
+func (a *app) paneExchange() *homeExchange {
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeExchangeRow {
+		return nil
+	}
+	return line.ex
+}
+
+// settleExchangeFocus takes the keyboard back from every exchange the cursor is
+// not on. It is called before a keypress is read, so walking onto another row
+// can never leave the arrows moving a pane the person is no longer looking at.
+func (a *app) settleExchangeFocus() {
+	keep := a.paneExchange()
+	for _, ex := range a.exchanges {
+		if ex != keep {
+			ex.focused = false
+		}
+	}
+}
+
+// exchangeLines is one project block's exchange rows, in triage order: what
+// wants you, then what is moving, then what is done, and older first inside
+// each. It is [homeView.projectBlock]'s own split applied to a third kind of
+// row — an exchange is a hot thing and it sits where the hot things sit.
+func (h *homeView) exchangeLines(project session.Project) []homeLine {
+	var mine []*homeExchange
+	for _, ex := range h.exchanges {
+		if h.exchangeIn[ex] == project.Dir {
+			mine = append(mine, ex)
+		}
+	}
+	sort.SliceStable(mine, func(i, j int) bool {
+		if a, b := exchangeRank(mine[i]), exchangeRank(mine[j]); a != b {
+			return a < b
+		}
+		return mine[i].began.Before(mine[j].began)
+	})
+	lines := make([]homeLine, 0, len(mine))
+	for _, ex := range mine {
+		lines = append(lines, homeLine{
+			kind: homeExchangeRow, project: project.Name, dir: project.Dir, ex: ex,
+		})
+	}
+	return lines
+}
+
+// placeExchanges decides which block each exchange's row is drawn in, once per
+// build, and it is a map rather than a test done per block for one reason: an
+// exchange whose own project is not on the screen must still have a row
+// SOMEWHERE, and "somewhere" is a decision that needs to see all the blocks.
+//
+// THE PROJECT IT WAS ASKED IN COMES FIRST. Failing that — a project folded away
+// under `elsewhere`, a window standing in no project at all, a query that
+// matched none of its conversations — the row goes in the FIRST block on the
+// screen, which is this window's own ([homeTiers] puts it there). A row in a
+// slightly wrong place is a row; a row nowhere is an errand a person cannot get
+// back to.
+func (h *homeView) placeExchanges(blocks []homeHit) {
+	h.exchangeIn = nil
+	if len(h.exchanges) == 0 || len(blocks) == 0 {
+		return
+	}
+	h.exchangeIn = make(map[*homeExchange]string, len(h.exchanges))
+	for _, ex := range h.exchanges {
+		where := blocks[0].project.Dir
+		for _, block := range blocks {
+			if block.project.Dir == ex.bucket {
+				where = block.project.Dir
+				break
+			}
+		}
+		h.exchangeIn[ex] = where
+	}
+}
+
+// pointExchange puts the cursor on one exchange's row, and leaves it where it
+// is when that exchange has no row on the list.
+func (h *homeView) pointExchange(ex *homeExchange) {
+	if ex == nil {
+		return
+	}
+	for at, line := range h.lines {
+		if line.kind == homeExchangeRow && line.ex == ex {
+			h.cursor = at
+			return
+		}
+	}
+}
+
+// focusedExchange is the exchange under the cursor as [homeView] sees it, for
+// the rebuild that has to keep the cursor on it.
+func (h *homeView) focusedExchange() *homeExchange {
+	if h.cursor < 0 || h.cursor >= len(h.lines) || h.lines[h.cursor].kind != homeExchangeRow {
+		return nil
+	}
+	return h.lines[h.cursor].ex
+}
+
+// exchangeRowLine draws one exchange as a line of the column: the `?` this door
+// is marked with, what was asked, and what it is doing right now.
+//
+//	? remind me at 6 to leave        ▲ waiting on you
+//	? what did we decide about …     ⠹ working · 4s
+//	? tell me when CI goes red       ∙ stood
+//
+// THE TAIL IS THE WHOLE POINT OF THE ROW. An errand that is thinking, an errand
+// holding a question nobody has answered and an errand that is finished are
+// three different claims on a person's attention, and a row that looked the
+// same in all three would be a row saying only that an errand exists.
+func (a *app) exchangeRowLine(line homeLine, at, width int, pal palette) string {
+	label := homeAskHereGlyph + " " + exchangeTitle(line.ex.spoke)
+	return overlayRowTinted(label, a.exchangeTail(line.ex), exchangeTailInk(line.ex),
+		at == a.home.cursor, false, at == a.home.hover, width, pal)
+}
+
+// exchangeTail is that trailing fact.
+func (a *app) exchangeTail(ex *homeExchange) string {
+	switch {
+	case ex.waiting():
+		// THE ONE SHAPE ON THIS SCREEN THAT POINTS AT ANYTHING, and an exchange
+		// with an unanswered card in it is exactly what it is for (home.go's
+		// glyph block): the one row here asking for a hand.
+		glyph := homeAskGlyph
+		if a.pal.ascii {
+			glyph = homeAskASCII
+		}
+		return glyph + " " + homeAskWaitingWord
+	case ex.working:
+		word := homeAskWorkingWord
+		if !ex.turnBegan.IsZero() {
+			if clock := countUpWord(a.now().Sub(ex.turnBegan)); clock != "" {
+				word += " · " + clock
+			}
+		}
+		return a.exchangeSpin() + " " + word
+	default:
+		glyph := standOffGlyph
+		if a.pal.ascii {
+			glyph = standOffASCII
+		}
+		word := homeAskAnsweredTail
+		if ex.stood {
+			word = homeAskStoodTail
+		}
+		return glyph + " " + word
+	}
+}
+
+// exchangeTailInk brings `waiting on you` up out of the dim, and leaves every
+// other tail in it. It is [homeNoteInk]'s rule said again about a third kind of
+// row: a screen whose whole job is triage cannot draw its most urgent fact in
+// the same grey as an age.
+func exchangeTailInk(ex *homeExchange) noteInk {
+	if !ex.waiting() {
+		return nil
+	}
+	return func(pal palette, note string, selected bool) string {
+		if selected {
+			return pal.ink(note)
+		}
+		return pal.accent(note)
+	}
 }
 
 // ── the pointer, inside the pane ────────────────────────────────────────────
@@ -1065,7 +1764,7 @@ func exchangeRowLines(row exchangeRow, width int, pal palette) []string {
 // row is the pane's own row index and x is the column WITHIN the pane, both
 // worked out by home's frame (home.go's [app.homePress]).
 func (a *app) exchangePress(x, row int) tea.Cmd {
-	ex := a.home.exchange
+	ex := a.paneExchange()
 	if ex == nil {
 		return nil
 	}
@@ -1098,7 +1797,7 @@ func (a *app) exchangePress(x, row int) tea.Cmd {
 // one that had no hover at all until now — a row that lights up under nothing
 // is a row people do not know they can click.
 func (a *app) exchangeHover(row int) {
-	ex := a.home.exchange
+	ex := a.paneExchange()
 	if ex == nil {
 		return
 	}
@@ -1133,7 +1832,9 @@ func exchangeHint(ex *homeExchange) string {
 	}
 	// BOTH WAYS OUT ARE NAMED. tab is the zone toggle and esc is the one-layer
 	// undo, and a hint that named only one of them would be this line teaching
-	// half of the way back to the list.
+	// half of the way back to the list. On a narrow frame this pane is the whole
+	// screen and the same two keys are how the list comes back, which is why the
+	// sentence says "the list" rather than "the column".
 	parts = append(parts, "tab or esc back to the list")
 	return strings.Join(parts, " · ")
 }
