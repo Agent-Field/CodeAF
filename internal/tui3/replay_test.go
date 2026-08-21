@@ -256,7 +256,7 @@ func TestAReplayedMessageMarksItsPictures(t *testing.T) {
 	)
 
 	frame := strings.Join(plainRows(a), "\n")
-	for _, want := range []string{"what is wrong with this", "[chart.png]", "[photo.png]"} {
+	for _, want := range []string{"what is wrong with this", "[#1 chart.png]", "[#2 photo.png]"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the replayed message is missing %q:\n%s", want, frame)
 		}
@@ -287,7 +287,7 @@ func TestAPictureOnlyMessageSurvivesTheReplay(t *testing.T) {
 		t.Fatalf("user entries = %d, want the picture-only message kept: %+v", users, a.entries)
 	}
 	frame := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(frame, "[screenshot.png]") {
+	if !strings.Contains(frame, "[#1 screenshot.png]") {
 		t.Fatalf("the picture-only message drew no marker:\n%s", frame)
 	}
 	// And the turn still moved with it: the reply belongs to the same turn the

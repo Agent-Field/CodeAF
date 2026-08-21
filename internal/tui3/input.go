@@ -58,6 +58,18 @@ func (e *editor) setText(text string) {
 	e.cursor = len(e.value)
 }
 
+// rewrite replaces the whole draft and leaves the caret where it was, clamped to
+// the new end. It is [editor.setText] for an edit the person did not make with
+// the caret: renumbering the picture tokens after a chip comes off (imagepaste.go)
+// changes the line under somebody who is mid-sentence, and parking the caret at
+// the end of it would move them somewhere they did not ask to be.
+func (e *editor) rewrite(text string) {
+	e.value = append(e.value[:0], []rune(text)...)
+	if e.cursor > len(e.value) {
+		e.cursor = len(e.value)
+	}
+}
+
 func (e *editor) insert(text string) {
 	runes := []rune(text)
 	e.value = append(e.value[:e.cursor], append(runes, e.value[e.cursor:]...)...)
