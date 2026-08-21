@@ -131,6 +131,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
 
+		// The eleventh wave: the words are no longer only carried, they can be
+		// SEARCHED. Somebody asking either of these is asking about the
+		// conversation itself rather than about a task that ran, and the answer
+		// is the page that names the tool — never the task history, which is a
+		// record of work and not of what was said.
+		{"what did we decide last week", "what-i-remember"},
+		{"search my old conversations", "what-i-remember"},
+
 		// The third wave: aforge changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where
 		// it will not — because the second is the answer somebody gets when
