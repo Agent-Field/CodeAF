@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
@@ -117,6 +119,43 @@ func workIndent(width int) string {
 	return "  "
 }
 
+// workIndentCols is what the indent law costs, in columns. It is asked at
+// LAYOUT and again at the pass that applies it (render.go's [app.deckRows]), and
+// it is one function because those two must never be able to disagree: a block
+// laid out at the full width and then shoved two cells right is a block two
+// cells wider than the column it is drawn in, and the two cells it overhangs are
+// cut off by [app.railJoin] — which is where a tool row's spinner went.
+func workIndentCols(width int) int { return ansi.StringWidth(workIndent(width)) }
+
+// workEntry reports whether the entry at i is WORK — the half of [rowIsWork]
+// that can be answered before a single row has been built, so the width a block
+// is laid out at and the indent it is later given are decided by one rule.
+func workEntry(es []entry, folds map[int]workfold, i int) bool {
+	if i < 0 || i >= len(es) {
+		return false
+	}
+	e := es[i]
+	if e.kind == entryThinking || e.kind == entryTool || e.kind == entryCompact || e.kind == entryNote {
+		return true
+	}
+	if e.kind != entryAssistant {
+		return false
+	}
+	for _, f := range folds {
+		if f.turn == e.turn {
+			return i < f.answer
+		}
+	}
+	// During a live turn there is no completed fold yet. Its last assistant
+	// block is the answer; any earlier one has been superseded by later work.
+	for at := len(es) - 1; at > i; at-- {
+		if es[at].turn == e.turn && es[at].kind != entryDivider {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *app) workfoldLabel(f workfold) string {
 	took := f.took
 	if stamp, ok := a.stamps[f.turn]; ok {
@@ -147,28 +186,7 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitTool || r.hit == hitMore {
 		return true
 	}
-	if r.entry < 0 || r.entry >= len(es) {
-		return false
-	}
-	e := es[r.entry]
-	if e.kind == entryThinking || e.kind == entryTool || e.kind == entryCompact || e.kind == entryNote {
-		return true
-	}
-	if e.kind == entryAssistant {
-		for _, f := range folds {
-			if f.turn == e.turn {
-				return r.entry < f.answer
-			}
-		}
-		// During a live turn there is no completed fold yet. Its last assistant
-		// block is the answer; any earlier one has been superseded by later work.
-		for i := len(es) - 1; i > r.entry; i-- {
-			if es[i].turn == e.turn && es[i].kind != entryDivider {
-				return true
-			}
-		}
-	}
-	return false
+	return workEntry(es, folds, r.entry)
 }
 
 func (a *app) toggleLatestWorkfold() bool {
