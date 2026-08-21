@@ -422,15 +422,35 @@ func TestToolArgsCarryAWholeEditPayload(t *testing.T) {
 	}
 
 	// It is still a cap, and it is still display-only: past the limit the copy
-	// is cut and marked, and the wire arguments are never touched.
+	// is shortened and marked, and the wire arguments are never touched.
+	//
+	// THE SHORTENING HAPPENS INSIDE THE STRING. What comes back is still a JSON
+	// object a surface can read a field out of — that is the contract, and the
+	// version of this that cut at a byte offset ended the payload mid-literal and
+	// made internal/tui3 draw an em dash for every write worth opening.
 	huge := `{"path":"f.go","edits":[{"oldText":"` + strings.Repeat("x", argsLimit) + `"}]}`
 	capped := argsText(ai.ToolCall{
 		ID: "c2", Type: "function",
 		Function: ai.ToolCallFunction{Name: "edit", Arguments: huge},
 	})
-	if len(capped) >= len(huge) || !strings.HasSuffix(capped, "…") {
-		t.Fatalf("an oversized payload was not capped: %d bytes, ends %q",
-			len(capped), lastRunes(capped, 8))
+	if len(capped) >= len(huge) || len(capped) > argsLimit {
+		t.Fatalf("an oversized payload was not capped: %d bytes, limit %d", len(capped), argsLimit)
+	}
+	var fields struct {
+		Path  string `json:"path"`
+		Edits []struct {
+			OldText string `json:"oldText"`
+		} `json:"edits"`
+	}
+	if err := json.Unmarshal([]byte(capped), &fields); err != nil {
+		t.Fatalf("a capped payload no longer parses: %v", err)
+	}
+	if fields.Path != "f.go" || len(fields.Edits) != 1 {
+		t.Fatalf("a capped payload lost its shape: %+v", fields)
+	}
+	if !strings.HasPrefix(fields.Edits[0].OldText, "xxxx") ||
+		!strings.HasSuffix(fields.Edits[0].OldText, "more bytes)") {
+		t.Fatalf("the capped field is not marked: ends %q", lastRunes(fields.Edits[0].OldText, 24))
 	}
 }
 

@@ -128,16 +128,28 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if replayInert(e) {
 		hit = hitNone
 	}
-	// A CALL THAT IS STILL ARRIVING HANGS NOTHING, AND ANSWERS NO POINTER. The
-	// preview under a row is drawn from the arguments, and the arguments of a
-	// forming call are half a JSON object this surface has deliberately not
-	// kept — so there is nothing to show under it and nothing to open, which is
-	// [replayInert]'s rule arrived at from the other direction: a row that
-	// brightened under the pointer would be promising an answer it does not
-	// have. It becomes an ordinary row the moment the announcement brings the
-	// payload with it.
+	// A CALL THAT IS STILL ARRIVING ANSWERS NO POINTER. There is nothing to open:
+	// the call has not been announced, so no payload exists to expand and no
+	// result is coming — which is [replayInert]'s rule arrived at from the other
+	// direction, a row that brightened under the pointer promising an answer it
+	// does not have. It becomes an ordinary row the moment the announcement
+	// brings the payload with it.
+	//
+	// IT DOES HANG THE FILE IT IS WRITING, THOUGH, and that block is the one
+	// thing on this surface drawn from an unfinished call's arguments. It is not
+	// parsed — session's [session.PartialString] scans the streamed text for one
+	// field and app.go keeps the answer (see [entry.formed]) — and it is not a
+	// claim about what the call will do: it is the last lines of a file that is
+	// visibly being typed, which is the whole of what a person watching a long
+	// write wants and none of what a preview promises.
 	if e.status == toolForming {
-		return []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitNone}}
+		out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitNone}}
+		stem := a.pal.railCont()
+		phone := layoutTier(width) == tierPhone
+		for _, line := range a.formingRows(e, width-ansi.StringWidth(stem), previewCap(phone)) {
+			out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitNone})
+		}
+		return out
 	}
 	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hit}}
 	stem := a.pal.railCont()
@@ -1131,7 +1143,8 @@ func (a *app) previewBody(e *entry, width, window int) (head string, body []stri
 	case "edit":
 		body = a.diffRows(e, width)
 	case "write":
-		body = a.plainRows(argString(argsOf(e.detail.Args), "content"), width)
+		fields := argsOf(e.detail.Args)
+		body = a.codeRows(argString(fields, "content"), argString(fields, "path"), width)
 	default:
 		return "", nil, 0
 	}
@@ -1145,6 +1158,32 @@ func (a *app) previewBody(e *entry, width, window int) (head string, body []stri
 		more, body = len(body)-window, body[:window]
 	}
 	return a.previewHead(e), body, more
+}
+
+// formingRows is the block under a call that is STILL ARRIVING: the last window
+// lines of the file it is writing, dim and syntax-coloured, growing downward as
+// the model types.
+//
+// IT IS A TAIL, NOT A TRUNCATION, and that is why it has no header and no
+// "… N more lines" foot. Both of those belong to a block that is showing part of
+// something whole; this is showing the end of something that is not finished, so
+// there is no remainder to offer and nothing a click could lift. The honest
+// figure for how much has arrived is already on the row above it, where the
+// forming line says `receiving · 12.4 KB`.
+//
+// It answers for `write` and no other tool ([formingPreviewField] says why).
+func (a *app) formingRows(e *entry, width, window int) []string {
+	if e.formed == "" || width < 8 || window <= 0 {
+		return nil
+	}
+	// The path comes from session's gloss, which is the only thing about this
+	// call that is known before it is whole — the hint closes on the path field
+	// well before the body stops arriving (session's toolhint.go).
+	rows := a.codeRows(e.formed, toolTarget(e.tool, "", e.text), width)
+	if len(rows) > window {
+		rows = rows[len(rows)-window:]
+	}
+	return rows
 }
 
 // previewHead is the one word above a preview.
@@ -1207,10 +1246,20 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 	case "edit":
 		return a.cap(e, a.diffRows(e, width), diffWindow)
 	case "write":
-		content := argString(argsOf(e.detail.Args), "content")
-		return a.cap(e, a.plainRows(content, width), writeWindow)
+		// THE CONTENT IS SOURCE AND IS DRAWN AS SOURCE (codeview.go), lexed by the
+		// path the same call is writing to. The display copy's own cut, where
+		// there was one, is left on the end of the last line rather than trimmed
+		// off: it is the only thing on screen that says this is not the whole file.
+		fields := argsOf(e.detail.Args)
+		content := argString(fields, "content")
+		return a.cap(e, a.codeRows(content, argString(fields, "path"), width), writeWindow)
 	case "read":
-		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), readWindow)
+		// A READ'S RESULT IS SOMEBODY ELSE'S SOURCE, and the argument for colouring
+		// it is the write's argument arrived at from the other end: a person opens
+		// this row to read a file, and a file is the one kind of tool output whose
+		// structure a lexer knows.
+		return a.cap(e, a.codeRows(
+			resultText(e.detail.Output), argString(argsOf(e.detail.Args), "path"), width), readWindow)
 	case "bash":
 		// THE COMMAND IS NOT CAPPED, AND THE OUTPUT IS.
 		//

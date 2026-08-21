@@ -124,14 +124,21 @@ const hintLimit = 80
 // argsLimit bounds Event.Args. Like [outputLimit] it is a DISPLAY cap: the
 // wire arguments the model sent and the transcript records are untouched.
 //
-// It is 8k rather than a paragraph's worth because of what a surface derives
+// It is 32k rather than a paragraph's worth because of what a surface derives
 // from this field. An edit call's "+3 −1" and its unified diff are computed
 // from the old/new strings the call carried (docs/CHAT-V3.md D11, rendered in
 // internal/tui3) — the tool's own result is one sentence saying it worked, so
 // the arguments are the ONLY record of the change that reaches a screen. A cap
 // that cut them at 400 bytes did not shorten the diff; it produced the wrong
 // number and a diff that stopped mid-line.
-const argsLimit = 8192
+//
+// 32k is roughly eight hundred lines of source. It clears internal/tui3's whole
+// ladder with room to spare — a write's expansion keeps 20 rows and an edit's
+// diff 40, and the "… N more lines" foot that lifts those caps has to have
+// something to lift — and it clears the 600-line ceiling the exact diff runs
+// under (its diffCeiling), so a replacement block that a person can be shown a
+// real diff of is a block that arrives whole.
+const argsLimit = 32768
 
 // outputLimit bounds Event.Output. It is a display copy, not the result: the
 // model still reads the full text off the transcript. 4000 bytes is a screen
@@ -1175,6 +1182,15 @@ func glossValue(args map[string]json.RawMessage, field string) string {
 // through as their own text — gloss degrades a malformed call to the bare tool
 // name because a hint is a claim about what the call does, but the expansion is
 // where a person goes to see what actually arrived.
+//
+// ARGS STAY PARSEABLE WHENEVER THE WIRE ARGS WERE, and that is this function's
+// whole contract to a surface. Cutting the compacted JSON at a byte offset ends
+// it in the middle of a string literal, and every reader downstream then answers
+// "this is not JSON" about a call that was perfectly well formed: internal/tui3
+// read an empty content field out of a 20k write and drew the em dash it draws
+// for an expansion with nothing in it, so opening the largest writes — the ones
+// worth opening — showed a dash. The cut therefore happens INSIDE the oversized
+// string values (see [capArgsValues]) and the object is written back out whole.
 func argsText(call ai.ToolCall) string {
 	raw := strings.TrimSpace(call.Function.Arguments)
 	if raw == "" {
@@ -1183,6 +1199,11 @@ func argsText(call ai.ToolCall) string {
 	var compacted bytes.Buffer
 	if err := json.Compact(&compacted, []byte(raw)); err == nil {
 		raw = compacted.String()
+		if len(raw) > argsLimit {
+			if capped, ok := capArgsValues(raw, argsLimit); ok {
+				raw = capped
+			}
+		}
 	}
 	// SCRUBBED FOR THE GLOSS'S REASON. This is the other half of the same card —
 	// the phone sheet lays the command out of these arguments rather than out of
@@ -1191,7 +1212,120 @@ func argsText(call ai.ToolCall) string {
 	// ordinary characters here and becomes a control byte only when a surface
 	// unmarshals it, which is why internal/tui3's card scrubs what it reads back
 	// out of the arguments too.
+	//
+	// The clip is the LAST RESORT, for the one input the branch above cannot
+	// help: arguments that are not JSON at all. Those have no string values to
+	// cut inside of, and a byte cut of a malformed payload breaks nothing that
+	// was not already broken.
 	return scrubbed(clip(raw, argsLimit))
+}
+
+// capArgsValues brings one compacted JSON payload under limit by shortening its
+// oversized STRING values rather than by cutting the text, and reports whether
+// it managed it.
+//
+// THE RULE IS ONE THRESHOLD FOR THE WHOLE PAYLOAD: every string longer than it
+// is cut to it and marked, every string shorter is untouched, and the threshold
+// is the largest one under which the re-marshaled object fits. That is what
+// shares the budget honestly across a call carrying several long strings — an
+// edit sending four replacement blocks gets four comparable windows onto them
+// rather than a whole diff spent on whichever block the model sent first, and a
+// write sending one body gets all of it.
+//
+// It walks NESTED values, unlike the forming scanner's deliberate top-level-only
+// rule (toolhint.go): bare spells an edit as {path, edits:[{oldText,newText}]},
+// so the two strings a diff is computed from live inside an array, and a capper
+// that only knew about top-level fields would leave the exact call this exists
+// for untouched.
+//
+// The one thing the round trip does not preserve is the ORDER of an object's
+// keys, which comes back alphabetical. Nothing downstream reads arguments
+// positionally — every reader in the tree asks for a field by name — and this
+// runs only for a payload past the cap, which in practice is a write or an edit
+// whose fields a surface has a table row for.
+func capArgsValues(compacted string, limit int) (string, bool) {
+	// UseNumber, because the round trip has to give the numbers back as the model
+	// spelled them. Decoded into a bare any they become float64 and a timeout of
+	// 1200000 comes back out as 1.2e+06 — a payload nobody sent, in a field a
+	// surface reads.
+	decoder := json.NewDecoder(strings.NewReader(compacted))
+	decoder.UseNumber()
+	var payload any
+	if err := decoder.Decode(&payload); err != nil {
+		return "", false
+	}
+	// The walk collects a setter per string rather than the strings themselves,
+	// because the same threshold is applied several times over — once per probe
+	// below — and each probe writes the ORIGINAL value back through the setter
+	// it came with.
+	type slot struct {
+		text string
+		set  func(string)
+	}
+	var slots []slot
+	var walk func(value any, set func(string))
+	walk = func(value any, set func(string)) {
+		switch typed := value.(type) {
+		case string:
+			slots = append(slots, slot{text: typed, set: set})
+		case map[string]any:
+			for key, child := range typed {
+				key := key
+				walk(child, func(text string) { typed[key] = text })
+			}
+		case []any:
+			for index, child := range typed {
+				index := index
+				walk(child, func(text string) { typed[index] = text })
+			}
+		}
+	}
+	walk(payload, func(string) {})
+	if len(slots) == 0 {
+		return "", false
+	}
+
+	// fits applies one threshold and answers with the payload it produced. A
+	// threshold of zero is legal and means "every long string is nothing but its
+	// marker", which is the floor this search stops at.
+	fits := func(threshold int) (string, bool) {
+		for _, s := range slots {
+			s.set(capBytes(s.text, threshold))
+		}
+		// SetEscapeHTML(false), because this is not going into a web page and the
+		// default would spell every `<` in a written Go file as < — six bytes
+		// of the budget for one character, and a payload that no longer looks like
+		// the one the model sent to anybody reading it as text.
+		var out bytes.Buffer
+		encoder := json.NewEncoder(&out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(payload); err != nil {
+			return "", false
+		}
+		// Encode ends every value with a newline, which json.Compact would not
+		// have left there and [scrubbed] would drop anyway.
+		text := strings.TrimRight(out.String(), "\n")
+		return text, len(text) <= limit
+	}
+
+	// The largest threshold that fits, by bisection on the byte budget itself.
+	// Marshaled size does not move one-for-one with the threshold — a marker
+	// costs about twenty bytes and an escaped rune costs six — so the size is
+	// measured rather than predicted, and the search is over the one quantity
+	// that is actually monotonic in it.
+	low, high := 0, limit
+	best, found := "", false
+	for low <= high {
+		mid := (low + high) / 2
+		out, ok := fits(mid)
+		if ok {
+			best, found = out, true
+			low = mid + 1
+			continue
+		}
+		high = mid - 1
+	}
+	return best, found
 }
 
 // capOutput bounds a tool result for Event.Output, marking the cut with the

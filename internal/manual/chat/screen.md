@@ -823,8 +823,8 @@ and an elbow closing the run.
 ├─▶ edit internal/session/loop.go      +3 −1
 │ internal/session/loop.go
 │ @@ -1,4 +1,4 @@
-│ -const argsLimit = 400
-│ +const argsLimit = 8192
+│ -const argsLimit = 8192
+│ +const argsLimit = 32768
 ╰─▶ bash go test ./internal/session    exit 1 ✗
 ```
 
@@ -837,7 +837,7 @@ Each state has its own mark:
 
 | state | mark | the row |
 | --- | --- | --- |
-| arriving on the wire | `◌` pulsing dim | dim whole, e.g. `receiving · 1.2 KB` |
+| arriving on the wire | `◌` pulsing dim | dim whole, e.g. `receiving · 1.2 KB`; a `write` also hangs the file it is typing |
 | queued | `◌` dim | ordinary row, quiet |
 | waiting on you | `?` in the question hue, bold | the whole row is the question hue |
 | running | braille spinner, muted | a count-up beside it |
@@ -882,8 +882,9 @@ arguments and output:
 | `find`, `ls` | `· 8 entries` / `· 1 entry` |
 | anything else | nothing |
 
-A `+` is appended to a count whose output was cut by the display cap, meaning "at least
-this many". If you answered a consent question for the call, the word `allowed` or
+A `+` is appended to a count whose output — or whose arguments — were shortened by the
+display cap, meaning "at least this many": a huge write reads `+412+ lines` and a huge
+edit `+37+ −12+`. See *Why is a big write or edit cut off*. If you answered a consent question for the call, the word `allowed` or
 `denied` rides the same slot, after a ` · ` on a wide row, and replaces the stat
 entirely at phone width. **A command you sent to the background with `ctrl+g` rides
 it too**, as `job 3`, and it is drawn last because it is the most recent thing to
@@ -979,8 +980,8 @@ What you get, per tool, each with its own line cap:
 | tool | what opens | cap |
 | --- | --- | --- |
 | `edit` | the path, then a unified diff | 40 rows |
-| `write` | the content | 20 rows |
-| `read` | the returned chunk | 30 rows |
+| `write` | the content, syntax-coloured | 20 rows |
+| `read` | the returned chunk, syntax-coloured | 30 rows |
 | `bash` | the command whole and highlighted, uncapped, then the output; `exit N` in the bad hue at the foot when it failed | output 30 rows |
 | `grep`, `find`, `ls` | the listing | 30 rows |
 | `generate_image` | the picture itself, in colour, then its whole absolute path — or, where no picture can be drawn, that path alone | picture 20 rows |
@@ -992,6 +993,9 @@ it means nothing. The dropped remainder becomes a clickable `… N more lines` r
 is a different click target from the row above it: one lifts the cap, the other closes
 the call. Once you have pressed "more", that call has no window at all. An expansion
 with nothing in it draws a dim `—`.
+
+A `write`'s content and a `read`'s returned text are drawn as **source**, not as flat
+text: see *Syntax colours in a tool call* below.
 
 An unfinished call that you open shows its preview if it has one. Otherwise, for `bash`,
 it shows the command — readable before it finishes, which is when you most want it —
@@ -1006,6 +1010,82 @@ once execution begins. The header changes, the rows do not, so nobody reads the 
 diff twice. It is capped at **12** rows, or **4** at phone width, with the remainder
 offered as `… N more lines`. There is no preview for `bash` (the command is already on
 its own line in full) or `read`.
+
+## Watching a file being written — the live content under a `write` that is still arriving
+
+A long `write` takes seconds to arrive over the wire, and while it does you can **read
+the file as it is typed**. The row says how much has landed — `write notes.go ·
+receiving · 12.4 KB`, with a dim pulsing `◌` — and underneath it hangs the **last lines
+of the file so far**, dim and syntax-coloured, following the text downward as it grows.
+
+It is a **tail**, not the beginning: at most **12** rows (**4** at phone width), always
+the most recent ones, so what you are watching is where the model is writing. There is no
+header above it and no `… N more lines` foot under it — there is no remainder to offer,
+because the file is not finished. The honest figure for the size is the `12.4 KB` on the
+row itself.
+
+**Only `write` does this.** `edit` deliberately does not: an edit's block is a unified
+diff, and a diff needs both sides of the change whole — half of what is being replaced
+against nothing at all is not a change, it is a guess. The whole diff appears the moment
+the call is announced, which is the moment it becomes true. Every other tool hangs
+nothing while it forms.
+
+A row that is still arriving **answers no pointer and cannot be opened**: nothing has
+been asked for yet, so there is no payload to expand and no result coming. It becomes an
+ordinary clickable row the instant the call is whole, and the live tail is dropped then —
+from that point the preview under the row is drawn from the call's own arguments.
+
+## Syntax colours in a tool call — code in an opened `write` or `read`
+
+Open a `write` and you get the file's content; open a `read` and you get the text it
+returned. Both are drawn as **source**: lexed by the file's own name — `.go`, `.py`,
+`.ts`, `Dockerfile`, whatever the path says — and painted on the same quiet ramp a fenced
+code block in a reply uses. Keywords, strings, numbers, comments and function names take
+their tint; everything else stays at the block's dim tier. It is meant to read as
+evidence you can skim, not as an editor window: **colour where there is meaning, dim
+everywhere else.**
+
+It falls back to the flat dim block it always drew in three cases, and nothing is lost in
+any of them:
+
+- **the file's name matches no language** — a log, a `.txt`, a path the call never
+  carried. Guessing would mean painting a log file as if it were code.
+- **the screen-reader tier** (`--linear`). Syntax colour is a claim made by hue alone,
+  and a surface being read aloud does not receive one. Every other colour on this surface
+  stays in linear mode; this one has nothing to say there.
+- **16 colours and below**, where there is no code ramp at all — the same rung at which a
+  fenced block in a reply stops being highlighted.
+
+Long lines still **truncate and never wrap**, because indentation is how source is read
+and a continuation at column zero lies about the nesting. The live tail under a `write`
+that is still arriving is coloured the same way.
+
+## Why is a big write or edit cut off — `… (12345 more bytes)`
+
+The copy of a call's arguments that reaches the screen is capped at **32 KB** — about
+eight hundred lines of source. It is a display cap and nothing more: the tool ran on
+everything the model sent, and **the file on disk has the whole of it**.
+
+When a call is over that, the shortening happens **inside the long fields** rather than
+by cutting the payload, and each shortened field ends by saying what it cost:
+
+```
+│ func lastLineThatFitted() {
+│ … (12345 more bytes)
+```
+
+So an opened `write` shows the beginning of the file and that marker at the end of it,
+and an `edit` shows as much of each replacement block as fits with the same marker on
+each. Every replacement gets the **same size window**, so one enormous block cannot spend
+the budget the others needed.
+
+Anything counted from a shortened field becomes "at least this many", spelled with a
+trailing `+` — a write reads `+412+ lines` and an edit `+37+ −12+`, the same `+` a
+capped `read` or `grep` count wears. A call that fits is unmarked and its numbers are
+exact.
+
+This is why very large calls are worth opening now: they used to arrive here as JSON cut
+mid-string, which nothing could read, so opening one drew a dim `—` and nothing else.
 
 ## Seeing the image itself in the terminal, in colour
 
