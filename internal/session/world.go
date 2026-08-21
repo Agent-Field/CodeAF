@@ -192,6 +192,22 @@ type SessionRow struct {
 	// case this layer degrades for rather than lies about.
 	Presence SessionPresence
 	Live     bool
+	// Spend is what THE CONVERSATION ITSELF has cost — the turns and the
+	// auxiliary calls beside them — and Tokens what it weighed, input plus
+	// output as one sum. Both are read off meta.json, which the session stamps
+	// at the end of every turn (placemeta.go), so this layer answers them
+	// without opening a single transcript.
+	//
+	// THEY ARE NOT [TaskRollup.Spend] AND MUST NOT BE ADDED TO IT HERE. This is
+	// the talking; that is the work the talking commissioned, and the two are
+	// counted in two different files by two different writers. A surface that
+	// wants the whole bill adds them where it draws it, and says so.
+	//
+	// Zero is "nobody could say" — a conversation held under a build older than
+	// the stamp, or one that has not finished a turn — and under the emptiness
+	// law a surface draws nothing for it.
+	Spend  float64
+	Tokens int
 	// Tasks is what the project's index says this session ran.
 	Tasks TaskRollup
 }
@@ -413,6 +429,8 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Model:      strings.TrimSpace(meta.Model),
 		At:         at,
 		Created:    meta.Created,
+		Spend:      meta.SpentUSD,
+		Tokens:     meta.Tokens,
 		Open:       InUse(transcript),
 		Presence:   presence,
 		Live:       live,

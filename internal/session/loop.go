@@ -530,6 +530,12 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.usage.Duration += turn.Duration
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false)
+	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
+	// function is the one place the journal is written: what a conversation has
+	// cost is a fact every reader of the machine wants and only the transcript
+	// holds, and a surface listing every session on disk cannot open every
+	// transcript to find it (placemeta.go's [Agent.stampSpend]).
+	a.stampSpend()
 	return turn
 }
 

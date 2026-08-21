@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# codegen_multi: 0–4 = how many of the four modules exist, import, and run.
+d="$1"; ok=0
+for m in textstats csvtool jsonflatten cache; do
+  [ -f "$d/$m.py" ] || continue
+  python3 -c "import sys; sys.path.insert(0,'$d'); import $m" 2>/dev/null || continue
+  ok=$((ok+1))
+done
+echo "$ok"

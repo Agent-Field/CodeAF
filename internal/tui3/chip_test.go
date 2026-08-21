@@ -113,17 +113,19 @@ func TestTheOpenChipIsBandedAndTheStripCarriesNoCursor(t *testing.T) {
 	}
 }
 
-// THE PHONE KEEPS THE PADDING AND THE OVERFLOW LAW. Forty-four columns is where
-// the +N does most of its work, and a chip that dropped its air there would be
-// the one tier where the row stops reading as tabs.
-func TestThePhoneStripKeepsItsChipsPaddedAndCountsTheRest(t *testing.T) {
+// THE NARROW STRIP KEEPS THE PADDING AND THE OVERFLOW LAW. The chip row is the
+// last tier that draws chips — at [tierPhone] the strip becomes one door with no
+// chips to drop (taskphone.go) — so a narrow frame is where the +N does its work,
+// and a chip that dropped its air there would be the tier where the row stops
+// reading as tabs.
+func TestTheNarrowStripKeepsItsChipsPaddedAndCountsTheRest(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.width = 44
+	a.width = 66
 	for i := 1; i <= 5; i++ {
 		a.taskUpdate(update(uint64(i), "node number "+itoa(i), session.TaskRunning, session.TaskNotice{}))
 	}
-	if layoutTier(a.width) != tierPhone {
-		t.Fatalf("forty-four columns is not the phone tier")
+	if layoutTier(a.width) != tierNarrow {
+		t.Fatalf("sixty-six columns is not the narrow tier")
 	}
 	text := stripText(a)
 	if w := ansi.StringWidth(text); w > a.width {

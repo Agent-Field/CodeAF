@@ -23,8 +23,8 @@ func landedRow(id, session, title string, ended time.Time, files ...string) Task
 	}
 }
 
-// liveWindow is another window with one task out, holding the files it names.
-func liveWindow(session, id, title string, now time.Time, files ...string) SessionPresence {
+// windowWithTask is another window with one task out, holding the files it names.
+func windowWithTask(session, id, title string, now time.Time, files ...string) SessionPresence {
 	return SessionPresence{
 		Schema: presenceSchema, SessionID: session, UpdatedAt: now, State: PresenceWorking,
 		RunningTasks: []PresenceTask{{ID: id, Title: title, State: string(TaskRunning), Files: files}},
@@ -85,7 +85,7 @@ func TestWorkInOtherFilesEntirelyChangesNothingAboutTheLanding(t *testing.T) {
 		landedRow("4", "another-window", "rail permanence", start.Add(20*time.Minute), "internal/session/rail.go"),
 	}
 	away := NewElsewhere(time.Now(), nil,
-		liveWindow("third", "9", "the manual sweep", time.Now(), "internal/manual/chat/tasks.md"))
+		windowWithTask("third", "9", "the manual sweep", time.Now(), "internal/manual/chat/tasks.md"))
 	if reason := groundShiftReason(rows, away, []string{"internal/tui3/home.go"}, start); reason != "" {
 		t.Fatalf("a landing nobody was near was flagged: %s", reason)
 	}
@@ -99,7 +99,7 @@ func TestWorkInOtherFilesEntirelyChangesNothingAboutTheLanding(t *testing.T) {
 func TestAWindowStillWritingTheseFilesIsSaidInThePresentTense(t *testing.T) {
 	now := time.Now()
 	away := NewElsewhere(now, map[string]string{"theirs": "the other window"},
-		liveWindow("theirs", "3", "drop-up nearest", now, "internal/tui3/home.go"))
+		windowWithTask("theirs", "3", "drop-up nearest", now, "internal/tui3/home.go"))
 	reason := groundShiftReason(nil, away, []string{"internal/tui3/home.go"}, now.Add(-time.Hour))
 
 	want := `"drop-up nearest" is also working in internal/tui3/home.go`
@@ -113,7 +113,7 @@ func TestAWindowStillWritingTheseFilesIsSaidInThePresentTense(t *testing.T) {
 func TestAnUnnamedClaimIsCalledAnotherWindow(t *testing.T) {
 	now := time.Now()
 	away := NewElsewhere(now, nil,
-		liveWindow("theirs", "3", "", now, "internal/tui3/home.go"))
+		windowWithTask("theirs", "3", "", now, "internal/tui3/home.go"))
 	reason := groundShiftReason(nil, away, []string{"internal/tui3/home.go"}, now.Add(-time.Hour))
 
 	want := "another window is also working in internal/tui3/home.go"
@@ -126,7 +126,7 @@ func TestAnUnnamedClaimIsCalledAnotherWindow(t *testing.T) {
 // citations are, and it is answered the same way.
 func TestAClaimThatNamedNoFilesRaisesNothing(t *testing.T) {
 	now := time.Now()
-	away := NewElsewhere(now, nil, liveWindow("theirs", "3", "drop-up nearest", now))
+	away := NewElsewhere(now, nil, windowWithTask("theirs", "3", "drop-up nearest", now))
 	if reason := groundShiftReason(nil, away, []string{"internal/tui3/home.go"}, now.Add(-time.Hour)); reason != "" {
 		t.Fatalf("a claim that said nothing about files was read as overlap: %s", reason)
 	}
@@ -140,7 +140,7 @@ func TestTheRecordAndTheLiveWindowsAreSaidSeparately(t *testing.T) {
 	rows := []TaskIndexEntry{
 		landedRow("4", "another-window", "rail permanence", start.Add(20*time.Minute), "internal/tui3/home.go"),
 	}
-	away := NewElsewhere(now, nil, liveWindow("theirs", "3", "drop-up nearest", now, "internal/tui3/task.go"))
+	away := NewElsewhere(now, nil, windowWithTask("theirs", "3", "drop-up nearest", now, "internal/tui3/task.go"))
 	reason := groundShiftReason(rows, away, []string{"internal/tui3/home.go", "internal/tui3/task.go"}, start)
 
 	lines := strings.Split(reason, "\n")

@@ -67,7 +67,16 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 		if w := ansi.StringWidth(text); w > width {
 			t.Fatalf("the strip is %d cells wide on a %d-column frame:\n%q", w, width, text)
 		}
-		if got := plain(strings.Split(frame(a), "\n")[0]); !strings.Contains(got, "Fix the nil-map") {
+		// AT PHONE WIDTH THE STRIP IS ONE DOOR, not a row of chips: `▸ N tasks · …`
+		// (taskphone.go). The chip names are in the roster the door opens.
+		wantFirst := "Fix the nil-map"
+		if layoutTier(width) == tierPhone {
+			wantFirst = "▸ 2 tasks"
+			if !strings.Contains(text, wantFirst) {
+				t.Fatalf("at %d columns the phone strip is not the tasks door:\n%q", width, text)
+			}
+		}
+		if got := plain(strings.Split(frame(a), "\n")[0]); !strings.Contains(got, wantFirst) {
 			t.Fatalf("at %d columns the strip is not the frame's first row:\n%q", width, got)
 		}
 		// Both of the strip's rows are budgeted: the chips and the blank under them.
@@ -147,7 +156,9 @@ func stripLines(a *app) []string {
 // — and pressing it opens the roster.
 func TestTheStripCountsWhatItCannotHoldAndOpensTheRoster(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.width = 44
+	// A NARROW frame, not a phone one: the overflow mark is a chip-row thing, and
+	// at [tierPhone] the strip is one door with no chips to drop (taskphone.go).
+	a.width = 70
 	for i := 1; i <= 5; i++ {
 		a.taskUpdate(update(uint64(i), "node number "+itoa(i), session.TaskRunning, session.TaskNotice{}))
 	}

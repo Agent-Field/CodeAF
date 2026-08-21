@@ -904,6 +904,90 @@ func reflexPromotionDefinition() ai.ToolDefinition {
 	}, "partial")
 }
 
+// requestSplitDescription is the whole of the ownable-subject test, in the one
+// place a model reads before deciding.
+//
+// The test is written as a thing to try rather than as a definition, because
+// every definition of "independent" a prompt has offered was agreed with and
+// then ignored: a model asked to divide will divide, and the cheapest division
+// is the procedure it was about to follow, relabelled as parts. The
+// knowing-nothing clause is what that relabelling cannot survive — "write the
+// report" cannot be started by someone who has not seen "gather the data", and
+// saying so out loud is what makes the model notice.
+//
+// The terminal sentence is not a warning, it is the contract. A leaf that
+// requested a split and then kept working would produce a partial its own
+// children were planned against, and the two would be the same work paid for
+// twice.
+const requestSplitDescription = "Say that this assignment is really several separate jobs, and hand them over. " +
+	"Use it only when working on it has REVEALED that — a directory that turned out to hold twelve independent " +
+	"cases, a question that turned out to be four unrelated questions. " +
+	"The test for a part: could one agent take it from start to finished knowing nothing of what the other parts " +
+	"produced? If a part needs another part's output, or reads as a stage of one procedure — gather, then analyse, " +
+	"then write up — it is not a part, and this assignment is one job. Two parts minimum. " +
+	"Calling this ENDS your run immediately: you do not continue afterwards, the parts do. " +
+	"Everything you have already produced is handed to them, so say it in your reply first if it is not written down."
+
+// requestSplitDefinition is the cooperative division tool. It is on the belt
+// only in swarm mode, and it is added by Linear rather than by the toolbox for
+// the same reason promote is: the call is intercepted and never executed, so a
+// Toolbox entry for it would be a handler that can never run.
+func requestSplitDefinition() ai.ToolDefinition {
+	return define("request_split", requestSplitDescription, map[string]any{
+		"parts": map[string]any{
+			"type":        "array",
+			"description": "the separate jobs this assignment turned out to hold — at least two",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title":   prop("string", "what this part is called, a few words"),
+					"summary": prop("string", "one line saying what this part is for"),
+					"brief":   prop("string", "the whole assignment for this part, written for an agent that will read nothing else"),
+				},
+				"required": []string{"title", "summary", "brief"},
+			},
+		},
+		"evidence": prop("string", "what you read or found that revealed the division — the file, the count, the shape of the thing"),
+	}, "parts", "evidence")
+}
+
+// requestedSplit reads the leaf's division out of a turn's calls. The
+// request_split call is intercepted by Linear and never reaches the toolbox.
+//
+// Arguments that will not parse still end the run. The model has said the
+// assignment is several jobs, and that finding is the expensive half; a request
+// that arrives malformed is refused by Valid one layer up, which delivers the
+// partial — the same ending a governor refusal gives it, and a far better one
+// than handing the loop back to a worker that has just announced it is stopping.
+func requestedSplit(calls []ai.ToolCall) (*SplitRequest, bool) {
+	for _, call := range calls {
+		if call.Function.Name != "request_split" {
+			continue
+		}
+		var args struct {
+			Parts []struct {
+				Title   string `json:"title"`
+				Summary string `json:"summary"`
+				Brief   string `json:"brief"`
+			} `json:"parts"`
+			Evidence string `json:"evidence"`
+		}
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+			return &SplitRequest{}, true
+		}
+		request := &SplitRequest{Evidence: strings.TrimSpace(args.Evidence)}
+		for _, part := range args.Parts {
+			request.Parts = append(request.Parts, SplitPart{
+				Title:   strings.TrimSpace(part.Title),
+				Summary: strings.TrimSpace(part.Summary),
+				Brief:   strings.TrimSpace(part.Brief),
+			})
+		}
+		return request, true
+	}
+	return nil, false
+}
+
 // reflexPromotion reads the executor's explicit larger-than-it-looked verdict.
 // The promote call is intercepted by Linear and never reaches the toolbox.
 func reflexPromotion(calls []ai.ToolCall) (string, bool) {

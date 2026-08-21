@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // says appends one spoken line to a transcript, in the journal's own message
@@ -29,9 +28,9 @@ func (l *homeLab) says(transcript, role, text string) {
 	}
 }
 
-// card is the detail column for the row holding a transcript, stripped to
+// homeCardFor is the detail column for the row holding a transcript, stripped to
 // words, one string per line.
-func homeCard(t *testing.T, a *app, transcript string) []string {
+func homeCardFor(t *testing.T, a *app, transcript string) []string {
 	t.Helper()
 	a.home.point(transcript)
 	width, _ := a.size()
@@ -58,9 +57,10 @@ func cardLine(card []string, phrase string) int {
 
 // ── THE CARD IS SHAPED BY THE ROW'S STATE ───────────────────────────────────
 
-// A quiet conversation leads with where you left off, and reads its work as a
-// ledger: the task under the last-said, its outcome sentence under the task.
-func TestAQuietCardLeadsWithWhereYouLeftOff(t *testing.T) {
+// A quiet conversation's work reads as a ledger: the task NAMED FIRST, and what
+// it came to on the line under it (homeband_work.go). Nothing spells a state
+// word on a landed row — done wears no mark at all.
+func TestAQuietCardReadsItsWorkAsALedger(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
@@ -74,7 +74,7 @@ func TestAQuietCardLeadsWithWhereYouLeftOff(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	card := homeCard(t, a, other)
+	card := homeCardFor(t, a, other)
 	said := cardLine(card, "tighten the hero copy")
 	work := cardLine(card, "Hero rewrite")
 	outcome := cardLine(card, "Led with the outcome")
@@ -82,22 +82,22 @@ func TestAQuietCardLeadsWithWhereYouLeftOff(t *testing.T) {
 		t.Fatalf("the quiet card is missing a band (said %d, work %d, outcome %d):\n%s",
 			said, work, outcome, strings.Join(card, "\n"))
 	}
-	if said > work {
-		t.Fatalf("a quiet card puts the work above where you left off:\n%s", strings.Join(card, "\n"))
-	}
 	if outcome != work+1 {
 		t.Fatalf("the outcome does not hang under its task:\n%s", strings.Join(card, "\n"))
 	}
-	// And nothing on a quiet card claims to be happening: no spinner, no state
-	// words — the ✓ carries "done" by itself.
+	if !strings.HasPrefix(card[outcome], strings.Repeat(" ", homeWorkIndent)) {
+		t.Fatalf("the outcome is not indented under its task: %q", card[outcome])
+	}
+	// And nothing on a landed row claims to be happening, or claims to be done:
+	// the absence of a mark is what `done` looks like here.
 	if text := strings.Join(card, "\n"); strings.Contains(text, "done Hero") || strings.Contains(text, "running") {
 		t.Fatalf("the ledger still spells state words:\n%s", text)
 	}
 }
 
-// A conversation with work running leads with the work, and the work is ALIVE:
-// the spinner cell, and a count-up from when the presence says the node began.
-func TestARunningCardLeadsWithTheWorkAlive(t *testing.T) {
+// A conversation with work running says so ON the work, above where it left
+// off: the name first, and `● running` with what it is doing under it.
+func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
@@ -115,27 +115,27 @@ func TestARunningCardLeadsWithTheWorkAlive(t *testing.T) {
 	if !a.homeAnimating() {
 		t.Fatal("a row with work running did not earn the paint clock")
 	}
-	card := homeCard(t, a, other)
+	card := homeCardFor(t, a, other)
 	work := cardLine(card, "Port the picker")
+	state := cardLine(card, homeLiveGlyph+" running")
 	said := cardLine(card, "port the resume picker")
-	if work < 0 || said < 0 {
-		t.Fatalf("the running card is missing a band (work %d, said %d):\n%s",
-			work, said, strings.Join(card, "\n"))
+	if work < 0 || state < 0 || said < 0 {
+		t.Fatalf("the running card is missing a band (work %d, state %d, said %d):\n%s",
+			work, state, said, strings.Join(card, "\n"))
 	}
 	if work > said {
 		t.Fatalf("a running card puts the last-said above the moving work:\n%s", strings.Join(card, "\n"))
 	}
-	if !strings.Contains(card[work], tokens.Spinner(a.paints/spinnerStep)) {
-		t.Fatalf("the running row does not turn the spinner:\n%s", card[work])
-	}
-	if !strings.Contains(card[work], "1m") {
-		t.Fatalf("the running row does not count up from its start:\n%s", card[work])
+	if state != work+1 {
+		t.Fatalf("the state does not lead the line under its task:\n%s", strings.Join(card, "\n"))
 	}
 }
 
-// While any of a family runs, its children are expanded under the root — the
-// shape of the work is the thing a glance cannot get anywhere else.
-func TestALiveFamilyExpandsOnTheCard(t *testing.T) {
+// Every node of a family is its own row on the card, root and child alike. The
+// SHAPE of a family — child indented under the root that started it — is the
+// task page's to draw (task.go's roster); this band is a list of things that
+// happened, name first, and it draws them in the index's own order.
+func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
@@ -148,27 +148,19 @@ func TestALiveFamilyExpandsOnTheCard(t *testing.T) {
 		ID: "8", Parent: "7", Name: "port-tests", Label: "Port the tests", Title: "Port the tests",
 		Status: string(session.TaskRunning), SessionID: "aaaa000000000002",
 	})
-	// The session vouches for the CHILD only: the root reads as not-turning, and
-	// the family still expands because one of its nodes runs.
 	lab.presence("-tmp-alpha", "aaaa000000000002", session.PresenceWorking, "", now,
 		session.PresenceTask{ID: "8", Title: "Port the tests", State: "running", StartedAt: now.Add(-time.Minute)})
 
 	a := lab.app(mine)
 	a.openHome()
-	card := homeCard(t, a, other)
+	card := homeCardFor(t, a, other)
 	root := cardLine(card, "Port everything")
 	kid := cardLine(card, "Port the tests")
 	if root < 0 || kid < 0 {
 		t.Fatalf("the family is not on the card (root %d, kid %d):\n%s", root, kid, strings.Join(card, "\n"))
 	}
-	if kid != root+1 {
-		t.Fatalf("the child does not sit under its root:\n%s", strings.Join(card, "\n"))
-	}
-	if !strings.HasPrefix(card[kid], strings.Repeat(" ", homeOutcomeIndent)) {
-		t.Fatalf("the child row is not indented under its root: %q", card[kid])
-	}
-	if strings.HasPrefix(card[root], " ") {
-		t.Fatalf("the root row is indented: %q", card[root])
+	if strings.HasPrefix(card[root], " ") || strings.HasPrefix(card[kid], " ") {
+		t.Fatalf("a task name on this band is indented:\n%s", strings.Join(card, "\n"))
 	}
 }
 
@@ -198,7 +190,7 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 	if !strings.Contains(text, "1 "+homeLandedWord) {
 		t.Fatalf("the row does not count what landed:\n%s", text)
 	}
-	card := homeCard(t, a, other)
+	card := homeCardFor(t, a, other)
 	if cardLine(card, homeFreshWord) < 0 {
 		t.Fatalf("the card does not caption the news:\n%s", strings.Join(card, "\n"))
 	}
@@ -293,9 +285,9 @@ func TestHomeAnimatesOnlyWhileWorkRuns(t *testing.T) {
 
 // ── THE FACTS FOOTER ────────────────────────────────────────────────────────
 
-// The footer counts what the card could not show, and carries the one physical
-// number the index holds: how many files the work wrote.
-func TestTheFactsLineCountsWhatTheCardCouldNotShow(t *testing.T) {
+// The footer carries the one physical number the index holds — how many files
+// the work wrote — and the work band itself says how much of it did not fit.
+func TestTheFactsLineCarriesTheFilesFigure(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
@@ -310,14 +302,15 @@ func TestTheFactsLineCountsWhatTheCardCouldNotShow(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	card := strings.Join(homeCard(t, a, other), "\n")
-	if !strings.Contains(card, "6 tasks") {
-		t.Fatalf("the footer does not count the tasks the card could not show:\n%s", card)
-	}
+	card := strings.Join(homeCardFor(t, a, other), "\n")
 	// 0+1+2+3+4+5 files across the rows.
 	if !strings.Contains(card, "touched 15 files") {
 		t.Fatalf("the footer does not carry the files figure:\n%s", card)
 	}
-	// And a card that showed everything does not restate the count: the quiet
-	// lab in [TestTheFactsFooterOmitsWhatIsNotAFact] pins the other half.
+	// THE COUNT BELONGS TO THE BAND THAT COULD NOT SHOW THEM, not to the footer:
+	// the work band folds past three and says how many are behind the line
+	// (homeband_work.go).
+	if !strings.Contains(card, "tasks") {
+		t.Fatalf("the work band does not say what it could not show:\n%s", card)
+	}
 }

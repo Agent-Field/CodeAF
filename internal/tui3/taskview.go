@@ -1016,6 +1016,9 @@ type taskSheetHitKind uint8
 const (
 	taskSheetHitNone taskSheetHitKind = iota
 	taskSheetHitRow
+	// phone lane: taskSheetHitBar is the foot at [tierPhone], where the key
+	// legend becomes a `‹ back` band a thumb leaves by (taskphone.go).
+	taskSheetHitBar
 )
 
 type taskSheetHit struct {
@@ -1031,14 +1034,23 @@ type taskSheetHit struct {
 // CHANGE something, so a pointer passing over one must not be able to flip it;
 // these rows open a page onto work, which is the gesture the roster's column has
 // always answered on the first press.
-func (a *app) taskSheetPress(y int) tea.Cmd {
+func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if a.taskSheet.detailOn {
-		a.taskCardPress(y)
+		a.taskCardPress(x, y)
 		return nil
 	}
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
-	if y < 0 || y >= len(hits) || hits[y].kind != taskSheetHitRow {
+	if y < 0 || y >= len(hits) {
+		return nil
+	}
+	// phone lane: the foot is a `‹ back` band rather than a key legend, so a press
+	// on it is the way out (taskphone.go).
+	if hits[y].kind == taskSheetHitBar {
+		a.taskSheetBarPress(x)
+		return nil
+	}
+	if hits[y].kind != taskSheetHitRow {
 		return nil
 	}
 	a.taskSheet.cursor = hits[y].index
@@ -1065,6 +1077,16 @@ func (a *app) taskSheetHover(y int) {
 		return
 	}
 	width, height := a.size()
+	// phone lane: no hover on glass, the rule home keeps at this tier
+	// (homephone.go). A finger has no pointer to light a card with, and a tap
+	// opens it in one gesture — a lit row would promise a hover a thumb cannot do.
+	if layoutTier(width) == tierPhone {
+		if a.hot != (hoverAt{}) {
+			a.hot = hoverAt{}
+			a.touch()
+		}
+		return
+	}
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	next := hoverAt{}
 	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
@@ -1146,7 +1168,7 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 		room = 1
 	}
 
-	a.taskSheet.top = taskSheetTop(items, a.taskSheet.cursor, a.taskSheet.top, room)
+	a.taskSheet.top = a.taskSheetTop(items, a.taskSheet.cursor, a.taskSheet.top, room, width)
 	for at := a.taskSheet.top; at < len(items) && len(lines)-head < room; at++ {
 		item := items[at]
 		hit := taskSheetHit{}
@@ -1169,7 +1191,15 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	if a.taskSheetFiltering() {
 		add(" "+pal.dim(fit(a.taskSheetFilterLine(items), width-2)), taskSheetHit{})
 	}
-	add(" "+pal.dim(fit(a.taskSheetKeysLine(), width-2)), taskSheetHit{})
+	// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
+	// (taskphone.go). The count above it stays — a bar is the way out, and the
+	// tally is what the page is holding.
+	if layoutTier(width) == tierPhone {
+		line, _ := a.taskSheetBar(width)
+		add(line, taskSheetHit{kind: taskSheetHitBar})
+	} else {
+		add(" "+pal.dim(fit(a.taskSheetKeysLine(), width-2)), taskSheetHit{})
+	}
 
 	// A terminal too short for the whole page keeps its head and its foot: what
 	// this is, and how to leave. It is [app.sheetFrame]'s own trim, for the same
@@ -1181,16 +1211,66 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	return lines, hits, 0, 0
 }
 
-// taskSheetTop follows the cursor with the window, in ITEMS. It is [listTop]
-// with one correction: a section's word is drawn above the first row of its
-// section, so a cursor that has just stepped onto that first row scrolls its
-// heading in with it rather than leaving the row under a rule that says nothing.
-func taskSheetTop(items []taskSheetItem, cursor, top, room int) int {
-	top = listTop(cursor, top, len(items), room)
-	if cursor > 0 && cursor == top && items[cursor-1].heading() {
-		return cursor - 1
+// taskSheetTop follows the cursor with the window. On a wide frame an item is a
+// line and it is [listTop] with one correction: a section's word is drawn above
+// the first row of its section, so a cursor that has just stepped onto that first
+// row scrolls its heading in with it rather than leaving the row under a rule
+// that says nothing.
+//
+// AT [tierPhone] AN ITEM IS TWO LINES, so counting items as lines undershoots —
+// [listTop] would believe six two-line cards fit in six rows and leave the cursor
+// off the bottom. So the phone window is found by walking BACK from the cursor,
+// summing the lines each item actually draws ([app.taskSheetItemLines]), and
+// stopping at the topmost item that still leaves the cursor's whole card on
+// screen. That is the only arithmetic that keeps a card a thumb scrolled to from
+// being clipped at the fold.
+func (a *app) taskSheetTop(items []taskSheetItem, cursor, top, room, width int) int {
+	if layoutTier(width) != tierPhone {
+		top = listTop(cursor, top, len(items), room)
+		if cursor > 0 && cursor == top && items[cursor-1].heading() {
+			return cursor - 1
+		}
+		return top
+	}
+	if len(items) == 0 {
+		return 0
+	}
+	// Scroll UP if the cursor has walked above the window.
+	if cursor < top {
+		top = cursor
+	}
+	// Scroll DOWN just enough that the cursor's whole card sits on screen: sum the
+	// lines from the cursor upward and stop where the next item would spill.
+	used, at := 0, cursor
+	for at >= 0 {
+		used += a.taskSheetItemLines(items[at], width)
+		if used > room {
+			at++
+			break
+		}
+		at--
+	}
+	if at < 0 {
+		at = 0
+	}
+	if at > top {
+		top = at
+	}
+	if top > cursor {
+		top = cursor
+	}
+	if cursor > 0 && top == cursor && items[cursor-1].heading() {
+		top = cursor - 1
 	}
 	return top
+}
+
+// taskSheetItemLines is how many screen lines one item draws, which is what the
+// phone window sums to keep the cursor's card whole. It asks the row builder with
+// a cursor no row can match, so the count is the content's and not the
+// selection's — the band never changes how many lines a row takes.
+func (a *app) taskSheetItemLines(item taskSheetItem, width int) int {
+	return len(a.taskSheetItemRows(item, -1, width))
 }
 
 // taskSheetTitle is the head: what this is on the left, and how to leave on the
@@ -1279,14 +1359,27 @@ func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) []string {
 	if room < 1 {
 		room = 1
 	}
+	// phone lane: the flat rows become two-line cards a thumb goes into
+	// (taskphone.go). The running tree's own rows are already a card's shape — a
+	// title with what it is doing under it — so they are drawn the same way at
+	// every width.
+	phone := layoutTier(width) == tierPhone
 	var rows []string
 	switch {
 	case item.node != nil:
 		rows = a.taskSheetNodeRows(item, room)
 	case item.away != nil:
-		rows = []string{a.taskSheetAwayRow(*item.away, room)}
+		if phone {
+			rows = a.taskSheetPhoneAway(*item.away, room)
+		} else {
+			rows = []string{a.taskSheetAwayRow(*item.away, room)}
+		}
 	default:
-		rows = []string{a.taskSheetPastRow(item.entry, room)}
+		if phone {
+			rows = a.taskSheetPhonePast(item.entry, room)
+		} else {
+			rows = []string{a.taskSheetPastRow(item.entry, room)}
+		}
 	}
 	selected := at == a.taskSheet.cursor
 	hovered := a.hot.kind == hoverTaskSheet && a.hot.index == at

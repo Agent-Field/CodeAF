@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# doc_coverage: fraction of public names with docstrings, via ast. 0-100.
+d="$1"
+[ -d "$d/toolkit" ] || { echo 0; exit 0; }
+python3 - "$d/toolkit" <<'PY' 2>/dev/null || echo 0
+import ast, sys, pathlib
+total = documented = 0
+for f in pathlib.Path(sys.argv[1]).glob("*.py"):
+    tree = ast.parse(f.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name.startswith("_"):
+                continue
+            total += 1
+            if ast.get_docstring(node):
+                documented += 1
+print(int(100 * documented / total) if total else 0)
+PY

@@ -1,0 +1,3 @@
+This directory contains a Python project where the module `legacy_api.py` exposes a function `fetch_records(query, db)` that is called from eight separate files under `app/`. Refactor `fetch_records` to a new signature `fetch_records(db, query, *, limit=100)` (db first, limit as keyword-only) and update every call site across all eight files to match.
+
+Requirements: every file under `app/` must import cleanly after the change; a compatibility shim is NOT allowed — migrate the callers, no wrapper; the project's test suite under `tests/` must pass unchanged. Verify by running the tests.

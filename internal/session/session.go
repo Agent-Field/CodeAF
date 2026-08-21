@@ -364,6 +364,15 @@ const (
 	// "trying again". It never ends a turn: either the next attempt streams, or
 	// EventError arrives with the sentence about giving up.
 	EventRetrying
+	// EventStandingProposal asks the person whether one standing item — a
+	// reminder, a watch, a rule, an overnight job — may stand (standing_contract.go).
+	// Standing carries the card; the ID inside it is the token a surface hands back
+	// to [Agent.ResolveStanding]. Nothing stands until the answer is yes.
+	EventStandingProposal
+	// EventStandingUpdate reports a standing item changing under a live window: it
+	// was ratified, it fired, it was paused, retired, or it needs the person. It is
+	// a report, never a question.
+	EventStandingUpdate
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -483,6 +492,10 @@ type Event struct {
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
 	// is the token a surface hands back to [Agent.ResolveTask].
 	Task *TaskNotice
+
+	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
+	// (standing_contract.go). It is nil on every other kind.
+	Standing *StandingNotice
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
@@ -761,6 +774,17 @@ type Config struct {
 	// three answers changes: the tool takes the same verbs and the surface offers
 	// the same choices whichever way this is set.
 	TaskSettle string
+
+	// Standing is the ambient side (standing_contract.go, internal/standing).
+	// Nil is off: no belt tool, no card, no ticking from this process.
+	Standing *Standing
+
+	// standingItems overrides where [Standing.Store] would be read, and it is
+	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
+	// else: the store is a concrete *standing.Store on the seam a door fills,
+	// and a test that wants to watch what a ratified card actually writes needs
+	// a fake behind the same three methods (tools_standing.go's standingStore).
+	standingItems standingStore
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -1101,6 +1125,24 @@ type Config struct {
 	// sets it on the config it builds for a node and nowhere else.
 	InTask bool
 
+	// Errand marks this agent as the short exchange behind home's `ask here`
+	// (cmd/aforge's chatv3_exchange.go) rather than a conversation somebody
+	// sits in. It is a conversation in every other way — a real model, a real
+	// transcript, a card it can answer — so InTask would be a lie about it.
+	//
+	// IT CHANGES EXACTLY ONE THING: an errand is never registered as a live
+	// delivery target (standing_run.go). A firing steered into an exchange is
+	// news typed into a forty-cell pane that closes with home, and the person
+	// sitting in an ordinary conversation in the same window is never told —
+	// which is what happened the first time a reminder made from home ever
+	// fired.
+	//
+	// Ratifying the exchange's OWN card is untouched by this, and the two are
+	// separate lanes on purpose: a card is answered through the agent the
+	// surface is holding ([Agent.ResolveStanding]), never through the registry,
+	// so an exchange still proposes and still hears yes.
+	Errand bool
+
 	// roomThread says this agent is a node somebody TALKS TO rather than a
 	// worker a runner drives, and it is set on exactly one kind of node: the
 	// thread a sub-harness is designed in (harness_task.go).
@@ -1190,6 +1232,15 @@ type Agent struct {
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
+	// systemAt is when [Agent.system] was rendered, and systemOwn says this
+	// agent rendered it rather than being handed one. Together they are what
+	// lets a turn move the prompt's `Now` line forward when it has gone stale
+	// ([Agent.refreshClockLocked]) — and what stops it doing that to a prompt
+	// somebody else wrote, where there may be no `Now` line to move and
+	// rendering our own would throw theirs away. Both sit under mu with
+	// [Agent.system].
+	systemAt  time.Time
+	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction — rebuilding them per step would re-marshal every schema on
 	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
@@ -1555,11 +1606,25 @@ type Agent struct {
 	// with the turn (task.go). The ids are the GRAPH's — a proposal is a node
 	// that has not been admitted yet, not a second numbering.
 	taskAnswers map[uint64]chan TaskAnswer
+	// standingAnswers is the same wait, for standing cards (standing_contract.go).
+	standingAnswers map[uint64]chan StandingAnswer
+	// standingSeq numbers those cards. It is the agent's own sequence and not
+	// the task graph's, because a standing proposal is not a node: nothing is
+	// reserved, nothing is admitted, and the only thing the number has to do is
+	// name one outstanding question until it is answered (tools_standing.go).
+	standingSeq uint64
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
+	// standingNews is what fired while this window was SHUT, waiting for a
+	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
+	// the fold is built inside New — before the caller holds the agent, before
+	// any surface has subscribed to anything — so a send there would go to an
+	// empty list of watchers and the person would open a conversation with news
+	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
+	standingNews []Event
 
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the

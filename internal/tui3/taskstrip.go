@@ -271,6 +271,12 @@ func (a *app) stripRows(width int) []string {
 	if !a.stripShowing() || width <= 0 {
 		return nil
 	}
+	// phone lane: the strip is one full-width door into the roster page rather
+	// than a row of chips a thumb cannot land between (taskphone.go). It sets no
+	// spans, so [app.stripPress] falls through to the whole-row door below.
+	if door, ok := a.stripPhoneDoor(width); ok {
+		return []string{door, ""}
+	}
 	if row := a.stripRowText(width, a.stripNodes()); row != "" {
 		return []string{row, ""}
 	}
@@ -509,6 +515,14 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 	// is.
 	if a.stripMore.holds(x) {
 		a.railTake(true)
+		return nil, true
+	}
+	// phone lane: the whole row is one door into the roster PAGE at [tierPhone]
+	// (taskphone.go). At this tier the row is not chips at all but a single door,
+	// so every press that reaches here — which is every press on it — opens the
+	// page and reads the record in behind it.
+	if cmd, took := a.stripPhonePress(width); took {
+		return cmd, true
 	}
 	return nil, true
 }

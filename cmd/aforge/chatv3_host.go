@@ -10,12 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -379,6 +382,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 	models := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
 	})
+	stands := newHostStanding(client)
 
 	options := tui3.Options{
 		Agent:     agent,
@@ -422,6 +426,45 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			}
 			return agent, next.SessionFile, nil
 		},
+		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
+		// the machine that runs them, so both halves go over the wire and
+		// neither reads a store on this laptop — the far end answers about the
+		// far end's own disk, keyed by a workspace path that means something
+		// there ([standing.Item.Workspace] is always the engine's own path,
+		// which is exactly what welcome.Workspace is too).
+		//
+		// WHAT THIS LIGHTS UP HERE is the status line's `keeping an eye on`
+		// segment and not home's item band: /home does not open over a
+		// connection at all, so the band and the `p` and `s` keys have no
+		// keystroke that reaches them, while the segment asks about this
+		// window's workspace — which over --host is the engine's own path, so
+		// the count is about the right machine ([hostStanding] has the longer
+		// version, and internal/tui3's host.go states it in the honesty table).
+		//
+		// Items therefore answers from a cache and refreshes behind itself,
+		// which is not an optimization but the seam's stated law, because that
+		// segment is asked on the frame. Save travels synchronously: it is a
+		// keystroke, it is rare, and somebody is waiting for its answer.
+		Standing: tui3.StandingSeam{
+			Items: stands.list,
+			Save:  stands.save,
+			// Running and Watch stay NIL, and both fields already document that
+			// as their honest reading rather than as a gap.
+			//
+			// Running: nothing on the far machine's disk says "firing at this
+			// instant" — a run is in flight inside whichever process holds the
+			// tick lock — so there is no question to put on the wire and no
+			// answer a frame could carry. Nil answers no for everything, and a
+			// home where no row ever wears `●` is the truth (cmd/aforge's
+			// [v3StandingSeam] declines it for the same reason on this machine's
+			// own store).
+			//
+			// Watch: the OS timer is the ENGINE's, and its status is derived
+			// from a definition file on that disk. Nil prints no `keeping watch`
+			// line at all, which is the emptiness law applied to a whole line
+			// and better than a line read off THIS laptop's launchd — a status
+			// about the wrong machine.
+		},
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
 		// Connections: the accounts panel signs in through a browser HERE and
@@ -440,6 +483,12 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// the wire, and its row says "allowed" rather than "saved", which is
 		// exactly what happened (internal/tui3's consent.go).
 		//
+		// StandingRoot: the local errand and exchange folder, which is where a
+		// question asked from home leaves its short transcript. It is a path on
+		// THIS machine and the exchange it hosts is a session this surface would
+		// have to open here, so it stays unset over a connection — the same
+		// posture the errand pair takes.
+		//
 		// SaveModel: the same rule for the same reason. The model this session
 		// opens on next time is resolved where the session is built, which is over
 		// there; writing the choice into THIS machine's profile would change which
@@ -457,6 +506,161 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		options.DraftFile = tui3.DraftFile(dir, dest+":"+welcome.Workspace)
 	}
 	return options
+}
+
+// ── the ambient side over a connection ──────────────────────────────────────
+
+// hostStandingEvery is how stale a cached list of items is allowed to be before
+// the next reading kicks a fresh one. It is deliberately LOOSER than the
+// surface's own three-second beat (internal/tui3's homeEvery): every refresh
+// here is a round trip down an ssh pipe rather than a directory read, and
+// nothing standing changes faster than this — an item's cadence is measured in
+// minutes ([standing.Interval] is five of them), so a list a few seconds old is
+// a list that is right.
+const hostStandingEvery = 5 * time.Second
+
+// hostStanding is the engine machine's items, kept here so the surface can have
+// them without waiting.
+//
+// WHO ACTUALLY READS THIS OVER A CONNECTION, because it is not the reader the
+// seam's own doc comment leads with: /home does not open over --host at all
+// (internal/tui3's homeRemoteWord), so home's item band and its `p` and `s` keys
+// are unreachable here and homestanding.go's per-project standItems is never
+// called. The live reader is THE STATUS LINE — [app.keepingCount] feeds the
+// `keeping an eye on 2` segment, and it asks about the window's own workspace,
+// which over --host is the ENGINE's path. That makes the count a true sentence
+// about the right machine, and it is a real thing to have: a remote window says
+// how many things are keeping an eye on the project it is sitting in.
+//
+// AND IT EXISTS FOR ONE LAW, which is [tui3.StandingSeam.Items]': it MUST NOT
+// BLOCK. That segment is asked on EVERY FRAME and twice per frame while a turn
+// runs. The surface already keeps its own three-second answer for it, so this is
+// the second of two guards rather than the only one — and it is not redundant,
+// because the one reading that does get through is on the draw path. Locally
+// that reading is a directory of small documents. Over a connection it is a call
+// with a ten-second deadline (internal/remote's callDeadline), so a surface that
+// made one of those while drawing would be a terminal that stopped repainting
+// for as long as the far machine took to answer — on a link that had just died,
+// ten seconds per frame.
+//
+// So the reading and the fetching are pulled apart. THE READ ANSWERS FROM WHAT
+// IS HELD, ALWAYS AND IMMEDIATELY; a list that has gone stale kicks ONE
+// background fetch and still answers with what it had. The first read of a
+// workspace answers nothing at all and starts the fetch, so the segment is
+// absent for one beat and then true — the honest order, because a surface that
+// guessed would have to guess wrong first.
+//
+// ONE FETCH AT A TIME PER WORKSPACE, never a pile: the surface is drawn many
+// times a second and every one of those readings would otherwise start its own
+// goroutine and its own frame on the wire, which is a queue of identical
+// questions behind a link that is already slow.
+type hostStanding struct {
+	// ask and put are the two wire doors, held as CLOSURES rather than as the
+	// client for [tui3.StandingSeam]'s own reason said one seam further along:
+	// what this type does is a policy about staleness and blocking, and a test
+	// of that policy should be able to hand it a slow answer without opening a
+	// pipe.
+	ask func(workspace string) ([]standing.Item, error)
+	put func(item standing.Item) error
+
+	mu sync.Mutex
+	// items is the last list each workspace answered with, read is when it
+	// answered, and fetching is the workspace a goroutine is already asking
+	// about.
+	items    map[string][]standing.Item
+	read     map[string]time.Time
+	fetching map[string]bool
+}
+
+func newHostStanding(client *remote.Client) *hostStanding {
+	return &hostStanding{
+		ask:      client.StandingItems,
+		put:      client.SaveStanding,
+		items:    map[string][]standing.Item{},
+		read:     map[string]time.Time{},
+		fetching: map[string]bool{},
+	}
+}
+
+// list is [tui3.StandingSeam.Items]: what is held, right now, with a refresh
+// started behind it when what is held has aged.
+func (h *hostStanding) list(workspace string) []standing.Item {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return nil
+	}
+	h.mu.Lock()
+	held, at := h.items[workspace], h.read[workspace]
+	stale := at.IsZero() || time.Since(at) >= hostStandingEvery
+	start := stale && !h.fetching[workspace]
+	if start {
+		h.fetching[workspace] = true
+	}
+	h.mu.Unlock()
+	if start {
+		guard.Go("chatv3/host-standing", func() { h.fetch(workspace) })
+	}
+	return held
+}
+
+// fetch is the round trip, on a goroutine of its own.
+//
+// A FAILED CALL KEEPS THE LAST LIST rather than emptying the band. The two ways
+// this fails are a link that has died and an engine with no ambient side at all;
+// neither of them is the news "the things you set up are gone", and a band that
+// blanked itself on a dropped connection would be the screen reporting a loss
+// that did not happen. The clock is still stamped, so a link that is failing is
+// asked again on the next beat and not on every frame.
+func (h *hostStanding) fetch(workspace string) {
+	items, err := h.ask(workspace)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.fetching[workspace] = false
+	h.read[workspace] = time.Now()
+	if err != nil {
+		return
+	}
+	h.items[workspace] = items
+}
+
+// save is [tui3.StandingSeam.Save], and it is ALLOWED TO BLOCK where the read is
+// not: it is a keystroke on one row — pause, stop — so it happens once and a
+// person is waiting for the answer to it. The error travels back unchanged
+// because home prints it: a row redrawn as paused over a store that refused the
+// write would be this screen lying about the other machine's disk.
+//
+// NOTHING CAN PRESS THOSE KEYS OVER --host TODAY, and that is worth saying out
+// loud rather than leaving for somebody to discover: the only callers are home's
+// `p` and `s`, and home does not open over a connection. It is wired anyway
+// because the alternative is a seam that is half absent for a reason that is not
+// its own — the door and the wire are correct and proved, and the day home opens
+// on a remote session the keys work rather than saying the change cannot be made
+// here. A nil would have been a second thing to undo on that day, and a claim
+// about this store that is not true.
+//
+// A WRITE THAT LANDED IS PUT STRAIGHT INTO WHAT IS HELD, and that is what keeps
+// the row from redrawing stale in the beat before the next fetch returns: the
+// engine accepted this exact document, so the held list is corrected with it
+// rather than left showing the version the key was pressed on. The entry is
+// aged out at the same time, so the next reading also asks the store what it
+// really thinks.
+func (h *hostStanding) save(item standing.Item) error {
+	if err := h.put(item); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	workspace := strings.TrimSpace(item.Workspace)
+	held := h.items[workspace]
+	for i, existing := range held {
+		if existing.ID == item.ID {
+			held[i] = item
+			break
+		}
+	}
+	h.items[workspace] = held
+	h.read[workspace] = time.Time{}
+	return nil
 }
 
 // hostSessions is [tui3.Options.RecentSessions] over the wire.

@@ -67,6 +67,13 @@ const (
 	GrowRedirect = "redirect"
 	GrowJIT      = "jit"
 	GrowCoverage = "coverage"
+
+	// GrowCooperative is the round a worker asked for rather than earned by
+	// failing. It is its own word in the journal because it is the one growth
+	// reason that is evidence of the machinery working: every other reason here
+	// is a repair, and a battery asking "how often did a leaf divide before it
+	// burned a budget instead of after" is asking for exactly this column.
+	GrowCooperative = "cooperative"
 )
 
 // Which governor spoke. Cause is the machine-readable half of the refusal the
@@ -213,6 +220,33 @@ type Growth struct {
 	// Empty is every caller that has no structured outcome, which renders
 	// exactly the bytes this path has always rendered.
 	State string
+
+	// Goal overrides the brief the splice is planned from. Empty — every caller
+	// that existed before the cooperative path — keeps OverrunGoal, which is
+	// the only phrasing the splice has ever used.
+	//
+	// It exists because that phrasing is a claim and not a template: "it stopped
+	// when its resources ran out, so parts of the assignment may already be
+	// complete" is the first thing the planner reads, and it is false of a leaf
+	// that handed its budget back on purpose. A planner told the work ran out
+	// plans a remainder; the cooperative path needs it to plan a division, and
+	// those are different questions asked of the same call.
+	Goal string
+
+	// KeepEnvelope leaves the worker choice exactly as the caller made it,
+	// instead of climbing the generalist ladder from the envelope that just
+	// ended. False — every caller that existed before the cooperative path —
+	// keeps escalateContinuation, which is what a continuation of an exhausted
+	// leaf needs.
+	//
+	// The ladder's premise is that an exhaustion is evidence the sitting was
+	// bigger than the envelope, so repeating the envelope pays to learn the
+	// same lesson twice. A cooperative split is the opposite evidence: nothing
+	// ran out, the leaf handed its grant back, and each part is smaller than
+	// what the leaf was holding. Escalating those would provision every part of
+	// a division against a failure that did not happen — and it would overwrite
+	// the envelope the division's own sizing pass chose for each part.
+	KeepEnvelope bool
 }
 
 func (g Growth) reason() string {

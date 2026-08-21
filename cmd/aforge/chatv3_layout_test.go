@@ -267,3 +267,33 @@ func TestANamedFolderTranscriptOpensAsItsFolder(t *testing.T) {
 		t.Fatalf("the session's workspace is %q, want the one it recorded", found.Place.Workspace)
 	}
 }
+
+// THE SURFACE'S OWN LOG FILE IS STATE AND NOT WORK. `filepath.Join(profileDir,
+// "chat.log")` with an empty profile — which is every launch that sets no
+// AFORGE_PROFILE_DIR, meaning nearly all of them — names the file RELATIVE, so
+// every repository a person opened a chat in grew an untracked chat.log and the
+// surface's own repository band then counted that workspace dirty because of a
+// file the surface itself had written.
+func TestTheChatLogIsWrittenUnderTheStateRootAndNeverIntoTheWorkspace(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	t.Setenv("AFORGE_HOME", root)
+
+	path := chatLogPath("")
+	if !filepath.IsAbs(path) {
+		t.Fatalf("chat.log is named relative to wherever the person was standing: %q", path)
+	}
+	if want := filepath.Join(root, "chat.log"); path != want {
+		t.Fatalf("chat.log = %q, want %q — the state root, exactly as config.BudgetConfigPath falls back", path, want)
+	}
+
+	// A profile of its own still wins: a second profile is a second state root,
+	// and its log belongs beside its config.
+	profile := t.TempDir()
+	if got, want := chatLogPath(profile), filepath.Join(profile, "chat.log"); got != want {
+		t.Fatalf("with a profile set, chat.log = %q, want %q", got, want)
+	}
+	// And a profile that is only whitespace is no profile at all.
+	if got, want := chatLogPath("   "), filepath.Join(root, "chat.log"); got != want {
+		t.Fatalf("a blank profile named %q, want %q", got, want)
+	}
+}

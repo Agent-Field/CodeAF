@@ -802,14 +802,14 @@ func replaySessionFile(path string) (replayedSession, error) {
 		// draw with nothing above it either way, and two shapings of one journal
 		// that disagreed about which lines are real would be the seam lying in a
 		// second way.
-		earlier:  repairTranscript(earlier),
-		overlap:  overlap,
-		title:    title,
-		id:       id,
-		images:   images,
-		notes:    notes,
-		usage:    spent,
-		existed:  lines > 0,
+		earlier: repairTranscript(earlier),
+		overlap: overlap,
+		title:   title,
+		id:      id,
+		images:  images,
+		notes:   notes,
+		usage:   spent,
+		existed: lines > 0,
 	}, nil
 }
 

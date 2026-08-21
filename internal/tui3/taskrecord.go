@@ -99,6 +99,11 @@ const (
 	// of them a person was reaching for (hover.go's [hoverTaskCard]).
 	taskCardHitHead
 	taskCardHitFoot
+	// phone lane: taskCardHitMention is the foot's second band, where the keys
+	// line becomes two targets a thumb can hit (taskphone.go). It takes the
+	// foot's place at that width, so it is NOT one of the two edges [back]
+	// answers for — a thumb on that band is aiming at a chip, not at the door.
+	taskCardHitMention
 )
 
 // back reports whether a row of the card is the way back to the list.
@@ -292,8 +297,18 @@ func (a *app) taskCardScroll(delta int) {
 
 // taskCardPress resolves a click on the card. Its edges are the way back and
 // its body is read, which is [app.expandPress]'s own shape.
-func (a *app) taskCardPress(y int) {
-	if _, ok := a.taskCardHitAt(y); !ok {
+func (a *app) taskCardPress(x, y int) {
+	width, height := a.size()
+	_, hits, _, _ := a.taskCardFrame(width, height)
+	if y < 0 || y >= len(hits) {
+		return
+	}
+	// phone lane: the foot is two bands rather than one way out (taskphone.go).
+	if hits[y] == taskCardHitMention {
+		a.taskCardBarPress(x)
+		return
+	}
+	if !hits[y].back() {
 		return
 	}
 	a.closeTaskRecord()
@@ -372,7 +387,13 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
-	add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitFoot)
+	// phone lane: the keys line becomes bands a thumb can hit (taskphone.go).
+	if taskCardPhone(width) {
+		line, _ := a.taskCardBar(width)
+		add(line, taskCardHitMention)
+	} else {
+		add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitFoot)
+	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
 	// this is, and how to leave. It is [app.taskSheetFrame]'s own trim.

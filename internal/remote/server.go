@@ -32,6 +32,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // WrappedAgent is the slice of *session.Agent an engine serves. It is the
@@ -63,6 +64,7 @@ type WrappedAgent interface {
 	SetReasoningFor(model, level string)
 	ResolveConsent(id uint64, allow bool)
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
+	ResolveStanding(id uint64, answer session.StandingAnswer)
 	ResolveHarness(id uint64, run bool, model string)
 	ResolveConnect(id string, approve bool)
 	ResolveConnectKey(id string, key string)
@@ -128,6 +130,23 @@ type Engine struct {
 	// that exists only because the surface is remote: a local one reads the
 	// session directory off its own disk, and a remote one cannot see it.
 	Recent func() []session.Summary
+
+	// StandingItems and StandingSave are this MACHINE'S ambient side, for the
+	// same reason Recent is here: the store is a directory of documents under
+	// the engine's own state root, a local surface opens it directly, and a
+	// remote one has no way to. The workspace is a path on THIS disk, which is
+	// the only kind of path an item's own Workspace field ever holds.
+	//
+	// Nil is the ambient side off for this engine, and it is answered as a
+	// refusal rather than as an empty list — a capability that cannot work is
+	// absent, and the surface keeps the difference between "no items" and "no
+	// door" (internal/remote's Client.StandingItems says what it does with it).
+	StandingItems func(workspace string) ([]standing.Item, error)
+	// StandingSave writes one item back. THE STORE'S OWN REFUSAL IS THE ERROR:
+	// internal/standing validates what it is asked to write, and a surface that
+	// redrew a row as paused over a rejected write would be lying about this
+	// disk, so nothing here softens it.
+	StandingSave func(item standing.Item) error
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -419,6 +438,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.ResolveConsentRemember(args.ID, args.Allow, args.Scope)
 		return nil, nil
 
+	case MethodStandingResolve:
+		args, err := arg[StandingArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		agent.ResolveStanding(args.ID, args.Answer)
+		return nil, nil
+
 	case MethodHarness:
 		args, err := arg[HarnessArgs](call)
 		if err != nil {
@@ -488,6 +515,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this engine cannot list sessions")
 		}
 		return json.Marshal(recent())
+
+	case MethodStandingItems:
+		workspace, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		s.state.Lock()
+		items := s.engine.StandingItems
+		s.state.Unlock()
+		if items == nil {
+			return nil, errors.New("engine: this engine keeps an eye on nothing")
+		}
+		found, err := items(workspace)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(found)
+
+	case MethodStandingSave:
+		item, err := arg[standing.Item](call)
+		if err != nil {
+			return nil, err
+		}
+		s.state.Lock()
+		save := s.engine.StandingSave
+		s.state.Unlock()
+		if save == nil {
+			return nil, errors.New("engine: this engine keeps an eye on nothing")
+		}
+		return nil, save(item)
 
 	case MethodSessionNew:
 		s.state.Lock()

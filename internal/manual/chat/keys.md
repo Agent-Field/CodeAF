@@ -121,7 +121,7 @@ time straight away does not quit either: the press that stopped the turn does no
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
 
-## Quitting aforge — how do I exit, close it, or why did ctrl+c not quit
+## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
 **`ctrl+c` twice.** One press does not leave. The first press *arms* the door and the
 right end of the row under the message box reads exactly:
@@ -676,9 +676,11 @@ you type.
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
 `pgup`/`pgdown` jump four · `enter` acts on the row under the cursor · `backspace`,
-`ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · **anything else you type goes into the
-box**, which searches the whole machine and offers to start a new conversation at the same
-time.
+`ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
+a conversation that is **waiting on you**, the digits on its chips answer that question
+where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
+— home's own page has the table) · **anything else you type goes into the box**, which
+searches the whole machine and offers to start a new conversation at the same time.
 
 `→` and `←` are the fold's, the way they are in the task column: on a project's
 `…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
@@ -688,22 +690,37 @@ move the caret in the box.
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
 a click on a `…13 more` line toggles it in one press.
 
+**Under 60 columns those two clicks are one.** At phone width home is an inbox and a
+row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
+top row reads `‹ back` and `esc` or a tap on it returns to the list with the cursor where
+it was. The hint line becomes a bar of at most three wide targets — `open · new ·
+ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
+there is no hover on glass. Home's own page has the whole shape.
+
 The top line carries `esc close` on the right. The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`, and the line under it
 changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
-`enter starts a new conversation and sends this · ↑ pick a match · esc clear` on the action
+`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
 row, and `enter or → show them · esc close` on a folded project.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
 this window is in, with the preview card beside it. **While anything is typed the list is a
 drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
-directly above the box, and the matches rise above it **best one first**; the cursor starts
-on the action row, so one `↑` lands on the strongest match, further `↑` walks into weaker
-ones, and `↓` walks back down toward the box. Clearing the box puts the list back at the
+with `ask here: "…"` directly above it, both directly above the box, and the matches rise
+above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
+`ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,
+and `↓` walks back down toward the box. Clearing the box puts the list back at the
 top.
 
 The right-hand preview is there in both shapes and never moves. It follows the cursor
 through a filter too, and is empty while the cursor is on the action row.
+
+**On an `ask here` row** — one of the `?` rows an errand leaves on the column — the preview
+is the exchange itself, and the line under the box reads
+`↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
+keyboard to the pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
+`esc` or `tab` hands it back. On a window too narrow for two columns that pane is drawn over
+the list instead of beside it, and `esc` brings the list back (*Asking from home*).
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
@@ -722,6 +739,12 @@ column's own `ctrl+. — earlier` line, from `ctrl+.` or from `/history`; `enter
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
 nothing on the column to put a cursor on.
+
+**Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
+cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
+move · enter opens its room`, and the strip that opens it is one full-width door
+(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
+in one gesture. The tasks page describes the phone flow in full.
 
 **`ctrl+g` closes the roster's column, and opens it again.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
@@ -906,8 +929,10 @@ of its row: a row that is one target — a tool call, a roster row, a parked mes
 room's header — takes a background band across the width, and something that shares its
 line — a strip chip, a picture on the tray, one answer of a card, a task reference in a
 reply — lights only its own cells, leaving its neighbours dark. Anything that answers to
-nothing does not react. There is no hover in copy mode, on the linear/screen-reader tier,
-or in the phone tool sheet. The screen page says what lights, under "When a row brightens
+nothing does not react. On home it does one thing more: the preview on the right becomes
+the row you are pointing at, and returns to the cursor's row when you point somewhere else
+(see the home page). There is no hover in copy mode, on the linear/screen-reader tier, or
+in the phone tool sheet. The screen page says what lights, under "When a row brightens
 under the pointer".
 
 ## Scrolling

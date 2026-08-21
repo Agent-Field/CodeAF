@@ -53,7 +53,7 @@ func TestOnlyAPlannedJobsOwnNodesAreDivisible(t *testing.T) {
 		{"a repair, which is planned flat on purpose", "task-4-x1-n2", false, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			target, ok := plans.divisionTarget(test.nodeID, settings, planner, 0)
+			target, ok := plans.divisionTarget(nil, test.nodeID, settings, planner, 0)
 			if ok != test.resolved {
 				t.Fatalf("resolved = %t, want %t", ok, test.resolved)
 			}
@@ -104,7 +104,7 @@ func TestATaskScaleNodeIsAskedWhetherItDivides(t *testing.T) {
 	expander := resident.JITExpander{
 		Graph: graph,
 		Resolve: func(node store.Node) (resident.JITTarget, bool) {
-			return plans.divisionTarget(node.ID, settings,
+			return plans.divisionTarget(graph, node.ID, settings,
 				func() plan.Completer { return silentPlanner{} }, 0)
 		},
 	}

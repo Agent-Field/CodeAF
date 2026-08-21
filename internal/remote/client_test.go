@@ -8,12 +8,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── A SCRIPTED ENGINE ───────────────────────────────────────────────────────
@@ -650,5 +652,132 @@ func TestTheAgentSatisfiesTheRewindPair(t *testing.T) {
 	var agent any = &Agent{}
 	if _, ok := agent.(rewindPair); !ok {
 		t.Fatal("the remote agent does not satisfy the rewind pair, so esc-esc would do nothing over --host")
+	}
+}
+
+// ── the ambient side ────────────────────────────────────────────────────────
+
+// standingAgent is internal/tui3's own optional interface, restated here for
+// [rewindPair]'s reason: this package must not depend on the surface, and the
+// point of the test is that the SHAPE matches. The surface asserts it on
+// whatever agent it holds and draws no chips at all for one that fails the
+// assertion, so this is the difference between a card a person can answer over
+// --host and a card they can only look at.
+type standingAgent interface {
+	ResolveStanding(id uint64, answer session.StandingAnswer)
+}
+
+func TestTheAgentSatisfiesTheStandingContract(t *testing.T) {
+	var agent any = &Agent{}
+	if _, ok := agent.(standingAgent); !ok {
+		t.Fatal("the remote agent cannot answer a standing card, so a proposal over --host could only be looked at")
+	}
+}
+
+// THE CARD ARRIVES WHOLE AT THE SURFACE'S OWN END, which is the half of the trip
+// [TestAStandingCardCrossesTheWireAndIsAnsweredBack] does not watch: that one
+// reads frames off the pipe, and this one reads the session.Event the client
+// hands the surface after its own decode.
+func TestAStandingProposalReachesTheSurfaceWithItsItemIntact(t *testing.T) {
+	client, e := newEngine(t)
+	card := session.StandingNotice{
+		ID: 4,
+		Item: standing.Item{
+			Schema: standing.Schema, ID: "01HQ", Words: "remind me to stand up",
+			Workspace: "/srv/app",
+			When:      standing.When{Kind: standing.WhenEvery, Words: "every hour", Every: "1h"},
+			Does:      standing.Action{Kind: standing.ActionSay, Say: "stand up"},
+			Rails:     standing.Rails{PerRunUSD: 0.01, MaxPerDay: 8},
+			Status:    standing.StatusActive,
+		},
+		WhenWords: "every hour", CostWords: "about a cent a run", OfferWatch: true,
+	}
+	card.Options = session.StandingOptions(card.Item)
+	e.after = func(e *engine, stream uint64) {
+		e.event(stream, session.Event{Kind: session.EventStandingProposal, Tool: "stand", Standing: &card})
+		e.closeStream(stream)
+	}
+	events, err := client.Agent().Submit(context.Background(), "remind me hourly")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	var arrived []session.Event
+	for event := range events {
+		arrived = append(arrived, event)
+	}
+	if len(arrived) != 1 || arrived[0].Standing == nil {
+		t.Fatalf("the surface was handed %+v", arrived)
+	}
+	if !reflect.DeepEqual(*arrived[0].Standing, card) {
+		t.Fatalf("the card changed on the way in:\n got %+v\nwant %+v", *arrived[0].Standing, card)
+	}
+	// The chips especially: the engine says which answers a card offers, and a
+	// card whose Options were lost would be drawn with the whole row instead —
+	// including `once, not standing` on an item where it means nothing.
+	if len(arrived[0].Standing.Options) != len(card.Options) || len(card.Options) == 0 {
+		t.Fatalf("the chips did not survive: %+v", arrived[0].Standing.Options)
+	}
+}
+
+func TestTheStandingDoorsTravelAsTheirOwnPayloads(t *testing.T) {
+	client, e := newEngine(t)
+	agent := client.Agent()
+
+	no := false
+	agent.ResolveStanding(9, session.StandingAnswer{Change: "make it 8pm", KeepWatch: &no})
+	calls := e.calls(MethodStandingResolve)
+	if len(calls) != 1 {
+		t.Fatalf("ResolveStanding travelled %d times", len(calls))
+	}
+	var answered StandingArgs
+	if err := json.Unmarshal(calls[0].Payload, &answered); err != nil {
+		t.Fatalf("standing payload: %v", err)
+	}
+	if answered.ID != 9 || answered.Answer.Change != "make it 8pm" {
+		t.Fatalf("standing args = %+v", answered)
+	}
+	if answered.Answer.KeepWatch == nil || *answered.Answer.KeepWatch {
+		t.Fatalf("a declined watch did not travel as a decline: %+v", answered.Answer.KeepWatch)
+	}
+
+	e.answers[MethodStandingItems] = []standing.Item{{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app"}}
+	items, err := client.StandingItems("/srv/app")
+	if err != nil || len(items) != 1 || items[0].Words != "watch CI" {
+		t.Fatalf("StandingItems = %+v, %v", items, err)
+	}
+	var asked string
+	if err := json.Unmarshal(e.calls(MethodStandingItems)[0].Payload, &asked); err != nil {
+		t.Fatalf("items payload: %v", err)
+	}
+	if asked != "/srv/app" {
+		t.Fatalf("the workspace did not travel as a bare string: %q", asked)
+	}
+
+	if err := client.SaveStanding(items[0]); err != nil {
+		t.Fatalf("SaveStanding: %v", err)
+	}
+	var written standing.Item
+	if err := json.Unmarshal(e.calls(MethodStandingSave)[0].Payload, &written); err != nil {
+		t.Fatalf("save payload: %v", err)
+	}
+	if written.ID != "01HQ" || written.Workspace != "/srv/app" {
+		t.Fatalf("the item did not travel whole: %+v", written)
+	}
+}
+
+// A FAULT IS NOT AN EMPTY BAND. StandingItems answers an error rather than
+// swallowing it, so the caller that keeps the last good list can tell a round
+// trip that failed from a workspace with nothing set up in it — and a refused
+// write comes back in the engine's own words for home to print.
+func TestAStandingCallThatFailsSaysSoRatherThanAnsweringNothing(t *testing.T) {
+	client, e := newEngine(t)
+	e.fails[MethodStandingItems] = "engine: this engine keeps an eye on nothing"
+	items, err := client.StandingItems("/srv/app")
+	if err == nil {
+		t.Fatalf("a failed call answered %+v as though the workspace were empty", items)
+	}
+	e.fails[MethodStandingSave] = "an item needs a per-run budget"
+	if err := client.SaveStanding(standing.Item{ID: "01HQ"}); err == nil || err.Error() != "an item needs a per-run budget" {
+		t.Fatalf("SaveStanding = %v, want the store's own refusal", err)
 	}
 }

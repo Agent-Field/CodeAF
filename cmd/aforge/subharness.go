@@ -75,6 +75,18 @@ type leafBuild struct {
 	// budget below reduces to for such a leaf — so a node that gathers nothing
 	// keeps byte for byte the budget it had before any of this existed.
 	fanIn store.DependencyFanIn
+	// swarm arms the leaf's cooperative division verb, and it is a field here
+	// rather than a read of settings.Swarm below for one reason: the settings
+	// row says the person turned the mode on, and this says the surface
+	// building the leaf can actually act on what the leaf asks for.
+	//
+	// Only the resident settles leaves through the path that grows the graph
+	// from a split request. The one-shot headless runner reaches this same
+	// table — that is the covenant, and it is what stops a worker existing on
+	// one surface and not the other — but its settlement has no cooperative
+	// arm, so a leaf armed there would be handed a verb whose answer is
+	// silence. A capability that cannot work is absent, not broken.
+	swarm bool
 }
 
 // The leaf's prompt budget, in the two numbers this package has to state for
@@ -229,6 +241,10 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 			build.maxTurns, build.maxTokens, build.deadline).
 			WithStore(build.graph).WithMedia(build.media).
 			WithAttribution(config.AttributionAt(build.settings.ProfileDir)).
+			// The cooperative division verb: on when the person turned the mode
+			// on AND the surface holding this leaf can act on what it asks for.
+			// See leafBuild.swarm.
+			WithSwarm(build.swarm && build.settings.Swarm).
 			WithContextLength(build.models.ContextLength(build.model))
 	},
 	// The coding pipeline takes none of the leaf loop's wiring, because it

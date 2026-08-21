@@ -122,6 +122,14 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// stand (tools_standing.go) is the ambient side's one verb, and it is
+	// CONDITIONAL for the sharpest version of the absence law on this belt: a
+	// model told it can set up a reminder will plan a whole reply around one,
+	// so a session with no store behind it is not given the verb at all. Every
+	// door that is a conversation fills the seam; --once, a task node and a
+	// firing's own headless session do not, because nothing unwatched may arm
+	// something that spends forever.
+	tools = append(tools, a.standingTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.stateTools()...)

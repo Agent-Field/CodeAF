@@ -5,11 +5,14 @@ package session
 // the reason the other two are allowed to exist at all.
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // A conversation opened in a temp directory and abandoned for a week is litter:
@@ -237,4 +240,163 @@ func newSweptSession(t *testing.T, root, bucket, id string, meta Meta) string {
 		t.Fatalf("save meta: %v", err)
 	}
 	return dir
+}
+
+// ── rule 4: the ambient side's own litter ───────────────────────────────────
+
+// AN ERRAND THAT CAME TO NOTHING IS THE ONE FOLDER UNDER exchanges/ NOBODY WILL
+// OPEN AGAIN. One that became something has already been moved out from under
+// this directory, one from this morning is a sentence somebody may still come
+// back to, and one somebody is typing into right now is held by a lock.
+func TestTheSweepReapsAnErrandThatCameToNothing(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	long := now.Add(-30 * 24 * time.Hour)
+
+	dead := newSweptExchange(t, root, "aaaa0000aaaa0000", long)
+	fresh := newSweptExchange(t, root, "bbbb1111bbbb1111", now.Add(-2*time.Hour))
+	live := newSweptExchange(t, root, "cccc2222cccc2222", long)
+
+	held, _, err := openSessionFile(filepath.Join(live, placeTranscript), live, "test-model", "")
+	if err != nil {
+		t.Fatalf("open the transcript: %v", err)
+	}
+	defer held.Close()
+
+	SweepStanding(root, now, func(line string) { t.Fatalf("the sweep failed: %s", line) })
+
+	if _, err := os.Stat(dead); !os.IsNotExist(err) {
+		t.Fatalf("the week-old errand survived (%v)", err)
+	}
+	for _, kept := range []string{fresh, live} {
+		if _, err := os.Stat(filepath.Join(kept, placeTranscript)); err != nil {
+			t.Fatalf("%s lost its transcript: %v", kept, err)
+		}
+	}
+}
+
+// A RUN IS REAPED ON ITS OWN WORD AND ON NOTHING ELSE. The marker a firing
+// leaves says what it came to; only "nothing" may go, and only after the same
+// week. Everything a person could want — a line that was said, work that
+// landed, a run waiting for them — keeps its folder like any other session, and
+// so does a run that never said what it came to.
+func TestTheSweepReapsOnlyRunsThatDeliveredNothing(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	long := now.Add(-30 * 24 * time.Hour)
+	item := "0f1e2d3c4b5a6978"
+
+	quiet := newSweptRun(t, root, item, "0001", standing.OutcomeNothing, long)
+	landed := newSweptRun(t, root, item, "0002", "landed", long)
+	needs := newSweptRun(t, root, item, "0003", "needs-you", long)
+	silent := newSweptRun(t, root, item, "0004", "", long)
+	recent := newSweptRun(t, root, item, "0005", standing.OutcomeNothing, now.Add(-2*time.Hour))
+
+	// The item's own document and the day's ledger sit beside the runs and are
+	// not directories: rule 4 walks folders and never files.
+	writeFile(t, filepath.Join(root, item+".json"), `{"schema":1,"id":"`+item+`"}`+"\n")
+	writeFile(t, filepath.Join(root, "wake.log"), "woke\n")
+
+	SweepStanding(root, now, func(line string) { t.Fatalf("the sweep failed: %s", line) })
+
+	if _, err := os.Stat(quiet); !os.IsNotExist(err) {
+		t.Fatalf("a week-old run that delivered nothing survived (%v)", err)
+	}
+	for _, kept := range []string{landed, needs, silent, recent} {
+		if _, err := os.Stat(filepath.Join(kept, placeTranscript)); err != nil {
+			t.Fatalf("%s was reaped: %v", kept, err)
+		}
+	}
+	for _, kept := range []string{item + ".json", "wake.log"} {
+		if _, err := os.Stat(filepath.Join(root, kept)); err != nil {
+			t.Fatalf("%s was swept: %v", kept, err)
+		}
+	}
+}
+
+// AND IT CANNOT REACH ANYTHING ELSE ON THE MACHINE. Rule 4 is arithmetic on the
+// root it was handed: no root is no pass at all, and a projects tree sitting
+// beside the standing one — the very thing rule 3 protects — is not read, let
+// alone written.
+func TestTheStandingSweepTouchesNothingOutsideItsRoot(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "standing")
+	projects := filepath.Join(home, "projects")
+	now := time.Now()
+	long := now.Add(-400 * 24 * time.Hour)
+
+	session := newSweptSession(t, projects, "-home-someone-project", "3333cccc3333cccc", Meta{
+		ID:         "3333cccc3333cccc",
+		Workspace:  "/home/someone/project",
+		LastUserAt: long,
+	})
+	if err := os.Chtimes(session, long, long); err != nil {
+		t.Fatal(err)
+	}
+	// An errand old enough to reap, so the pass has something to do and the
+	// proof is not "it did nothing anywhere".
+	dead := newSweptExchange(t, root, "dddd3333dddd3333", long)
+
+	// No root is no pass: nothing is walked and nothing is said.
+	SweepStanding("", now, func(line string) { t.Fatalf("an empty root swept something: %s", line) })
+	SweepStanding("   ", now, func(line string) { t.Fatalf("a blank root swept something: %s", line) })
+	if _, err := os.Stat(dead); err != nil {
+		t.Fatalf("an empty root reached the standing side anyway: %v", err)
+	}
+
+	SweepStanding(root, now, func(line string) { t.Fatalf("the sweep failed: %s", line) })
+
+	if _, err := os.Stat(dead); !os.IsNotExist(err) {
+		t.Fatalf("the week-old errand survived (%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(session, placeTranscript)); err != nil {
+		t.Fatalf("rule 4 reached a conversation's transcript: %v", err)
+	}
+}
+
+// A standing root that is not there is a machine with nothing standing, and the
+// sweep says nothing about it.
+func TestTheStandingSweepIsQuietAboutAMachineWithNothingStanding(t *testing.T) {
+	SweepStanding(filepath.Join(t.TempDir(), "never-created"), time.Now(), func(line string) {
+		t.Fatalf("the sweep complained about an empty machine: %s", line)
+	})
+}
+
+// newSweptExchange writes one `ask here` folder the way home would have left
+// it, with everything in it stamped at the given moment.
+func newSweptExchange(t *testing.T, root, id string, at time.Time) string {
+	t.Helper()
+	dir := filepath.Join(standing.ExchangesRoot(root), id)
+	writeFile(t, filepath.Join(dir, placeTranscript), `{"kind":"header","id":"`+id+`"}`+"\n")
+	stampTree(t, dir, at)
+	return dir
+}
+
+// newSweptRun writes one firing's run folder, with the marker the ticker leaves
+// saying what it came to. An empty word writes no marker at all, which is every
+// run this build wrote before the marker existed.
+func newSweptRun(t *testing.T, root, item, number, cameTo string, at time.Time) string {
+	t.Helper()
+	dir := filepath.Join(root, item, "runs", number)
+	writeFile(t, filepath.Join(dir, placeTranscript), `{"kind":"header","id":"`+number+`"}`+"\n")
+	if cameTo != "" {
+		writeFile(t, filepath.Join(dir, standing.CameTo), cameTo+"\n")
+	}
+	stampTree(t, dir, at)
+	return dir
+}
+
+// stampTree puts one moment on a folder and everything in it, so a test can say
+// "nobody has touched this since" without waiting a week.
+func stampTree(t *testing.T, dir string, at time.Time) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chtimes(path, at, at)
+	})
+	if err != nil {
+		t.Fatalf("stamp %s: %v", dir, err)
+	}
 }

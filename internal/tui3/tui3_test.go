@@ -98,8 +98,8 @@ func (f *fakeAgent) SetReasoningFor(model, level string) {
 	}
 	f.levels[model] = level
 }
-func (f *fakeAgent) Usage() session.Usage                 { return f.usage }
-func (f *fakeAgent) Transcript() []session.DisplayEntry   { return f.past }
+func (f *fakeAgent) Usage() session.Usage               { return f.usage }
+func (f *fakeAgent) Transcript() []session.DisplayEntry { return f.past }
 
 // EarlierHistory is what the journal holds ABOVE the session's latest
 // compaction, and how much of `past` is the pass's rewritten copy of it. Both

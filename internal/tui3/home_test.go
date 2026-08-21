@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // homeLab builds a projects root on disk — the same shape the launch door
@@ -120,7 +122,7 @@ func (l *homeLab) app(standing string) *app {
 	// door cannot answer (tui3.go's [Options.Open]).
 	a.open = func(workspace, transcript string) (Conversation, error) {
 		return Conversation{
-			Agent: &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
+			Agent:       &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
 			SessionFile: transcript, Workspace: workspace, Resumed: true,
 		}, nil
 	}
@@ -324,11 +326,10 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 		t.Fatalf("rolled up %d running / %d incomplete, want 1 / 0", row.Tasks.Running, row.Tasks.Incomplete)
 	}
 	text := homeText(a)
-	// The card says `running` with the spinner cell rather than the word — the
-	// rail's vocabulary, turned only because the session vouched for the node
-	// ([app.homeTaskGlyph]) — so the words asserted here are the row's count and
-	// the task's label beside that cell.
-	for _, want := range []string{"1 running", "Port the thing", "open in another window · working"} {
+	// THE WORK BAND PUTS THE NAME FIRST NOW, with the state under it
+	// (homeband_work.go), so the two facts are two lines rather than one row.
+	for _, want := range []string{"1 running", "Port the thing", homeLiveGlyph + " running",
+		"open in another window · working"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home does not say %q:\n%s", want, text)
 		}
@@ -546,13 +547,19 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	}
 }
 
-// One ↑ is the decision to pick from the list instead, and it sticks.
+// Walking UP off the action row is the decision to pick from the list instead,
+// and it sticks.
 //
 // IT USED TO BE ↓, and the arrow turned round with the action row. The row sits
 // at the BOTTOM of the list now, against the box a person is typing into
 // ([homeAction]), so the matches are above it and walking into them is walking
-// up the screen. WHICH match that one ↑ reaches is
+// up the screen. WHICH match the walk reaches is
 // [TestTheBestMatchSitsNextToTheActionRow].
+//
+// IT IS TWO ↑ AND NOT ONE, because `ask here` sits between the action row and
+// the matches (homeexchange.go): the two rows that do something with the
+// SENTENCE are one cluster against the box, and the rows that are other
+// conversations begin above them.
 func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -563,6 +570,10 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 		a.homeKey(key(string(r)))
 	}
 	a.homeKey(key("up"))
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
+		t.Fatalf("the first ↑ should reach `ask here` (kind %v)", line.kind)
+	}
+	a.homeKey(key("up"))
 	if row := a.home.focused(); row.Transcript != mine {
 		t.Fatal("↑ did not land on the match")
 	}
@@ -570,7 +581,9 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 	if row := a.home.focused(); row.Transcript != mine {
 		t.Fatal("typing after ↑ threw the cursor back to the action row")
 	}
-	// And ↓ walks back down to the action row, which is where the sentence is.
+	// And ↓ walks back down through the same two rows to the action row, which
+	// is where the sentence is.
+	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
@@ -617,11 +630,12 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	if action < 0 {
 		t.Fatalf("the action row is not on the frame:\n%s", strings.Join(rows, "\n"))
 	}
-	// THE BOX IS THE ROW THE CARET IS ON, and the action row is two rows above
-	// it: the rule between them is the frame's own foot rule. Anything more than
-	// that is the split this test exists to stop coming back.
-	if caretY-action != 2 {
-		t.Fatalf("the action row is %d rows above the box, want 2:\n%s", caretY-action, strings.Join(rows, "\n"))
+	// THE BOX IS THE ROW THE CARET IS ON, and the action row is three rows above
+	// it: the list's padding row, then the frame's own foot rule (home.go's
+	// [app.homeFrame] states why the list never touches that rule). Anything more
+	// than that is the split this test exists to stop coming back.
+	if caretY-action != 3 {
+		t.Fatalf("the action row is %d rows above the box, want 3:\n%s", caretY-action, strings.Join(rows, "\n"))
 	}
 	if !strings.Contains(rows[caretY], "pricing") {
 		t.Fatalf("row %d is not the box:\n%s", caretY, strings.Join(rows, "\n"))
@@ -825,20 +839,21 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
 	}
 
-	// TYPING: the action row, on the last body row — four up from the bottom of
-	// the frame, directly above the rule, the box and the hint.
+	// TYPING: the action row, on the last body row — FIVE up from the bottom of
+	// the frame, because the body now ends one row short of the rule: the padding
+	// row, then the rule, the box and the hint.
 	a.homeKey(key("p"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("the first character did not put the cursor on the action row (kind %v)", line.kind)
 	}
-	if at := homeCursorY(t, a); at != height-4 {
+	if at := homeCursorY(t, a); at != height-5 {
 		t.Fatalf("the typing cursor is on row %d of %d, want the last body row %d:\n%s",
-			at, height, height-4, homeText(a))
+			at, height, height-5, homeText(a))
 	}
 
 	// AND BACK: the box empties, the dashboard returns, the cursor is off the foot.
 	a.homeKey(key("backspace"))
-	if at := homeCursorY(t, a); at == height-4 {
+	if at := homeCursorY(t, a); at == height-5 {
 		t.Fatalf("clearing the box left the cursor at the foot:\n%s", homeText(a))
 	}
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
@@ -912,14 +927,17 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 		t.Fatalf("every match tied, so the order proves nothing: %+v", drawn)
 	}
 
-	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the row one
-	// ↑ away rather than the row furthest from the key.
+	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the FIRST
+	// conversation the walk reaches rather than the row furthest from the key.
+	// The row between them is `ask here` (homeexchange.go), which is the other
+	// thing enter can do with the sentence and not a match.
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("the cursor did not rest on the action row (kind %v)", line.kind)
 	}
 	a.homeKey(key("up"))
+	a.homeKey(key("up"))
 	if got := homeName(a.home.focused()); got != best.name {
-		t.Fatalf("one ↑ landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
+		t.Fatalf("walking up landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
 	}
 	// Further ↑ walks into weaker matches, in order.
 	for i := len(drawn) - 2; i >= 0; i-- {
@@ -928,10 +946,16 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 			t.Fatalf("walking up reached %q, want %q (%+v)", got, drawn[i].name, drawn)
 		}
 	}
-	// And ↓ comes back down toward the box, ending on the action row.
+	// And ↓ comes back down toward the box, through `ask here` and onto the
+	// action row — one step per match, plus the one for the row between them
+	// (homeexchange.go).
 	for range drawn {
 		a.homeKey(key("down"))
 	}
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
+		t.Fatalf("↓ did not walk back to `ask here` (kind %v)", line.kind)
+	}
+	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
 		t.Fatalf("↓ did not walk back to the action row (kind %v)", line.kind)
 	}
@@ -1010,7 +1034,13 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("the pane previewed a conversation that does not exist yet:\n%s", strings.Join(card, "\n"))
 	}
 
-	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD.
+	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD. Two of them: `ask here` is the row
+	// in between, and it is a thing that does not exist yet exactly as the action
+	// row is, so its pane is empty for the same reason (homeexchange.go).
+	a.homeKey(key("up"))
+	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
+		t.Fatalf("the pane previewed the `ask here` row:\n%s", strings.Join(card, "\n"))
+	}
 	a.homeKey(key("up"))
 	first := a.home.focused()
 	if first.Transcript == "" {
@@ -1039,7 +1069,9 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("the card kept the row the cursor left:\n%s", card)
 	}
 
-	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN.
+	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN. Three steps: two matches
+	// and the `ask here` row between them and the box (homeexchange.go).
+	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	a.homeKey(key("down"))
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
@@ -1206,8 +1238,9 @@ func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
 	if strings.Contains(text, "Tuesday") {
 		t.Fatalf("it matched a conversation with no such outcome:\n%s", text)
 	}
-	// ↑ walks off the action row and up into the match, which is where the matches
-	// are now ([homeAction]).
+	// ↑ walks off the action row, past `ask here` (homeexchange.go), and up into
+	// the match — which is where the matches are now ([homeAction]).
+	a.homeKey(key("up"))
 	a.homeKey(key("up"))
 	if !strings.Contains(homeText(a), "Rewrote the postgres") {
 		t.Fatalf("the pane does not show what the work came to:\n%s", homeText(a))
@@ -2262,5 +2295,377 @@ func TestHomeDoesNotLinkAProjectThatIsGone(t *testing.T) {
 	lines, _, _, _ := a.homeFrame(width, height)
 	if frame := strings.Join(lines, "\n"); strings.Contains(frame, "\x1b]8;;") {
 		t.Fatalf("home linked a directory that is not there:\n%s", frame)
+	}
+}
+
+// ── the two tiers ───────────────────────────────────────────────────────────
+
+// homeTierLab is six projects with one conversation each, THIS WINDOW STANDING
+// IN THE OLDEST OF THEM — so that "the window's project comes first" cannot be
+// mistaken for "the most recent project comes first".
+func homeTierLab(t *testing.T) (*app, *homeLab, string) {
+	t.Helper()
+	lab := newHomeLab(t)
+	now := time.Now()
+	var mine string
+	for i, name := range []string{"alpha", "beta", "gamma", "delta", "eps", "zeta"} {
+		file := lab.session("-tmp-"+name, strings.Repeat(string(rune('a'+i)), 4)+"000000000001",
+			name+" chat", "/tmp/"+name, now.Add(-time.Duration(i+1)*time.Hour))
+		if name == "zeta" {
+			mine = file
+		}
+	}
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	a.openHome()
+	return a, lab, mine
+}
+
+// homeKinds is every line of the column, in order, as (kind, project) pairs.
+func homeKinds(a *app, kind homeRowKind) []string {
+	var out []string
+	for _, line := range a.home.lines {
+		if line.kind == kind {
+			out = append(out, line.project)
+		}
+	}
+	return out
+}
+
+// THE LIST IS TWO TIERS: three projects open, everything else one line each
+// under a rule, and the window's own project at the head of it.
+//
+// It was an unorganised wall — every project on the machine with a heading and
+// four rows, most of them saying `elsewhere` — and the one project a person
+// could actually act in was wherever recency happened to put it.
+func TestHomeOpensThreeProjectsAndFoldsTheRest(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	open := homeKinds(a, homeHeading)
+	if len(open) != homeOpenProjects {
+		t.Fatalf("home opened %d projects, want %d: %v\n%s", len(open), homeOpenProjects, open, homeText(a))
+	}
+	if open[0] != "zeta" {
+		t.Fatalf("the window's own project is not first: %v\n%s", open, homeText(a))
+	}
+	// Then the two most recently spoken-in others, in that order.
+	if open[1] != "alpha" || open[2] != "beta" {
+		t.Fatalf("the open tier is not the window's project then the two most recent: %v", open)
+	}
+	folded := homeKinds(a, homeProject)
+	if len(folded) != 3 {
+		t.Fatalf("home folded %d projects, want 3: %v\n%s", len(folded), folded, homeText(a))
+	}
+	// AND THE RULE SAYS WHAT THE BLOCK IS, once, instead of every heading
+	// saying it.
+	text := homeText(a)
+	if !strings.Contains(text, "─ "+homeElsewhereWord+" ─") {
+		t.Fatalf("the folded block has no rule over it:\n%s", text)
+	}
+	// A folded line is the project, how many conversations it holds, and how
+	// long since anybody spoke in one.
+	if !strings.Contains(text, "▸ gamma") {
+		t.Fatalf("a folded project is not drawn with its fold mark:\n%s", text)
+	}
+}
+
+// A FOLD MUST NOT HIDE THE ROW THIS SCREEN EXISTS FOR. A folded project holding
+// a conversation stopped on a question says so on its one line, and sorts above
+// the quiet ones.
+func TestAFoldedProjectSurfacesWhatIsWaitingAndSortsAboveTheQuiet(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	// `eps` is the OLDEST of the folded projects, so recency alone would put it
+	// last of the three.
+	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWaiting, "can I run: rm -rf build/", time.Now())
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	a.openHome()
+
+	folded := homeKinds(a, homeProject)
+	if len(folded) == 0 || folded[0] != "eps" {
+		t.Fatalf("the waiting project did not sort to the top of the block: %v\n%s", folded, homeText(a))
+	}
+	if !strings.Contains(homeText(a), homeAskGlyph+" 1 waiting") {
+		t.Fatalf("the folded line does not surface what is waiting:\n%s", homeText(a))
+	}
+}
+
+// A folded project that has work RUNNING surfaces that instead.
+func TestAFoldedProjectSurfacesWhatIsRunning(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	now := time.Now()
+	lab.task("-tmp-eps", session.TaskIndexEntry{
+		ID: "1", Name: "port", Label: "Port It", Title: "Port It",
+		Status: string(session.TaskRunning), SessionID: "eeee000000000001",
+	})
+	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWorking, "", now,
+		session.PresenceTask{ID: "1", Title: "Port It", State: "running", StartedAt: now})
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	a.openHome()
+	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
+		t.Fatalf("the folded line does not surface what is running:\n%s", homeText(a))
+	}
+}
+
+// A FOLD MUST NOT HIDE A STANDING ITEM THAT NEEDS SOMEBODY EITHER. A watch is
+// as capable of stopping on a question as a conversation is, and a project
+// whose only waiting thing is a watch sorts and reads exactly like one whose
+// waiting thing is a chat.
+func TestAFoldedProjectSurfacesAStandingItemThatNeedsYou(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	// `eps` is the OLDEST of the folded projects, so recency alone would put it
+	// last of the three.
+	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
+	item.NeedsPerson = "the fix touches migrations"
+	(&standBand{items: []standing.Item{item}}).wire(a)
+	a.openHome()
+
+	folded := homeKinds(a, homeProject)
+	if len(folded) == 0 || folded[0] != "eps" {
+		t.Fatalf("the project whose watch is waiting did not sort to the top: %v\n%s", folded, homeText(a))
+	}
+	if !strings.Contains(homeText(a), homeAskGlyph+" 1 waiting") {
+		t.Fatalf("the folded line does not surface the waiting watch:\n%s", homeText(a))
+	}
+}
+
+// AND ONE FIRING RIGHT NOW IS WORK IN FLIGHT, counted with the conversations
+// that have work in flight.
+func TestAFoldedProjectSurfacesAStandingItemThatIsFiring(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	(&standBand{
+		items:   []standing.Item{bandItem("run", "check the deploy", "/tmp/eps", standing.WhenEvery, "every 20 minutes")},
+		running: map[string]standing.RunningMark{"run": {What: standing.RunningFiring, Since: time.Now()}},
+	}).wire(a)
+	a.openHome()
+
+	folded := homeKinds(a, homeProject)
+	if len(folded) == 0 || folded[0] != "eps" {
+		t.Fatalf("the project with a firing watch did not sort to the top: %v\n%s", folded, homeText(a))
+	}
+	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
+		t.Fatalf("the folded line does not surface the firing watch:\n%s", homeText(a))
+	}
+}
+
+// AND THE TWO KINDS ARE ADDED UP, not chosen between: the number on the line is
+// how many things want you, whichever kind they are.
+func TestAFoldedProjectCountsConversationsAndItemsTogether(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWaiting, "can I run: rm -rf build/", time.Now())
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
+	item.NeedsPerson = "the fix touches migrations"
+	(&standBand{items: []standing.Item{item}}).wire(a)
+	a.openHome()
+
+	if !strings.Contains(homeText(a), homeAskGlyph+" 2 waiting") {
+		t.Fatalf("the folded line counts one kind of row and not the other:\n%s", homeText(a))
+	}
+}
+
+// A FOLDED PROJECT OPENS IN PLACE. The line stays where it is and becomes the
+// head of a block shaped like a tier-one project; the same key folds it back.
+func TestEnterOpensAFoldedProjectInPlaceAndFoldsItAgain(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeProject && line.project == "gamma" {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("gamma is not a folded project line:\n%s", homeText(a))
+	}
+	// THE COLUMN IS READ, NOT THE SCREEN: with the cursor on a project line the
+	// card on the right is the project's, and its first band lists the very
+	// conversations the fold hides (homeband_projectsessions.go) — so the text
+	// of the frame says "Gamma Chat" folded or not.
+	listed := func() bool {
+		for _, project := range homeKinds(a, homeSession) {
+			if project == "gamma" {
+				return true
+			}
+		}
+		return false
+	}
+	a.home.cursor = at
+	a.homeKey(key("enter"))
+	if !listed() {
+		t.Fatalf("enter did not open the project in place:\n%s", homeText(a))
+	}
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeProject || line.project != "gamma" || line.folded {
+		t.Fatalf("the cursor left the line that did the opening (%v %q)", line.kind, line.project)
+	}
+	if !strings.Contains(homeText(a), glyphOpen+" gamma") {
+		t.Fatalf("the opened project does not wear the open mark:\n%s", homeText(a))
+	}
+	// IT IS STILL A FOLDED-TIER PROJECT: no heading was minted for it, so the
+	// open tier is untouched.
+	if open := homeKinds(a, homeHeading); len(open) != homeOpenProjects {
+		t.Fatalf("opening a project changed the open tier: %v", open)
+	}
+	a.homeKey(key("left"))
+	if listed() {
+		t.Fatalf("← did not fold the project away again:\n%s", homeText(a))
+	}
+	a.homeKey(key("right"))
+	if !listed() {
+		t.Fatalf("→ did not open it again:\n%s", homeText(a))
+	}
+	// And a click is the same door in one press.
+	row := homeCursorY(t, a)
+	a.homePress(4, row)
+	if listed() {
+		t.Fatalf("a click did not fold the project:\n%s", homeText(a))
+	}
+}
+
+// THE CARD BESIDE A PROJECT LINE IS THE PROJECT'S. It is the two lines nothing
+// may displace — what it is called and where it is — and the bands registered
+// for a project under them.
+func TestAProjectLineGetsAProjectCard(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	for i, line := range a.home.lines {
+		if line.kind == homeProject && line.project == "gamma" {
+			a.home.cursor = i
+		}
+	}
+	subject, ok := a.homeSubject()
+	if !ok || subject.kind != bandKindProject {
+		t.Fatalf("a project line answers subject kind %v, want a project", subject.kind)
+	}
+	if subject.dir != "/tmp/gamma" {
+		t.Fatalf("the project subject names %q, want the workspace", subject.dir)
+	}
+	width, _ := a.size()
+	_, right := homeColumns(width)
+	card := a.homeDetail(right, 12, a.pal)
+	if len(card) == 0 {
+		t.Fatalf("a project line draws no card at all:\n%s", homeText(a))
+	}
+	if !strings.Contains(ansi.Strip(strings.Join(card, "\n")), "/tmp/gamma") {
+		t.Fatalf("the project card does not say where the project is:\n%s", strings.Join(card, "\n"))
+	}
+}
+
+// SEARCH SEES THROUGH EVERY FOLD, tiers included: a conversation in a project
+// home had collapsed to one line is found by typing, drawn under its own
+// heading, exactly as it always was.
+func TestSearchSeesThroughTheFoldedTier(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	if strings.Contains(homeText(a), "Delta Chat") {
+		t.Fatal("delta is not folded, so this proves nothing")
+	}
+	for _, r := range "delta" {
+		a.homeKey(key(string(r)))
+	}
+	text := homeText(a)
+	if !strings.Contains(text, "Delta Chat") {
+		t.Fatalf("the query did not see through the fold:\n%s", text)
+	}
+	// And there are no tiers at all while something is typed.
+	if len(homeKinds(a, homeProject)) != 0 {
+		t.Fatalf("a search drew folded project lines:\n%s", text)
+	}
+	if strings.Contains(text, "─ "+homeElsewhereWord+" ─") {
+		t.Fatalf("a search drew the folded block's rule:\n%s", text)
+	}
+}
+
+// PAST EIGHT THE BLOCK FOLDS ITSELF, with the same gesture one rung up.
+func TestTheFoldedBlockFoldsItselfPastEight(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	var mine string
+	for i := 0; i < homeOpenProjects+homeFoldedProjects+3; i++ {
+		name := "p" + strconv.Itoa(i)
+		file := lab.session("-tmp-"+name, strings.Repeat("a", 4)+strconv.Itoa(1000000000000+i),
+			name+" chat", "/tmp/"+name, now.Add(-time.Duration(i+1)*time.Hour))
+		if i == 0 {
+			mine = file
+		}
+	}
+	a := lab.app(mine)
+	a.width, a.height = 100, 60
+	a.openHome()
+	if drawn := len(homeKinds(a, homeProject)); drawn != homeFoldedProjects {
+		t.Fatalf("the block drew %d folded lines, want %d:\n%s", drawn, homeFoldedProjects, homeText(a))
+	}
+	if !strings.Contains(homeText(a), "▸ …3 more") {
+		t.Fatalf("the block does not say what it is holding back:\n%s", homeText(a))
+	}
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeMoreProjects {
+			at = i
+		}
+	}
+	a.home.cursor = at
+	a.homeKey(key("enter"))
+	if drawn := len(homeKinds(a, homeProject)); drawn != homeFoldedProjects+3 {
+		t.Fatalf("enter drew %d folded lines, want them all:\n%s", drawn, homeText(a))
+	}
+	if !strings.Contains(homeText(a), "…3 fewer") {
+		t.Fatalf("the opened block does not offer the way back:\n%s", homeText(a))
+	}
+}
+
+// THE CURSOR NEVER RESTS ON THE RULE. It names a section rather than a thing,
+// exactly as a heading does.
+func TestTheCursorSkipsTheElsewhereRule(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	rule := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeElsewhereRule {
+			rule = i
+		}
+	}
+	if rule < 0 {
+		t.Fatalf("there is no rule to skip:\n%s", homeText(a))
+	}
+	if a.home.lines[rule].stop() {
+		t.Fatal("the rule is a cursor stop")
+	}
+	// Walk the whole list from the top and never land on it.
+	a.home.cursor = a.home.clamp(0)
+	for i := 0; i < len(a.home.lines); i++ {
+		if a.home.cursor == rule {
+			t.Fatalf("↓ rested the cursor on the rule:\n%s", homeText(a))
+		}
+		a.home.move(1)
+	}
+	if a.home.clamp(rule) == rule {
+		t.Fatal("a rebuild that landed on the rule left the cursor there")
+	}
+}
+
+// THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX: one blank row, at every
+// height, in both of home's shapes.
+func TestTheListIsPaddedOffTheFoot(t *testing.T) {
+	a, _, _ := homeTierLab(t)
+	for _, typed := range []bool{false, true} {
+		if typed {
+			a.homeKey(key("c"))
+			a.homeKey(key("h"))
+		}
+		for _, height := range []int{8, 12, 24, 40, 60} {
+			a.width, a.height = 100, height
+			width, h := a.size()
+			lines, _, _, _ := a.homeFrame(width, h)
+			// The foot is the rule, the box and the hint; the row above it is the
+			// padding, and it is empty whatever the list did.
+			pad := len(lines) - 4
+			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" {
+				t.Fatalf("at height %d (typed %v) the list touches the foot: row %d is %q\n%s",
+					height, typed, pad, got, strings.Join(lines, "\n"))
+			}
+		}
 	}
 }

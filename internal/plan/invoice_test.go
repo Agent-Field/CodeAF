@@ -46,6 +46,24 @@ func TestTheInvoiceRendersNothingWithoutRealMeasurements(t *testing.T) {
 	}
 }
 
+func TestCapacityExtendsTheInvoiceOnlyWithHistory(t *testing.T) {
+	if got := AppendCapacityEvidence("", CapacityEvidence{}); got != "" {
+		t.Fatalf("empty capacity rendered %q", got)
+	}
+	rendered := AppendCapacityEvidence("", CapacityEvidence{
+		Worker: "linear", Runs: 12, Overruns: 4, Rate: 1.0 / 3.0,
+	})
+	for _, want := range []string{"MEASURED HERE", "12 settled leaves ran", "33% overran"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("capacity invoice lacks %q:\n%s", want, rendered)
+		}
+	}
+	priced := "an existing measured invoice"
+	if got := AppendCapacityEvidence(priced, CapacityEvidence{Runs: 8, Rate: .5}); !strings.HasPrefix(got, priced+"\n") || strings.Count(got, "MEASURED HERE") != 0 {
+		t.Fatalf("capacity did not extend the existing invoice:\n%s", got)
+	}
+}
+
 // Reflex micro-leaves never set a price. They are a different population with
 // an envelope that was never allowed to be large, and an invoice that averaged
 // them in would tell a planner a piece of work costs a fraction of what a piece
