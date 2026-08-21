@@ -220,6 +220,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the little circle row on home", "home"},
 		{"how do I pause a reminder", "home"},
 		{"what does keeping an eye on 2 mean", "home"},
+		// The eleventh wave: the errand you say from home. Every one of these is
+		// asked with home on screen and a sentence half typed, and the honest
+		// answers — that there is a second row, that the exchange is stored
+		// somewhere home does not list, and how to turn it into an ordinary
+		// conversation — are all on one page.
+		{"can I set a reminder from home", "asking-from-home"},
+		{"what is ask here", "asking-from-home"},
+		{"where did that exchange go", "asking-from-home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

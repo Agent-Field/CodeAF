@@ -320,26 +320,7 @@ func (a *app) proposeStanding(ev session.Event) {
 	if a.stand != nil && !a.stand.settled() {
 		a.stand.verdict = standExpiredWord
 	}
-	words := strings.TrimSpace(notice.Item.Words)
-	name := standName(words)
-	card := &standingCard{
-		id:         notice.ID,
-		item:       notice.Item,
-		name:       name,
-		words:      standSub(name, words),
-		when:       strings.TrimSpace(notice.WhenWords),
-		cost:       strings.TrimSpace(notice.CostWords),
-		guessed:    notice.Guessed,
-		offerWatch: notice.OfferWatch,
-		deadline:   notice.Deadline,
-		born:       a.now(),
-		// THE CARD OPENS ON "YES", which is [app.proposeTask]'s law and not a
-		// claim about what silence does: a cursor parked on the answer that
-		// undoes the proposal makes the ordinary answer the one you have to aim
-		// at. Silence here still declines, and the meter says so.
-		choice:    standYes,
-		choiceRow: -1,
-	}
+	card := a.standingCardFor(*notice)
 	a.stand = card
 	a.closeLive()
 	// The typed lists follow the draft, and the draft is now the correction
@@ -930,4 +911,30 @@ func (a *app) standingAnimating() bool {
 	}
 	_, firing := a.keepingCount()
 	return firing
+}
+
+// standingCardFor is the one place a notice becomes a card, so the card the
+// conversation draws and the card home's errand pane draws (homeexchange.go) are
+// the same object read the same way.
+func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
+	words := strings.TrimSpace(notice.Item.Words)
+	name := standName(words)
+	return &standingCard{
+		id:         notice.ID,
+		item:       notice.Item,
+		name:       name,
+		words:      standSub(name, words),
+		when:       strings.TrimSpace(notice.WhenWords),
+		cost:       strings.TrimSpace(notice.CostWords),
+		guessed:    notice.Guessed,
+		offerWatch: notice.OfferWatch,
+		deadline:   notice.Deadline,
+		born:       a.now(),
+		// THE CARD OPENS ON "YES", which is [app.proposeTask]'s law and not a
+		// claim about what silence does: a cursor parked on the answer that
+		// undoes the proposal makes the ordinary answer the one you have to aim
+		// at. Silence here still declines, and the meter says so.
+		choice:    standYes,
+		choiceRow: -1,
+	}
 }

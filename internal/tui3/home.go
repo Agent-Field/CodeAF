@@ -322,6 +322,11 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
+	// exchange is the errand somebody asked from this screen — `ask here` — and
+	// nil when nobody has. It is a real conversation with a real transcript,
+	// kept OUTSIDE v3/projects so that this list can never grow a row for it,
+	// and it lives exactly as long as home does (homeexchange.go).
+	exchange *homeExchange
 	// last caches the tail of a conversation's journal by transcript path.
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
@@ -502,6 +507,10 @@ func (a *app) closeHome() {
 	if len(a.home.world.Projects) > 0 {
 		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
 	}
+	// AN ERRAND DIES WITH THE SCREEN IT WAS ASKED ON, and its folder does not:
+	// the agent is closed, the transcript stays under the standing root, and the
+	// sweep law reaps one that came to nothing (homeexchange.go).
+	a.dropExchange()
 	a.home = homeView{}
 	a.touch()
 }
@@ -669,12 +678,16 @@ func (h *homeView) dropUp() bool { return h.searching() }
 // over ([homeRank] is untouched — the scoring is right, only the drawing was
 // backwards), and the law is:
 //
-//	ONE ↑ FROM THE ACTION ROW IS THE TOP-RANKED MATCH.
+//	THE FIRST MATCH THE WALK REACHES IS THE TOP-RANKED ONE.
 //
-// Further ↑ walks into progressively weaker ones and ↓ comes back toward the
-// box, which is the same grammar the action row already had. A project's heading
-// still sits ABOVE its own rows: sections stack by rank and the rows inside one
-// do too, but a name drawn under the things it names reads upside-down.
+// It is the SECOND ↑ and not the first, because `ask here` sits between the
+// action row and the matches (homeexchange.go): the two rows that do something
+// with the SENTENCE are one cluster against the box, and the rows that are other
+// conversations begin above them. Further ↑ walks into progressively weaker ones
+// and ↓ comes back toward the box, which is the same grammar the action row
+// already had. A project's heading still sits ABOVE its own rows: sections stack
+// by rank and the rows inside one do too, but a name drawn under the things it
+// names reads upside-down.
 //
 // AND THE CONVERSATION THIS WINDOW IS IN MAY NOT BE ON THE LIST AT ALL. A
 // session folder nobody has spoken in yet is not a row the world reports
@@ -818,6 +831,14 @@ func (h *homeView) buildWorld() {
 	if len(h.lines) > 0 {
 		h.lines = append(h.lines, homeLine{kind: homeBlank})
 	}
+	// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
+	// because the two rows are one cluster: they are the two things enter can do
+	// with the same characters, and a gap would read as two unrelated offers.
+	// The cursor still RESTS on `start a new conversation` — typing and pressing
+	// enter means today what it meant yesterday — and this row is the one ↑ that
+	// asks the sentence instead of opening a conversation for it
+	// (homeexchange.go).
+	h.lines = append(h.lines, homeLine{kind: homeAskHere})
 	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
 
@@ -1088,7 +1109,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
-	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold:
+	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere:
 		return true
 	}
 	return false
@@ -1136,6 +1157,15 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	h := &a.home
+	// AN OPEN ERRAND HOLDS THE KEYBOARD WHILE IT IS FOCUSED, and gives it back on
+	// esc with itself still standing in the right pane (homeexchange.go). The
+	// list underneath is untouched by any of it: it keeps its cursor, its query
+	// and its fold, and one esc brings it all back under the hand.
+	if h.exchange != nil && h.exchange.focused {
+		defer a.touch()
+		h.say("", "")
+		return a.exchangeKey(msg)
+	}
 	defer a.touch()
 	h.say("", "")
 	switch msg.String() {
@@ -1167,6 +1197,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "enter":
 		return a.homeEnter()
+
+	case "ctrl+enter", "alt+enter":
+		// `ask here` WITHOUT LEAVING THE BOX. Two spellings because terminals
+		// disagree about which one they can send — the same law input.go states
+		// for alt+enter and ctrl+j — and ctrl+enter reaches this switch only on a
+		// terminal that can distinguish it from a plain enter at all (the kitty
+		// protocol, win32-input). alt+enter is the one that survives everywhere,
+		// and the hint line names ctrl+enter because it is the one a hand
+		// reaches for.
+		return a.askHere(strings.TrimSpace(h.box.String()))
 
 	case "backspace":
 		h.box.deleteBackward()
@@ -1316,6 +1356,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// The row the cursor rests on while something is typed, which is what
 		// makes type-and-enter mean today what it meant yesterday.
 		return a.homeStart(strings.TrimSpace(h.box.String()))
+	case homeAskHere:
+		// The same sentence, asked rather than opened (homeexchange.go).
+		return a.askHere(strings.TrimSpace(h.box.String()))
 	case homeQuiet:
 		h.fold(line.dir, line.folded)
 		return nil
@@ -1653,7 +1696,17 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
-	if a.home.box.empty() {
+	if ex := a.home.exchange; ex != nil && ex.focused {
+		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed into
+		// home's own box would re-filter the list behind the pane, so the exchange
+		// brings its own line and the caret sits in it (homeexchange.go).
+		text := ex.box.String()
+		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
+		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
+		if caretX > width-1 {
+			caretX = width - 1
+		}
+	} else if a.home.box.empty() {
 		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
 	} else {
 		text := a.home.box.String()
@@ -1866,6 +1919,15 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		}
 		return overlayRow(mark+" "+standFoldWord(line.quiet, line.folded), "",
 			at == h.cursor, false, at == h.hover, width, pal)
+	case homeAskHere:
+		// The same shape as the action row under it and the same words quoted
+		// back, because they are the two readings of one sentence
+		// (homeexchange.go).
+		label := homeAskHereWord
+		if text := strings.TrimSpace(h.box.String()); text != "" {
+			label += ": " + strconv.Quote(text)
+		}
+		return overlayRow(homeAskHereGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
 	case homeAction:
 		// It carries the words back at the person, cut to fit. The box at the
 		// foot holds them too, but the box is where you are typing and this is
@@ -2034,6 +2096,14 @@ func homeName(row session.SessionRow) string {
 // the card exists to stop. It is the LIST that becomes a drop-up while typing
 // ([homeLift]); this stays where it is and keeps answering.
 func (a *app) homeDetail(width, room int, pal palette) []string {
+	// AN OPEN ERRAND TAKES THIS PANE, whole. It is a conversation happening now
+	// rather than a description of one that already did, and the two cannot share
+	// the column: a card about the row under the cursor drawn beside a live
+	// exchange would be two things claiming to be what the screen is about
+	// (homeexchange.go).
+	if a.home.exchange != nil {
+		return a.exchangePane(width, room, pal)
+	}
 	line, ok := a.home.focusedLine()
 	if ok && line.kind == homeItem {
 		// THE OTHER KIND OF CARD, in the same column and the same bands
@@ -2301,17 +2371,28 @@ func (a *app) homeLast(row session.SessionRow) string {
 // homeHint is the line under the foot: what the keyboard does, and what the box
 // will do with what is in it.
 func (a *app) homeHint() string {
+	if ex := a.home.exchange; ex != nil && ex.focused {
+		return exchangeHint(ex)
+	}
 	line, _ := a.home.focusedLine()
 	switch {
+	case line.kind == homeAskHere:
+		// The row that asks rather than opens, and the chord that reaches it
+		// without walking up to it (homeexchange.go).
+		return "enter asks this here and keeps the record · ↓ start a conversation instead · esc clear"
 	case line.kind == homeAction:
-		// The two readings of the box, both said, because both are true of what
-		// is on screen right now: enter sends it, ↑ walks into what it found.
+		// The THREE readings of the box, all said, because all three are true of
+		// what is on screen right now: enter opens a conversation for it,
+		// ctrl+enter asks it here (homeexchange.go), and ↑ walks into what it
+		// found.
 		//
 		// THE ARROW IS ↑ BECAUSE THE MATCHES ARE ABOVE. The action row is the last
 		// line of the list, against the box ([homeAction]), so walking into the
 		// results is walking up the screen — and a hint naming the other arrow
-		// would be this line lying about the next keystroke.
-		return "enter starts a new conversation and sends this · ↑ pick a match · esc clear"
+		// would be this line lying about the next keystroke. It names the arrow
+		// and not a count, because the row it passes through on the way is the
+		// one named two clauses earlier.
+		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
