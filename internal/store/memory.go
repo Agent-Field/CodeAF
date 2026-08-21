@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -247,7 +246,7 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 		payload.ID = NewMemoryID()
 	}
 	payload.SourceSession = strings.TrimSpace(sourceSession)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
@@ -296,7 +295,7 @@ func (s *Store) UpdateMemoryFromSession(id, title, text string, tags []string, s
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
@@ -333,7 +332,7 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	if fresh.ID == oldID {
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q cannot supersede itself", ErrInvalid, oldID)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
@@ -380,7 +379,7 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 	if id == "" {
 		return fmt.Errorf("forget memory: %w: id is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
@@ -407,7 +406,7 @@ func (s *Store) RestoreMemory(id string) error {
 	if id == "" {
 		return fmt.Errorf("restore memory: %w: id is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
@@ -567,7 +566,7 @@ func (s *Store) BumpMemoryUse(ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("bump memory use: %w", err)
 	}

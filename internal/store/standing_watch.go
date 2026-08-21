@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -91,7 +90,7 @@ func (s *Store) OfferStandingWatch(sessionID, charterID string) (bool, error) {
 	if sessionID == "" || charterID == "" {
 		return false, fmt.Errorf("offer standing watch: %w: session and charter are required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, fmt.Errorf("offer standing watch: %w", err)
 	}
@@ -198,7 +197,7 @@ func (s *Store) RecordStandingWatchDecision(decision StandingWatchDecision, reas
 	if reason == "" {
 		return fmt.Errorf("record standing watch decision: %w: reason is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record standing watch decision: %w", err)
 	}
@@ -261,7 +260,7 @@ func (s *Store) OfferStandingWatchStandDown(sessionID string) (bool, error) {
 	if sessionID == "" {
 		return false, fmt.Errorf("offer standing watch stand-down: %w: session is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, fmt.Errorf("offer standing watch stand-down: %w", err)
 	}
@@ -355,7 +354,7 @@ func (s *Store) RecordStandingWatchPass(pass StandingWatchPass) error {
 	if !validStandingWatchPass(pass) {
 		return fmt.Errorf("record standing watch pass: %w: negative count", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record standing watch pass: %w", err)
 	}

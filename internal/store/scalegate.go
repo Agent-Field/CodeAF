@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -83,7 +82,7 @@ func (s *Store) RecordScaleGate(prefix string, gate ScaleGate) error {
 	if strings.TrimSpace(gate.Route) == "" {
 		return fmt.Errorf("record scale gate: %w: route is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record scale gate: %w", err)
 	}

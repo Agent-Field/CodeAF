@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -66,7 +65,7 @@ func (s *Store) RequestNodeCancel(id, reason string) error {
 	if reason == "" {
 		reason = "cancelled by user"
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("request node cancel: %w", err)
 	}
@@ -103,7 +102,7 @@ func (s *Store) RequestNodeCancel(id, reason string) error {
 // observe the flag at their next executor boundary and Release back to pending.
 func (s *Store) SetNodeHold(id string, held bool, reason string) error {
 	reason = strings.TrimSpace(reason)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("set node hold: %w", err)
 	}
@@ -142,7 +141,7 @@ func (s *Store) SetNodeHold(id string, held bool, reason string) error {
 
 // SetNodePriority changes claim order without altering dependencies.
 func (s *Store) SetNodePriority(id string, priority int, reason string) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("set node priority: %w", err)
 	}
@@ -204,7 +203,7 @@ func (s *Store) AttachAmendment(id, sessionID, instruction string) (bool, error)
 	if instruction == "" {
 		return false, fmt.Errorf("attach amendment: %w: empty instruction", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, fmt.Errorf("attach amendment: %w", err)
 	}

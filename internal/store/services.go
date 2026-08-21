@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -176,7 +175,7 @@ func (s *Store) PromoteService(service Service) (Service, error) {
 		return Service{}, fmt.Errorf("promote service: %w: negative restart count", ErrInvalid)
 	}
 	payload := servicePromotedPayload{Service: service}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Service{}, fmt.Errorf("promote service: %w", err)
 	}
@@ -294,7 +293,7 @@ func (s *Store) transitionService(id string, kind EventKind, payload any, apply 
 	if id == "" {
 		return fmt.Errorf("service transition: %w: empty id", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}

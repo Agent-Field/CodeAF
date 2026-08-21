@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -58,7 +57,7 @@ func (s *Store) RecordJobGrowth(jobRoot string, growth JobGrowth) error {
 	if strings.TrimSpace(growth.Reason) == "" {
 		return fmt.Errorf("record job growth: %w: reason is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record job growth: %w", err)
 	}
