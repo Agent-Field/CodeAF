@@ -489,6 +489,9 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
 		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
+		// Same as the wide frame: at rest there is nothing to type into, so the
+		// caret is hidden rather than blinking over the heading.
+		a.caret = false
 	} else {
 		text := a.home.box.String()
 		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)

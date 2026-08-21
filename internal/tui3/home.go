@@ -2854,6 +2854,11 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		}
 	} else if a.home.box.empty() {
 		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
+		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
+		// than left at the frame's origin blinking over the "home" heading. The
+		// moment a character lands the box stops being empty and the caret
+		// returns, in the box, on the next frame.
+		a.caret = false
 	} else {
 		text := a.home.box.String()
 		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
