@@ -2147,7 +2147,7 @@ func (a *app) legendRight(width int) string {
 //
 //	the pointer is theirs drag to select · any key ends it
 //	the door is armed     ctrl+c again to quit · a task will stop  (quitarm.go)
-//	the picker is open    enter switch · esc
+//	the picker is open    enter switch · esc · crew max
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
 //	rewind is armed       esc again to rewind        (rewind.go's double esc)
@@ -2204,6 +2204,19 @@ func (a *app) hintWord() string {
 		// (quitarm.go's [app.quitHint]), and nothing at all when nothing is.
 		return a.quitHint()
 	case a.pick.open:
+		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
+		// person lands when the crew they just set did not change anything they
+		// can see. The status line's model readout is the conversation's model,
+		// which /crew never touches by design — so somebody who typed `/crew max`
+		// opens /model hunting for the change, and the one word this slot can
+		// afford tells them the crew is a separate thing that is already set.
+		// The picker's rows are the list itself and are reused whole inside the
+		// settings panel ([picker.rowsOwned]), so it has no header or foot of its
+		// own to spend on a sentence; this slot is the line that is already there.
+		// It says nothing on a door with no profile ([app.crewHint]).
+		if crew := a.crewHint(); crew != "" {
+			return "enter switch · esc · " + crew
+		}
 		return "enter switch · esc"
 	case a.crewPick.open:
 		return "↑↓ · enter apply · esc"
