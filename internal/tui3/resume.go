@@ -391,7 +391,7 @@ func ago(at time.Time) string {
 // number of file scans (internal/session's Recent), which is the same order of
 // work the file completion does on every "@".
 func (a *app) openResume() {
-	if a.resume == nil {
+	if !a.canOpen() {
 		a.note(resumeUnavailableWord)
 		return
 	}

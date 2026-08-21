@@ -76,8 +76,15 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
 
-	launch, err := openV3Launch(v3Options{
-		Door:      "engine",
+	// ONE PROCESS, ONE WORKSPACE, ONE CONVERSATION — which is what makes the
+	// engine the simplest reader of the split. It builds the process resources
+	// and immediately spends them on the single launch it will ever make, and
+	// the chdir above is still the only chdir in the tree (chatv3_process.go).
+	proc, err := openV3Process("engine")
+	if err != nil {
+		return nil, err
+	}
+	launch, err := openV3Launch(proc, v3Options{
 		Workspace: workspace,
 		Session:   firstEngineWord(hello.Session, sessionFlag),
 	})
