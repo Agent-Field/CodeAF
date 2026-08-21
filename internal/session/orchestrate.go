@@ -341,16 +341,33 @@ func (a *Agent) SteerOrchestrate(id, text string) error {
 // gate — has no hub to arrive on. A surface that draws runs subscribes once at
 // startup; a surface that does not never calls this and pays nothing.
 func (a *Agent) Orchestrations() <-chan Event {
+	lane, _ := a.WatchOrchestrations()
+	return lane
+}
+
+// WatchOrchestrations is [Agent.Orchestrations] with a way to stop, for
+// [Agent.WatchTaskUpdates]' reason and on its terms: same subscription, stop
+// takes the watcher off the list and ends its pump, never nil, and calling it
+// twice is calling it once.
+func (a *Agent) WatchOrchestrations() (<-chan Event, func()) {
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		stream.close()
-		return stream.out
+		return stream.out, func() {}
 	}
 	a.orchestrateWatchers = append(a.orchestrateWatchers, stream)
 	a.mu.Unlock()
-	return stream.out
+	var once sync.Once
+	return stream.out, func() {
+		once.Do(func() {
+			a.mu.Lock()
+			a.orchestrateWatchers = dropWatcher(a.orchestrateWatchers, stream)
+			a.mu.Unlock()
+			stream.leave()
+		})
+	}
 }
 
 // emitOrchestrate puts one run event in front of whoever is watching. It is

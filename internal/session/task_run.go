@@ -1759,16 +1759,57 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
 func (a *Agent) TaskUpdates() <-chan Event {
+	lane, _ := a.WatchTaskUpdates()
+	return lane
+}
+
+// WatchTaskUpdates is [Agent.TaskUpdates] with a way to stop.
+//
+// It is the same standing subscription; stop takes the watcher off the
+// session's list and ends its pump. A surface that keeps several conversations
+// alive and shows one at a time needs it: without a way off the list, detaching
+// leaves a queue the session keeps filling and a goroutine parked on a channel
+// nobody will read again (agent.go's [eventStream.leave]).
+//
+// It is a SECOND DOOR rather than a changed one because [Agent.TaskUpdates]'
+// shape is the one internal/tui3 declares in its own interface.
+//
+// stop is never nil and calling it twice is calling it once.
+func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		stream.close()
-		return stream.out
+		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
 	a.mu.Unlock()
-	return stream.out
+	var once sync.Once
+	return stream.out, func() {
+		once.Do(func() {
+			a.mu.Lock()
+			a.taskWatchers = dropWatcher(a.taskWatchers, stream)
+			a.mu.Unlock()
+			stream.leave()
+		})
+	}
+}
+
+// dropWatcher takes one stream off a standing lane's list and answers with what
+// is left. It is written once and shared by all three of them — task updates,
+// adaptive runs, harness designs — because a second spelling of "find it and cut
+// it out" is a second place the loop can be wrong about a lane nobody is on.
+//
+// A stream the list does not hold comes back unchanged, which is the ordinary
+// case for a caller that stopped twice.
+func dropWatcher(watchers []*eventStream, stream *eventStream) []*eventStream {
+	for at, held := range watchers {
+		if held == stream {
+			return append(watchers[:at], watchers[at+1:]...)
+		}
+	}
+	return watchers
 }
 
 // ── running one node ────────────────────────────────────────────────────────

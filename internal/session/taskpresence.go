@@ -493,34 +493,126 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		UpdatedAt: now,
 		State:     PresenceIdle,
 	}
-	// EVERY LANE A PERSON CAN BE ASKED ON COUNTS, not only the approval gate:
-	// a session stopped on a connect question, a sub-harness offer or a task
-	// proposal is just as stuck, and a surface that only knew about consent
-	// would leave those windows looking idle while they waited (consent.go,
-	// connect.go, harness.go, task.go each hold one of these).
-	waiting := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 || len(a.taskAnswers) > 0
+	running := a.running
+	a.mu.Unlock()
+
+	// THE PREDICATE IS NOT SPELLED HERE. It is [Agent.waitingOnPerson], which is
+	// also what [Agent.NeedsPerson] answers from, so what this file writes and
+	// what a surface asks the agent directly can never come to different answers
+	// about the same instant.
+	ask := a.waitingOnPerson()
 	switch {
-	case waiting:
+	case ask.waiting:
 		// WAITING OUTRANKS WORKING. A turn blocked on a question still has
 		// a.running set, and the thing worth saying about it is the question.
 		snapshot.State = PresenceWaiting
-	case a.running:
+		snapshot.Reason = ask.reason
+	case running:
 		snapshot.State = PresenceWorking
-	}
-	a.mu.Unlock()
-
-	if snapshot.State == PresenceWaiting {
-		snapshot.Reason = a.presenceReason()
 	}
 	snapshot.RunningTasks = a.presenceTasks()
 	return snapshot
 }
 
-// presenceReason is the oldest outstanding question's one line, or "" when the
-// lane that raised it had no words to offer. Empty is an honest answer and the
-// only alternative — inventing a sentence about a question this file cannot see
-// — would put words on a surface that nothing in the session ever said.
-func (a *Agent) presenceReason() string {
+// personAsk is what the one predicate answers with: whether this session is
+// stopped on somebody, and the line to show for it.
+//
+// The two travel together because they are decided together. "Is it waiting"
+// and "what for" are read off the same lanes in the same pass, and returning
+// only the bool would make every caller that wants the sentence go and ask a
+// second time — at a second instant, of a lane that may by then have been
+// answered.
+type personAsk struct {
+	waiting bool
+	// reason is one line, or "" when the lane that raised the question had no
+	// words to offer. EMPTY IS AN HONEST ANSWER and the only alternative —
+	// inventing a sentence about a question this file cannot see — would put
+	// words on a surface that nothing in the session ever said.
+	reason string
+}
+
+// waitingOnPerson is THE ONE PREDICATE for "this session can go no further
+// without somebody". Everything that draws `waiting on you` reads it: the
+// presence file another window believes ([Agent.presenceSnapshot]) and this
+// process's own surface ([Agent.NeedsPerson]).
+//
+// It is one function because it is one question. Two spellings of it would be
+// two answers, and the way that goes wrong is not a disagreement anybody sees
+// at once — it is a window somewhere saying `working` about a session that has
+// been stopped on a question for ten minutes.
+//
+// EVERY LANE A PERSON CAN BE ASKED ON COUNTS, not only the approval gate: a
+// session stopped on a connect question, a sub-harness offer or a task proposal
+// is just as stuck, and a surface that only knew about consent would leave those
+// windows looking idle while they waited (consent.go, connect.go, harness.go,
+// task.go each hold one of these).
+//
+// AND SO DOES AN ADAPTIVE RUN AT ITS FUEL GATE, which for a long time this did
+// not count. A run that has spent its tank stops launching and waits for
+// [Agent.ResolveOrchestrate] — that is a person's decision and nothing happens
+// until they make it — so a session holding one is stopped in every sense this
+// state means, and reading it as `working` was a window telling somebody there
+// was nothing to do (orchestrate.go's OnPause).
+//
+// THE TWO HALVES ARE READ UNDER TWO LOCKS AND NEVER AT THE SAME TIME. The
+// question lanes are the agent's own, under a.mu; a run's pause is the
+// orchestrator's, under its. That is this file's standing rule about anything
+// with a lock of its own (see [Agent.presenceSnapshot]) — holding a.mu across
+// another lock is holding the lock Interrupt has to be able to take.
+func (a *Agent) waitingOnPerson() personAsk {
+	a.mu.Lock()
+	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 || len(a.taskAnswers) > 0
+	runs := make([]*orchestration, 0, len(a.orchestrations))
+	for _, live := range a.orchestrations {
+		runs = append(runs, live)
+	}
+	a.mu.Unlock()
+
+	if asked {
+		return personAsk{waiting: true, reason: a.oldestAsk()}
+	}
+	for _, live := range runs {
+		if snap := live.run.Snapshot(); snap.Paused {
+			// THE RUN'S OWN WORDS, which are the gate's own words: the run page
+			// heads this question `out of fuel` and follows it with the gauge
+			// (internal/tui3's orchGateLead), so a person who reads it on home
+			// and a person who reads it on the page read the same sentence.
+			return personAsk{waiting: true, reason: fuelGateLine + " · " + snap.Fuel.Gauge()}
+		}
+	}
+	return personAsk{}
+}
+
+// fuelGateLine opens the sentence a session says when an adaptive run has spent
+// its tank. It is the run page's own lead, repeated here because internal/session
+// cannot import a surface — and it is a constant rather than a literal so the day
+// the wording changes there is one place here to change with it.
+const fuelGateLine = "out of fuel"
+
+// NeedsPerson reports whether this conversation is stopped on a question only a
+// person can answer — an approval, a connect offer, a sub-harness offer, a task
+// proposal, or an adaptive run waiting at its fuel gate.
+//
+// IT IS THE PRESENCE FILE'S OWN TEST, ASKED DIRECTLY. A surface in this process
+// must never answer it by reading its own presence file back: that file is
+// written on a five-second heartbeat and believed for fifteen
+// ([presenceHeartbeat]), so a count built on it would lag a question the person
+// is looking at, and would be this process reading its own writes off a disk.
+func (a *Agent) NeedsPerson() bool { return a.waitingOnPerson().waiting }
+
+// WaitingOn is the one line about WHY, and it is exactly what the presence file
+// writes into [SessionPresence.Reason] — the same call, at the same instant, so
+// a row drawn from a live agent and a row drawn from its file say the same
+// thing.
+//
+// It is "" both when nothing is being asked and when the lane that raised the
+// question had no words for it, and a surface must draw nothing at all in
+// either case rather than a placeholder (the emptiness law).
+func (a *Agent) WaitingOn() string { return a.waitingOnPerson().reason }
+
+// oldestAsk is the oldest outstanding question's one line, or "" when the lane
+// that raised it had no words to offer.
+func (a *Agent) oldestAsk() string {
 	desk := a.presence
 	if desk == nil {
 		return ""

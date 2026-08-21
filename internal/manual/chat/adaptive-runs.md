@@ -70,6 +70,13 @@ what is already done`, `stopped; what finished is kept`.
 A run is also bounded in time: **4 hours** covers every node, every planner call, and the
 wait at the gate.
 
+**And the whole session says so, to every other window.** While a run sits at its gate the
+conversation reads `waiting on you` — on home, and on every other aforge open on the
+machine — with `out of fuel · $2.00 of $2.00` beside it, the same line the run's own page
+shows. It is the same word an approval question or a task proposal puts there, and it
+sorts to the top of its project for the same reason: nothing is going to happen until you
+answer. Answer the gate and the word goes away.
+
 **The question waits for you, and leaving the page does not lose it.** `esc` out and back
 in — or open the run again hours later — and a run still sitting on its cap asks again, with
 the same three answers, because the pause is a fact about the run rather than a notice that

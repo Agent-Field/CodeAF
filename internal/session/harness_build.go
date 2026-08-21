@@ -237,16 +237,33 @@ func (a *Agent) emitHarness(event Event) {
 // The channel is never closed by a turn ending, and a surface holds it for the
 // life of the session.
 func (a *Agent) HarnessDesigns() <-chan Event {
+	lane, _ := a.WatchHarnessDesigns()
+	return lane
+}
+
+// WatchHarnessDesigns is [Agent.HarnessDesigns] with a way to stop, for
+// [Agent.WatchTaskUpdates]' reason and on its terms: same subscription, stop
+// takes the watcher off the list and ends its pump, never nil, and calling it
+// twice is calling it once.
+func (a *Agent) WatchHarnessDesigns() (<-chan Event, func()) {
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		stream.close()
-		return stream.out
+		return stream.out, func() {}
 	}
 	a.harnessWatchers = append(a.harnessWatchers, stream)
 	a.mu.Unlock()
-	return stream.out
+	var once sync.Once
+	return stream.out, func() {
+		once.Do(func() {
+			a.mu.Lock()
+			a.harnessWatchers = dropWatcher(a.harnessWatchers, stream)
+			a.mu.Unlock()
+			stream.leave()
+		})
+	}
 }
 
 // ── the card ────────────────────────────────────────────────────────────────
