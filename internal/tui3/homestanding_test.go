@@ -1,0 +1,488 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+)
+
+// ── THE AMBIENT BAND ON HOME ────────────────────────────────────────────────
+
+// standBand wires a lab's app to a fixed set of items, and records what the
+// store was asked to write. It is a FUNCTION seam and not a store on disk
+// ([StandingSeam] says why): "home with four watches on it" must not be a test
+// that writes JSON documents to assert a row's spacing.
+type standBand struct {
+	items   []standing.Item
+	running map[string]bool
+	saved   []standing.Item
+	err     error
+}
+
+func (b *standBand) wire(a *app) {
+	a.stands = StandingSeam{
+		Items: func(workspace string) []standing.Item {
+			var out []standing.Item
+			for _, item := range b.items {
+				if item.Workspace == workspace {
+					out = append(out, item)
+				}
+			}
+			return out
+		},
+		Save: func(item standing.Item) error {
+			if b.err != nil {
+				return b.err
+			}
+			b.saved = append(b.saved, item)
+			for i := range b.items {
+				if b.items[i].ID == item.ID {
+					b.items[i] = item
+				}
+			}
+			return nil
+		},
+		Running: func(id string) bool { return b.running[id] },
+	}
+}
+
+// bandItem is one item in a workspace, with only the fields a row reads.
+func bandItem(id, words, workspace string, kind standing.WhenKind, when string) standing.Item {
+	return standing.Item{
+		ID: id, Words: words, Workspace: workspace,
+		When:   standing.When{Kind: kind, Words: when},
+		Does:   standing.Action{Kind: standing.ActionSay, Say: words},
+		Rails:  standing.Rails{PerRunUSD: 0.05, MaxPerDay: 4},
+		Status: standing.StatusActive,
+	}
+}
+
+// homeLines is home's left column as a reader sees it.
+func homeLines(a *app) []string {
+	frame, _, _, _ := a.homeFrame(a.width, a.height)
+	out := make([]string, 0, len(frame))
+	for _, line := range frame {
+		out = append(out, plain(line))
+	}
+	return out
+}
+
+// homeRowAt is the index of the first drawn row containing a string.
+func homeRowAt(lines []string, want string) int {
+	for i, line := range lines {
+		if strings.Contains(line, want) {
+			return i
+		}
+	}
+	return -1
+}
+
+// AN ITEM IS ITS OWN ROW, UNDER ITS PROJECT, AND THE ORDER IS TRIAGE. What needs
+// somebody and what is running sit with the conversations that do; what is
+// waiting for its time sits under them; and past three the rest is one door.
+func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
+	lab := newHomeLab(t)
+	spoke := time.Now().Add(-time.Hour)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", spoke)
+
+	band := &standBand{running: map[string]bool{"run": true}}
+	band.items = []standing.Item{
+		bandItem("wait1", "tell me when the cert expires", "/w/alpha", standing.WhenProbe, "when the cert is under 14 days"),
+		bandItem("wait2", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
+		bandItem("wait3", "remind me on Sundays", "/w/alpha", standing.WhenEvery, "Sundays"),
+		bandItem("wait4", "remind me on Tuesdays", "/w/alpha", standing.WhenEvery, "Tuesdays"),
+		bandItem("run", "check the deploy", "/w/alpha", standing.WhenEvery, "in 20 minutes"),
+		bandItem("ask", "keep main green", "/w/alpha", standing.WhenProbe, "when CI goes red"),
+	}
+	for i := range band.items {
+		if band.items[i].ID == "ask" {
+			band.items[i].NeedsPerson = "the fix touches migrations"
+		}
+	}
+
+	a := lab.app(transcript)
+	band.wire(a)
+	a.openHome()
+
+	lines := homeLines(a)
+	joined := strings.Join(lines, "\n")
+
+	ask := homeRowAt(lines, "keep main green")
+	run := homeRowAt(lines, "check the deploy")
+	chat := homeRowAt(lines, homeIdleGlyph+" Pricing Research")
+	wait := homeRowAt(lines, "tell me when")
+	fold := homeRowAt(lines, homeItemsFoldWord)
+	for name, at := range map[string]int{"needs-you": ask, "running": run, "session": chat, "waiting": wait, "fold": fold} {
+		if at < 0 {
+			t.Fatalf("home never drew the %s row:\n%s", name, joined)
+		}
+	}
+	if !(ask < run && run < chat && chat < wait && wait < fold) {
+		t.Fatalf("the band is not in triage order (ask %d, run %d, chat %d, wait %d, fold %d):\n%s",
+			ask, run, chat, wait, fold, joined)
+	}
+	// SIX ITEMS AND THREE ROWS: the cap is on the BAND and not on the cold half,
+	// so two hot rows and one waiting one are drawn and the other three are
+	// behind the door.
+	if !strings.Contains(joined, "…3"+homeItemsFoldWord) {
+		t.Fatalf("the fold does not count what it is hiding:\n%s", joined)
+	}
+	// THE GLYPHS AGREE WITH THE POSITIONS. A row sorted to the top under a mark
+	// that says "at rest" is the screen arguing with itself.
+	if !strings.Contains(lines[ask], homeAskGlyph) || !strings.Contains(lines[run], homeLiveGlyph) {
+		t.Fatalf("the hot rows do not wear their marks:\n%s", joined)
+	}
+	if !strings.Contains(lines[wait], standWaitGlyph) {
+		t.Fatalf("a waiting row does not wear %q:\n%s", standWaitGlyph, joined)
+	}
+	// AND THE DOOR OPENS. enter on the fold line shows the rest.
+	a.home.pointItemFoldForTest()
+	drive(t, a, key("enter"))
+	if !strings.Contains(strings.Join(homeLines(a), "\n"), "remind me on Tuesdays") {
+		t.Fatalf("opening the band did not show what it was hiding:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+}
+
+// pointItemFoldForTest puts the cursor on the band's door. It is a test seam
+// because the cursor is otherwise walked there with arrows, and a test that
+// counted keystrokes would break the day a row was added above it.
+func (h *homeView) pointItemFoldForTest() {
+	for at, line := range h.lines {
+		if line.kind == homeItemFold {
+			h.cursor, h.picked = at, true
+			return
+		}
+	}
+}
+
+// THE ROLLUP SAYS ONLY WHAT IS TRUE. A watch that has looked says what it found
+// — and "nothing" is a finding, the difference between a watch that works and
+// one that never ran. An item that has never fired says nothing about firing.
+func TestAStandingRowSaysOnlyWhatItKnows(t *testing.T) {
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	probe := bandItem("p", "tell me when CI goes red", "/w", standing.WhenProbe, "when CI goes red")
+	probe.LastChecked = now.Add(-6 * time.Minute)
+	if got := standRollup(StandingItemView{Item: probe}, now); got != "checked 6m ago · nothing" {
+		t.Fatalf("a quiet check reads %q", got)
+	}
+	probe.LastCheckLine = "the last run on main is green"
+	if got := standRollup(StandingItemView{Item: probe}, now); got != "checked 6m ago · the last run on main is green" {
+		t.Fatalf("a check that found something reads %q", got)
+	}
+
+	routine := bandItem("r", "post the standup note", "/w", standing.WhenEvery, "Mondays 9am")
+	if got := standRollup(StandingItemView{Item: routine}, now); got != "Mondays 9am" {
+		t.Fatalf("an item that never fired reads %q", got)
+	}
+	routine.LastFired = now.Add(-3 * 24 * time.Hour)
+	if got := standRollup(StandingItemView{Item: routine}, now); got != "Mondays 9am · last Mon" {
+		t.Fatalf("a fired routine reads %q", got)
+	}
+
+	stuck := bandItem("n", "keep main green", "/w", standing.WhenProbe, "when CI goes red")
+	stuck.NeedsPerson = "the fix touches migrations"
+	if got := standRollup(StandingItemView{Item: stuck}, now); got != "needs your look · the fix touches migrations" {
+		t.Fatalf("a stopped item reads %q", got)
+	}
+}
+
+// THE CARD OBEYS THE EMPTINESS LAW. An item made ten seconds ago is a title, a
+// place, a cadence and the keys — no `0 runs`, no `$0.00`, no line about a check
+// that never happened.
+func TestTheItemCardDrawsNothingItDoesNotKnow(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	fresh := bandItem("f", "remind me at 6 to leave", "/w/alpha", standing.WhenAt, "at 6 today")
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+
+	card := strings.Join(plainAll(StandingItemCard(a, StandingItemView{Item: fresh},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	for _, want := range []string{"remind me at 6 to leave", "alpha · /w/alpha", "at 6 today", homeItemActions} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card is missing %q:\n%s", want, card)
+		}
+	}
+	for _, absent := range []string{"$0.00", "0 run", "checked", "last went off"} {
+		if strings.Contains(card, absent) {
+			t.Fatalf("the card of a brand new item drew %q:\n%s", absent, card)
+		}
+	}
+
+	// AND IT DRAWS THE ARITHMETIC THE MOMENT THERE IS ANY.
+	worked := fresh
+	worked.Runs, worked.SpentUSD = 4, 0.08
+	worked.LastFired = now.Add(-2 * time.Hour)
+	worked.LastOutcome = "said it"
+	card = strings.Join(plainAll(StandingItemCard(a, StandingItemView{Item: worked},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	if !strings.Contains(card, "4 runs · spent $0.08") {
+		t.Fatalf("the card does not draw what it knows:\n%s", card)
+	}
+}
+
+// p AND s GO THROUGH THE STORE, and the row afterwards is what the store says
+// rather than what the keystroke hoped for.
+func TestPauseAndStopReachTheStore(t *testing.T) {
+	lab := newHomeLab(t)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
+	band := &standBand{items: []standing.Item{
+		bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
+	}}
+	a := lab.app(transcript)
+	band.wire(a)
+	a.openHome()
+	a.home.pointItemForTest("one")
+
+	drive(t, a, key("p"))
+	if len(band.saved) != 1 || band.saved[0].Status != standing.StatusPaused {
+		t.Fatalf("p did not pause through the store: %+v", band.saved)
+	}
+	if !strings.Contains(strings.Join(homeLines(a), "\n"), homeItemPaused) {
+		t.Fatalf("the paused row does not say so:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+
+	a.home.pointItemForTest("one")
+	drive(t, a, key("s"))
+	if len(band.saved) != 2 || band.saved[1].Status != standing.StatusRetired {
+		t.Fatalf("s did not stop through the store: %+v", band.saved)
+	}
+	if band.saved[1].RetiredWhy != homeStoppedWhy {
+		t.Fatalf("a stopped item recorded %q, want %q", band.saved[1].RetiredWhy, homeStoppedWhy)
+	}
+
+	// A SURFACE WITH NO WAY TO WRITE SAYS SO rather than pretending.
+	b := lab.app(transcript)
+	b.stands = StandingSeam{Items: func(string) []standing.Item {
+		return []standing.Item{bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays")}
+	}}
+	b.openHome()
+	b.home.pointItemForTest("one")
+	drive(t, b, key("p"))
+	if b.home.msg != homeItemNoStore {
+		t.Fatalf("a read-only home said %q, want %q", b.home.msg, homeItemNoStore)
+	}
+}
+
+// pointItemForTest puts the cursor on one item's row, by id.
+func (h *homeView) pointItemForTest(id string) {
+	h.pointItem(id)
+	h.picked = true
+}
+
+// THE SEGMENT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
+// while one of them is actually firing.
+func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width = 200
+	// THE READING IS CACHED ON HOME'S OWN BEAT ([app.keepingCount]), so the
+	// clock is pinned and walked past that beat between the states below —
+	// which is the honest way to test a cache and the only way to test one
+	// without sleeping.
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	stale := func() { now = now.Add(keepEvery + time.Second) }
+
+	if strings.Contains(plain(a.status(200)), "keeping an eye") {
+		t.Fatalf("a surface with the ambient side off grew a segment:\n%s", plain(a.status(200)))
+	}
+
+	band := &standBand{items: []standing.Item{
+		bandItem("one", "remind me on Fridays", "/tmp/lab", standing.WhenEvery, "Fridays"),
+		bandItem("two", "tell me when CI goes red", "/tmp/lab", standing.WhenProbe, "when CI goes red"),
+	}}
+	band.wire(a)
+	stale()
+	want := standWaitGlyph + homeKeepingWord + "2"
+	if !strings.Contains(plain(a.status(200)), want) {
+		t.Fatalf("the status row is missing %q:\n%s", want, plain(a.status(200)))
+	}
+
+	// AT REST THE GLYPH IS STILL. It breathes only while a firing is in flight.
+	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
+		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
+	}
+	band.running = map[string]bool{"two": true}
+	stale()
+	if a.keepingWord() == want {
+		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
+	}
+	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"2") {
+		t.Fatalf("the breathing segment lost its count: %q", a.keepingWord())
+	}
+
+	// A PAUSED ITEM IS NOT KEEPING AN EYE ON ANYTHING.
+	band.items[0].Status = standing.StatusPaused
+	band.items[1].Status = standing.StatusPaused
+	stale()
+	if strings.Contains(plain(a.status(200)), "keeping an eye") {
+		t.Fatalf("a band of paused items still claims to be watching:\n%s", plain(a.status(200)))
+	}
+}
+
+// /status SAYS WHETHER ANYTHING IS LOOKED AT WITH NO WINDOW OPEN, and says
+// nothing at all when it cannot know.
+func TestStatusPrintsKeepingWatchOnlyWhenTheSeamAnswers(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	if strings.Contains(a.statusText(), homeWatchLabel) {
+		t.Fatalf("a surface with no watch seam printed a line:\n%s", a.statusText())
+	}
+
+	a.stands.Watch = func() (standing.WatchStatus, bool) { return standing.WatchStatus{}, false }
+	if strings.Contains(a.statusText(), homeWatchLabel) {
+		t.Fatalf("a seam with no answer printed a line:\n%s", a.statusText())
+	}
+
+	a.stands.Watch = func() (standing.WatchStatus, bool) {
+		return standing.WatchStatus{Installed: true, LastWake: time.Now().Add(-4 * time.Minute)}, true
+	}
+	text := a.statusText()
+	if !strings.Contains(text, homeWatchLabel) || !strings.Contains(text, homeWatchInstalled) ||
+		!strings.Contains(text, homeWatchLastWord+"4m") {
+		t.Fatalf("/status does not carry the derived line:\n%s", text)
+	}
+
+	a.stands.Watch = func() (standing.WatchStatus, bool) { return standing.WatchStatus{}, true }
+	text = a.statusText()
+	if !strings.Contains(text, homeWatchWindow) {
+		t.Fatalf("an uninstalled timer does not say what still checks:\n%s", text)
+	}
+	if strings.Contains(text, homeWatchLastWord) {
+		t.Fatalf("a machine that has never woken claimed a last check:\n%s", text)
+	}
+}
+
+// A NARROW FRAME DROPS THE CARD AND KEEPS THE INDEX, which is home's own law
+// applied to the other kind of row: an index somebody can read beats a preview
+// nobody can.
+func TestANarrowHomeDropsTheItemCard(t *testing.T) {
+	lab := newHomeLab(t)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
+	band := &standBand{items: []standing.Item{
+		bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
+	}}
+	a := lab.app(transcript)
+	band.wire(a)
+	a.openHome()
+	a.home.pointItemForTest("one")
+
+	// The card's second band is `project · path`, and it is the one string on
+	// the frame that only the card draws — the hint line at the foot names the
+	// same keys the card's last band does, so a test that looked for those would
+	// be finding the hint.
+	const place = "alpha · /w/alpha"
+
+	a.width, a.height = 70, 24
+	narrow := strings.Join(homeLines(a), "\n")
+	if !strings.Contains(narrow, "remind me on Fridays") {
+		t.Fatalf("the narrow frame lost the row itself:\n%s", narrow)
+	}
+	if strings.Contains(narrow, place) {
+		t.Fatalf("the narrow frame kept the card:\n%s", narrow)
+	}
+
+	a.width = 100
+	wide := strings.Join(homeLines(a), "\n")
+	if !strings.Contains(wide, place) || !strings.Contains(wide, homeItemActions) {
+		t.Fatalf("the wide frame lost the card:\n%s", wide)
+	}
+}
+
+// ENTER ON AN ITEM IS ITS PROVENANCE, and an item that never became a
+// conversation says so rather than offering a door onto nothing.
+func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
+	lab := newHomeLab(t)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
+	item := bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays")
+	item.Origin.Exchange = "exchange"
+	band := &standBand{items: []standing.Item{item}}
+	a := lab.app(transcript)
+	band.wire(a)
+	a.openHome()
+	a.home.pointItemForTest("one")
+	drive(t, a, key("enter"))
+	if a.home.msg != homeItemNoDoor {
+		t.Fatalf("an item made at home said %q, want %q", a.home.msg, homeItemNoDoor)
+	}
+	if !a.home.open {
+		t.Fatal("home closed on a door that goes nowhere")
+	}
+}
+
+// THE ◆ IS DERIVED AND NEVER ASSERTED: it means the thing went off after the
+// last time this person spoke in the conversation that asked for it, and an item
+// with no conversation to compare against does not wear it at all.
+func TestTheNewsGlyphIsDerivedFromWhenYouLastSpoke(t *testing.T) {
+	lab := newHomeLab(t)
+	spoke := time.Now().Add(-3 * time.Hour)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", spoke)
+
+	fired := bandItem("one", "post the standup note", "/w/alpha", standing.WhenEvery, "Mondays 9am")
+	fired.Origin.Transcript = transcript
+	fired.LastFired = spoke.Add(time.Hour)
+	band := &standBand{items: []standing.Item{fired}}
+
+	a := lab.app(transcript)
+	band.wire(a)
+	a.openHome()
+	if !strings.Contains(strings.Join(homeLines(a), "\n"), standNewsGlyph) {
+		t.Fatalf("an item that fired since you last spoke is not marked:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+
+	// FIRED BEFORE you were last in the room is not news.
+	band.items[0].LastFired = spoke.Add(-time.Hour)
+	a.refreshHome()
+	if strings.Contains(strings.Join(homeLines(a), "\n"), standNewsGlyph) {
+		t.Fatalf("an old firing was drawn as news:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+
+	// AND AN ITEM WITH NO PROVENANCE ON THIS MACHINE NEVER WEARS IT. There is
+	// nothing to compare against, and a mark that meant "new" for everything
+	// unknown would be a mark that means nothing.
+	band.items[0].Origin.Transcript = ""
+	band.items[0].LastFired = time.Now()
+	a.refreshHome()
+	if strings.Contains(strings.Join(homeLines(a), "\n"), standNewsGlyph) {
+		t.Fatalf("an item with no conversation behind it was drawn as news:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+}
+
+// NEEDS-YOU AND RUNNING OUTRANK NEWS. The store's own order is kept whole:
+// turning a `▲` into a `◆` because something also fired would lose the one fact
+// on the screen that costs a keystroke to act on.
+func TestNewsNeverOverwritesTheLouderMarks(t *testing.T) {
+	item := bandItem("x", "keep main green", "/w", standing.WhenProbe, "when CI goes red")
+	item.NeedsPerson = "the fix touches migrations"
+	if got := standGlyph(item, false, true, false); got != homeAskGlyph {
+		t.Fatalf("news overwrote needs-you: %q", got)
+	}
+	quiet := bandItem("y", "check the deploy", "/w", standing.WhenEvery, "in 20 minutes")
+	if got := standGlyph(quiet, true, true, false); got != homeLiveGlyph {
+		t.Fatalf("news overwrote running: %q", got)
+	}
+	if got := standGlyph(quiet, false, true, false); got != standNewsGlyph {
+		t.Fatalf("a waiting item with news reads %q", got)
+	}
+	// AND THE ASCII TIER HAS A STAND-IN FOR EVERY ONE OF THEM.
+	for _, probe := range []struct {
+		glyph string
+		want  string
+	}{
+		{standGlyph(item, false, false, true), homeAskASCII},
+		{standGlyph(quiet, true, false, true), homeLiveASCII},
+		{standGlyph(quiet, false, true, true), standNewsASCII},
+		{standGlyph(quiet, false, false, true), standWaitASCII},
+	} {
+		if probe.glyph != probe.want {
+			t.Fatalf("the ascii tier drew %q, want %q", probe.glyph, probe.want)
+		}
+	}
+	paused := quiet
+	paused.Status = standing.StatusPaused
+	if got := standGlyph(paused, false, false, false); got != standOffGlyph {
+		t.Fatalf("a paused item reads %q", got)
+	}
+	if got := standGlyph(paused, false, false, true); got != standOffASCII {
+		t.Fatalf("a paused item in ascii reads %q", got)
+	}
+}

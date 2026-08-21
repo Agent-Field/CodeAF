@@ -631,6 +631,13 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.taskKey(msg); taken {
 		return cmd, true
 	}
+	// AND THE STANDING CARD IS THE THIRD QUESTION, read from the same hook and
+	// on the same terms: the session is blocked on it, so it outranks every
+	// overlay below, and it is not modal either — the box under it is the
+	// correction lane (standing.go).
+	if cmd, taken := a.standingKey(msg); taken {
+		return cmd, true
+	}
 	if !a.asking() {
 		return nil, false
 	}

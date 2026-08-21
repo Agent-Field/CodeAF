@@ -84,6 +84,14 @@ func (a *app) statusText() string {
 		}
 		items = append(items, item)
 	}
+	// AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It is the one
+	// fact on this list that is not a status-line segment at any width: the
+	// segment says how MANY things are standing, and this says whether they are
+	// still looked at once every terminal is closed (homestanding.go's
+	// [app.watchLine]). A seam with no answer prints no line.
+	if word, ok := a.watchLine(); ok {
+		items = append(items, deckItem{label: homeWatchLabel, value: word})
+	}
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it
