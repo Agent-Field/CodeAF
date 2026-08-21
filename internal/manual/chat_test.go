@@ -96,6 +96,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"do you know what my other windows are doing", "tasks"},
 		{"will you notice work from another terminal", "tasks"},
 		{"what else is running on this project right now", "tasks"},
+		{"what tasks are running outside this chat", "tasks"},
+		{"what is running in my other projects", "tasks"},
 
 		// The ninth wave: one terminal, several conversations. The first two are
 		// asked by somebody who read the old refusal and wants to know whether

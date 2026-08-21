@@ -35,6 +35,7 @@ package session
 // (internal/tui3's own cache says how long).
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -214,4 +215,126 @@ func (e Elsewhere) Tasks() []ElsewhereTask {
 		}
 	}
 	return out
+}
+
+// ── THE REST OF THE MACHINE ─────────────────────────────────────────────────
+//
+// Everything above this line is about ONE project, because for most of this
+// file's life a terminal was one project. It is not any more: the keeper
+// (internal/tui3) holds several conversations across several projects in one
+// process, and "what is running outside this conversation" stopped meaning
+// "what is running in this directory". The reading below is the wider answer,
+// and it is asked for by name — `tasks` with `scope: "everywhere"` — never
+// taken on an ordinary turn.
+
+// OtherProjectTask is one running node in a project that is NOT this one.
+//
+// It carries [ElsewhereTask] whole rather than restating its three fields,
+// because a row from another project is the same fact about a further-away
+// window and the emptiness law on the window's name is already written there.
+type OtherProjectTask struct {
+	ElsewhereTask
+	// Mine reports that the process reading this is the very process holding
+	// that conversation — a session the keeper has open behind this one, in
+	// another project.
+	//
+	// IT IS THE PID, AND THE PID IS NOT A LIVENESS TEST. taskpresence.go is
+	// emphatic that a presence file's pid must never decide whether a session
+	// is alive: pids are reused, and a state directory shared between two
+	// machines makes the number meaningless. This is the other question. Asked
+	// as "is this number MY number", a reused pid on another machine cannot
+	// answer yes to a process that is not running, and the worst a collision
+	// could do is call a stranger's window `open here` — while the alternative
+	// is telling somebody to go to a window they are already sitting in, which
+	// is the refusal [ReadElsewhere] exists to stop this build making.
+	// Liveness is still [SessionRow.Live]'s, decided before this is read.
+	Mine bool
+}
+
+// OtherProject is one project on this machine with live work in it: what to
+// call it, where it is, and the nodes its live conversations have out.
+type OtherProject struct {
+	// Name is world.go's own naming of a bucket ([projectName]) and Path the
+	// workspace its sessions recorded — "" when none of them said, which a
+	// surface draws as nothing rather than as a guess.
+	Name string
+	Path string
+	// Tasks are the running nodes, the newest-spoken conversation first.
+	Tasks []OtherProjectTask
+}
+
+// ReadOtherProjects is every project under a places root EXCEPT one, with what
+// each one's live conversations have out right now. A project with nothing
+// running is not in the answer at all: a heading over no rows says nothing, and
+// under the emptiness law a quiet project is quiet rather than "0 running".
+//
+// THE READING AND THE LIVENESS RULE ARE WORLD.GO'S AND ARE NOT RESTATED HERE.
+// [readWorld] is the one reader of the whole machine, [SessionRow.Live] is the
+// one judgement of whether a conversation's claim about itself is still worth
+// believing, and [projectName] is the one naming of a bucket. A second copy of
+// any of the three here would be the place the machine-wide answer and the home
+// page came to disagree about the same window.
+//
+// skip is the caller's own bucket directory, already answered for above by
+// [Elsewhere]; pid is the reading process, for [OtherProjectTask.Mine].
+func ReadOtherProjects(root, skip string, now time.Time, pid int) []OtherProject {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	skip = strings.TrimSpace(skip)
+	var out []OtherProject
+	for _, project := range readWorld(root, now).Projects {
+		if skip != "" && filepath.Clean(project.Dir) == filepath.Clean(skip) {
+			continue
+		}
+		group := OtherProject{Name: project.Name, Path: project.Path}
+		for _, row := range project.Sessions {
+			if !row.Live {
+				continue
+			}
+			for _, task := range row.Presence.RunningTasks {
+				group.Tasks = append(group.Tasks, OtherProjectTask{
+					ElsewhereTask: ElsewhereTask{
+						SessionID: row.ID,
+						Session:   row.Title,
+						Task:      task,
+					},
+					Mine: pid != 0 && row.Presence.PID == pid,
+				})
+			}
+		}
+		if len(group.Tasks) == 0 {
+			continue
+		}
+		out = append(out, group)
+	}
+	return out
+}
+
+// OtherProjects is [ReadOtherProjects] over the root this session's own folder
+// sits in, with this session's project left out.
+//
+// THE ROOT COMES OUT OF THE PLACE AND NOT OUT OF [PlacesRoot]. The session
+// folder already knows where it lives — bucket, then root, two elements up —
+// and reading the state root a second way would be a second answer to go wrong
+// the day one of them is pointed somewhere else. It is also what lets a test
+// build a machine in a temporary directory.
+//
+// It answers nil for a conversation with no folder, which has no root to look
+// in — [Agent.ElsewhereExcept]'s own answer to the same shortage.
+func (a *Agent) OtherProjects(now time.Time) []OtherProject {
+	dir := strings.TrimSpace(a.config.Place.Dir)
+	if dir == "" {
+		return nil
+	}
+	bucket := filepath.Dir(dir)
+	if bucket == "" || bucket == "." {
+		return nil
+	}
+	root := filepath.Dir(bucket)
+	if root == "" || root == "." {
+		return nil
+	}
+	return ReadOtherProjects(root, bucket, now, os.Getpid())
 }
