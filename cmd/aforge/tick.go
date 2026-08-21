@@ -55,21 +55,3 @@ func runTick(args []string) error {
 	}
 	return nil
 }
-
-// STUB (lane session replaces): func v3StandingTicker(store *standing.Store) (*standing.Ticker, error)
-//
-// The real one hands the ticker the session lane's Runner — the thing that runs
-// a probe, delivers a line into the conversation that asked, and runs a task in
-// its own headless session — along with the model-backed Sentinel and the daily
-// rail from settings. Until it exists, this build walks the items, keeps their
-// LastChecked honest and writes the wake log, and fires nothing: a capability
-// that cannot work is absent, not broken, so the sentinel simply always says no
-// and the runner is not there at all.
-func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
-	return &standing.Ticker{
-		Store: store,
-		Sentinel: func(context.Context, standing.Judgment) (bool, string, float64, error) {
-			return false, "no runner in this build", 0, nil
-		},
-	}, nil
-}
