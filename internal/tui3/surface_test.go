@@ -1018,7 +1018,7 @@ func TestTheDraftIsWrittenRestoredAndClearedOnSubmit(t *testing.T) {
 	if !a.draftPending {
 		t.Fatal("typing did not arm the debounce")
 	}
-	if cmd := a.saveDraft(); cmd != nil {
+	if cmd := a.saveDraft(""); cmd != nil {
 		cmd()
 	}
 	if got := readDraft(path); got != "half a thought" {
@@ -1050,7 +1050,7 @@ func TestNoDraftFileIsWrittenWhenTheSurfaceWasGivenNone(t *testing.T) {
 	if a.draftPending {
 		t.Fatal("a surface with no draft file armed the debounce")
 	}
-	if cmd := a.saveDraft(); cmd != nil {
+	if cmd := a.saveDraft(""); cmd != nil {
 		t.Fatal("a surface with no draft file returned a write")
 	}
 }

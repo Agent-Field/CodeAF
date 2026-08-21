@@ -218,6 +218,12 @@ type taskRoom struct {
 	// folds, exactly as [app.turn] is out in the conversation.
 	turn int
 	lane <-chan session.Event
+	// stop LEAVES that lane, and is nil for an agent that offers no way out of
+	// one. A room a person walked out of while the conversation goes on running
+	// is a subscriber that must say goodbye: nothing else can tell a reader that
+	// has gone from one that is redrawing, and a lane nobody drains parks a pump
+	// (switcher.go's [laneStops] states the whole cost).
+	stop func()
 	// gen is the generation device the two other lanes on this surface use
 	// (app.go's stream, task.go's standing subscription): a room that was closed
 	// while its channel still had events in flight must not paint into the room
@@ -415,7 +421,7 @@ func (a *app) openRoom(id uint64, title string) {
 	a.dropHover()
 	a.touch()
 
-	lane, err := doors.WatchTask(id)
+	lane, stop, err := roomLaneOf(doors, id)
 	if err != nil {
 		// An unknown id. The room still opens — the journal is worth reading —
 		// and it opens finished, because there is nothing to listen to. A call the
@@ -427,8 +433,26 @@ func (a *app) openRoom(id uint64, title string) {
 		a.roomPump = a.wake()
 		return
 	}
-	room.lane = lane
+	room.lane, room.stop = lane, stop
 	a.roomPump = tea.Batch(waitRoom(lane, room.gen), a.wake())
+}
+
+// leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
+// task_room.go). It is asserted separately from [taskRoomAgent] for that
+// interface's own reason: a scripted agent in this package's tests offers the
+// lane and has never heard of the door.
+type leavableRoomDoors interface {
+	WatchTaskRoom(id uint64) (<-chan session.Event, func(), error)
+}
+
+// roomLaneOf opens one node's lane and hands back whatever way out the agent
+// offers. A nil stop is an agent that can only be abandoned.
+func roomLaneOf(doors taskRoomAgent, id uint64) (<-chan session.Event, func(), error) {
+	if leavable, ok := doors.(leavableRoomDoors); ok {
+		return leavable.WatchTaskRoom(id)
+	}
+	lane, err := doors.WatchTask(id)
+	return lane, nil, err
 }
 
 // takeRoomPump hands the program loop whatever a door just parked, once.
@@ -447,6 +471,12 @@ func (a *app) closeRoom() {
 		return
 	}
 	a.roomGen++
+	// AND THE LANE IS GIVEN BACK. A room closes while its conversation goes on
+	// running, so there is nobody to close the channel for us the way an agent
+	// being closed would (switcher.go's [laneStops]).
+	if a.room.stop != nil {
+		a.room.stop()
+	}
 	// The clock thaws where it was frozen, at the value it would have had all
 	// along: nothing was stopped, only unreported (task.go's [app.taskNow]).
 	a.thawNode(a.room.id)

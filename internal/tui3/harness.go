@@ -234,8 +234,20 @@ func (a *app) watchDesigns() tea.Cmd {
 		return nil
 	}
 	a.designGen++
-	a.designLane = agent.HarnessDesigns()
+	if leavable, ok := agent.(leavableDesigner); ok {
+		a.designLane, a.stops.designs = leavable.WatchHarnessDesigns()
+	} else {
+		a.designLane, a.stops.designs = agent.HarnessDesigns(), nil
+	}
 	return waitDesign(a.designLane, a.designGen)
+}
+
+// leavableDesigner is the design lane WITH A WAY OUT OF IT (session's
+// harness_build.go). It is asserted separately from [designAgent] for that
+// interface's own reason, and a nil stop is an agent that can only be abandoned
+// (switcher.go's [laneStops]).
+type leavableDesigner interface {
+	WatchHarnessDesigns() (<-chan session.Event, func())
 }
 
 // waitDesign takes one event off the lane and asks for the next.
