@@ -702,6 +702,23 @@ type app struct {
 	// front, each with the function that leaves it (switcher.go).
 	stops laneStops
 
+	// behind is every conversation this process holds that is not the one on
+	// screen: the agent, still running, the bundle the door built around it, and
+	// the few surface readings that would be lost when the surface stops drawing
+	// it (keeper.go).
+	//
+	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
+	// home names a row by and what the flock is taken on.
+	behind map[string]*kept
+	// prev is those keys with the most recently in front LAST — what `tab` walks
+	// and what a close brings forward. Every close filters it, so a key in here
+	// that the keeper no longer has is stepped over rather than trusted.
+	prev []string
+	// stirs is the one lane that belongs to no conversation: a key, from the
+	// watcher of a conversation nobody is drawing, saying "look at this agent
+	// again" (keeper.go's [behindStirMsg]).
+	stirs chan string
+
 	// lastDelta is when text last arrived, and mdAt when the live reply's
 	// prefix was last promoted to markdown.
 	lastDelta time.Time
@@ -1433,7 +1450,12 @@ func (a *app) Init() tea.Cmd {
 	// ([app.railHasRecord], taskview.go), and that question is asked on the first
 	// frame. It is one small file, read off the loop, and the read marks itself
 	// done — a session that never grows a task never reads it twice.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks()}
+	// AND THE STIR LANE, which belongs to no conversation at all (keeper.go). It
+	// is opened here rather than at the first switch because the channel has to
+	// exist before a watcher can be handed it, and a pump started twice would be
+	// two readers on one lane.
+	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
+		a.loadTasks(), a.stirLane()}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -1595,6 +1617,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case draftSaveMsg:
 		return a, a.saveDraft(msg.file)
+
+	case behindStirMsg:
+		// A conversation this process holds and is not drawing has something to
+		// say about itself. The message carries no content — the surface reads
+		// the agent it already has a pointer to (keeper.go).
+		return a, a.behindStir(msg.key)
 
 	case exportedMsg:
 		a.exportDone(msg)

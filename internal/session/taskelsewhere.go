@@ -78,11 +78,19 @@ type Elsewhere struct {
 // ReadElsewhere is every live window in ONE project bucket except the caller's
 // own, with each window's name resolved once.
 //
-// exclude is the caller's own session id, on [ReadProjectPresence]'s terms: the
+// exclude is the caller's own session ids, on [ReadProjectPresence]'s terms: the
 // window a surface is being drawn in must never appear on it as somebody else.
-func ReadElsewhere(bucket string, now time.Time, exclude string) Elsewhere {
+//
+// IT IS SEVERAL IDS AND NOT ONE, because "the caller" stopped being one
+// conversation. A process can hold several sessions on one project at once — one
+// on screen and the rest open behind it — and every one of them writes the same
+// presence file every other window reads. Excluding only the one in front would
+// put this process's OWN other conversations on its own `away` rows as
+// `another window`, and tell somebody to go to a window that is two keystrokes
+// away in the terminal they are already sitting in.
+func ReadElsewhere(bucket string, now time.Time, exclude ...string) Elsewhere {
 	out := Elsewhere{Read: now}
-	rows := ReadProjectPresence(bucket, now, exclude)
+	rows := ReadProjectPresence(bucket, now, exclude...)
 	if len(rows) == 0 {
 		return out
 	}
@@ -131,7 +139,18 @@ func NewElsewhere(now time.Time, names map[string]string, rows ...SessionPresenc
 // It answers the empty reading for a session with no folder — a memory-only
 // conversation has no bucket to look in and no id to leave out, which is
 // [Agent.ProjectPresence]'s own answer to the same shortage.
-func (a *Agent) Elsewhere() Elsewhere {
+func (a *Agent) Elsewhere() Elsewhere { return a.ElsewhereExcept() }
+
+// ElsewhereExcept is the same reading with MORE OF THE CALLER LEFT OUT: this
+// session, and every other session id the caller says is its own.
+//
+// A surface holding several conversations at once passes the ids of the ones it
+// is not drawing (internal/tui3's keeper.go). They are live windows on this
+// machine and every OTHER terminal sees them as exactly that, correctly — but
+// they are not elsewhere from here, and a row telling somebody to go to a window
+// they are already inside is the same wrong refusal home used to make about
+// another project.
+func (a *Agent) ElsewhereExcept(others ...string) Elsewhere {
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		return Elsewhere{Read: time.Now()}
@@ -140,7 +159,7 @@ func (a *Agent) Elsewhere() Elsewhere {
 	if bucket == "" || bucket == "." {
 		return Elsewhere{Read: time.Now()}
 	}
-	return ReadElsewhere(bucket, time.Now(), a.config.Place.ID())
+	return ReadElsewhere(bucket, time.Now(), append([]string{a.config.Place.ID()}, others...)...)
 }
 
 // Any reports whether another window is open on this project at all. It is the

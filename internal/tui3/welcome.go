@@ -252,6 +252,16 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		// twice in two different words would read as two different faults.
 		return nil, resumeUnavailableWord
 	}
+	// IDENTITY IS ASKED BEFORE THE LOCK IS. A transcript this process already
+	// holds — on screen or open behind the screen — answers [session.InUse] TRUE
+	// about itself, because a flock rides the open file description rather than
+	// the process. Asking the door for it would meet our own lock and refuse
+	// `open in another window` about a conversation one keystroke away, so the
+	// keeper is consulted first and a hit is a switch rather than an open
+	// (keeper.go's [app.bringForward]).
+	if cmd, ours := a.bringForward(chosen.File); ours {
+		return cmd, ""
+	}
 	conv, whole, err := a.openConversation(chosen.File)
 	if err != nil {
 		if errors.Is(err, session.ErrSessionLocked) {
@@ -324,7 +334,7 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
-	if chosen.File != "" && chosen.File == a.file {
+	if chosen.File != "" && convKey(chosen.File) == convKey(a.file) {
 		// The conversation this window is already in. It is the picker's rule
 		// (resume.go), and here it is also what keeps [app.openSession]'s
 		// open-before-close safe: asking the door for our own journal would meet
