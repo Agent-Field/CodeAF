@@ -132,6 +132,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I edit a memory", "what-i-remember"},
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
+		{"why did it say superseded", "what-i-remember"},
+		{"does it know if a memory actually helped", "what-i-remember"},
 
 		// The eleventh wave: the words are no longer only carried, they can be
 		// SEARCHED. Somebody asking either of these is asking about the
