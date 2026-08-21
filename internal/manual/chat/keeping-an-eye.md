@@ -333,7 +333,10 @@ with its rails; home's card is where the counts are.
 **Yes — background checks are on out of the box, and nobody asks you first.**
 
 While any aforge window is open, one of them runs the pass every **5 minutes** —
-whichever window takes the lock first; the others do nothing and say nothing.
+whichever window takes the lock first; the others do nothing and say nothing. One
+other piece of quiet work rides that same pass: at most once every six hours, and
+only while nobody has typed anywhere for a quarter of an hour, it tidies the notes
+kept across sessions (`what I remember`).
 For "no terminal open at all", the **first thing you ever set up** installs one
 small timer under your own login that runs `aforge tick` every 5 minutes: a
 launchd agent called `ai.agentfield.aforge.tick` on a Mac, a systemd user timer

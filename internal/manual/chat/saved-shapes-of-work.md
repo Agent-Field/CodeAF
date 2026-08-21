@@ -461,8 +461,13 @@ The row carries the stall clock when nothing has arrived for ten seconds, and re
 
 **Raw JSON never appears in the room, and that is deliberate.** The page is written as a
 JSON envelope, and an envelope arriving a character at a time is not something a person can
-read or act on. What you get instead is the reasoning while it writes, and then a plain
-account of each thing that happened — see *What a design writes into its thread* below.
+read or act on. What you get instead is the reasoning while it writes, and then — **the
+moment each stage finishes, while you are still standing there** — a plain account of what
+it did: any attempt that was refused, in the validator's own sentence; the accepted draft
+with its name, its step count, why it is shaped that way, and **the card itself, drawn as
+the boxes-and-arrows diagram**; and what the review pass changed or left alone. The same
+accounts are what the journal keeps, so watching live and reopening the design tomorrow
+read as the same story — see *What a design writes into its thread* below.
 
 **It is kept, and it stays visible.** Every reply the designer finishes is written to the
 node's journal, so opening the design tomorrow shows the writing of the page and not only
@@ -592,10 +597,14 @@ its own page and the exact refusal, so it repairs what it wrote rather than gues
 Malformed JSON gets a free salvage attempt (a code fence, prose around the object,
 typographic quotes, a trailing comma) and then one repair turn. **A reply that was cut off
 buys no repair turn at all.** Half an object cannot be repaired into a whole one without
-inventing the rest, so a design that ran out of its completion budget mid-page is told
-`your reply stopped in the middle: it ran out of completion budget before the JSON object
-was closed` and asked for a SMALLER harness — fewer steps, shorter briefs — on the next
-attempt.
+inventing the rest. What it gets instead is **one continuation turn**: the partial page
+goes back to the designer as its own unfinished reply and it is asked to write the
+remaining characters, so a big page that hit the completion ceiling is finished rather
+than thrown away — complex harnesses are the ones that hit it, and they are usually the
+ones asked for on purpose. Only when the continuation fails too is the attempt spent: the
+design is told `your reply stopped in the middle: it ran out of completion budget before
+the JSON object was closed` and asked for a SMALLER harness — fewer steps, shorter briefs
+— on the next attempt.
 
 ## Why a harness design keeps failing
 
