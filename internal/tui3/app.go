@@ -456,6 +456,17 @@ type app struct {
 	// turn counts the person's messages. It groups tool calls into clusters
 	// and is what ctrl+o folds and unfolds.
 	turn int
+	// replayFrom is where the DRAWN conversation starts in the session's own
+	// transcript, and replayFloor the turn number the first drawn block carries.
+	// Together they are everything [app.backfill] needs to hand up the helping
+	// above the top of the screen when somebody scrolls into it (replay.go).
+	//
+	// The index is counted from the START of the transcript on purpose: a
+	// journal only ever grows at its end, so an index taken at open still names
+	// the same block an hour of turns later — where a count back from the end
+	// would have slid forward under every one of them.
+	replayFrom  int
+	replayFloor int
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
@@ -3924,6 +3935,12 @@ func (a *app) renew() tea.Cmd {
 	a.abandonConnects()
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0
+	// AND THE SCROLLBACK'S MARK GOES WITH THE CONVERSATION IT WAS TAKEN IN
+	// (replay.go). /new is the one door that changes the session without going
+	// back through [app.replay], so it is the one door that has to say this
+	// itself — a mark left standing would offer to scroll back into the
+	// conversation that was just closed.
+	a.replayFrom, a.replayFloor = 0, 0
 	a.unfolded = map[int]bool{}
 	a.dropHover()
 	// A frozen viewport is a snapshot of a conversation that no longer exists

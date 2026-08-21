@@ -66,7 +66,10 @@ Four rules decide every blank line in the conversation. One blank before a tool 
 that follows text; none between the lines of a cluster; one blank after a cluster; one
 blank before each of your own messages. A cluster that opens a turn — one that answers
 your message directly — gets no gap of its own. A gap asked for twice is still one gap.
-Nothing is ever drawn at the very top of the conversation.
+
+One thing only is ever drawn at the very top of the conversation: the dim
+`· earlier · keep scrolling` marker, and only while a resumed conversation still has
+older messages you have not scrolled back into yet. Nothing else goes there.
 
 The resting whitespace between the conversation and the draft box is a **height**
 ladder, not a width one:
@@ -101,6 +104,59 @@ It is not drawn at all when there is no gap row (a short window), when the label
 wider than the frame, in copy mode, while a room is open, or while the fullscreen
 roster is up. A room keeps its own edge: `ctrl+l` inside a room scrolls the room, not
 the conversation.
+
+## Scrolling up to older messages, and seeing the start of a conversation you came back to
+
+Three ways up, and all three go through the same machinery:
+
+- **`pgup` / `pgdown`** move a screenful at a time. These always work, whatever is in
+  your message box, so they are the ones to reach for while you are part-way through
+  writing something.
+- **`↑` / `↓`** move one row — but only once the box is empty and there is no tool row
+  left to select. With a sentence in the box, `↑` walks your own history instead. That
+  is why `pgup` is the reliable one.
+- **The mouse wheel**, if the pointer is switched on for aforge (`ui.mouse`). With it
+  off, the wheel does nothing here — aforge runs on the alternate screen, so your
+  terminal's own scrollback holds nothing to scroll.
+
+**A conversation you came back to can be scrolled all the way to its first message.**
+Reopening one draws its last **40** blocks so the first frame is fast rather than
+re-rendering an hour of work you may not want. That is a starting position, not a
+ceiling: when a scroll runs off the top of what is drawn, aforge reads the previous 40
+out of the session file and puts them **above** what you are reading. The line under
+your eye does not move; you simply carry on scrolling into it. Repeat and you reach the
+first thing you ever said in that conversation.
+
+While there is still more above you, the top row of the conversation reads:
+
+```
+· earlier · keep scrolling
+```
+
+dim, on its own line. When you reach the real beginning it is not drawn at all — so a
+top row with no marker over it *is* the start of the conversation.
+
+`/rewind` is the other way at the same thing, and it needs no scrolling: it opens the
+whole conversation as a list, oldest first (see the sessions and rewind page).
+
+## It jumps to the bottom when I scroll — does new output pull me back down?
+
+No. A scroll away from the live edge is yours and it stays.
+
+- A reply **streaming in** does not move you. Lines land below the frame and the
+  conversation you are reading stays exactly where it is.
+- Work **landing** while you read — a task finishing, a note, a tool call — does not
+  move you either.
+- **Typing** into the message box does not move you. Nor does deleting, pasting, or
+  attaching a picture.
+
+The one dim chip at the bottom right, `↓ latest · ctrl+l`, is the whole of aforge's
+answer to being scrolled away: it offers the way back rather than taking it. Pressing
+`ctrl+l`, clicking the chip, or scrolling down to the bottom yourself re-arms following,
+and from then on new output keeps you at the edge again.
+
+Three things do deliberately put you back at the bottom, because in each you asked for
+it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
 ## The line above the message box (the legend)
 
