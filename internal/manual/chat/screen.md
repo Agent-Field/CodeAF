@@ -323,12 +323,12 @@ is 60.
 The frame itself clamps to a minimum working size of **8** columns and **1** row. A
 headless boot and a terminal reporting zero size are the same case.
 
-Phone width **reshapes seven things and deletes none**. What will not fit is relocated,
+Phone width **reshapes eight things and deletes none**. What will not fit is relocated,
 not truncated away.
 
-## What phone width reshapes: the seven
+## What phone width reshapes: the eight
 
-Under 60 columns, seven things change shape:
+Under 60 columns, eight things change shape:
 
 1. **The status line becomes a two-row deck**, with a fullscreen status sheet one tap
    away.
@@ -354,8 +354,13 @@ Under 60 columns, seven things change shape:
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
    hint line is drawn instead of the bar.
+8. **The task strip becomes one door, and the roster becomes cards.** The strip stops
+   being a row of chips and becomes a single full-width door — `▸ 3 tasks · 1 running`
+   — that a tap opens into the roster page; that page's rows become two-line cards a
+   thumb goes into, and its foot becomes a `‹ back` bar in place of the key legend. See
+   *Tasks on a phone* on the tasks page.
 
-On top of those six: preview blocks under a pending call are capped at 4 rows instead of
+On top of those eight: preview blocks under a pending call are capped at 4 rows instead of
 12; there is no task rail column (that already went at 100); and the legend has already
 dropped its hint slot and its branch (that went at 70).
 

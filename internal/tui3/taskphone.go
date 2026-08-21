@@ -1,5 +1,13 @@
 package tui3
 
+import (
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
 // TASKS, REACHED BY A THUMB.
 //
 // The roster and the record were built for a keyboard and they show it at
@@ -10,19 +18,35 @@ package tui3
 // Nothing new is invented here — the three doors already exist and every one of
 // them is reachable with a key. What changes is their SHAPE on a phone:
 //
-//   - THE STRIP IS ONE DOOR. A chip opens that piece of work's room, as it
-//     always has; a press anywhere else on the row opens the ROSTER, which at
-//     this width is the page over the whole body (task.go's [app.railTake]).
-//     The strip is two rows of very small chips at forty-four columns, and a
-//     press that missed one used to mean nothing at all.
+//   - THE STRIP IS ONE DOOR, AND IT LOOKS LIKE ONE. A row of chips three cells
+//     apart is a keyboard's idea of a tab bar: a thumb cannot land between two
+//     of them, and the only door there — a press on the empty half — was
+//     invisible. "Not accessible after some tabs" is a person who could not find
+//     it. So at this tier the strip is a SINGLE full-width row that says what is
+//     there and that it opens — `▸ 3 tasks · 1 running` — the fold glyph the
+//     rest of the phone UI folds with ([glyphShut]), the count the chips would
+//     have carried, and the most urgent state among them. The whole row is one
+//     tap target, and it opens the roster PAGE ([app.openTaskSheet]) — the
+//     scrollable list of task cards this file also shapes, not the overlay
+//     column a keyboard drives.
 //
-//   - THE ROSTER'S ROWS ALREADY OPEN ON ONE PRESS ([app.taskSheetPress]), which
-//     is the gesture this tier wanted anyway, so they are untouched.
+//   - THE ROSTER PAGE IS A LIST OF CARDS WITH A WAY BACK. Its rows already open
+//     on one press ([app.taskSheetPress]); at this tier each is a two-line CARD
+//     a thumb goes into (the name and its state on top, what it did and how long
+//     ago under it), the list SCROLLS to keep the cursor's card whole
+//     ([app.taskSheetTop] walks it in lines rather than in rows), and its foot
+//     is a `‹ back` bar ([phoneBar]) instead of a key legend — so a person
+//     leaves by tapping, no keyboard anywhere in the flow.
 //
 //   - THE CARD'S VERBS BECOME BANDS. `esc back · ↑↓ scroll · m puts it in your
 //     message` is a sentence about keys; at this tier the two things it names
 //     that a finger can do — going back, and putting the task in your message —
 //     are the bar's targets instead, in home's own bar shape ([phoneBar]).
+//
+// So the whole flow is a thumb's: conversation → tap the `▸ tasks` door → the
+// scrollable list of task cards → tap a card → the task record with its
+// `‹ back` → back to the list → `‹ back` to the conversation. Two backs, both
+// bands, mouse motion ignored on the glass the way home ignores it.
 
 // taskPhoneMentionWord is the card's second target, and it is the same words the
 // key line has always used for the same act — one gesture, one spelling.
@@ -65,9 +89,173 @@ func (a *app) taskCardBarPress(x int) bool {
 	return false
 }
 
-// stripOpensRoster reports whether a press on the task strip that missed every
-// chip is the door to the roster. It is the phone's answer and only the phone's:
-// on a wide frame the roster has a column of its own beside the conversation,
-// and a press on the strip's empty half would open a page over a list that is
-// already on screen.
-func stripOpensRoster(width int) bool { return layoutTier(width) == tierPhone }
+// ── THE PHONE STRIP IS ONE DOOR ─────────────────────────────────────────────
+
+// The count word on the door, singular and plural. One task and three tasks
+// reach the roster the same way at this tier, so the door is drawn for either —
+// `▸ 1 task · …` is still a door.
+const (
+	stripDoorTaskWord  = "task"
+	stripDoorTasksWord = "tasks"
+)
+
+// stripPhoneDoor is the strip at [tierPhone]: not a row of chips but a SINGLE
+// full-width door into the roster. It answers the door's text and whether this
+// tier draws one at all.
+//
+// IT REUSES THE STRIP'S OWN NUMBERS AND INVENTS NO STATE. The live set is
+// [app.stripNodes] — the same running, needs-you and idle nodes the chips would
+// be — so "N tasks" is how many chips there would have been and the tail is the
+// most urgent of them in the roster's own word. A frame whose only live thing is
+// a running sub-harness has no task nodes, so this draws nothing and the chip
+// keeps the row: there is a name there a person must still be able to reach.
+func (a *app) stripPhoneDoor(width int) (string, bool) {
+	if layoutTier(width) != tierPhone {
+		return "", false
+	}
+	nodes := a.stripNodes()
+	if len(nodes) == 0 {
+		return "", false
+	}
+	glyph := glyphShut
+	if a.pal.ascii {
+		glyph = glyphShutASCII
+	}
+	word := stripDoorTasksWord
+	if len(nodes) == 1 {
+		word = stripDoorTaskWord
+	}
+	line := a.pal.ink(glyph + " " + itoa(len(nodes)) + " " + word)
+	if state := a.stripPhoneState(); state != "" {
+		line += a.pal.dim(railSep + state)
+	}
+	return fit(line, width), true
+}
+
+// stripPhoneState is the most urgent thing among the live nodes, in the same
+// word the roster heads its sections with — `1 running`, or `2 needs you`, or
+// `3 idle`. It walks [stripOrder], running first, and takes the first group with
+// anyone in it, which is the chip the packed row would have led with.
+func (a *app) stripPhoneState() string {
+	members := a.railMembers()
+	for _, g := range stripOrder {
+		if n := len(members[g]); n > 0 {
+			return itoa(n) + " " + railGroupWords[g]
+		}
+	}
+	return ""
+}
+
+// stripPhonePress is the row's one gesture at [tierPhone]: it opens the roster
+// PAGE and reads the project's record in behind it, exactly the door
+// [app.taskSheetKeyPress] opens on its key. It answers whether it took the press.
+//
+// IT IS THE PAGE AND NOT THE OVERLAY COLUMN. The page is the surface this lane
+// shaped into cards a thumb goes into, with a `‹ back` bar at its foot
+// (taskview.go); the overlay column ([app.railTake]) is a keyboard list under a
+// key legend, and a door that landed there would open the very thing this tier
+// is built to leave behind.
+func (a *app) stripPhonePress(width int) (tea.Cmd, bool) {
+	if layoutTier(width) != tierPhone {
+		return nil, false
+	}
+	if !a.openTaskSheet() {
+		return nil, false
+	}
+	return a.loadTasks(), true
+}
+
+// ── THE ROSTER PAGE, AS CARDS ───────────────────────────────────────────────
+
+// taskSheetPhoneIndent is where a card's second line hangs: two cells in from
+// the label, so the tail reads as belonging under the name rather than as a row
+// of its own. It is measured from the row's content, which the page's own
+// two-cell lead ([app.taskSheetItemRows]) already sits in front of.
+const taskSheetPhoneIndent = 2
+
+// taskSheetPhonePast is one row of the project's record as a CARD at [tierPhone]:
+// the state glyph, the mention mark and the name on top, and under them what the
+// work came to and how long ago it landed. It is the two-line shape home's inbox
+// rows already wear, brought to the roster so a finger has a card to press
+// rather than a keyboard's one-line row.
+func (a *app) taskSheetPhonePast(entry *session.TaskIndexEntry, width int) []string {
+	runs := a.recordRuns(entry)
+	head := fit(taskRecordLabel(*entry, a.pal.ascii, runs), width)
+	// THE HUE IS THE CLAIM, as it is on the wide row ([app.taskSheetPastRow]):
+	// dulled is the record, and work another window is still holding is not the
+	// record, so it wears the ink a running row wears.
+	painted := a.pal.muted(head)
+	if runs {
+		painted = a.pal.ink(head)
+	}
+	return a.taskSheetPhoneCard(painted, taskPhonePastTail(*entry, runs), width)
+}
+
+// taskPhonePastTail is the card's second line: the outcome sentence the person
+// came for and how long ago the work landed, each dropped when it has nothing
+// behind it (the emptiness law reaches the tail). It is one line — the card
+// scrolls into is the record itself, which has the whole report.
+func taskPhonePastTail(entry session.TaskIndexEntry, runs bool) string {
+	var segs []string
+	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
+		segs = append(segs, outcome)
+	}
+	if note := taskRecordNote(entry, runs); note != "" {
+		segs = append(segs, note)
+	}
+	return strings.Join(segs, railSep)
+}
+
+// taskSheetPhoneAway is one piece of another window's work as a card: its state
+// and the words it was given on top, where it is happening under them. It wears
+// no mention mark, for the reason the wide row states ([app.taskSheetAwayRow]) —
+// there is no row in the project index for a mention to reach.
+func (a *app) taskSheetPhoneAway(away session.ElsewhereTask, width int) []string {
+	glyph := taskStatusGlyph(session.TaskIndexEntry{Status: away.Task.State}, a.pal.ascii)
+	head := fit(glyph+" "+away.Task.Title, width)
+	return a.taskSheetPhoneCard(a.pal.muted(head), taskAwayNote(away.Session), width)
+}
+
+// taskSheetPhoneCard assembles a card from a painted head and a plain tail: the
+// head as it is, and the tail dim on a line of its own, indented under the label
+// and dropped when it is empty so a card with nothing to add stays one line.
+func (a *app) taskSheetPhoneCard(head, tail string, width int) []string {
+	rows := []string{head}
+	if tail = strings.TrimSpace(tail); tail != "" {
+		room := width - taskSheetPhoneIndent
+		if room < 1 {
+			room = 1
+		}
+		rows = append(rows, strings.Repeat(" ", taskSheetPhoneIndent)+a.pal.dim(fit(tail, room)))
+	}
+	return rows
+}
+
+// taskSheetBar is the roster page's foot at [tierPhone]: a `‹ back` band a thumb
+// leaves by, in place of the key legend a keyboard reads ([app.taskSheetKeysLine]).
+// It is the record card's own bar shape ([phoneBar]) — one target here, because
+// filtering the page is done by typing and there is no toggle to give a band to.
+func (a *app) taskSheetBar(width int) (string, []hudSpan) {
+	back := homeSheetBackWord
+	if a.pal.ascii {
+		back = homeSheetBackASCII
+	}
+	return phoneBar(width, []string{back}, a.pal)
+}
+
+// taskSheetBarPress resolves a press on that bar and reports whether it took it.
+// The one target closes the page, which drops a person back to the conversation.
+func (a *app) taskSheetBarPress(x int) bool {
+	width, _ := a.size()
+	_, spans := a.taskSheetBar(width)
+	for i, span := range spans {
+		if !span.holds(x) {
+			continue
+		}
+		if i == 0 {
+			a.closeTaskSheet()
+		}
+		return true
+	}
+	return false
+}
