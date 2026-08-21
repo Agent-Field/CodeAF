@@ -46,6 +46,22 @@ func reply(text string) *ai.Response {
 
 // prompt is the text of one request, every message run together, which is what
 // a test asking "was the index in there" actually wants to search.
+// userMessage is the variable half of one reflex request — what this call was
+// shown, as distinct from the standing instructions in front of it.
+func userMessage(request ai.Request) string {
+	var builder strings.Builder
+	for _, message := range request.Messages {
+		if message.Role != "user" {
+			continue
+		}
+		for _, part := range message.Content {
+			builder.WriteString(part.Text)
+			builder.WriteString("\n")
+		}
+	}
+	return builder.String()
+}
+
 func prompt(request ai.Request) string {
 	var builder strings.Builder
 	for _, message := range request.Messages {
@@ -254,7 +270,7 @@ func TestEveryCallIsSmallAndCold(t *testing.T) {
 // enum is checked, because there is nothing in the answer to check.
 func TestExtractPassesNothingWorthKeepingStraightThrough(t *testing.T) {
 	client := &fake{replies: []string{`{"mem":0,"type":"","scope":"nonsense"}`}}
-	result, err := Extract(context.Background(), client, "what does this regex do", "it matches a date.")
+	result, err := Extract(context.Background(), client, "what does this regex do", "it matches a date.", nil)
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -273,7 +289,7 @@ func TestExtractRepairsAKeptMemoryWithAWordItDoesNotKnow(t *testing.T) {
 	good := `{"mem":1,"type":"preference","scope":"user","title":"wants changes made not explained",` +
 		`"text":"Prefers the change made directly.","tags":["style",""]}`
 	client := &fake{replies: []string{`{"mem":1,"type":"vibe","scope":"user","title":"x","text":"y"}`, good}}
-	result, err := Extract(context.Background(), client, "stop explaining", "understood.")
+	result, err := Extract(context.Background(), client, "stop explaining", "understood.", nil)
 	if err != nil {
 		t.Fatalf("Extract after repair: %v", err)
 	}
@@ -292,7 +308,7 @@ func TestExtractRepairsAKeptMemoryWithAWordItDoesNotKnow(t *testing.T) {
 		`{"mem":1,"type":"fact","scope":"everywhere","title":"x","text":"y"}`,
 		`{"mem":1,"type":"fact","scope":"everywhere","title":"x","text":"y"}`,
 	}}
-	result, err = Extract(context.Background(), client, "a", "b")
+	result, err = Extract(context.Background(), client, "a", "b", nil)
 	if !errors.Is(err, ErrReflexFailed) {
 		t.Fatalf("Extract error = %v, want ErrReflexFailed", err)
 	}
@@ -306,7 +322,7 @@ func TestExtractReadsTheStateDeltaWhenTheExchangeMovedTheWork(t *testing.T) {
 		`"title":"import done migration next","text":"The import script is finished.","tags":["import"],` +
 		`"state":{"goal":"move the data across","done":["import script"],"inflight":[],` +
 		`"next":["the migration"],"open":["which cutover window"],"refs":["scripts/import.go"]}}`}}
-	result, err := Extract(context.Background(), client, "import is done, migration next", "good — starting.")
+	result, err := Extract(context.Background(), client, "import is done, migration next", "good — starting.", nil)
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -329,7 +345,7 @@ func TestExtractReadsTheStateDeltaWhenTheExchangeMovedTheWork(t *testing.T) {
 
 func TestExtractDoesNotCallTheModelForAnEmptyExchange(t *testing.T) {
 	client := &fake{}
-	result, err := Extract(context.Background(), client, "", "  ")
+	result, err := Extract(context.Background(), client, "", "  ", nil)
 	if err != nil || result.Mem != 0 {
 		t.Fatalf("Extract(\"\", \"\") = %+v, %v", result, err)
 	}
@@ -341,7 +357,7 @@ func TestExtractDoesNotCallTheModelForAnEmptyExchange(t *testing.T) {
 func TestBothSidesOfTheExchangeAreClippedOnTheirOwn(t *testing.T) {
 	client := &fake{replies: []string{`{"mem":0}`}}
 	if _, err := Extract(context.Background(), client,
-		strings.Repeat("u", 4000), strings.Repeat("a", 4000)); err != nil {
+		strings.Repeat("u", 4000), strings.Repeat("a", 4000), nil); err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
 	shown := prompt(client.calls[0])
@@ -507,5 +523,66 @@ func TestThePromptsSpellTheEnumsTheParserAccepts(t *testing.T) {
 		if !strings.Contains(text, "ONE JSON object and nothing else") {
 			t.Fatalf("the %s prompt never demands one JSON object", name)
 		}
+	}
+}
+
+// The extractor is already reading the exchange, so it is asked one more
+// question for about ten output tokens: of the lines this turn was shown, which
+// ones actually bore on the answer.
+func TestExtractNamesTheInjectedMemoriesThatBoreOnTheAnswer(t *testing.T) {
+	client := &fake{replies: []string{`{"mem":0,"used":["m3","","m9"]}`}}
+	shownStubs := []Stub{
+		{ID: "m3", Title: "standup is at 9:15", Type: "fact", Scope: "project"},
+		{ID: "m7", Title: "prefers dark themes", Type: "preference", Scope: "user"},
+		{ID: "", Title: "a stub with no id"},
+	}
+	result, err := Extract(context.Background(), client, "what time is standup", "9:15.", shownStubs)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	// m9 was never injected, so it is dropped exactly as an invented inject id
+	// is: a memory reported as used that was never shown is a credit nobody can
+	// check.
+	if len(result.Used) != 1 || result.Used[0] != "m3" {
+		t.Fatalf("Extract read used = %v, want just the one line it was shown", result.Used)
+	}
+	shown := userMessage(client.calls[0])
+	if !strings.Contains(shown, "REMEMBERED:") || !strings.Contains(shown, "- m3: standup is at 9:15") {
+		t.Fatalf("the injected lines were not shown:\n%s", shown)
+	}
+	if strings.Contains(shown, "- : a stub with no id") {
+		t.Fatalf("a stub with no id was shown:\n%s", shown)
+	}
+}
+
+// AND THE SECTION IS ABSENT, NOT EMPTY, on the turns that were shown nothing.
+// A heading with no ids under it invites a small model to invent some.
+func TestExtractAsksNothingAboutMemoriesWhenNoneWereInjected(t *testing.T) {
+	client := &fake{replies: []string{`{"mem":0,"used":["m3"]}`}}
+	result, err := Extract(context.Background(), client, "write me a haiku", "here it is.", nil)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(result.Used) != 0 {
+		t.Fatalf("Extract read used = %v on a turn that was shown nothing", result.Used)
+	}
+	// The system prompt names the section so the model knows what to do when it
+	// is there; what must be absent is the section itself, in the user message.
+	if asked := userMessage(client.calls[0]); strings.Contains(asked, "REMEMBERED") {
+		t.Fatalf("an empty remembered section was shown:\n%s", asked)
+	}
+}
+
+// Injected and unhelpful is the ordinary answer, and it has to be readable as
+// itself: the caller counts it AGAINST the memory.
+func TestExtractReportsInjectedMemoriesThatBoreOnNothing(t *testing.T) {
+	client := &fake{replies: []string{`{"mem":0,"used":[]}`}}
+	result, err := Extract(context.Background(), client, "write me a haiku", "here it is.",
+		[]Stub{{ID: "m7", Title: "prefers dark themes"}})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(result.Used) != 0 {
+		t.Fatalf("Extract read used = %v, want nothing", result.Used)
 	}
 }

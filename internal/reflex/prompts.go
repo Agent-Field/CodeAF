@@ -77,9 +77,11 @@ title is at most six words. text is one line, in the person's own terms.
 
 Add state ONLY when the exchange MOVED THE WORK — the goal changed, something finished, something started, the next step changed, a question opened, or a file or link became the thing being worked on. An exchange that only answered a question moved nothing and has no state.
 
+When a REMEMBERED section is given, also answer which of those memory ids actually bore on the answer — used. A line bore on the answer if the assistant would have answered differently without it. Copy the ids exactly. Most lines bore on nothing, and an empty list is the normal answer. Omit used when there is no REMEMBERED section.
+
 Answer with ONE JSON object and nothing else. No prose, no code fence.
 
-{"mem": 0 or 1, "type": "...", "scope": "...", "title": "...", "text": "...", "tags": ["..."], "state": {"goal": "...", "done": ["..."], "inflight": ["..."], "next": ["..."], "open": ["..."], "refs": ["..."]} or omitted}
+{"mem": 0 or 1, "type": "...", "scope": "...", "title": "...", "text": "...", "tags": ["..."], "used": ["id", ...], "state": {"goal": "...", "done": ["..."], "inflight": ["..."], "next": ["..."], "open": ["..."], "refs": ["..."]} or omitted}
 
 USER:
 what does this regex do
@@ -96,6 +98,18 @@ ASSISTANT:
 understood — I will make the change and say what I changed.
 
 {"mem":1,"type":"preference","scope":"user","title":"wants changes made not explained","text":"Prefers the change made directly, with a short note of what changed, rather than an explanation first.","tags":["style"]}
+
+USER:
+what time is standup
+
+ASSISTANT:
+standup is at 9:15.
+
+REMEMBERED:
+- m3: standup is at 9:15
+- m7: prefers dark themes
+
+{"mem":0,"used":["m3"]}
 
 USER:
 the import script is done and green, next is the migration
@@ -151,10 +165,31 @@ func routeInput(userMsg string, index []Stub) string {
 }
 
 // extractInput is the exchange, each side clipped on its own so a long answer
-// cannot push the person's own words out of the prompt.
-func extractInput(userMsg, assistantMsg string) string {
-	return "USER:\n" + clip(userMsg, messageLimit) +
+// cannot push the person's own words out of the prompt — and, on the turns that
+// were shown something, the remembered lines whose usefulness is being asked
+// about.
+//
+// THE SECTION IS ABSENT AND NOT EMPTY when nothing was injected. An empty
+// heading reads to a small model like a list it failed to receive, and this one
+// is asked about by name, so a model that saw the heading and no ids has been
+// invited to invent some.
+func extractInput(userMsg, assistantMsg string, injected []Stub) string {
+	input := "USER:\n" + clip(userMsg, messageLimit) +
 		"\n\nASSISTANT:\n" + clip(assistantMsg, messageLimit)
+	lines := make([]string, 0, len(injected))
+	for _, stub := range injected {
+		id := strings.TrimSpace(stub.ID)
+		if id == "" {
+			// A stub with no id cannot be named back, so showing it can only
+			// produce an answer that has to be dropped.
+			continue
+		}
+		lines = append(lines, "- "+id+": "+strings.TrimSpace(stub.Title))
+	}
+	if len(lines) == 0 {
+		return input
+	}
+	return input + "\n\nREMEMBERED:\n" + strings.Join(lines, "\n")
 }
 
 // decideInput is the candidate and the nearest lines already stored.
