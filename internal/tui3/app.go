@@ -1453,6 +1453,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The terminal reports focus (View asks for it in view.go), so the
 		// notification has something honest to gate on — see notify.go.
 		a.focused, a.seenFocus = true, true
+		// AND A QUESTION THAT WAS WAITING GETS ITS WHOLE COUNTDOWN BACK. The ten
+		// seconds are ten seconds of a person reading, and this is the first
+		// frame there has been anybody to read it (consent.go's [app.tickAsk]).
+		a.refocusAsk()
 		return a, nil
 
 	case tea.BlurMsg:
@@ -2297,6 +2301,12 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// question nobody can see to answer (home.go).
 		a.closeHome()
 		a.askConsent(ev)
+		// AND A WINDOW NOBODY IS LOOKING AT SAYS SO OUT LOUD. The session is
+		// blocked from here until somebody answers, and the countdown no longer
+		// answers for them on a blurred window, so the desktop is told the moment
+		// the question goes up rather than at a turn end that is not coming
+		// (notify.go's [app.notifyAsk], consent.go's [app.tickAsk]).
+		after = a.notifyAsk()
 
 	case session.EventConnectAsk:
 		// AN OFFER OUTRANKS A PANEL, on the terms the approval question above
@@ -3453,7 +3463,14 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// [app.choicePress]); reaching here means the pointer was in a column no
 		// option occupies, and empty space on this surface does nothing.
 	}
-	return nil
+	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
+	// away the one command this switch parks — the design room's pump above —
+	// and took the whole frame clock with it: [app.openRoom] parks
+	// `tea.Batch(waitRoom(…), a.wake())`, [app.wake] sets `a.painting` as it
+	// builds its tick, and only [app.paint] ever clears it again. A dropped batch
+	// therefore left the surface claiming to paint with no frame on the way, and
+	// every later wake answered nil for the rest of the process.
+	return cmd
 }
 
 // linkPress resolves a click on an inline task reference, and reports whether it
