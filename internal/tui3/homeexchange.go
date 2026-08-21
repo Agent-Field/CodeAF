@@ -1061,6 +1061,17 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 
+	case session.StandingNoKey:
+		// THE DECLINE, AND IN THIS PANE IT IS THE ONLY ONE THERE IS. In a
+		// conversation `esc` is the outright no; here `esc` is the one-layer
+		// undo that hands the keyboard back to the list, and a card left
+		// standing on the column is not an answer. So `0` is how a person says
+		// no to a card they asked for from home ([session.StandingNoKey]), and
+		// like the digits it is inert with no card up and typed into the box.
+		if ex.asking() {
+			return a.answerCard(ex, msg.String())
+		}
+
 	case "enter":
 		return a.exchangeEnter(ex)
 
@@ -1156,16 +1167,28 @@ func (ex *homeExchange) startTurn(now time.Time) {
 
 // answerCard is a digit on the ratification card.
 //
-// THE ANSWERS ARE THE CONTRACT'S, and no fourth is invented here: yes stands it
-// up as proposed, a change goes back to the model to re-propose, and once runs
-// the action now and creates nothing ([session.StandingAnswer]).
+// THE ANSWERS ARE THE CONTRACT'S, and no fifth is invented here: yes stands it
+// up as proposed, a change goes back to the model to re-propose, once runs the
+// action now and creates nothing, and `0` sets nothing up at all
+// ([session.StandingAnswer], whose zero value is that last one).
 //
 // WHICH OF THEM THE CARD HAS IS THE ENGINE'S ANSWER and not this pane's
 // ([standingCard.chips], from [session.StandingOptions]): a one-off reminder
 // draws two chips, and its `3` reaches here only if a caller ignored
-// [standingCard.offers], so it is refused rather than acted on.
+// [standingCard.offers], so it is refused rather than acted on. The decline is
+// the one answer that is NOT under that gate, because it is not a chip on the
+// numbered row and every standing card there is takes it.
 func (a *app) answerCard(ex *homeExchange, pressed string) tea.Cmd {
 	card := ex.card
+	if pressed == session.StandingNoKey {
+		ex.settle(standNoWord, "")
+		a.resolveStanding(ex, card, session.StandingAnswer{})
+		// AND THE KEYBOARD GOES BACK TO THE LIST, exactly as it does on a yes:
+		// the question is over either way, and a hand left in a pane with
+		// nothing left to answer is how the arrows stop moving the column.
+		ex.focused, ex.onOffer = false, false
+		return nil
+	}
 	if !ex.view.offers(pressed) {
 		return nil
 	}
@@ -1838,7 +1861,10 @@ func exchangeHint(ex *homeExchange) string {
 	}
 	var parts []string
 	if ex.asking() {
-		parts = append(parts, "1 yes · 2 change · 3 once")
+		// The decline is named because in this pane it is the ONLY way to say
+		// no — esc here goes back to the list rather than answering
+		// ([app.answerCard]).
+		parts = append(parts, "1 yes · 2 change · 3 once · 0 no")
 	}
 	parts = append(parts, "enter sends a follow-up")
 	if ex.offering() {

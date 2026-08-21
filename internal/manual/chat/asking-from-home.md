@@ -152,7 +152,7 @@ cursor. **The pane follows the cursor** — walk off the exchange and the row yo
 draws its own preview card again, which is what the right-hand column is for.
 
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
-the list`, with `1 yes · 2 change · 3 once` in front of it when a card is up and
+the list`, with `1 yes · 2 change · 3 once · 0 no` in front of it when a card is up and
 `↓ continue as a conversation` after it when that row is on screen.
 
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
@@ -216,7 +216,7 @@ no project at all. A reminder belongs to no repository; a watch on CI belongs to
 row is drawn in that project's block, or in this window's own block when that project is not
 one of the ones home is currently showing open.
 
-## How do I answer the card — 1 yes, 2 change, 3 once
+## How do I answer the card, or say no to it — 1 yes, 2 change, 3 once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
@@ -227,16 +227,21 @@ created until you answer it:
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
   created by a change.
 - `3` — once. The action runs now and nothing standing is created.
+- `0` — no. Nothing is created and nothing is run, the card settles as `not set up`, and the
+  keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
+  hands the keyboard back to the list without answering anything, and a card left standing on
+  the column is not an answer. It is the same key on home's answer row and in a conversation,
+  where `esc` also declines.
 
-The three answers are the only three. There is no fourth key and no default: a card nobody
-answers creates nothing — and nothing answers it for you. **There is no clock on it.** It
-waits, and its row on home says `▲ waiting on you` for as long as it does.
+Those four answers are the only four. There is no default: a card nobody answers creates
+nothing — and nothing answers it for you. **There is no clock on it.** It waits, and its row
+on home says `▲ waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
 uses: `yes, set it up · set up`, `once, not standing`, `you asked for a different when`,
-`ended · nothing was set up`. The chips go, so `1`, `2` and `3` are ordinary characters again
-and can be typed into a follow-up. The only card that ever replaces it is the new one the
+`not set up`, `ended · nothing was set up`. The chips go, so `1`, `2`, `3` and `0` are
+ordinary characters again and can be typed into a follow-up. The only card that ever replaces it is the new one the
 model sends after `2 change when`.
 
 The digits belong to a card only while it is still a question. With no card up, or with an

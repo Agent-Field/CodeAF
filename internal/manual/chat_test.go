@@ -287,6 +287,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never drawn in it. The page now says what is drawn and when, and this
 		// is the sentence a person types when it looks like nothing happened.
 		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		// The wave that gave a standing card an outright no on the two surfaces
+		// that have no `esc` to spare. Both of these are what a person types
+		// when a card is up and they do not want the thing.
+		{"how do I say no to a reminder from home", "home"},
+		{"how do I decline a standing card", "keeping-an-eye"},
+		// The wave that gave the engine on the far machine its own ambient
+		// side. This is what a person asks before they rely on it.
+		{"do reminders work over --host", "keeping-an-eye"},
+		{"where does a reminder I set up over --host actually run", "running-on-another-machine"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

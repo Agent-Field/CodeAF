@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ANSWERING FROM HOME: the chips, the keys, the pointer, and the two windows
@@ -67,6 +68,19 @@ func consentQuestion(id uint64, text string) session.PresenceQuestion {
 		ID:      id,
 		Text:    text,
 		Options: session.AnswerOptions(session.QuestionConsent),
+		Asked:   time.Now(),
+	}
+}
+
+// standingQuestion is a standing card as another window reads it, with the
+// engine's own narrowing applied ([session.StandingOptions]) — which is what
+// makes the chips home draws the chips that session will actually take.
+func standingQuestion(id uint64, item standing.Item, text string) session.PresenceQuestion {
+	return session.PresenceQuestion{
+		Kind:    session.QuestionStanding,
+		ID:      id,
+		Text:    text,
+		Options: session.StandingOptions(item),
 		Asked:   time.Now(),
 	}
 }
@@ -287,5 +301,111 @@ func TestHomeAnswersItsOwnWindowThroughItsOwnResolver(t *testing.T) {
 	// still asking a question that has been answered.
 	if a.asking() {
 		t.Fatal("the card in this window is still up after being answered from home")
+	}
+}
+
+// SAYING NO FROM HOME, IN ONE KEYSTROKE.
+//
+// The standing card is the one question whose no lives on a key home cannot
+// spare: `esc` in the conversation is the outright no, and `esc` on home closes
+// home. So the engine's list carries `0 not set up` and this band draws it like
+// any other chip — a card met at home can now be answered all three ways
+// without walking to the window it is in.
+func TestHomeCanSayNoToAStandingCard(t *testing.T) {
+	watch := standing.Item{
+		Words: "tell me when ci goes red",
+		When:  standing.When{Kind: standing.WhenProbe},
+		Does:  standing.Action{Kind: standing.ActionSay},
+	}
+	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to keep an eye on: tell me when ci goes red"), time.Now())
+	text := homeText(lab.a)
+	for _, chip := range []string{"1 yes", "3 once, not standing", "0 not set up"} {
+		if !strings.Contains(text, chip) {
+			t.Fatalf("the card does not offer %q:\n%s", chip, text)
+		}
+	}
+
+	lab.a.homeKey(key(session.StandingNoKey))
+	if len(*lab.sent) != 1 {
+		t.Fatalf("the decline sent %d answers, want 1", len(*lab.sent))
+	}
+	answer := (*lab.sent)[0]
+	if answer.dir != lab.dir || answer.kind != session.QuestionStanding || answer.id != 9 || answer.key != session.StandingNoKey {
+		t.Fatalf("the answer reads %+v, want the standing card declined", answer)
+	}
+	// NOTHING WAS TYPED, which is the whole trade a digit key makes on a screen
+	// whose box is a search and a new conversation at once.
+	if typed := lab.a.home.box.String(); typed != "" {
+		t.Fatalf("the decline also typed %q into the box", typed)
+	}
+	if !strings.Contains(homeText(lab.a), answerSentWord+"not set up") {
+		t.Fatalf("home did not say what it just answered:\n%s", homeText(lab.a))
+	}
+}
+
+// A ONE-OFF REMINDER HAS NO `once` AND STILL HAS A NO. The `3` is the only chip
+// that is ever missing ([session.StandingOptions]); the decline answers every
+// standing question there is.
+func TestHomeCanSayNoToAReminderThatOffersNoOnce(t *testing.T) {
+	reminder := standing.Item{
+		Words: "remind me at 6 to leave",
+		When:  standing.When{Kind: standing.WhenAt},
+		Does:  standing.Action{Kind: standing.ActionSay},
+	}
+	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to keep an eye on: remind me at 6 to leave"), time.Now())
+	text := homeText(lab.a)
+	if strings.Contains(text, "3 once, not standing") {
+		t.Fatalf("a one-off reminder was offered `once` from home:\n%s", text)
+	}
+	if !strings.Contains(text, "0 not set up") {
+		t.Fatalf("a one-off reminder was offered no way to say no:\n%s", text)
+	}
+	lab.a.homeKey(key(session.StandingNoKey))
+	if len(*lab.sent) != 1 || (*lab.sent)[0].key != session.StandingNoKey {
+		t.Fatalf("the decline sent %+v", *lab.sent)
+	}
+}
+
+// AND THIS WINDOW'S OWN CARD IS DECLINED IN ITS OWN HANDS, with the words the
+// card's own `esc` leaves on the row — not the yes's. The band reads what the
+// key MEANS off [session.AnswerFromKey] rather than off the digit, which is
+// what keeps the row and the engine saying the same thing.
+func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	item := standing.Item{
+		Words: "tell me when ci goes red",
+		When:  standing.When{Kind: standing.WhenProbe},
+		Does:  standing.Action{Kind: standing.ActionSay},
+	}
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
+	lab.asking("-tmp-alpha", "aaaa000000000001", standingQuestion(11, item, "wants to keep an eye on: tell me when ci goes red"), now)
+
+	agent := &standFake{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 30
+	a.homeRoot = lab.root
+	a.file = mine
+	sent := 0
+	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { sent++; return nil }
+	a.proposeStanding(session.Event{Kind: session.EventStandingProposal, Standing: &session.StandingNotice{
+		ID: 11, Item: item, WhenWords: "every few minutes", CostWords: "about $0.02 a check",
+		Options: session.StandingOptions(item),
+	}})
+	a.openHome()
+	a.home.point(mine)
+
+	a.homeKey(key(session.StandingNoKey))
+	if sent != 0 {
+		t.Fatal("this window left an answer on its own doorstep instead of answering it")
+	}
+	if len(agent.answered) != 1 || agent.answered[0].id != 11 {
+		t.Fatalf("the resolver saw %+v, want card 11 answered once", agent.answered)
+	}
+	if answer := agent.answered[0].answer; answer != (session.StandingAnswer{}) {
+		t.Fatalf("the decline sent %+v, want the zero answer", answer)
+	}
+	if a.stand == nil || a.stand.verdict != standNoWord {
+		t.Fatalf("the card in this window settled as %q, want %q", a.stand.verdict, standNoWord)
 	}
 }

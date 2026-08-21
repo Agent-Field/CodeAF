@@ -130,8 +130,9 @@ it there:
 
 Two chips, `1` and `2`, and `3` does nothing — on the card in the conversation,
 on the card in home's `ask here` pane, and on home's own answer row. The hint
-under the box says so too: `1 yes · 2 change when · esc no`. `esc` still declines
-the whole thing, as it does on every card.
+under the box says so too: `1 yes · 2 change when · 0 or esc, no`. `esc` still
+declines the whole thing, as it does on every card, and so does `0` — the
+decline is on **every** standing card, the one answer that is never missing.
 
 Everything else keeps all three: a watch, a rule, a routine, overnight work.
 
@@ -194,17 +195,35 @@ yes nor a clear no, aforge treats it as a no and the log says
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
 moment when it answers on somebody's behalf. It waits until you press `1 yes,
-set it up`, `2 change when`, or — where the card offers it — `3 once, not
-standing`.
+set it up`, `2 change when`, `0 not set up`, or — where the card offers it —
+`3 once, not standing`.
 
-A **one-off reminder's card has only two answers**; the next section says why.
+A **one-off reminder's card has only two chips**; the next section says why. It
+still takes the decline.
 
 It does not have to be answered in that window either. A window sitting on this
 card says so on **home**, and the row there carries the same chips the card is
-offering — `1 yes` and `3 once`, or just `1 yes` on a one-off reminder — so the
-card can be answered from the dashboard without opening the conversation (home's
-own page has the whole rule). `2 change when` stays here, where there is a box to
-say the new when into.
+offering — `1 yes`, `3 once` and `0 not set up`, or `1 yes` and `0 not set up` on
+a one-off reminder — so the card can be **answered or declined** from the
+dashboard without opening the conversation (home's own page has the whole rule).
+`2 change when` stays here, where there is a box to say the new when into.
+
+## How do I say no to a reminder — 0, or esc in the conversation
+
+`0 not set up` is the no, and it is one keystroke everywhere a standing card is
+drawn: in the conversation, on home's answer row, and in home's `ask here` pane.
+Nothing is created, nothing is run, and the card settles as `not set up`.
+
+In the conversation `esc` does the same thing and always has. The digit exists
+because the other two places cannot spare `esc`: on home it closes home, and in
+the `ask here` pane it hands the keyboard back to the list without answering
+anything — so before `0` there was no way at all to refuse a card from either of
+them, only to walk to the window or leave the question standing.
+
+It is a `0` and not a `4` because the chips are numbered by where they sit —
+`1 yes`, `2 change when`, `3 once` — so a fourth digit would move under your hand
+on a card that drew one chip fewer. `0` is off the end of that numbering, on
+every card, always the same answer.
 
 That is the opposite of a task proposal's card, which does count down and starts
 the work on silence. A task is bounded work somebody is watching; a standing
@@ -300,6 +319,40 @@ raised again.
 
 On any other host there is no timer to install, so the offer is never made and
 standing items are checked only while a window is open.
+
+## Do reminders work over --host — yes, on the far machine
+
+Yes, and this is the one ambient thing a connection does not take away. Over
+`aforge chat --host devbox` the conversation runs on devbox, and so does
+everything you set up from it:
+
+- The `stand` tool is on the belt, so "remind me at 6", "tell me when CI goes
+  red" and "every Monday post the standup" all work exactly as they do locally.
+- The card is drawn on **your** screen and answered with **your** keys — the
+  proposal crosses the connection like every other event, and `1`, `2`, `3` and
+  `0` cross back.
+- The item is created, checked and fired **on devbox**: its store is devbox's,
+  the workspace it runs in is devbox's, and the rules a firing runs under are
+  devbox's own profile rules, not this laptop's.
+- It keeps working after this window closes **and after the connection drops**.
+  Nothing about it needs the terminal you are sitting at.
+- The one-time question `keep checking when no window is open?` installs the OS
+  timer **on devbox**. Saying yes there never touches this machine.
+
+Three things are missing over a connection, and each says nothing rather than
+guessing:
+
+- **Home does not open at all** over `--host` — it says
+  `home shows this machine's projects, and this session is on another` — so there
+  is no `◦` band and no `p`/`s` keys on a remote session. The status line still
+  counts: `◦ keeping an eye on 2` is about the workspace this window is on, which
+  over `--host` is a path on the far machine, so the count is the right one.
+- **`/status` prints no `keeping watch` line.** The OS timer is devbox's and this
+  surface has no way to read its state; a line read off this laptop's timer would
+  be a status about the wrong machine.
+- **No row ever shows the firing mark `●`.** Nothing on disk says an item is
+  firing at this instant, so nothing claims it — the same silence a local window
+  keeps.
 
 ## How do I stop one?
 

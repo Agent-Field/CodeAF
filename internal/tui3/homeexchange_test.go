@@ -356,6 +356,62 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	}
 }
 
+// AND `0` IS HOW THE PANE SAYS NO, which until now it could not say at all.
+//
+// In a conversation `esc` declines the card. Here `esc` is the one-layer undo
+// that hands the keyboard back to the list, and a card left standing on the
+// column is not an answer — so a person who asked for a reminder from home and
+// then thought better of it had nothing to press. The decline is the engine's
+// own `0 not set up` ([session.StandingNoKey]), which is the same key on this
+// pane, on home's answer band and in the conversation.
+func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine, []session.Event{
+		standingProposal(7, "remind me at 6 to leave"),
+		{Kind: session.EventTurnDone},
+	})
+	a.openHome()
+	typeHome(a, "remind me at 6 to leave")
+	drive(t, a, key("up"), key("enter"))
+
+	// THE HINT NAMES IT, because this is the only way out of the question that
+	// answers it.
+	if frame := homeText(a); !strings.Contains(frame, "0 no") {
+		t.Fatalf("the pane does not name the decline:\n%s", frame)
+	}
+	drive(t, a, key(session.StandingNoKey))
+	if len(lab.agent.answered) != 1 {
+		t.Fatalf("`%s` should have answered the card, the agent saw %v", session.StandingNoKey, lab.agent.answered)
+	}
+	if lab.agent.answered[0] != (session.StandingAnswer{}) {
+		t.Fatalf("`%s` sent %+v, want the decline", session.StandingNoKey, lab.agent.answered[0])
+	}
+	if lab.agent.answerID[0] != 7 {
+		t.Fatalf("the answer went back on token %d, want 7", lab.agent.answerID[0])
+	}
+	ex := theExchange(a)
+	if ex.view == nil || !ex.view.settled() {
+		t.Fatal("the declined card is still asking")
+	}
+	if settled := homeText(a); !strings.Contains(settled, standNoWord) {
+		t.Fatalf("the declined card does not say what it came to:\n%s", settled)
+	}
+	// AND THE KEYBOARD GOES BACK TO THE LIST, as it does on a yes: the question
+	// is over either way.
+	if ex.focused {
+		t.Fatal("the declined card kept the keyboard in the pane")
+	}
+	// WITH NO CARD UP IT IS A CHARACTER AGAIN. Everything the digits do here
+	// they do only while a card is asking; a `0` typed afterwards is somebody
+	// writing.
+	drive(t, a, key("tab"), key(session.StandingNoKey))
+	if len(lab.agent.answered) != 1 {
+		t.Fatalf("a second `%s` answered a settled card: %v", session.StandingNoKey, lab.agent.answered)
+	}
+}
+
 // TestContinueAsAConversationMovesTheFolderIntoTheBucket is the promotion: the
 // errand turned out to be a conversation, so the folder becomes one — moved,
 // named, and opened through the same door a session row opens through.
