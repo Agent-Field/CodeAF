@@ -839,6 +839,45 @@ another window · Sweep the call sites · running · running for 4m 12s
 - Inside a task this is absent too — a task is shown the pieces it handed out itself and
   nothing wider.
 
+## What is running in my other projects — ask, and the tasks tool answers everywhere
+
+The section above is about **this** project. Ask about the rest of the machine — "what
+tasks are running outside this chat", "what is running in my other projects", "is anything
+going anywhere else" — and the chat widens the same tool: it calls `tasks` with
+`scope: "everywhere"`. That word is the whole of the feature. `scope` takes `project`,
+which is the default and exactly what a search has always done, or `everywhere`.
+
+`everywhere` keeps this project's rows and this project's other windows, then adds under
+them **one group for each other project that has live work**: the project's name, its path,
+and one row for each task running there — the title, the state word, how long it has been
+going, and the files that run has already written where it says.
+
+```
+running in other projects on this machine:
+wisp · /Users/ada/code/wisp
+  another window · Port the parser · running · running for 2m 3s
+    in the window called "parser work"
+    files so far: internal/parse/lex.go
+  open here · Rewrite the docs · queued
+```
+
+- **`another window`** is a terminal somewhere else. **`open here`** is a conversation
+  *this* terminal is already holding behind this one, in that other project — reached with
+  `tab` or from `/home`, not by going and finding a window. When any row says it, one more
+  line spells that out.
+- **A project with nothing running is not listed at all** — no heading, no zero, no line.
+  Only live work is here, so a quiet machine answers with this section missing entirely.
+- A window that has closed contributes nothing: rows are read from what each conversation
+  says about itself every few seconds, and a claim nobody has refreshed is not believed.
+- **These rows carry no id**, and the chat is told why in one line: `These have no id in
+  this conversation: work running in another project cannot be read, steered or resolved
+  from here, and it lands where it is running rather than in this conversation.` So it
+  cannot stop, steer or accept another project's work for you — go to that project.
+- The whole reading is only taken when `everywhere` is asked for. An ordinary turn, and an
+  ordinary search, never look outside this project at all.
+- Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
+  itself and nothing wider.
+
 ## Searching the task page: type to filter, find an old task by name
 
 **Just type.** On the task page every printable key — letters, digits and the space —
