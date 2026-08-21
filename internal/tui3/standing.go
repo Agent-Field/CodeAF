@@ -190,8 +190,15 @@ const (
 	// reminder's ([standAnswerWords]). THE HINT NAMES THE KEYS THE CARD DREW and
 	// never one more: a hint offering a digit the chips do not is the same
 	// defect as a chip that does nothing.
-	standProposalHint = "1 yes · 2 change when · 3 once · esc no"
-	standTwoHint      = "1 yes · 2 change when · esc no"
+	//
+	// `0` is named beside `esc` and is not a chip, because the chips are
+	// numbered by their position and `0` is off that numbering by design
+	// ([session.StandingNoKey]). Both keys do exactly the same thing here; the
+	// `0` is spelled out because it is the ONE decline that also works from
+	// home and from the errand pane, and a person who only ever meets the card
+	// in a conversation should still learn the key that works everywhere.
+	standProposalHint = "1 yes · 2 change when · 3 once · 0 or esc, no"
+	standTwoHint      = "1 yes · 2 change when · 0 or esc, no"
 	// standWatchHint is the same slot during the follow-up.
 	standWatchHint = "1 always · 2 only while a window is open"
 
@@ -520,7 +527,7 @@ func (c *standingCard) offers(key string) bool {
 // redirect lane (task.go's [app.taskKey] states the two tiers and why).
 //
 //	always      enter answers the focused chip · esc says no · ←/→ move
-//	empty box   1, 2, 3 pick a chip outright
+//	empty box   1, 2, 3 pick a chip outright · 0 says no
 //
 // The digits are given back the moment there is a sentence in the box, which is
 // the guard the letters need there and the numbers need here: "9am on Mondays"
@@ -558,6 +565,22 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	if card.typing {
 		return nil, false
+	}
+	// THE DECLINE IS A KEY AND NOT A CHIP, and it is read here rather than off
+	// the chip row because the row is numbered by position: `0` is deliberately
+	// off both ends of that numbering so that it means the same thing on a card
+	// with three chips and a card with two ([session.StandingNoKey]). It is
+	// `esc` said with a digit, for the surfaces that have no esc to spare, and
+	// it is claimed under exactly the guards the digits are claimed under — an
+	// empty box, no list open, no correction being typed — because "0900" is a
+	// when somebody might write.
+	//
+	// DURING THE FOLLOW-UP IT IS NOT AN ANSWER, for the reason esc is not one
+	// there: the yes has already been given, and the question on the chips is
+	// no longer whether the item stands.
+	if card.stage == standAsking && msg.String() == session.StandingNoKey {
+		a.answerStanding(session.StandingAnswer{}, standNoWord, "")
+		return nil, true
 	}
 	if at, ok := taskModelKey(msg.String()); ok {
 		if at < len(card.chips()) {

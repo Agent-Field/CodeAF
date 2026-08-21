@@ -372,10 +372,19 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
-			if action.Standing.Once {
+			// THE THREE ANSWERS ARE READ FROM THE ACTION AND NOT FROM THE KEY,
+			// so the words this card settles with cannot drift from what the
+			// engine was told ([session.AnswerFromKey] is the one mapping). The
+			// last arm is the decline — a zero [session.StandingAnswer] — and it
+			// keeps the same row `esc` would have left in this window.
+			switch {
+			case action.Standing.Once:
 				return a.answerStanding(action.Standing, standOnceDone, standOnceWord), true
+			case action.Standing.Approved:
+				return a.answerStanding(action.Standing, standSetWord, standYesWord), true
+			default:
+				return a.answerStanding(action.Standing, standNoWord, ""), true
 			}
-			return a.answerStanding(action.Standing, standSetWord, standYesWord), true
 		}
 		if agent, ok := a.stander(); ok {
 			agent.ResolveStanding(question.ID, action.Standing)

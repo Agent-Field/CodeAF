@@ -224,6 +224,19 @@ func TestTheStandingCardTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 			t.Fatalf("the card offered `2 %s`, which cannot be answered from home", option.Label)
 		}
 	}
+	// AND THE OUTRIGHT NO IS OFFERED, which is the one answer another window
+	// used to have no way to give: `esc` is the no in the conversation, and esc
+	// on home closes home.
+	if AnswerLabel(QuestionStanding, StandingNoKey) == "" {
+		t.Fatal("the standing card takes no decline at all")
+	}
+	var decline bool
+	for _, option := range question.Options {
+		decline = decline || option.Key == StandingNoKey
+	}
+	if !decline {
+		t.Fatalf("the card offered %v, with nothing on it that says no", question.Options)
+	}
 
 	if err := WriteAnswer(dir, QuestionStanding, question.ID, "3"); err != nil {
 		t.Fatalf("leaving the answer: %v", err)
@@ -234,6 +247,84 @@ func TestTheStandingCardTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 		t.Fatalf("`3 once, not standing` came out as %+v", answer)
 	}
 	waitForNoQuestion(t, dir)
+}
+
+// THE OUTRIGHT NO TRAVELS TOO, AND IT IS ONE KEYSTROKE.
+//
+// This is the answer the standing card was missing from every window but its
+// own: `esc` is the no in the conversation, and `esc` on home closes home. A
+// person who did not want the thing had to walk to the window or leave the
+// question standing — which is the walk the whole answer band exists to save.
+func TestAStandingCardIsDeclinedFromAnotherWindowWithOneKey(t *testing.T) {
+	agent, dir := questionSession(t, "ffff3333ffff4444", nil)
+	events := watched(agent)
+
+	answers := make(chan StandingAnswer, 1)
+	go func() {
+		notice := &StandingNotice{Item: standing.Item{Words: "check the deploy every morning"}}
+		answer, err := agent.askStanding(context.Background(), notice)
+		if err != nil {
+			t.Errorf("the card ended in an error: %v", err)
+		}
+		answers <- answer
+	}()
+
+	proposal := <-events
+	if proposal.Kind != EventStandingProposal || proposal.Standing == nil {
+		t.Fatalf("the standing lane sent %v", proposal.Kind)
+	}
+	question := waitForQuestion(t, dir)
+	if err := WriteAnswer(dir, QuestionStanding, question.ID, StandingNoKey); err != nil {
+		t.Fatalf("leaving the answer: %v", err)
+	}
+	agent.drainAnswers()
+	// NOTHING WAS SET UP, AND NOTHING WAS RUN. The decline is the zero answer:
+	// not approved, not once, no correction to re-propose from, and nobody was
+	// asked about the OS timer.
+	if answer := <-answers; answer != (StandingAnswer{}) {
+		t.Fatalf("`%s not set up` came out as %+v", StandingNoKey, answer)
+	}
+	waitForNoQuestion(t, dir)
+}
+
+// THE DECLINE IS ON EVERY STANDING CARD THERE IS. The `once` chip is the only
+// one that is ever missing (a one-off reminder's), because "do it now" is not a
+// smaller version of "do it at six" — but "set nothing up" answers every
+// standing question ever asked, and a person who learned the key on a watch
+// must find it under the same key on a reminder.
+func TestEveryStandingCardOffersTheSameDecline(t *testing.T) {
+	reminder := standing.Item{
+		When: standing.When{Kind: standing.WhenAt},
+		Does: standing.Action{Kind: standing.ActionSay},
+	}
+	watch := standing.Item{
+		When: standing.When{Kind: standing.WhenProbe},
+		Does: standing.Action{Kind: standing.ActionSay},
+	}
+	for _, item := range []standing.Item{reminder, watch} {
+		var found bool
+		for _, option := range StandingOptions(item) {
+			found = found || (option.Key == StandingNoKey && option.Label == "not set up")
+		}
+		if !found {
+			t.Fatalf("a %s card offers %v, with no decline on it", item.When.Kind, StandingOptions(item))
+		}
+	}
+	// AND IT IS NOT A DIGIT ANY CHIP OWNS. The card in a conversation numbers
+	// its chips by position — 1, 2, 3 — so a decline sharing one of those would
+	// move under the hand the day a card drew one chip fewer.
+	var wearsIt int
+	for _, option := range AnswerOptions(QuestionStanding) {
+		if option.Key == StandingNoKey {
+			wearsIt++
+		}
+	}
+	if wearsIt != 1 {
+		t.Fatalf("%q names %d answers on a standing card, want exactly one", StandingNoKey, wearsIt)
+	}
+	if StandingNoKey == StandingOnceKey || StandingNoKey == "1" || StandingNoKey == "2" {
+		t.Fatalf("the decline is %q, which is a chip's own digit", StandingNoKey)
+	}
 }
 
 // A STALE ID IS IGNORED, AS EVERY LATE ANSWER IS. Nothing is reported, because
@@ -373,6 +464,9 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		{QuestionTask, "2", "no", func(a AnswerAction) bool { return !a.Task.Approved }},
 		{QuestionStanding, "1", "yes", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
 		{QuestionStanding, "3", "once, not standing", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
+		{QuestionStanding, "0", "not set up", func(a AnswerAction) bool {
+			return a.Standing == (StandingAnswer{})
+		}},
 	} {
 		if label := AnswerLabel(want.kind, want.key); label != want.label {
 			t.Errorf("%s %s is called %q, want %q", want.kind, want.key, label, want.label)
