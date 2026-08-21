@@ -15,8 +15,11 @@ import (
 // ([StandingSeam] says why): "home with four watches on it" must not be a test
 // that writes JSON documents to assert a row's spacing.
 type standBand struct {
-	items   []standing.Item
-	running map[string]bool
+	items []standing.Item
+	// running is the marker each item's own folder would be holding, by id: an
+	// absent id is a pass that is not on it. It is a MARK and not a bool because
+	// the card says which half of a pass it caught and since when.
+	running map[string]standing.RunningMark
 	saved   []standing.Item
 	err     error
 }
@@ -44,7 +47,10 @@ func (b *standBand) wire(a *app) {
 			}
 			return nil
 		},
-		Running: func(id string) bool { return b.running[id] },
+		Running: func(id string) (standing.RunningMark, bool) {
+			mark, found := b.running[id]
+			return mark, found
+		},
 	}
 }
 
@@ -87,7 +93,9 @@ func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
 	spoke := time.Now().Add(-time.Hour)
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", spoke)
 
-	band := &standBand{running: map[string]bool{"run": true}}
+	band := &standBand{running: map[string]standing.RunningMark{
+		"run": {PID: 1, Since: time.Now(), What: standing.RunningChecking},
+	}}
 	band.items = []standing.Item{
 		bandItem("wait1", "tell me when the cert expires", "/w/alpha", standing.WhenProbe, "when the cert is under 14 days"),
 		bandItem("wait2", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
@@ -302,7 +310,9 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
 		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
 	}
-	band.running = map[string]bool{"two": true}
+	band.running = map[string]standing.RunningMark{
+		"two": {PID: 1, Since: time.Now(), What: standing.RunningFiring},
+	}
 	stale()
 	if a.keepingWord() == want {
 		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
@@ -552,5 +562,86 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 	drive(t, a, key("p"))
 	if len(band.saved) != 1 || band.saved[0].ID != "watch" || band.saved[0].Status != standing.StatusPaused {
 		t.Fatalf("`p` on the row did not pause it, the store saw %+v", band.saved)
+	}
+}
+
+// ── `●` IS THE SEAM'S ANSWER AND NOBODY ELSE'S ──────────────────────────────
+//
+// A firing happens in whichever process holds the tick lock — another window,
+// or the operating system's timer with nothing open at all — so the glyph is
+// read from a marker that process left ([StandingSeam.Running]) and never
+// guessed from the item's own document. These pin the whole of what a surface
+// does with that answer: the mark on the row, the sentence on the card, and the
+// stillness of both when nobody is asking.
+func TestAnItemBeingCheckedElsewhereWearsTheDotAndSaysSince(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	item := bandItem("c", "tell me when CI goes red", "/w/alpha", standing.WhenProbe, "when CI goes red")
+
+	view := StandingItemView{
+		Item:    item,
+		Running: true,
+		Mark:    standing.RunningMark{PID: 4321, Since: now.Add(-4 * time.Second), What: standing.RunningChecking},
+	}
+	if got := standGlyph(view.Item, view.Running, view.News, false); got != homeLiveGlyph {
+		t.Fatalf("an item a pass is on reads %q, wanted %q", got, homeLiveGlyph)
+	}
+	if got := standRollup(view, now); got != "checking now · since 4s" {
+		t.Fatalf("the row's tail reads %q", got)
+	}
+	card := strings.Join(plainAll(StandingItemCard(a, view, "alpha", "/w/alpha", 60, 20, now)), "\n")
+	if !strings.Contains(card, homeLiveGlyph+" checking now · since 4s") {
+		t.Fatalf("the card does not say what the pass is doing:\n%s", card)
+	}
+
+	// THE OTHER HALF OF A PASS IS THE OTHER WORD. Checking is the look — a
+	// probe, a fingerprint, the sentinel — and firing is the work that followed
+	// a yes; they cost different money and a row that said "running" for both
+	// would drop the only fact this glyph carries.
+	view.Mark = standing.RunningMark{PID: 4321, Since: now, What: standing.RunningFiring}
+	if got := standRollup(view, now); got != "firing now" {
+		t.Fatalf("a firing that just started reads %q, wanted no age at all", got)
+	}
+	card = strings.Join(plainAll(StandingItemCard(a, view, "alpha", "/w/alpha", 60, 20, now)), "\n")
+	if !strings.Contains(card, homeLiveGlyph+" firing now") {
+		t.Fatalf("the card does not say it is firing:\n%s", card)
+	}
+
+	// AND A MINUTE IN IT IS THE ORDINARY AGE AGAIN, because seconds have stopped
+	// being the interesting unit.
+	view.Mark.Since = now.Add(-3 * time.Minute)
+	if got := standRollup(view, now); got != "firing now · since 3m" {
+		t.Fatalf("a firing three minutes old reads %q", got)
+	}
+
+	// NOTHING RUNNING, NOTHING SAID. The card of the same item with no marker
+	// behind it draws no line about now at all.
+	quiet := strings.Join(plainAll(StandingItemCard(a, StandingItemView{Item: item},
+		"alpha", "/w/alpha", 60, 20, now)), "\n")
+	if strings.Contains(quiet, "now ·") || strings.Contains(quiet, "checking now") {
+		t.Fatalf("an item nobody is on claims to be running:\n%s", quiet)
+	}
+}
+
+// A SURFACE WITH NO WAY TO ASK NEVER MAKES THE CLAIM. A nil Running is a home
+// where no row ever wears `●` and the status segment never breathes — which is
+// honest, because the glyph is a statement about this instant.
+func TestASurfaceThatCannotAskNeverDrawsTheDot(t *testing.T) {
+	lab := newHomeLab(t)
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
+	band := &standBand{items: []standing.Item{
+		bandItem("one", "tell me when CI goes red", "/w/alpha", standing.WhenProbe, "when CI goes red"),
+	}}
+	a := lab.app(transcript)
+	band.wire(a)
+	a.stands.Running = nil
+	a.openHome()
+
+	views := a.standItems("/w/alpha")
+	if len(views) != 1 || views[0].Running {
+		t.Fatalf("a surface with no seam decided something was running: %+v", views)
+	}
+	if strings.Contains(strings.Join(homeLines(a), "\n"), homeLiveGlyph+" tell me when CI goes red") {
+		t.Fatalf("a row wore `●` with nothing behind it:\n%s", strings.Join(homeLines(a), "\n"))
 	}
 }
