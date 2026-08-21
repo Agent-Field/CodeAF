@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
@@ -197,6 +198,7 @@ func startStandingTicks(store *standing.Store) {
 	}
 	standingOnce.Do(func() {
 		guard.Go("chatv3/standing", func() {
+			standingTicks.Store(true)
 			ticker := time.NewTicker(standing.Interval)
 			defer ticker.Stop()
 			for range ticker.C {
@@ -207,6 +209,17 @@ func startStandingTicks(store *standing.Store) {
 }
 
 var standingOnce sync.Once
+
+// standingTicks is whether the loop above is actually running in this process,
+// and [standingTicking] is how the surface asks ([tui3.StandingSeam.Ticking]).
+//
+// IT IS SET INSIDE THE GOROUTINE AND NOT BESIDE THE Do, so it is true exactly
+// when there is something keeping time. /status says `while a window is open`
+// on the strength of this flag, and a flag set by the intention to start a
+// goroutine would be the screen vouching for a pass that never began.
+var standingTicks atomic.Bool
+
+func standingTicking() bool { return standingTicks.Load() }
 
 // runStandingTick is one pass, bounded, with everything it can say written to a
 // file.
@@ -268,6 +281,24 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			return items
 		},
 		Save: store.Save,
+		// WHETHER THIS PROCESS IS KEEPING TIME, asked at the moment the line is
+		// drawn rather than latched when the seam was built: the ticking starts
+		// during the launch (startStandingTicks) and a boolean captured here
+		// would be a claim about the order of two lines in this file.
+		Ticking: standingTicking,
+		// And why nobody is, when nobody is. The marker lives under the store
+		// root and internal/session owns its shape (tools_standing.go).
+		WatchAsked: func() (bool, bool) { return session.WatchAsked(store.Root()) },
+		// The ledger's last days, per item, for the `this week` line on a card.
+		// A read that fails answers nothing rather than a wrong figure — the
+		// card simply has one less true thing to say.
+		Runs: func(since time.Time) map[string]standing.Spend {
+			runs, err := store.RunsSince(since)
+			if err != nil {
+				return nil
+			}
+			return runs
+		},
 	}
 	if watch != nil {
 		out.Watch = func() (standing.WatchStatus, bool) {

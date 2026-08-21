@@ -107,6 +107,83 @@ func TestLedgerKeepsCountingPastATornLine(t *testing.T) {
 	}
 }
 
+// A WEEK IS A WALK OVER THE DAY FILES, and it answers per item so one reading
+// serves a whole screen. This is what a card means by `3 runs this week`.
+func TestRunsSinceSumsEveryDayInReachPerItem(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+
+	for _, entry := range []Entry{
+		{At: now.Add(-6 * 24 * time.Hour), ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), USD: 0.01},
+		{At: now.Add(-2 * 24 * time.Hour), ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), USD: 0.02},
+		{At: now, ItemID: "aaaaaaaaaaaaaaaa", Kind: entryCheck, USD: 0.01},
+		{At: now, ItemID: "bbbbbbbbbbbbbbbb", Kind: string(ActionTask), USD: 0.40},
+		// Outside the week, and outside the answer.
+		{At: now.Add(-9 * 24 * time.Hour), ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), USD: 5},
+	} {
+		if err := store.Append(entry); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	week, err := store.RunsSince(now.Add(-7 * 24 * time.Hour))
+	if err != nil {
+		t.Fatalf("runs since: %v", err)
+	}
+	first := week["aaaaaaaaaaaaaaaa"]
+	if first.Fired != 2 {
+		t.Fatalf("the first item fired %d times this week, wanted 2 — a check is not a firing", first.Fired)
+	}
+	if first.USD < 0.0399 || first.USD > 0.0401 {
+		t.Fatalf("the first item spent %v this week, wanted the two firings and the check", first.USD)
+	}
+	second := week["bbbbbbbbbbbbbbbb"]
+	if second.Fired != 1 || second.USD < 0.399 || second.USD > 0.401 {
+		t.Fatalf("the second item is %+v, wanted one firing and forty cents", second)
+	}
+	if len(week) != 2 {
+		t.Fatalf("the week answered for %d items, wanted the two inside it", len(week))
+	}
+}
+
+// A MOMENT INSIDE TODAY IS RESPECTED, not rounded out to the whole day: the
+// file it lands in holds the hours on either side of it.
+func TestRunsSinceSkipsWhatCameBeforeTheMoment(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	for _, entry := range []Entry{
+		{At: now.Add(-4 * time.Hour), ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), USD: 1},
+		{At: now.Add(-time.Hour), ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), USD: 2},
+	} {
+		if err := store.Append(entry); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	since, err := store.RunsSince(now.Add(-2 * time.Hour))
+	if err != nil {
+		t.Fatalf("runs since: %v", err)
+	}
+	if got := since["aaaaaaaaaaaaaaaa"]; got.Fired != 1 || got.USD != 2 {
+		t.Fatalf("the answer is %+v, wanted only the line inside the window", got)
+	}
+}
+
+// NOTHING TO SAY IS AN EMPTY ANSWER AND NEVER A FAILURE — a machine on which
+// nothing has ever fired, and a moment in the future.
+func TestRunsSinceIsEmptyWithNothingToCount(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	for _, from := range []time.Time{now.Add(-7 * 24 * time.Hour), now.Add(time.Hour), {}} {
+		got, err := store.RunsSince(from)
+		if err != nil {
+			t.Fatalf("runs since %v: %v", from, err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("runs since %v answered %+v, wanted nothing", from, got)
+		}
+	}
+}
+
 func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	sessionDir := filepath.Join(t.TempDir(), "sessions", "0123456789abcdef")
 

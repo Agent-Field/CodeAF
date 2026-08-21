@@ -183,6 +183,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// that reached it yesterday is still over it today. A rail that reset with
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
+		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
+		// above came out of the file's own usage lines, so this costs the read
+		// of a meta.json and — only when it has no figure at all — one write
+		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
+		// that has not spoken since the field arrived would read as free on
+		// home forever.
+		agent.stampRestoredSpend(agent.usage)
 	}
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named

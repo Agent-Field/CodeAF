@@ -22,7 +22,10 @@ package tui3
 // directory on every keystroke, for the same answer.
 //
 // It folds at [homeItemsShown] — the same three the left column's own band
-// folds at, and behind the same words.
+// folds at, and behind the same words — and it ends with one dim line saying
+// what all of them have done in the last week:
+//
+//	4 runs this week · $0.06
 
 import (
 	"strings"
@@ -63,5 +66,27 @@ func drawProjectStandingBand(a *app, ctx bandContext) []string {
 			" " + strings.TrimSpace(view.Item.Words)
 		groups = append(groups, projectCardRows(label, standRollup(view, ctx.now), ctx.width, ctx.pal))
 	}
-	return a.bandFoldPacked(ctx, "projectstanding", groups, homeItemsShown, projectItemsWord)
+	rows := a.bandFoldPacked(ctx, "projectstanding", groups, homeItemsShown, projectItemsWord)
+	// AND WHAT THEY HAVE ACTUALLY DONE THIS WEEK, under the list rather than on
+	// the rows: it is one fact about the whole band ([standWeekFacts] sums the
+	// ledger over these items' ids), and a per-row copy of it would push the
+	// cadence off every line to say the same thing five times.
+	//
+	// It sits BELOW the fold line on purpose. The count is about every item this
+	// project has, including the ones behind the fold, so a line drawn above it
+	// would read as being about the three that are visible.
+	if week := standWeekFacts(a.standWeek(ctx.now), standIDs(views), false); week != "" {
+		rows = append(rows, ctx.pal.dim(fit(week, ctx.width)))
+	}
+	return rows
+}
+
+// standIDs is the ids of one band's items, which is what the ledger is summed
+// over.
+func standIDs(views []StandingItemView) []string {
+	ids := make([]string, 0, len(views))
+	for _, view := range views {
+		ids = append(ids, view.Item.ID)
+	}
+	return ids
 }
