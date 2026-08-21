@@ -486,3 +486,68 @@ func TestNewsNeverOverwritesTheLouderMarks(t *testing.T) {
 		t.Fatalf("a paused item in ascii reads %q", got)
 	}
 }
+
+// A WORKSPACE WHOSE ONLY CONTENT IS A WATCH IS STILL SOMETHING HOME HAS TO SHOW.
+//
+// The list is read off the projects root, so a directory somebody set a
+// reminder in and never held a conversation in had no heading, no band and no
+// row — the person set the thing up and the one screen that exists to say what
+// is true said nothing about it. The heading is synthesised from the item's own
+// workspace, and it sits in the recency order by the newest thing its items have
+// done.
+func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", now.Add(-3*time.Hour))
+
+	band := &standBand{}
+	watch := bandItem("watch", "tell me when CI on main goes red", "/w/quiet", standing.WhenProbe, "when CI goes red")
+	watch.LastChecked = now.Add(-time.Minute)
+	watch.Created = now.Add(-time.Hour)
+	band.items = []standing.Item{
+		bandItem("here", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
+		watch,
+	}
+
+	a := lab.app(transcript)
+	a.workspace = "/w/quiet"
+	band.wire(a)
+	a.openHome()
+
+	lines := homeLines(a)
+	joined := strings.Join(lines, "\n")
+	heading := homeRowAt(lines, "quiet")
+	row := homeRowAt(lines, "tell me when CI")
+	if heading < 0 || row < 0 {
+		t.Fatalf("the items-only project is invisible (heading %d, row %d):\n%s", heading, row, joined)
+	}
+	if heading > row {
+		t.Fatalf("the heading is drawn under its own rows (heading %d, row %d):\n%s", heading, row, joined)
+	}
+	// IT SITS BY ITS OWN RECENCY. The watch was looked at a minute ago and the
+	// conversation was three hours ago, so the new section is above the old one.
+	if other := homeRowAt(lines, "Pricing Research"); other >= 0 && heading > other {
+		t.Fatalf("the newer items-only project sorted under an older project:\n%s", joined)
+	}
+	// AND IT IS NOT MARKED `elsewhere`. That word names a conversation this
+	// window cannot open, and there are no conversations here at all.
+	if strings.Contains(lines[heading], homeElsewhereWord) {
+		t.Fatalf("a heading with no conversations under it claims %q:\n%s", homeElsewhereWord, joined)
+	}
+	// THE ROW IS A REAL CURSOR STOP with the item's own keys on it: the fold
+	// laws and the band's own writes reach it exactly as they reach any other.
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeItem && line.item.ID == "watch" {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the watch is not a line of the column:\n%s", joined)
+	}
+	a.home.cursor = at
+	drive(t, a, key("p"))
+	if len(band.saved) != 1 || band.saved[0].ID != "watch" || band.saved[0].Status != standing.StatusPaused {
+		t.Fatalf("`p` on the row did not pause it, the store saw %+v", band.saved)
+	}
+}

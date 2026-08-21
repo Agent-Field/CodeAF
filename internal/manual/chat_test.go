@@ -228,6 +228,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
+		// Both written from one person's first run of `ask here`: the pane took
+		// the keyboard and they could not find the way out of it, and a click on
+		// a row lit the row up without moving the keyboard with it.
+		{"how do I get back to the list from ask here", "asking-from-home"},
+		{"why can't I click a row while asking", "asking-from-home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

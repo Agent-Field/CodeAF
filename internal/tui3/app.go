@@ -1820,7 +1820,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.home.open {
-			a.homeHover(msg.Mouse().Y)
+			a.homeHover(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.deckShowing() {
