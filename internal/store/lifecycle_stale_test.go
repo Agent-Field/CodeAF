@@ -14,7 +14,7 @@ func TestReleaseStaleReleasesOnlyOldRunningNodes(t *testing.T) {
 
 	// Two nodes, both claimed and started.
 	for _, id := range []string{"task-stale", "task-fresh"} {
-		err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: id, Brief: "x"}}}, Provenance{Origin: OriginSelf})
+		err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: id, Brief: "x"}}}, Provenance{Origin: OriginSelf, Intent: "stale-claim test"})
 		if err != nil {
 			t.Fatalf("splice %s: %v", id, err)
 		}
