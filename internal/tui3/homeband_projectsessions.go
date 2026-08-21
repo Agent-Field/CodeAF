@@ -53,7 +53,9 @@ func drawProjectSessionsBand(a *app, ctx bandContext) []string {
 	groups := make([][]string, 0, len(project.Sessions))
 	for _, row := range project.Sessions {
 		label := homeGlyph(row, ctx.pal.ascii) + " " + homeName(row)
-		groups = append(groups, projectCardRows(label, homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeFresh(row), ctx.now), ctx.width, ctx.pal))
+		note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs,
+			a.homeRowGone(row), a.homeFresh(row), ctx.now)
+		groups = append(groups, projectCardRows(label, note, ctx.width, ctx.pal))
 	}
 	return a.bandFoldPacked(ctx, "projectsessions", groups, homeShown, projectSessionsWord)
 }

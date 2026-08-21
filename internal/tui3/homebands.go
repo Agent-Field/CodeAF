@@ -209,6 +209,7 @@ type homeBand struct {
 // The reading order of the column, top to bottom. A lane adding a band picks a
 // key between its neighbours and does not move the others.
 const (
+	bandOrderGone        = 5   // the folder this project lived in is not there any more
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
 	bandOrderNews        = 30  // what happened since you last looked

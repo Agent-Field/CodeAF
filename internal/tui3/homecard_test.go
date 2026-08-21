@@ -172,8 +172,9 @@ func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
-	other := lab.session("-tmp-alpha", "aaaa000000000002", "pricing research", "/tmp/alpha", now.Add(-2*time.Hour))
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
+	other := lab.session("-tmp-alpha", "aaaa000000000002", "pricing research", here, now.Add(-2*time.Hour))
 	lab.task("-tmp-alpha", session.TaskIndexEntry{
 		ID: "1", Name: "tiers", Label: "Model the tiers", Title: "Model the tiers",
 		Status: string(session.TaskDone), SessionID: "aaaa000000000002",

@@ -449,10 +449,49 @@ The status line then reads `2 open`, and `tab` over an empty message box goes ba
 Two refusals are still possible and both leave home standing:
 
 - the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
-  never stats a folder until you press `enter` on it, so a repository deleted or moved since
-  its last conversation is found here rather than after the fact;
+  already knew — the row reads `folder gone` and the card says so too, see *Enter does
+  nothing on a row — the folder is gone* — and this line is the check made again on the
+  keystroke, for a folder deleted in the seconds since;
 - this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
   one`.
+
+## Enter does nothing on a row — the folder is gone
+
+**Its project folder is not on this disk any more.** A conversation started in a directory
+that has since been deleted, renamed or moved — a scratch folder under `/tmp` wiped by a
+reboot is the usual way — cannot be opened, because the conversation would come up as an
+agent whose tool root does not exist and every command and every relative path in it would
+fail.
+
+Home says so **before you press anything**, in two places:
+
+**On the row.** A dim `folder gone` sits where its rollup would be, in the same slot and the
+same grey as `another window`. Every conversation in that project carries it, because the
+cursor stops on rows and never on a heading.
+
+**On the card.** Directly under the place line, above everything else on the right-hand
+pane, one dim line reads `that folder is gone`. The last line of the card — its legend —
+loses the three keys that need a folder and reads:
+
+```
+that folder is gone · y copy path · m more
+```
+
+`enter open`, `n new chat here` and `o open folder` are not offered, because all three want
+that directory: `enter` opens a conversation rooted in it, `n` starts a fresh one there, and
+`o` hands it to your file manager. Pressing them anyway refuses.
+
+**On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
+and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
+
+**The conversation itself is not lost.** Everything aforge recorded about it lives under
+`~/.aforge/v3/projects`, not in the workspace: `m` still opens the card's folded bands —
+what it did, what it cost, where it left off — and `y` still copies the workspace path. What
+cannot happen is *continuing* it, because there is nowhere to continue it.
+
+**What to do:** recreate the folder at that exact path and the row opens again on the next
+refresh (home re-checks every three seconds); or type a message at the foot of home and
+start a new conversation in a project that exists.
 
 ## Why does it say elsewhere — it does not any more
 
@@ -1215,6 +1254,10 @@ running, exactly as it does for `enter`. A row whose folder is no longer on this
 `o` asks the machine to open that conversation's workspace folder, `y` copies
 the workspace path, and `m` opens or closes the card's folded bands. A failed folder open
 says `could not open <path>` on home's message line.
+
+**A card whose project folder is gone carries a shorter legend** — `that folder is gone · y
+copy path · m more` — because `enter`, `n` and `o` all need that directory. See *Enter does
+nothing on a row — the folder is gone*.
 
 An item's card carries the exact legend `enter open where it was asked · p pause · s stop
 · m more`.
