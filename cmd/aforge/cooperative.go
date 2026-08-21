@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
@@ -78,5 +80,52 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	if spliced > 0 && divided != nil {
 		plans.put(namespace, divided, sink, workingModel, workingClient)
 	}
+	// Inhibition: each parallel worker the division minted gets a brief that
+	// names its own scope and the scopes the other workers own, so the parts
+	// do not redo one another's work. The scopes come from the leaf's own
+	// account of the division (SplitRequest.Parts); the nodes are the ones
+	// this splice just created, found by the namespace it minted them under.
+	if spliced > 0 {
+		scopes := make([]string, 0, len(outcome.SplitRequest.Parts))
+		for _, part := range outcome.SplitRequest.Parts {
+			scopes = append(scopes, firstScope(part.Brief))
+		}
+		all := strings.Join(scopes, "; ")
+		committed := 0
+		if ids, err := graph.NodeIDsWithPrefix(namespace); err == nil {
+			for _, id := range ids {
+				if id == sink {
+					continue
+				}
+				nd, ok, err := graph.Node(id)
+				if err != nil || !ok {
+					continue
+				}
+				owned := firstScope(nd.Brief)
+				block := "SCOPE OWNERSHIP:\nYou own: " + owned +
+					"\nOther agents own: " + all +
+					"\nDo NOT redo work outside your scope.\n\n"
+				if graph.AmendPending(id, block+nd.Brief, "") == nil {
+					committed++
+				}
+			}
+		}
+		if committed > 0 {
+			log.Printf("inhibition: %d scopes committed", committed)
+		}
+	}
 	return spliced, err
+}
+
+// firstScope reduces a brief to a one-line scope: the first sentence, or the
+// first 60 characters, whichever is shorter.
+func firstScope(brief string) string {
+	s := strings.TrimSpace(brief)
+	if i := strings.IndexAny(s, ".!\n"); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	return s
 }
