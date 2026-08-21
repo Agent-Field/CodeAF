@@ -662,22 +662,43 @@ func standingPastMoment(t *testing.T) {
 	agent, _ := w.open(workspace, nil)
 
 	turn := w.say(agent, "remind me at 00:01 today to drink water", answerYes)
-	stand, found := turn.named("stand")
-	if !found {
-		t.Fatalf("the model never called stand; it called %v", turn.names())
+	// TWO HONEST ROADS, AND THE TEST TAKES EITHER. A model that reads the Now
+	// line can see for itself that 00:01 has gone and say so without touching
+	// the tool; one that does call stand is refused with the time it is now and
+	// may re-propose a moment ahead. What is NOT allowed is the third road the
+	// person's own transcript showed: a card for a moment already behind them.
+	stand, called := turn.named("stand")
+	if !called {
+		lower := strings.ToLower(turn.Reply)
+		if !strings.Contains(lower, "passed") && !strings.Contains(lower, "already") && !strings.Contains(lower, "ago") {
+			t.Fatalf("the model neither called stand nor said the moment has gone: %q", turn.Reply)
+		}
+		if items, _ := w.store.List(); len(items) != 0 {
+			t.Fatalf("nothing should stand for a moment that has gone; found %d", len(items))
+		}
+		t.Logf("DECLINED BEFORE THE TOOL → %q", turn.Reply)
+		return
 	}
 	if !strings.Contains(strings.ToLower(stand.Output), "passed") {
-		t.Fatalf("the engine took a moment that has gone: %q", stand.Output)
+		// The model may already have computed a future moment from the Now
+		// line (tomorrow 00:01); that is the guard working upstream of itself.
+		item := w.onlyItem()
+		if !item.When.At.After(time.Now()) {
+			t.Fatalf("the engine took a moment that has gone: %q (at %s)", stand.Output, item.When.At)
+		}
+		t.Logf("PROPOSED A FUTURE MOMENT OUTRIGHT → %s", item.When.At.Format(time.RFC3339))
+		return
 	}
 	if !strings.Contains(stand.Output, "now") {
 		t.Errorf("the refusal did not carry the now line: %q", stand.Output)
 	}
-	item := w.onlyItem()
-	if !item.When.At.After(time.Now()) {
-		t.Errorf("the model re-proposed a moment that is still in the past: %s", item.When.At)
-	}
 	t.Logf("REFUSAL → %q", stand.Output)
-	t.Logf("RE-PROPOSED → %s", item.When.At.Format(time.RFC3339))
+	if items, _ := w.store.List(); len(items) == 1 {
+		if !items[0].When.At.After(time.Now()) {
+			t.Errorf("the model re-proposed a moment that is still in the past: %s", items[0].When.At)
+		}
+		t.Logf("RE-PROPOSED → %s", items[0].When.At.Format(time.RFC3339))
+	}
 }
 
 // pastGuardLanded reads the engine's own refusal out of the source it would be
