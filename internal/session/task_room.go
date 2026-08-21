@@ -192,17 +192,39 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 // subscribe] does exactly this for a turn that has ended). The history is the
 // journal; this door is only ever the present.
 func (a *Agent) WatchTask(id uint64) (<-chan Event, error) {
+	lane, _, err := a.WatchTaskRoom(id)
+	return lane, err
+}
+
+// WatchTaskRoom is [Agent.WatchTask] with a way to stop.
+//
+// It is the same door onto the same room — the step in flight, then the node's
+// events from now on — and stop is a watcher walking out: the room stops
+// publishing to it, its pump ends and its channel closes. A surface needs it
+// because a person leaves a node's page long before the node leaves, and
+// because a surface that shows one conversation at a time detaches from every
+// node it was watching in the ones behind (see [taskRoom.leave]).
+//
+// It is a SECOND DOOR rather than a changed one, for [Agent.WatchTaskUpdates]'
+// reason. stop is never nil, and calling it twice is calling it once.
+func (a *Agent) WatchTaskRoom(id uint64) (<-chan Event, func(), error) {
 	node := a.taskNode(id)
 	if node == nil {
-		return nil, fmt.Errorf("no task %d in this session", id)
+		return nil, nil, fmt.Errorf("no task %d in this session", id)
 	}
 	a.mu.Lock()
 	closed := a.closed
 	a.mu.Unlock()
 	if closed {
-		return closedEventStream(), nil
+		return closedEventStream(), func() {}, nil
 	}
-	return node.openRoom().join(), nil
+	room := node.openRoom()
+	stream, joined := room.joinStream()
+	if !joined {
+		return stream.out, func() {}, nil
+	}
+	var once sync.Once
+	return stream.out, func() { once.Do(func() { room.leave(stream) }) }, nil
 }
 
 // TaskJournal is the node's journal path — its whole transcript on disk — or ""
@@ -286,23 +308,52 @@ func newTaskRoom() *taskRoom {
 // A nil room is a node with no room to enter: the same answer, so no caller has
 // to check.
 func (r *taskRoom) join() <-chan Event {
+	stream, _ := r.joinStream()
+	return stream.out
+}
+
+// joinStream is join with the stream itself in hand, for a caller that will
+// need to hand it back ([taskRoom.leave]). false says the room was closed and
+// the stream with it, so nothing has to be handed back at all.
+func (r *taskRoom) joinStream() (*eventStream, bool) {
 	stream := newEventStream()
 	if r == nil {
 		stream.close()
-		return stream.out
+		return stream, false
 	}
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
 		stream.close()
-		return stream.out
+		return stream, false
 	}
 	for _, event := range r.catchup.replay() {
 		stream.send(event)
 	}
 	r.watchers[stream] = struct{}{}
 	r.mu.Unlock()
-	return stream.out
+	return stream, true
+}
+
+// leave is a watcher WALKING OUT of the room before the node is over: it stops
+// being published to and its pump ends.
+//
+// A room is not a session. A person opens a node's page, reads it and presses
+// esc, and the node goes on running for another twenty minutes — so a surface
+// that could only ever join would collect one parked goroutine per look
+// (agent.go's [eventStream.pump]), and a surface holding several conversations
+// would collect them per conversation. A watcher this room does not hold is
+// left alone, which is the ordinary case for a caller that leaves twice or
+// leaves after the node landed.
+func (r *taskRoom) leave(stream *eventStream) {
+	if r == nil || stream == nil {
+		stream.leave()
+		return
+	}
+	r.mu.Lock()
+	delete(r.watchers, stream)
+	r.mu.Unlock()
+	stream.leave()
 }
 
 // speaking hands the room the agent the person will be talking to.
