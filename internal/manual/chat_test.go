@@ -75,6 +75,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make it think harder", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
 		{"does it support markdown tables", "screen"},
+		// From the screenshot that provoked the right column's rebuild: the
+		// figures at a tool row's right end were cut down to `0…`, and "what
+		// does that mean" is the first thing anyone asks about them.
+		{"what does the time on the right of a tool call mean", "screen"},
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},

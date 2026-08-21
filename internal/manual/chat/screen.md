@@ -531,7 +531,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | a room's pinned header | width 12 and a non-zero breathing gap |
 | welcome box | not drawn below height 12 or width 40 |
 | consent bottom sheet at phone width | width 16 |
-| trailing stat on a tool row | dropped unless the target keeps 8 cells |
+| the size in a tool row's right column | dropped unless the target keeps 7 cells |
 | tool preview and expansion | nothing below width 8 |
 | phone code wrap | falls back to plain cut rendering below 8 content cells |
 | opened-table columns | become stacked records below 8 |
@@ -949,13 +949,13 @@ A turn's tool calls are one object on screen: a rail down the left, one row per 
 and an elbow closing the run.
 
 ```
-├─▶ read internal/session/session.go   · 189 lines
-├─▶ edit internal/session/loop.go      +3 −1
+├─▶ read internal/session/session.go              189 lines · 0.4s
+├─▶ edit internal/session/loop.go                     +3 −1 · 0.2s
 │ internal/session/loop.go
 │ @@ -1,4 +1,4 @@
 │ -const argsLimit = 8192
 │ +const argsLimit = 32768
-╰─▶ bash go test ./internal/session    exit 1 ✗
+╰─▶ bash go test ./internal/session              ✗ exit 1 · 1m02s
 ```
 
 `├─▶ ` for every call above the last, `╰─▶ ` for the last, `│ ` for an opened call's
@@ -970,9 +970,9 @@ Each state has its own mark:
 | arriving on the wire | `◌` pulsing dim | dim whole, e.g. `receiving · 1.2 KB`; a `write` also hangs the file it is typing |
 | queued | `◌` dim | ordinary row, quiet |
 | waiting on you | `?` in the question hue, bold | the whole row is the question hue |
-| running | braille spinner, muted | a count-up beside it |
-| done, success | **nothing** | a quiet line is the success |
-| done, failed | `✗` in the bad hue | plus `exit N` as the stat |
+| running | braille spinner, muted | the spinner leads the right column and the count-up follows it: `⠋ 4s` |
+| done, success | **nothing** | a quiet line is the success; the right column is the size and the duration |
+| done, failed | `✗` in the bad hue | the `✗` leads the right column: `✗ exit 1 · 1.2s` |
 | unresolved when the turn ended | `·` dim | frozen; the clock stops |
 
 The spinner means one thing only: something is turning. On success there is no glyph,
@@ -987,7 +987,9 @@ that is running and the two it followed.
 
 ## What a tool row says, part by part
 
-A row is rail, name, target, stat, mark.
+A row is a **sentence** — rail, name, target — that starts at the rail, and a **right
+column** that ends at the frame's edge. The sentence says what the call is pointed at;
+the column says how it is going and what it cost.
 
 The **name** is chrome, so it is muted. The **target** is what you are reading, so it
 leads in primary ink — and it is split in two within itself: what the call is about
@@ -998,18 +1000,28 @@ stays ink, what merely qualifies it recedes to dim.
 - `read`, `edit`, `write` — the path is ink, a trailing `120-240` line range is dim.
 - `grep`, `find` — the **pattern is accent**, because it is the one target that is not a
   thing that exists, it is what the call is looking for; the place it searched is dim.
+- `web_fetch` — the URL, whole, off the call's own arguments.
 
-The **stat** is the dim figure trailing a finished call, derived from the call's own
-arguments and output:
+A target too long for the row is **cut in the middle** when it is a path or a URL, and at
+the **end** when it is a command or a pattern. A URL's two ends are the two you read it
+by — the host says whose page it is, the tail says which page — so
+`https://www.reuters.com/world/us/us-treasury-double-sizes-…-2026-08-20/` keeps both and
+spends one cell on the `…` between them. Three fetches of one news site cut at the end
+would be three identical rows. A command is read left to right and its first words are
+what it does, so a command keeps its head.
 
-| tool | stat |
+The **size** is the dim figure in the right column of a finished call, derived from the
+call's own arguments and output:
+
+| tool | size |
 | --- | --- |
 | `edit` | `+3 −1` |
 | `write` | `+42 lines` |
-| `read` | `· 189 lines` |
+| `read` | `189 lines` |
 | `bash` | `exit 1`, **only on failure** — a zero exit says nothing |
-| `grep` | `· 12 matches` |
-| `find`, `ls` | `· 8 entries` / `· 1 entry` |
+| `grep` | `12 matches` |
+| `find`, `ls` | `8 entries` / `1 entry` |
+| `web_fetch` | `12.4 KB` — how much page came back, the whole page and not the shortened copy |
 | anything else | nothing |
 
 A `+` is appended to a count whose output — or whose arguments — were shortened by the
@@ -1025,8 +1037,39 @@ is deliberately withheld — it is the shape the preview collapses into when the
 lands. A result that never arrived draws no stat at all, because "0 matches" is a claim
 about a search nobody made.
 
-When the row is too narrow, the stat is given up first and the target is truncated last.
-The stat is dropped entirely unless the target keeps at least 8 cells.
+When the row is too narrow, the right column gives up **whole segments** rather than
+clipping characters — see *What the numbers on the right of a tool row mean* — and the
+target is truncated last, because the target is the substance and a figure nobody has
+room for is a number about a line nobody can read. The target always keeps at least
+**7** cells: the last few characters of a name and the `…` that says the rest was cut.
+
+## What the numbers on the right of a tool row mean
+
+Everything at the right-hand end of a tool row — the spinner, the time, the size — is one
+column, dim, flush against the frame's edge so the figures line up down a cluster. What
+it holds depends on the state:
+
+| state | the right column |
+| --- | --- |
+| queued | `◌` |
+| waiting on you | `?` |
+| running | `⠋ 4s` — the spinner, then how long this call has been going |
+| done | `189 lines · 0.4s` — what it came to, then how long it took |
+| failed | `✗ exit 1 · 1.2s` |
+| unresolved when the turn ended | `·` |
+
+So `12.4 KB · 0.8s` on a `web_fetch` row means the page was 12.4 KB and took 0.8s;
+`⠋ 4s` means it is still going and has been for four seconds. The time is always **this
+call's own**, never the turn's.
+
+**When the row is too narrow it drops whole segments, in a fixed order**: the size goes
+first, then the duration, and the mark — the spinner, the `◌`, the `?`, the `✗` — is the
+last thing given up. Half a figure is worse than no figure: `12.4 K` is a number you have
+to distrust. Below the room for the mark alone the column is not drawn at all, rather
+than drawn as a stub.
+
+Nothing here is ever cut mid-figure. If you see a tool row ending in a stray `…`, or a
+running call with no spinner, that is a bug and not the design.
 
 ## The clocks on a tool row
 

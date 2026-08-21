@@ -101,6 +101,14 @@ var targetField = map[string]string{
 	"find":  "pattern",
 	"grep":  "pattern",
 	"bash":  "command",
+	// THE TWO WEB HANDS, and they are here because their absence was visible.
+	// A tool this table does not know falls back to session's hint, which is
+	// clipped to eighty BYTES for a log column (its loop.go's hintLimit) — so a
+	// `web_fetch` on a two-hundred column frame drew a URL cut at seventy cells
+	// with a hundred and thirty cells of blank after it. The arguments have the
+	// whole URL, and the row has the room for it.
+	"web_fetch":  "url",
+	"web_search": "query",
 }
 
 // toolTarget is the file, command or pattern a call is about.
@@ -175,8 +183,42 @@ func (a *app) toolStat(e *entry) (plain, painted string) {
 
 	case "find", "ls":
 		return a.dimStat(countStat(listEntries(e.detail.Output), "entr"))
+
+	case "web_fetch":
+		// HOW MUCH PAGE CAME BACK. A fetch has no lines and no matches worth
+		// counting — the markup is stripped and what is left is prose — so the
+		// one honest figure is its size, in [byteWord]'s own spelling so the row
+		// that watched it arrive and the row that reports it agree.
+		//
+		// It is the WHOLE page and not the display copy: session cuts its copy
+		// and says by how much in the marker it leaves behind, so the two halves
+		// add back up ([fetchedBytes]). Nothing at all is drawn for a page that
+		// arrived empty, which is the emptiness law.
+		return a.dimStat(byteWord(fetchedBytes(e.detail.Output)))
 	}
 	return "", ""
+}
+
+// fetchedBytes is how large a fetched page was, in bytes: what arrived, plus
+// whatever session said it had cut off the end of the display copy.
+//
+// The marker is `… (12345 more bytes)` and it is a sentence about the payload
+// rather than part of it, so it is stripped from the body before the body is
+// measured and its figure added back afterwards. A cut nobody can parse simply
+// contributes nothing, which makes the answer a floor rather than a fiction.
+func fetchedBytes(output string) int {
+	body, capped := outputBody(output)
+	n := len(body)
+	if !capped {
+		return n
+	}
+	if at := strings.LastIndex(output, capMarker); at >= 0 {
+		rest := strings.TrimSuffix(strings.TrimRight(output[at+len(capMarker):], "\n"), capEnd)
+		if more, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil && more > 0 {
+			return n + more
+		}
+	}
+	return n
 }
 
 // dimStat paints one plain stat and hands back both forms.
@@ -204,6 +246,12 @@ var unknown = count{n: -1}
 
 // countStat spells one count. "entr" pluralizes to "entries", which is why the
 // noun arrives as a stem.
+//
+// IT CARRIES NO SEPARATOR OF ITS OWN. It used to open with "· ", from the days
+// when a count sat against the target and needed something between it and a
+// path; the figures now live in the row's right column, which joins what it
+// holds with the surface's own dot ([app.joinTail]) — and a count that brought a
+// second one drew "· 189 lines · 0.4s", a list that starts with a separator.
 func countStat(c count, noun string) string {
 	if c.n < 0 {
 		return ""
@@ -225,7 +273,7 @@ func countStat(c count, noun string) string {
 	if c.capped {
 		more = "+"
 	}
-	return "· " + itoa(c.n) + more + " " + word
+	return itoa(c.n) + more + " " + word
 }
 
 // ── the payload readers ─────────────────────────────────────────────────────
