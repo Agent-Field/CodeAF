@@ -20,8 +20,9 @@ import (
 // something the graph learned by running. A memory is something a person said,
 // decided, corrected or is in the middle of — it arrives in conversation, it is
 // addressed by a short title rather than found by a retrieval sweep, and it is
-// carried across sessions by a router that reads an index of titles and asks
-// for the two or three that bear on the moment.
+// carried across sessions by a router that is shown a SHORTLIST of titles —
+// eight of them, ranked here in SQL ([Store.MemoryCandidates]) — and asks for
+// the two or three that bear on the moment.
 //
 // It is event-sourced like everything else here, and for the same reason: the
 // events table is truth, the memories table and memories_fts are materialized
@@ -48,6 +49,18 @@ const (
 	EventMemoryForget EventKind = "memory_forget"
 	// EventMemoryRestore returns one forgotten memory to the active views.
 	EventMemoryRestore EventKind = "memory_restore"
+	// EventMemoryRanking carries a periodic SNAPSHOT of the two ranking
+	// counters — how often each memory helped, and how often it was put in
+	// front of a model and did not.
+	//
+	// It exists because those counters are now load-bearing: [Store.MemoryCandidates]
+	// ranks on them, so a Rebuild that reset them to zero would not merely lose
+	// telemetry, it would change which eight rows the router is shown. One event
+	// per retrieval is still the wrong answer for the reason [Memory.UseCount]
+	// gives — it would bury the five events that carry meaning under thousands
+	// that carry none — so the journal takes a snapshot on an interval instead
+	// and a replay lands on that floor rather than on nothing.
+	EventMemoryRanking EventKind = "memory_ranking"
 )
 
 // The five kinds of thing worth remembering across sessions. They are separate
@@ -83,9 +96,9 @@ const (
 // enforced in Go rather than in SQL so the refusal can name which field was too
 // long instead of surfacing a constraint violation.
 //
-// A title is an index line — the router reads hundreds of them at once and
-// picks by them, so a title that needs a second line has already failed at its
-// job. Text is one line of substance. Eight tags is more than any memory has
+// A title is an index line — the router picks by it and never sees the body —
+// so a title that needs a second line has already failed at its job. Text is
+// one line of substance. Eight tags is more than any memory has
 // ever needed and is a bound on nonsense rather than on expression.
 const (
 	MemoryTitleRunes = 80
@@ -102,24 +115,43 @@ type Memory struct {
 	Text   string
 	Tags   []string
 	Status string
-	// UseCount is retrieval telemetry and is deliberately NOT journaled: it is
-	// incremented by the router as it hands memories to a model, which happens
-	// far more often than anything else here and would otherwise write one
-	// event per read into an append-only journal. Rebuild therefore resets it
-	// to zero, exactly as it does the notebook's use counters. The router index
-	// deliberately ranks on this live hygiene signal; after a rebuild every row
-	// begins tied and recency breaks that tie.
-	UseCount      int
+	// UseCount is how often this memory HELPED, and MissCount is how often it
+	// was put in front of a model and bore on nothing.
+	//
+	// THE COUNTER MEASURES HELP, NOT INJECTION. It used to be incremented for
+	// every id the router named, which credited a memory for being retrieved
+	// rather than for being worth retrieving — RoMeRL (arXiv 2608.02508) names
+	// that the "memory-reward trap": when several memories are co-retrieved,
+	// all of them receive credit. So the two counters are written together,
+	// from one confirmation after the turn, and they are the same bargain
+	// internal/session's fixstore.go already keeps for a suggested fix: a
+	// patch that was offered and then failed is counted AGAINST itself, or the
+	// store would rank a line that has never once mattered at the top of its
+	// own ranking forever.
+	//
+	// Neither is journaled per write, for the reason [EventMemoryRanking]
+	// states; a snapshot on an interval is what carries them through a Rebuild.
+	UseCount  int
+	MissCount int
+	// UpdatedAt is when the event that last touched this memory was journaled —
+	// transaction time, resolved from updated_seq inside the same statement
+	// that reads the row rather than by a second read per row.
+	//
+	// It is what lets a reader SHOW a memory's age. A model cannot judge
+	// staleness it cannot see, and LongMemEval (ICLR 2025) measures time-aware
+	// expansion as the single largest category lever it ablated (+11.3%
+	// recall). Zero is unknown provenance — an old row whose event predates the
+	// column — and renders as nothing.
+	UpdatedAt     time.Time
 	CreatedSeq    int64
 	UpdatedSeq    int64
 	SourceSession string
 	SourceSeq     int64
 }
 
-// MemoryStub is one line of the router's index: enough to decide whether a
+// MemoryStub is one line of the router's shortlist: enough to decide whether a
 // memory bears on the moment, and nothing more. The full text is a second call
-// away on purpose — the index is read in full every turn and the bodies are
-// not.
+// away on purpose — the shortlist is read every turn and the bodies are not.
 type MemoryStub struct{ ID, Title, Type, Scope string }
 
 // memories_fts is a materialized search view rather than an external-content
@@ -141,6 +173,7 @@ CREATE TABLE IF NOT EXISTS memories (
     tags        TEXT NOT NULL DEFAULT '[]',
     status      TEXT NOT NULL DEFAULT 'active',
     use_count   INTEGER NOT NULL DEFAULT 0,
+    miss_count  INTEGER NOT NULL DEFAULT 0,
     created_seq    INTEGER NOT NULL,
     updated_seq    INTEGER NOT NULL,
     source_session TEXT NOT NULL DEFAULT '',
@@ -160,6 +193,7 @@ func migrateMemoriesSchema(db *sql.DB) error {
 	for _, column := range []struct{ name, declaration string }{
 		{"source_session", `ALTER TABLE memories ADD COLUMN source_session TEXT NOT NULL DEFAULT ''`},
 		{"source_seq", `ALTER TABLE memories ADD COLUMN source_seq INTEGER NOT NULL DEFAULT 0`},
+		{"miss_count", `ALTER TABLE memories ADD COLUMN miss_count INTEGER NOT NULL DEFAULT 0`},
 	} {
 		found, err := tableHasColumn(db, "memories", column.name)
 		if err != nil {
@@ -205,6 +239,20 @@ type memoryForgetPayload struct {
 
 type memoryRestorePayload struct {
 	ID string `json:"id"`
+}
+
+// memoryRankingPayload is one photograph of the ranking counters. Rows whose
+// counters are both zero are absent rather than listed as zeroes — that is the
+// emptiness law spelled in a journal, and it is also what keeps the snapshot
+// small in the store where most memories have never been retrieved.
+type memoryRankingPayload struct {
+	Counts []memoryRankingCount `json:"counts"`
+}
+
+type memoryRankingCount struct {
+	ID   string `json:"id"`
+	Use  int    `json:"use,omitempty"`
+	Miss int    `json:"miss,omitempty"`
 }
 
 // NewMemoryID mints a memory's name: sortable by the millisecond it was made,
@@ -515,13 +563,19 @@ func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
 	return memories, nil
 }
 
-// MemoryIndex is the router's whole view of what is remembered: one title-sized
-// line per active memory, most-used first and newest-touched within a tie.
+// MemoryIndex is the whole of what is remembered as title-sized lines: one per
+// active memory, most-used first and newest-touched within a tie.
+//
+// IT IS NO LONGER WHAT THE ROUTER READS. Handing every title to a model on
+// every message costs ~3,200 tokens at a two-hundred-memory store and grows
+// linearly with what a person has remembered, so the per-turn read is
+// [Store.MemoryCandidates] — a shortlist ranked here rather than a dump. This
+// stays because a pass that wants to look at ALL the titles at once, off the
+// person's path, wants exactly this shape and nothing bigger.
 //
 // It is a separate read from ListMemories rather than a projection of it
-// because it is the one read that happens every turn. Carrying five hundred
-// bodies to render five hundred titles is how a memory store becomes the most
-// expensive thing in the loop.
+// because carrying five hundred bodies to render five hundred titles is how a
+// memory store becomes the most expensive thing in the loop.
 func (s *Store) MemoryIndex(limit int) ([]MemoryStub, error) {
 	// THE INDEX IS A RANKING, NOT A CHRONOLOGY. Memories that have proved useful
 	// lead; updated sequence only settles equal-use rows.
@@ -553,39 +607,248 @@ func (s *Store) MemoryIndex(limit int) ([]MemoryStub, error) {
 	return stubs, nil
 }
 
-// BumpMemoryUse counts one retrieval of each named memory, in one transaction
-// so a router that hands three memories to a model either counts all three or
-// none.
+// MemoryCandidatesDefault is how many rows the router is shown when a caller
+// does not name a number.
 //
-// It writes no event, for the reason stated on Memory.UseCount: this is the
-// most frequent write in the whole feature and journaling it would bury the
-// four events that carry meaning under thousands that carry none. Ids that name
-// nothing, or name an inactive memory, are skipped in silence — telemetry is
-// not a place to raise an alarm about a stale pointer.
-func (s *Store) BumpMemoryUse(ids []string) error {
-	if len(ids) == 0 {
+// EIGHT, AND DELIBERATELY NOT MORE. LongMemEval's own Table 10 measures k=5→10
+// over long retrieval units as a SIX-POINT LOSS on a small model, and the
+// injected-memory literature is unanimous that one plausible-but-wrong line is
+// expensive: a single top-retrieved non-answer document costs 18–20% relative
+// (Cuconasu et al., SIGIR 2024). A longer shortlist is not a safer one.
+const MemoryCandidatesDefault = 8
+
+// rrfK is Reciprocal Rank Fusion's one constant, from Cormack, Clarke and
+// Buettcher (SIGIR 2009): score a document as the sum of 1/(k + rank) over
+// every ranking it appears in, with k = 60.
+//
+// DO NOT TUNE IT. That is not deference to the paper — their own Table 1 shows
+// mean average precision moving 0.24% across k from 10 to 100, so there is
+// almost nothing to win, and Bruch, Gai and Ingber (ACM TOIS 2023, arXiv
+// 2210.11934) measured *tuned* RRF generalising badly off the corpus it was
+// tuned on (HotpotQA .675 → .621). A constant that cannot be tuned cannot be
+// overfitted to one person's store.
+const rrfK = 60
+
+// MemoryCandidates is the router's shortlist: the few remembered lines most
+// likely to bear on what was just typed, ranked here in SQL and handed to a
+// model to REJECT rather than to search.
+//
+// The ranking is Reciprocal Rank Fusion over the three orderings this table
+// already has, and they are chosen because they fail in different directions —
+// which is the only condition under which fusion is worth anything:
+//
+//   - RELEVANCE, bm25(memories_fts) over the words of the message. ftsQueryFrom
+//     ORs its terms rather than ANDing them, and tags are indexed alongside
+//     title and text, so a partial match still ranks.
+//   - IMPORTANCE, use_count descending — how often this line has actually
+//     helped. It is what keeps a HIGH-VALUE HEAD in the pool whose words appear
+//     nowhere in the message, which is the one failure mode a lexical index has
+//     and cannot fix. miss_count breaks its ties the other way, so among lines
+//     that have never yet helped the one that has been tried and bore on
+//     nothing ranks below the one that has never been shown.
+//   - RECENCY, updated_seq descending — the transaction-time ordering, so
+//     something corrected this morning is in the pool on the strength of that
+//     alone.
+//
+// THE LIMIT BOUNDS THE POOL, NEVER THE STORE. The read it replaces was capped
+// at two hundred titles, which quietly made memory two hundred and one
+// unreachable forever; every active row is ranked here and the limit only says
+// how many of the ranked rows are carried out.
+//
+// A query with nothing in it to match — punctuation, or nothing but words
+// shorter than the index keeps — is not an error and not an empty answer: the
+// two arithmetic orderings still rank, so a person who types "ok, do it" is
+// still shown what has mattered most and what changed last.
+func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) {
+	if limit <= 0 {
+		limit = MemoryCandidatesDefault
+	}
+	// An empty MATCH is a syntax error in FTS5 rather than a miss, so the
+	// lexical ranking is left out of the fusion entirely when there is nothing
+	// to match with. The other two still rank every row.
+	lexical := `SELECT '' AS id, 0 AS rank WHERE 0`
+	args := []any{MemoryActive}
+	if query := ftsQueryFrom(terms); query != "" {
+		lexical = `
+			SELECT id, ROW_NUMBER() OVER (ORDER BY relevance, updated_seq DESC, id) AS rank
+			FROM (
+				SELECT active.id AS id, bm25(memories_fts) AS relevance,
+				       active.updated_seq AS updated_seq
+				FROM memories_fts JOIN active ON active.id = memories_fts.memory_id
+				WHERE memories_fts MATCH ?
+			)`
+		args = append(args, query)
+	}
+	statement := `
+		WITH active AS (
+			SELECT id, title, type, scope, use_count, miss_count, updated_seq
+			FROM memories WHERE status = ?
+		),
+		lexical AS (` + lexical + `),
+		important AS (
+			SELECT id, ROW_NUMBER() OVER (
+				ORDER BY use_count DESC, miss_count ASC, updated_seq DESC, id) AS rank
+			FROM active
+		),
+		recent AS (
+			SELECT id, ROW_NUMBER() OVER (ORDER BY updated_seq DESC, id) AS rank
+			FROM active
+		)
+		SELECT active.id, active.title, active.type, active.scope
+		FROM active
+		LEFT JOIN lexical ON lexical.id = active.id
+		LEFT JOIN important ON important.id = active.id
+		LEFT JOIN recent ON recent.id = active.id
+		ORDER BY
+			COALESCE(1.0 / (? + lexical.rank), 0) +
+			COALESCE(1.0 / (? + important.rank), 0) +
+			COALESCE(1.0 / (? + recent.rank), 0) DESC,
+			active.use_count DESC, active.updated_seq DESC, active.id
+		LIMIT ?`
+	args = append(args, rrfK, rrfK, rrfK, limit)
+	rows, err := s.db.Query(statement, args...)
+	if err != nil {
+		return nil, fmt.Errorf("memory candidates: %w", err)
+	}
+	defer rows.Close()
+	stubs := make([]MemoryStub, 0, limit)
+	for rows.Next() {
+		var stub MemoryStub
+		if err := rows.Scan(&stub.ID, &stub.Title, &stub.Type, &stub.Scope); err != nil {
+			return nil, fmt.Errorf("memory candidates: %w", err)
+		}
+		stubs = append(stubs, stub)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("memory candidates: %w", err)
+	}
+	return stubs, nil
+}
+
+// RecordMemoryOutcome settles what a turn's injected memories actually did:
+// helped names the ones that bore on the answer, unused names the ones that
+// were put in front of the model and did not.
+//
+// BOTH HALVES OR NEITHER, in one transaction, for the reason the retrieval
+// count was always written in one: a turn's accounting is one fact about that
+// turn, and half of it landing is a ranking signal nobody can interpret.
+//
+// It writes no event, for the reason stated on [Memory.UseCount] — the
+// journalled floor is [Store.SnapshotMemoryRanking]'s job. Ids that name
+// nothing, or name an inactive memory, are skipped in silence: telemetry is not
+// a place to raise an alarm about a stale pointer.
+func (s *Store) RecordMemoryOutcome(helped, unused []string) error {
+	if len(helped) == 0 && len(unused) == 0 {
 		return nil
 	}
 	tx, err := s.beginWrite()
 	if err != nil {
-		return fmt.Errorf("bump memory use: %w", err)
+		return fmt.Errorf("record memory outcome: %w", err)
 	}
 	defer tx.Rollback()
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, err := tx.Exec(`
-			UPDATE memories SET use_count = use_count + 1
-			WHERE id = ? AND status = ?`, id, MemoryActive); err != nil {
-			return fmt.Errorf("bump memory use: %w", err)
+	for _, step := range []struct {
+		ids    []string
+		column string
+	}{{helped, "use_count"}, {unused, "miss_count"}} {
+		for _, id := range step.ids {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, err := tx.Exec(`
+				UPDATE memories SET `+step.column+` = `+step.column+` + 1
+				WHERE id = ? AND status = ?`, id, MemoryActive); err != nil {
+				return fmt.Errorf("record memory outcome: %w", err)
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("bump memory use: %w", err)
+		return fmt.Errorf("record memory outcome: %w", err)
 	}
 	return nil
+}
+
+// SnapshotMemoryRanking journals what the two ranking counters currently say,
+// at most once per minInterval, and reports whether it wrote one.
+//
+// THIS IS THE SIMPLEST SCHEME THAT IS CORRECT, and the simplicity is the
+// argument for it. The counters cannot be journaled per write — that is the
+// most frequent write in the feature and would bury the five events that carry
+// meaning. They cannot be left unjournaled either, now that
+// [Store.MemoryCandidates] ranks on them: a Rebuild would silently change which
+// rows the router is shown. So the journal carries a periodic photograph
+// instead. A replay lands on the last photograph rather than on zero, which is
+// a floor a week deep at worst and nothing anybody has to reason about.
+//
+// IT DOES NOT HALVE, AND THAT IS DELIBERATE. Halving old counts is plausible
+// ranking hygiene and it is also exactly the mechanism no paper has ever
+// ablated: MemoryBank (AAAI 2024) proposed the Ebbinghaus curve and never
+// tested it, and FadeMem (arXiv 2601.18642) — the most decay-committed paper in
+// the literature — attributes its own gains to fusion and conflict resolution
+// and ships no "without decay" row. Surviving a rebuild is a correctness
+// problem and is solved here; decay is a guess and is not.
+//
+// Nothing is written when every counter is still zero: a store nobody has used
+// yet has no ranking to preserve, and a weekly event saying so forever is the
+// journal noise this whole arrangement exists to avoid.
+func (s *Store) SnapshotMemoryRanking(minInterval time.Duration) (bool, error) {
+	var last string
+	err := s.db.QueryRow(`SELECT ts FROM events WHERE kind = ? ORDER BY seq DESC LIMIT 1`,
+		EventMemoryRanking).Scan(&last)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	if last != "" {
+		at, err := parseTime(last)
+		if err != nil {
+			return false, fmt.Errorf("snapshot memory ranking: %w", err)
+		}
+		if time.Since(at) < minInterval {
+			return false, nil
+		}
+	}
+	rows, err := s.db.Query(`
+		SELECT id, use_count, miss_count FROM memories
+		WHERE status = ? AND (use_count > 0 OR miss_count > 0)
+		ORDER BY id`, MemoryActive)
+	if err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	defer rows.Close()
+	var payload memoryRankingPayload
+	for rows.Next() {
+		var count memoryRankingCount
+		if err := rows.Scan(&count.ID, &count.Use, &count.Miss); err != nil {
+			return false, fmt.Errorf("snapshot memory ranking: %w", err)
+		}
+		payload.Counts = append(payload.Counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	if len(payload.Counts) == 0 {
+		return false, nil
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	defer tx.Rollback()
+	// The event is about the whole table rather than about one memory, which is
+	// why it is the only one here journaled under an empty node id.
+	if _, _, err := appendEvent(tx, "", EventMemoryRanking, payload); err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	// Applied on the live path too, though it is a no-op there: a write path
+	// that skipped the apply function would be a second answer to what the
+	// event means, and Rebuild's answer is the one that has to be right.
+	if err := applyMemoryRanking(tx, payload); err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("snapshot memory ranking: %w", err)
+	}
+	return true, nil
 }
 
 // MemoryRecord reads one memory by id whatever its status, which is the read
@@ -643,11 +906,17 @@ func (s *Store) MemoryProvenance(id string) (sessionID, sessionTitle string, wri
 // queryMemories is the single reader every memory read goes through, so no two
 // of them can come to disagree about how a row decodes.
 func (s *Store) queryMemories(where string, args []any, order string, limit int) ([]Memory, error) {
+	// The timestamp is a correlated lookup by primary key rather than a join in
+	// the FROM clause, because the FROM clause is the caller's: SearchMemories
+	// passes its own JOIN onto memories_fts in the same fragment, and a reader
+	// that rewrote it would be a reader with two shapes. One statement, one
+	// rowid seek per row carried out, and no second read from Go.
 	statement := `
 		SELECT memories.id, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.use_count,
-		       memories.created_seq, memories.updated_seq,
-		       memories.source_session, memories.source_seq
+		       memories.miss_count, memories.created_seq, memories.updated_seq,
+		       memories.source_session, memories.source_seq,
+		       COALESCE((SELECT ts FROM events WHERE seq = memories.updated_seq), '')
 		FROM memories ` + where
 	if order != "" {
 		statement += ` ORDER BY ` + order
@@ -664,14 +933,23 @@ func (s *Store) queryMemories(where string, args []any, order string, limit int)
 	memories := make([]Memory, 0, 16)
 	for rows.Next() {
 		var memory Memory
-		var tags string
+		var tags, updatedAt string
 		if err := rows.Scan(&memory.ID, &memory.Type, &memory.Scope, &memory.Title,
-			&memory.Text, &tags, &memory.Status, &memory.UseCount,
-			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq); err != nil {
+			&memory.Text, &tags, &memory.Status, &memory.UseCount, &memory.MissCount,
+			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
+			&updatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {
 			return nil, err
+		}
+		if updatedAt != "" {
+			// AN UNREADABLE TIMESTAMP IS AN UNKNOWN AGE, NOT A FAILED READ. The
+			// row is the memory; a journal entry this package cannot parse must
+			// not be a reason a person's memory stops being readable.
+			if at, err := parseTime(updatedAt); err == nil {
+				memory.UpdatedAt = at
+			}
 		}
 		memories = append(memories, memory)
 	}
@@ -757,6 +1035,28 @@ func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error
 		return fmt.Errorf("%w: nothing to forget under %q", ErrInvalid, payload.ID)
 	}
 	return refreshMemoryFTS(tx, payload.ID)
+}
+
+// applyMemoryRanking restores the counters one snapshot recorded. It is shared
+// by the write path and by Rebuild, so a replayed brain and a live one cannot
+// come to rank the same store differently.
+//
+// A count naming a memory that has since been forgotten or superseded matches
+// nothing and is skipped: the snapshot is a photograph of a moment, and the
+// moment is allowed to have passed.
+func applyMemoryRanking(tx *sql.Tx, payload memoryRankingPayload) error {
+	for _, count := range payload.Counts {
+		id := strings.TrimSpace(count.ID)
+		if id == "" {
+			continue
+		}
+		if _, err := tx.Exec(`
+			UPDATE memories SET use_count = ?, miss_count = ?
+			WHERE id = ? AND status = ?`, count.Use, count.Miss, id, MemoryActive); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func memorySourceSeq(sourceSession string, seq int64) int64 {
