@@ -568,9 +568,45 @@ treated as a hold — those platforms get no pressure gating at all, and `task.m
 
 A running task whose provider call is being paced reports that it is rate limited. That is
 a count, not a flag: a task can have a correction worker and a checker out at once, and it
-stops being paced when the last of them gets through.
+stops being paced when the last of them gets through — or when its patience runs out, which
+the next section spells.
 
 `task.parallel`, `task.max_load` and `task.min_free_mb` are all profile-only settings.
+
+## Rate limited — why work waits, how long it waits, and why things stay slow after
+
+When the provider answers **too many requests**, that is not a failure. It is the provider
+saying *not yet*, and aforge waits rather than throwing the work away.
+
+**What the wait looks like.** The first retry comes after about **0.7 seconds**, and each
+one after that doubles — but no single wait is ever longer than **one minute**, whatever
+asked for it. If the provider sent its own comeback time, that time is used instead when
+it is longer, still under the one-minute ceiling. A task whose call is waiting shows
+`waiting · rate limited` on its row for as long as it is held.
+
+**How long patience lasts.** Two clocks, and whichever runs out first ends the call:
+
+| Whose call | Attempts | Time spent waiting |
+| --- | --- | --- |
+| your conversation's turn | 6 | 2 minutes |
+| a task's own calls | 60 | 10 minutes |
+
+A turn you are watching gives up sooner on purpose: an error you can act on beats a cursor
+that never comes back. A task waits far longer because nobody is sitting in front of it and
+a working copy of real work is behind it — but it does give up in the end. Ten unbroken
+minutes of pacing is not a burst; it is an account that cannot serve the work right now,
+and a task that says so is more use than one that sits. When patience runs out the call
+fails with the provider's own words, the turn is retried three more times as any provider
+failure is, and then it surfaces as a failure like any other.
+
+**Why things can stay slow afterwards.** aforge watches how many calls the provider will
+take at once and pulls that number in half when it is told *too many requests* — once per
+burst, not once per answer. It gives it back on the clock: after **20 seconds** with no
+further pacing, one call's worth returns every **5 seconds** until it is back where it
+started. So a burst costs a few minutes of reduced throughput, not the rest of the session.
+This matters most when several aforge windows share one API key: the pacing one of them
+causes is charged to all of them, and without the healing every window would ratchet down
+and stay there.
 
 ## Does a task survive a restart?
 
