@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,16 @@ import (
 // be explained. If it is ever hit in practice by somebody who was not testing
 // it, that is evidence the number is wrong and not that the person is.
 const convCap = 8
+
+// WorkspaceGoneWord is what any door says about a workspace that is not there.
+// It names the path the caller gave and nothing beyond it, because the caller is
+// home and home already prints that path on the row the person pressed.
+//
+// IT IS EXPORTED SO THERE IS ONE OF IT. The surface says it on the keystroke —
+// one os.Stat, before an agent is built — and cmd/aforge says it again when a
+// directory disappears between that stat and the open. Two spellings of one
+// refusal would drift, and this is the sentence the manual quotes.
+const WorkspaceGoneWord = "that folder is gone"
 
 // convCapWord is the refusal at the cap, said in home's own voice, with the one
 // door out of it named. The count is interpolated from [convCap] because a
@@ -432,6 +443,62 @@ func (a *app) bringForward(file string) (tea.Cmd, bool) {
 	cmd := a.attachConversation(held.conv, held.side)
 	a.rememberOpen(key)
 	return cmd, true
+}
+
+// openBeside opens a transcript in ITS OWN workspace and puts the conversation
+// that was in front into the keeper, still running.
+//
+// IT IS THE OTHER HALF OF [app.openSession], and the difference between them is
+// the whole feature: one closes what it leaves, this one keeps it. A refusal
+// costs nothing at all — the new conversation is opened BEFORE the old one is
+// detached, so a door that says no leaves the person exactly where they were,
+// with a live and writable conversation on screen.
+func (a *app) openBeside(workspace, transcript string) (tea.Cmd, string) {
+	if !a.canOpen() {
+		return nil, resumeUnavailableWord
+	}
+	if a.open == nil {
+		// The older seam cannot be asked about another project: it takes a
+		// transcript and resolves the workspace from the launch this process
+		// booted in. A capability that cannot work is absent, not broken.
+		return nil, resumeUnavailableWord
+	}
+	conv, err := a.open(workspace, transcript)
+	if err != nil {
+		if errors.Is(err, session.ErrSessionLocked) {
+			return nil, sessionBusyWord
+		}
+		return nil, err.Error()
+	}
+	return a.takeBeside(conv), ""
+}
+
+// startBeside mints a FRESH conversation in a workspace and puts the one in
+// front into the keeper. It is what a path typed on home opens.
+func (a *app) startBeside(workspace string) (tea.Cmd, string) {
+	if !a.canStart() || a.start == nil {
+		return nil, newUnavailableWord
+	}
+	conv, err := a.start(workspace)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return a.takeBeside(conv), ""
+}
+
+// takeBeside is the two lines both doors above end in: the conversation on
+// screen steps aside and goes on running, and the new one takes the surface.
+func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	leaving, side := a.front(), a.detachConversation()
+	a.stow(leaving, side)
+	cmd := a.attachConversation(conv, nil)
+	if key := convKey(conv.SessionFile); key != "" {
+		a.rememberOpen(key)
+	}
+	if conv.Notice != "" {
+		a.note(conv.Notice)
+	}
+	return cmd
 }
 
 // roomForAnother reports whether this process may open one more conversation,

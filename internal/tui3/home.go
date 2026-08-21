@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -47,16 +48,19 @@ import (
 //     project and sends them. No picker, no ceremony, no structure declared
 //     before there is anything to declare it about.
 //
-// WHAT IT WILL NOT DO YET, said plainly because a surface that quietly does
-// nothing is worse than one that says why: enter opens a conversation of THE
-// PROJECT THIS WINDOW IS IN. A row from another project draws with a dim
-// `elsewhere` and enter on it says where to go instead. Opening one would mean
-// moving this window's workspace, and the workspace is what the approval gate,
-// the crew, the spend rail and the harnesses were all resolved from at launch —
-// carrying the session over without carrying those is a window running under
-// another project's permissions, which is the one failure this is not worth.
-// The design doc sequences cross-project open as its own piece of work; this
-// slice shows the world honestly and moves inside it.
+// AND IT IS THE SWITCHER. `enter` on any row on this screen opens it, whichever
+// project it belongs to, and the conversation you were in stays OPEN behind it —
+// still streaming its turn, still running its tasks, one keystroke away.
+//
+// It used to refuse, with a dim `elsewhere` on every project but this window's
+// own, and the reasoning behind that refusal was right: the approval gate, the
+// crew, the spend rail and the saved shapes of work are all resolved from a
+// workspace at launch, and carrying a conversation across without carrying them
+// would be a window quietly running under another project's permissions. What
+// changed is the conclusion. A conversation never moves between projects here
+// either — a second project means a SECOND CONVERSATION, built the way the first
+// one was, on its own workspace, with its own gate (keeper.go). Nothing is
+// carried across, because nothing crosses.
 
 // homeShown is how many conversations a project draws before the rest collapse
 // into one line. Four is what the reference layout holds under a heading and it
@@ -89,18 +93,28 @@ const homeTaskRows = 4
 // walk and a lock asked as a question (session's world.go).
 const homeEvery = 3 * time.Second
 
-// homeTickMsg is that clock's beat.
-type homeTickMsg struct{}
+// homeTickMsg is that clock's beat, carrying the generation of the home it was
+// armed by.
+//
+// THE GENERATION IS THE SAME DEVICE EVERY LANE ON THIS SURFACE USES, and home
+// needed one the moment it became the switcher. [app.homeBeat] re-arms whenever
+// home is open, so closing home and opening it again before an old tick landed
+// started a SECOND self-rearming chain — two clocks re-reading the disk, then
+// four. That was theoretical while home was a screen somebody visited; it is not
+// while home is the way between conversations.
+type homeTickMsg struct{ gen int }
 
 // homeTick schedules the next reading.
-func homeTick() tea.Cmd {
-	return tea.Tick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{} })
+func homeTick(gen int) tea.Cmd {
+	return tea.Tick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{gen: gen} })
 }
 
 // homeBeat is the beat, arriving. A beat that finds home closed re-arms
-// nothing, which is how the clock stops.
-func (a *app) homeBeat() tea.Cmd {
-	if !a.home.open {
+// nothing, which is how the clock stops — and one from a home that has since
+// been closed and reopened re-arms nothing either, which is how there stays one
+// clock.
+func (a *app) homeBeat(gen int) tea.Cmd {
+	if !a.home.open || gen != a.homeGen {
 		return nil
 	}
 	a.refreshHome()
@@ -109,9 +123,9 @@ func (a *app) homeBeat() tea.Cmd {
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
 	// it stop by the same test).
 	if a.homeAnimating() {
-		return tea.Batch(homeTick(), a.wake())
+		return tea.Batch(homeTick(a.homeGen), a.wake())
 	}
-	return homeTick()
+	return homeTick(a.homeGen)
 }
 
 // homeAnimating reports whether something on home is truly MOVING: a row on the
@@ -207,9 +221,26 @@ const (
 	// homeRemoteWord is the refusal over --host: the projects under
 	// ~/.aforge/v3 are THIS machine's, and the session is on another one.
 	homeRemoteWord = "home shows this machine's projects, and this session is on another"
-	// homeElsewhereWord marks a row this window cannot open, and is also what
-	// enter on one says, with the project's path after it.
-	homeElsewhereWord = "elsewhere"
+	// homeOpenWord is what a conversation THIS PROCESS holds says when it has
+	// nothing more urgent to say. It goes where `another window` goes — below
+	// the states, above `N landed` — and it is the word [session.SessionRow]
+	// already uses for the same fact seen from another terminal, which is why a
+	// conversation open here and one open in another window are told apart by
+	// WHICH window rather than by a second word.
+	homeOpenWord = "open"
+	// homeGoneWord is the refusal on a row whose project folder is not there any
+	// more. It is the sentence the door says too ([WorkspaceGoneWord], and the
+	// door quotes this constant so there is one of it), because home can be
+	// beaten to the answer by a directory removed between the scan and the
+	// keystroke.
+	//
+	// IT IS NEEDED BECAUSE ENTER CAN NOW LEAVE THIS PROJECT. Home stats the
+	// transcript and never the workspace, which was harmless while enter only
+	// opened conversations of the folder you were standing in. A repository
+	// deleted or moved since its last conversation would otherwise be opened as
+	// an agent whose tool root does not exist, and every bash and every relative
+	// path in it would fail in a way nothing on screen explains.
+	homeGoneWord = WorkspaceGoneWord
 	// homeStartWord is the action row's label, with what was typed quoted after
 	// it. "conversation" and not "chat" because that is what this surface calls
 	// one everywhere else it names one — /new closes a session and starts a
@@ -337,9 +368,6 @@ type homeView struct {
 	// and not a thing the data said.
 	expanded map[string]bool
 
-	// bucket is the project directory THIS window is in, which is what decides
-	// whether enter can open a row (see this file's header).
-	bucket string
 	// seen is when home was last closed — the look stamp, read once when the
 	// screen opens (session's look.go). Work that landed after it is NEWS, and
 	// news is marked: the ✓ on a resting row, the `landed` count in its note,
@@ -406,7 +434,6 @@ func (a *app) openHome() tea.Cmd {
 	a.home = homeView{
 		open:     true,
 		world:    session.ReadWorld(a.placesRoot()),
-		bucket:   homeBucketOf(a.file),
 		seen:     session.LastLook(a.placesRoot()),
 		hover:    -1,
 		last:     map[string]session.Summary{},
@@ -419,9 +446,9 @@ func (a *app) openHome() tea.Cmd {
 	// the spinner and the count-up are claims about this instant, and a still
 	// page cannot make them ([app.homeAnimating]).
 	if a.homeAnimating() {
-		return tea.Batch(homeTick(), a.wake())
+		return tea.Batch(homeTick(a.homeGen), a.wake())
 	}
-	return homeTick()
+	return homeTick(a.homeGen)
 }
 
 // ── the landing ─────────────────────────────────────────────────────────────
@@ -476,7 +503,6 @@ func (a *app) landHome() {
 	a.home = homeView{
 		open:     true,
 		world:    world,
-		bucket:   homeBucketOf(a.file),
 		seen:     session.LastLook(a.placesRoot()),
 		hover:    -1,
 		last:     map[string]session.Summary{},
@@ -527,7 +553,10 @@ func worldHasElsewhere(world session.World, here string) bool {
 	return false
 }
 
+// THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
+// this home from re-arming itself into the next one ([homeTickMsg]).
 func (a *app) closeHome() {
+	a.homeGen++
 	// The world in hand on the way out is the freshest reading there will be
 	// until home opens again, so the door's advertisement is trued up here
 	// rather than left as it was at boot.
@@ -1225,23 +1254,28 @@ func (a *app) homeEnter() tea.Cmd {
 		h.fold(line.dir, line.folded)
 		return nil
 	}
+	// THE ORDER OF THESE CHECKS IS THE FEATURE. Identity comes first, because a
+	// transcript THIS PROCESS holds answers [session.InUse] true about itself —
+	// a flock rides the open file description rather than the process — so a
+	// conversation one keystroke away would otherwise be refused as somebody
+	// else's window (keeper.go's [app.holding] states the whole rule).
 	switch {
-	case line.row.Transcript == a.file:
-		// The conversation this window is already in, and it is already loaded
-		// underneath this screen — so enter simply steps into it. Reopening it
-		// would drop the lock, replay the journal and land exactly here, for a
-		// second of work and nothing to show (resume.go says the same of its
-		// own marked row).
+	case a.holding(line.row.Transcript):
+		// A conversation this terminal already has open: the one on screen, or
+		// one running behind it. Either way enter goes to it rather than
+		// opening anything — reopening would drop the lock, replay the journal
+		// and land exactly where it started.
 		//
 		// IT SAYS NOTHING. The picker notes `already here` because it stays open
 		// and owes an explanation for a keystroke that did nothing; home CLOSES,
 		// and closing into the conversation somebody just confirmed is the thing
 		// happening rather than the absence of one. A note here would be the
 		// surface narrating a door it just walked through.
+		cmd, _ := a.bringForward(line.row.Transcript)
 		a.closeHome()
-		return nil
-	case !a.homeOpens(line):
-		h.say(homeElsewhereWord+" · "+homeWhere(line), strings.TrimSpace(line.row.ProjectDir))
+		return cmd
+	case !a.canOpen():
+		h.say(resumeUnavailableWord, "")
 		return nil
 	case a.homeHeldNow(line.row):
 		// THE DOOR ANNOUNCES ITSELF LOCKED RATHER THAN SLAMMING. Home read the
@@ -1253,30 +1287,50 @@ func (a *app) homeEnter() tea.Cmd {
 		h.say(sessionBusyWord, "")
 		return nil
 	}
-	chosen := Session{
-		Title: line.row.Title,
-		File:  line.row.Transcript,
-		At:    line.row.At,
+	where := homeWhere(line)
+	if !homeFolderThere(where) {
+		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
+		// its one syscall. Home stats the transcript and never the workspace,
+		// which cost nothing while enter could only open this project — you were
+		// standing in the folder. It stops being free the moment enter opens
+		// somebody else's: an agent whose tool root does not exist fails every
+		// bash and every relative path in a way nothing on screen explains.
+		h.say(homeGoneWord+" · "+where, "")
+		return nil
 	}
-	// THE SAME DOOR THE RESUME PICKER WALKS THROUGH, not a second one: opening
-	// the chosen journal, replaying it, closing the old agent and re-subscribing
-	// the standing lanes is one arrangement, and two of them would be two things
-	// to keep in step (welcome.go's [app.openSession]).
-	//
-	// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
-	// conversation. The check above closes the window where a lock can appear
-	// down to the microseconds between the flock probe and the open — but not to
-	// nothing, so this is the same sentence again for the same fact, in the same
-	// place, and home stays open around it. A refusal on this screen belongs to
-	// this screen: notes stack in a transcript, and pressing enter twice on a
-	// locked row is exactly how somebody would find that out.
-	cmd, refusal := a.openSession(chosen)
+	if word, room := a.roomForAnother(); !room {
+		h.say(word, "")
+		return nil
+	}
+	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
+	// rather than closed and put in the keeper, which is the whole of what makes
+	// home a switcher rather than a list of places to go to in another terminal.
+	cmd, refusal := a.openBeside(where, line.row.Transcript)
 	if refusal != "" {
+		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
+		// conversation. A refusal on this screen belongs to this screen: notes
+		// stack in a transcript, and pressing enter twice on a locked row is
+		// exactly how somebody would find that out.
 		h.say(refusal, "")
 		return nil
 	}
 	a.closeHome()
 	return cmd
+}
+
+// homeFolderThere reports whether a project's directory is still on the disk.
+// An unnamed one is not refused: a row with no recorded project directory is an
+// older session shape, and the door resolves the workspace for it.
+func homeFolderThere(where string) bool {
+	if strings.TrimSpace(where) == "" {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(where)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Clean(resolved))
+	return err == nil && info.IsDir()
 }
 
 // homeStart is the door: a fresh conversation in this project, carrying the
@@ -1291,9 +1345,89 @@ func (a *app) homeStart(text string) tea.Cmd {
 		a.home.say(newUnavailableWord, "")
 		return nil
 	}
+	// A PATH IS THE OTHER THING THIS ROW CAN MEAN. What was typed either names a
+	// directory on this machine — an absolute path, a ~ path, or a project name
+	// that matches exactly one heading on the list — or it is the first sentence
+	// of a conversation in this project. The row says which before enter is
+	// pressed ([homeView.startLabel]).
+	if place := a.home.typedPlace(text); place != "" {
+		if word, room := a.roomForAnother(); !room {
+			a.home.say(word, "")
+			return nil
+		}
+		cmd, refusal := a.startBeside(place)
+		if refusal != "" {
+			a.home.say(refusal, "")
+			return nil
+		}
+		a.closeHome()
+		return cmd
+	}
 	a.closeHome()
 	renewed := a.renew()
 	return tea.Batch(renewed, a.submit(text))
+}
+
+// typedPlace is the directory what was typed resolves to, or "" for anything
+// that is a sentence rather than a place.
+//
+// THE PATH IS RESOLVED AND NEVER CREATED. A path that does not exist resolves to
+// nothing and the row goes back to being the ordinary one — a surface that made
+// a folder because somebody mistyped one would be the worst possible answer to a
+// typo.
+//
+// A project NAME counts when exactly one heading on the list carries it. Two
+// projects can share a base name, and opening whichever sorted first would be
+// the screen guessing at the one thing a person was most specific about.
+func (h *homeView) typedPlace(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if strings.HasPrefix(text, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			text = filepath.Join(home, strings.TrimPrefix(text, "~"))
+		}
+	}
+	if filepath.IsAbs(text) || strings.HasPrefix(text, ".") {
+		if homeFolderThere(text) {
+			return filepath.Clean(text)
+		}
+		return ""
+	}
+	var found string
+	for _, line := range h.lines {
+		if line.kind != homeSession || !strings.EqualFold(line.project, text) {
+			continue
+		}
+		where := homeWhere(line)
+		if where == "" || where == found {
+			continue
+		}
+		if found != "" {
+			// Two projects, one name. See above.
+			return ""
+		}
+		found = where
+	}
+	if found != "" && homeFolderThere(found) {
+		return found
+	}
+	return ""
+}
+
+// startLabel is what the action row says enter will do, which on a screen where
+// enter has two possible meanings must be legible without looking away from the
+// list.
+func (h *homeView) startLabel() string {
+	text := strings.TrimSpace(h.box.String())
+	if text == "" {
+		return homeStartWord
+	}
+	if place := h.typedPlace(text); place != "" {
+		return homeStartWord + " in " + place
+	}
+	return homeStartWord + ": " + strconv.Quote(text)
 }
 
 // homeHeld reports whether another window is holding this conversation, from
@@ -1306,10 +1440,11 @@ func (a *app) homeStart(text string) tea.Cmd {
 // already knows and refreshes every few seconds ([homeEvery]). The keystroke
 // that actually opens a row asks the disk instead ([app.homeHeldNow]).
 //
-// The conversation THIS window is in is never held against it: we are the ones
-// holding it, and stepping into it is what enter already does there.
+// A conversation THIS PROCESS is holding is never held against it — the one on
+// screen or one open behind it. We are the ones holding it, and the way there is
+// `enter` rather than another terminal (keeper.go's [app.holding]).
 func (a *app) homeHeld(row session.SessionRow) bool {
-	if row.Transcript == "" || row.Transcript == a.file {
+	if row.Transcript == "" || a.holding(row.Transcript) {
 		return false
 	}
 	return row.Open || row.Live
@@ -1324,24 +1459,21 @@ func (a *app) homeHeld(row session.SessionRow) bool {
 // close is the microseconds between this answer and the open that follows it,
 // and [app.homeEnter] carries the same sentence for that case rather than
 // pretending the race is gone.
+//
+// IDENTITY IS ASKED BEFORE THE LOCK IS, and this is the syscall that rule is
+// about. [session.InUse] takes a flock on a fresh descriptor, and a flock rides
+// the OPEN FILE DESCRIPTION rather than the process — so a transcript this
+// process is already holding conflicts with its own lock and would be reported
+// as somebody else's window. The keeper answers first.
 func (a *app) homeHeldNow(row session.SessionRow) bool {
-	if row.Transcript == "" || row.Transcript == a.file {
+	if row.Transcript == "" || a.holding(row.Transcript) {
 		return false
 	}
 	return session.InUse(row.Transcript) || a.homeHeld(row)
 }
 
-// homeOpens reports whether THIS window can open a row. See this file's header
-// for why the answer is "only its own project's" in this slice.
-func (a *app) homeOpens(line homeLine) bool {
-	if !a.canOpen() {
-		return false
-	}
-	return a.home.bucket != "" && filepath.Clean(line.dir) == a.home.bucket
-}
-
-// homeWhere is where a person has to be to open a row, in the words they would
-// type: the project's own path, and its bucket name when nothing recorded one.
+// homeWhere is the project a row belongs to, in the words a person would type:
+// the project's own path, and its bucket name when nothing recorded one.
 func homeWhere(line homeLine) string {
 	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
 		return path
@@ -1710,16 +1842,11 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homeBlank:
 		return ""
 	case homeHeading:
-		// WHICH PROJECT THIS WINDOW CAN OPEN IS A FACT ABOUT THE PROJECT, so it
-		// is said once, on the heading, and not again on every row under it.
-		// Marking each row would put the same word down twelve times and take
-		// the width the rollup and the age are on — which is to say it would
-		// spend the whole column saying what this screen cannot do.
-		word := line.project
-		if !a.homeOpens(line) {
-			word += " · " + homeElsewhereWord
-		}
-		return "  " + pal.dim(fit(word, width-2))
+		// THE HEADING IS THE PROJECT'S NAME AND NOTHING ELSE. It used to carry a
+		// dim `elsewhere` on every project but this window's own, which was the
+		// screen spending a column saying what it could not do; enter opens any
+		// of them now, so there is nothing to mark.
+		return "  " + pal.dim(fit(line.project, width-2))
 	case homeQuiet:
 		// THE SAME FOLD MARK THE TASK COLUMN USES (task.go's [glyphShut] and
 		// [glyphOpen]), because it is the same gesture over the same kind of
@@ -1742,14 +1869,17 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// what enter will DO with it — and on a screen where enter has two
 		// possible meanings, the one it currently has must be legible without
 		// looking away from the list.
-		label := homeStartWord
-		if text := strings.TrimSpace(h.box.String()); text != "" {
-			label += ": " + strconv.Quote(text)
-		}
-		return overlayRow(homeStartGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
+		return overlayRow(homeStartGlyph+" "+h.startLabel(), "", at == h.cursor, false, at == h.hover, width, pal)
 	}
-	label := a.homeRowGlyph(line.row) + " " + homeName(line.row)
-	note := homeNote(line.row, a.homeHeld(line.row), a.homeFresh(line.row), h.world.Read)
+	// OUR OWN ROWS ARE READ FROM THE AGENT AND NOT FROM THE PRESENCE FILE. The
+	// file is written on a five-second heartbeat and believed for fifteen, which
+	// is right for another window and wrong for an agent whose pointer is in
+	// this process's own map: a person who switches away from a question and
+	// opens home would watch their own row say the wrong thing for five seconds
+	// ([app.homeTrue]).
+	row := a.homeTrue(line.row)
+	label := a.homeRowGlyph(row) + " " + homeName(row)
+	note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeFresh(row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -1758,8 +1888,60 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// The one exception is a row that wants somebody. `waiting on you` is
 	// brought up out of the dim, because a screen whose whole job is triage
 	// cannot render its most urgent fact in the same grey as an age.
-	return overlayRowTinted(label, note, homeNoteInk(line.row, a.homeHeld(line.row)),
-		at == h.cursor, line.row.Transcript == a.file, at == h.hover, width, pal)
+	return overlayRowTinted(label, note, homeNoteInk(row, a.homeHeld(row)),
+		at == h.cursor, a.homeMark(row), at == h.hover, width, pal)
+}
+
+// homeMark is which of the three kinds of row this is: the conversation on
+// screen, one this terminal is holding behind it, or somebody else's.
+func (a *app) homeMark(row session.SessionRow) rowMark {
+	switch {
+	case row.Transcript == "":
+		return markNone
+	case convKey(row.Transcript) == convKey(a.file):
+		return markFront
+	case a.behind[convKey(row.Transcript)] != nil:
+		return markOurs
+	}
+	return markNone
+}
+
+// homeTrue is a row with the facts THIS PROCESS knows better than the disk does
+// put back on it.
+//
+// It is the presence file's two claims — is this conversation waiting on
+// somebody, and how much work has it out — asked of the agent instead, for a row
+// we are holding. One predicate, three readers: this, the status line's count
+// and the desktop banner all go through [session.Agent.NeedsPerson], so they
+// cannot disagree.
+//
+// Every other row is returned untouched, because the file is the only thing that
+// knows about another terminal.
+func (a *app) homeTrue(row session.SessionRow) session.SessionRow {
+	held := a.behind[convKey(row.Transcript)]
+	if held == nil || held.conv.Agent == nil {
+		return row
+	}
+	row.Live, row.Open = true, true
+	row.Presence.State = session.PresenceIdle
+	running := 0
+	if door, ok := held.conv.Agent.(interface {
+		TaskIndex() []session.TaskIndexEntry
+	}); ok {
+		for _, entry := range door.TaskIndex() {
+			if entry.Status == string(session.TaskRunning) {
+				running++
+			}
+		}
+	}
+	if running > 0 {
+		row.Presence.State = session.PresenceWorking
+	}
+	if needsPerson(held.conv.Agent) {
+		row.Presence.State = session.PresenceWaiting
+	}
+	row.Tasks.Running = running
+	return row
 }
 
 // homeNoteInk is how a row's trailing fact is painted. It answers nil for every
@@ -1804,7 +1986,7 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held bool, fresh int, now time.Time) string {
+func homeNote(row session.SessionRow, held, ours bool, fresh int, now time.Time) string {
 	var parts []string
 	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
 	// rung BELOW the states, and that ordering is a fact about what the states
@@ -1831,6 +2013,11 @@ func homeNote(row session.SessionRow, held bool, fresh int, now time.Time) strin
 		parts = append(parts, itoa(row.Tasks.Incomplete)+" incomplete")
 	case held:
 		parts = append(parts, homeHeldShort)
+	case ours:
+		// A CONVERSATION THIS TERMINAL IS HOLDING. It goes where `another window`
+		// goes and never instead of it — the two are different facts about
+		// different doors, and this one's door is `enter` (keeper.go).
+		parts = append(parts, homeOpenWord)
 	case fresh > 0:
 		// THE NEWS OUTRANKS THE TALLY AND NOTHING ELSE. `2 landed` is the count
 		// of tasks that finished since home was last closed ([homeView.seen]);
