@@ -340,6 +340,11 @@ bytes travel with the message.
 A full attachment tray does not stop the command: `/image` adds a second picture rather
 than sending the first.
 
+The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
+to your sentence when you press `enter`**, so you can refer to it by number the same way
+you would one you dragged in. Dragging or pasting a file over a line that already starts
+with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
+
 Refusals, exactly as written:
 
 ```

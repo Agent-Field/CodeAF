@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,17 +111,21 @@ func (a *app) dropChip() bool {
 	if len(a.chips) == 0 {
 		return false
 	}
-	a.chips = a.chips[:len(a.chips)-1]
-	a.touch()
+	a.removeChip(len(a.chips) - 1)
 	return true
 }
 
-// removeChip takes one out by index — a click on it.
+// removeChip takes one out by index — a click on it. THE DRAFT FOLLOWS THE TRAY:
+// the picture's own `[image #n]` comes out of the sentence and everything behind
+// it counts down, so the number a person reads is always the picture the model
+// will be looking at ([app.forgetToken]).
 func (a *app) removeChip(i int) {
 	if i < 0 || i >= len(a.chips) {
 		return
 	}
+	held := len(a.chips)
 	a.chips = append(a.chips[:i], a.chips[i+1:]...)
+	a.forgetToken(i+1, held)
 	a.touch()
 }
 
@@ -180,8 +185,12 @@ func (a *app) resolvePath(path string) string {
 func chipLabels(chips []chip, pal palette) []string {
 	mark := chipMark(pal)
 	out := make([]string, 0, len(chips))
-	for _, c := range chips {
-		out = append(out, mark+" "+c.name())
+	for i, c := range chips {
+		// THE NUMBER IS AS MUCH THE POINT OF A CHIP AS THE NAME IS. It is what
+		// `[image #2]` in the sentence refers to and what the model sees second,
+		// and a tray that showed only names would leave the person counting from
+		// the left to find out which picture they were talking about.
+		out = append(out, mark+" #"+strconv.Itoa(i+1)+" "+c.name())
 	}
 	return out
 }
@@ -315,7 +324,10 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 // chipMarkers is what an image-bearing message leaves in the transcript: the
 // file names, dim, after the words.
 //
-//	› what is wrong with this  [chart.png]
+//	› what is wrong with this [image #1]  [#1 chart.png]
+//
+// The number is the one the sentence's token carries and the one on the chip it
+// was sent from, so a reader can see which file `[image #1]` was.
 //
 // It is a MARKER and not a rendering. A terminal cell is not a place to show a
 // picture, and the honest thing to draw for one is the name of the file the
@@ -325,8 +337,8 @@ func chipMarkers(chips []chip, pal palette) string {
 		return ""
 	}
 	names := make([]string, 0, len(chips))
-	for _, c := range chips {
-		names = append(names, "["+c.name()+"]")
+	for i, c := range chips {
+		names = append(names, "[#"+strconv.Itoa(i+1)+" "+c.name()+"]")
 	}
 	return pal.dim(strings.Join(names, " "))
 }
@@ -363,6 +375,13 @@ func (a *app) submitImages(text string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
+	// EVERY PICTURE IS NAMED IN THE WORDS THAT GO WITH IT. A pasted one already
+	// carries its `[image #n]` where the person put it; one attached by /image or
+	// the @ completion has none, and gets its token appended here so that "image
+	// 2" means something whichever door the picture came in by (imagepaste.go).
+	// The transcript is drawn from the same string, so what the person reads and
+	// what the model reads are one sentence.
+	text = imageSentence(text, chips)
 
 	if a.stream == nil {
 		a.turn++
