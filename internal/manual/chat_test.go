@@ -229,6 +229,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I ask you about old work", "tasks"},
 		{"how do I find out what a task actually did", "tasks"},
 
+		// The fourteenth wave: the preflight warning. It is the first thing on
+		// this surface that says something about ANOTHER window while you are
+		// deciding about your own work, so a person meets it having never been
+		// told the feature exists — and the words they reach for are about the
+		// warning, not about the machinery behind it.
+		{"why did it warn me about another window", "tasks"},
+		{"two windows working on the same files", "tasks"},
+
 		{"how do I quit", "keys"},
 		{"how do I exit aforge", "keys"},
 		{"how do I close aforge", "keys"},
