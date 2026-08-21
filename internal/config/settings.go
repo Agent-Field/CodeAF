@@ -722,6 +722,11 @@ var OperatorEnvPins = []string{
 	// the same lifetime: it disappears when swarm becomes the default, which
 	// is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
+	// AFORGE_QUORUM is the two-verifier gate's arming switch
+	// (config.go's Config.Quorum): on, a passed deliverable is independently
+	// verified by two cheap validators before it commits; off, the judge's
+	// pass is the final word. Same lifetime as AFORGE_SWARM.
+	"AFORGE_QUORUM",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

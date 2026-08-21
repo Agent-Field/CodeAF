@@ -208,6 +208,13 @@ type Config struct {
 	// by Swarm is inert when it is off.
 	Swarm bool
 
+	// Quorum is the two-verifier gate: when a deliverable passes the judge,
+	// two cheap validators independently verify it against the original ask.
+	// Both must ACCEPT; any REJECT buys one revision round, then the result
+	// commits unconditionally. Off (the default) is the judge's pass as the
+	// final word — byte-identical to before this existed.
+	Quorum bool
+
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
 	// harness builds the same single adapter it always did and no routing code
@@ -341,10 +348,13 @@ func Load() (Config, error) {
 		}
 		*knob.target = value
 	}
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_MECHANISM")); raw == "quorum" {
+		config.Quorum = true
+	}
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_SWARM")); raw != "" {
 		swarm, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("AFORGE_SWARM: want a boolean (1, true, 0, false), got %q", raw)
+			return Config{}, fmt.Errorf("AFORGE_SWARM: want mechanism name, got %q", raw)
 		}
 		config.Swarm = swarm
 	}

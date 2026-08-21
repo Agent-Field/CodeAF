@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -358,6 +359,61 @@ func (s *Store) Release(claim Claim) error {
 		return fmt.Errorf("release %q: %w", claim.ID, err)
 	}
 	return nil
+}
+
+// ReleaseStale returns to pending every claimed or running node whose claim
+// is older than the given age. It exists for the live-run case ReleaseOrphans
+// does not reach: a worker that hangs mid-run — a stalled model call, a tool
+// that never returns — leaves its node running forever, and every downstream
+// node gated on it waits behind a claim nobody holds any longer. The resident
+// heartbeats the whole time and finds nothing to do, because the ready set
+// never opens: that is the live-lock a long-horizon run dies of.
+//
+// The age is measured from started_at, stamped by Start. Each release goes
+// through the same CAS path ReleaseOrphans uses — a genuinely live worker
+// keeps its claim because the token has moved under us and the release fails,
+// which is exactly the race the CAS exists to decide. The root and
+// organizational furniture are excluded as they are everywhere.
+func (s *Store) ReleaseStale(olderThan time.Duration) ([]string, error) {
+	if olderThan <= 0 {
+		return nil, nil
+	}
+	cutoff := formatTime(time.Now().Add(-olderThan))
+	rows, err := s.db.Query(
+		`SELECT id, owner, claim_token, cancel_requested FROM nodes
+		 WHERE status IN (?, ?) AND id != ? AND grp NOT IN (?)
+		   AND started_at IS NOT NULL AND started_at < ?`,
+		Claimed, Running, RootID, TerritoryGroup, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("release stale: %w", err)
+	}
+	type stale struct {
+		claim  Claim
+		cancel bool
+	}
+	claims := make([]stale, 0, 4)
+	for rows.Next() {
+		var item stale
+		if err := rows.Scan(&item.claim.ID, &item.claim.Owner, &item.claim.Token, &item.cancel); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("release stale: %w", err)
+		}
+		claims = append(claims, item)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("release stale: %w", err)
+	}
+	released := make([]string, 0, len(claims))
+	for _, item := range claims {
+		if err := s.Release(item.claim); err != nil {
+			continue
+		}
+		if item.cancel {
+			_ = s.CancelPending(item.claim.ID, UserCancelReason)
+		}
+		released = append(released, item.claim.ID)
+	}
+	return released, nil
 }
 
 // ReleaseOrphans returns every claimed or running node to pending. It exists

@@ -1394,9 +1394,48 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				records, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
-				if gate.Pass {
-					outcome.Verdict = revision.GateVerdict(gate)
+			if gate.Pass {
+				outcome.Verdict = revision.GateVerdict(gate)
+				// Quorum: two cheap validators independently verify the pass.
+				// Both must ACCEPT; any REJECT buys one revision round, then
+				// the result commits unconditionally (no second gate).
+				if settings.Quorum {
+					accepts, rejects := quorumVerify(ctx, settings, boostClients, node.ID,
+						node.Provenance.Intent, text)
+					if accepts == 2 {
+						log.Printf("quorum: committed on 2/2")
+					} else {
+						repair := task
+						repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+							Title:     "a review of your own first draft",
+							Artifacts: append([]string(nil), absolute...),
+							Result: "Two independent verifiers found gaps that must be closed:\n" + rejects +
+								"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+								"\n\n" + revision.GateRevisionContract,
+						})
+						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+						polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+						if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
+							spent.PromptTokens += polished.Usage.PromptTokens
+							spent.CompletionTokens += polished.Usage.CompletionTokens
+							spent.CachedTokens += polished.Usage.CachedTokens
+							spent.Cost += polished.Usage.Cost
+							spentTurns += polished.Turns
+							outcome = polished
+							workerModel = provider.CallFrom(retryCtx).Model()
+							text = polished.Text
+							absolute = absolute[:0]
+							for _, artifact := range polished.Artifacts {
+								absolute = append(absolute, filepath.Join(jobDir, artifact))
+							}
+							if len(absolute) > 0 {
+								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+							}
+						}
+						log.Printf("quorum: revised after reject")
+					}
 				}
+			}
 				// The grounding check the extension has always had, applied one
 				// layer earlier: to the revision round. A gap the review cannot
 				// quote from the ask or from the working method is a standard
@@ -3740,6 +3779,53 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 		// which is the one fact the retry above must not have to guess at.
 		return nil, &exec.Abandoned{After: timeout}
 	}
+}
+
+// quorumVerify runs two independent validator calls against a cheap model in
+// parallel and returns the number of ACCEPT verdicts plus any reject reasons.
+// Each validator sees the original ask and the deliverable, and must reply
+// ACCEPT or REJECT with a reason. A provider error is fail-open (ACCEPT) so a
+// transient failure does not block a gate that already passed.
+func quorumVerify(ctx context.Context, settings config.Config, clients *messageClientPool, nodeID, ask, deliverable string) (accepts int, rejects string) {
+	client, err := clients.ForModel("deepseek/deepseek-v4-flash")
+	if err != nil || client == nil {
+		return 2, "" // fail-open: both accept
+	}
+	body := "You are a deliverable verifier. Read the original ask and the deliverable below. " +
+		"Does the deliverable satisfy the ask? Reply with exactly one line: ACCEPT or REJECT: <reason>.\n\n" +
+		"Original ask:\n" + ask + "\n\nDeliverable:\n" + deliverable
+	messages := []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: "You are a deliverable verifier. Reply with exactly one line: ACCEPT or REJECT: <reason>."}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	}
+	type verdict struct{ accept bool; reason string }
+	ch := make(chan verdict, 2)
+	for range 2 {
+		go func() {
+			vctx := pool.WithSpendNode(settings.Context(ctx, "quorum"), nodeID)
+			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
+			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
+				ch <- verdict{true, ""} // fail-open
+				return
+			}
+			text := strings.TrimSpace(resp.Choices[0].Message.Content[0].Text)
+			if strings.HasPrefix(strings.ToUpper(text), "REJECT") {
+				ch <- verdict{false, text}
+			} else {
+				ch <- verdict{true, ""}
+			}
+		}()
+	}
+	v1, v2 := <-ch, <-ch
+	var reasons []string
+	for _, v := range []verdict{v1, v2} {
+		if v.accept {
+			accepts++
+		} else {
+			reasons = append(reasons, v.reason)
+		}
+	}
+	return accepts, strings.Join(reasons, "\n")
 }
 
 // recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
