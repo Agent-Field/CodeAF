@@ -37,6 +37,11 @@ type fakeAgent struct {
 	failing error
 	// past is what a resumed session already holds — what [app.replay] draws.
 	past []session.DisplayEntry
+	// earlier is what sits above its latest compaction — the region the
+	// scrollback reaches through the seam — and earlierFloor is how much of
+	// `past` that region replaces.
+	earlier      []session.DisplayEntry
+	earlierFloor int
 	// weight is what the agent says the conversation weighs in tokens, which is
 	// what the context meter reads (the surface no longer measures it itself).
 	weight int
@@ -95,6 +100,14 @@ func (f *fakeAgent) SetReasoningFor(model, level string) {
 }
 func (f *fakeAgent) Usage() session.Usage                 { return f.usage }
 func (f *fakeAgent) Transcript() []session.DisplayEntry   { return f.past }
+
+// EarlierHistory is what the journal holds ABOVE the session's latest
+// compaction, and how much of `past` is the pass's rewritten copy of it. Both
+// are zero for the scripted sessions that were never compacted, which is most
+// of them.
+func (f *fakeAgent) EarlierHistory() session.EarlierHistory {
+	return session.EarlierHistory{Entries: f.earlier, Floor: f.earlierFloor}
+}
 func (f *fakeAgent) ContextTokens() int                   { return f.weight }
 func text(kind session.EventKind, s string) session.Event { return session.Event{Kind: kind, Text: s} }
 

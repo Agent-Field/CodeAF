@@ -159,6 +159,16 @@ type Agent interface {
 	// session instead of opening on an empty screen, and once per settled turn,
 	// to weigh the context meter.
 	Transcript() []session.DisplayEntry
+	// EarlierHistory is the conversation a compaction pass edited away and where
+	// the pass's rewritten copy of it ends in Transcript. The conversation, told
+	// once and whole, is its Entries followed by Transcript()[Floor:].
+	//
+	// It is history and never context: nothing sends it and the model does not
+	// carry it. The surface reads it once per replay and scrolls back into it, so
+	// the boundary a pass left behind reads as the seam it is rather than as the
+	// beginning of the conversation (replay.go). It is empty for a session that
+	// was never compacted, which is nearly all of them.
+	EarlierHistory() session.EarlierHistory
 }
 
 // Options configures one surface.
