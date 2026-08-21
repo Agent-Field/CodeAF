@@ -92,10 +92,11 @@ func v3StandingDailyRail(profileDir string) float64 {
 }
 
 // standingWatch is the OS timer that keeps checking with no window open: a
-// launchd agent or a systemd user timer running `aforge tick` every five
-// minutes (internal/standing's watch.go). Nil is the honest answer on a host
-// the package cannot arrange one for, and every caller reads nil as "the offer
-// is never made" — a question nobody can keep is a question nobody is asked.
+// launchd agent or a systemd user timer running `aforge tick` every
+// [standing.Interval] (internal/standing's watch.go). Nil is the honest answer
+// on a host the package cannot arrange one for, and every caller reads nil as
+// "there are no background checks here" — nothing is installed, nothing is
+// said, and the settings row that would turn it is absent.
 func standingWatch(store *standing.Store) standing.Watch {
 	watch, err := standing.NewWatch(standing.WatchOptions{WakeLog: store.WakeLogPath()})
 	if err != nil {
@@ -283,9 +284,10 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 		// during the launch (startStandingTicks) and a boolean captured here
 		// would be a claim about the order of two lines in this file.
 		Ticking: standingTicking,
-		// And why nobody is, when nobody is. The marker lives under the store
-		// root and internal/session owns its shape (tools_standing.go).
-		WatchAsked: func() (bool, bool) { return session.WatchAsked(store.Root()) },
+		// And why nobody is, when nobody is: has this machine ever been told
+		// that background checks are on. The marker lives under the store root
+		// and internal/session owns its shape (tools_standing.go).
+		BackgroundTold: func() bool { return session.BackgroundTold(store.Root()) },
 		// The ledger's last days, per item, for the `this week` line on a card.
 		// A read that fails answers nothing rather than a wrong figure — the
 		// card simply has one less true thing to say.
@@ -307,6 +309,77 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			status, err := watch.Status()
 			return status, err == nil
 		}
+		// The same timer as the hand the `background checks` settings row turns.
+		// It is the reading above and the switch under it, and they are one
+		// object so the sheet cannot read one timer and turn another.
+		out.Background = watch
 	}
 	return out
 }
+
+// ── the launch's one look at the background checks ──────────────────────────
+
+// backgroundTimer is the slice of [standing.Timer] the repair below needs,
+// named as an interface so a test can hand it a definition pointing at a dead
+// path without going anywhere near this machine's launchd.
+type backgroundTimer interface {
+	Drift() (standing.WatchDrift, error)
+	Install(ctx context.Context) error
+}
+
+// repairBackgroundChecks puts a drifted timer back, and says one line about it
+// in the standing log.
+//
+// THE DEFINITION EMBEDS THE PROGRAM'S PATH, which is what makes this necessary:
+// a person who moves the binary, installs a new one somewhere else, or deletes
+// the one the plist names still has a launchd agent — it simply runs nothing.
+// Nothing on screen could say so, because the honest reading of that timer is
+// `off` and off is what they would see in /settings; so the launch repairs it
+// instead of reporting it.
+//
+// IT ONLY EVER REPAIRS, NEVER INSTALLS. A definition that is not there at all is
+// somebody who has never had one or who turned the row off, and writing one for
+// either of them would make the row a suggestion. And the row outranks all of
+// it: `wanted` is [config.BackgroundChecksWantedAt], and a person who turned
+// background checks off is left exactly as they left their machine.
+func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
+	if watch == nil || !wanted {
+		return ""
+	}
+	drift, err := watch.Drift()
+	if err != nil || !drift.Present || !drift.Stale {
+		return ""
+	}
+	if err := watch.Install(context.Background()); err != nil {
+		return "could not put the background check back: " + err.Error()
+	}
+	if drift.Executable != "" {
+		return "the background check ran " + drift.Executable + ", which is not this program: installed it again"
+	}
+	return "the background check had drifted from this program: installed it again"
+}
+
+// startBackgroundRepair runs that once per process, off the launch's own
+// thread.
+//
+// ONCE PER LAUNCH AND NEVER ON SCREEN. It is housekeeping about the person's
+// machine rather than news for them — the checks were meant to be running and
+// now are — so it goes to the standing log where a pass's own complaints go
+// ([noteStanding]), and the [sync.Once] is what keeps a process that opens two
+// conversations from writing the line twice.
+func startBackgroundRepair(profileDir string) {
+	backgroundOnce.Do(func() {
+		guard.Go("chatv3/background", func() {
+			watch, err := standing.NewWatch(standing.WatchOptions{})
+			if err != nil {
+				// No timer on this host. Nothing to repair and nothing to say.
+				return
+			}
+			if line := repairBackgroundChecks(watch, config.BackgroundChecksWantedAt(profileDir)); line != "" {
+				noteStanding(line)
+			}
+		})
+	})
+}
+
+var backgroundOnce sync.Once

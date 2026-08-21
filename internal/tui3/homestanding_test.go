@@ -423,22 +423,22 @@ func TestStatusSaysNothingIsCheckingAndWhy(t *testing.T) {
 	if strings.Contains(text, "off") {
 		t.Fatalf("/status called a working capability off:\n%s", text)
 	}
-	// Nobody has been asked about the timer yet, so the tail is the move that
-	// starts the whole thing.
-	a.stands.WatchAsked = func() (bool, bool) { return false, false }
+	// Nothing has ever stood here, so the tail is the move that starts the
+	// whole thing.
+	a.stands.BackgroundTold = func() bool { return false }
 	if text := a.statusText(); !strings.Contains(text, homeWatchNobody+homeWatchStart) {
-		t.Fatalf("a machine nobody has been asked does not offer the way in:\n%s", text)
+		t.Fatalf("a machine where nothing has stood does not offer the way in:\n%s", text)
 	}
-	// And when they were asked and said no, the tail is what they chose —
-	// never an invitation to choose it again, because they are never asked
-	// twice.
-	a.stands.WatchAsked = func() (bool, bool) { return false, true }
+	// And once something has stood — so the timer was installed once and said
+	// so — nothing installed means the row is off, and the tail names the row
+	// rather than inviting them to do the thing they already did.
+	a.stands.BackgroundTold = func() bool { return true }
 	text = a.statusText()
-	if !strings.Contains(text, homeWatchNobody+homeWatchSaidNo) {
-		t.Fatalf("a machine whose person said no does not say so:\n%s", text)
+	if !strings.Contains(text, homeWatchNobody+homeWatchOffRow) {
+		t.Fatalf("a machine whose background checks are off does not say so:\n%s", text)
 	}
 	if strings.Contains(text, homeWatchStart) {
-		t.Fatalf("/status offered a question the person has already answered:\n%s", text)
+		t.Fatalf("/status offered a move the person has already made:\n%s", text)
 	}
 }
 
