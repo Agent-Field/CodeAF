@@ -339,6 +339,7 @@ func runPlan(args []string) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nwarning: %v\n", err)
 	}
+	gatePlanDivision(graph, goal)
 	return emit(graph, *output, *asJSON)
 }
 
