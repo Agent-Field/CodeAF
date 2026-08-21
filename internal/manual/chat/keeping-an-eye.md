@@ -53,6 +53,12 @@ As long as it takes. The card carries **no clock**: no countdown, no bar, and no
 moment when it answers on somebody's behalf. It waits until you press `1` yes,
 `2` change it, or `3` do it once.
 
+It does not have to be answered in that window either. A window sitting on this
+card says so on **home**, and the row there carries its `1 yes` and `3 once`, so
+the card can be answered from the dashboard without opening the conversation
+(home's own page has the whole rule). `2 change it` stays here, where there is a
+box to say the new when into.
+
 That is the opposite of a task proposal's card, which does count down and starts
 the work on silence. A task is bounded work somebody is watching; a standing
 item spends money on its own, at times nobody chose, so silence may never arm

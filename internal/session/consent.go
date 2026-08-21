@@ -298,16 +298,16 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 // about a tool.
 func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
 	// AND ANOTHER WINDOW LEARNS THIS SESSION IS STOPPED ON SOMEBODY
-	// (taskpresence.go). The line is banked HERE and not inside [Agent.askAnswer]
-	// because this is the lane whose question is about a TOOL and can therefore
-	// be described in one honest sentence; the stuck-turn question borrows that
-	// lane to ask about a TURN (recovery.go), and a reason naming the tool it
-	// happened to be repeating would be a sentence nobody said. That question
-	// still makes the session say it is waiting — with no reason, which is the
-	// truthful shape — because presence counts the pending map and not this one.
-	release := a.presenceWaiting("needs your ok to run " + call.Function.Name)
-	defer release()
-	answer, err := a.askAnswer(ctx, hub, call, decision, true)
+	// (taskpresence.go). The line is written HERE and handed down, because this
+	// is the lane whose question is about a TOOL and can therefore be described
+	// in one honest sentence; the stuck-turn question borrows the same lane to
+	// ask about a TURN (recovery.go), passes no line, and is therefore not
+	// offered to another window at all — a reason naming the tool it happened to
+	// be repeating would be a sentence nobody said, and three chips under it
+	// would be an answer to a question that was never asked. That question still
+	// makes the session say it is waiting, because presence counts the pending
+	// map and not the desk's.
+	answer, err := a.askAnswer(ctx, hub, call, decision, true, "needs your ok to run "+call.Function.Name)
 	return answer.allow, err
 }
 
@@ -325,7 +325,12 @@ func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decisi
 // stuck question (recovery.go), which borrows this lane to ask about a TURN —
 // and where "and stop asking me" would otherwise write a standing approval for
 // a tool nobody was asked to approve.
-func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo bool) (consentAnswer, error) {
+//
+// question is the one line another window may answer this from, and "" is a
+// question that stays in the window it was asked in (see [Agent.ask]). It is
+// banked AFTER the id is minted, because the id is what an answer from
+// somewhere else names.
+func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo bool, question string) (consentAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -339,6 +344,10 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	}
 	a.consent[id] = answers
 	a.mu.Unlock()
+
+	if question != "" {
+		defer a.presenceAsking(QuestionConsent, id, question)()
+	}
 
 	hub.send(Event{
 		Kind: EventConsentRequest,
