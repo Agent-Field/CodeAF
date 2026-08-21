@@ -92,7 +92,11 @@ func parseHomeRepo(raw string) string {
 		parts = append(parts, branch)
 	}
 	if dirty > 0 {
-		parts = append(parts, strconv.Itoa(dirty)+" files dirty")
+		// ONE FILE IS NOT ONE FILES. The count is a real number on a line a
+		// person reads, and the commonest reading of all is a repository with a
+		// single file changed — the moment somebody is most likely to be looking
+		// at this band at all.
+		parts = append(parts, strconv.Itoa(dirty)+plural(" file", dirty)+" dirty")
 	}
 	if ahead > 0 {
 		parts = append(parts, "ahead "+strconv.Itoa(ahead))

@@ -49,7 +49,12 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 			lead, strings.TrimSpace(note.Text)))
 	}
 	rows := a.bandFoldPacked(ctx, "news", groups, 3, "things")
-	heading := "◆ " + itoa(len(cached.notes)) + " things since you left"
+	// ONE THING IS NOT ONE THINGS. The count is a real number a person reads,
+	// and every other counted row on this surface is spelled through [plural]
+	// (homeband_projectfacts.go's `1 conversation`, the task column's
+	// `1 task`); a heading that said `1 things` would be the one place the
+	// screen forgot how to count.
+	heading := "◆ " + itoa(len(cached.notes)) + plural(" thing", len(cached.notes)) + " since you left"
 	return append([]string{ctx.pal.accent(fit(heading, ctx.width))}, rows...)
 }
 
