@@ -40,7 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. A search also lists the work every OTHER aforge window open on this project has out right now, marked `another window` — those carry no id here and cannot be read, steered or resolved from this conversation, but they are the truthful answer to \"what else is running on this project\". With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
+const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. A search also lists the work every OTHER aforge window open on this project has out right now, marked `another window` — those carry no id here and cannot be read, steered or resolved from this conversation, but they are the truthful answer to \"what else is running on this project\". A search with scope everywhere widens that to THE WHOLE MACHINE: under this project's rows it groups every OTHER project that has live work by its name and its path, each row marked `another window`, or `open here` for a conversation this same terminal is holding behind this one — that is the answer to \"what is running in my other projects\" and \"what else is running outside this conversation\", and work in another project is no more reachable from here than work in another window. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles a task that needs a look: one nobody could check, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -52,6 +52,7 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"},` +
 	`"id":{"type":"string","description":"One task's id (\"7\") or its name (\"fix-the-nil-map-crash\"), to read that task alone instead of searching. A task that is still running answers with its live state."},` +
 	`"lines":{"type":"number","description":"How many recent lines of a running task's output to return with id (default: 40, maximum: 200)"},` +
+	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"How wide a search looks. \"` + taskScopeProject + `\" (the default) is this project alone. \"` + taskScopeEverywhere + `\" also lists what is running in every OTHER project on this machine, grouped by project. It is read only by a search — with id it does nothing."},` +
 	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead. With resolve, this is read as the REASON for the decision instead."},` +
 	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settle the task named by id that needs a look — one nobody could check. accept takes the work as done on your reading of it and merges its branch; reaudit sends a fresh checker at the same working copy and leaves the task waiting until that answers; refute fails it and its dependents. Only ask for accept or refute on evidence you actually have — read the diff or the transcript first — and prefer reaudit when the checker simply never answered."}` +
 	`},"additionalProperties":false}`
@@ -64,10 +65,39 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 type tasksArguments struct {
 	Query   string          `json:"query"`
 	Limit   int             `json:"limit"`
+	Scope   string          `json:"scope"`
 	ID      json.RawMessage `json:"id"`
 	Lines   int             `json:"lines"`
 	Say     string          `json:"say"`
 	Resolve string          `json:"resolve"`
+}
+
+// The two words `scope` takes. They are constants because the schema's enum,
+// the refusal below and the branch in [Agent.taskSearchText] are three readings
+// of one word, and a hand-typed third copy is the one that drifts.
+const (
+	taskScopeProject    = "project"
+	taskScopeEverywhere = "everywhere"
+)
+
+// taskScopeEnum is the schema's list of them, built from the constants rather
+// than typed out beside them — the same discipline [TaskResolveEnum] keeps for
+// the same reason.
+var taskScopeEnum = `["` + taskScopeProject + `","` + taskScopeEverywhere + `"]`
+
+// taskScopeWord reads the scope argument back, and answers false for a word
+// that is neither. An absent scope is `project` — the behaviour every caller
+// had before this argument existed, so a model that has never heard of it gets
+// exactly what it used to.
+func taskScopeWord(raw string) (string, bool) {
+	switch word := strings.ToLower(strings.TrimSpace(raw)); word {
+	case "":
+		return taskScopeProject, true
+	case taskScopeProject, taskScopeEverywhere:
+		return word, true
+	default:
+		return "", false
+	}
 }
 
 // tasksTool is the window onto the project's task index (task_index.go) AND
@@ -104,6 +134,10 @@ func (a *Agent) tasksTool() bare.Tool {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}
+			scope, known := taskScopeWord(parsed.Scope)
+			if !known {
+				return fmt.Sprintf("Invalid arguments: scope takes %q or %q.", taskScopeProject, taskScopeEverywhere), true, nil
+			}
 			token := taskToken(parsed.ID)
 			if token == "" {
 				if strings.TrimSpace(parsed.Say) != "" {
@@ -112,7 +146,7 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
-				return a.taskSearchText(parsed.Query, parsed.Limit), false, nil
+				return a.taskSearchText(parsed.Query, parsed.Limit, scope), false, nil
 			}
 			return a.oneTask(token, parsed)
 		},
@@ -133,13 +167,25 @@ func (a *Agent) tasksTool() bare.Tool {
 // IT IS A CONVERSATION'S ANSWER AND NEVER A NODE'S ([Agent.tellsElsewhere]): a
 // node sees the pieces it handed out itself and nothing wider, which is this
 // tool's own scope law said about a different set of rows.
-func (a *Agent) taskSearchText(query string, limit int) string {
+func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	out := taskRowsTextLimit(a.taskRows(), query, limit)
 	if !a.tellsElsewhere() {
 		return out
 	}
-	if section := taskElsewhereText(a.Elsewhere().Tasks(), query, time.Now()); section != "" {
-		return out + "\n" + section
+	now := time.Now()
+	if section := taskElsewhereText(a.Elsewhere().Tasks(), query, now); section != "" {
+		out += "\n" + section
+	}
+	// THE WIDER READING IS TAKEN ONLY WHEN IT WAS ASKED FOR BY NAME. Every
+	// other turn pays nothing for this argument existing: no directory is read,
+	// no file is opened, and nothing new is cached — [Agent.OtherProjects] is
+	// world.go's reading of the machine, cheap enough to take on a keystroke
+	// and still not a thing to take on a turn nobody asked the question in.
+	if scope != taskScopeEverywhere {
+		return out
+	}
+	if section := taskEverywhereText(a.OtherProjects(now), query, now); section != "" {
+		out += "\n" + section
 	}
 	return out
 }
@@ -181,42 +227,154 @@ func taskElsewhereText(rows []ElsewhereTask, query string, now time.Time) string
 	var out strings.Builder
 	out.WriteString("running in other aforge windows on this project:\n")
 	for _, at := range matched {
-		// FLATTENED, because these words were written by ANOTHER window's model
-		// and reach this one unedited: a title carrying a newline would turn one
-		// row of this answer into three ([deltaLine] is the same stop the
-		// <elsewhere> block uses on the same strings).
-		title := deltaLine(at.Task.Title)
-		if title == "" {
-			title = "untitled work"
-		}
-		parts := []string{"another window", title}
-		if state := strings.TrimSpace(at.Task.State); state != "" {
-			parts = append(parts, state)
-		}
-		// A QUEUED NODE HAS NO CLOCK, exactly as [taskWhenWord] has it: its
-		// StartedAt is zero because it has not started, and an age of zero
-		// beside the word "queued" is a row arguing with itself.
-		if !at.Task.StartedAt.IsZero() {
-			if span := taskSpanWord(now.Sub(at.Task.StartedAt)); span != "" {
-				parts = append(parts, "running for "+span)
-			}
-		}
-		out.WriteString(strings.Join(parts, " · ") + "\n")
-		if name := deltaLine(at.Session); name != "" {
-			out.WriteString("  in the window called " + strconv.Quote(name) + "\n")
-		}
-		files := at.Task.Files
-		if len(files) > deltaRowFiles {
-			files = files[:deltaRowFiles]
-		}
-		if word := deltaFilesWord(files, len(at.Task.Files)); word != "" {
-			out.WriteString("  files so far: " + word + "\n")
-		}
+		taskAwayRow(&out, "", "another window", at, now)
 	}
 	if over > 0 {
 		fmt.Fprintf(&out, "… and %d more running elsewhere.\n", over)
 	}
 	out.WriteString("These have no id in this conversation: work running in another window cannot be read, steered or resolved from here, and it lands in that window rather than this one.\n")
+	return out.String()
+}
+
+// taskAwayRow writes ONE piece of work somebody else has out, in the grammar
+// both away sections share: a lead word saying whose window it is, the title,
+// the node's own state word, and how long it has been going.
+//
+// IT IS ONE WRITER FOR BOTH SECTIONS ON PURPOSE. The project's other windows
+// and the machine's other projects are the same fact at two distances, and two
+// loops spelling the same row would be the two places a `files so far` clause
+// or a quoted window name could come to be drawn differently for the same node.
+//
+// indent puts the row under a heading that owns it — the machine-wide section
+// groups its rows by project — and lead is `another window` or `open here`.
+func taskAwayRow(out *strings.Builder, indent, lead string, at ElsewhereTask, now time.Time) {
+	// FLATTENED, because these words were written by ANOTHER window's model and
+	// reach this one unedited: a title carrying a newline would turn one row of
+	// this answer into three ([deltaLine] is the same stop the <elsewhere>
+	// block uses on the same strings).
+	title := deltaLine(at.Task.Title)
+	if title == "" {
+		title = "untitled work"
+	}
+	parts := []string{lead, title}
+	if state := strings.TrimSpace(at.Task.State); state != "" {
+		parts = append(parts, state)
+	}
+	// A QUEUED NODE HAS NO CLOCK, exactly as [taskWhenWord] has it: its
+	// StartedAt is zero because it has not started, and an age of zero beside
+	// the word "queued" is a row arguing with itself.
+	if !at.Task.StartedAt.IsZero() {
+		if span := taskSpanWord(now.Sub(at.Task.StartedAt)); span != "" {
+			parts = append(parts, "running for "+span)
+		}
+	}
+	out.WriteString(indent + strings.Join(parts, " · ") + "\n")
+	if name := deltaLine(at.Session); name != "" {
+		out.WriteString(indent + "  in the window called " + strconv.Quote(name) + "\n")
+	}
+	files := at.Task.Files
+	if len(files) > deltaRowFiles {
+		files = files[:deltaRowFiles]
+	}
+	if word := deltaFilesWord(files, len(at.Task.Files)); word != "" {
+		out.WriteString(indent + "  files so far: " + word + "\n")
+	}
+}
+
+// taskEverywhereText draws what is running in every OTHER project on this
+// machine, grouped by project, under the same query the search used.
+//
+//	running in other projects on this machine:
+//	wisp · /Users/ada/code/wisp
+//	  another window · Port the parser · running · running for 2m 3s
+//	    in the window called "parser work"
+//	  open here · Rewrite the docs · queued
+//
+// TWO LEAD WORDS, BECAUSE TWO OF THESE ARE NOT THE SAME THING TO A PERSON.
+// `another window` is a terminal somewhere else that they have to go and find.
+// `open here` is a conversation THIS terminal is already holding behind this
+// one (internal/tui3's keeper), and telling somebody to go looking for a window
+// that is two keystrokes away in the terminal they are sitting in is the
+// refusal [ReadElsewhere] exists to stop this build making — so the row says
+// which it is. Whose process it is comes off the presence file's pid; see
+// [OtherProjectTask.Mine] for why that number is safe to ask this question of
+// and never safe to ask about liveness.
+//
+// A PROJECT WITH NOTHING RUNNING IS NOT DRAWN AT ALL — no heading, no count, no
+// line. That is the emptiness law, and it is also the only thing that keeps
+// this section short on a machine with forty buckets under its state root.
+func taskEverywhereText(groups []OtherProject, query string, now time.Time) string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	var kept []OtherProject
+	total := 0
+	for _, group := range groups {
+		var rows []OtherProjectTask
+		for _, at := range group.Tasks {
+			// The project's own name is matched as well as the task's, because
+			// "what is wisp doing" is the same question asked about the place
+			// rather than about the work.
+			hay := strings.ToLower(at.Task.Title + " " + at.Session + " " + group.Name + " " + group.Path)
+			if query != "" && !strings.Contains(hay, query) {
+				continue
+			}
+			rows = append(rows, at)
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		group.Tasks = rows
+		kept = append(kept, group)
+		total += len(rows)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	over := 0
+	if total > taskSearchLimit {
+		over = total - taskSearchLimit
+		budget := taskSearchLimit
+		var capped []OtherProject
+		for _, group := range kept {
+			if budget <= 0 {
+				break
+			}
+			if len(group.Tasks) > budget {
+				group.Tasks = group.Tasks[:budget]
+			}
+			budget -= len(group.Tasks)
+			capped = append(capped, group)
+		}
+		kept = capped
+	}
+	mine := false
+	var out strings.Builder
+	out.WriteString("running in other projects on this machine:\n")
+	for _, group := range kept {
+		// THE PATH IS DRAWN ONLY WHEN THERE IS ONE. A bucket whose sessions
+		// never recorded a workspace is named by the bucket itself (world.go's
+		// [projectName]), and repeating that encoded string as though it were a
+		// path would be dressing an address up as a fact.
+		head := deltaLine(group.Name)
+		if path := deltaLine(group.Path); path != "" && path != head {
+			head += " · " + path
+		}
+		out.WriteString(head + "\n")
+		for _, at := range group.Tasks {
+			lead := "another window"
+			if at.Mine {
+				lead = "open here"
+				mine = true
+			}
+			taskAwayRow(&out, "  ", lead, at.ElsewhereTask, now)
+		}
+	}
+	if over > 0 {
+		fmt.Fprintf(&out, "… and %d more running in other projects.\n", over)
+	}
+	out.WriteString("These have no id in this conversation: work running in another project cannot be read, steered or resolved from here, and it lands where it is running rather than in this conversation.\n")
+	if mine {
+		out.WriteString("A row marked `open here` is a conversation this same terminal is already holding — it is reached with tab or from /home, not by opening another window.\n")
+	}
 	return out.String()
 }
 
