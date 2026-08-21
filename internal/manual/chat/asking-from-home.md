@@ -17,6 +17,14 @@ The sentence is answered **in the pane on the right of home**, where the preview
 usually is. The left column keeps working the whole time: `tab` or `esc` puts the keyboard
 back on it, and the exchange stays on screen beside it until you close home.
 
+**The reminder itself does not fire into that pane.** The exchange is a pane on a screen you
+close, not a room you sit in, so it is never a delivery target: when the reminder goes off it
+lands in whichever conversation of that project you have open — the chat you are actually
+working in. If none is open, the news waits under that project on home as
+`◆ N things since you left`, and the next conversation you open in that project folds it into
+its own `while you were away`. The full order is on the keeping-an-eye page under "Where a
+reminder arrives".
+
 On the `ask here` row itself the hint under the box reads
 `enter asks this here and keeps the record · ↓ start a conversation instead · esc clear`,
 and while the exchange has the keyboard it reads `enter sends a follow-up · tab or esc back
@@ -157,6 +165,9 @@ than moving it a second time.
 
 - **It will not keep the exchange after home closes.** The conversation ends with the
   screen. The folder does not — the transcript stays on disk, and you can `cat` it.
+- **It will not deliver the firing back into the pane.** News from something you set up here
+  goes to a chat you have open in that project, or waits under the project on home. Nothing
+  is ever written only into the exchange's own folder, which no screen reads.
 - **It will not put the errand on the home list.** That is the whole mechanism. If you want
   it on the list, use `continue as a conversation`.
 - **It will not run the full conversation surface in the pane.** The right pane is forty

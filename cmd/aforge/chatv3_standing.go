@@ -126,7 +126,7 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 	return &standing.Ticker{
 		Store:        store,
 		Sentinel:     session.NewStandingSentinel(posture),
-		Runner:       session.NewStandingRunner(posture),
+		Runner:       session.NewStandingRunner(posture, store.Root()),
 		Idle:         session.StandingIdle(),
 		DailyRailUSD: v3StandingDailyRail(settings.ProfileDir),
 	}, nil

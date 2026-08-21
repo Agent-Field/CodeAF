@@ -755,3 +755,356 @@ func TestStandingProbeIsClippedFromTheTail(t *testing.T) {
 		t.Fatalf("a short output was changed: %q", got)
 	}
 }
+
+// ── saying when: the stamp, and the distance from now ───────────────────────
+
+// THE MODEL DOES NOT DO THE ARITHMETIC AND DOES NOT READ A CLOCK. Written from
+// a person's own transcripts: every "remind me in 2 mins" opened with a
+// `bash date +"%Y-%m-%dT%H:%M:%S%z"`. `when.in` is the answer — aforge resolves
+// the duration against the clock at the instant of the call — and the moment it
+// landed on is SAID BACK, on the card and in the tool result, so nobody has to
+// take it on trust.
+func TestStandInResolvesTheDurationAndSaysTheMomentBack(t *testing.T) {
+	store := newFakeStanding(t)
+	body := `{"op":"propose","words":"remind me in 2 mins to eat medicines",` +
+		`"when":{"kind":"at","in":"2m"},` +
+		`"does":{"kind":"say","say":"Time to eat your medicines."},` +
+		`"cost_words":"nothing to speak of — one line, once"}`
+	completer := &scriptedCompleter{steps: []step{standCall("s1", body), finalText("set up")}}
+	agent := standingAgent(t, completer, store, nil)
+
+	before := time.Now()
+	events, err := agent.Submit(context.Background(), "remind me in 2 mins to eat medicines")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	var card StandingNotice
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		card = *event.Standing
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	after := time.Now()
+
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	item := store.created[0]
+	if item.When.Kind != standing.WhenAt {
+		t.Fatalf("when.kind = %q, want at", item.When.Kind)
+	}
+	// Two minutes from the moment of the call, with the whole turn's own
+	// duration as the slack — anything outside that is arithmetic off a stale
+	// stamp rather than off the clock.
+	if item.When.At.Before(before.Add(2*time.Minute)) || item.When.At.After(after.Add(2*time.Minute)) {
+		t.Fatalf("when.at = %s, want two minutes after a moment between %s and %s",
+			item.When.At.Format(time.RFC3339), before.Format(time.RFC3339), after.Format(time.RFC3339))
+	}
+	// AND IT IS SAID BACK, in both places a person and the model read.
+	want := "in 2 minutes — " + item.When.At.Format("15:04")
+	if item.When.Words != want {
+		t.Fatalf("the cadence in words = %q, want %q", item.When.Words, want)
+	}
+	if card.WhenWords != want {
+		t.Fatalf("the card said %q, want %q", card.WhenWords, want)
+	}
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, want) {
+		t.Fatalf("the tool result = %q, want %q in it", output, want)
+	}
+}
+
+// The model's own when_words still wins when it sent any: the engine's echo is
+// a fallback for the case there is none, and never an override of the sentence
+// the person's cadence was said back in.
+func TestStandInLeavesTheModelsOwnWordsAlone(t *testing.T) {
+	store := newFakeStanding(t)
+	body := `{"op":"propose","words":"remind me in a couple of minutes",` +
+		`"when":{"kind":"at","in":"2m"},"when_words":"in a couple of minutes",` +
+		`"does":{"kind":"say","say":"here you go"},"cost_words":"a cent"}`
+	completer := &scriptedCompleter{steps: []step{standCall("s1", body), finalText("set up")}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "remind me in a couple of minutes")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	if got := store.created[0].When.Words; got != "in a couple of minutes" {
+		t.Fatalf("the cadence in words = %q, want the model's own", got)
+	}
+}
+
+// TWO ANSWERS TO ONE QUESTION ARE REFUSED, and a duration that is not one is
+// refused in the grammar the model has to fix the call in.
+func TestStandingAtMomentReadsAStampOrADistanceAndNeverBoth(t *testing.T) {
+	now := time.Date(2026, 8, 21, 6, 52, 0, 0, time.Local)
+	for _, probe := range []struct {
+		name    string
+		at, in  string
+		moment  time.Time
+		echo    string
+		problem string
+	}{
+		{name: "a stamp", at: "2026-08-21T18:00:00Z", moment: time.Date(2026, 8, 21, 18, 0, 0, 0, time.UTC)},
+		{name: "two minutes", in: "2m", moment: now.Add(2 * time.Minute), echo: "in 2 minutes — 06:54"},
+		{name: "one minute", in: "60s", moment: now.Add(time.Minute), echo: "in 1 minute — 06:53"},
+		{name: "ninety seconds", in: "90s", moment: now.Add(90 * time.Second), echo: "in 2 minutes — 06:53"},
+		{name: "under a minute", in: "30s", moment: now.Add(30 * time.Second), echo: "in 30 seconds — 06:52"},
+		{name: "an hour and a half", in: "1h30m", moment: now.Add(90 * time.Minute), echo: "in 1 hour 30 minutes — 08:22"},
+		{name: "both", at: "2026-08-21T18:00:00Z", in: "2m", problem: "two answers to one question"},
+		{name: "backwards", in: "-2m", problem: "a distance into the future"},
+		{name: "not a duration", in: "two minutes", problem: "when.in is a duration"},
+		{name: "neither", problem: "when.at is required"},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			moment, echo, problem := standingAtMoment(probe.at, probe.in, now)
+			if probe.problem != "" {
+				if !strings.Contains(problem, probe.problem) {
+					t.Fatalf("problem = %q, want %q in it", problem, probe.problem)
+				}
+				return
+			}
+			if problem != "" {
+				t.Fatalf("problem = %q, want none", problem)
+			}
+			if !moment.Equal(probe.moment) {
+				t.Fatalf("moment = %s, want %s", moment.Format(time.RFC3339), probe.moment.Format(time.RFC3339))
+			}
+			if echo != probe.echo {
+				t.Fatalf("echo = %q, want %q", echo, probe.echo)
+			}
+		})
+	}
+}
+
+// ── where a firing lands ────────────────────────────────────────────────────
+
+// standingLiveAgent is one open conversation of a named workspace, with a
+// folder of its own so [liveSessionTouched] has a meta.json to read.
+func standingLiveAgent(t *testing.T, workspace string, mutate func(*Config)) *Agent {
+	t.Helper()
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = workspace
+		config.Place = Place{Dir: dir, Workspace: workspace}
+		config.SessionFile = config.Place.Transcript()
+		if mutate != nil {
+			mutate(config)
+		}
+	})
+	// IT IS OPEN BUT IT MAY NOT SPEAK. A steered line wakes an idle session and
+	// the turn it starts is what CONSUMES the queue ([Agent.wakeLocked]) — which
+	// is the product working and a race for a test that wants to read the lane.
+	// Holding the session unopened is the same posture recovery uses: the lines
+	// queue, and nothing answers them.
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+	return agent
+}
+
+// standingQueued is what one conversation has waiting on its steering lane.
+func standingQueued(agent *Agent) []string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	lines := make([]string, 0, len(agent.steering))
+	for _, note := range agent.steering {
+		lines = append(lines, note.text())
+	}
+	return lines
+}
+
+// AN ERRAND IS NEVER STEERED INTO, AND THE PERSON IS TOLD ANYWAY.
+//
+// This is the firing that wrote the rule. A reminder made from home's `ask
+// here` box fired, found the exchange agent still open in the pane, and put
+// "◦ remind me in 1 min to eat medicines: Time to eat your medicines." into the
+// exchange's transcript — while the person sat in an ordinary conversation in
+// the same window and was never told.
+func TestAFiringNeverStreersIntoAnErrandAndReachesTheRoomInstead(t *testing.T) {
+	workspace := t.TempDir()
+	errand := standingLiveAgent(t, workspace, func(config *Config) { config.Errand = true })
+	room := standingLiveAgent(t, workspace, nil)
+
+	runner := &standingRunner{root: t.TempDir()}
+	item := standing.Item{
+		Words:     "remind me in 1 min to eat medicines",
+		Workspace: workspace,
+		Origin: standing.Origin{
+			SessionID:  errand.id,
+			Exchange:   filepath.Join(runner.root, "item1", "exchange"),
+			Transcript: filepath.Join(runner.root, "item1", "exchange", "transcript.jsonl"),
+		},
+	}
+	if _, err := runner.Say(context.Background(), item, "Time to eat your medicines."); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	if queued := standingQueued(errand); len(queued) != 0 {
+		t.Fatalf("the exchange was steered into: %q", queued)
+	}
+	queued := standingQueued(room)
+	if len(queued) != 1 {
+		t.Fatalf("the conversation the person is in has %d queued lines", len(queued))
+	}
+	if want := "◦ remind me in 1 min to eat medicines: Time to eat your medicines."; queued[0] != want {
+		t.Fatalf("steering line = %q, want %q", queued[0], want)
+	}
+}
+
+// A CLOSED ORIGIN STILL REACHES THE WINDOW SOMEBODY IS SITTING IN, as long as
+// it is the same project: the file is the last resort and never the first.
+func TestAFiringWhoseOriginIsClosedReachesAnotherWindowOfTheProject(t *testing.T) {
+	workspace := t.TempDir()
+	room := standingLiveAgent(t, workspace, nil)
+	elsewhere := standingLiveAgent(t, t.TempDir(), nil)
+
+	runner := &standingRunner{root: t.TempDir()}
+	dir := t.TempDir()
+	item := standing.Item{
+		Words:     "tell me when CI goes red",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: "nobody-has-this-open", Transcript: filepath.Join(dir, "transcript.jsonl")},
+	}
+	if _, err := runner.Say(context.Background(), item, "the last run on main failed"); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	if queued := standingQueued(room); len(queued) != 1 {
+		t.Fatalf("the open window of this project has %d queued lines", len(queued))
+	}
+	if queued := standingQueued(elsewhere); len(queued) != 0 {
+		t.Fatalf("a window of another project was steered into: %q", queued)
+	}
+	// AND NOTHING WAS FILED. A line delivered into a room is not also a line
+	// waiting in a fold tomorrow.
+	if _, err := os.Stat(standing.InboxPath(dir)); !os.IsNotExist(err) {
+		t.Fatalf("the origin's inbox was written as well: %v", err)
+	}
+}
+
+// THE WINDOW THE PERSON IS ACTUALLY IN, and there are two readings of that: the
+// newest window is the one they just opened, and the one they last SPOKE in
+// beats it ([Meta.LastUserAt], never a file mtime).
+func TestAFiringPrefersTheWindowThePersonLastTouched(t *testing.T) {
+	workspace := t.TempDir()
+	older := standingLiveAgent(t, workspace, nil)
+	newer := standingLiveAgent(t, workspace, nil)
+
+	runner := &standingRunner{root: t.TempDir()}
+	item := standing.Item{
+		Words:     "remind me at 6 to leave",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: "closed", Transcript: filepath.Join(t.TempDir(), "transcript.jsonl")},
+	}
+	if _, err := runner.Say(context.Background(), item, "time to leave"); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	if len(standingQueued(newer)) != 1 || len(standingQueued(older)) != 0 {
+		t.Fatalf("with nothing typed the newest window should have it: older=%d newer=%d",
+			len(standingQueued(older)), len(standingQueued(newer)))
+	}
+
+	// Now the person speaks in the older one. That is where they are.
+	if err := SaveMeta(older.config.Place.Dir, Meta{
+		ID:         older.id,
+		Workspace:  workspace,
+		LastUserAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveMeta: %v", err)
+	}
+	if _, err := runner.Say(context.Background(), item, "time to leave"); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	if len(standingQueued(older)) != 1 {
+		t.Fatalf("the window they last spoke in has %d queued lines", len(standingQueued(older)))
+	}
+	if len(standingQueued(newer)) != 1 {
+		t.Fatalf("the second firing went to the wrong window: newer has %d", len(standingQueued(newer)))
+	}
+}
+
+// WITH NOTHING OPEN, AN EXCHANGE'S NEWS WAITS SOMEWHERE A SCREEN READS.
+//
+// The exchange's own folder is a dead letter office: home lists what is under
+// v3/projects, which is exactly what an errand's folder is kept out of. So the
+// note goes to the PROJECT's inbox — which home draws and the next ordinary
+// conversation in that project folds into its own "while you were away".
+func TestAFiringFromAnExchangeWithNothingOpenWaitsOnTheProject(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	exchange := filepath.Join(root, "item1", "exchange")
+	item := standing.Item{
+		ID:        "item1",
+		Words:     "remind me in 1 min to eat medicines",
+		Workspace: workspace,
+		Origin: standing.Origin{
+			SessionID:  "the-exchange-is-closed",
+			Exchange:   exchange,
+			Transcript: filepath.Join(exchange, "transcript.jsonl"),
+		},
+	}
+	runner := &standingRunner{root: root}
+	if _, err := runner.Say(context.Background(), item, "Time to eat your medicines."); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	if _, err := os.Stat(standing.InboxPath(exchange)); !os.IsNotExist(err) {
+		t.Fatalf("the note was written into the exchange's folder, which no screen reads: %v", err)
+	}
+	notes := standing.PeekProjectInbox(root, workspace)
+	if len(notes) != 1 {
+		t.Fatalf("the project inbox holds %d notes", len(notes))
+	}
+	if notes[0].Words != item.Words || notes[0].Text != "Time to eat your medicines." {
+		t.Fatalf("the note is %+v", notes[0])
+	}
+	// A PEEK LEAVES IT THERE. Home draws this on every redraw; a read that
+	// emptied the file would take the fold away from the person it is for.
+	if len(standing.PeekProjectInbox(root, workspace)) != 1 {
+		t.Fatal("peeking at the project inbox emptied it")
+	}
+
+	// AND THE NEXT CONVERSATION IN THAT PROJECT FOLDS IT IN. The drain runs in
+	// newAgent, so by the time this agent exists the note is on its lane.
+	store := &fakeStanding{root: root, items: map[string]standing.Item{}}
+	agent := standingAgent(t, &scriptedCompleter{}, store, func(config *Config) {
+		config.Workspace = workspace
+		config.Place = Place{Dir: t.TempDir(), Workspace: workspace}
+		config.SessionFile = config.Place.Transcript()
+	})
+	queued := standingQueued(agent)
+	if len(queued) != 1 {
+		t.Fatalf("the new conversation queued %d notes, want one fold", len(queued))
+	}
+	if !strings.HasPrefix(queued[0], "while you were away") || !strings.Contains(queued[0], item.Words) {
+		t.Fatalf("the fold reads %q", queued[0])
+	}
+	if left := standing.PeekProjectInbox(root, workspace); len(left) != 0 {
+		t.Fatalf("the project inbox still holds %d notes after a conversation drained it", len(left))
+	}
+}
+
+// AN ORDINARY CONVERSATION'S ITEM STILL USES THE CONVERSATION'S OWN INBOX. It
+// is a row on home and a chat somebody reopens, so its news belongs to it and
+// not to the project.
+func TestAnOrdinaryOriginStillWaitsInItsOwnConversation(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	dir := t.TempDir()
+	item := standing.Item{
+		ID:        "item2",
+		Words:     "tell me when CI goes red",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: "closed", Transcript: filepath.Join(dir, "transcript.jsonl")},
+	}
+	runner := &standingRunner{root: root}
+	if _, err := runner.Say(context.Background(), item, "the last run on main failed"); err != nil {
+		t.Fatalf("Say: %v", err)
+	}
+	notes, err := standing.Drain(dir)
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("the session inbox holds %d notes (err %v)", len(notes), err)
+	}
+	if got := standing.PeekProjectInbox(root, workspace); len(got) != 0 {
+		t.Fatalf("the project inbox was written too: %+v", got)
+	}
+}

@@ -82,7 +82,7 @@ func renderSystem(config Config) string {
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
-	fmt.Fprintf(&out, "- Today: %s\n", time.Now().Format("2006-01-02"))
+	out.WriteString(nowLine(time.Now()))
 
 	if instructions, truncated := readAgentsFile(workspace); instructions != "" {
 		fmt.Fprintf(&out, "\n# %s\n\nThe project's own instructions, from %s at the workspace root. They rank above your defaults and below what the person says now.\n\n",
@@ -100,6 +100,38 @@ func renderSystem(config Config) string {
 		}
 	}
 	return out.String()
+}
+
+// nowLine is the one thing in the footer that a model used to have to SHELL OUT
+// for. Without it the prompt carried a bare date, so every "remind me in two
+// minutes" opened with a `bash date +%Y-%m-%dT%H:%M:%S%z` — a tool row the
+// person saw and asked about, spending a call and a step to learn something the
+// process already knew.
+//
+// It carries four facts because a reminder needs all four: the local time TO
+// THE MINUTE, the numeric offset the model has to write back into an RFC3339
+// stamp, the zone by name so "tomorrow 9am" lands in the person's morning, and
+// the weekday so "Friday" needs no arithmetic.
+//
+// THE MINUTE COSTS NOTHING. [renderSystem] is called ONCE, in [newAgent], and
+// its answer is [Agent.system] — the stable half of message[0] that a refresh
+// re-renders around (memory.go's refreshSystemLocked). A finer stamp is not a
+// finer cache key; it is the same one key, minted once per conversation.
+//
+// WHICH IS ALSO WHY IT IS THE OPENING MINUTE AND NOT A LIVE CLOCK, and the
+// prompt says so rather than implying a clock that ticks. Time passes inside a
+// long session, so an ABSOLUTE moment is computed from this stamp and a RELATIVE
+// one — "in two minutes" — goes to `stand`'s own `when.in`, which resolves
+// against the real clock at the moment of the call (tools_standing.go).
+func nowLine(now time.Time) string {
+	zone := now.Location().String()
+	if zone == "" || zone == "Local" {
+		// A machine with no zone database, or one whose TZ nobody set, still has
+		// an abbreviation the clock itself reports. Naming that is honest; naming
+		// "Local" would be telling the model the name of a Go variable.
+		zone = now.Format("MST")
+	}
+	return fmt.Sprintf("- Now: %s (%s, %s)\n", now.Format("2006-01-02 15:04 -07:00"), zone, now.Format("Monday"))
 }
 
 // readAgentsFile reads at most agentsFileLimit bytes of the workspace's

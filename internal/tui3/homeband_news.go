@@ -17,7 +17,16 @@ type homeNewsCache struct {
 }
 
 func init() {
-	registerHomeBand(homeBand{name: "news", order: bandOrderNews, draw: drawNewsBand})
+	// project inbox — the band draws for a PROJECT card too, because a firing
+	// whose origin was an `ask here` exchange has no conversation to wait in
+	// and lands in the project's own inbox instead (internal/session's
+	// standing_run.go).
+	registerHomeBand(homeBand{
+		name:  "news",
+		order: bandOrderNews,
+		kinds: []bandKind{bandKindSession, bandKindProject},
+		draw:  drawNewsBand,
+	})
 }
 
 func drawNewsBand(a *app, ctx bandContext) []string {
@@ -27,7 +36,7 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 	}
 	cached, ok := a.home.news[key]
 	if !ok || ctx.now.Sub(cached.at) >= homeEvery {
-		cached = homeNewsCache{at: ctx.now, notes: readHomeNews(filepath.Dir(ctx.subject.row.Transcript))}
+		cached = homeNewsCache{at: ctx.now, notes: newsNotes(a, ctx)}
 		a.home.news[key] = cached
 	}
 	if len(cached.notes) == 0 {
@@ -47,6 +56,24 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 	rows = a.bandFold(ctx, "news", rows, 3, "things")
 	heading := "◆ " + itoa(len(cached.notes)) + " things since you left"
 	return append([]string{ctx.pal.accent(fit(heading, ctx.width))}, rows...)
+}
+
+// newsNotes is which inbox this subject's news comes from.
+//
+// A CONVERSATION HAS ITS OWN AND A PROJECT HAS THE PROJECT'S. Both are read and
+// NEITHER is emptied here — draining is what an opening conversation does
+// ([session.Agent.drainStandingInbox]), and a screen that consumed the news
+// while drawing it would take the fold away from the person it was for.
+func newsNotes(a *app, ctx bandContext) []standing.Note {
+	// project inbox
+	if ctx.subject.kind == bandKindProject {
+		project, ok := bandProjectOf(ctx.subject)
+		if !ok || strings.TrimSpace(project.Path) == "" {
+			return nil
+		}
+		return standing.PeekProjectInbox(a.standingHome(), project.Path)
+	}
+	return readHomeNews(filepath.Dir(ctx.subject.row.Transcript))
 }
 
 func readHomeNews(dir string) []standing.Note {
