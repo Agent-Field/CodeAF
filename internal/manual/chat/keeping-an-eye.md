@@ -284,6 +284,31 @@ ambient side spends inside it or asks.
 A check that fires nothing still costs the look and the one small judgement call,
 which is why the cap is quoted per run and not per firing.
 
+## How many times did my watch run this week, and what did it spend?
+
+Every firing and every check writes one line to a ledger — one file per local
+day, under the standing folder — and that is where these counts come from.
+
+On **home**, put the cursor on the item. Its card says both figures:
+
+```
+4 runs · spent $0.08
+ran 3 times this week · $0.04
+```
+
+The first line is everything it has ever done. The second is **the last seven
+days**, and a cursor on the whole project sums the same seven days over all of
+its items: `4 runs this week · $0.06`, at the foot of that card's `keeping an
+eye` band.
+
+A **check that found nothing does not count as a run** — it costs the look, so it
+counts in the money and never in the runs, which is the same rule the daily rail
+uses. An item that has done nothing in the last seven days shows **no weekly
+line at all**, and nothing anywhere reads `0 runs this week`.
+
+In a conversation, asking "what do you have standing?" lists what stands here
+with its rails; home's card is where the counts are.
+
 ## Does it keep working when I close the terminal or shut the laptop?
 
 While any aforge window is open, one of them runs the pass every **5 minutes** —

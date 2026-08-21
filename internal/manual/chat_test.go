@@ -287,6 +287,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never drawn in it. The page now says what is drawn and when, and this
 		// is the sentence a person types when it looks like nothing happened.
 		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		// The wave that made home able to answer about money and about the
+		// ambient side being idle. The first is asked by somebody looking at a
+		// card and wanting the whole bill, not the tasks' half of it; the second
+		// by somebody who typed /status because they suspect nothing is
+		// happening; the third by somebody deciding whether a watch earns its
+		// keep.
+		{"how much has this conversation cost on home", "home"},
+		{"is the ambient side off", "home"},
+		{"how many times did my watch run this week", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

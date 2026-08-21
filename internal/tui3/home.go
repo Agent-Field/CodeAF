@@ -441,6 +441,12 @@ type homeView struct {
 	bandOpen  map[string]bool
 	foldLines []bandFoldLine
 	repos     map[string]homeRepoReading
+	// week is what the standing ledger says about the last seven days, by item
+	// id, and weekAt when it was read. ONE READING SERVES EVERY CARD on the
+	// screen (homestanding.go's [app.standWeek]): the ledger is a file per day,
+	// and a card asking per item would open the same week once per row.
+	week   map[string]standing.Spend
+	weekAt time.Time
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -1114,7 +1120,7 @@ func (h *homeView) buildElsewhere(folded []homeHit) {
 		return
 	}
 	sort.SliceStable(folded, func(i, j int) bool {
-		return homeProjectHot(folded[i].project) && !homeProjectHot(folded[j].project)
+		return h.projectHot(folded[i].project) && !h.projectHot(folded[j].project)
 	})
 	shown, hidden := folded, 0
 	if !h.expanded[homeElsewhereKey] && len(folded) > homeFoldedProjects {
@@ -1163,10 +1169,27 @@ func (h *homeView) holdsExchange(dir string) bool {
 	return false
 }
 
-// homeProjectHot reports whether a project holds anything a person would want
-// to be told about from behind a fold.
-func homeProjectHot(project session.Project) bool {
-	return project.NeedsPerson() > 0 || project.Running() > 0
+// projectHot reports whether a project holds anything a person would want to be
+// told about from behind a fold.
+//
+// IT COUNTS BOTH KINDS OF ROW, and it must: a project's standing items are
+// exactly as capable of needing somebody as its conversations are
+// (homestanding.go's [standTriage] ranks the two kinds on one ladder for the
+// same reason), and a project sorted under the quiet ones while a watch of its
+// own sits stopped on a question would be this screen hiding the row it exists
+// for. It is the same pair of counts [homeProjectNote] then says out loud, so
+// the order of the block and the words on its lines can never disagree.
+func (h *homeView) projectHot(project session.Project) bool {
+	waiting, running := h.projectCounts(project)
+	return waiting > 0 || running > 0
+}
+
+// projectCounts is what a folded project has to say for itself: everything
+// waiting on somebody and everything moving, over both kinds of row.
+func (h *homeView) projectCounts(project session.Project) (waiting, running int) {
+	waiting, running = project.NeedsPerson(), project.Running()
+	itemsWaiting, itemsRunning := standCounts(h.items[project.Dir])
+	return waiting + itemsWaiting, running + itemsRunning
 }
 
 // blank appends the one empty line that separates two sections, and never two
@@ -2668,7 +2691,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
 		// a whole project: `▸` while it is one line, `▾` once it is a block.
 		return overlayRowTinted(homeFoldMark(line.folded, pal)+" "+line.project,
-			homeProjectNote(line.proj, h.world.Read, pal.ascii), homeProjectInk(line.proj),
+			h.projectNote(line.proj, h.world.Read, pal.ascii), h.projectInk(line.proj),
 			at == h.cursor, false, at == h.hover, width, pal)
 	case homeMoreProjects:
 		return overlayRow(homeFoldMark(line.folded, pal)+" "+homeMoreProjectsWord(line), "",
@@ -2787,11 +2810,17 @@ func homeElsewhereRuleLine(width int, ascii bool) string {
 // A FOLD MUST NOT HIDE THE ROW THIS SCREEN EXISTS FOR. A project with a
 // conversation stopped on a question says so on its one line — `▲ 1 waiting` —
 // and so does one with work running, and both sort above the quiet projects
-// ([homeProjectHot]). Everything else says how long since anybody spoke in it,
-// which is the only fact a quiet project has.
-func homeProjectNote(project session.Project, now time.Time, ascii bool) string {
+// ([homeView.projectHot]). Everything else says how long since anybody spoke in
+// it, which is the only fact a quiet project has.
+//
+// THE COUNTS INCLUDE THE PROJECT'S STANDING ITEMS. A watch stopped on a
+// question needs a person exactly as a conversation does, and one firing right
+// now is work in flight; the count says how many things want you, not how many
+// chats do. The leading number stays the conversations, because that is what
+// opening the line shows you.
+func (h *homeView) projectNote(project session.Project, now time.Time, ascii bool) string {
 	parts := []string{itoa(len(project.Sessions))}
-	waiting, running := project.NeedsPerson(), project.Running()
+	waiting, running := h.projectCounts(project)
 	switch {
 	case waiting > 0:
 		glyph := homeAskGlyph
@@ -2813,11 +2842,14 @@ func homeProjectNote(project session.Project, now time.Time, ascii bool) string 
 	return strings.Join(parts, " · ")
 }
 
-// homeProjectInk brings a folded project that is waiting on somebody up out of
-// the dim, exactly as [homeNoteInk] does for one conversation. Everything else
+// projectInk brings a folded project that is waiting on somebody up out of the
+// dim, exactly as [homeNoteInk] does for one conversation. Everything else
 // keeps the ordinary rule.
-func homeProjectInk(project session.Project) noteInk {
-	if project.NeedsPerson() == 0 {
+//
+// It asks the same count the note draws, so the line that SAYS `▲ 1 waiting`
+// is the line that is brought up: an item waiting is a person waiting.
+func (h *homeView) projectInk(project session.Project) noteInk {
+	if waiting, _ := h.projectCounts(project); waiting == 0 {
 		return nil
 	}
 	return func(pal palette, note string, selected bool) string {
@@ -3097,13 +3129,22 @@ func homeBandLines(bands [][]string) int {
 // literal on a line like this — a footer reading "$0.00 · 0 tok · last active"
 // is three absences dressed as three facts — so each part appears only when
 // there is something to say, and a footer with nothing to say is not drawn.
+//
+// THE SUM IS THE TALKING PLUS THE WORK IT COMMISSIONED, and it is added up
+// here because it is written down in two places for two good reasons. The
+// conversation's own turns are stamped on its meta.json by the session that
+// held them ([session.SessionRow.Spend]); every task it started is a row of the
+// project's index with its own bill ([session.TaskRollup.Spend]). A person
+// looking at a card does not have that distinction in their head — they asked
+// what this conversation cost — so the card answers with one figure, and the
+// two halves stay separate everywhere they are recorded.
 func homeFacts(row session.SessionRow, now time.Time) string {
 	var parts []string
-	if row.Tasks.Spend > 0 {
-		parts = append(parts, "spent "+dollars(row.Tasks.Spend))
+	if spend := row.Spend + row.Tasks.Spend; spend > 0 {
+		parts = append(parts, "spent "+dollars(spend))
 	}
-	if row.Tasks.Tokens > 0 {
-		parts = append(parts, tokenWord(row.Tasks.Tokens)+" tokens")
+	if tokens := row.Tokens + row.Tasks.Tokens; tokens > 0 {
+		parts = append(parts, tokenWord(tokens)+" tokens")
 	}
 	// The later of "somebody spoke" and "work landed": both are this
 	// conversation being active, and the footer is asked when, not how.

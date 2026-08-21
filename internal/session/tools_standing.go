@@ -924,6 +924,18 @@ func (a *Agent) standingWatchOffered(notice StandingNotice, answer StandingAnswe
 	return "it will be checked from now on even with no window open."
 }
 
+// WatchAsked is that marker read from outside this package: whether the person
+// has been asked the one-time question, and what they answered.
+//
+// IT IS EXPORTED FOR ONE READER — the surface's /status line, which says WHY
+// nothing is checking (internal/tui3's watchLine). The marker's shape and its
+// path stay this file's business; a second package parsing the same JSON would
+// be the one place the two could come to disagree about what "asked" means.
+func WatchAsked(root string) (keep bool, asked bool) {
+	marker, ok := standingWatchAsked(root)
+	return marker.Answer, ok
+}
+
 // standingWatchAsked reads the marker. A missing or unreadable one is "nobody
 // has been asked", which is the safe direction: the worst case is one question.
 func standingWatchAsked(root string) (standingWatchAnswer, bool) {

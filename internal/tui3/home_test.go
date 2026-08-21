@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // homeLab builds a projects root on disk — the same shape the launch door
@@ -2319,6 +2320,68 @@ func TestAFoldedProjectSurfacesWhatIsRunning(t *testing.T) {
 	a.openHome()
 	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
 		t.Fatalf("the folded line does not surface what is running:\n%s", homeText(a))
+	}
+}
+
+// A FOLD MUST NOT HIDE A STANDING ITEM THAT NEEDS SOMEBODY EITHER. A watch is
+// as capable of stopping on a question as a conversation is, and a project
+// whose only waiting thing is a watch sorts and reads exactly like one whose
+// waiting thing is a chat.
+func TestAFoldedProjectSurfacesAStandingItemThatNeedsYou(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	// `eps` is the OLDEST of the folded projects, so recency alone would put it
+	// last of the three.
+	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
+	item.NeedsPerson = "the fix touches migrations"
+	(&standBand{items: []standing.Item{item}}).wire(a)
+	a.openHome()
+
+	folded := homeKinds(a, homeProject)
+	if len(folded) == 0 || folded[0] != "eps" {
+		t.Fatalf("the project whose watch is waiting did not sort to the top: %v\n%s", folded, homeText(a))
+	}
+	if !strings.Contains(homeText(a), homeAskGlyph+" 1 waiting") {
+		t.Fatalf("the folded line does not surface the waiting watch:\n%s", homeText(a))
+	}
+}
+
+// AND ONE FIRING RIGHT NOW IS WORK IN FLIGHT, counted with the conversations
+// that have work in flight.
+func TestAFoldedProjectSurfacesAStandingItemThatIsFiring(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	(&standBand{
+		items:   []standing.Item{bandItem("run", "check the deploy", "/tmp/eps", standing.WhenEvery, "every 20 minutes")},
+		running: map[string]bool{"run": true},
+	}).wire(a)
+	a.openHome()
+
+	folded := homeKinds(a, homeProject)
+	if len(folded) == 0 || folded[0] != "eps" {
+		t.Fatalf("the project with a firing watch did not sort to the top: %v\n%s", folded, homeText(a))
+	}
+	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
+		t.Fatalf("the folded line does not surface the firing watch:\n%s", homeText(a))
+	}
+}
+
+// AND THE TWO KINDS ARE ADDED UP, not chosen between: the number on the line is
+// how many things want you, whichever kind they are.
+func TestAFoldedProjectCountsConversationsAndItemsTogether(t *testing.T) {
+	_, lab, mine := homeTierLab(t)
+	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWaiting, "can I run: rm -rf build/", time.Now())
+	a := lab.app(mine)
+	a.width, a.height = 100, 40
+	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
+	item.NeedsPerson = "the fix touches migrations"
+	(&standBand{items: []standing.Item{item}}).wire(a)
+	a.openHome()
+
+	if !strings.Contains(homeText(a), homeAskGlyph+" 2 waiting") {
+		t.Fatalf("the folded line counts one kind of row and not the other:\n%s", homeText(a))
 	}
 }
 

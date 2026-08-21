@@ -14,9 +14,10 @@ package tui3
 // to say is not drawn at all, so a brand-new project's card is a name, a place,
 // and no footer — never `0 tasks · $0.00`.
 //
-// The sums are taken over the project's own sessions ([session.TaskRollup] is
-// already rolled up per conversation by the world's reader), so this band reads
-// nothing from disk and cannot block.
+// The sums are taken over the project's own sessions — each conversation's own
+// spending, stamped on its meta.json, plus its share of the project's task
+// index ([session.TaskRollup] is already rolled up per conversation by the
+// world's reader) — so this band reads nothing from disk and cannot block.
 
 import (
 	"strings"
@@ -56,7 +57,10 @@ func projectFacts(project session.Project, now time.Time) string {
 	var touched time.Time
 	for _, row := range project.Sessions {
 		tasks += row.Tasks.Total()
-		spend += row.Tasks.Spend
+		// The talking and the work it commissioned, added the way [homeFacts]
+		// adds them for one conversation: one figure, because one figure is what
+		// "what has this project cost" means.
+		spend += row.Spend + row.Tasks.Spend
 		// The later of "somebody spoke" and "work landed", exactly as
 		// [homeFacts] takes it for one conversation: both are this project being
 		// active, and the footer is asked when, not how.

@@ -134,9 +134,15 @@ age — and then the two you spoke in most recently.**
 A folded line is the fold mark `▸`, the project's name, **how many conversations it
 holds**, and then the one thing worth knowing about it from out here:
 
-- `6 · ▲ 1 waiting` — a conversation in there is stopped waiting on you;
+- `6 · ▲ 1 waiting` — something in there is stopped waiting on you;
 - `2 · ● 3 running` — work is running in there right now;
 - `2 · 3d` — nothing is happening, so the line says how long since anybody spoke in it.
+
+**Both kinds of row are counted.** A reminder, watch or rule standing in that project that
+is stopped on a question counts in `▲ waiting` exactly as a conversation does, and one
+firing at this moment counts in `● running` — the number is how many things want you, not
+how many chats do. The leading number stays the count of **conversations**, because that is
+what opening the line shows you.
 
 **A fold never hides the row this screen exists for.** A project with something waiting or
 something running says so on its one line and **sorts above the quiet ones**; the waiting
@@ -260,7 +266,8 @@ line under it, and then three bands:
 2. **what is keeping an eye on it** — the reminders, watches and rules standing in this
    project, each `◦ every Monday at 9, draft the weekly update      Mondays 9am · last Mon`,
    with the same glyph and the same tail its row on the left wears. Past three:
-   `▸ …2 more keeping an eye`;
+   `▸ …2 more keeping an eye`, and under that one dim line for all of them together,
+   `4 runs this week · $0.06`;
 3. one dim line of **how big the project is** and when anybody was last in it —
    `12 conversations · 34 tasks · spent $4.10 · last active 2h`. That line is where to look
    for **how many conversations** a project has and how many tasks have run in it.
@@ -827,11 +834,18 @@ the other kind of thing, read downward:
    one hue on the card that is not dim;
 4. **what it has done**: `checked 6m ago · nothing`, `last went off Mon · <what
    came of it>`;
-5. a dim line of **how much**: `4 runs · spent $0.08`;
-6. the keys, dim: `enter open where it was asked · p pause · s stop`.
+5. a dim line of **how much, ever**: `4 runs · spent $0.08`;
+6. a dim line of **how much lately**: `ran 3 times this week · $0.04`, counted
+   over the last seven days of the standing ledger;
+7. the keys, dim: `enter open where it was asked · p pause · s stop`.
 
 Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
-place and a cadence, and nothing else — no `0 runs`, no `$0.00`.
+place and a cadence, and nothing else — no `0 runs`, no `$0.00`, no weekly line.
+A window with no ambient side wired to it draws no weekly line at all.
+
+The project card's `keeping an eye` band ends with the same count over all of
+that project's items: `4 runs this week · $0.06`, below the fold line, because it
+counts the items the fold hides too.
 
 ## Keeping an eye on — the status line, and /status
 
@@ -852,13 +866,26 @@ still.
 
 ```
 keeping watch   installed · last check 4m
+keeping watch   while a window is open · last check 4m
+keeping watch   nothing is checking · say "remind me…" to start
+keeping watch   nothing is checking · you said not to check with no window open
 ```
 
 It says **`installed`** when the machine's own timer is set up, so the checking
-happens with no terminal open at all, and **`while a window is open`** when it is
-not — any aforge window that is up runs the same pass every five minutes. The
-`last check` half is dropped when nothing has ever run. A build that cannot
-answer the question prints no line rather than guessing.
+happens with no terminal open at all. It says **`while a window is open`** when
+there is no timer but this window is running the pass itself, every five
+minutes. When neither is true it says **`nothing is checking`** — nothing was
+switched off, and the items are still there and still due; there is simply
+nothing running the checks right now. The tail says which way it got there:
+`say "remind me…" to start`, because setting up the first standing thing is what
+raises the one-time offer to install the timer, or `you said not to check with no
+window open`, because you answered that offer with a no and are never asked
+again.
+
+The `last check` half is dropped when nothing has ever run. A window with no
+ambient side at all — `--host`, a build without it — prints **no line**, and so
+does one whose timer could not be read: an absent answer is left absent rather
+than reported as "off".
 
 ## Why did a card appear asking me about a reminder — saying yes to something standing
 
@@ -1034,18 +1061,29 @@ Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are presen
 adds a dim `▸ …N more items` door; `m` opens it. Paused, stopped, and absent items draw
 nothing.
 
-## What has this conversation cost — what the spend band on home counts
+## What has this conversation cost — the spend band on home
 
-The dim spend band can read `spent $1.25 · 34k tokens · last active 12m`. Each clause is
-independent: zero or unknown spend and tokens are omitted, and a line with no true fact
-is not drawn. Home has no additional run-count clause when that fact is unavailable.
+The dim spend band under a conversation's card reads `spent $1.25 · 34k tokens · last
+active 12m`. Each clause is independent: zero or unknown spend and tokens are omitted, and
+a line with no true fact at all is not drawn.
 
-**It counts the tasks this conversation ran, and not the talking.** The figure comes from
-the project's task index — every task and every unattended run this conversation started —
-so a chat that only talked shows no spend band at all, however many turns it took. Home
-reads a session folder without opening its transcript, and the transcript is the only
-place a turn's own price is written. To see what the talking cost, open the conversation
-and type `/cost` or `/status`: those read the live session and answer for the turns too.
+**It counts the talking and the work the talking started, in one figure.** The turns —
+your messages, the answers, and the small calls beside them, such as the one that names
+the conversation — are added up by the session itself and written to the session folder at
+the end of every turn, so home can read them without opening the transcript. Every task
+and every unattended run this conversation commissioned is added from the project's task
+index. `spent $1.25` is those two halves together, which is what "what did this
+conversation cost" means.
+
+`tokens` is input plus output as one sum, over the same two halves.
+
+A conversation held before this build has no figure of its own written down yet; the next
+turn writes one, and resuming an old conversation folds its transcript's own usage lines
+in once on the way in. `/cost` and `/status` inside the conversation still answer for the
+live session, and agree with this line about the talking.
+
+The project card's own facts line (`12 conversations · 34 tasks · spent $4.10 · last
+active 2h`) adds the same two halves over every conversation in the project.
 
 ## What a narrow home card does with a long row
 

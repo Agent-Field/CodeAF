@@ -6,9 +6,15 @@ func init() {
 	registerHomeBand(homeBand{name: "spend", order: bandOrderSpend, draw: drawSpendBand})
 }
 
-// drawSpendBand preserves the session arithmetic already held by the world.
-// The standing seam has no ledger reader, so it does not invent a weekly run
-// count or reach around that seam into the store.
+// drawSpendBand is the dim arithmetic under a conversation's card:
+//
+//	spent $1.25 · 34k tokens · last active 12m
+//
+// IT COUNTS THE TALKING AND THE WORK THE TALKING STARTED, in one figure,
+// because that is what a person means by "what did this conversation cost".
+// [homeFacts] does the adding and states where each half is written down; this
+// band only lays the clauses out and drops the whole line when there is not one
+// true fact on it (the emptiness law).
 func drawSpendBand(_ *app, ctx bandContext) []string {
 	facts := homeFacts(ctx.subject.row, ctx.now)
 	if facts == "" {

@@ -52,17 +52,103 @@ func (s *Store) Today(itemID string, now time.Time) (Spend, error) {
 	if now.IsZero() {
 		now = s.now()
 	}
-	file, err := os.Open(s.LedgerPath(now))
-	if err != nil {
-		// A day with nothing in it has no file, and that is not a failure: it
-		// is a day on which nothing standing has spent anything yet.
-		if os.IsNotExist(err) {
-			return Spend{}, nil
+	var spend Spend
+	err := readLedgerDay(s.LedgerPath(now), func(entry Entry) {
+		if itemID != "" && entry.ItemID != itemID {
+			return
 		}
+		spend.count(entry)
+	})
+	if err != nil {
 		return Spend{}, err
 	}
+	return spend, nil
+}
+
+// ledgerReach is how far back [Store.RunsSince] will walk, in days. It is a
+// bound on the WORK and not on the question: a caller asking for a week opens
+// eight files, and a caller asking for the beginning of time opens this many
+// and answers about them. Without it a stray zero moment would open one file
+// per day since 1970 on a screen's own refresh.
+//
+// A month is the widest window any surface asks about today (a card says `this
+// week`), with room for one that asks about a longer one.
+const ledgerReach = 31
+
+// RunsSince sums the ledger from a moment until now, PER ITEM: how many times
+// each thing fired, and what it spent doing so. It is what a card means by
+// `3 runs this week · $0.04`.
+//
+// ONE WALK ANSWERS EVERY ITEM, and that is the whole reason it answers a map
+// rather than one item's figure. The ledger is one file per local day, so a
+// surface asking item by item would open the same seven files once per item on
+// every card it draws; here they are read once and the caller sums whichever
+// ids its subject owns.
+//
+// A day with no file is a day on which nothing fired, which is not a failure —
+// the same reading [Store.Today] takes of the same absence. A day whose file
+// cannot be read at all IS reported, because a total silently missing a day is
+// a rail quoting a number that is too small.
+//
+// The moment is inclusive and entries before it are skipped: the day file it
+// lands in holds the hours on either side of it.
+func (s *Store) RunsSince(from time.Time) (map[string]Spend, error) {
+	out := map[string]Spend{}
+	if s == nil {
+		return out, nil
+	}
+	now := s.now()
+	if from.IsZero() || from.After(now) {
+		return out, nil
+	}
+	day := startOfDay(from)
+	if oldest := startOfDay(now).AddDate(0, 0, -(ledgerReach - 1)); day.Before(oldest) {
+		day = oldest
+	}
+	for last := startOfDay(now); !day.After(last); day = day.AddDate(0, 0, 1) {
+		if err := readLedgerDay(s.LedgerPath(day), func(entry Entry) {
+			if entry.At.Before(from) {
+				return
+			}
+			spend := out[entry.ItemID]
+			spend.count(entry)
+			out[entry.ItemID] = spend
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// count folds one ledger line into a running sum. IT IS THE ONE PLACE THE TWO
+// COLUMNS ARE DEFINED: a check costs money and did not fire, so it counts
+// against the money and never against the runs, and a second reader spelling
+// that rule again is where the daily rail and a card would come to disagree.
+func (s *Spend) count(entry Entry) {
+	s.USD += entry.USD
+	if entry.Kind != entryCheck {
+		s.Fired++
+	}
+}
+
+// startOfDay is the local midnight a moment belongs to, which is the grain the
+// ledger's file names are cut on.
+func startOfDay(at time.Time) time.Time {
+	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, at.Location())
+}
+
+// readLedgerDay hands every readable line of one day's file to fn. A file that
+// is not there is a day nothing happened on; a torn line is one line and not a
+// reason to stop counting.
+func readLedgerDay(path string, fn func(Entry)) error {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
 	defer file.Close()
-	var spend Spend
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for scanner.Scan() {
@@ -71,20 +157,10 @@ func (s *Store) Today(itemID string, now time.Time) (Spend, error) {
 			continue
 		}
 		var entry Entry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			// A torn line is one line, not a reason to stop counting.
+		if json.Unmarshal(raw, &entry) != nil {
 			continue
 		}
-		if itemID != "" && entry.ItemID != itemID {
-			continue
-		}
-		spend.USD += entry.USD
-		if entry.Kind != entryCheck {
-			spend.Fired++
-		}
+		fn(entry)
 	}
-	if err := scanner.Err(); err != nil {
-		return Spend{}, err
-	}
-	return spend, nil
+	return scanner.Err()
 }
