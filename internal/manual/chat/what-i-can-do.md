@@ -404,9 +404,15 @@ watch, so `read` either watches the file or says no model can.
 **It depends on the model you are using.** Some models read images directly;
 some cannot see at all.
 
-You attach pictures to a message you type. The accepted formats are exactly
-**png, jpeg, webp and gif**. Limits: **10MB** per image and **20MB** for all the
-images on one message.
+You attach pictures to a message you type. **Drag a file onto the terminal, or
+paste one you copied as a file**, and it is attached — your sentence gets a short
+`[image #1]` token where the path would have gone, and you can then talk about
+"image #1" and be understood. `/image <path>` and the `@` completion attach one
+too. The picture travels **inside the message as the picture**, not as a path
+somebody has to go and open. The "what the keys do" page has the whole of it.
+
+The accepted formats are exactly **png, jpeg, webp and gif**. Limits: **10MB** per
+image and **20MB** for all the images on one message.
 
 - Over the per-image limit: `session: <path> is over the 10MB image limit`
 - Over the per-message limit:
