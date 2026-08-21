@@ -47,6 +47,18 @@
 //     whether its definition file still matches byte for byte what this build
 //     would write; last wake and next due come from the wake log and the fixed
 //     cadence. Nothing shells out to ask.
+//
+// ── WHERE THE BODIES ARE ──
+//
+// This file is the shape. The work is in store.go (the documents, the item log,
+// the locks), ledger.go (the daily lines the rails are summed from), inbox.go
+// (news for a window that is not open), every.go (the rhythm), tick.go (the
+// pass) and watch.go (the operating system's timer).
+//
+// Every name a caller holds is declared here, with ONE exception the contract
+// could not carry: [Watch] is an interface with no way to make one, so watch.go
+// adds NewWatch and the WatchOptions it takes. Nothing else outside this file
+// is reachable.
 package standing
 
 import (
@@ -325,6 +337,10 @@ func (it Item) Glyph(running bool) string {
 // test's store is a temp dir and nothing else.
 type Store struct {
 	root string
+	// clock is the store's now. It exists so a test can stamp documents from a
+	// held clock; nothing outside this package sets it and it is nil in every
+	// real build, which reads as time.Now.
+	clock func() time.Time
 }
 
 // Open answers the store at root, creating the directory. It holds no handles.
@@ -371,38 +387,6 @@ func (s *Store) LockPath() string { return filepath.Join(s.root, "tick.lock") }
 // read from.
 func (s *Store) WakeLogPath() string { return filepath.Join(s.root, "wake.log") }
 
-// Create validates, assigns an id when there is none, stamps Created, Updated
-// and Status active, writes the document, and answers the item as written.
-// IT IS ONLY CALLED AFTER A YES.
-//
-// STUB (lane core): returns the validated item with an id; no file is written.
-func (s *Store) Create(item Item) (Item, error) {
-	if err := item.Validate(); err != nil {
-		return Item{}, err
-	}
-	return item, errors.New("standing: Create is not built yet")
-}
-
-// Save rewrites one item's document, temp+rename under its flock, and stamps
-// Updated. It validates first. STUB (lane core).
-func (s *Store) Save(item Item) error {
-	if err := item.Validate(); err != nil {
-		return err
-	}
-	return errors.New("standing: Save is not built yet")
-}
-
-// Get reads one item. A missing id is [ErrNotFound]. STUB (lane core).
-func (s *Store) Get(id string) (Item, error) { return Item{}, ErrNotFound }
-
-// List reads every item, newest first. An unreadable or newer-schema document
-// is skipped, not fatal. STUB (lane core).
-func (s *Store) List() ([]Item, error) { return nil, nil }
-
-// ForWorkspace is List filtered to one project, the grouping home draws.
-// STUB (lane core).
-func (s *Store) ForWorkspace(workspace string) ([]Item, error) { return nil, nil }
-
 // ErrNotFound is Get's answer for an id that is not here.
 var ErrNotFound = errors.New("standing: no such item")
 
@@ -426,13 +410,6 @@ type Spend struct {
 	Fired int
 }
 
-// Append writes one entry to today's ledger with O_APPEND. STUB (lane core).
-func (s *Store) Append(entry Entry) error { return errors.New("standing: Append is not built yet") }
-
-// Today sums today's ledger. An empty itemID sums everything, which is what the
-// daily rail reads. STUB (lane core).
-func (s *Store) Today(itemID string, now time.Time) (Spend, error) { return Spend{}, nil }
-
 // ── the inbox: how news reaches a conversation that is not open ─────────────
 
 // Note is one line of news for a conversation: a firing's delivery, a
@@ -452,15 +429,6 @@ type Note struct {
 
 // InboxPath is the inbox inside a session folder.
 func InboxPath(sessionDir string) string { return filepath.Join(sessionDir, "inbox.jsonl") }
-
-// Deliver appends a note to a session's inbox. STUB (lane core).
-func Deliver(sessionDir string, note Note) error {
-	return errors.New("standing: Deliver is not built yet")
-}
-
-// Drain reads and removes a session's inbox, oldest first. An absent inbox is
-// an empty slice and no error. STUB (lane core).
-func Drain(sessionDir string) ([]Note, error) { return nil, nil }
 
 // ── the pass ────────────────────────────────────────────────────────────────
 
@@ -534,31 +502,14 @@ type Ticker struct {
 	Now func() time.Time
 }
 
-// Tick runs one pass: take the lock (or decline), walk every active item, wake
-// the due ones, judge, fire within the rails, write the wake log, release. It
-// never blocks on a person and never runs past ctx. STUB (lane core).
-func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
-	return Pass{}, errors.New("standing: Tick is not built yet")
-}
-
 // ErrHeld is Tick's answer when another process holds the lock.
 var ErrHeld = errors.New("standing: another aforge is ticking")
 
 // ── the rhythm ──────────────────────────────────────────────────────────────
 
-// ParseEvery reads a WhenEvery's Every: a five-field cron line, or a Go
-// duration of at least one minute. It answers a function from "now" to the
-// next moment. STUB (lane core): accepts only durations.
-func ParseEvery(every string) (func(now time.Time) time.Time, error) {
-	d, err := time.ParseDuration(every)
-	if err != nil {
-		return nil, errors.New("standing: cannot read the rhythm " + every)
-	}
-	if d < time.Minute {
-		return nil, errors.New("standing: a rhythm under a minute")
-	}
-	return func(now time.Time) time.Time { return now.Add(d) }, nil
-}
+// ParseEvery, in every.go, is the one reader of a WhenEvery's Every: a
+// five-field cron line or a Go duration, in, and a function from a moment to
+// the next moment, out. Nothing else in the product parses a cadence.
 
 // ── keeping watch with no window open ───────────────────────────────────────
 
