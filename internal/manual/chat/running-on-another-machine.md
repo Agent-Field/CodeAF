@@ -222,8 +222,9 @@ all work over `--host`. What to know is **whose machine they are on**:
 - The item is created, checked and fired on the **far** machine, in the far machine's
   workspace, under the far machine's own profile rules — not this laptop's.
 - It keeps working after this window closes and after the connection drops.
-- The one-time `keep checking when no window is open?` question installs the OS timer on
-  the **far** machine. Answering yes here never touches the machine you are sitting at.
+- Background checks belong to the **far** machine: the first thing you set up over the
+  connection installs its timer, and the `background checks` settings row turns that one.
+  Neither ever touches the machine you are sitting at.
 - Pausing or stopping one writes to the far machine's store, and a write that store
   refuses is shown as its own refusal rather than redrawn as done.
 

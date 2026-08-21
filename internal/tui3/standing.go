@@ -61,20 +61,6 @@ func (a *app) stander() (standingAgent, bool) {
 
 // ── the card's state ────────────────────────────────────────────────────────
 
-// standStage is which question the card is asking. A card asks at most two, and
-// it asks them ONE AT A TIME in the same block: the second is drawn where the
-// first one's chips were, so a person answering a follow-up is looking at the
-// same card they just said yes to rather than at a second one underneath it.
-type standStage uint8
-
-const (
-	// standAsking is the proposal itself: yes, change when, or once.
-	standAsking standStage = iota
-	// standWatching is the one-time follow-up a first item earns
-	// ([session.StandingNotice.OfferWatch]): keep checking with no window open?
-	standWatching
-)
-
 // standingCard is one standing proposal, from the question to what it came to —
 // or, when [standingCard.update] is set, one line of news about an item that
 // already stands.
@@ -97,9 +83,6 @@ type standingCard struct {
 	// guessed says the model invented the cadence because the person gave none,
 	// so the when band ASKS instead of stating.
 	guessed bool
-	// offerWatch says a yes is followed by the one-time question rather than by
-	// an answer.
-	offerWatch bool
 	// answers is the proposal's chip row, in order, as THE ENGINE named it
 	// ([session.StandingNotice.Options] via [standAnswerWords]). It is held on
 	// the card rather than worked out at draw time because the keyboard asks
@@ -110,15 +93,11 @@ type standingCard struct {
 	// needs for the other end of its span.
 	deadline, born time.Time
 
-	// stage is which question is on the chips right now, choice is which chip
-	// has the keyboard, and typing says the person asked for the box so that
-	// the letters that would otherwise answer are text again.
-	stage  standStage
+	// choice is which chip has the keyboard, and typing says the person asked
+	// for the box so that the letters that would otherwise answer are text
+	// again.
 	choice int
 	typing bool
-	// approved is the yes already given, waiting on the follow-up. It is not an
-	// answer yet: [app.answerStanding] is called ONCE, with both halves.
-	approved bool
 
 	// choiceRow is where the chips landed inside this card's rendered rows, or
 	// -1, and spans are the columns each chip occupies on it. Written by the
@@ -158,13 +137,6 @@ const (
 	standChangeWord = "change when"
 	standOnceWord   = "once, not standing"
 
-	// The follow-up's two answers ([session.StandingNotice.OfferWatch]).
-	standAlwaysWord = "yes, always"
-	standWindowWord = "only while a window is open"
-	// standWatchAsk is the follow-up's own question, drawn where the sub line
-	// was. It is one sentence and it is asked ONCE, ever.
-	standWatchAsk = "keep checking when no window is open?"
-
 	// The two band labels. They are lower-case nouns and not headings: this is
 	// a card in a conversation, and a card with a heading on every row is a form.
 	standWhenTag = "when · "
@@ -199,15 +171,10 @@ const (
 	// in a conversation should still learn the key that works everywhere.
 	standProposalHint = "1 yes · 2 change when · 3 once · 0 or esc, no"
 	standTwoHint      = "1 yes · 2 change when · 0 or esc, no"
-	// standWatchHint is the same slot during the follow-up.
-	standWatchHint = "1 always · 2 only while a window is open"
-
 	// The verdicts a settled card keeps. They are sentences and not states,
 	// because the row is read once, later, by somebody reconstructing what
 	// happened.
 	standSetWord     = "set up"
-	standAlwaysDone  = "set up · checking even with no window open"
-	standWindowDone  = "set up · only while a window is open"
 	standChangedWord = "you asked for a different when"
 	standOnceDone    = "once, not standing"
 	standNoWord      = "not set up"
@@ -378,6 +345,12 @@ func (a *app) standingUpdate(ev session.Event) {
 	a.touch()
 }
 
+// standBackgroundWord is the update the engine sends when the first thing that
+// ever stands turns this machine's background checks on
+// (internal/session's standingBackgroundUpdate). It carries the whole sentence
+// in its text and draws as that sentence and nothing else.
+const standBackgroundWord = "background"
+
 // standUpdateGlyph is the mark one line of news leads with, and it is decided
 // by WHAT HAPPENED rather than by what the item is now: an item that needs
 // somebody wears the triangle even after it goes quiet again, because the line
@@ -404,6 +377,14 @@ func standUpdateGlyph(update string) string {
 // person reads: "retired" and "stopped" are the same news to whoever asked for
 // the thing, and only one of them is a word anybody says out loud.
 func standUpdateRow(pal palette, card *standingCard, width int) string {
+	if card.update == standBackgroundWord {
+		// THE ONE ROW WITH NO GLYPH AND NO NAME IN FRONT OF IT. This line is not
+		// news about the item — it is the machine saying what it just switched
+		// on for the person and where the switch is — and leading it with the
+		// item's own mark would file a fact about their laptop as one more thing
+		// a reminder did.
+		return pal.dim(fit(card.text, width))
+	}
 	glyph := card.glyph
 	if pal.ascii {
 		switch glyph {
@@ -457,19 +438,15 @@ func standUpdateWord(update, text string) string {
 // awaitingStanding reports whether a standing card owns the answer lane.
 func (a *app) awaitingStanding() bool { return a.stand != nil && !a.stand.settled() }
 
-// The three chips of the proposal, and the two of the follow-up. They are
-// indexes into [standChoiceWords] and [standWatchWords], and the digit a person
-// presses is the index plus one.
+// The three chips of the proposal. They are indexes into [standChoiceWords],
+// and the digit a person presses is the index plus one.
 const (
 	standYes = iota
 	standChange
 	standOnce
 )
 
-var (
-	standChoiceWords = [...]string{standYesWord, standChangeWord, standOnceWord}
-	standWatchWords  = [...]string{standAlwaysWord, standWindowWord}
-)
+var standChoiceWords = [...]string{standYesWord, standChangeWord, standOnceWord}
 
 // standAnswerWords is the proposal's chips for one notice, and it READS THE
 // ENGINE'S LIST rather than deciding anything.
@@ -502,9 +479,6 @@ func standAnswerWords(notice session.StandingNotice) []string {
 
 // standChips is the row of answers the card is currently asking with.
 func (c *standingCard) chips() []string {
-	if c.stage == standWatching {
-		return standWatchWords[:]
-	}
 	if len(c.answers) > 0 {
 		return c.answers
 	}
@@ -541,14 +515,8 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		return a.takeStanding(card.choice), true
 	case "esc":
-		// esc is the dismiss key everywhere on this surface, so it stays the
-		// outright no. DURING THE FOLLOW-UP IT IS NOT A NO: the yes has been
-		// given, and the only conservative reading of "get this off my screen"
-		// there is the answer that installs nothing on the host.
-		if card.stage == standWatching {
-			return a.answerStanding(session.StandingAnswer{Approved: true, KeepWatch: standWatch(false)},
-				standWindowDone, standWindowWord), true
-		}
+		// esc is the dismiss key everywhere on this surface, so it is the
+		// outright no here.
 		a.answerStanding(session.StandingAnswer{}, standNoWord, "")
 		return nil, true
 	}
@@ -574,11 +542,7 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// it is claimed under exactly the guards the digits are claimed under — an
 	// empty box, no list open, no correction being typed — because "0900" is a
 	// when somebody might write.
-	//
-	// DURING THE FOLLOW-UP IT IS NOT AN ANSWER, for the reason esc is not one
-	// there: the yes has already been given, and the question on the chips is
-	// no longer whether the item stands.
-	if card.stage == standAsking && msg.String() == session.StandingNoKey {
+	if msg.String() == session.StandingNoKey {
 		a.answerStanding(session.StandingAnswer{}, standNoWord, "")
 		return nil, true
 	}
@@ -593,17 +557,12 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// reminder, which has no third chip ([standAnswerWords]), does NOTHING:
 		// letting it through would put a stray character in the box and turn
 		// the `1` after it into a correction rather than a yes.
-		if card.stage == standAsking && at < len(standChoiceWords) {
+		if at < len(standChoiceWords) {
 			return nil, true
 		}
 	}
 	return nil, false
 }
-
-// standWatch is a bool on the heap, which is what
-// [session.StandingAnswer.KeepWatch] is: a THIRD state — nobody was asked — is
-// the whole reason that field is a pointer.
-func standWatch(keep bool) *bool { return &keep }
 
 // moveStanding walks the chips and STOPS at their ends rather than wrapping,
 // which is [app.moveChoice]'s law and its reason: a cursor that reappeared at
@@ -622,7 +581,7 @@ func (a *app) moveStanding(delta int) {
 	}
 	card.choice = at
 	// Landing on "change when" is asking for the box, exactly as pressing 2 is.
-	card.typing = card.stage == standAsking && at == standChange
+	card.typing = at == standChange
 	a.markStandStale(card)
 	a.touch()
 }
@@ -630,25 +589,17 @@ func (a *app) moveStanding(delta int) {
 // takeStanding acts on one chip, whether a digit, an arrow's enter or a click
 // asked for it.
 //
-// TWO ANSWERS, ONE CALL. A card that offers the watch question collects the yes
-// and holds it ([standingCard.approved]) rather than resolving twice: the engine
-// is waiting on ONE answer, and a surface that sent the approval and then the
-// preference would have the second one ignored as late (ResolveStanding drops an
-// id nobody is waiting on).
+// ONE QUESTION AND ONE CALL. The card used to ask a second thing after a yes —
+// keep checking when no window is open? — and it no longer asks anybody:
+// background checks go on with the first item that stands and the switch is a
+// settings row (internal/session's standingBackgroundOn). So an answer here
+// resolves the card and nothing follows it.
 func (a *app) takeStanding(at int) tea.Cmd {
 	card := a.stand
 	if card == nil || card.settled() || at < 0 || at >= len(card.chips()) {
 		return nil
 	}
 	card.choice = at
-	if card.stage == standWatching {
-		keep := at == 0
-		word, verdict := standWindowWord, standWindowDone
-		if keep {
-			word, verdict = standAlwaysWord, standAlwaysDone
-		}
-		return a.answerStanding(session.StandingAnswer{Approved: true, KeepWatch: standWatch(keep)}, verdict, word)
-	}
 	text := strings.TrimSpace(a.input.String())
 	switch at {
 	case standOnce:
@@ -671,17 +622,6 @@ func (a *app) takeStanding(at int) tea.Cmd {
 	// card's bare lane always had.
 	if text != "" {
 		return a.answerStanding(session.StandingAnswer{Change: text}, standChangedWord, standChangeWord)
-	}
-	if card.offerWatch {
-		// THE ONE-TIME QUESTION, ASKED IN PLACE. The yes is banked and the chips
-		// become the follow-up's two; nothing has been sent yet.
-		card.approved = true
-		card.stage = standWatching
-		card.choice = 0
-		card.typing = false
-		a.markStandStale(card)
-		a.touch()
-		return nil
 	}
 	return a.answerStanding(session.StandingAnswer{Approved: true}, standSetWord, standYesWord)
 }
@@ -810,21 +750,13 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 	stem := a.pal.ask(a.blockStem())
 	room := width - ansi.StringWidth(a.blockStem())
 	out := []string{head}
-	if card.stage == standWatching {
-		// THE FOLLOW-UP REPLACES THE BANDS RATHER THAN JOINING THEM. The when
-		// and the cost were read to decide the yes that has already been given;
-		// leaving them under a different question would be a card asking one
-		// thing and showing the evidence for another.
-		out = append(out, stem+a.pal.ink(fit(standWatchAsk, room)))
-	} else {
-		if card.words != "" {
-			for _, line := range wrap(card.words, room) {
-				out = append(out, stem+a.pal.ink(line))
-			}
+	if card.words != "" {
+		for _, line := range wrap(card.words, room) {
+			out = append(out, stem+a.pal.ink(line))
 		}
-		for _, line := range a.standBands(card, room) {
-			out = append(out, stem+line)
-		}
+	}
+	for _, line := range a.standBands(card, room) {
+		out = append(out, stem+line)
 	}
 	chips, spans := a.standChips(card, ansi.StringWidth(a.blockStem()), room)
 	card.choiceRow, card.spans = len(out), spans
@@ -1001,13 +933,11 @@ func (a *app) standMeter(card *standingCard, width int) string {
 }
 
 // standAskHint is the hint slot's line for the question a card is asking right
-// now: the follow-up's two, or the proposal's own row of digits.
+// now: the proposal's own row of digits, minus the third where there is no
+// third chip.
 func standAskHint(card *standingCard) string {
 	if card == nil {
 		return standProposalHint
-	}
-	if card.stage == standWatching {
-		return standWatchHint
 	}
 	if len(card.chips()) <= standOnce {
 		return standTwoHint
@@ -1036,17 +966,16 @@ func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
 	words := strings.TrimSpace(notice.Item.Words)
 	name := standName(words)
 	return &standingCard{
-		id:         notice.ID,
-		item:       notice.Item,
-		name:       name,
-		words:      standSub(name, words),
-		when:       strings.TrimSpace(notice.WhenWords),
-		cost:       strings.TrimSpace(notice.CostWords),
-		guessed:    notice.Guessed,
-		offerWatch: notice.OfferWatch,
-		answers:    standAnswerWords(notice),
-		deadline:   notice.Deadline,
-		born:       a.now(),
+		id:       notice.ID,
+		item:     notice.Item,
+		name:     name,
+		words:    standSub(name, words),
+		when:     strings.TrimSpace(notice.WhenWords),
+		cost:     strings.TrimSpace(notice.CostWords),
+		guessed:  notice.Guessed,
+		answers:  standAnswerWords(notice),
+		deadline: notice.Deadline,
+		born:     a.now(),
 		// THE CARD OPENS ON "YES", which is [app.proposeTask]'s law and not a
 		// claim about what silence does: a cursor parked on the answer that
 		// undoes the proposal makes the ordinary answer the one you have to aim

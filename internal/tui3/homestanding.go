@@ -98,15 +98,16 @@ const (
 	// window keeping time either. See [app.watchLine] for why it is not the
 	// word "off" and why it is not silence.
 	homeWatchNobody = "nothing is checking"
-	// homeWatchStart is the tail on that line when the person has never been
-	// asked about the timer, and it is the move that starts the whole thing: the
-	// first standing item is what raises the one-time offer
-	// (internal/session's standingMayOfferWatch).
+	// homeWatchStart is the tail on that line when nothing has ever stood on
+	// this machine, and it is the move that starts the whole thing: the first
+	// standing item is what installs the timer (internal/session's
+	// standingBackgroundOn).
 	homeWatchStart = ` · say "remind me…" to start`
-	// homeWatchSaidNo is the tail when they HAVE been asked and said no. They
-	// are never asked again (the marker under the store root), so the honest
-	// tail is what they chose rather than an invitation to choose it again.
-	homeWatchSaidNo = " · you said not to check with no window open"
+	// homeWatchOffRow is the tail when something HAS stood — so the timer was
+	// installed once and said so — and nothing is installed now. The row is off,
+	// whether they turned it off or the install did not take, and the row is
+	// where both are answered.
+	homeWatchOffRow = " · background checks are off · /settings"
 	// homeRanWord and homeRunsWord are the weekly line on an item's card and on
 	// a project's, and they are two spellings on purpose: a card about ONE thing
 	// says what it did, a card about a project counts what its things did.
@@ -865,23 +866,21 @@ func (a *app) standingHere() bool {
 }
 
 // watchTail is why nothing is checking, in the person's own terms. A seam that
-// cannot say whether the offer was ever made says neither thing — the sentence
-// is already true without a tail.
+// cannot say whether anything has ever stood here says neither thing — the
+// sentence is already true without a tail.
+//
+// TWO TAILS AND NOT THREE. Told and not installed has two causes — the row was
+// turned off, or the install did not take — and this cannot tell them apart;
+// it does not need to, because the settings row reads `off` in both cases and
+// is where both are fixed.
 func (a *app) watchTail() string {
-	if a.stands.WatchAsked == nil {
+	if a.stands.BackgroundTold == nil {
 		return ""
 	}
-	keep, asked := a.stands.WatchAsked()
-	switch {
-	case !asked:
+	if !a.stands.BackgroundTold() {
 		return homeWatchStart
-	case !keep:
-		return homeWatchSaidNo
 	}
-	// They said yes and the timer is not installed: the install did not take,
-	// or something removed it. Nothing here can tell those apart, and the
-	// sentence above already says the part that matters.
-	return ""
+	return homeWatchOffRow
 }
 
 // ── what the week's ledger says ─────────────────────────────────────────────
