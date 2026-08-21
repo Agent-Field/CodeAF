@@ -37,11 +37,32 @@ const (
 	// in front of a conversation's turn, and six attempts is roughly where
 	// waiting stops being kinder than an error they can act on. A call made
 	// under [WithPatientRateLimits] — a task node's, where nobody is watching
-	// and a worktree of work is at stake — is not bounded here at all; see
+	// and a worktree of work is at stake — gets patientAttempts instead; see
 	// patience.go for why the two are different answers to the same 429.
 	rateLimitAttempts = 6
-	baseBackoff       = 700 * time.Millisecond
-	maxErrorPeek      = 8 << 10
+	// patientAttempts is the ceiling on a patient call, and it exists because
+	// "waits it out however long that takes" was written as a loop with no exit
+	// but the context's. Sixty attempts against the per-wait cap below is an
+	// hour of pacing, so in practice patientPacingBudget is what ends a patient
+	// call and this is the arithmetic backstop for the degenerate case: a
+	// provider answering 429 with no delay at all, where the wall clock barely
+	// moves and only a count is finite.
+	patientAttempts = 60
+	// watchedPacingBudget and patientPacingBudget are the WALL CLOCK a call may
+	// spend held by pacing, measured from its first 429. A count of attempts
+	// does not bound time when the provider names the waits: six attempts each
+	// told to come back in a minute is five minutes of a person watching a
+	// cursor, which no number of attempts can express.
+	//
+	// Two minutes is past the point where a watched turn should have said
+	// something. Ten is the unwatched answer: a task node's work is worth
+	// waiting for, and a burst clears in seconds, but ten unbroken minutes of
+	// 429 is not a burst — it is an account that cannot serve this work now,
+	// and a node that says so beats a node that sits.
+	watchedPacingBudget = 2 * time.Minute
+	patientPacingBudget = 10 * time.Minute
+	baseBackoff         = 700 * time.Millisecond
+	maxErrorPeek        = 8 << 10
 	// maxBackoffShift caps the exponent, not the patience. A patient call may
 	// take its hundredth attempt, and `1 << 99` is not a long wait — it is an
 	// overflow, and an overflowed duration is a negative one. Seven doublings
@@ -88,14 +109,23 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 			notice(false)
 		}
 	}()
+	// pacedSince is when this call FIRST drew a 429, and zero until it does. It
+	// is what the pacing budget is measured against, so a call that spent four
+	// minutes doing real work and then met one 429 has its full patience, and a
+	// call that has been held from the start does not.
+	var pacedSince time.Time
 	attempts := 0
 	// Rate limits get more patience than faults: they are the provider
 	// pacing us, not failing, and abandoning work over pacing is the one
-	// outcome the concurrency doctrine forbids. A patient call takes that to
-	// its conclusion — there is no attempt at which it stops — and every other
-	// class of failure below keeps the short patience it always had, so the
-	// only loop that runs forever is the one the provider is asking for.
-	for attempt := 0; patient || attempt < rateLimitAttempts; attempt++ {
+	// outcome the concurrency doctrine forbids. A patient call takes that much
+	// further — a whole order of magnitude of it — and every other class of
+	// failure below keeps the short patience it always had. But EVERY call ends:
+	// patience that cannot be spent is a turn that can be held hostage by an
+	// account somebody else is saturating (outOfPatience).
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 && outOfPatience(patient, attempt, pacedSince) {
+			break
+		}
 		attempts = attempt + 1
 		if attempt > 0 {
 			delay := backoffFor(attempt, providerWait)
@@ -125,7 +155,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 		}
 		response, err := httpClient.Do(httpRequest)
 		if err != nil {
-			sharedLimiter.release(false)
+			sharedLimiter.release(false, 0)
 			cancelAttempt()
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
@@ -139,7 +169,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 			continue
 		}
 		rateLimited := response.StatusCode == http.StatusTooManyRequests
-		sharedLimiter.release(rateLimited)
+		// The provider's comeback instruction is read before the slot goes back,
+		// because it is what tells the limiter how wide this 429's window is:
+		// one window, one halving (limiter.go).
+		var named time.Duration
+		if rateLimited {
+			named = retryAfter(response)
+		}
+		sharedLimiter.release(rateLimited, named)
 		if !retryableStatus(response.StatusCode) {
 			if stream {
 				response.Body = newIdleWatchdog(response.Body, streamIdleTimeout, cancelAttempt)
@@ -147,7 +184,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 			return response, nil
 		}
 		if rateLimited {
-			providerWait = retryAfter(response)
+			providerWait = named
+			if pacedSince.IsZero() {
+				pacedSince = time.Now()
+			}
 			// The park begins on the FIRST 429 this call draws, not on the
 			// first one it decides to wait out: by the time the backoff is
 			// computed the call is already not moving, and that is the fact
@@ -175,6 +215,29 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// outOfPatience reports whether this call has spent everything it is willing to
+// spend on being paced, and it is the ONE PLACE either kind of call gives up on
+// a 429.
+//
+// Two currencies, because each bounds what the other cannot. Attempts bound a
+// provider that says "not yet" instantly and forever, where no amount of
+// retrying moves a clock. The wall clock bounds a provider that names its own
+// waits, where six attempts can be five minutes. A call is done when it runs
+// out of either.
+//
+// It says nothing about faults: a timeout or a 500 keeps the short patience it
+// always had, bounded by maxAttempts at the call site.
+func outOfPatience(patient bool, attempt int, pacedSince time.Time) bool {
+	attemptLimit, budget := rateLimitAttempts, watchedPacingBudget
+	if patient {
+		attemptLimit, budget = patientAttempts, patientPacingBudget
+	}
+	if attempt >= attemptLimit {
+		return true
+	}
+	return !pacedSince.IsZero() && time.Since(pacedSince) >= budget
 }
 
 // backoffFor is how long to wait before one retry.

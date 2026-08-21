@@ -1347,7 +1347,9 @@ the governor cannot say anything and therefore never holds. On those machines
 `task.max_load` and `task.min_free_mb` do nothing at all.
 
 Separately, a task that is already running can be held by the provider's own pacing. Its
-row reads `waiting · rate limited` until the calls get through.
+row reads `waiting · rate limited` until the calls get through — or until the task's
+patience runs out, which is 60 attempts or 10 minutes of waiting, whichever comes first;
+your own turn gives up sooner, at 6 attempts or 2 minutes. See how-tasks-run.
 
 The frontier used to hold two tasks at once. Two was a guess standing in for a resource
 nobody had measured: idle on a sixteen-core box, one too many on a laptop already compiling.
