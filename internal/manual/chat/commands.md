@@ -994,9 +994,10 @@ order:
    aforge makes for itself, grouped under its class. Those rows come from the running binary
    rather than the settings registry.
 
-Then the rest of the tab: "looking", "reading", "routing", and one row per capability slot
-added automatically from the settings registry — drawing, speaking, composing, filming,
-voice.
+Then the rest of the tab: "looking", "reading", "routing", "reply guard" — whether a reply
+that has come apart is cut and asked again, on by default (see *Models, context, and what
+it costs*) — and one row per capability slot added automatically from the settings
+registry: drawing, speaking, composing, filming, voice.
 
 The first three of the four classes are **select** rows and open the model picker. The
 **mastermind** row is a **text** box instead, because its value may carry a thinking level

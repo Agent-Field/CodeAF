@@ -207,6 +207,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// agent's calls and nobody else's.
 		patient: config.InTask,
 		pacing:  config.pacing,
+		// AND WHETHER THIS AGENT'S REPLIES ARE WATCHED FOR COMING APART
+		// (internal/provider's streamguard.go). The field is spelled as the OFF
+		// state so that a zero Config — every headless run, every test, every
+		// door that has not heard of the row — keeps the guard, which is the
+		// default the row itself has.
+		unguarded: config.ReplyGuardOff,
 	}
 	// AND THE WORK IS RECOVERED LAST, once this agent can actually run one. A
 	// resumed journal may have a task graph beside it — nodes that landed, a node
@@ -911,6 +917,9 @@ type sessionCompleter struct {
 	// pacing is who to tell while one of those calls is parked, and nil for
 	// every conversation and every agent nobody is drawing a card for.
 	pacing func(bool)
+	// unguarded takes the reply guard off this agent's calls. It is the OFF
+	// state rather than the on one so that the zero value is the default.
+	unguarded bool
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -920,6 +929,9 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	}
 	if f.pacing != nil {
 		ctx = provider.WithPacingNotice(ctx, f.pacing)
+	}
+	if f.unguarded {
+		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
 }
@@ -1503,6 +1515,13 @@ func (h *eventHub) adopt(stream *eventStream) {
 // arriving mid-fan-out lands cleanly before or after this event rather than
 // inside it.
 func (h *eventHub) send(event Event) {
+	// NOBODY WATCHING IS AN ORDINARY CASE. A completion driven without a turn
+	// around it — a test of the retry loop, a future headless caller — has no
+	// hub, and a line nobody can read is a line worth not drawing rather than a
+	// panic in the middle of a request.
+	if h == nil {
+		return
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {

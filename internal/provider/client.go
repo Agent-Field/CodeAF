@@ -425,7 +425,15 @@ func (c *Client) completeWithMessagesStreaming(
 	}
 	request.Stream = true
 	began := c.clock()
-	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
+	// THE GUARD'S OWN CANCEL, above send's. A stream that has to be cut — the
+	// endpoint gone quiet, the reply gone to soup — is cut by cancelling the
+	// request, because the reader is parked inside Read on a socket and only the
+	// transport can unblock it (the same reasoning transport.go's idle watchdog
+	// gives). It is deferred so every path releases the request goroutine,
+	// including the ordinary clean end.
+	guardCtx, cutStream := context.WithCancel(ctx)
+	defer cutStream()
+	httpResponse, err := c.sendShaped(guardCtx, request, knobsFrom(ctx), true)
 	if err != nil {
 		return nil, err
 	}
@@ -433,6 +441,19 @@ func (c *Client) completeWithMessagesStreaming(
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		return nil, apiError(httpResponse.StatusCode, payload)
+	}
+	// The silence watchdog starts the moment the headers land, which is the
+	// moment the endpoint has accepted the request and owes an answer
+	// (streamguard.go). Only the MODEL WRITING moves its clock; the keepalives
+	// that reset transport.go's byte watchdog do not reach it.
+	stall := newStallWatch(cutStream)
+	defer stall.stop()
+	// And the degeneration guard, unless this call has it switched off. It is
+	// nil rather than dormant when off, so a call that is not watching pays
+	// nothing per delta for the fact.
+	var babble *babbleWatch
+	if babbleGuardOn(ctx) {
+		babble = &babbleWatch{}
 	}
 	// THE ONLY PLACE TTFT IS REALLY OBSERVABLE. The two facts the ledger wants
 	// are separated by the stream itself: how long the endpoint took to say
@@ -477,6 +498,15 @@ func (c *Client) completeWithMessagesStreaming(
 			if errors.Is(decodeErr, io.EOF) {
 				break
 			}
+			// A WATCHDOG'S CUT IS NOT A TORN CONNECTION, and it outranks the
+			// decode error it caused: cancelling the request is how the cut is
+			// made, so the read always fails afterwards and the failure it
+			// reports is a symptom. The person's own interrupt is checked
+			// against the CALLER'S context and never against this one, so a
+			// stop that lands while a watchdog is firing still reads as a stop.
+			if cut := stall.cut(); cut != nil && ctx.Err() == nil {
+				return nil, cut
+			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
 		}
 		if response.ID == "" {
@@ -504,10 +534,25 @@ func (c *Client) completeWithMessagesStreaming(
 			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking()) {
 				firstToken = c.clock()
 			}
+			// THE MODEL WRITING IS THE ONLY THING THAT COUNTS AS PROGRESS. A
+			// token of answer, a token of thought, a fragment of a call — the
+			// three things an endpoint that is working produces, and nothing
+			// else on this wire.
+			if choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0 {
+				stall.progress()
+			}
 			if choice.Delta.Content != "" {
 				thinking = false
 				content.WriteString(choice.Delta.Content)
 				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content, Session: session})
+				// AND THE JUNK STOPS HERE. The delta has already been handed to
+				// the observer — a person watches text arrive and the surface
+				// throws away what a cut turn streamed — but nothing past this
+				// point becomes a response, so no soup is ever returned to the
+				// turn loop and none of it reaches the transcript.
+				if babble != nil && babble.write(choice.Delta.Content) {
+					return nil, &StreamCut{Reason: CutBabble}
+				}
 			}
 			// The run of reasoning is announced ONCE — that boundary is what a
 			// surface drawing "thinking…" needs — and the text of it follows per

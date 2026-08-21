@@ -597,7 +597,9 @@ a working copy of real work is behind it — but it does give up in the end. Ten
 minutes of pacing is not a burst; it is an account that cannot serve the work right now,
 and a task that says so is more use than one that sits. When patience runs out the call
 fails with the provider's own words, the turn is retried three more times as any provider
-failure is, and then it surfaces as a failure like any other.
+failure is, and then it surfaces as a failure like any other. A request that was **cut**
+rather than refused — a model that went quiet, a reply that came apart — has a budget of
+its own and does not spend any of those three (see *Models, context, and what it costs*).
 
 **Why things can stay slow afterwards.** aforge watches how many calls the provider will
 take at once and pulls that number in half when it is told *too many requests* — once per
