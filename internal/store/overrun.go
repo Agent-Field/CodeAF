@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -42,7 +41,7 @@ func (s *Store) DeferOverrun(deferred DeferredOverrun) error {
 	if deferred.NodeID == "" || deferred.Prefix == "" {
 		return fmt.Errorf("defer overrun: %w: node id and prefix are required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("defer overrun: %w", err)
 	}
@@ -169,7 +168,7 @@ func (s *Store) RecordOverrunEvidence(evidence OverrunEvidence) error {
 	if evidence.NodeID == "" {
 		return fmt.Errorf("record overrun evidence: %w: node id is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record overrun evidence: %w", err)
 	}
@@ -222,7 +221,7 @@ func (s *Store) ResolveOverrun(deferred DeferredOverrun) error {
 	if deferred.Seq <= 0 || strings.TrimSpace(deferred.NodeID) == "" {
 		return fmt.Errorf("resolve overrun: %w: deferred sequence and node id are required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("resolve overrun: %w", err)
 	}

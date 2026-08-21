@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -42,7 +41,7 @@ type nodeWorkerPayload struct {
 func (s *Store) SetNodeSubharness(id, subharness, reason string) (bool, error) {
 	id = strings.TrimSpace(id)
 	subharness = strings.TrimSpace(subharness)
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return false, fmt.Errorf("set node worker: %w", err)
 	}

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -29,7 +28,7 @@ func (s *Store) Splice(parent string, subtree Subtree, provenance Provenance) er
 		return err
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("splice: %w", err)
 	}

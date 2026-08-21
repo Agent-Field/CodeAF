@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -61,7 +60,7 @@ func (s *Store) RecordLeafMode(nodeID string, mode LeafMode) error {
 	if strings.TrimSpace(mode.Mode) == "" {
 		return fmt.Errorf("record leaf mode: %w: mode is required", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record leaf mode: %w", err)
 	}

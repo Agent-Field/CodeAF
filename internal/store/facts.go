@@ -386,7 +386,7 @@ func (s *Store) AliasScope(from, to string) error {
 	if !compatibleGardenScopes(from, to) || from == to {
 		return fmt.Errorf("alias scope: %w: incompatible scopes %q and %q", ErrInvalid, from, to)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("alias scope: %w", err)
 	}
@@ -587,7 +587,7 @@ func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKin
 		status = defaultFactStatus(kind)
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
@@ -681,7 +681,7 @@ func (s *Store) ActivateSkill(factSeq int64, artifact string) error {
 	if artifact == "" {
 		return fmt.Errorf("activate skill: %w: empty artifact", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("activate skill: %w", err)
 	}
@@ -708,7 +708,7 @@ func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
 // use the reason as durable execution evidence even when there is no replacing
 // fact and bySeq is zero.
 func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) error {
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
@@ -753,7 +753,7 @@ func (s *Store) RecordFactInjection(nodeID string, factSeqs []int64) error {
 		return nil
 	}
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("record fact injection: %w", err)
 	}
@@ -786,7 +786,7 @@ func (s *Store) QuarantineFact(factSeq, evidenceSeq int64, origin FactChangeOrig
 	if factSeq <= 0 || !validFactChangeOrigin(origin) {
 		return fmt.Errorf("quarantine fact: %w: invalid fact or origin", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("quarantine fact: %w", err)
 	}
@@ -820,7 +820,7 @@ func (s *Store) RestoreFact(factSeq int64, origin FactChangeOrigin) error {
 	if factSeq <= 0 || !validFactChangeOrigin(origin) {
 		return fmt.Errorf("restore fact: %w: invalid fact or origin", ErrInvalid)
 	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("restore fact: %w", err)
 	}
