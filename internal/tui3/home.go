@@ -68,12 +68,31 @@ import (
 // exists for — and the collapse takes only the quiet ones underneath them.
 const homeShown = 4
 
-// homeTaskRows is how much of the focused conversation's work the detail column
-// shows. FOUR AND NOT MORE, because each one now costs two lines: the row and
-// the sentence saying what it came to. Four tasks with their outcomes answer
-// "what has this been doing" better than twelve bare labels, and the project's
-// whole history is what the index itself is for.
-const homeTaskRows = 4
+// homeOpenProjects is how many projects home draws OPEN — heading, rows, item
+// band, quiet fold — before the rest collapse to one line each.
+//
+// THREE, AND THE FIRST OF THEM IS ALWAYS THIS WINDOW'S OWN. The screen was an
+// unorganised wall: every project on the machine got a heading and four rows,
+// most of them saying `elsewhere`, and a person looking for the one thing that
+// wanted them had to read past six projects they had not touched in a week. So
+// home now opens the project you are standing in and the two you spoke in most
+// recently, and folds everything else into the `elsewhere` block below them —
+// which is exactly the shape of the question this screen answers: here is what
+// you are doing, and here is everything else, one line each, still reachable.
+//
+// A FOLDED PROJECT IS NEVER A HIDDEN ONE. Its line says how many conversations
+// it holds and how long since anybody spoke in it, it surfaces anything that
+// needs somebody or is running, and enter opens it in place. And a search sees
+// through the whole arrangement: with anything typed there are no tiers at all
+// (see [homeView.buildWorld]).
+const homeOpenProjects = 3
+
+// homeFoldedProjects is how many folded project lines the `elsewhere` block
+// draws before the remainder go behind one further fold. Eight is about what
+// fits under three open projects on an ordinary frame without the block
+// becoming the screen — and past it the block would be the wall again, one line
+// per row instead of four.
+const homeFoldedProjects = 8
 
 // homeEvery is how long between readings of the disk. Three seconds is slow
 // enough that the walk is free and fast enough that a task landing in another
@@ -165,8 +184,16 @@ const (
 	// ~/.aforge/v3 are THIS machine's, and the session is on another one.
 	homeRemoteWord = "home shows this machine's projects, and this session is on another"
 	// homeElsewhereWord marks a row this window cannot open, and is also what
-	// enter on one says, with the project's path after it.
+	// enter on one says, with the project's path after it. It is ALSO the word
+	// on the dim rule that opens the folded block, which is where it does most
+	// of its work now: one heading over everything home is not showing you.
 	homeElsewhereWord = "elsewhere"
+	// homeElsewhereRuleWord is that rule, before the dashes are run out to the
+	// column's width. A rule and not a heading, because the thing under it is
+	// not a project — it is the REST of them.
+	homeElsewhereRuleWord = "─ " + homeElsewhereWord + " "
+	// homeElsewhereRuleASCII is the same rule where box drawing cannot be drawn.
+	homeElsewhereRuleASCII = "- " + homeElsewhereWord + " "
 	// homeStartWord is the action row's label, with what was typed quoted after
 	// it. "conversation" and not "chat" because that is what this surface calls
 	// one everywhere else it names one — /new closes a session and starts a
@@ -242,6 +269,25 @@ const (
 	// gestures. A line that says work is being hidden and cannot be asked to
 	// stop hiding it is a dead end somebody hits and gives up at.
 	homeItemFold
+	// homeElsewhereRule is the dim line the folded block hangs under —
+	// `─ elsewhere ─────`. IT IS NOT A CURSOR STOP: it names a section rather
+	// than a thing, exactly as [homeHeading] does, and a cursor that had to be
+	// walked over it would charge a keystroke for a piece of punctuation.
+	homeElsewhereRule
+	// homeProject is ONE WHOLE PROJECT ON ONE LINE — `▸ wisp   6 · 2d` — under
+	// the rule, and it is a cursor stop and a DOOR: enter or → opens it IN
+	// PLACE, where it becomes a block shaped like a tier-one project with a `▾`
+	// on this same line; enter or ← folds it back. It is [homeQuiet]'s gesture
+	// widened from a project's tail to the whole project ([homeView.expanded]
+	// keeps both).
+	//
+	// ITS CARD IS THE PROJECT'S, not a conversation's ([bandKindProject]).
+	homeProject
+	// homeMoreProjects is the folded block's own tail — `▸ …4 more` — when the
+	// block itself runs past [homeFoldedProjects]. A fold over a fold, with the
+	// same two marks and the same gestures, because it is the same kind of
+	// thing: a line standing for rows you cannot see.
+	homeMoreProjects
 )
 
 // homeLine is one drawn line of the left column, resolved against the world
@@ -265,6 +311,13 @@ type homeLine struct {
 	quiet  int
 	since  time.Time
 	folded bool
+	// proj is the WHOLE project, for [homeProject]: a folded project line says
+	// how many conversations it holds and what is happening in them, and an
+	// opened one carries the same line as its heading. It is the project as the
+	// last reading saw it, held here rather than looked up again, for
+	// [homeLine.row]'s reason — a rescan replaces the world underneath and an
+	// index into it would go stale.
+	proj session.Project
 	// item is the standing item, for [homeItem], and view carries the two facts
 	// about NOW that the document does not hold (homestanding.go's
 	// [StandingItemView]). They are resolved when the row is built, so a row and
@@ -563,6 +616,10 @@ func (h *homeView) build() {
 	// a cursor that held its line number would land the person on a different
 	// watch between two glances.
 	previousItem := h.focusedItem()
+	// AND SO IS THE PROJECT UNDER IT. A folded project line is a cursor stop like
+	// any other, and the second tier re-sorts when something starts running in a
+	// project nobody has touched for a week.
+	previousProject := h.focusedProject()
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -599,6 +656,33 @@ func (h *homeView) build() {
 	}
 	if previousItem != "" {
 		h.pointItem(previousItem)
+		return
+	}
+	if previousProject != "" {
+		h.pointProject(previousProject)
+	}
+}
+
+// focusedProject is the bucket directory of the folded project under the
+// cursor, and "" when the cursor is not on one.
+func (h *homeView) focusedProject() string {
+	if h.cursor < 0 || h.cursor >= len(h.lines) || h.lines[h.cursor].kind != homeProject {
+		return ""
+	}
+	return h.lines[h.cursor].dir
+}
+
+// pointProject puts the cursor on a project's own line, and leaves it where it
+// is when that project is not on the list any more.
+func (h *homeView) pointProject(dir string) {
+	if dir == "" {
+		return
+	}
+	for at, line := range h.lines {
+		if line.kind == homeProject && line.dir == dir {
+			h.cursor = at
+			return
+		}
 	}
 }
 
@@ -710,14 +794,9 @@ func (h *homeView) dropUp() bool { return h.searching() }
 // it from shipping twice.
 func (h *homeView) buildWorld() {
 	query := h.query()
-	type ranked struct {
-		project session.Project
-		rows    []session.SessionRow
-		score   int
-	}
-	var found []ranked
+	var found []homeHit
 	for _, project := range h.world.Projects {
-		hit := ranked{project: project}
+		hit := homeHit{project: project}
 		for _, row := range project.Sessions {
 			score, ok := homeRank(row, project, query, h.world.Read)
 			if !ok {
@@ -763,89 +842,214 @@ func (h *homeView) buildWorld() {
 		for i, j := 0, len(found)-1; i < j; i, j = i+1, j-1 {
 			found[i], found[j] = found[j], found[i]
 		}
-	}
-	for _, hit := range found {
-		if len(h.lines) > 0 {
-			h.lines = append(h.lines, homeLine{kind: homeBlank})
+		// A SEARCH HAS NO TIERS AT ALL. Every project that holds a match is drawn
+		// open, wherever it lives, because a filter that folded away half of what
+		// it found would be a filter lying about the machine — the same law the
+		// quiet tail already keeps ([homeView.split]).
+		for _, hit := range found {
+			h.blank()
+			h.lines = append(h.lines, homeLine{
+				kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
+			})
+			h.projectBlock(hit, query)
 		}
+		// THE ACTION ROW CLOSES THE LIST, directly above the box the words were
+		// typed into ([homeAction] says why it is not at the top any more). It is
+		// separated from the matches by the same blank line that separates two
+		// projects, because it is not one of them: everything above it exists, and
+		// it is the one row that is a thing that does not.
+		h.blank()
+		// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
+		// because the two rows are one cluster: they are the two things enter can
+		// do with the same characters, and a gap would read as two unrelated
+		// offers. The cursor still RESTS on `start a new conversation` — typing and
+		// pressing enter means today what it meant yesterday — and this row is the
+		// one ↑ that asks the sentence instead of opening a conversation for it
+		// (homeexchange.go).
+		h.lines = append(h.lines, homeLine{kind: homeAskHere})
+		h.lines = append(h.lines, homeLine{kind: homeAction})
+		return
+	}
+	// AT REST, TWO TIERS ([homeOpenProjects] says why).
+	open, folded := homeTiers(found, h.bucket)
+	for _, hit := range open {
+		h.blank()
 		h.lines = append(h.lines, homeLine{
 			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
 		})
-		// THE BAND SPLITS AROUND THE CONVERSATIONS, and the split is triage
-		// (homestanding.go's header states it whole): an item that needs somebody
-		// or is firing right now sits ABOVE the conversations, with the rows this
-		// screen exists for; everything still waiting for its time sits under
-		// them, above the quiet fold.
-		//
-		// AND A SEARCH DRAWS NO BAND AT ALL. The box searches conversations — by
-		// name, by project, by what their tasks came to (see [homeRank]) — and a
-		// band of items riding along under every hit would be rows the query
-		// never considered, drawn as though it had.
-		var hot, cold []StandingItemView
-		var itemsFolded int
-		if query == "" {
-			shownItems, folded := standSplit(h.items[hit.project.Dir], h.itemsOpen[hit.project.Dir])
-			itemsFolded = folded
-			for _, view := range shownItems {
-				if standHot(view) {
-					hot = append(hot, view)
-					continue
-				}
-				cold = append(cold, view)
+		h.projectBlock(hit, "")
+	}
+	h.buildElsewhere(folded)
+}
+
+// homeHit is one project and the conversations of it that survived the box.
+// score is the best rank any of those rows scored, and zero for every project
+// while nothing is typed.
+type homeHit struct {
+	project session.Project
+	rows    []session.SessionRow
+	score   int
+}
+
+// homeTiers splits the projects into the ones home draws OPEN and the ones it
+// folds to a line each.
+//
+// THE WINDOW'S OWN PROJECT IS ALWAYS FIRST AND ALWAYS OPEN, whatever its
+// recency says. It is the one project this window can actually open a
+// conversation in (see this file's header), so a screen that pushed it under
+// two projects somebody merely spoke in more recently would put the only
+// actionable rows on it below the ones that refuse.
+func homeTiers(found []homeHit, bucket string) (open, folded []homeHit) {
+	rest := make([]homeHit, 0, len(found))
+	for _, hit := range found {
+		if len(open) == 0 && bucket != "" && filepath.Clean(hit.project.Dir) == bucket {
+			open = append(open, hit)
+			continue
+		}
+		rest = append(rest, hit)
+	}
+	// The world is already ordered by when somebody last spoke in a project
+	// ([session.ReadWorld]), so "the two most recent others" is simply the next
+	// two off the front.
+	for _, hit := range rest {
+		if len(open) < homeOpenProjects {
+			open = append(open, hit)
+			continue
+		}
+		folded = append(folded, hit)
+	}
+	return open, folded
+}
+
+// projectBlock is one project drawn OPEN: its standing band split around its
+// conversations, and the quiet tail under them.
+//
+// It is one function because two tiers draw it. A tier-one project is this
+// block under a dim heading; a folded project somebody opened is this block
+// under its own `▾` line, which is what "opens in place" means — the same shape
+// arriving where the one line was, rather than a different screen.
+func (h *homeView) projectBlock(hit homeHit, query string) {
+	// THE BAND SPLITS AROUND THE CONVERSATIONS, and the split is triage
+	// (homestanding.go's header states it whole): an item that needs somebody
+	// or is firing right now sits ABOVE the conversations, with the rows this
+	// screen exists for; everything still waiting for its time sits under
+	// them, above the quiet fold.
+	//
+	// AND A SEARCH DRAWS NO BAND AT ALL. The box searches conversations — by
+	// name, by project, by what their tasks came to (see [homeRank]) — and a
+	// band of items riding along under every hit would be rows the query
+	// never considered, drawn as though it had.
+	var hot, cold []StandingItemView
+	var itemsFolded int
+	if query == "" {
+		shownItems, folded := standSplit(h.items[hit.project.Dir], h.itemsOpen[hit.project.Dir])
+		itemsFolded = folded
+		for _, view := range shownItems {
+			if standHot(view) {
+				hot = append(hot, view)
+				continue
 			}
-		}
-		for _, view := range hot {
-			h.lines = append(h.lines, h.itemLine(hit.project, view))
-		}
-		shown, quiet, since := h.split(hit.project, hit.rows, query)
-		for _, row := range shown {
-			h.lines = append(h.lines, homeLine{
-				kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: row,
-			})
-		}
-		for _, view := range cold {
-			h.lines = append(h.lines, h.itemLine(hit.project, view))
-		}
-		// A BAND WITH NOTHING BEHIND IT DRAWS NO DOOR, opened or not. An opened
-		// band whose items have since dropped under the cap is a band that is
-		// hiding nothing, and a fold control over nothing is a control that does
-		// nothing (home.go's quiet tail follows the same rule for a search).
-		if itemsFolded > 0 {
-			h.lines = append(h.lines, homeLine{
-				kind: homeItemFold, project: hit.project.Name, dir: hit.project.Dir,
-				quiet: itemsFolded, folded: !h.itemsOpen[hit.project.Dir],
-			})
-		}
-		// A SEARCH HAS NO TAIL LINE. Everything that matched is on screen, so
-		// there is nothing being hidden to offer to show — and a fold control
-		// over a list nobody folded would be a control that does nothing.
-		if quiet > 0 && query == "" {
-			h.lines = append(h.lines, homeLine{
-				kind: homeQuiet, project: hit.project.Name, dir: hit.project.Dir,
-				quiet: quiet, since: since, folded: !h.expanded[hit.project.Dir],
-			})
+			cold = append(cold, view)
 		}
 	}
-	if query == "" {
+	for _, view := range hot {
+		h.lines = append(h.lines, h.itemLine(hit.project, view))
+	}
+	shown, quiet, since := h.split(hit.project, hit.rows, query)
+	for _, row := range shown {
+		h.lines = append(h.lines, homeLine{
+			kind: homeSession, project: hit.project.Name, dir: hit.project.Dir, row: row,
+		})
+	}
+	for _, view := range cold {
+		h.lines = append(h.lines, h.itemLine(hit.project, view))
+	}
+	// A BAND WITH NOTHING BEHIND IT DRAWS NO DOOR, opened or not. An opened
+	// band whose items have since dropped under the cap is a band that is
+	// hiding nothing, and a fold control over nothing is a control that does
+	// nothing (home.go's quiet tail follows the same rule for a search).
+	if itemsFolded > 0 {
+		h.lines = append(h.lines, homeLine{
+			kind: homeItemFold, project: hit.project.Name, dir: hit.project.Dir,
+			quiet: itemsFolded, folded: !h.itemsOpen[hit.project.Dir],
+		})
+	}
+	// A SEARCH HAS NO TAIL LINE. Everything that matched is on screen, so
+	// there is nothing being hidden to offer to show — and a fold control
+	// over a list nobody folded would be a control that does nothing.
+	if quiet > 0 && query == "" {
+		h.lines = append(h.lines, homeLine{
+			kind: homeQuiet, project: hit.project.Name, dir: hit.project.Dir,
+			quiet: quiet, since: since, folded: !h.expanded[hit.project.Dir],
+		})
+	}
+}
+
+// buildElsewhere is the second tier: a dim rule, and then every other project
+// on the machine as ONE LINE each.
+//
+// ORDER IS TRIAGE AND THEN RECENCY, which is the same law the conversations
+// inside a project already follow: a project holding something that needs
+// somebody, or something running, sorts above the quiet ones — otherwise a
+// waiting conversation could sit three folds down under six projects nobody has
+// touched, which is the exact failure this whole screen exists to prevent.
+func (h *homeView) buildElsewhere(folded []homeHit) {
+	if len(folded) == 0 {
 		return
 	}
-	// THE ACTION ROW CLOSES THE LIST, directly above the box the words were typed
-	// into ([homeAction] says why it is not at the top any more). It is separated
-	// from the matches by the same blank line that separates two projects,
-	// because it is not one of them: everything above it exists, and it is the
-	// one row that is a thing that does not.
-	if len(h.lines) > 0 {
-		h.lines = append(h.lines, homeLine{kind: homeBlank})
+	sort.SliceStable(folded, func(i, j int) bool {
+		return homeProjectHot(folded[i].project) && !homeProjectHot(folded[j].project)
+	})
+	shown, hidden := folded, 0
+	if !h.expanded[homeElsewhereKey] && len(folded) > homeFoldedProjects {
+		shown, hidden = folded[:homeFoldedProjects], len(folded)-homeFoldedProjects
 	}
-	// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
-	// because the two rows are one cluster: they are the two things enter can do
-	// with the same characters, and a gap would read as two unrelated offers.
-	// The cursor still RESTS on `start a new conversation` — typing and pressing
-	// enter means today what it meant yesterday — and this row is the one ↑ that
-	// asks the sentence instead of opening a conversation for it
-	// (homeexchange.go).
-	h.lines = append(h.lines, homeLine{kind: homeAskHere})
-	h.lines = append(h.lines, homeLine{kind: homeAction})
+	h.blank()
+	h.lines = append(h.lines, homeLine{kind: homeElsewhereRule})
+	opened := false
+	for _, hit := range shown {
+		open := h.expanded[homeProjectKey(hit.project.Dir)]
+		// AN OPENED PROJECT GETS AIR ON BOTH SIDES, the same blank that separates
+		// two projects in the tier above — a block wedged between two one-line
+		// rows with nothing around it reads as part of them.
+		if open || opened {
+			h.blank()
+		}
+		h.lines = append(h.lines, homeLine{
+			kind: homeProject, project: hit.project.Name, dir: hit.project.Dir,
+			proj: hit.project, folded: !open,
+		})
+		if open {
+			h.projectBlock(hit, "")
+		}
+		opened = open
+	}
+	// THE BLOCK FOLDS TOO, past [homeFoldedProjects]. The line stays while it is
+	// open, because that line is the way back.
+	if hidden > 0 || h.expanded[homeElsewhereKey] && len(folded) > homeFoldedProjects {
+		if opened {
+			h.blank()
+		}
+		h.lines = append(h.lines, homeLine{
+			kind: homeMoreProjects, quiet: len(folded) - homeFoldedProjects,
+			folded: !h.expanded[homeElsewhereKey],
+		})
+	}
+}
+
+// homeProjectHot reports whether a project holds anything a person would want
+// to be told about from behind a fold.
+func homeProjectHot(project session.Project) bool {
+	return project.NeedsPerson() > 0 || project.Running() > 0
+}
+
+// blank appends the one empty line that separates two sections, and never two
+// of them in a row or one at the very top.
+func (h *homeView) blank() {
+	if len(h.lines) == 0 || h.lines[len(h.lines)-1].kind == homeBlank {
+		return
+	}
+	h.lines = append(h.lines, homeLine{kind: homeBlank})
 }
 
 // split decides what a project shows and what it whispers: everything with work
@@ -1115,7 +1319,8 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
-	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere:
+	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
+		homeProject, homeMoreProjects:
 		return true
 	}
 	return false
@@ -1249,6 +1454,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.foldItems(line.dir, true)
 			return nil
 		}
+		// AND THE SAME TWO ARROWS OVER A WHOLE PROJECT, and over the folded block
+		// itself. One gesture at three scales ([homeProject]).
+		if line, ok := h.focusedLine(); ok && line.kind == homeProject && line.folded {
+			h.foldProject(line.dir, true)
+			return nil
+		}
+		if line, ok := h.focusedLine(); ok && line.kind == homeMoreProjects && line.folded {
+			h.foldElsewhere(true)
+			return nil
+		}
 		h.box.right()
 		return nil
 	case "left":
@@ -1258,6 +1473,14 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		if line, ok := h.focusedLine(); ok && (line.kind == homeItemFold || line.kind == homeItem) && h.itemsOpen[line.dir] {
 			h.foldItems(line.dir, false)
+			return nil
+		}
+		if line, ok := h.focusedLine(); ok && line.kind == homeProject && !line.folded {
+			h.foldProject(line.dir, false)
+			return nil
+		}
+		if line, ok := h.focusedLine(); ok && line.kind == homeMoreProjects && !line.folded {
+			h.foldElsewhere(false)
 			return nil
 		}
 		h.box.left()
@@ -1298,17 +1521,72 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
-// fold opens or closes one project, and leaves the cursor on the line that did
-// it so the gesture can be reversed without moving.
-func (h *homeView) fold(dir string, open bool) {
+// ONE MAP HOLDS EVERY FOLD A PERSON OPENED BY HAND, and these are the keys it
+// is written under. They are keys and not three maps because they are one
+// mechanism used at three scales — a project's quiet tail, a whole folded
+// project, and the folded block itself — and folding is a thing a person did
+// rather than a thing the data said, so all three outlive a rescan and a query
+// together ([homeView.expanded]).
+//
+// A PROJECT'S QUIET TAIL IS KEYED BY THE BUCKET DIRECTORY ALONE, which is what
+// it always was; the two below are prefixed so that opening a folded project
+// cannot also open eleven quiet conversations inside it. The prefixes start
+// with a NUL, which no directory path contains.
+const homeElsewhereKey = "\x00elsewhere"
+
+func homeProjectKey(dir string) string { return "\x00project\x00" + dir }
+
+// setFold writes one of those keys. Opening records; folding forgets, so the
+// map only ever holds what somebody actually opened.
+func (h *homeView) setFold(key string, open bool) {
 	if h.expanded == nil {
 		h.expanded = map[string]bool{}
 	}
 	if open {
-		h.expanded[dir] = true
-	} else {
-		delete(h.expanded, dir)
+		h.expanded[key] = true
+		return
 	}
+	delete(h.expanded, key)
+}
+
+// foldProject opens or folds ONE WHOLE PROJECT of the second tier, in place: the
+// line it was becomes a block shaped like a tier-one project, with the same line
+// at its head wearing `▾`. The cursor stays on that line, so the gesture can be
+// reversed without moving.
+func (h *homeView) foldProject(dir string, open bool) {
+	h.setFold(homeProjectKey(dir), open)
+	held := h.cursor
+	h.rebuild()
+	for at, line := range h.lines {
+		if line.kind == homeProject && line.dir == dir {
+			h.cursor = at
+			h.picked = true
+			return
+		}
+	}
+	h.cursor = h.clamp(held)
+}
+
+// foldElsewhere opens or folds the tail of the folded block itself — the
+// `▸ …4 more` line — and is [homeView.foldProject] one scale up.
+func (h *homeView) foldElsewhere(open bool) {
+	h.setFold(homeElsewhereKey, open)
+	held := h.cursor
+	h.rebuild()
+	for at, line := range h.lines {
+		if line.kind == homeMoreProjects {
+			h.cursor = at
+			h.picked = true
+			return
+		}
+	}
+	h.cursor = h.clamp(held)
+}
+
+// fold opens or closes one project's QUIET TAIL, and leaves the cursor on the
+// line that did it so the gesture can be reversed without moving.
+func (h *homeView) fold(dir string, open bool) {
+	h.setFold(dir, open)
 	held := h.cursor
 	h.rebuild()
 	// The tail line of the project just toggled, which is where the person is
@@ -1379,6 +1657,15 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	case homeItemFold:
 		h.foldItems(line.dir, line.folded)
+		return nil
+	case homeProject:
+		// A WHOLE PROJECT, OPENED WHERE IT STANDS. enter is the same key it is on
+		// every other fold on this column, and it is the only thing enter can mean
+		// here: there is no one conversation a project line stands for.
+		h.foldProject(line.dir, line.folded)
+		return nil
+	case homeMoreProjects:
+		h.foldElsewhere(line.folded)
 		return nil
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
@@ -1611,9 +1898,26 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		return nil
 	}
 	width, height := a.size()
-	_, hits, _, _ := a.homeFrame(width, height)
+	lines, hits, _, _ := a.homeFrame(width, height)
 	if y < 0 || y >= len(hits) {
 		return nil
+	}
+	// A CLICK IN THE RIGHT PANE ACTS ON THE CARD, and the only thing on the card
+	// a pointer can act on is a fold line. The column has no cursor of its own —
+	// `m` opens every fold on the card at once (homebands.go) — so this is the
+	// one gesture that opens ONE band, which is what a person means when they aim
+	// at `▸ …5 more tasks` and press.
+	//
+	// The paint above recorded every fold line it drew this frame, so the line is
+	// found by its own text rather than by counting rows: the card is assembled
+	// band by band and drops whole bands on a short frame, and a row number
+	// computed against it would be a second answer to where things ended up.
+	if left, right := homeColumns(width); right > 0 && x >= left+homeGutter && y < len(lines) {
+		if fold, ok := a.bandFoldAt(ansi.Strip(lines[y])); ok {
+			a.toggleBandFold(fold.band, fold.subject)
+			a.touch()
+			return nil
+		}
 	}
 	at := hits[y]
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
@@ -1634,6 +1938,20 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		a.home.cursor = at
 		a.home.picked = true
 		a.home.foldItems(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
+		return nil
+	}
+	if a.home.lines[at].kind == homeProject {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.foldProject(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
+		return nil
+	}
+	if a.home.lines[at].kind == homeMoreProjects {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.foldElsewhere(a.home.lines[at].folded)
 		a.touch()
 		return nil
 	}
@@ -1696,8 +2014,15 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	add(pal.dim(rule(width)), -1)
 	add("", -1)
 
+	// THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX. One blank row always sits
+	// between the last line of the body and the foot, and the region gives it up
+	// rather than the foot: a column of rows butted straight against a rule reads
+	// as one block with a lid on it, and the last conversation on the screen —
+	// which in a drop-up is the row somebody is about to press enter on — is the
+	// one that suffers for it.
 	const foot = 3
-	room := height - len(lines) - foot
+	const pad = 1
+	room := height - len(lines) - foot - pad
 	if room < 1 {
 		room = 1
 	}
@@ -1708,6 +2033,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	for _, drawn := range body {
 		add(drawn.text, drawn.hit)
 	}
+	add("", -1)
 
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
@@ -1914,6 +2240,22 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			}
 		}
 		return overlayRow(mark+" "+homeQuietWord(line, h.world.Read), "", at == h.cursor, false, at == h.hover, width, pal)
+	case homeElsewhereRule:
+		// THE ONE RULE ON THIS SCREEN, and it is drawn because the thing under it
+		// is not another project — it is the REST of them. A blank line was
+		// tried and could not say that: the folded lines simply read as a fourth
+		// project with very short rows. The word rides the rule rather than
+		// sitting on a heading of its own, so the section costs one row.
+		return pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))
+	case homeProject:
+		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
+		// a whole project: `▸` while it is one line, `▾` once it is a block.
+		return overlayRowTinted(homeFoldMark(line.folded, pal)+" "+line.project,
+			homeProjectNote(line.proj, h.world.Read, pal.ascii), homeProjectInk(line.proj),
+			at == h.cursor, false, at == h.hover, width, pal)
+	case homeMoreProjects:
+		return overlayRow(homeFoldMark(line.folded, pal)+" "+homeMoreProjectsWord(line), "",
+			at == h.cursor, false, at == h.hover, width, pal)
 	case homeItem:
 		// ONE ITEM, ONE ROW, drawn by the renderer home's errand box shares
 		// (homestanding.go's [StandingItemRow]).
@@ -1985,6 +2327,92 @@ func homeNoteInk(row session.SessionRow, held bool) noteInk {
 		}
 		return pal.accent(note)
 	}
+}
+
+// homeFoldMark is the arrow a line that hides rows wears — the task column's own
+// two marks (task.go's [glyphShut] and [glyphOpen]), because it is the same
+// gesture over the same kind of thing at every scale this screen folds at.
+func homeFoldMark(folded bool, pal palette) string {
+	if pal.ascii {
+		if folded {
+			return ">"
+		}
+		return glyphOpenASCII
+	}
+	if folded {
+		return glyphShut
+	}
+	return glyphOpen
+}
+
+// homeElsewhereRuleLine is `─ elsewhere ─────`, run out to the width it is
+// given. The dashes after the word are what make it a rule rather than a
+// heading — the eye reads the line as a lid over everything below it.
+func homeElsewhereRuleLine(width int, ascii bool) string {
+	word, dash := homeElsewhereRuleWord, "─"
+	if ascii {
+		word, dash = homeElsewhereRuleASCII, "-"
+	}
+	line := "  " + word
+	if pad := width - ansi.StringWidth(word); pad > 0 {
+		line += strings.Repeat(dash, pad)
+	}
+	return line
+}
+
+// homeProjectNote is a folded project's dim tail: how many conversations it
+// holds, and then the ONE thing worth knowing about them from out here.
+//
+// A FOLD MUST NOT HIDE THE ROW THIS SCREEN EXISTS FOR. A project with a
+// conversation stopped on a question says so on its one line — `▲ 1 waiting` —
+// and so does one with work running, and both sort above the quiet projects
+// ([homeProjectHot]). Everything else says how long since anybody spoke in it,
+// which is the only fact a quiet project has.
+func homeProjectNote(project session.Project, now time.Time, ascii bool) string {
+	parts := []string{itoa(len(project.Sessions))}
+	waiting, running := project.NeedsPerson(), project.Running()
+	switch {
+	case waiting > 0:
+		glyph := homeAskGlyph
+		if ascii {
+			glyph = homeAskASCII
+		}
+		parts = append(parts, glyph+" "+itoa(waiting)+" waiting")
+	case running > 0:
+		glyph := homeLiveGlyph
+		if ascii {
+			glyph = homeLiveASCII
+		}
+		parts = append(parts, glyph+" "+itoa(running)+" running")
+	default:
+		if age := sinceAt(project.At(), now); age != "" {
+			parts = append(parts, age)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// homeProjectInk brings a folded project that is waiting on somebody up out of
+// the dim, exactly as [homeNoteInk] does for one conversation. Everything else
+// keeps the ordinary rule.
+func homeProjectInk(project session.Project) noteInk {
+	if project.NeedsPerson() == 0 {
+		return nil
+	}
+	return func(pal palette, note string, selected bool) string {
+		if selected {
+			return pal.ink(note)
+		}
+		return pal.accent(note)
+	}
+}
+
+// homeMoreProjectsWord is the folded block's own tail line.
+func homeMoreProjectsWord(line homeLine) string {
+	if !line.folded {
+		return "…" + itoa(line.quiet) + " fewer"
+	}
+	return "…" + itoa(line.quiet) + " more"
 }
 
 // homeQuietWord is the collapsed tail's one line. The age is the newest of the
@@ -2128,6 +2556,25 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 		// [homeBands] so a short frame drops from the bottom on both.
 		return StandingItemCard(a, line.view, line.project, strings.TrimSpace(line.item.Workspace), width, room, a.home.world.Read)
 	}
+	if ok && line.kind == homeProject {
+		// THE CARD FOR A WHOLE PROJECT. This function still owns only the two
+		// lines nothing may displace — what it is called, and where it is — and
+		// everything under them is the registry's ([homebands.go]). No band draws
+		// for [bandKindProject] yet, so today the pane is those two lines; the
+		// day one is registered it appears here without this function changing.
+		subject := bandSubject{
+			kind: bandKindProject, project: line.project,
+			dir: homeProjectPath(line.proj), world: a.home.world,
+		}
+		bands := [][]string{{pal.bold(pal.ink(fit(line.project, width)))}}
+		if place := subject.dir; place != "" {
+			bands = append(bands, []string{pal.dim(a.pathLink(place, fit(place, width)))})
+		}
+		bands = append(bands, a.drawHomeBands(bandContext{
+			subject: subject, width: width, now: a.home.world.Read, pal: pal,
+		})...)
+		return homeBands(bands, room)
+	}
 	if !ok || line.kind != homeSession {
 		// The action row and a folded tail are not things with a detail; the
 		// column stays empty rather than keeping the last conversation's up,
@@ -2171,11 +2618,6 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 	})...)
 	return homeBands(bands, room)
 }
-
-// homeOutcomeIndent is where an outcome sentence hangs under the task it
-// belongs to — far enough in to read as a continuation rather than as another
-// task.
-const homeOutcomeIndent = 2
 
 // homeBands assembles the card, dropping whole bands from the bottom until it
 // fits and putting one blank line between the ones that survive.
@@ -2278,34 +2720,6 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	return word
 }
 
-// homeTaskLine is one piece of work in the detail column: what it came to, what
-// it was, and when.
-func homeTaskLine(entry session.TaskIndexEntry, row session.SessionRow, now time.Time, width int, pal palette) string {
-	word := homeTaskWord(entry, row)
-	age := sinceAt(entry.EndedAt, now)
-	label := entry.Label
-	if label == "" {
-		label = entry.Title
-	}
-	room := width - ansi.StringWidth(word) - 1
-	if age != "" {
-		room -= ansi.StringWidth(age) + 1
-	}
-	if room < 8 {
-		return pal.dim(fit(word+" "+label, width))
-	}
-	label = fit(label, room)
-	line := pal.dim(word) + " " + pal.muted(label)
-	if age != "" {
-		gap := width - ansi.StringWidth(word) - 1 - ansi.StringWidth(label) - ansi.StringWidth(age)
-		if gap < 1 {
-			gap = 1
-		}
-		line += strings.Repeat(" ", gap) + pal.dim(age)
-	}
-	return line
-}
-
 // homeTaskWord is what one row of the index is called on screen, and it says
 // `running` only where the count in [session.TaskRollup] said so — the two are
 // the same judgement and it is made once, in session's world.go, not twice.
@@ -2379,6 +2793,14 @@ func (a *app) homeHint() string {
 		return "enter or → show them · esc close"
 	case line.kind == homeItemFold:
 		return "enter or ← fold them away · esc close"
+	case line.kind == homeProject && line.folded:
+		return "enter or → open this project here · esc close"
+	case line.kind == homeProject:
+		return "enter or ← fold this project away · esc close"
+	case line.kind == homeMoreProjects && line.folded:
+		return "enter or → show them · esc close"
+	case line.kind == homeMoreProjects:
+		return "enter or ← fold them away · esc close"
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
@@ -2428,6 +2850,22 @@ func (a *app) homeSubject() (bandSubject, bool) {
 		return bandSubject{kind: bandKindSession, row: line.row, project: line.project, dir: strings.TrimSpace(line.row.ProjectDir), world: a.home.world}, true
 	case homeItem:
 		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+	case homeProject:
+		// A WHOLE PROJECT IS A SUBJECT TOO ([bandKindProject]). The dir is the
+		// workspace the sessions recorded rather than the bucket, which is what
+		// every other subject on this screen carries and what a card would put on
+		// its place line; a project that never recorded one falls back to the
+		// bucket, which is the only address it has.
+		return bandSubject{kind: bandKindProject, project: line.project, dir: homeProjectPath(line.proj), world: a.home.world}, true
 	}
 	return bandSubject{}, false
+}
+
+// homeProjectPath is where a project IS: the workspace its conversations
+// recorded, and the bucket directory for one that never named a place.
+func homeProjectPath(project session.Project) string {
+	if path := strings.TrimSpace(project.Path); path != "" {
+		return path
+	}
+	return project.Dir
 }
