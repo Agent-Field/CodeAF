@@ -322,7 +322,7 @@ func waitForTurn(t *testing.T, watching <-chan Event) {
 			if event.Kind == EventTurnDone {
 				return
 			}
-		case <-time.After(10 * time.Second):
+		case <-time.After(harnessTestPatience):
 			t.Fatal("nothing came back out of the design's room")
 		}
 	}
@@ -491,10 +491,19 @@ func TestTheDesignAnnounceLeadsItsCard(t *testing.T) {
 // designNode is the one design node in this session's graph, waited for: the
 // tool admits it and the frontier starts it on a goroutine, so a test reading
 // the graph on the next line would be reading a race.
+// harnessTestPatience is how long a design-helper waits for the scripted design
+// to move. The work is real — a child turn admitted to the task graph — and the
+// whole session package running beside it can push a normally sub-second design
+// past a tight deadline on a loaded machine. The window only turns a genuine
+// hang into a failure; it is not a measure of how fast a design is, so it is
+// generous rather than tight (the flake it retires was a 10s deadline crossed
+// under full-package load, not lost work — every event still arrived).
+const harnessTestPatience = 60 * time.Second
+
 func designNode(t *testing.T, agent *Agent) *TaskNode {
 	t.Helper()
 	graph := agent.graph()
-	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+	for until := time.Now().Add(harnessTestPatience); time.Now().Before(until); {
 		graph.mu.Lock()
 		var found *TaskNode
 		for _, id := range graph.order {
@@ -515,7 +524,7 @@ func designNode(t *testing.T, agent *Agent) *TaskNode {
 // waitForPhase waits for one node to publish a named phase.
 func waitForPhase(t *testing.T, node *TaskNode, phase string) {
 	t.Helper()
-	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+	for until := time.Now().Add(harnessTestPatience); time.Now().Before(until); {
 		node.graph.mu.Lock()
 		doing := node.doing
 		node.graph.mu.Unlock()
@@ -537,7 +546,7 @@ func designOutcome(t *testing.T, agent *Agent) string {
 	node := designNode(t, agent)
 	select {
 	case <-node.done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(harnessTestPatience):
 		t.Fatal("the design never landed")
 	}
 	report, _, _, _ := node.leavings()
@@ -632,7 +641,7 @@ func nextDesign(t *testing.T, lane <-chan Event) Event {
 			t.Fatal("the design lane closed")
 		}
 		return event
-	case <-time.After(10 * time.Second):
+	case <-time.After(harnessTestPatience):
 		t.Fatal("nothing arrived on the design lane")
 		return Event{}
 	}
