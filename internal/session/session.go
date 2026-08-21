@@ -346,6 +346,15 @@ const (
 	//
 	// A surface that ignores this kind is exactly what it was.
 	EventToolFinished
+	// EventStandingProposal asks the person whether one standing item — a
+	// reminder, a watch, a rule, an overnight job — may stand (standing_contract.go).
+	// Standing carries the card; the ID inside it is the token a surface hands back
+	// to [Agent.ResolveStanding]. Nothing stands until the answer is yes.
+	EventStandingProposal
+	// EventStandingUpdate reports a standing item changing under a live window: it
+	// was ratified, it fired, it was paused, retired, or it needs the person. It is
+	// a report, never a question.
+	EventStandingUpdate
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -445,6 +454,10 @@ type Event struct {
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
 	// is the token a surface hands back to [Agent.ResolveTask].
 	Task *TaskNotice
+
+	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
+	// (standing_contract.go). It is nil on every other kind.
+	Standing *StandingNotice
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
@@ -703,6 +716,10 @@ type Config struct {
 	// 'done' stops meaning 'proven'. The config row (task.audit) defaults on.
 	TaskAudit bool
 	Guardian  bool
+
+	// Standing is the ambient side (standing_contract.go, internal/standing).
+	// Nil is off: no belt tool, no card, no ticking from this process.
+	Standing *Standing
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -1468,6 +1485,8 @@ type Agent struct {
 	// with the turn (task.go). The ids are the GRAPH's — a proposal is a node
 	// that has not been admitted yet, not a second numbering.
 	taskAnswers map[uint64]chan TaskAnswer
+	// standingAnswers is the same wait, for standing cards (standing_contract.go).
+	standingAnswers map[uint64]chan StandingAnswer
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
 	// it: a node's most important event lands minutes after the turn that
