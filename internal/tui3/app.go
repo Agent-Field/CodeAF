@@ -1119,6 +1119,12 @@ type app struct {
 	// [app.openHome]), because two pages that both believe they own the frame is
 	// a frame that draws one and takes keys for the other.
 	home homeView
+	// caret says whether the terminal caret should be shown on this frame. It
+	// is set by [app.frame] on every render and read by [app.View]: home at rest
+	// is a dashboard somebody reads, not a thing they type at, so its empty box
+	// hides the caret rather than leaving it blinking over the "home" heading at
+	// the frame's origin.
+	caret bool
 	// landing and pickSession are how this launch was made: whether the door
 	// invited home onto the first frame ([app.landHome]) and whether it asked
 	// for the resume picker there instead. Both are properties of ONE launch,

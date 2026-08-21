@@ -181,10 +181,15 @@ func (a *app) View() tea.View {
 	// each of which would submit. v2 enables it unless this says otherwise, and
 	// it says so out loud because the default is the thing being relied on.
 	v.DisableBracketedPasteMode = false
-	v.Cursor = &tea.Cursor{
-		Position: tea.Position{X: caretX, Y: caretY},
-		Shape:    tea.CursorBar,
-		Blink:    true,
+	// The caret is hidden on surfaces with nothing to type into (home at rest),
+	// where a blinking bar over the heading would be a cursor with no box to
+	// live in. [app.frame] sets [app.caret] on every render.
+	if a.caret {
+		v.Cursor = &tea.Cursor{
+			Position: tea.Position{X: caretX, Y: caretY},
+			Shape:    tea.CursorBar,
+			Blink:    true,
+		}
 	}
 	return v
 }
@@ -192,6 +197,10 @@ func (a *app) View() tea.View {
 // frame is the whole screen and where the caret sits in it.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
+	// The caret is shown by default and hidden only by the surfaces that have
+	// nothing to type into (home at rest). Set here so every path below starts
+	// from the same answer and only the ones that hide it say so.
+	a.caret = true
 	// The settings panel is the first thing on this surface that takes the whole
 	// frame, and it takes it WHOLE: no conversation above it, no input line
 	// under it, nothing of the frame below showing through at the edges
