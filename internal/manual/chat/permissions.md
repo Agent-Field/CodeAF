@@ -97,12 +97,22 @@ Now the countdown is a clock about **reading**, not about wall time. It is held
 for as long as the window is unfocused, and starts again whole the moment you
 come back — so a question you never saw is still there when you get to it.
 
+**And the same is true of a conversation you switched away from inside this
+terminal.** A conversation you have switched away from holds its approval
+question for as long as you are away. A task it proposed still starts by itself
+after its countdown, and a sign-in offer still lapses after five minutes — both
+say `waiting on you` on home until they do. Coming back gives you the reading
+time you had left rather than a fresh clock, and only for a question the session
+is still asking: one answered or cancelled while you were away is not put back
+on the screen.
+
 Two things tell you a window is waiting while you are elsewhere:
 
 - **A desktop notification**, sent the instant the question goes up. The banner
   is headed `aforge` and reads `<conversation> · waiting on you`.
 - **Home**, and every other aforge window, where the session's row wears `▲`,
-  reads `waiting on you`, and sorts to the top of its project.
+  reads `waiting on you`, and sorts to the top of its project. The status line
+  says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 
 If your terminal does not report focus to the programs inside it, aforge
 assumes the window is focused — so the countdown runs as it always did and no

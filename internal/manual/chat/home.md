@@ -78,8 +78,9 @@ Projects are ordered by the one you spoke in most recently. The cursor opens on 
 conversation this window is in, and the preview on the right follows it.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
-spoke in it — or `another window` where another terminal is sitting on that conversation
-and this one therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
+spoke in it — or `open` where **this** terminal is holding the conversation behind the one
+on screen, or `another window` where a *different* terminal is sitting on it and this one
+therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
 on you, a **turning spinner** where something is running this instant, `◌` work was left
 unfinished, `✓` work landed since you last looked (see *What landed while I was away*),
 `○` at rest. In screen-reader (linear) mode nothing animates and they are `!`, `*`, `o`,
@@ -178,13 +179,18 @@ exist yet and so has nothing to preview.
 `pgup`/`pgdown` jump four. The right column follows the cursor. Clicking a row puts the
 cursor on it; clicking the row the cursor is already on opens it.
 
-`enter` opens the session under the cursor. That is the same door `/resume` walks through:
-the running turn is interrupted, the chat you were in is closed, the chosen journal is
-opened and replayed, and the surface says `resumed <path>`.
+`enter` opens the session under the cursor — **any row on the screen, in any project.**
+The chosen journal is opened and replayed, and **the conversation you were in stays open
+behind it**, still streaming its turn, still running its tasks, one `tab` away. It is not
+closed and it is not paused.
 
 `enter` on the one you are already in simply steps into it and says nothing — it is
 already loaded underneath, so there is nothing to reopen and nothing to announce. That is
 what makes `enter` the calm keystroke on a launch: the cursor starts on that very row.
+
+`enter` on a conversation **this** terminal is already holding behind the screen — a row
+reading `open` — goes straight back to it, for the same reason: it is alive, so there is
+nothing to reopen.
 
 The foot line reads exactly:
 
@@ -197,12 +203,17 @@ on — at rest, `↑↓ move · enter open · esc close`.
 
 ## Why can't I open a session from home — open in another window
 
-A conversation that another terminal already has open cannot be opened by this one: two
-aforge windows on one journal would both append to it and neither would end up with the
-conversation. Home knows this **before you press anything**, so it says so twice over.
+A conversation that a **different** terminal already has open cannot be opened by this one:
+two aforge windows on one journal would both append to it and neither would end up with the
+conversation. (One this terminal is holding is a different matter entirely — `enter` goes
+to it.) Home knows this **before you press anything**, so it says so twice over.
 
 **On the row.** A conversation sitting idle in another terminal reads `another window`
 where its rollup would be, so a locked door does not look like an ordinary one.
+
+**A conversation *this* terminal is holding never says that.** It reads `open`, and `enter`
+goes to it. The lock it would meet is our own, so home asks itself before it asks the
+kernel — see *Switch between projects without leaving*.
 
 A row already showing `waiting on you` or `N running` keeps those words instead, and does
 not need the extra label: **both of them are read from a file only a live session writes**,
@@ -230,22 +241,100 @@ There is one case the check cannot cover: a lock taken in the instant between ho
 the row and your keystroke. You get the same sentence in the same place, and the
 conversation you were in is untouched.
 
-## What home will not do yet — opening another project's work
+## Open another project from home
 
-**`enter` only opens sessions of the project this window is in.** Every other project is
-shown, and its heading carries a dim `elsewhere` to say so. Pressing `enter` on one of its
-rows opens nothing and says `elsewhere · <the project's path>` — the path to start aforge
-in. **That path is clickable**, so you can open the folder from here even though the
-conversation cannot be; the "what is on the screen" page has which terminals do that.
+**`enter` opens any row on this screen, whatever project it belongs to.** There is nothing
+to go to another terminal for and nothing to type: put the cursor on the row and press
+`enter`.
 
-This is a limit and not a bug. A window's approval rules, its crew, its spend ceiling and
-its saved shapes of work were all resolved from the workspace it launched in; carrying a
-chat across without carrying those would be a window quietly running under another
-project's permissions. Until that is built, home shows you the whole machine and moves you
-around inside one project of it.
+What happens is a **second conversation**, not this one moving. The conversation you were
+in is left running exactly where it was — its turn keeps streaming into its own transcript,
+its tasks keep running, it keeps its lock — and the new one is built on **its own**
+workspace, with that project's approval rules, its crew, its spend ceiling and its saved
+shapes of work. Nothing is carried across, because nothing crosses.
 
-So: home is the honest answer to "what have I been doing everywhere". It is not yet the
-answer to "put me in that other project without changing terminals".
+The status line then reads `2 open`, and `tab` over an empty message box goes back.
+
+Two refusals are still possible and both leave home standing:
+
+- the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
+  never stats a folder until you press `enter` on it, so a repository deleted or moved since
+  its last conversation is found here rather than after the fact;
+- this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
+  one`.
+
+## Why does it say elsewhere — it does not any more
+
+**It used to.** Every project but the one this window launched in carried a dim `elsewhere`
+on its heading, and `enter` on one of its rows opened nothing and said
+`elsewhere · <the project's path>`. That is gone: the heading is the project's name and
+nothing else, and `enter` opens the row.
+
+The reasoning behind the old refusal was right and is still kept — a window's approval
+rules, its crew, its spend ceiling and its saved shapes of work are resolved from the
+workspace it launched in, and carrying a conversation across without carrying those would
+be a window quietly running under another project's permissions. What changed is the
+answer: a second project is a second **conversation**, built the way the first one was, on
+its own workspace, with its own gate. A conversation still never moves between projects.
+
+`another window` is a different sentence and still means what it always did — see *Why
+can't I open a session from home*.
+
+## Switch between projects without leaving — work on two projects at once in one terminal
+
+One terminal holds up to **eight** conversations at once. One is on screen; the rest are
+open behind it, fully alive.
+
+- **`enter` on home** opens any row, in any project, and leaves the one you were in open.
+- **`tab`**, pressed with an empty message box, goes to the conversation you were in before
+  this one. Press it again and you are back. It is `cd -`.
+- **`/new`** adds a conversation in this project — unless the one on screen is fresh and
+  empty, in which case it takes its place.
+- **the status line** reads `2 open · 1 waiting`: how many this terminal holds, and how many
+  of them are stopped on a question. It is absent when only one is open.
+- **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
+  only when that was the last one.
+- **`ctrl+c` twice** closes all of them, and the warm line says how many:
+  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop`.
+
+## How do I switch to my other chat — and is it still running
+
+**`tab` with an empty message box**, or `enter` on its row on home. Either goes straight to
+it; nothing is reopened and nothing is replayed from cold that does not have to be.
+
+**Yes, it is still running.** A conversation you are not looking at is **not paused**: its
+turn finishes into its own transcript, its tasks run, its background jobs run, its lock is
+held and it keeps writing itself to disk. A desktop notification tells you when it finishes
+a turn or stops on a question — even while the terminal is focused, because a focused
+terminal is no longer evidence that anybody is looking at *that* conversation.
+
+The status line says how many are open and how many want you: `2 open · 1 waiting`. Home
+says it per row: a conversation this terminal holds reads `open`, or `waiting on you` when
+it is stopped on a question, and those two are read from the conversation itself rather than
+from a file, so they are never a few seconds behind.
+
+## Does my draft move when I switch — what a switch keeps
+
+**What you were in the middle of stays with the conversation you were in.** Coming back to
+it redraws it from its own transcript, and these come back with it:
+
+- the unsent sentence in the message box, and the pictures attached to it — including any
+  message you typed while it was busy, which is folded back into the box rather than
+  dropped;
+- where you were reading;
+- how much of an approval countdown was left, given back to you whole rather than run down
+  while you were away — and only if the conversation is still asking;
+- the room you had open;
+- the transcript, the task column, the meters, the model, the title and any card still
+  waiting for an answer — all of which are read back from the conversation itself.
+
+**These are forgotten:** copy mode, a rewind you were part way through, the settings panel,
+the model picker, `/history`, the deliverables shelf, a task column focus. Each is
+something you are in the *middle* of, or a door onto something the whole terminal shares.
+
+`/new` is the exception, and deliberately: **the draft goes with you**, not with the
+conversation. `/new` carries the box's text into the new conversation and clears it in the
+old one.
 
 ## Searching from home — find an old chat from anywhere
 
@@ -365,6 +454,18 @@ With **nothing** typed there is no action row and the list hangs from the top ag
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
 `/new is unavailable here`.
+
+**Typing a path starts a conversation there instead.** When what you typed resolves to a
+directory on this machine — an absolute path, a `~` path, a `./` path, or a project name
+that matches exactly one heading on the list — the action row reads
+`start a new conversation in <that folder>` and `enter` opens a fresh conversation in it,
+with the one you were in left open behind. A name that two projects share resolves to
+neither, because opening whichever sorted first would be the screen guessing.
+
+**The path is resolved and never created.** A directory that does not exist is not a path
+at all as far as this row is concerned: the row goes back to quoting your words, and
+`enter` starts a conversation here and sends them. Nothing makes a folder because somebody
+mistyped one.
 
 ## How do I see the collapsed sessions — …13 more
 
