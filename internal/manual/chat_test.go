@@ -78,6 +78,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
+		// The wave that made a dropped file attach: the words people use for it
+		// are "drag", "drop" and the token they then find in their own sentence.
+		{"can I drag and drop an image into the message box", "keys"},
+		{"what does image #1 in my message mean", "keys"},
+		{"why did the path I pasted turn into a token", "keys"},
 		{"where do I change settings", "commands"},
 		{"what is openaf", "starting-aforge"},
 		{"can you access my email", "accounts"},
