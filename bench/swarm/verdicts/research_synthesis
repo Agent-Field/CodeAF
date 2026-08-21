@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# research_synthesis: themes covered (5) + citations present + open questions.
+d="$1"
+[ -f "$d/SYNTHESIS.md" ] || { echo 0; exit 0; }
+body=$(tr '[:upper:]' '[:lower:]' < "$d/SYNTHESIS.md")
+n=0
+for theme in chunking embedding rerank evaluation latency; do
+  echo "$body" | grep -q "$theme" && n=$((n+1))
+done
+echo "$body" | grep -qE "\(note-[0-9]\)" && n=$((n+1))
+echo "$body" | grep -qE "## open questions" && n=$((n+1))
+echo "$n"

@@ -1,0 +1,5 @@
+This directory contains a git repository with a branch `change-under-review` differing from `main` by one commit. Review that diff as a senior engineer would and write your findings to `REVIEW.md`.
+
+The change deliberately introduces several independent defects across separate files: a security flaw (SQL injection), a correctness bug (off-by-one in pagination), a resource leak (unclosed file handle), and a race condition (unsynchronized shared counter). For each distinct defect you find, record in `REVIEW.md`: the file, the line region, the class of defect, and a one-sentence fix.
+
+Order findings by severity, security first. `REVIEW.md` must contain a section per defect with a `##` heading naming the file.

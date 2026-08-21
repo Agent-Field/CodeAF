@@ -1,0 +1,7 @@
+This directory contains a Python package `calcengine` with a test suite under `tests/`. Three independent bugs are failing three separate test files. Find and fix each bug in the source under `calcengine/`:
+
+1. `tests/test_parser.py` — the expression parser mishandles operator precedence for subtraction vs division.
+2. `tests/test_cache.py` — the memoization cache returns stale results when the same function is called with different keyword ordering.
+3. `tests/test_units.py` — unit conversion between metric and imperial is off by an inverted factor for length.
+
+Do not modify any file under `tests/`. All three failing test files must pass when you are done, and no previously-passing test may regress. Run the suite to confirm.

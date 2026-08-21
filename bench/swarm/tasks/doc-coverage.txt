@@ -1,0 +1,3 @@
+This directory contains a Python package `toolkit/` whose public modules contain functions and classes that lack docstrings. Add a docstring to every public function, class, and method in every `.py` file directly under `toolkit/`.
+
+Each docstring must state: what the callable does in one line, its parameters, and what it returns or raises, in the Google docstring style. Do not change any code — only add docstrings. Do not document private names (leading underscore). When you are done, every public name in `toolkit/` must have a non-empty docstring.

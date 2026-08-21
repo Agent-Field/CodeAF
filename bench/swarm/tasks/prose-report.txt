@@ -1,0 +1,3 @@
+Write a structured technical report to `REPORT.md` comparing four task-decomposition strategies for LLM agent harnesses: flat single-agent, fixed pipeline, static DAG, and adaptive claim-time decomposition. The report must contain exactly four `##` sections, one per strategy, in that order.
+
+Each section must cover: (a) when the strategy wins, (b) its failure mode, (c) its cost profile. Aim for 150–250 words per section. The audience is an engineer choosing a decomposition policy, not a novice — be concrete and skip definitions. End the file with a single-line `## Verdict` naming which strategy you would ship for long-running autonomous jobs and why, in one sentence.

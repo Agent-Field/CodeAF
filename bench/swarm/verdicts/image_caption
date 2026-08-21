@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# image_caption: count of images with a caption file + INDEX.md presence.
+d="$1"
+n=0
+for img in "$d"/img-*.png; do
+  base=$(basename "$img" .png)
+  [ -s "$d/$base.txt" ] && n=$((n+1))
+done
+[ -f "$d/INDEX.md" ] && echo "$n+index" || echo "$n"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# refactor_api: 0/1 = clean cutover (all callers migrated, tests pass).
+d="$1"
+cd "$d" 2>/dev/null || { echo 0; exit 0; }
+# No leftover old-signature calls outside its own definition.
+leftover=$(grep -rlE "fetch_records\(\s*(query|self,\s*query)" app/ --include="*.py" 2>/dev/null | wc -l)
+cd "$d"
+python3 -m pytest tests/ -q >/dev/null 2>&1 || { echo 0; exit 0; }
+[ "$leftover" -eq 0 ] && echo 1 || echo 0
