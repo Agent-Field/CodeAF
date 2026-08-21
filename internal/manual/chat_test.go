@@ -264,6 +264,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why are most projects collapsed on home", "home"},
 		{"how do I open a collapsed project", "home"},
 		{"how do I see more tasks on the right", "home"},
+		// The wave that made an exchange a row that outlives the screen it was
+		// asked on. All three are the person's own words after using `ask here`:
+		// the card was answered for them because looking at another chat closed
+		// the errand, the pane drew one dim `…` for a whole turn, and nothing
+		// said whether a second errand was allowed at all.
+		{"why did my reminder card disappear when I opened another chat", "asking-from-home"},
+		{"how do I know ask here is doing something", "asking-from-home"},
+		{"can I ask two things from home at once", "asking-from-home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

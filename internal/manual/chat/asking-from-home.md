@@ -13,26 +13,125 @@ which lands on the row spelled `ask here: "…"`.
  enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
 ```
 
-The sentence is answered **in the pane on the right of home**, where the preview card
-usually is. The left column keeps working the whole time: `tab` or `esc` puts the keyboard
-back on it, and the exchange stays on screen beside it until you close home.
+What you get is **a row in the left column and a pane on the right**. The row goes into the
+project's block, above its conversations, and it stays there — with what the errand is doing
+written in its tail — until the errand is finished and you have read what it came to. The
+pane beside it is the exchange itself: what you said, the reply as it streams, one line per
+tool call, and the card when one arrives.
 
-On the `ask here` row itself the hint under the box reads
-`enter asks this here and keeps the record · ↓ start a conversation instead · esc clear`,
-and while the exchange has the keyboard it reads `enter sends a follow-up · tab or esc back
-to the list`, with the card's three answers and `↓ continue as a conversation` added when
-they are on screen. With the keyboard back on the column it reads
-`↑↓ move · enter open · tab back to ask here · esc close`.
+The cursor lands on the new row and the keyboard goes into the pane, so you can answer
+straight away. `tab` or `esc` puts the keyboard back on the column; the row stays.
+
+## The exchange row on home — working, waiting on you, stood
+
+Every `ask here` is one row, marked `?`, named with the first line of what you asked:
+
+```
+ ? remind me at 6 to leave                          ▲ waiting on you
+ ? what did we decide about pricing                 ⠹ working · 4s
+ ? tell me when CI goes red                         ∙ stood
+```
+
+- **`⠹ working · 4s`** — a turn is in flight. The spinner turns and the clock counts up.
+- **`▲ waiting on you`** — a card is up and nobody has answered it. It is the only tail
+  drawn in the bright ink, and it is the same `▲` a conversation stopped on a question
+  wears, because it is the same fact: this row costs one keystroke to unblock.
+- **`∙ stood`** — something now stands because of it.
+- **`∙ answered`** — it finished and nothing standing came of it.
+
+The rows sort the way everything else on this screen sorts: **what wants you first, then
+what is moving, then what is done**. They sit above the standing items and above the
+conversations of the same project.
+
+`enter` or `tab` on the row hands the keyboard to the pane. The hint under the box says so:
+`↑↓ move · enter or tab answer this ask here · esc close`.
+
+## How do I know ask here is doing something — the spinner, the clock and the live strip
+
+While a turn is running the pane says what is happening, in the words the conversation
+itself uses, and it says it for the first turn and for every follow-up alike:
+
+```
+ ⠹ thinking · 4s              nothing has come back yet
+ ⠹ writing · 12s              the reply is streaming
+ ⠹ running · 12s              a tool call is executing
+   ⠹ bash · go test ./...
+   read · internal/session/loop.go · 0.3s
+```
+
+The first line is the **state and the clock**: `thinking` before the first token, `writing`
+once the reply is coming, `running` while a call is out. The clock is the age of this turn
+and it appears after one second.
+
+Under it is the **live strip**: at most **two lines**, always the newest two things that
+have happened this turn, scrolling as they arrive — a call starting, a call finishing with
+its own time, and the growing tail of the reply so a long answer visibly moves. A call that
+is running carries the braille spinner; one that succeeded carries nothing at all, which is
+how the conversation draws a finished call; one that failed carries `✗` and what went wrong.
+
+**The whole block disappears when the turn ends.** It is a window onto the moment, not a
+second copy of the transcript — everything in it is already a row above it.
+
+A tool row says what the call is pointed at and never says `unknown`: `bash` shows the first
+line of the command, `read` shows the path, `stand` shows what it is doing
+(`stand · proposing remind me at 6 to leave`). A call that came back with nothing to say
+says nothing.
+
+## Why did my reminder card disappear when I opened another chat — it does not any more
+
+It used to, and that was a defect. The exchange lived on the home screen, so closing home —
+which is what opening another conversation does — closed the errand's session with it. The
+card you had not answered yet was answered for you: the engine recorded
+`the card was left unanswered — nothing was set up`.
+
+**An exchange now outlives the screen it was asked on.** Closing home does not touch it. Nor
+does opening another conversation, walking the list, looking at a different project, or
+letting the card sit there overnight. There is **no clock on the card** and never was: it
+waits while you read it, and while you do anything else.
+
+Open home again and the row is where you left it, still `▲ waiting on you`, still
+answerable with `1`, `2` or `3`. The only two things that end an exchange are described
+under *When does an ask here exchange go away* below.
+
+## Can I ask two things from home at once — yes, one row each
+
+Yes. A second `ask here` **adds** an exchange; it does not replace the first. Each one gets
+its own folder, its own session and its own row, and they sort against each other by what
+they are doing — the one holding a card sits above the one still working.
+
+The pane on the right is always **about the row under the cursor**. Walk onto another
+exchange and you get that exchange; walk onto a conversation and you get that
+conversation's ordinary preview card. Nothing takes the column hostage.
+
+## When does an ask here exchange go away
+
+Never while it is working, and never while it is waiting on you.
+
+An exchange is filed when **all three** of these are true:
+
+1. **it is over** — the card was answered (`stood`, `once`, or declined), or there was no
+   card and the turn finished;
+2. **you have seen it that way** — its pane has been drawn at least once since it settled,
+   so what it came to was on your screen before its row went;
+3. **you have moved off it** — the cursor is on some other row.
+
+Filing means the session is closed and the folder is moved where it belongs. Nothing is
+deleted. An exchange that made something standing leaves an ordinary item row on the same
+screen, under the same project, so the row going is not the fact going.
+
+**Quitting aforge files every open exchange**, including one that is still working — the
+session is interrupted and closed, and a stood one's folder still reaches the item it made.
 
 ## How do I get back to the list from ask here — tab, esc, and clicking a row
 
-While an exchange is up, home has **two zones**: the list on the left and the pane on the
-right. Exactly one of them has the keyboard, and there are four ways to move it:
+While the cursor is on an exchange row, home has **two zones**: the list on the left and the
+pane on the right. Exactly one of them has the keyboard, and there are five ways to move it:
 
 - **`tab`** toggles them, from any state either one is in — a half-typed follow-up, the
   `continue as a conversation` row, an open card. It never loses what is in the pane.
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
+- **`enter`** on the exchange's row in the list hands the keyboard to its pane.
 - **clicking** puts the keyboard where the pointer is. A click on a list row selects that
   row *and* takes the keyboard to the column; a click anywhere in the pane brings it back.
 - **answering `1`** on a card hands it back by itself. The thing you asked for is being
@@ -40,13 +139,34 @@ right. Exactly one of them has the keyboard, and there are four ways to move it:
 
 With the keyboard on the list, `↑`/`↓`, `ctrl+p`/`ctrl+n` and `pgup`/`pgdown` all walk the
 column exactly as they do with no exchange on screen, and `enter` opens the row under the
-cursor. **The pane keeps drawing the exchange while you walk** — it does not flick back to
-the preview card of whatever row you are passing — because an exchange is a conversation
-happening now, and hiding the reply while you check which project you are in would be the
-wrong trade.
+cursor. **The pane follows the cursor** — walk off the exchange and the row you land on
+draws its own preview card again, which is what the right-hand column is for.
+
+While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
+the list`, with `1 yes · 2 change · 3 once` in front of it when a card is up and
+`↓ continue as a conversation` after it when that row is on screen.
 
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
 `tab` or `esc`. It also lights up under the pointer and takes one click.
+
+## Ask here on a narrow window — the exchange takes the whole screen
+
+On a terminal too narrow for two columns (**under 80 columns**, or one where the second
+column would be under 34) home has no right-hand pane to put an exchange in. It does not
+refuse. The two zones are **stacked** instead of sat side by side:
+
+- the **list** is the screen until you enter an exchange;
+- the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
+  the same live strip, drawn at the full width;
+- **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing
+  its tail, and **`enter`** on that row opens it again.
+
+`ask here` itself opens straight into the stacked pane, because it selects the new row and
+gives it the keyboard. Everything answers the same keys it answers on a wide frame.
+
+Resizing between the two shapes costs nothing: it is the same exchange and the same
+keyboard, drawn in whichever geometry fits. Drag a window narrow with the pane open and the
+pane fills the frame; drag it wide again and it goes back beside the list.
 
 ## Why can't I click a row while asking — you can, and it selects it
 
@@ -83,7 +203,9 @@ be able to open the conversation that made it.
 Which project the errand belongs to is the project **under the cursor** — walk `↑` onto one
 of its rows and press `ctrl+enter` to say "this one". With the cursor still on the typing
 rows it is the project this window is in, and the home directory `~` when this window is in
-no project at all. A reminder belongs to no repository; a watch on CI belongs to one.
+no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
+row is drawn in that project's block, or in this window's own block when that project is not
+one of the ones home is currently showing open.
 
 ## How do I answer the card — 1 yes, 2 change, 3 once
 
@@ -98,7 +220,8 @@ created until you answer it:
 - `3` — once. The action runs now and nothing standing is created.
 
 The three answers are the only three. There is no fourth key and no default: a card nobody
-answers creates nothing.
+answers creates nothing — and nothing answers it for you. **There is no clock on it.** It
+waits, and its row on home says `▲ waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
@@ -118,7 +241,7 @@ here deletes one.
 | What happened | Where the folder is |
 | --- | --- |
 | you asked | `~/.aforge/v3/standing/exchanges/<id>/transcript.jsonl` |
-| something now stands | `~/.aforge/v3/standing/<item id>/exchange/`, **when the exchange ends** |
+| something now stands | `~/.aforge/v3/standing/<item id>/exchange/`, **when the exchange is filed** |
 | you continued it as a conversation | the project's own folder, with a `meta.json` |
 | it came to nothing | it stays in `exchanges/`, and the sweep clears it after 7 days |
 
@@ -126,12 +249,13 @@ When something stands, the exchange is filed **under the thing it made** — tha
 makes "why did I get this?" a door — and the pane says `kept · this exchange is filed under
 it`.
 
-**The move waits until you are finished with the exchange.** The news that something now
-stands arrives while the turn that made it is still running, so the folder is not touched
-then: aforge remembers where it belongs, and moves it when you close home (or ask something
-else here), after the session has been closed. Until then **the exchange is still alive** —
-`tab` back into the pane and a follow-up goes to the same conversation. Nothing is copied
-and nothing is deleted; the folder only ever moves, once.
+**The move waits until the exchange is finished with.** The news that something now stands
+arrives while the turn that made it is still running, so the folder is not touched then:
+aforge remembers where it belongs, and moves it when the exchange is filed — after you have
+seen it settled and walked off its row, or when you quit — and after the session has been
+closed. Until then **the exchange is still alive**: `tab` back into the pane and a follow-up
+goes to the same conversation. Nothing is copied and nothing is deleted; the folder only
+ever moves, once.
 
 Changing what now stands is still a card of its own — pause it with `p` or stop it with `s`
 on its row on home.
@@ -144,7 +268,8 @@ Once the first reply has landed, a row appears under the exchange:
 That moves the same folder into this project's own directory, writes the `meta.json` a
 picker reads, closes home, and opens the conversation — with everything that was already
 said in it. It is the same conversation, filed differently; nothing is replayed and nothing
-is lost.
+is lost. The exchange's row on home goes with it, because the conversation now has a row of
+its own.
 
 It is reached with `↓` inside the pane, and it also **lights up under the pointer and takes
 one click**.
@@ -155,18 +280,16 @@ than moving it a second time.
 
 ## What it will not do
 
-- **It will not keep the exchange after home closes.** The conversation ends with the
-  screen. The folder does not — the transcript stays on disk, and you can `cat` it.
-- **It will not put the errand on the home list.** That is the whole mechanism. If you want
-  it on the list, use `continue as a conversation`.
+- **It will not put the errand on the list as a conversation.** It gets an exchange row
+  while it is live, and that row goes when the errand is finished and read. If you want a
+  conversation on the list, use `continue as a conversation`.
 - **It will not run the full conversation surface in the pane.** The right pane is forty
-  cells wide, so it draws a reduced reading: what you said, what came back, one dim line per
-  tool call, and the card. Slash commands, the task column, `/rewind`, images and the
-  approval card are all the conversation's own screen — take the exchange there with
-  `continue as a conversation` if you need them.
+  cells wide, so it draws a reduced reading: what you said, what came back, one line per
+  tool call, the live strip, and the card. Slash commands, the task column, `/rewind`,
+  images and the approval card are all the conversation's own screen — take the exchange
+  there with `continue as a conversation` if you need them.
 - **It will not create anything without the card.** Typing a sentence at home does not arm
   a reminder; a card does, and only after you press `1`.
-- **It will not work in a narrow window.** The exchange *is* the right pane, so a terminal
-  too narrow for two columns refuses with `ask here needs a wider window` rather than opening
-  a session you could not see. Widen the window and ask again.
+- **It will not end an errand because you looked away.** Closing home, opening another
+  conversation and quitting a *different* window all leave it running.
 - **It will not work over `--host`.** Home itself refuses there, and this is a row on home.

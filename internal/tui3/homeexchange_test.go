@@ -82,6 +82,48 @@ func (l *errandLab) app(here string, turns ...[]session.Event) *app {
 	return a
 }
 
+// theExchange is the one errand a test opened, and nil when it opened none.
+// Several can be open at once now ([app.exchanges]), so a test that means "the
+// one I just asked" says so through here rather than through a field that used
+// to be able to hold only one.
+func theExchange(a *app) *homeExchange {
+	if len(a.exchanges) == 0 {
+		return nil
+	}
+	return a.exchanges[len(a.exchanges)-1]
+}
+
+// exchangeRowAt is the line of the left column that draws one exchange, and -1
+// when the column is not drawing it.
+func exchangeRowAt(a *app, ex *homeExchange) int {
+	for at, line := range a.home.lines {
+		if line.kind == homeExchangeRow && line.ex == ex {
+			return at
+		}
+	}
+	return -1
+}
+
+// cursorWord names the line the cursor is on, so a test can say "the cursor
+// moved" without counting rows: a settled exchange filed on the way past takes
+// its row with it, and the LINE NUMBER after that walk can be the one it was
+// before while the cursor is on something else entirely.
+func cursorWord(a *app) string {
+	line, ok := a.home.focusedLine()
+	if !ok {
+		return "nothing"
+	}
+	switch line.kind {
+	case homeSession:
+		return "session " + line.row.Transcript
+	case homeExchangeRow:
+		return "exchange " + line.ex.id
+	case homeItem:
+		return "item " + line.item.ID
+	}
+	return "line " + itoa(int(line.kind))
+}
+
 // errandRows is the frame as a reader sees it, trailing space dropped.
 // [homeText] answers the same frame as one string; this is the row-by-row form
 // an assertion about the LAST row (the hint under the box) needs.
@@ -231,7 +273,7 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	if len(lab.agent.sent) != 1 {
 		t.Fatalf("alt+enter should have asked here, the agent saw %v", lab.agent.sent)
 	}
-	if a.home.exchange == nil {
+	if theExchange(a) == nil {
 		t.Fatal("alt+enter left no exchange in the pane")
 	}
 	// AND ctrl+enter IS THE SAME DOOR. It reaches the router only on a terminal
@@ -299,10 +341,10 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	// AND THE CARD IS STILL THERE, SETTLED. It used to be taken off the pane the
 	// instant somebody answered it, which left the one thing on screen that
 	// records what was decided blank at the moment it had something to record.
-	if a.home.exchange.card == nil || a.home.exchange.view == nil {
+	if theExchange(a).card == nil || theExchange(a).view == nil {
 		t.Fatal("answering took the card off the pane")
 	}
-	if !a.home.exchange.view.settled() {
+	if !theExchange(a).view.settled() {
 		t.Fatal("the answered card is still asking")
 	}
 	settled := homeText(a)
@@ -411,8 +453,8 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(made, "transcript.jsonl")); err != nil {
 		t.Fatalf("the exchange left its folder before it ended: %v", err)
 	}
-	if !a.home.exchange.stood || a.home.exchange.itemID != item.ID {
-		t.Fatalf("the exchange did not remember what stood: %+v", a.home.exchange.stood)
+	if !theExchange(a).stood || theExchange(a).itemID != item.ID {
+		t.Fatalf("the exchange did not remember what stood: %+v", theExchange(a).stood)
 	}
 	// AND A FOLLOW-UP STILL WORKS, because the session is still there.
 	before := len(lab.agent.sent)
@@ -423,10 +465,21 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 		t.Fatalf("a follow-up after something stood went nowhere, the agent saw %v", lab.agent.sent)
 	}
 
-	// THE EXCHANGE ENDS, AND ONLY THEN DOES THE FOLDER GO UNDER THE ITEM.
+	// AND CLOSING HOME DOES NOT END IT. The exchange belongs to the window, not
+	// to the screen (homeexchange.go's header).
 	a.closeHome()
+	if lab.agent.closes != 0 {
+		t.Fatalf("closing home closed the errand's agent, %d times", lab.agent.closes)
+	}
+	if _, err := os.Stat(filepath.Join(made, "transcript.jsonl")); err != nil {
+		t.Fatalf("closing home moved the exchange's folder: %v", err)
+	}
+
+	// THE EXCHANGE ENDS WITH THE WINDOW, AND ONLY THEN DOES THE FOLDER GO UNDER
+	// THE ITEM.
+	a.quit()
 	if lab.agent.closes == 0 {
-		t.Fatal("closing home left the errand's agent open")
+		t.Fatal("quitting left the errand's agent open")
 	}
 	if _, err := os.Stat(filepath.Join(want, "transcript.jsonl")); err != nil {
 		t.Fatalf("the exchange was not filed under the item: %v", err)
@@ -460,7 +513,7 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
 
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if ex == nil || ex.view == nil {
 		t.Fatal("the card is gone from the pane")
 	}
@@ -477,9 +530,9 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 	if ex.focused {
 		t.Fatal("the keyboard stayed in the pane after something stood")
 	}
-	before := a.home.cursor
+	before := cursorWord(a)
 	drive(t, a, key("down"))
-	if a.home.cursor == before {
+	if cursorWord(a) == before {
 		t.Fatal("the list does not move after something stood")
 	}
 }
@@ -503,28 +556,34 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 
 	drive(t, a, key("esc"))
-	if a.home.exchange == nil {
+	if theExchange(a) == nil {
 		t.Fatal("esc closed the exchange; it should only hand back the keyboard")
 	}
-	if a.home.exchange.focused {
+	if theExchange(a).focused {
 		t.Fatal("esc left the keyboard in the pane")
 	}
 	if !strings.Contains(homeText(a), "I will remind you at 6.") {
 		t.Fatalf("the exchange left the pane on esc:\n%s", homeText(a))
 	}
-	// AND THE COLUMN WORKS UNDERNEATH IT.
-	before := a.home.cursor
-	drive(t, a, key("down"))
-	if a.home.cursor == before {
-		t.Fatal("the list did not move after esc")
-	}
-	// AND HOME CLOSING TAKES THE AGENT WITH IT, folder left where it is.
+	// AND HOME CLOSING LEAVES BOTH THE AGENT AND THE RECORD ALONE. The window
+	// takes them on the way out and nothing else does.
 	a.closeHome()
-	if lab.agent.closes == 0 {
-		t.Fatal("closing home left the errand's agent open")
+	if lab.agent.closes != 0 {
+		t.Fatalf("closing home closed the errand's agent, %d times", lab.agent.closes)
 	}
 	if _, err := os.Stat(filepath.Join(lab.dirs[0], "transcript.jsonl")); err != nil {
 		t.Fatalf("closing home took the record with it: %v", err)
+	}
+	// AND THE COLUMN WORKS UNDERNEATH IT, on the screen opened again.
+	a.openHome()
+	before := cursorWord(a)
+	drive(t, a, key("down"))
+	if cursorWord(a) == before {
+		t.Fatal("the list did not move with an exchange standing beside it")
+	}
+	a.quit()
+	if lab.agent.closes == 0 {
+		t.Fatal("quitting left the errand's agent open")
 	}
 }
 
@@ -555,7 +614,7 @@ func exchangeLab(t *testing.T) (*errandLab, *app) {
 // not offer it is the trap somebody reports as "stuck".
 func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 	_, a := exchangeLab(t)
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if !ex.focused {
 		t.Fatal("asking here should put the keyboard in the pane")
 	}
@@ -583,16 +642,17 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 	if ex.focused || ex.onOffer {
 		t.Fatalf("esc did not leave %q", homeContinueWord)
 	}
-	if a.home.exchange == nil {
+	if theExchange(a) == nil {
 		t.Fatal("leaving the pane closed the exchange")
 	}
 }
 
-// TestTheListWalksWhileAnExchangeIsAliveAndThePaneKeepsIt is the complaint in
+// TestTheListWalksWhileAnExchangeIsAliveAndTheRowKeepsIt is the complaint in
 // one test: with the keyboard on the column every walking key moves the column,
-// and the exchange stays drawn beside it the whole time.
-func TestTheListWalksWhileAnExchangeIsAliveAndThePaneKeepsIt(t *testing.T) {
+// and the exchange keeps its own row on it the whole time.
+func TestTheListWalksWhileAnExchangeIsAliveAndTheRowKeepsIt(t *testing.T) {
 	_, a := exchangeLab(t)
+	ex := theExchange(a)
 	drive(t, a, key("tab"))
 
 	seen := map[int]bool{a.home.cursor: true}
@@ -607,10 +667,50 @@ func TestTheListWalksWhileAnExchangeIsAliveAndThePaneKeepsIt(t *testing.T) {
 	if len(seen) < 2 {
 		t.Fatalf("the list never moved while the exchange was alive, it sat on %v", seen)
 	}
-	// AND THE PANE IS STILL THE EXCHANGE, not a preview of whatever row the
-	// cursor walked onto.
+	// AND THE EXCHANGE IS STILL A ROW ON THE COLUMN, wherever the cursor went.
+	at := exchangeRowAt(a, ex)
+	if at < 0 {
+		t.Fatalf("walking the list took the exchange row off the column:\n%s", homeText(a))
+	}
+	// AND WALKING BACK ONTO IT BRINGS THE PANE BACK. The pane is about the row
+	// under the cursor, always.
+	a.home.cursor = at
 	if frame := homeText(a); !strings.Contains(frame, "I will remind you at 6.") {
-		t.Fatalf("walking the list took the exchange off the pane:\n%s", frame)
+		t.Fatalf("the row under the cursor did not draw its exchange:\n%s", frame)
+	}
+}
+
+// TestWalkingOffTheExchangeRowShowsTheOtherRowsCard is the third complaint:
+// "once the reminder is set I am unable to see other previews on the right".
+// The pane belonged to the exchange for as long as one existed; it belongs to
+// the row under the cursor now.
+func TestWalkingOffTheExchangeRowShowsTheOtherRowsCard(t *testing.T) {
+	_, a := exchangeLab(t)
+	ex := theExchange(a)
+	drive(t, a, key("tab"))
+
+	want := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeSession {
+			want = at
+			break
+		}
+	}
+	if want < 0 {
+		t.Fatal("the lab drew no conversation to walk onto")
+	}
+	a.home.cursor = want
+	name := homeName(a.home.lines[want].row)
+	frame := homeText(a)
+	if !strings.Contains(frame, name) {
+		t.Fatalf("the row under the cursor has no card of its own:\n%s", frame)
+	}
+	if strings.Contains(frame, "I will remind you at 6.") {
+		t.Fatalf("the exchange kept the pane on a row that is not it:\n%s", frame)
+	}
+	// AND THE EXCHANGE IS STILL THERE, with its agent untouched.
+	if exchangeRowAt(a, ex) < 0 {
+		t.Fatal("looking at another row took the exchange away")
 	}
 }
 
@@ -635,22 +735,25 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 	drive(t, a, key("1"))
 
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if ex == nil {
 		t.Fatal("a yes closed the exchange")
 	}
 	if ex.focused {
 		t.Fatal("the keyboard stayed in the pane after a yes")
 	}
-	before := a.home.cursor
+	before := cursorWord(a)
 	drive(t, a, key("down"))
-	if a.home.cursor == before {
+	if cursorWord(a) == before {
 		t.Fatal("the list does not move after a yes")
 	}
-	// AND THE EXCHANGE IS STILL REACHABLE for a follow-up.
-	drive(t, a, key("tab"))
+	// AND THE EXCHANGE IS STILL REACHABLE for a follow-up: its row is where it
+	// was, and tab on it takes the keyboard back into the pane. tab is about the
+	// row under the cursor now, which is what lets every OTHER row keep its own
+	// card while an errand is open.
+	drive(t, a, key("up"), key("tab"))
 	if !ex.focused {
-		t.Fatal("tab did not bring the answered exchange back")
+		t.Fatal("tab on the exchange row did not bring the answered exchange back")
 	}
 }
 
@@ -676,7 +779,7 @@ func homeClickAt(t *testing.T, a *app, at int) {
 // pane.
 func TestAClickOnARowSelectsItWhileAnExchangeIsUp(t *testing.T) {
 	_, a := exchangeLab(t)
-	ex := a.home.exchange
+	ex := theExchange(a)
 
 	want := -1
 	for at, line := range a.home.lines {
@@ -688,17 +791,18 @@ func TestAClickOnARowSelectsItWhileAnExchangeIsUp(t *testing.T) {
 	if want < 0 {
 		t.Fatal("the lab drew no second conversation to click on")
 	}
+	wanted := "session " + a.home.lines[want].row.Transcript
 	homeClickAt(t, a, want)
-	if a.home.cursor != want {
-		t.Fatalf("the click put the cursor on line %d, not %d", a.home.cursor, want)
+	if cursorWord(a) != wanted {
+		t.Fatalf("the click put the cursor on %s, not on %s", cursorWord(a), wanted)
 	}
 	if ex.focused {
 		t.Fatal("the click selected a row and left the keyboard in the pane")
 	}
 	// AND THE KEYBOARD IS REALLY ON THE COLUMN: the next arrow moves it.
-	before := a.home.cursor
+	before := cursorWord(a)
 	drive(t, a, key("down"))
-	if a.home.cursor == before {
+	if cursorWord(a) == before {
 		t.Fatal("the row was selected but the list still does not answer the arrows")
 	}
 }
@@ -721,7 +825,7 @@ func paneRowAt(a *app, row int) (x, y int, ok bool) {
 // nobody clicks.
 func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) {
 	lab, a := exchangeLab(t)
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if !ex.offering() {
 		t.Fatal("the exchange is not offering to become a conversation")
 	}
@@ -768,7 +872,7 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 	drive(t, a, key("tab"))
 
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if ex.focused {
 		t.Fatal("tab left the keyboard in the pane")
 	}
@@ -822,7 +926,7 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 	drive(t, a, key("2"))
 
-	ex := a.home.exchange
+	ex := theExchange(a)
 	if !ex.changing {
 		t.Fatal("`2` did not arm the correction")
 	}
@@ -860,5 +964,549 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	}
 	if !ex.asking() {
 		t.Fatal("the new card is not asking")
+	}
+}
+
+// ── an exchange is a row, and it outlives the screen it was asked on ─────────
+
+// askedHere opens home, asks one thing, and hands back the exchange without
+// running the turn: the errand is WORKING and nothing has come back yet, which
+// is the state every assertion about liveness needs and the state a scripted
+// turn is already past by the time [drive] returns.
+func askedHere(t *testing.T, lab *errandLab, a *app, said string) *homeExchange {
+	t.Helper()
+	// The keyboard goes back to the column first. A second `ask here` is typed
+	// into HOME's box, and after the first one the pane has the hand — which is
+	// exactly what a person does with tab or esc before typing again.
+	a.homeTakeList()
+	typeHome(a, said)
+	a.homeKey(key("up"))
+	a.homeKey(key("enter"))
+	ex := theExchange(a)
+	if ex == nil {
+		t.Fatal("`ask here` opened no exchange")
+	}
+	return ex
+}
+
+// TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing is the shape of the
+// repair: the errand is a line on the left, in its project's block, above the
+// conversations, with its state in the tail.
+func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+
+	at := exchangeRowAt(a, ex)
+	if at < 0 {
+		t.Fatalf("the exchange has no row on the column:\n%s", homeText(a))
+	}
+	if a.home.cursor != at {
+		t.Fatalf("`ask here` left the cursor on line %d, not on its own row %d", a.home.cursor, at)
+	}
+	if !ex.focused {
+		t.Fatal("`ask here` did not put the keyboard in the pane")
+	}
+	// THE ROW SITS IN THE PROJECT'S BLOCK, ABOVE ITS CONVERSATIONS.
+	heading, firstSession := -1, -1
+	for i, line := range a.home.lines {
+		if line.kind == homeHeading && heading < 0 {
+			heading = i
+		}
+		if line.kind == homeSession && firstSession < 0 {
+			firstSession = i
+		}
+	}
+	if !(heading < at && at < firstSession) {
+		t.Fatalf("the row is not inside the project block: heading=%d row=%d session=%d", heading, at, firstSession)
+	}
+	// WORKING, with the sentence as its name.
+	frame := homeText(a)
+	if !strings.Contains(frame, homeAskHereGlyph+" remind me at 6 to leave") {
+		t.Fatalf("the row does not say what was asked:\n%s", frame)
+	}
+	if !strings.Contains(frame, homeAskWorkingWord) {
+		t.Fatalf("a working exchange does not say so on its row:\n%s", frame)
+	}
+	// WAITING ON YOU, the moment a card arrives.
+	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	a.home.build()
+	if frame := homeText(a); !strings.Contains(frame, homeAskWaitingWord) {
+		t.Fatalf("an exchange holding a card does not say it wants you:\n%s", frame)
+	}
+	// AND `stood` ONCE SOMETHING DOES. The card settles into the answer the
+	// world gave it, and the row settles with it.
+	a.errandEvent(ex, session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Update: "stood", Item: standing.Item{ID: "cccc000000000009"},
+	}})
+	a.errandEvent(ex, session.Event{Kind: session.EventTurnDone})
+	a.home.build()
+	if frame := homeText(a); !strings.Contains(frame, standOffGlyph+" "+homeAskStoodTail) {
+		t.Fatalf("a stood exchange does not say so on its row:\n%s", frame)
+	}
+}
+
+// TestAWaitingExchangeSortsAboveAWorkingOne pins the triage order the column
+// keeps for everything else: what wants you first.
+func TestAWaitingExchangeSortsAboveAWorkingOne(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	first := askedHere(t, lab, a, "remind me at 6 to leave")
+	second := askedHere(t, lab, a, "tell me when CI goes red")
+	if len(a.exchanges) != 2 {
+		t.Fatalf("a second `ask here` should have ADDED an exchange, there are %d", len(a.exchanges))
+	}
+	a.errandEvent(second, standingProposal(7, "tell me when CI goes red"))
+	a.home.build()
+
+	firstAt, secondAt := exchangeRowAt(a, first), exchangeRowAt(a, second)
+	if firstAt < 0 || secondAt < 0 {
+		t.Fatalf("both exchanges should have rows, got %d and %d", firstAt, secondAt)
+	}
+	if secondAt > firstAt {
+		t.Fatalf("the exchange holding a card should sort above the working one, got %d and %d", secondAt, firstAt)
+	}
+}
+
+// TestASecondAskHereDoesNotCloseTheFirst is the second half of "several at
+// once": the first exchange keeps its agent, its transcript and its card.
+func TestASecondAskHereDoesNotCloseTheFirst(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	first := askedHere(t, lab, a, "remind me at 6 to leave")
+	a.errandEvent(first, standingProposal(7, "remind me at 6 to leave"))
+	askedHere(t, lab, a, "tell me when CI goes red")
+
+	if lab.agent.closes != 0 {
+		t.Fatalf("a second `ask here` closed the first exchange's agent, %d times", lab.agent.closes)
+	}
+	if !first.asking() {
+		t.Fatal("a second `ask here` took the first one's question away")
+	}
+	if len(lab.dirs) != 2 || lab.dirs[0] == lab.dirs[1] {
+		t.Fatalf("each exchange should have its own folder, the seam saw %v", lab.dirs)
+	}
+}
+
+// TestOpeningAnotherConversationLeavesTheExchangeRunning is the report,
+// verbatim: "if I don't reply and check another chat, it seems to go away and
+// not stay waiting". It went away because opening another conversation closes
+// home and closing home closed the agent — so the engine answered the person's
+// own card with "the card was left unanswered — nothing was set up".
+func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+
+	// Open the other conversation, which is what home closing IS.
+	a.home.cursor = 0
+	for at, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Transcript != mine {
+			a.home.cursor = at
+		}
+	}
+	drive(t, a, key("esc"), key("enter"))
+	if a.home.open {
+		a.closeHome()
+	}
+
+	if lab.agent.closes != 0 {
+		t.Fatalf("looking at another conversation closed the errand's agent, %d times", lab.agent.closes)
+	}
+	if lab.agent.stops != 0 {
+		t.Fatalf("looking at another conversation interrupted the errand, %d times", lab.agent.stops)
+	}
+	if len(lab.agent.answered) != 0 {
+		t.Fatalf("the card was answered by nobody pressing anything: %v", lab.agent.answered)
+	}
+	if !ex.asking() {
+		t.Fatal("the card stopped being a question when home closed")
+	}
+	// AND THE PUMP IS STILL RUNNING WITH NO SCREEN ON. A card that arrives while
+	// home is closed is simply HELD — there is no clock on it, and it is on the
+	// pane the moment somebody looks.
+	spent := make(chan session.Event)
+	close(spent)
+	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: standingProposal(9, "remind me at 6 to leave, again")})
+	if ex.view == nil || ex.view.id != 9 {
+		t.Fatalf("an event arriving with home closed did not reach the exchange: %+v", ex.view)
+	}
+	// AND THE ROW IS BACK ON THE SCREEN, still waiting, when home opens again.
+	a.openHome()
+	if exchangeRowAt(a, ex) < 0 {
+		t.Fatalf("the exchange lost its row when home reopened:\n%s", homeText(a))
+	}
+	if frame := homeText(a); !strings.Contains(frame, homeAskWaitingWord) {
+		t.Fatalf("the reopened screen does not say the errand wants you:\n%s", frame)
+	}
+	// AND IT IS STILL ANSWERABLE.
+	a.home.cursor = exchangeRowAt(a, ex)
+	drive(t, a, key("tab"), key("1"))
+	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+		t.Fatalf("the card outlived home but could not be answered, the agent saw %v", lab.agent.answered)
+	}
+}
+
+// TestThePaneSaysWhatItIsDoingWhileItWorks is the first complaint: "I am
+// unable to see what's happening — no waiting or thinking or any UI response to
+// know something is happening". The pane drew one dim `…` for the whole of a
+// turn.
+func TestThePaneSaysWhatItIsDoingWhileItWorks(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	at := time.Now()
+	a.clock = func() time.Time { return at }
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+
+	// NOTHING BACK YET: it is thinking, and it says how long it has been.
+	at = at.Add(4 * time.Second)
+	frame := homeText(a)
+	if !strings.Contains(frame, homeAskThinkWord+" · 4s") {
+		t.Fatalf("the pane does not say it is thinking, or for how long:\n%s", frame)
+	}
+	if !strings.Contains(frame, a.exchangeSpin()) {
+		t.Fatalf("the pane has no spinner on it:\n%s", frame)
+	}
+	// AND THE FRAME CLOCK IS TURNING FOR IT. A spinner nothing redraws is a
+	// still photograph of the second the last event arrived.
+	if !a.exchangeAnimating() {
+		t.Fatal("a working exchange does not keep the frame clock running")
+	}
+	// A CALL RUNNING: the word changes and the strip says which call.
+	a.errandEvent(ex, session.Event{
+		Kind: session.EventToolBegin, Tool: "bash", Args: `{"command":"date"}`, Hint: "bash date",
+	})
+	at = at.Add(2 * time.Second)
+	frame = homeText(a)
+	if !strings.Contains(frame, homeAskRunWord+" · 6s") {
+		t.Fatalf("a call running does not say so:\n%s", frame)
+	}
+	if !strings.Contains(frame, "bash · date") {
+		t.Fatalf("the strip does not say which call is running:\n%s", frame)
+	}
+	// THE REPLY STREAMING: the word changes again.
+	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "bash"})
+	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
+	frame = homeText(a)
+	if !strings.Contains(frame, homeAskWriteWord+" · 6s") {
+		t.Fatalf("a reply streaming does not say so:\n%s", frame)
+	}
+	// AND IT ALL GOES WHEN THE TURN DOES.
+	a.errandEvent(ex, session.Event{Kind: session.EventTurnDone})
+	frame = homeText(a)
+	for _, gone := range []string{homeAskThinkWord, homeAskWriteWord, homeAskRunWord} {
+		if strings.Contains(frame, gone+" · ") {
+			t.Fatalf("the live block outlived the turn (%q):\n%s", gone, frame)
+		}
+	}
+	if a.exchangeAnimating() {
+		t.Fatal("the frame clock is still turning for a finished exchange")
+	}
+}
+
+// TestAToolRowIsReadableAndNeverSaysUnknown is the fourth complaint: the pane
+// drew `bash · unknown` and `stand · unknown`, because the fallback gloss for a
+// call with no hint was [errText] of a nil error.
+func TestAToolRowIsReadableAndNeverSaysUnknown(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+
+	a.errandEvent(ex, session.Event{
+		Kind: session.EventToolBegin, Tool: "bash", Args: `{"command":"date +%H:%M"}`,
+	})
+	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "bash"})
+	a.errandEvent(ex, session.Event{
+		Kind: session.EventToolBegin, Tool: "stand",
+		Args: `{"op":"propose","words":"remind me at 6 to leave"}`, Hint: "stand",
+	})
+	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "stand", Hint: "stand"})
+
+	frame := homeText(a)
+	if strings.Contains(frame, "unknown") {
+		t.Fatalf("a tool row says `unknown`:\n%s", frame)
+	}
+	if !strings.Contains(frame, "bash · date +%H:%M") {
+		t.Fatalf("the bash row does not say what it ran:\n%s", frame)
+	}
+	if !strings.Contains(frame, "stand · proposing remind me at 6 to leave") {
+		t.Fatalf("the stand row does not say what it is doing:\n%s", frame)
+	}
+}
+
+// TestTheLiveStripKeepsTheNewestTwoThingsAndScrolls is the strip: two lines,
+// the newest two, and a third pushes the first out.
+func TestTheLiveStripKeepsTheNewestTwoThingsAndScrolls(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+
+	for _, path := range []string{"one.go", "two.go", "three.go"} {
+		a.errandEvent(ex, session.Event{
+			Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"` + path + `"}`,
+		})
+		a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "read"})
+	}
+	strip := a.exchangeStrip(ex, 40, a.pal)
+	if len(strip) != exchangeStripRows {
+		t.Fatalf("the strip is %d rows, want %d", len(strip), exchangeStripRows)
+	}
+	joined := ansi.Strip(strings.Join(strip, "\n"))
+	if strings.Contains(joined, "one.go") {
+		t.Fatalf("the third call did not push the first out of the strip:\n%s", joined)
+	}
+	if !strings.Contains(joined, "two.go") || !strings.Contains(joined, "three.go") {
+		t.Fatalf("the strip is not the newest two calls:\n%s", joined)
+	}
+	// AND THE REPLY'S OWN TAIL IS IN IT, so a long answer visibly grows.
+	a.errandEvent(ex, text(session.EventTextDelta, "the last line of this is what shows"))
+	joined = ansi.Strip(strings.Join(a.exchangeStrip(ex, 60, a.pal), "\n"))
+	if !strings.Contains(joined, "shows") {
+		t.Fatalf("the strip does not carry the reply's tail:\n%s", joined)
+	}
+}
+
+// TestAFollowUpGetsTheSameSignalAsTheFirstTurn is the report's second half: "a
+// repeated second text in ask here has no signal as well". The turn state was
+// set when the stream answered, so a follow-up drew the sentence and then a
+// still screen until the first token arrived.
+func TestAFollowUpGetsTheSameSignalAsTheFirstTurn(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine, []session.Event{
+		text(session.EventTextDelta, "I will remind you at 6."),
+		{Kind: session.EventTurnDone},
+	})
+	at := time.Now()
+	a.clock = func() time.Time { return at }
+	a.openHome()
+	typeHome(a, "remind me at 6")
+	drive(t, a, key("up"), key("enter"))
+
+	ex := theExchange(a)
+	if !ex.over() {
+		t.Fatal("the scripted turn did not finish")
+	}
+	if strings.Contains(homeText(a), homeAskThinkWord+" · ") {
+		t.Fatalf("a settled exchange is still claiming to be working:\n%s", homeText(a))
+	}
+	// The follow-up, typed into the pane and sent — the pane already has the
+	// keyboard, which is where `ask here` left it. The command it hands back is
+	// not run: what is being pinned is that the SCREEN says something before any
+	// answer could have arrived.
+	if !ex.focused {
+		t.Fatal("the pane lost the keyboard after its first turn")
+	}
+	typeHome(a, "make it 7")
+	a.homeKey(key("enter"))
+	at = at.Add(3 * time.Second)
+	if !ex.working {
+		t.Fatal("a follow-up left the exchange looking idle")
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, homeAskThinkWord+" · 3s") {
+		t.Fatalf("a follow-up gets no signal that anything is happening:\n%s", frame)
+	}
+	if !strings.Contains(frame, homeAskWorkingWord) {
+		t.Fatalf("the row does not say the exchange went back to work:\n%s", frame)
+	}
+}
+
+// TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft is the lifecycle in one
+// test: it does not vanish while it is working, it does not vanish while
+// nobody has read what it came to, and it goes the moment both are false.
+func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
+	lab := newErrandLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+
+	// WORKING: moving off it files nothing.
+	drive(t, a, key("esc"), key("down"))
+	if len(a.exchanges) != 1 {
+		t.Fatal("a working exchange was filed the moment the cursor left it")
+	}
+	// OVER BUT UNREAD: still nothing.
+	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
+	a.errandEvent(ex, session.Event{Kind: session.EventTurnDone})
+	drive(t, a, key("down"))
+	if len(a.exchanges) != 1 {
+		t.Fatalf("an exchange nobody has seen settled was filed: %d left", len(a.exchanges))
+	}
+	// SEEN: the cursor goes back onto its row and the pane is drawn.
+	a.home.cursor = exchangeRowAt(a, ex)
+	homeText(a)
+	if !ex.seen {
+		t.Fatal("drawing the pane of a settled exchange did not count as seeing it")
+	}
+	if len(a.exchanges) != 1 {
+		t.Fatal("an exchange was filed while the cursor was still on it")
+	}
+	// AND LEFT: now it goes, agent closed, record where it was made.
+	drive(t, a, key("down"))
+	if len(a.exchanges) != 0 {
+		t.Fatalf("a seen, settled exchange was not filed when the cursor left it: %d left", len(a.exchanges))
+	}
+	if lab.agent.closes == 0 {
+		t.Fatal("filing the exchange left its agent open")
+	}
+	if _, err := os.Stat(filepath.Join(lab.dirs[0], "transcript.jsonl")); err != nil {
+		t.Fatalf("filing an exchange that came to nothing took its record: %v", err)
+	}
+	if exchangeRowAt(a, ex) >= 0 {
+		t.Fatal("the filed exchange kept its row")
+	}
+}
+
+// TestQuittingFilesEveryOpenExchange is the way out: the window takes them all,
+// and a stood one's folder reaches the item it made.
+func TestQuittingFilesEveryOpenExchange(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.openHome()
+	first := askedHere(t, lab, a, "remind me at 6 to leave")
+	askedHere(t, lab, a, "tell me when CI goes red")
+
+	item := standing.Item{ID: "cccc000000000009", Words: "remind me at 6 to leave"}
+	a.errandEvent(first, session.Event{Kind: session.EventStandingUpdate,
+		Standing: &session.StandingNotice{Update: "stood", Item: item}})
+
+	a.quit()
+	if len(a.exchanges) != 0 {
+		t.Fatalf("quitting left %d exchanges open", len(a.exchanges))
+	}
+	if lab.agent.closes < 2 {
+		t.Fatalf("quitting closed %d of two errand agents", lab.agent.closes)
+	}
+	store, err := standing.Open(lab.standing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(store.ExchangeDir(item.ID), "transcript.jsonl")); err != nil {
+		t.Fatalf("the stood exchange was not filed under its item on the way out: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(lab.dirs[1], "transcript.jsonl")); err != nil {
+		t.Fatalf("the other exchange lost its record on the way out: %v", err)
+	}
+}
+
+// ── the narrow frame: stacked instead of refused ────────────────────────────
+
+// TestANarrowWindowStacksTheExchangeOverTheList is the phone shape. `ask here`
+// used to refuse outright on a frame with no second column, which is a person
+// on a narrow terminal being told the door is for other people.
+func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.width, a.height = 60, 24
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+	if _, ok := a.homeStacked(); !ok {
+		t.Fatal("a narrow frame did not stack the exchange over the list")
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, homeAskHereWord) || !strings.Contains(frame, "› remind me at 6 to leave") {
+		t.Fatalf("the stacked pane is not on the screen:\n%s", frame)
+	}
+	if strings.Contains(frame, "Pricing Research") {
+		t.Fatalf("the list is still drawn under the stacked pane:\n%s", frame)
+	}
+	if a.home.msg != "" {
+		t.Fatalf("a narrow window refused with %q", a.home.msg)
+	}
+	// esc PUTS THE LIST BACK, with the row on it wearing its tail.
+	drive(t, a, key("esc"))
+	if _, ok := a.homeStacked(); ok {
+		t.Fatal("esc did not bring the list back")
+	}
+	frame = homeText(a)
+	if !strings.Contains(frame, homeAskHereGlyph+" remind me at 6 to leave") {
+		t.Fatalf("the list came back without the exchange's row:\n%s", frame)
+	}
+	if !strings.Contains(frame, homeAskWorkingWord) {
+		t.Fatalf("the row lost its tail on a narrow frame:\n%s", frame)
+	}
+	// AND enter ON THE ROW OPENS IT AGAIN.
+	a.home.cursor = exchangeRowAt(a, ex)
+	drive(t, a, key("enter"))
+	if _, ok := a.homeStacked(); !ok {
+		t.Fatal("enter on the row did not open the stacked pane again")
+	}
+	// THE CARD IS ANSWERABLE THERE.
+	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	drive(t, a, key("1"))
+	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+		t.Fatalf("the card could not be answered on a narrow frame, the agent saw %v", lab.agent.answered)
+	}
+}
+
+// TestAResizeBetweenTheTwoShapesKeepsTheExchange is the other half: the same
+// flag decides both shapes, so dragging a window narrow loses nothing.
+func TestAResizeBetweenTheTwoShapesKeepsTheExchange(t *testing.T) {
+	lab := newErrandLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+
+	a := lab.app(mine)
+	a.width, a.height = 120, 24
+	a.openHome()
+	ex := askedHere(t, lab, a, "remind me at 6 to leave")
+	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
+	if _, ok := a.homeStacked(); ok {
+		t.Fatal("a wide frame stacked the exchange")
+	}
+	if !strings.Contains(homeText(a), "I will remind you at 6.") {
+		t.Fatalf("the wide frame is not drawing the exchange beside the list:\n%s", homeText(a))
+	}
+
+	a.width = 60
+	if _, ok := a.homeStacked(); !ok {
+		t.Fatal("the narrowed frame did not stack the exchange it was already drawing")
+	}
+	if theExchange(a) != ex {
+		t.Fatal("the resize dropped the exchange")
+	}
+	if !strings.Contains(homeText(a), "I will remind you at 6.") {
+		t.Fatalf("the narrowed frame lost what had been said:\n%s", homeText(a))
+	}
+	// AND BACK AGAIN.
+	a.width = 120
+	if _, ok := a.homeStacked(); ok {
+		t.Fatal("the widened frame is still stacked")
+	}
+	if !strings.Contains(homeText(a), "I will remind you at 6.") {
+		t.Fatalf("the widened frame lost the exchange:\n%s", homeText(a))
 	}
 }
