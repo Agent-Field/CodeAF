@@ -211,8 +211,13 @@ func TestAShaperThatCannotAnswerLetsThePersonsWordsThrough(t *testing.T) {
 			// AN EMPTY ANSWER IS NOT REPAIRED, and neither is a call that never
 			// landed: the second request would ask the identical question of the
 			// thing that just failed to answer it.
-			if got := client.requests(); got != tc.requests {
-				t.Fatalf("%d requests, want %d", got, tc.requests)
+			//
+			// Only the SHAPER'S calls are counted. A task nothing named is named
+			// by one cheap call of its own after it has started (taskname.go), and
+			// it is a different question on a different role — counting it here
+			// would make this assertion about two features at once.
+			if got := shapeCalls(client); got != tc.requests {
+				t.Fatalf("%d shaping requests, want %d", got, tc.requests)
 			}
 		})
 	}
@@ -341,4 +346,16 @@ func TestTheAdaptiveTaskShapesItsBriefToo(t *testing.T) {
 	if !client.sawShapedGoal() {
 		t.Fatal("the run was given the raw sentence rather than the shaped brief")
 	}
+}
+
+// shapeCalls counts the requests that were the shaper's, by the one thing only
+// it sends.
+func shapeCalls(client *scriptedCompleter) int {
+	count := 0
+	for i := 0; i < client.requests(); i++ {
+		if isShapeCall(client.request(i)) {
+			count++
+		}
+	}
+	return count
 }
