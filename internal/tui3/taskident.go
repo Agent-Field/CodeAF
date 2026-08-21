@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // A TASK HAS A NAME, AND THE NAME IS NOT ITS TYPE.
@@ -124,7 +126,13 @@ const (
 	// person reads as a label rather than as a sentence — "Fix nil-map crash",
 	// "Collect the sources" — and it is a cap and not a target: a two-word title
 	// is left at two.
-	taskTitleWords = 3
+	//
+	// IT IS THE ENGINE'S OWN FIGURE and not a second copy of it. The namer that
+	// makes a piece of work's short name asks for exactly this many words
+	// (internal/session's taskname.go), so a cap written twice would be either a
+	// column truncating a name that was made to fit it or a namer paying for
+	// words the column throws away.
+	taskTitleWords = session.TaskNameWords
 	// taskSubtitleMax is the subtitle's width in cells. Ninety is about a line of
 	// prose at the width the cards are drawn at; past it the "one line" promise
 	// is being kept by the wrapper rather than by the sentence.
