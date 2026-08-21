@@ -120,13 +120,37 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 	if err != nil {
 		return nil, err
 	}
+	idle := session.StandingIdle()
 	return &standing.Ticker{
-		Store:        store,
-		Sentinel:     session.NewStandingSentinel(posture),
-		Runner:       session.NewStandingRunner(posture, store.Root()),
-		Idle:         session.StandingIdle(),
+		Store:    store,
+		Sentinel: session.NewStandingSentinel(posture),
+		Runner:   session.NewStandingRunner(posture, store.Root()),
+		Idle:     idle,
+		// The dreaming pass over what is remembered, which rides this pass
+		// because it wants exactly what this pass already has: one process
+		// elected among every window and the OS timer, and a machine nobody is
+		// sitting at. It is handed the store's PATH rather than an open store,
+		// so a ticker rebuilt every five minutes does not open a database
+		// connection every five minutes (internal/session's
+		// memory_consolidate.go), and a blank path — memory off — leaves the
+		// seam nil and the pass absent.
+		Tidy:         session.NewMemoryTidy(posture, v3MemoryPath(settings.ProfileDir), store.Root(), idle),
 		DailyRailUSD: v3StandingDailyRail(settings.ProfileDir),
 	}, nil
+}
+
+// v3MemoryPath is the brain's file when the memory row is on, and the empty
+// string when it is off.
+//
+// IT READS THE SAME ROW [v3Memory] READS and answers a path rather than a
+// handle, which is the difference between the conversation's need and the
+// tick's: a window opens one store and keeps it for the session, while a pass
+// wants one a few times a day and wants it closed again afterwards.
+func v3MemoryPath(profileDir string) string {
+	if !config.MemoryEnabledAt(profileDir) {
+		return ""
+	}
+	return defaultChatDB()
 }
 
 // v3StandingPosture is the config a firing inherits: the person's models, keys,

@@ -71,11 +71,62 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 			t.noteFailure(item, err)
 		}
 	}
+	// THE TIDY GOES LAST AND IS NOT AN ITEM. Everything the person actually
+	// armed is walked first, because a pass that ran out of time owes them their
+	// own reminders before it owes them a tidier brain.
+	t.tidy(ctx, &pass)
 	if err := t.Store.appendWake(pass); err != nil {
 		pass.Errors++
 		pass.Notes = append(pass.Notes, "could not write the wake log: "+oneLine(err.Error()))
 	}
 	return pass, nil
+}
+
+// tidy runs the consolidation pass over what is remembered, once, at the end of
+// a pass (internal/session's memory_consolidate.go owns the call itself).
+//
+// IT RUNS HERE BECAUSE THIS IS THE MACHINE'S ONE ELECTED IDLE PASS. The lock is
+// already held, exactly one process in the world is inside it, and a second
+// timer for off-path memory work would be a second thing to install, a second
+// thing to hold a lock for and a second thing to explain to somebody reading
+// /status.
+//
+// IT SPENDS UNDER THE SAME DAILY RAIL AS EVERY FIRING, and the rail is read
+// here rather than inside the pass for RAIL THREE's reason: what the day has
+// spent is the ticker's question, and a second reader of the ledger is where
+// the two would come to disagree.
+//
+// A NIL Tidy IS MEMORY OFF and is silent — no note, no error, nothing in the
+// wake log. A capability that cannot work is absent, not broken.
+func (t *Ticker) tidy(ctx context.Context, pass *Pass) {
+	if t.Tidy == nil || ctx.Err() != nil {
+		return
+	}
+	if t.DailyRailUSD > 0 {
+		all, err := t.Store.Today("", t.clock())
+		if err != nil || all.USD >= t.DailyRailUSD {
+			return
+		}
+	}
+	tidied, err := t.Tidy(ctx)
+	if err != nil {
+		pass.Errors++
+		pass.Notes = append(pass.Notes, "tidying what is remembered: "+oneLine(err.Error()))
+		return
+	}
+	// THE MONEY IS WRITTEN EVEN WHEN NOTHING MOVED. A call that read fifty lines
+	// and decided every one of them was already right was still billed, and a
+	// rail told only about the passes that changed something is a rail quoting a
+	// figure that is too small.
+	if tidied.USD > 0 {
+		if err := t.Store.Append(Entry{At: t.clock(), Kind: entryTidy, USD: tidied.USD}); err != nil {
+			pass.Notes = append(pass.Notes, "could not write the ledger line: "+oneLine(err.Error()))
+		}
+	}
+	pass.Tidied += tidied.Changed()
+	if line := tidied.Line(); line != "" {
+		pass.Notes = append(pass.Notes, line)
+	}
 }
 
 // clock is the ticker's own now, taken once per item so that everything one
@@ -507,7 +558,8 @@ func (s *Store) appendWake(pass Pass) error {
 		" said=" + strconv.Itoa(pass.Said) +
 		" needs=" + strconv.Itoa(pass.NeedsYou) +
 		" skipped=" + strconv.Itoa(pass.Skipped) +
-		" errors=" + strconv.Itoa(pass.Errors) + "\n"
+		" errors=" + strconv.Itoa(pass.Errors) +
+		" tidied=" + strconv.Itoa(pass.Tidied) + "\n"
 	if _, err := file.WriteString(line); err != nil {
 		return err
 	}

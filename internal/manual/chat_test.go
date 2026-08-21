@@ -132,6 +132,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I edit a memory", "what-i-remember"},
 		{"how do I undo forgetting one", "what-i-remember"},
 		{"where did a memory come from", "what-i-remember"},
+		{"why did my memories get merged", "what-i-remember"},
+		{"does it clean up old memories", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},
 		{"does it know if a memory actually helped", "what-i-remember"},
 
