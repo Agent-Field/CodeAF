@@ -251,6 +251,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does y do on a home card", "home"},
 		{"what is next up on this home card", "home"},
 		{"what has this home conversation spent", "home"},
+		// The thirteenth wave: home's left column in two tiers, and the work band
+		// on the right. All three are asked by somebody LOOKING at the screen and
+		// finding something missing — most of their projects, the rows behind a
+		// `▸`, and the rest of the tasks behind a fold line.
+		{"why are most projects collapsed on home", "home"},
+		{"how do I open a collapsed project", "home"},
+		{"how do I see more tasks on the right", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

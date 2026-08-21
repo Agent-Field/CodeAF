@@ -499,6 +499,7 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", now.Add(-3*time.Hour))
+	lab.session("beta", "s2", "Older Notes", "/w/beta", now.Add(-5*time.Hour))
 
 	band := &standBand{}
 	watch := bandItem("watch", "tell me when CI on main goes red", "/w/quiet", standing.WhenProbe, "when CI goes red")
@@ -525,8 +526,10 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 		t.Fatalf("the heading is drawn under its own rows (heading %d, row %d):\n%s", heading, row, joined)
 	}
 	// IT SITS BY ITS OWN RECENCY. The watch was looked at a minute ago and the
-	// conversation was three hours ago, so the new section is above the old one.
-	if other := homeRowAt(lines, "Pricing Research"); other >= 0 && heading > other {
+	// older conversation five hours ago, so the new section is above that one.
+	// (alpha is THIS window's project, and that one is first whatever its age —
+	// [homeTiers] — so recency is read against the other project.)
+	if other := homeRowAt(lines, "Older Notes"); other >= 0 && heading > other {
 		t.Fatalf("the newer items-only project sorted under an older project:\n%s", joined)
 	}
 	// AND IT IS NOT MARKED `elsewhere`. That word names a conversation this
