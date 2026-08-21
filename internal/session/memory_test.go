@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -32,6 +34,9 @@ type reflexScript struct {
 
 	routes, extracts, decides, turns int
 	systems                          []string
+	// routeInputs is what each router call was actually SHOWN, which is the
+	// half of the request that changed: the shortlist is the thing under test.
+	routeInputs []string
 }
 
 func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -45,6 +50,9 @@ func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Mes
 	switch {
 	case strings.Contains(system, "memory router"):
 		r.routes++
+		if len(messages) > 1 {
+			r.routeInputs = append(r.routeInputs, messageText(messages[1]))
+		}
 		if r.routeErr != nil {
 			return nil, r.routeErr
 		}
@@ -68,6 +76,17 @@ func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Mes
 		answer = "done"
 	}
 	return textResponse(answer), nil
+}
+
+// lastRouteInput is what the router was shown on its most recent call, or ""
+// when it was never asked.
+func (r *reflexScript) lastRouteInput() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.routeInputs) == 0 {
+		return ""
+	}
+	return r.routeInputs[len(r.routeInputs)-1]
 }
 
 func (r *reflexScript) counts() (routes, extracts, decides int) {
@@ -494,10 +513,44 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 	}
 }
 
-// Retrieval telemetry: a memory handed to a model was USED, whatever the
-// extractor decides about the exchange afterwards.
-func TestAnInjectedMemoryIsCountedAsUsed(t *testing.T) {
-	script := &reflexScript{extract: `{"mem":0}`}
+// THE COUNTER MEASURES HELP, NOT INJECTION. A memory the extractor confirms
+// bore on the answer is counted as a use; one that was put in front of the
+// model and bore on nothing is counted AGAINST it, which is the same bargain
+// fixstore.go keeps with a fix it offered that then failed.
+func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, nil)
+	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
+	dark := remember(t, brain, "prefers dark themes", "uses a dark theme everywhere")
+	script.route = `{"inject":["` + tabs.ID + `","` + dark.ID + `"],"cmd":null}`
+	script.extract = `{"mem":0,"used":["` + tabs.ID + `"]}`
+
+	collect(t, mustSubmit(t, agent, "reformat this file for me"))
+	_ = agent.Close()
+
+	helped, found, err := brain.MemoryRecord(tabs.ID)
+	if err != nil || !found {
+		t.Fatalf("read back: %v, found=%v", err, found)
+	}
+	if helped.UseCount != 1 || helped.MissCount != 0 {
+		t.Fatalf("the memory that helped reads %d/%d, want one use and no miss",
+			helped.UseCount, helped.MissCount)
+	}
+	unused, found, err := brain.MemoryRecord(dark.ID)
+	if err != nil || !found {
+		t.Fatalf("read back: %v, found=%v", err, found)
+	}
+	if unused.UseCount != 0 || unused.MissCount != 1 {
+		t.Fatalf("the memory that bore on nothing reads %d/%d, want no use and one miss",
+			unused.UseCount, unused.MissCount)
+	}
+}
+
+// A reflex that never answered is not evidence that a memory failed to help.
+// Nothing is counted either way, so somebody else's outage cannot push a good
+// line down this store's ranking.
+func TestAFailedExtractionCountsNothingAgainstWhatWasInjected(t *testing.T) {
+	script := &reflexScript{extractErr: errors.New("provider is down")}
 	agent, brain := brainAgent(t, script, nil)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
 	script.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
@@ -505,12 +558,9 @@ func TestAnInjectedMemoryIsCountedAsUsed(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "reformat this file for me"))
 	_ = agent.Close()
 
-	record, found, err := brain.MemoryRecord(tabs.ID)
-	if err != nil || !found {
-		t.Fatalf("read back: %v, found=%v", err, found)
-	}
-	if record.UseCount != 1 {
-		t.Fatalf("the injected memory was used %d times, want 1", record.UseCount)
+	record, _, _ := brain.MemoryRecord(tabs.ID)
+	if record.UseCount != 0 || record.MissCount != 0 {
+		t.Fatalf("a failed extraction counted %d/%d", record.UseCount, record.MissCount)
 	}
 }
 
@@ -682,11 +732,11 @@ func TestTheBlockDropsTheTailRatherThanTheHead(t *testing.T) {
 		{ID: "i", Title: "ninth", Text: long},
 		{ID: "j", Title: "tenth", Text: long},
 	}
-	block, kept := renderMemoryBlock(memories)
+	block, kept := renderMemoryBlock(memories, time.Now())
 	if len(kept) == 0 || len(kept) == len(memories) {
 		t.Fatalf("kept %d of %d — the cap did nothing", len(kept), len(memories))
 	}
-	if kept[0] != "a" {
+	if kept[0].ID != "a" {
 		t.Fatalf("the first memory the router named was dropped; kept %v", kept)
 	}
 	if !strings.Contains(block, "first") || strings.Contains(block, "tenth") {
@@ -751,5 +801,131 @@ func TestTheReflexCallsAreOnTheSessionsBill(t *testing.T) {
 	}
 	if turn.Turns != 1 {
 		t.Fatalf("the reflex calls were counted as %d turns", turn.Turns)
+	}
+}
+
+// ── the shortlist, the age, and the line a supersession now draws ───────────
+
+// The router is shown a SHORTLIST and never the store. Two hundred titles was
+// about 3,200 tokens on every message and grew with everything the person had
+// ever asked to be kept.
+func TestTheRouterIsShownAShortlistAndNotTheWholeStore(t *testing.T) {
+	script := &reflexScript{route: `{"inject":[],"cmd":null}`, extract: `{"mem":0}`}
+	agent, brain := brainAgent(t, script, nil)
+	for index := 0; index < 60; index++ {
+		remember(t, brain, fmt.Sprintf("Filler %d", index),
+			fmt.Sprintf("An unremarkable line number %d about nothing.", index))
+	}
+	agent.routedMemory(context.Background(), "can you reformat this file for me", nil, false)
+
+	shown := script.lastRouteInput()
+	if shown == "" {
+		t.Fatal("the router was never asked")
+	}
+	lines := strings.Count(shown, "\n- ")
+	if lines > store.MemoryCandidatesDefault {
+		t.Fatalf("the router was shown %d lines, want at most %d:\n%s",
+			lines, store.MemoryCandidatesDefault, shown)
+	}
+	if lines == 0 {
+		t.Fatalf("the router was shown nothing at all:\n%s", shown)
+	}
+}
+
+// A memory that has HELPED before reaches the shortlist even when the message
+// shares no word with it. That is the one thing a lexical index cannot do, and
+// it is why importance is one of the three rankings fused.
+func TestAMemoryThatHasHelpedReachesTheShortlistWithoutAWordInCommon(t *testing.T) {
+	script := &reflexScript{route: `{"inject":[],"cmd":null}`}
+	agent, brain := brainAgent(t, script, nil)
+	terse := remember(t, brain, "wants terse replies", "Answers short, conclusion first, no preamble.")
+	for index := 0; index < 40; index++ {
+		remember(t, brain, fmt.Sprintf("Filler %d", index),
+			fmt.Sprintf("An unremarkable line number %d about nothing.", index))
+	}
+	for turn := 0; turn < 20; turn++ {
+		if err := brain.RecordMemoryOutcome([]string{terse.ID}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	agent.routedMemory(context.Background(), "rewrite the postgres migration for me", nil, false)
+
+	if shown := script.lastRouteInput(); !strings.Contains(shown, terse.ID) {
+		t.Fatalf("the high-value head is not in the shortlist:\n%s", shown)
+	}
+}
+
+// The injected block stamps every line with how long ago it was learned, and it
+// is SHOWN rather than asked for.
+func TestTheInjectedBlockCarriesEachLinesAge(t *testing.T) {
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, nil)
+	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
+	script.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
+
+	block := agent.routedMemory(context.Background(), "reformat this file for me", nil, false)
+	if !strings.Contains(block, "prefers tabs over spaces in Go (learned just now)") {
+		t.Fatalf("the block carries no age:\n%s", block)
+	}
+}
+
+// An unknown age renders as NOTHING — the emptiness law, and the honest answer
+// for a row whose journal entry predates the column.
+func TestAMemoryWithNoKnownAgeRendersNoAge(t *testing.T) {
+	block, kept := renderMemoryBlock([]store.Memory{
+		{ID: "a", Title: "prefers tabs", Text: "prefers tabs over spaces in Go"},
+	}, time.Now())
+	if len(kept) != 1 {
+		t.Fatalf("kept %d lines", len(kept))
+	}
+	if strings.Contains(block, "learned") {
+		t.Fatalf("an unknown age was rendered:\n%s", block)
+	}
+}
+
+// A SUPERSESSION IS NO LONGER SILENT. A model deciding out of ordinary
+// conversation that something the person said has stopped being true gets the
+// same one dim line remember and forget get.
+func TestASupersessionSaysWhatItReplaced(t *testing.T) {
+	script := &reflexScript{
+		route:   `{"inject":[],"cmd":null}`,
+		extract: `{"mem":1,"type":"fact","scope":"project","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings.","tags":[]}`,
+	}
+	agent, brain := brainAgent(t, script, nil)
+	fridays := remember(t, brain, "deploys on Fridays", "Deploys go out on Friday afternoons.")
+	script.mu.Lock()
+	script.decide = `{"op":"supersede","target_id":"` + fridays.ID + `","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings."}`
+	script.mu.Unlock()
+
+	collect(t, mustSubmit(t, agent, "we moved deploys to Tuesday mornings"))
+	// The pass writes after the turn is sealed, so the line is held until there
+	// is a stream to say it on. The next turn's refresh is that stream.
+	agent.memoryJobs.Wait()
+
+	hub := newEventHub()
+	stream := hub.subscribe()
+	var seen []string
+	done := make(chan struct{})
+	go func() {
+		for event := range stream {
+			if event.Kind == EventNotice {
+				seen = append(seen, event.Text)
+			}
+		}
+		close(done)
+	}()
+	agent.refreshMemory(context.Background(), hub, "what else is on today")
+	hub.close()
+	<-done
+	_ = agent.Close()
+
+	var said string
+	for _, line := range seen {
+		if strings.HasPrefix(line, "superseded · ") {
+			said = line
+		}
+	}
+	if said != "superseded · deploys on Fridays → deploys on Tuesdays" {
+		t.Fatalf("the supersession said %v, want it to name both halves", seen)
 	}
 }

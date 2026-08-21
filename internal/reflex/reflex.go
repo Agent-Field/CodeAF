@@ -167,6 +167,21 @@ type ExtractResult struct {
 	// State is present only when the exchange MOVED the work. A turn that
 	// answered a question changed nothing about where the work stands.
 	State *StateDelta
+	// Used names the injected memory ids that actually BORE ON THE ANSWER, out
+	// of the ones this turn was shown. It is asked of a model that is already
+	// reading the exchange, so it costs no extra call and about ten output
+	// tokens.
+	//
+	// It exists because counting a retrieval as a use credits a memory for
+	// being INJECTED rather than for helping — RoMeRL (arXiv 2608.02508) names
+	// that the "memory-reward trap", and fixing the credit assignment is what
+	// shrank its memory pool 84.4% for +2.9pp accuracy. An id the model
+	// invented is dropped, exactly as [RouteResult.Inject] drops one.
+	//
+	// It is empty on every turn nothing was injected, and empty is also the
+	// honest answer when lines were shown and none of them mattered — the
+	// caller reads that difference against what it injected.
+	Used []string
 }
 
 // Neighbor is one thing the store already holds that sits near a candidate.
@@ -271,18 +286,34 @@ func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (Rout
 	return result, nil
 }
 
-// Extract answers whether an exchange held anything worth remembering.
+// Extract answers whether an exchange held anything worth remembering — and,
+// when the turn was shown remembered lines, which of them actually bore on the
+// answer.
 //
-// Mem 0 is returned as it arrived, with NO further validation: the model has
-// said there is nothing here, the other fields are whatever it left in them,
-// and refusing that answer over a stray type would turn "nothing to remember"
-// — the common case — into a retry on every turn.
-func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string) (ExtractResult, error) {
+// injected is what the router put in front of the model for this exchange, and
+// it is shown to the extractor for that second question alone. An empty list
+// is the ordinary case and the question is then not asked at all: a heading
+// with nothing under it reads to a small model like a list it failed to
+// receive.
+//
+// Mem 0 is returned as it arrived, with NO further validation of the memory
+// fields: the model has said there is nothing here, they are whatever it left
+// in them, and refusing that answer over a stray type would turn "nothing to
+// remember" — the common case — into a retry on every turn. Used is read
+// whatever mem says, because whether a memory helped and whether the exchange
+// held something new are different questions about the same turn.
+func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, injected []Stub) (ExtractResult, error) {
 	if strings.TrimSpace(userMsg) == "" && strings.TrimSpace(assistantMsg) == "" {
 		return ExtractResult{}, nil
 	}
+	shown := make(map[string]bool, len(injected))
+	for _, stub := range injected {
+		if id := strings.TrimSpace(stub.ID); id != "" {
+			shown[id] = true
+		}
+	}
 	var result ExtractResult
-	err := ask(ctx, c, extractPrompt, extractInput(userMsg, assistantMsg), func(reply string) error {
+	err := ask(ctx, c, extractPrompt, extractInput(userMsg, assistantMsg, injected), func(reply string) error {
 		var wire struct {
 			Mem   int      `json:"mem"`
 			Type  string   `json:"type"`
@@ -290,6 +321,7 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string) (Ex
 			Title string   `json:"title"`
 			Text  string   `json:"text"`
 			Tags  []string `json:"tags"`
+			Used  []string `json:"used"`
 			State *struct {
 				Goal     string   `json:"goal"`
 				Done     []string `json:"done"`
@@ -318,6 +350,12 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string) (Ex
 			next.Title = strings.TrimSpace(wire.Title)
 			next.Text = strings.TrimSpace(wire.Text)
 			next.Tags = cleaned(wire.Tags)
+		}
+		for _, id := range wire.Used {
+			id = strings.TrimSpace(id)
+			if id != "" && shown[id] {
+				next.Used = append(next.Used, id)
+			}
 		}
 		if wire.State != nil {
 			next.State = &StateDelta{

@@ -13,16 +13,20 @@ package session
 // memory.go) with a per-turn reflex in front of it (internal/reflex). The
 // arrangement is four moments, and every one of them is optional:
 //
-//   - BEFORE THE TURN, the router reads the message just typed against an index
-//     of TITLES — never bodies — and answers which two or three remembered
-//     lines bear on it. Only those are rendered into the <memory> block. A
-//     hundred remembered things cost one small call and three lines of prompt,
-//     where the file cost all hundred.
+//   - BEFORE THE TURN, the store ranks what is remembered against the message
+//     just typed and hands the router a SHORTLIST of eight titles — never
+//     bodies ([store.Store.MemoryCandidates]). The router answers which two or
+//     three of them bear on it, and only those are rendered into the <memory>
+//     block, each stamped with how long ago it was learned. A thousand
+//     remembered things cost the same small call as eight do, where the file
+//     cost all thousand.
 //
 //   - AFTER THE TURN, off the person's path entirely, the extractor reads the
 //     exchange and answers whether it held anything worth carrying into another
 //     session. Almost always it did not, which is the answer the gate is shaped
-//     around.
+//     around. It answers a second question in the same call: which of the lines
+//     this turn was shown actually bore on the answer, which is the only thing
+//     the store's ranking counts.
 //
 //   - WHEN IT DID, the decider settles the new thing against what the store
 //     already holds near it: add it, refine one of them, replace one of them, or
@@ -63,12 +67,6 @@ import (
 )
 
 const (
-	// memoryIndexLimit is how much of the index the router is shown. It is the
-	// store's own read limit and internal/reflex's own prompt limit, spelled
-	// here because this is the caller that has to pick a number: two hundred
-	// titles is already a large prompt for a near-free model.
-	memoryIndexLimit = 200
-
 	// memoryBlockRunes bounds what rides in the system prompt. Roughly 1200
 	// tokens at four characters a token — a dozen remembered lines, which is far
 	// more than any turn has ever needed, and a hard stop against a router that
@@ -102,11 +100,17 @@ type memoryBrain struct {
 	store *store.Store
 
 	mu sync.Mutex
-	// injected is what the router asked for on the LAST routed turn, kept only
-	// so the post-turn pass can count those retrievals ([store.Store.BumpMemoryUse]).
-	// It is replaced per turn rather than accumulated: use telemetry about a
-	// turn belongs to that turn.
-	injected []string
+	// injected is what the router asked for on the LAST routed turn — id and
+	// title both, because the post-turn pass does not merely count these, it
+	// shows them to the extractor and asks which of them helped
+	// ([store.Store.RecordMemoryOutcome]). It is replaced per turn rather than
+	// accumulated: what a turn retrieved belongs to that turn.
+	injected []reflex.Stub
+	// said holds the dim lines this session owes the person and has had no
+	// stream to say them on. The post-turn pass writes memories after the turn
+	// is sealed and its hub is closed, so a supersession settled there has
+	// nowhere to land; the next turn's refresh flushes them.
+	said []string
 	// imported records that the legacy memory.md has already been looked at.
 	// The rename on disk is the durable answer; this is what keeps a session
 	// from stat-ing the same absent file every turn.
@@ -213,6 +217,12 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 	// standing preferences lived in memory.md is answered out of them on the
 	// very first turn after the upgrade rather than the second.
 	a.importMemoryFile(hub)
+	// AND WHATEVER THE LAST POST-TURN PASS HAD NOWHERE TO SAY. It writes after
+	// the turn is sealed and its hub closed, so a supersession settled there has
+	// no stream; this is the first one it gets.
+	for _, line := range a.memory.takeNotices() {
+		memoryNotice(hub, line)
+	}
 
 	block := a.routedMemory(ctx, cue, hub, true)
 
@@ -234,19 +244,34 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, hub *eventHub, rec
 	if memoryTrivialCue(cue) {
 		return ""
 	}
-	index, err := a.memory.store.MemoryIndex(memoryIndexLimit)
-	if err != nil || len(index) == 0 {
-		// AN EMPTY INDEX IS NOT A CALL. There is nothing to route against, and a
-		// reflex that billed for that would bill for every turn of every fresh
-		// install.
+	// THE STORE RANKS, THE MODEL REJECTS. What the router is shown is the few
+	// lines most likely to bear on this cue, ranked in SQL against the words of
+	// the message, how often each line has actually helped, and how recently it
+	// changed ([store.Store.MemoryCandidates]). It used to be every title in the
+	// store, which cost about 3,200 tokens at two hundred memories and grew with
+	// everything the person had ever asked to be kept.
+	//
+	// The model is still asked, and it is asked the same question in the same
+	// words, because the failure mode here is the SEMANTIC NEAR-MISS rather than
+	// the random hit: one top-retrieved non-answer line costs 18–20% relative
+	// (Cuconasu et al., SIGIR 2024) while random ones are harmless. A store of
+	// near-synonymous preferences is nothing but hard distractors, and rejecting
+	// them is the one job arithmetic cannot do. Showing it the haystack is what
+	// stops.
+	candidates, err := a.memory.store.MemoryCandidates(cue, store.MemoryCandidatesDefault)
+	if err != nil || len(candidates) == 0 {
+		// AN EMPTY SHORTLIST IS NOT A CALL, and with two arithmetic rankings
+		// under it an empty one means an empty store. There is nothing to route
+		// against, and a reflex that billed for that would bill for every turn
+		// of every fresh install.
 		return ""
 	}
 	client := a.reflexClient()
 	if client == nil {
 		return ""
 	}
-	stubs := make([]reflex.Stub, 0, len(index))
-	for _, row := range index {
+	stubs := make([]reflex.Stub, 0, len(candidates))
+	for _, row := range candidates {
 		stubs = append(stubs, reflex.Stub{ID: row.ID, Title: row.Title, Type: row.Type, Scope: row.Scope})
 	}
 	routed, err := reflex.Route(ctx, client, cue, stubs)
@@ -263,7 +288,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, hub *eventHub, rec
 	if err != nil || len(memories) == 0 {
 		return ""
 	}
-	block, kept := renderMemoryBlock(memories)
+	block, kept := renderMemoryBlock(memories, time.Now())
 	if record {
 		a.memory.setInjected(kept)
 	}
@@ -315,23 +340,39 @@ func memoryNotice(hub *eventHub, text string) {
 	hub.send(Event{Kind: EventNotice, Text: text})
 }
 
-// renderMemoryBlock writes the block and reports which ids actually made it in.
+// renderMemoryBlock writes the block and reports which lines actually made it
+// in.
 //
 // The order is the ROUTER'S — the store returns what it was asked for in the
 // order it was asked (GetMemories states that contract), and the router is the
 // only thing in the system that saw the actual question. So when the budget runs
 // out it is the TAIL that goes: the last line the router named is the one it
-// thought about least.
-func renderMemoryBlock(memories []store.Memory) (string, []string) {
+// thought about least, and the first one stays where a model actually reads it
+// (Lost in the Middle, TACL 2024 — gold at position 1 scores 73.4 against 50.5
+// mid-context, which is itself below answering with nothing at all).
+//
+// EVERY LINE CARRIES ITS AGE, at about five tokens each. A model cannot judge
+// whether a remembered thing has gone stale if it cannot see when it was
+// learned, and LongMemEval (ICLR 2025) measures time-awareness as the largest
+// single category lever it ablated. It is SHOWN and never asked for: the same
+// paper found a small model asked to PRODUCE a date range hallucinates one, and
+// everything upstream of this block is a two-hundred-token model on a cheap
+// tier. An unknown age renders as nothing, which is this tree's law about
+// zeroes and is also the honest answer for a row whose journal entry predates
+// the column.
+func renderMemoryBlock(memories []store.Memory, now time.Time) (string, []reflex.Stub) {
 	var (
 		body strings.Builder
-		kept []string
+		kept []reflex.Stub
 		used int
 	)
 	for _, memory := range memories {
 		line := "- " + memory.Title + ": " + memory.Text
 		if memory.Title == "" {
 			line = "- " + memory.Text
+		}
+		if age := store.AgeLabel(memory.UpdatedAt, now); age != "" {
+			line += " (learned " + age + ")"
 		}
 		length := utf8.RuneCountInString(line) + 1
 		if used+length > memoryBlockRunes {
@@ -340,7 +381,9 @@ func renderMemoryBlock(memories []store.Memory) (string, []string) {
 		used += length
 		body.WriteString(line)
 		body.WriteString("\n")
-		kept = append(kept, memory.ID)
+		kept = append(kept, reflex.Stub{
+			ID: memory.ID, Title: memory.Title, Type: memory.Type, Scope: memory.Scope,
+		})
 	}
 	if len(kept) == 0 {
 		return "", nil
@@ -371,20 +414,36 @@ func memoryTrivialCue(cue string) bool {
 }
 
 // setInjected replaces what this turn retrieved.
-func (m *memoryBrain) setInjected(ids []string) {
+func (m *memoryBrain) setInjected(stubs []reflex.Stub) {
 	m.mu.Lock()
-	m.injected = ids
+	m.injected = stubs
 	m.mu.Unlock()
 }
 
-// takeInjected reads the ids and clears them, so no turn can count another
-// turn's retrievals.
-func (m *memoryBrain) takeInjected() []string {
+// takeInjected reads what was injected and clears it, so no turn can account
+// for another turn's retrievals.
+func (m *memoryBrain) takeInjected() []reflex.Stub {
 	m.mu.Lock()
-	ids := m.injected
+	stubs := m.injected
 	m.injected = nil
 	m.mu.Unlock()
-	return ids
+	return stubs
+}
+
+// queueNotice holds one dim line until there is somewhere to say it.
+func (m *memoryBrain) queueNotice(text string) {
+	m.mu.Lock()
+	m.said = append(m.said, text)
+	m.mu.Unlock()
+}
+
+// takeNotices drains the held lines.
+func (m *memoryBrain) takeNotices() []string {
+	m.mu.Lock()
+	held := m.said
+	m.said = nil
+	m.mu.Unlock()
+	return held
 }
 
 // ── the post-turn pass ──────────────────────────────────────────────────────
@@ -401,26 +460,26 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 	if !a.remembers() {
 		return
 	}
-	ids := a.memory.takeInjected()
+	injected := a.memory.takeInjected()
 	if !a.startMemoryJob() {
 		return
 	}
 	go func() {
 		defer a.memoryJobs.Done()
 		ctx := a.memoryCtx
-		// The retrieval count first, because it is a fact that is already true:
-		// those memories were handed to a model whatever the extractor says next.
-		if len(ids) > 0 {
-			_ = a.memory.store.BumpMemoryUse(ids)
-		}
 		client := a.reflexClient()
 		if client == nil {
 			return
 		}
-		found, err := reflex.Extract(ctx, client, userMsg, assistantMsg)
+		found, err := reflex.Extract(ctx, client, userMsg, assistantMsg, injected)
 		if err != nil {
+			// AND NOTHING IS COUNTED. The accounting below is the extractor's
+			// answer; a provider outage is not evidence that a memory failed to
+			// help, and recording it as one would let somebody else's bad
+			// afternoon push a good line down the store's ranking.
 			return
 		}
+		a.recordMemoryOutcome(injected, found.Used)
 		// THE STATE DELTA IS SETTLED FIRST, AND SEPARATELY FROM THE MEMORY GATE.
 		// Mem answers whether this exchange held anything worth carrying into
 		// ANOTHER session; the delta answers what it did to THIS one, and those
@@ -436,6 +495,46 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		}
 		_, _ = a.applyCandidate(ctx, client, found)
 	}()
+}
+
+// recordMemoryOutcome settles what this turn's injected memories did: the ones
+// the extractor named bore on the answer, and the rest were put in front of a
+// model and bore on nothing.
+//
+// THE COUNTER MEASURES HELP, NOT INJECTION. It used to credit every id the
+// router named, at the top of this pass, on the argument that being handed to a
+// model is a fact already true — which it is, and which is not the fact the
+// ranking needs. RoMeRL (arXiv 2608.02508) names that the "memory-reward trap":
+// co-retrieved memories all take the credit, so a line that has never once
+// changed an answer rises on the strength of sounding relevant.
+//
+// The unused half is the important half, and it is fixstore.go's bargain
+// exactly: a fix that was offered and then failed is counted against itself,
+// because a store that only ever counted successes would rank a coin toss at
+// the top of its own signature forever.
+func (a *Agent) recordMemoryOutcome(injected []reflex.Stub, used []string) {
+	if len(injected) == 0 {
+		return
+	}
+	helped := make(map[string]bool, len(used))
+	for _, id := range used {
+		helped[id] = true
+	}
+	var confirmed, unused []string
+	for _, stub := range injected {
+		if helped[stub.ID] {
+			confirmed = append(confirmed, stub.ID)
+			continue
+		}
+		unused = append(unused, stub.ID)
+	}
+	_ = a.memory.store.RecordMemoryOutcome(confirmed, unused)
+	// AND THE JOURNAL TAKES A PHOTOGRAPH ONCE A WEEK, so a Rebuild lands on a
+	// ranking floor rather than on zero. The interval is fixstore.go's own, and
+	// it is borrowed rather than respelled for the reason that file states about
+	// a person's working memory — there must not be two spellings of "a week"
+	// in one feature.
+	_, _ = a.memory.store.SnapshotMemoryRanking(fixDecayInterval)
 }
 
 // startMemoryJob registers one background memory pass, and refuses once the
@@ -514,9 +613,65 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		if decided.TargetID == "" {
 			return store.Memory{}, nil
 		}
-		return a.memory.store.SupersedeMemory(decided.TargetID, fresh)
+		// The old line is read BEFORE it is retired, because the note names it
+		// and a read afterwards would be a second query for a row this one
+		// already had in hand.
+		retired, _, _ := a.memory.store.MemoryRecord(decided.TargetID)
+		replacement, err := a.memory.store.SupersedeMemory(decided.TargetID, fresh)
+		if err != nil {
+			return store.Memory{}, err
+		}
+		a.saySuperseded(retired.Title, replacement.Title)
+		return replacement, nil
 	}
 	return store.Memory{}, nil
+}
+
+// saySuperseded is the one dim line a retirement gets, and the reason it exists
+// is that it used to get none.
+//
+// A supersession is a model deciding, out of ordinary conversation and with
+// nobody asked, that something the person told this store is no longer true.
+// That is MINJA's exact mechanism (arXiv 2503.03704: 98.2% injection success
+// through nothing but ordinary queries), and BEAM (ICLR 2026) measures
+// contradiction resolution at 0.000–0.053 for every model and method it tested
+// — retiring a fact correctly is the hardest thing in this literature and
+// nothing can do it. `remember` and `forget` each say one line when they act.
+// This does the same, in the same words and on the same lane:
+//
+//	superseded · deploys on Fridays → deploys on Tuesdays
+//
+// It is dim, it is one line, and it is not a question. The record is not
+// destroyed either — the old row stays readable at its id — so the line is
+// where a person notices, and /memory is where they look.
+func (a *Agent) saySuperseded(oldTitle, newTitle string) {
+	oldTitle, newTitle = strings.TrimSpace(oldTitle), strings.TrimSpace(newTitle)
+	if oldTitle == "" || newTitle == "" {
+		// A retirement whose two halves cannot both be named is a line that
+		// would say less than nothing.
+		return
+	}
+	a.sayMemory("superseded · " + oldTitle + " → " + newTitle)
+}
+
+// sayMemory puts one dim line in front of the person, on the turn's own stream
+// when there is one and on the next turn's when there is not.
+//
+// THE HELD LINE IS NOT A COMPROMISE, it is where this pass lives. `remember`
+// and `forget` are settled by the router BEFORE the turn, so they have a hub.
+// The post-turn pass runs once the turn is sealed and its hub closed, on the
+// session's own lifetime — that is the whole reason nothing is waiting on it —
+// so a line written there has no stream in the room, and holding it until the
+// next refresh is what keeps it from being lost instead.
+func (a *Agent) sayMemory(text string) {
+	a.mu.Lock()
+	hub := a.hub
+	a.mu.Unlock()
+	if hub != nil {
+		memoryNotice(hub, text)
+		return
+	}
+	a.memory.queueNotice(text)
 }
 
 // ── what a person and the model can ask for by hand ─────────────────────────
