@@ -210,7 +210,7 @@ Four shapes are never offered:
 A tool always writes `<tool>:allow` into `tools.approval` in your own profile
 settings. A bash always appends `allow <shape>` to `tools.bashPatterns`.
 
-The write goes to your **profile only**. A repository's `.openaf/config.json` is
+The write goes to your **profile only**. A repository's `.aforge-v3/config.json` is
 never written from here. Because a repository that answers `tools.approval`
 replaces your whole row at launch, a preference banked here takes effect
 everywhere except inside that repository.
@@ -600,7 +600,7 @@ The rows that matter here are:
   written.
 - `approval.timeout_seconds` — the countdown.
 
-A repository can answer `tools.approval` in `.openaf/config.json` in the
+A repository can answer `tools.approval` in `.aforge-v3/config.json` in the
 directory you opened. When it does, **its row replaces yours wholesale** — it
 does not merge. Nothing in the consent card or `/permissions` ever writes to a
 repository's file; both write to your profile only.

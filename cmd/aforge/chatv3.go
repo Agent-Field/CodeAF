@@ -16,7 +16,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -110,12 +109,23 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// surface on another machine and opens it THROUGH HERE (engine.go), so a
 	// remote session is the same launch this one is rather than a second one
 	// drifting quietly away from it.
-	launch, err := openV3Launch(v3Options{
+	//
+	// The process half is built first and exactly once (chatv3_process.go): the
+	// profile, the catalog, the harness registry, the memory database, the
+	// deliverables index and the accounts manager are things this PROCESS owns,
+	// and a launch borrows them rather than opening a second of each.
+	proc, err := openV3Process("chat")
+	if err != nil {
+		return err
+	}
+	seed := v3Options{
 		Model:     *model,
-		Session:   *file,
 		NoCompact: *noCompact,
 		Yolo:      *yolo,
-	})
+	}
+	boot := seed
+	boot.Session = *file
+	launch, err := openV3Launch(proc, boot)
 	if err != nil {
 		return err
 	}
@@ -152,17 +162,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// only model it can be about: --reasoning names a strength, not a model, and
 	// the level is kept per model from here on (internal/session's agent.go).
 	agent.SetReasoning(level)
-	// THE BRAIN CLOSES AFTER THE SESSION DOES, and that is what this ordering
-	// buys: the agent's own Close waits for a memory pass still writing
-	// (internal/session's memory.go), and a store shut before that wait would be
-	// a write into a closed database. Deferred calls run last-in-first-out, so
-	// this one — registered FIRST — runs last.
-	if cfg.Memory != nil {
-		defer func() { _ = cfg.Memory.Close() }()
-	}
-	// Close is the surface's to call — /quit and ctrl+c both go through it —
-	// but a Run that returns by any other road must still flush the file.
-	defer func() { _ = agent.Close() }()
+	proc.track(agent)
+	// EVERY CONVERSATION THIS PROCESS OPENED, CLOSED HOWEVER THE SURFACE RETURNS.
+	// Close is the surface's to call — /quit and ctrl+c both go through it — but
+	// a Run that returns by any other road must still flush the files, release
+	// the session flocks and stop the presence heartbeats, and after this wave
+	// there is more than one of each. The defer that used to stand here owned
+	// exactly the boot agent, and the store's close was registered before it so
+	// that it ran after; [v3Process.closeAll] holds both halves of that ordering
+	// itself and is a no-op the second time it is called.
+	defer proc.closeAll()
 
 	guard.Go("chatv3/models", func() { warmV3Models(models, agent, chosen) })
 
@@ -189,11 +198,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	}
 	var recall tui3.History
 	if keepHistory {
-		if dir, err := v3Dir(); err == nil {
-			store := history.New(filepath.Join(dir, "history.jsonl"))
-			defer func() { _ = store.Close() }()
-			recall = store
-		}
+		// One file per process, opened on the first workspace that wants it and
+		// closed by [v3Process.closeAll] (chatv3_process.go). The rows carry the
+		// directory they were typed in, so the surface asks for its own.
+		recall = proc.history()
 	}
 	draft := ""
 	if keepDraft {
@@ -201,6 +209,19 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			draft = tui3.DraftFile(dir, workspace)
 		}
 	}
+	// THE AGENT-BUILDING SEAM (chatv3_process.go's [v3Seam]). Every conversation
+	// after the first comes through here, carrying the closures that belong to
+	// ITS agent and ITS workspace — which is what stops an "always" answered
+	// after a /new from being pushed into the session that /new closed.
+	//
+	// It carries the boot launch AS IT ENDED UP rather than as it was assembled:
+	// [openV3Agent] may have moved the session file under us on a contended
+	// resume, and a conversation opened later is a sibling of the folder this
+	// window is actually in.
+	settled := *launch
+	settled.Config, settled.Place = cfg, cfg.Place
+	settled.SessionFile, settled.Resumed = transcript, resumed
+	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
 
 	// The byte meter, off unless a developer named a log file (wire.go). A nil
 	// writer here is the same launch this door has always made.
@@ -248,24 +269,19 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// /new and the picker, as the seam answers them. The two wrappers below
+		// are the OLDER shape of the same doors, kept because the surface still
+		// falls back to them and because the hosted door can only answer that
+		// shape (chatv3_host.go): there is one remote agent by construction, so
+		// there is nothing per-conversation to hand back.
+		Start: seam.start,
+		Open:  seam.resume,
 		Fresh: func() (tui3.Agent, string, error) {
-			place, err := v3NextSession(cfg.Place, workspace)
+			conv, err := seam.start("")
 			if err != nil {
 				return nil, "", err
 			}
-			// The launch's config, pointed at the new folder and carrying the
-			// gate AS IT STANDS NOW rather than as it stood at boot
-			// (chatv3_approval.go says why the second half is not optional).
-			fresh := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
-			fresh, err = v3PointAt(fresh, place)
-			if err != nil {
-				return nil, "", err
-			}
-			replacement, err := v3OpenSession(fresh)
-			if err != nil {
-				return nil, "", err
-			}
-			return replacement, fresh.SessionFile, nil
+			return conv.Agent, conv.SessionFile, nil
 		},
 		// The conversations this directory has had, and the door back into one
 		// of them. They are the welcome box's right column and the /resume
@@ -273,29 +289,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// never at boot.
 		RecentSessions: func() []tui3.Session { return v3RecentSessions(launch.Bucket) },
 		Resume: func(file string) (tui3.Agent, error) {
-			// The same config this session runs on, pointed at another
-			// transcript: the model, the roles and the rail are properties of
-			// the LAUNCH, and a conversation opened from the picker is the same
-			// launch (see Fresh, above, which differs only in which file it
-			// names).
-			//
-			// THE GATE IS THE ONE THING THAT IS NOT. It was a property of the
-			// launch only because nothing could change it mid-session; now that
-			// a banked rule can, an old conversation reopened afterwards has to
-			// open behind the rule and not behind the boot.
-			earlier := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
-			earlier, err := v3Reopen(earlier, file, workspace)
-			if err != nil {
-				return nil, err
-			}
-			agent, err := v3OpenSession(earlier)
+			conv, err := seam.resume("", file)
 			if err != nil {
 				// Returned rather than wrapped in a surface that would carry a
 				// typed nil: a locked file's error names the file, and the
 				// surface prints exactly that.
 				return nil, err
 			}
-			return agent, nil
+			return conv.Agent, nil
 		},
 		PickSession: pickSession,
 		// WHETHER HOME GREETS THIS LAUNCH. It is a person opening aforge with no
@@ -356,10 +357,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 // v3Options is what a door says about the conversation it wants opened. Every
 // field is a flag some door carries; the zero value is what `aforge` bare does.
 type v3Options struct {
-	// Door is the word the missing-key sentence names. Empty is "chat", which
-	// is what both terminal doors say — `aforge resume` has always said it and
-	// says it still, because what it could not open is a chat.
-	Door string
 	// Workspace is the directory the conversation runs in. Empty is the
 	// process's own, which is what a terminal door means and what the engine
 	// means once it has changed into the directory the surface asked for.
@@ -403,40 +400,23 @@ type v3Launch struct {
 	Bucket string
 }
 
-func openV3Launch(opts v3Options) (*v3Launch, error) {
-	// Housekeeping, in the background, once per process (chatv3_sweep.go):
-	// every v3 door — chat, resume, engine — assembles through here, so this
-	// is the one line that covers them all.
-	startPlaceSweep()
-	// The same resolution every other surface does: environment and the
-	// profile file, one place, one error message when there is no key.
-	settings, err := config.Load()
-	if err != nil {
-		door := strings.TrimSpace(opts.Door)
-		if door == "" {
-			door = "chat"
-		}
-		fmt.Fprintln(os.Stderr, "aforge "+door+" needs a model to talk with.")
-		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
-		return nil, err
-	}
+func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
+	// The profile, the catalog, the harness registry and the stores were all
+	// resolved once, at the door (chatv3_process.go). Everything below this line
+	// is a function of the DIRECTORY this conversation is about, which is the
+	// whole of what makes a launch different from the process it runs in.
+	settings := proc.Settings
 	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `aforge` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
 	// (Decision 26). A door that named a workspace has already answered the
 	// project question and its answer is taken as given.
-	launchDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("resolve working directory: %w", err)
-	}
-	// ONE BOOT PASS, before anything reads the new layout, so a machine that
-	// last ran the flat layout opens on its own conversations rather than on an
-	// empty list (chatv3_migrate.go). It is never fatal and never repeated.
-	migrateV3Layout()
+	launchDir := proc.LaunchDir
 
 	project, owned := v3Workspace(launchDir, opts.Workspace)
-	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project, launchDir, owned)
+	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project,
+		v3StampLaunchDir(launchDir, project), owned)
 	if err != nil {
 		return nil, err
 	}
@@ -454,23 +434,14 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		}
 	}
 
-	// Model discovery starts here and is waited for NOWHERE on this path. On a
-	// cold cache resolving it is a network round-trip, and everything it feeds
-	// — the /model picker's list, the context window — has a good answer
-	// without it: the picker falls back to disk and then to its built-ins, and
-	// an unknown window leaves the session on its conservative default.
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
-
-	// The sub-harness registry under the state root, opened ONCE and handed to
-	// both halves of the feature: the session, which matches turns against it
-	// and runs what a person says yes to (chatv3_harness.go), and the surface,
-	// which lists it under /harness. Two stores at one directory would be two
-	// readers of the same files rather than a disagreement, and this is still
-	// one because /harness and the offer card must never be able to name
-	// different harnesses.
-	harnesses := subharness.Default()
+	// The model catalog and the sub-harness registry, borrowed from the process
+	// rather than opened here (chatv3_process.go states why each must be one).
+	// The catalog's warm is already running and is waited for NOWHERE on this
+	// path: everything it feeds — the /model picker's list, the context window —
+	// has a good answer without it, and an unknown window leaves the session on
+	// its conservative default.
+	models := proc.Models
+	harnesses := proc.Harnesses
 
 	cfg := session.Config{
 		Workspace:      workspace,
@@ -498,15 +469,15 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// lives is the door's decision — and it is opened AT ALL only when the
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
-		Memory: v3Memory(settings.ProfileDir),
+		Memory: proc.Memory,
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
 		MemoryImport: home.Join("v3", "memory.md"),
 		// The deliverables index the session's own products (a painted picture)
 		// record themselves in — the same file the surface's /export and /files
-		// resolve, spelled once (chatv3_place.go).
-		ArtifactsIndex: artifactsIndexPath(),
+		// resolve, spelled once (chatv3_place.go) and resolved once per process.
+		ArtifactsIndex: proc.Artifacts,
 		// The profile whose config.json /settings writes, handed over so the
 		// conversation can read the person's settings back and change one for
 		// them (internal/session's tools_settings.go). It is the SAME directory
@@ -576,6 +547,12 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 	if err != nil {
 		return nil, err
 	}
+	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
+	// leaves the field empty for exactly this reason: an account connected on
+	// the panel must be connected for every conversation's belt in the same
+	// breath, and two managers on one store are two caches that disagree the
+	// moment either of them refreshes a token (chatv3_process.go).
+	cfg.Connect = proc.Conns
 
 	// THE MEDIA PAIR, and it is wired after governance because half of it is
 	// governance's own work: the role pins the resolver reads as its second rung
@@ -724,7 +701,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 // meant to close it.
 //
 // THE PROJECT LAYER ENTERS HERE. cfg.Workspace is the directory this session
-// runs in, so <workspace>/.openaf/config.json is the repository's own answer to
+// runs in, so <workspace>/.aforge-v3/config.json is the repository's own answer to
 // these rows, and every read below resolves project → profile → default
 // (internal/config's projectconfig.go). A caller with no workspace — a test, a
 // door that has not resolved a directory — gets an empty layer rather than a
@@ -784,7 +761,11 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.TaskMaxLoad = config.TaskMaxLoadAt(profileDir)
 	cfg.TaskMinFreeMB = config.TaskMinFreeMBAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
-	cfg.Connect = v3Connect(profileDir)
+	// The accounts manager is NOT resolved here, and it is the one row in this
+	// function that is not. It is a handle rather than a setting: one per
+	// process, built at the door and assigned by the launch
+	// (chatv3_process.go's [v3Process.Conns]), because two managers on one store
+	// are two caches with no way to tell each other that a token has moved.
 	// How this session chooses among the endpoints serving its model. The word
 	// is validated by the row; the parse is total, so a word this build does not
 	// know falls back to the default rather than taking routing away.
