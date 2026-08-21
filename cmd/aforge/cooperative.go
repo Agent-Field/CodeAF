@@ -146,32 +146,82 @@ func firstScope(brief string) string {
 // splitOverlaps detects when two parts share filenames or paths, meaning
 
 // enumeratedItems returns the largest explicit count of independent items an
-// ask names — digits ("12", "img-01 ... img-12") or number words ("twelve").
-// It is the split gate's only evidence: division pays for itself in exactly
-// one shape, the same operation applied to many independent inputs, and the
-// asks that have that shape say so by counting the inputs out loud.
+// ask names, counting a number only when it stands next to an item-noun —
+// "twelve image files", "bugs: 3", "note-1 … note-5". Bare numerals are not
+// items: a task that says "limit=100" or "250 words" is naming a parameter,
+// and a gate that reads it as 100 items divides work that never should be.
 func enumeratedItems(text string) int {
+	nouns := []string{"file", "module", "image", "note", "bug", "test",
+		"function", "section", "chapter", "document", "item", "component",
+		"task", "endpoint", "table", "page", "record", "case"}
+	lower := strings.ToLower(text)
 	max := 0
-	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
-		return r < '0' || r > '9'
-	}) {
+	// number followed shortly by a noun: "12 image files", "bugs: 3"
+	fields := strings.FieldsFunc(lower, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+	for i, f := range fields {
 		n := 0
-		for _, c := range field {
+		for _, c := range f {
+			if c < '0' || c > '9' {
+				n = -1
+				break
+			}
 			n = n*10 + int(c-'0')
 		}
-		if n > max {
+		if n < 0 {
+			continue
+		}
+		near := false
+		for j := i - 1; j <= i+1 && !near; j++ {
+			if j < 0 || j >= len(fields) || j == i {
+				continue
+			}
+			for _, noun := range nouns {
+				if strings.HasPrefix(fields[j], noun) {
+					near = true
+					break
+				}
+			}
+		}
+		if near && n > max {
 			max = n
 		}
 	}
-	lower := strings.ToLower(text)
+	// noun followed by a number-word: "eight files", "twelve images"
 	for word, n := range map[string]int{
 		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 		"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
 		"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
 		"nineteen": 19, "twenty": 20,
 	} {
-		if strings.Contains(lower, word) && n > max {
-			max = n
+		// whole-word match: "ten" inside "flatten" is not a count
+		idx := -1
+		for off := 0; ; {
+			k := strings.Index(lower[off:], word)
+			if k < 0 {
+				break
+			}
+			k += off
+			leftOK := k == 0 || lower[k-1] < 'a' || lower[k-1] > 'z'
+			rightOK := k+len(word) >= len(lower) || lower[k+len(word)] < 'a' || lower[k+len(word)] > 'z'
+			if leftOK && rightOK {
+				idx = k
+				break
+			}
+			off = k + 1
+		}
+		if idx < 0 {
+			continue
+		}
+		window := lower[idx+len(word):]
+		if len(window) > 40 {
+			window = window[:40]
+		}
+		for _, noun := range nouns {
+			if strings.Contains(window, noun) && n > max {
+				max = n
+			}
 		}
 	}
 	return max
