@@ -2018,6 +2018,53 @@ func TestAPasteThatStartsWithTwoSpacesDoesNotGoHome(t *testing.T) {
 	}
 }
 
+// A PASTE WHILE HOME IS OPEN LANDS IN HOME'S OWN BOX. Home is fullscreen, so
+// the chat's draft is not on the page at all — and that is exactly where a
+// paste used to go, silently, which read as the paste doing nothing until home
+// was closed and the text turned out to have been sitting in the chat box.
+func TestAPasteWhileHomeIsOpenLandsInHomesBox(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("home did not open")
+	}
+	runCmd(a.paste("find the pricing thread"))
+	if got := a.home.box.String(); got != "find the pricing thread" {
+		t.Fatalf("home's box holds %q", got)
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the paste leaked into the chat draft behind home: %q", got)
+	}
+}
+
+// HOME'S BOX WRAPS A LONG DRAFT. It used to be one truncated row: type past
+// the frame's edge and the tail of the sentence became an ellipsis while the
+// caret pinned to the last column — typing into cells nobody could see.
+func TestHomesBoxWrapsALongDraftInsteadOfTruncatingIt(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("home did not open")
+	}
+	long := "please research " + strings.Repeat("the market and ", 12) + "REPORTBACK"
+	runCmd(a.paste(long))
+	if got := homeText(a); !strings.Contains(got, "REPORTBACK") {
+		t.Fatalf("the tail of a long draft is not on the page:\n%s", got)
+	}
+}
+
 // The door is not offered where there is nowhere to go, and the gesture is
 // inert there too — a door that is drawn is a door that works.
 func TestTheDoorIsShutWhenThereIsNowhereToGo(t *testing.T) {

@@ -226,6 +226,13 @@ const (
 	homeIdleASCII  = "-"
 )
 
+// homeDraftRows caps home's foot box, and it is smaller than the chat's six
+// because this screen is a list first: the box shares the frame with the
+// conversations it filters, and a foot that grew to six rows on a paste would
+// shove the thing being filtered off the page. Past the cap the window follows
+// the caret exactly as the chat box's does (input.go's draftBlock).
+const homeDraftRows = 3
+
 // The sentences this surface says. Each is quoted in the manual exactly as it
 // is spelled here.
 const (
@@ -2842,16 +2849,22 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
+	// THE FOOT WRAPS INSTEAD OF TRUNCATING. This box used to be one `fit` row:
+	// type past the frame's edge and the head of the sentence was kept, the tail
+	// was an ellipsis, and the caret pinned to the last column — a person asking
+	// a long question from home was typing into cells they could not see. It is
+	// drawn by the same [draftBlock] the main chat's box is now, wrapped over a
+	// few rows with the window following the caret, because there is exactly one
+	// law for what typing into this program looks like.
 	if ex := a.paneExchange(); ex != nil && ex.focused {
 		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed into
 		// home's own box would re-filter the list behind the pane, so the exchange
 		// brings its own line and the caret sits in it (homeexchange.go).
-		text := ex.box.String()
-		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
-		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
-		if caretX > width-1 {
-			caretX = width - 1
+		rows, cx, cy := draftBlock(&ex.box, pal, width-2, homeDraftRows, "", "")
+		for _, row := range rows {
+			add(" "+row, -1)
 		}
+		caretX, caretY = 1+cx, len(lines)-len(rows)+cy
 	} else if a.home.box.empty() {
 		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
@@ -2860,12 +2873,14 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// returns, in the box, on the next frame.
 		a.caret = false
 	} else {
-		text := a.home.box.String()
-		add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1)
-		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
-		if caretX > width-1 {
-			caretX = width - 1
+		rows, cx, cy := draftBlock(&a.home.box, pal, width-2, homeDraftRows, "", "")
+		for _, row := range rows {
+			add(" "+row, -1)
 		}
+		caretX, caretY = 1+cx, len(lines)-len(rows)+cy
+	}
+	if caretX > width-1 {
+		caretX = width - 1
 	}
 	if a.home.msg != "" {
 		// DIM, AND NOT THE FAULT COLOUR. Every refusal this screen has is a fact

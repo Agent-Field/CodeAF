@@ -390,6 +390,20 @@ type to search or start something new · ↑↓ pick · enter open
 and the line under it says what the keyboard does, which changes with what the cursor is
 on — at rest, `↑↓ move · enter open · esc close`.
 
+## Typing a long question on home — does the box wrap, and where does a paste go
+
+**The box wraps.** Home's foot box is drawn by the same editor as the chat's message box:
+a sentence longer than the frame wraps onto continuation rows — up to three — and past
+that the window scrolls with the caret, marked with `…` where the `›` was. Nothing you
+type is ever truncated out of view. There is no key to open a new line here (that is the
+chat box's `alt+enter` / `ctrl+j`); on home, `alt+enter` and `ctrl+enter` are `ask here`.
+
+**A paste lands in home's box.** Paste while home is open and the text goes into the foot
+box — filtering the list, exactly as typing does — or into the ask-here exchange's own
+box when that pane holds the keyboard. Pasted newlines are kept, so a pasted paragraph is
+fine as an `ask here` question. (It used to fall through to the chat's own draft, which
+home was covering, so pasting looked like it did nothing.)
+
 ## Why can't I open a session from home — open in another window
 
 A conversation that a **different** terminal already has open cannot be opened by this one:
