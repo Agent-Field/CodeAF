@@ -1005,8 +1005,12 @@ errands on two screens.
 
 **Workspace** — what aforge may do and spend while it works for you. Rows: "daily
 budget", "ask before spending", "practice budget", "quiet before practice", "arrival
-brief after", "tenure after", "attribution", "google sign-in id", "google sign-in
-secret".
+brief after", "tenure after", "background checks", "attribution", "google sign-in id",
+"google sign-in secret".
+
+**"background checks"** is on by default: one small timer under your own login checks
+your reminders, watches and routines every 5 minutes with no window open. Off removes it
+and nothing standing is lost — see *Keeping an eye on things* for the whole of it.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
