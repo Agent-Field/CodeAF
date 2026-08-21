@@ -247,6 +247,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
 
+		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
+		// writes four class models and the session picks them up on its next
+		// call — and the model on the status line does not move, because that one
+		// is the CONVERSATION's and the crew never touches it. So a person reads
+		// the confirmation, looks at a frame that says exactly what it said
+		// before, and asks these in front of it.
+		{"I changed the crew but the model didn't change", "models-and-cost"},
+		{"why does the bottom still show the old model after /crew", "models-and-cost"},
+		{"does /crew change the model I'm talking to", "models-and-cost"},
+
 		{"how do I quit", "keys"},
 		{"how do I exit aforge", "keys"},
 		{"how do I close aforge", "keys"},

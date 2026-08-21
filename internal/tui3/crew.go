@@ -56,7 +56,49 @@ func (a *app) applyCrew(preset string) {
 	// it is open. Everything else is live: the crew source the session resolves
 	// through re-reads on its next call (cmd/aforge's v3RolesSource).
 	a.refreshSettings()
-	a.note(config.CrewSummary(a.profileDir))
+	// AND THE CONFIRMATION SAYS WHAT IT DID NOT CHANGE. This line is the whole of
+	// the evidence a crew change leaves on the frame — the status line's model
+	// readout is the CONVERSATION's model and the crew never touches it — so the
+	// person who typed /crew to make aforge think harder reads four model names,
+	// looks down at a bottom row that says exactly what it said before, and
+	// concludes the command did nothing. The clause is on the note rather than in
+	// [config.CrewSummary] because it is an answer to a question this MOMENT
+	// raises: the same summary inside /crew's listing is being read by somebody
+	// who is comparing three rows, not by somebody who just changed one.
+	a.note(config.CrewSummary(a.profileDir) + " · the model you talk to is /model")
+}
+
+// crewWord is the crew as a page states it: the preset word or `custom`, then
+// the three class names ([config.CrewClasses]). It is what /status prints and
+// what [app.crewHint] shortens.
+//
+// THE EMPTINESS LAW: the crew is four rows of a PROFILE, so a door that opened
+// without one has no crew to read and this is the empty string — every caller
+// prints nothing rather than a word about a file nobody is writing.
+func (a *app) crewWord() string {
+	if strings.TrimSpace(a.profileDir) == "" {
+		return ""
+	}
+	return config.CrewAt(a.profileDir) + " · " + config.CrewClasses(a.profileDir)
+}
+
+// crewHint is the crew in the fewest cells that still answer it — `crew max` —
+// for the hint slot under the model picker (render.go's [app.hintWord]).
+//
+// It is the WORD and not the three class names, and it names no door. The slot
+// is three cells wide in the sense that matters: every cell it takes is a cell
+// the conversation's own name gives up at the other end of the legend
+// (render.go's [app.legend]). And the slot's law is that it names only what the
+// keyboard will do RIGHT NOW — while the picker is open every printable key
+// goes into its filter box, so "/crew" printed there would be a door a person
+// cannot walk through until they press esc. The word alone is a FACT, which is
+// all this slot has to carry: somebody hunting the model they just changed the
+// crew for reads that the crew is a different thing with a name of its own.
+func (a *app) crewHint() string {
+	if strings.TrimSpace(a.profileDir) == "" {
+		return ""
+	}
+	return "crew " + config.CrewAt(a.profileDir)
 }
 
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its

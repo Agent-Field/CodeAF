@@ -179,7 +179,9 @@ say rather than the default.
 `/crew` opens all three as a chooser with yours marked. ↑ / ctrl+p and ↓ / ctrl+n move;
 enter applies and esc cancels. If the four classes make a custom crew, no row is marked and
 the footer says picking one puts all four back. `/crew max` still sets it directly and
-confirms in one line.
+confirms in one line, which ends `· the model you talk to is /model` — because the crew
+changes nothing about the conversation's own model, and the frame goes on saying what it
+said before.
 The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
 frugal → balanced → max.
 
@@ -215,6 +217,36 @@ work beside the compaction summary — which made one model id answer two unrela
 The careful calls are many and short; these two are few, and each one decides what all the
 other calls do. A planner that cuts badly spends a whole run on work nobody wanted; a
 designer that writes badly puts a wrong answer on the menu with a name on it.
+
+## I changed the crew but the model at the bottom did not change
+
+That is right, and nothing is broken. **`/crew` does not change the model you are talking
+to**, and the readout at the bottom of the frame is that model — the conversation's. The
+only thing that moves it is `/model`, the model row in `/settings`, or naming one with
+`/model <name>`.
+
+The crew is a different dial: the four **classes** aforge makes its own calls on — reflex,
+small work, careful work, mastermind — used for titles, memory, the safety gate, checks on
+finished work, compaction summaries, adaptive-run planners and their nodes, harness pages,
+and looking at an image. Setting it writes all four class rows in one write, and **it is
+live from that moment**: the next call aforge makes on its own uses the new crew, with no
+relaunch and no new session.
+
+**Where to read the crew back:**
+
+- `/status` prints a `crew` line directly under `model`:
+  `crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3`. The word is
+  the preset, or `custom` when the four classes are your own arrangement.
+- `/settings` → Providers has the **crew** row above the four class rows.
+- Bare `/crew` opens the three presets with yours marked.
+- The hint line under the model picker says `crew max` beside its keys, so the picker you
+  opened looking for the change tells you the crew is a separate thing.
+
+**Tasks do not follow the crew either.** A plain task runs on the `task.model` row, or on
+the conversation's model when that row is empty. Only an **adaptive run** uses the classes:
+its planner takes the **mastermind** class and every node under it takes **small work**.
+Those ids are settled once, when the run starts, so changing the crew — or `/model` — half
+way through does not move a run already going.
 
 ## Asking a class to think harder — a level on a class value
 
@@ -388,16 +420,26 @@ command typed between turns answers from what the session holds now.
 
 The labels come in this order, each dropped when its value is empty: `session`, `task` (only
 inside a task room), `model` (the full routing address, with `:level` when a reasoning level
-is set), `task model` (only in a room), `served`, then the telemetry segments under their own
-words — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
-`approvals`, `state` — then `tasks`, `place`, `keys`, and finally `file`. Labels are padded
-into two aligned columns.
+is set), `crew`, `task model` (only in a room), `served`, then the telemetry segments under
+their own words — `background`, `changes`, `spend`, `context`, `cache`, `rate`,
+`compaction`, `approvals`, `state` — then `tasks`, `place`, `keys`, and finally `file`.
+Labels are padded into two aligned columns.
 
-Two things differ deliberately from the status line on screen:
+The `crew` line sits directly under `model` and reads the preset word — or `custom` — with
+the three classes after it:
+
+```
+crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
+```
+
+Three things differ deliberately from the status line on screen:
 
 - the session **file** is added, because a path is a thing you copy into another program;
 - the `spend` line is **dropped** when nothing has been spent. The live status line keeps
-  `$0.00`; a note printed into the conversation must not.
+  `$0.00`; a note printed into the conversation must not;
+- the **crew** is added, because it is sixty cells of one fact that a narrow row would cut
+  in the middle of the third class. A session opened without a profile directory has no
+  crew to read and gets no `crew` line at all.
 
 Over `--host`, the `place` and `file` values are written in full as `machine:/path`.
 

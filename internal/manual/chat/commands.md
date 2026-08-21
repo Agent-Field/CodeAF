@@ -432,16 +432,26 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `task model` (only in a room), `served`, then the telemetry
+reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
 words — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
 `approvals`, `state` — then `tasks`, `place`, `keys`, and last `file`. Labels are padded
 into two aligned columns.
 
-`/status` differs from the on-screen status sheet in two deliberate ways:
+The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
+the three classes:
+
+```
+crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
+```
+
+`/status` differs from the on-screen status sheet in three deliberate ways:
 
 - The session **file** is added. A path is a thing you copy into another program.
 - The `spend` line is **dropped** when nothing has been spent. The live status line keeps
   showing `$0.00`; a note in the transcript must not.
+- The `crew` line is added, because sixty cells of one fact would be cut in the middle of
+  the third class on a forty-four-column row, and the three classes are the answer. There
+  is no `crew` line at all when the session was opened without a profile directory.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
@@ -810,8 +820,13 @@ applies the row, and **esc** closes the chooser without changing anything:
 `/crew frugal`, `/crew balanced` or `/crew max` sets it, and confirms in one line:
 
 ```
-crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
+crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b · the model you talk to is /model
 ```
+
+The last clause is there because nothing else on the frame moves: the model named on the
+status line is the **conversation's** model, and `/crew` never touches it. To read the crew
+back afterwards, use the `crew` line in `/status`, the crew row in `/settings` → Providers,
+or bare `/crew`, which marks yours.
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no
 relaunch, and no waiting for the next session.

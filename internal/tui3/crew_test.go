@@ -258,3 +258,134 @@ func TestTheTierWordsAndTheClassKeysAreTheSameSet(t *testing.T) {
 		}
 	}
 }
+
+// ── THE CREW IS READABLE WHERE PEOPLE GO TO CHECK ───────────────────────────
+//
+// /crew writes four class models and the session picks them up on its next
+// call, and NOTHING ON THE FRAME MOVES: the status line's model readout is the
+// conversation's model, which the crew never touches. Before these three
+// surfaces existed, the whole of the evidence was one note that scrolled away,
+// and a person who set the crew and then went to look for it concluded the
+// command had not worked.
+
+// /status NAMES THE CREW, directly under the model it is not.
+func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew max")
+
+	a.slash("/status")
+	text := lastNote(t, a)
+	lines := strings.Split(text, "\n")
+	at := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "crew ") {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("/status says nothing about the crew:\n%s", text)
+	}
+	// The preset word first, then the same three class names the confirmation
+	// prints — base names, in [config.CrewClasses]'s own order.
+	for _, want := range []string{
+		config.CrewMax, "brain kimi-k3:high", "hands deepseek-v4-pro", "checks kimi-k3",
+	} {
+		if !strings.Contains(lines[at], want) {
+			t.Errorf("the crew line lost %q: %q", want, lines[at])
+		}
+	}
+	// AND IT IS THE LINE UNDER THE MODEL, because the two are read together or
+	// not at all: one is what the conversation talks to, the other is what aforge
+	// makes its own calls on.
+	if at == 0 || !strings.HasPrefix(lines[at-1], "model ") {
+		t.Fatalf("the crew line does not sit under the model line:\n%s", text)
+	}
+}
+
+// A CREW SOMEBODY ASSEMBLED THEMSELVES READS AS CUSTOM HERE TOO. The word is
+// derived from the four live rows, so the line cannot say "max" over a class
+// that was hand-set out of it.
+func TestStatusSaysCustomOverAHandSetClass(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew max")
+	a.openSettings()
+	toProviders(t, a)
+	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
+	a.closeSettings()
+
+	a.slash("/status")
+	text := lastNote(t, a)
+	line := ""
+	for _, row := range strings.Split(text, "\n") {
+		if strings.HasPrefix(row, "crew ") {
+			line = row
+		}
+	}
+	if line == "" {
+		t.Fatalf("/status says nothing about the crew:\n%s", text)
+	}
+	if !strings.Contains(line, config.CrewCustom) {
+		t.Fatalf("the crew line reads %q over a hand-set class, want custom", line)
+	}
+	if strings.Contains(line, config.CrewMax) {
+		t.Fatalf("the crew line still claims the preset it left: %q", line)
+	}
+	if !strings.Contains(line, "brain gpt-5") {
+		t.Fatalf("the crew line does not name the class that was hand-set: %q", line)
+	}
+}
+
+// THE EMPTINESS LAW: a door opened without a profile directory has no four tier
+// rows to read, so there is no crew line at all — not a label with a default
+// beside it, which would be a claim about a file nobody is writing.
+func TestStatusSaysNothingAboutACrewWithNoProfile(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.model = "m"
+	if a.profileDir != "" {
+		t.Fatalf("this app has a profile at %q and cannot test the empty case", a.profileDir)
+	}
+
+	a.slash("/status")
+	for _, line := range strings.Split(lastNote(t, a), "\n") {
+		if strings.HasPrefix(line, "crew") {
+			t.Fatalf("a session with no profile grew a crew line: %q", line)
+		}
+	}
+}
+
+// THE MODEL PICKER SAYS THE CREW'S NAME BESIDE ITS KEYS, because this list is
+// where a person lands hunting for a change /crew did not make here. It is the
+// word alone: the slot's cells come out of the conversation's name at the other
+// end of the legend, and every printable key is going into the filter box, so a
+// command named here would be a door that cannot be walked through.
+func TestTheModelPickerNamesTheCrewInTheHintSlot(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew max")
+	a.pick.open = true
+
+	if got := a.hintWord(); got != "enter switch · esc · crew max" {
+		t.Fatalf("the picker's hint reads %q", got)
+	}
+
+	// And a door with no profile is the hint exactly as it was.
+	bare := newTestApp(&fakeAgent{model: "m"})
+	bare.pick.open = true
+	if got := bare.hintWord(); got != "enter switch · esc" {
+		t.Fatalf("the hint on a session with no profile reads %q", got)
+	}
+}
+
+// AND THE CONFIRMATION SAYS WHAT IT DID NOT CHANGE, in the same line and at the
+// moment the question is raised. It is still one line.
+func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew max")
+
+	text := lastNote(t, a)
+	if strings.Count(text, "\n") != 0 {
+		t.Fatalf("the confirmation is more than one line:\n%s", text)
+	}
+	if !strings.HasSuffix(text, "· the model you talk to is /model") {
+		t.Fatalf("the confirmation does not say which dial it left alone: %q", text)
+	}
+}
