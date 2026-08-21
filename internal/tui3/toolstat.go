@@ -137,20 +137,27 @@ func (a *app) toolStat(e *entry) (plain, painted string) {
 	}
 	switch e.tool {
 	case "edit":
-		adds, dels := editStat(e.detail.Args)
+		adds, dels, floor := editStat(e.detail.Args)
 		if adds == 0 && dels == 0 {
 			return "", ""
 		}
-		plain = glyphAdd + itoa(adds) + " " + glyphDel + itoa(dels)
-		painted = a.pal.add(glyphAdd+itoa(adds)) + " " + a.pal.del(glyphDel+itoa(dels))
-		return plain, painted
+		// A payload session had to shorten to fit its display cap makes both
+		// figures counts of THE PART OF THE CHANGE THAT ARRIVED, so they are
+		// spelled the way every other capped count on this surface is: with a
+		// trailing "+", meaning at least this many ([countStat]).
+		add, del := glyphAdd+itoa(adds)+floor, glyphDel+itoa(dels)+floor
+		return add + " " + del, a.pal.add(add) + " " + a.pal.del(del)
 
 	case "write":
-		content := argString(argsOf(e.detail.Args), "content")
+		content, capped := argBody(argString(argsOf(e.detail.Args), "content"))
 		if content == "" {
 			return "", ""
 		}
-		return a.dimStat(glyphAdd + itoa(lineCount(content)) + " lines")
+		more := ""
+		if capped {
+			more = "+"
+		}
+		return a.dimStat(glyphAdd + itoa(lineCount(content)) + more + " lines")
 
 	case "read":
 		return a.dimStat(countStat(readLines(e.detail.Output), "line"))
@@ -266,6 +273,31 @@ func outputBody(output string) (string, bool) {
 		}
 	}
 	return strings.TrimRight(text, "\n"), capped
+}
+
+// argBody is one ARGUMENT string with session's display cap removed, and
+// whether it was there.
+//
+// It is [outputBody]'s twin for the other half of a tool event, and it exists
+// because session now spends the arguments cap INSIDE the oversized string
+// values rather than by cutting the JSON (its loop.go): a 40k write's content
+// arrives here ending in `… (12345 more bytes)`, which is a sentence about the
+// payload rather than a line of the file.
+//
+// THE MARKER IS STRIPPED FOR COUNTING AND KEPT FOR READING. Every figure derived
+// from a shortened field is a floor and says so with a trailing "+", the same
+// grammar [countStat] spells a capped result's count in — while the expansion
+// itself shows the marker where it sits, because it is the only thing on screen
+// that says this is not the whole file.
+func argBody(text string) (string, bool) {
+	if !strings.HasSuffix(text, capEnd) {
+		return text, false
+	}
+	at := strings.LastIndex(text, capMarker)
+	if at < 0 {
+		return text, false
+	}
+	return text[:at], true
 }
 
 // showingRe matches bare's read/bash footer, which states the range it handed
@@ -427,13 +459,28 @@ func decodeEdits(raw json.RawMessage) []editPair {
 	return pairs
 }
 
-// editStat is the +N −M of one edit call, summed over its replacements.
-func editStat(args string) (adds, dels int) {
+// editStat is the +N −M of one edit call, summed over its replacements, and the
+// suffix those numbers wear — "+" when any replacement block reached session's
+// display cap and "" when none did.
+//
+// A block that was shortened is diffed as far as it arrived, which is all any
+// reader of this event can do, and the suffix is how the row admits it. The
+// markers themselves come off first: `… (5000 more bytes)` on the end of a
+// replacement is a sentence about the payload, and a diff that counted it would
+// report one changed line that nobody wrote.
+func editStat(args string) (adds, dels int, floor string) {
+	capped := false
 	for _, pair := range editPairs(args) {
-		a, d := diffStat(splitLines(pair.old), splitLines(pair.new))
+		old, oldCut := argBody(pair.old)
+		want, newCut := argBody(pair.new)
+		capped = capped || oldCut || newCut
+		a, d := diffStat(splitLines(old), splitLines(want))
 		adds, dels = adds+a, dels+d
 	}
-	return adds, dels
+	if capped {
+		floor = "+"
+	}
+	return adds, dels, floor
 }
 
 // splitLines breaks a replacement block into lines, treating a trailing newline

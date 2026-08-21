@@ -42,6 +42,18 @@ const formingInterval = 100 * time.Millisecond
 // columns; anything past this cannot appear in one.
 const formingValueLimit = 512
 
+// formingArgsLimit bounds [Event.ArgsText], the raw partial arguments of a call
+// that is still arriving.
+//
+// It is 64k, eight times [argsLimit], and the extra budget costs nothing at all:
+// the provider hands this function the accumulator's whole text and [clip] takes
+// a SUBSTRING of it, which in Go shares the backing array — so a tighter cap
+// never freed a byte, it only decided how much of an already-resident string a
+// surface was allowed to see. What the number actually buys is how far a live
+// preview follows: past this, [Event.Bytes] keeps counting honestly and the
+// preview stops moving, and the whole call arrives on Event.Args a moment later.
+const formingArgsLimit = 64 * 1024
+
 // formingBatch tracks the calls of ONE response as they arrive.
 //
 // Its lifetime is the warm batch's, and for the warm batch's reason: a retry is
@@ -143,7 +155,15 @@ func (b *formingBatch) note(event provider.StreamEvent) (Event, bool) {
 		// The raw text is capped like every other display copy on this struct
 		// (Args, Output): a surface cannot draw four megabytes of file body, and
 		// Bytes beside it is the honest size of what is actually arriving.
-		ArgsText: clip(event.Delta, argsLimit),
+		//
+		// IT HAS ITS OWN BUDGET, AND A LARGER ONE, because of the direction a
+		// surface reads it from. Every other capped copy on this struct is read
+		// head-first, so a head cut loses the end of something nobody was looking
+		// at; this one is read TAIL-first — internal/tui3 draws the last lines of
+		// the file as they arrive — and a head cut at 8k froze that preview at
+		// the two-hundredth line of a file the model was still writing. See
+		// [formingArgsLimit] for why the larger budget is free.
+		ArgsText: clip(event.Delta, formingArgsLimit),
 		Bytes:    len(event.Delta),
 	}, true
 }
@@ -199,6 +219,44 @@ func formingHint(tool string, args *partialArgs) string {
 
 // ── the partial-argument scanner ────────────────────────────────────────────
 
+// PartialString reads ONE named top-level string field out of the raw, partial
+// arguments of a forming call — [Event.ArgsText] — and answers with everything
+// of it that has arrived so far, closed or not, plus whether the field was seen
+// at all.
+//
+// It is the door a surface goes through to draw a write's body while the body is
+// still arriving, and it exists so that door is the SAME SCANNER the hints are
+// built from. ArgsText is half a JSON object; json.Unmarshal answers "this is
+// not valid JSON" about every prefix of one, so a surface that wanted the text
+// had exactly two options — a second tolerant parser of its own, or this. The
+// scanner below already handles the two cases that make a prefix hard: a string
+// that has no closing quote yet, and a text that ends in the middle of an escape
+// (`\` alone, or three of the four hex digits of a `\u`), both of which simply
+// contribute nothing until the rest of them lands.
+//
+// What comes back is the DECODED value — `\n` is a newline here — capped at
+// [PartialStringLimit] bytes taken from the END, because the caller drawing this
+// is drawing the last few lines of a file that is still growing. It cannot fail
+// and it never returns an error: the worst input produces an empty answer.
+func PartialString(argsText, field string) (string, bool) {
+	if argsText == "" || field == "" {
+		return "", false
+	}
+	scan := partialArgs{follow: field}
+	scan.feed(argsText)
+	if !scan.followed {
+		return "", false
+	}
+	return scan.followBuf.text(), true
+}
+
+// PartialStringLimit is how much of a still-arriving string [PartialString]
+// keeps: the LAST 8k bytes of it. A preview is a tail of a dozen rows, and eight
+// kilobytes is enough of one that no terminal tall enough to show more exists —
+// while keeping what a surface holds per forming call bounded whatever the model
+// is spelling out.
+const PartialStringLimit = 8192
+
 // partialArgs reads half-sent tool arguments for the top-level fields that have
 // CLOSED, and is the reason none of this can fail.
 //
@@ -236,6 +294,51 @@ type partialArgs struct {
 
 	values map[string]string
 	closes int
+
+	// follow names ONE field whose value is kept as it streams, rather than at
+	// its closing quote — [PartialString]'s whole addition to this scanner, and
+	// the only thing here that is written for a surface rather than for a hint.
+	// It is empty for every scanner the forming batch builds.
+	follow    string
+	followed  bool
+	followBuf tailBuffer
+}
+
+// tailBuffer keeps the LAST [PartialStringLimit] bytes written to it and forgets
+// the rest, which is the shape a growing file is watched in: the end is where
+// the model is writing, and the beginning scrolled off the moment it arrived.
+//
+// It compacts on a doubling rather than on every byte, so a megabyte of file
+// body costs a constant number of copies of the window instead of one per
+// character.
+type tailBuffer struct{ buf []byte }
+
+func (t *tailBuffer) writeByte(b byte) {
+	t.buf = append(t.buf, b)
+	if len(t.buf) > 2*PartialStringLimit {
+		t.buf = t.buf[:copy(t.buf, t.buf[len(t.buf)-PartialStringLimit:])]
+	}
+}
+
+func (t *tailBuffer) writeString(s string) {
+	for i := 0; i < len(s); i++ {
+		t.writeByte(s[i])
+	}
+}
+
+// text is the window as a string, with a rune the window opens in the MIDDLE of
+// dropped. A tail is cut at a byte offset and the bytes are UTF-8, so without
+// this the first character of the answer would be a replacement glyph on any
+// file whose body is not plain ASCII.
+func (t *tailBuffer) text() string {
+	buf := t.buf
+	if len(buf) > PartialStringLimit {
+		buf = buf[len(buf)-PartialStringLimit:]
+	}
+	for len(buf) > 0 && !utf8RuneStart(buf[0]) {
+		buf = buf[1:]
+	}
+	return string(buf)
 }
 
 // feed scans whatever arrived since the last call and says whether a top-level
@@ -247,7 +350,9 @@ type partialArgs struct {
 // describes bytes that are no longer there.
 func (p *partialArgs) feed(text string) bool {
 	if len(text) < p.consumed {
-		*p = partialArgs{}
+		// The field being followed is the CALLER's instruction, not scanned state,
+		// so it survives a restart the scanned state does not.
+		*p = partialArgs{follow: p.follow}
 	}
 	before := p.closes
 	for index := p.consumed; index < len(text); index++ {
@@ -279,6 +384,12 @@ func (p *partialArgs) step(b byte) {
 		p.capture = p.depth == 1 && p.expect
 		p.inString = true
 		p.buf.Reset()
+		// The followed field is answered for from its OPENING quote, so that a
+		// value the model has sent nothing of yet reads as an empty value rather
+		// than as a field that is not there.
+		if p.following() {
+			p.followed = true
+		}
 	case '{', '[':
 		p.depth++
 		p.expect = false
@@ -336,6 +447,7 @@ func (p *partialArgs) closeString() {
 }
 
 func (p *partialArgs) write(b byte) {
+	p.followByte(b)
 	// Past the cap the bytes are still SCANNED — the quoting has to stay
 	// tracked or the end of the string would be missed — and simply not kept.
 	if !p.keeping() {
@@ -345,10 +457,35 @@ func (p *partialArgs) write(b byte) {
 }
 
 func (p *partialArgs) writeRune(r rune) {
+	p.followRune(r)
 	if !p.keeping() {
 		return
 	}
 	p.buf.WriteRune(r)
+}
+
+// following says the byte about to be written belongs to the ONE value
+// [PartialString] was asked for. It is deliberately independent of [keeping]:
+// the hint's cap exists because a hint is eighty columns, and the whole point of
+// following a field is to get past that.
+func (p *partialArgs) following() bool {
+	return p.follow != "" && p.capture && p.key == p.follow
+}
+
+func (p *partialArgs) followByte(b byte) {
+	if !p.following() {
+		return
+	}
+	p.followed = true
+	p.followBuf.writeByte(b)
+}
+
+func (p *partialArgs) followRune(r rune) {
+	if !p.following() {
+		return
+	}
+	p.followed = true
+	p.followBuf.writeString(string(r))
 }
 
 // keeping says whether the string being scanned is one whose text is worth

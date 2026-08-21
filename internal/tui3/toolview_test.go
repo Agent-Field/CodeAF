@@ -161,7 +161,7 @@ func TestDiffStatCountsOnlyWhatChanged(t *testing.T) {
 				t.Fatalf("diffStat = +%d −%d, want +%d −%d", adds, dels, tc.adds, tc.dels)
 			}
 			// The same arithmetic through the payload the model actually sends.
-			adds, dels = editStat(editArgs(t, "f.go", [2]string{tc.old, tc.new}))
+			adds, dels, _ = editStat(editArgs(t, "f.go", [2]string{tc.old, tc.new}))
 			if adds != tc.adds || dels != tc.dels {
 				t.Fatalf("editStat = +%d −%d, want +%d −%d", adds, dels, tc.adds, tc.dels)
 			}
@@ -193,7 +193,7 @@ func TestTheEditStatReadsEveryArgumentSpelling(t *testing.T) {
 		"edits sent as a string": `{"path":"f.go","edits":"[{\"oldText\":\"a\\nb\",\"newText\":\"a\\nB\"}]"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if adds, dels := editStat(args); adds != 1 || dels != 1 {
+			if adds, dels, _ := editStat(args); adds != 1 || dels != 1 {
 				t.Fatalf("editStat = +%d −%d, want +1 −1", adds, dels)
 			}
 		})

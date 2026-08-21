@@ -223,6 +223,18 @@ type entry struct {
 	// payload; the size of it is a fact, and the fact is what the row shows
 	// (session.go's ArgsText contract).
 	bytes int
+	// formed is the TAIL of the one argument a still-arriving call is previewed
+	// by — a write's file body, and nothing else on the belt ([formingPreviewField]).
+	// It is what the row draws its live block from (toolview.go's [app.formingRows]).
+	//
+	// IT IS NOT THE ARGUMENTS AND IT IS NOT PARSED. session's [session.PartialString]
+	// scans the streamed text for one field's value with the same tolerant scanner
+	// the forming hints are built from, and what lands here is the decoded text
+	// that scan returned — already bounded by session, already only the end of
+	// it. The field above still says how much has arrived; this says what it
+	// looks like. It is dropped the moment the announcement brings the whole
+	// payload, because from then on [entry.detail] is the better answer.
+	formed string
 
 	// began and ended are the block's clock, and the two entry kinds that have
 	// one read it the same way — the moment the thing started and the moment it
@@ -663,8 +675,13 @@ type app struct {
 	// relayout for nothing (see [app.resized]).
 	sizing bool
 
-	pal   palette
-	input editor
+	pal palette
+	// codeCache is the painted rows of the last few source blocks this surface
+	// lexed (codeview.go). Tool rows are drawn fresh on every frame by design, and
+	// this is what stops that from meaning "lex eight hundred lines thirty times a
+	// second" the moment somebody lifts a big read's cap.
+	codeCache codeBlockCache
+	input     editor
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
@@ -2741,10 +2758,14 @@ func (a *app) appendText(text string) {
 // says what it honestly can — how much has arrived, then the tool, then what it
 // is about — gaining detail rather than appearing finished.
 //
-// NOTHING HERE IS PARSED. ev.ArgsText is half a JSON object and is deliberately
-// not kept: the row holds the SIZE of what has arrived and the gloss session
-// built from the fields that have closed, and a surface that unmarshaled a
-// prefix would be drawing a call the model has not finished asking for.
+// NOTHING HERE IS UNMARSHALED. ev.ArgsText is half a JSON object, and half a
+// JSON object is not a payload: the row holds the SIZE of what has arrived, the
+// gloss session built from the fields that have closed, and — for the one tool
+// whose whole substance is one string — the tail of that string as it streams
+// ([formingPreviewField]). A surface that unmarshaled a prefix would be drawing
+// a call the model has not finished asking for; [session.PartialString] is the
+// other thing, a tolerant scan of one field that answers with what has arrived
+// and never invents the rest.
 func (a *app) formTool(ev session.Event) {
 	// The spawn card forms from the same event, because a proposal is a BLOCK
 	// rather than a row and a block that popped into existence whole is the
@@ -2758,6 +2779,7 @@ func (a *app) formTool(ev session.Event) {
 		a.entries = append(a.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
 			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
+			formed: formingPreview(ev.Tool, ev.ArgsText),
 		})
 		a.follow()
 		a.touch()
@@ -2774,7 +2796,44 @@ func (a *app) formTool(ev session.Event) {
 	if ev.Bytes > e.bytes {
 		e.bytes = ev.Bytes
 	}
+	// The live text is taken forward the same way, and for the same reason: the
+	// name arrives on one fragment and the body on the ones after it, so the
+	// FIRST fragment of a write is a text this cannot read yet — and an empty
+	// answer must not wipe what the row was already showing.
+	e.formed = firstNonEmpty(formingPreview(firstNonEmpty(ev.Tool, e.tool), ev.ArgsText), e.formed)
 	a.touch()
+}
+
+// formingPreviewField names the argument a call that is still ARRIVING is shown
+// the contents of, per tool. It has one entry, and the shortness of the table is
+// the decision rather than an omission.
+//
+// `write` qualifies because its content is APPENDED TO and never revised: what
+// has arrived is the beginning of the file and will still be the beginning of
+// the file when the call is whole, so a person reading it is reading something
+// true. Nothing else on the belt is like that.
+//
+// `edit` is the near miss and it is deliberately absent. Its block is a DIFF,
+// and a diff needs both sides whole — half an old_string against a new_string
+// nobody has started sending is not a change, it is a claim about one — so a
+// live edit block would redraw itself into a different diff as the second half
+// arrived, which is the exact "read the same diff twice" defect [app.previewHead]
+// is written to avoid. And mechanically it could not be had cheaply anyway: bare
+// spells an edit as {path, edits:[{oldText, newText}]}, and the streamed strings
+// are therefore NESTED, where session's forming scanner deliberately does not
+// look (its toolhint.go). The whole diff still lands the instant the call is
+// announced, which is the moment it becomes true.
+var formingPreviewField = map[string]string{"write": "content"}
+
+// formingPreview is the streamed text a forming row draws, or "" for a call this
+// surface previews nothing of.
+func formingPreview(tool, argsText string) string {
+	field, previewed := formingPreviewField[tool]
+	if !previewed {
+		return ""
+	}
+	text, _ := session.PartialString(argsText, field)
+	return text
 }
 
 // claimForming finds the row this forming event belongs to, or -1 for a call
@@ -2873,6 +2932,11 @@ func (a *app) announceTool(ev session.Event) {
 		e.tool = firstNonEmpty(ev.Tool, e.tool)
 		e.text = firstNonEmpty(ev.Hint, e.text)
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		// The streamed tail is let go here: the whole payload has landed, so the
+		// preview under this row is now drawn from the arguments, and holding the
+		// last eight kilobytes of every file the session ever wrote would be the
+		// transcript keeping a copy nothing reads.
+		e.formed = ""
 		a.follow()
 		a.touch()
 		return
@@ -2906,6 +2970,9 @@ func (a *app) beginTool(ev session.Event) {
 		e.began = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.text = firstNonEmpty(ev.Hint, e.text)
+		// Let the streamed tail go, for [app.announceTool]'s reason — this is the
+		// other door a forming row leaves by.
+		e.formed = ""
 		a.follow()
 		a.touch()
 		return
@@ -4625,10 +4692,11 @@ func (a *app) turnStats(turn int) []fileStat {
 		fields := argsOf(e.detail.Args)
 		switch e.tool {
 		case "edit":
-			adds, dels := editStat(e.detail.Args)
+			adds, dels, _ := editStat(e.detail.Args)
 			add(argString(fields, "path"), adds, dels)
 		case "write":
-			add(argString(fields, "path"), lineCount(argString(fields, "content")), 0)
+			content, _ := argBody(argString(fields, "content"))
+			add(argString(fields, "path"), lineCount(content), 0)
 		}
 	}
 	return out
@@ -4709,10 +4777,11 @@ func (a *app) computeStats() hudStats {
 		fields := argsOf(e.detail.Args)
 		switch e.tool {
 		case "edit":
-			adds, dels := editStat(e.detail.Args)
+			adds, dels, _ := editStat(e.detail.Args)
 			out.adds, out.dels = out.adds+adds, out.dels+dels
 		case "write":
-			out.adds += lineCount(argString(fields, "content"))
+			content, _ := argBody(argString(fields, "content"))
+			out.adds += lineCount(content)
 		case "bash":
 			if argString(fields, "background") != "true" {
 				continue

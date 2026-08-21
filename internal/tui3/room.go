@@ -987,8 +987,10 @@ func (a *app) roomCloseLive() {
 
 // roomFormTool draws — and keeps redrawing — the row for a call the node is
 // STILL SPELLING OUT. It is [app.formTool] over the room's list, down to the
-// rule that nothing is parsed: the row holds how much has arrived and the gloss
-// session built from the fields that have closed, never the half-sent JSON.
+// rule that nothing is unmarshaled: the row holds how much has arrived, the
+// gloss session built from the fields that have closed, and the streamed tail of
+// the one field a forming call is previewed by ([formingPreviewField]) — never
+// the half-sent JSON itself.
 //
 // There is no spawn card half here, unlike out in the conversation: a node does
 // not propose tasks to the person standing in its room.
@@ -1003,6 +1005,7 @@ func (a *app) roomFormTool(ev session.Event) {
 		a.roomAppend(entry{
 			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
 			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
+			formed: formingPreview(ev.Tool, ev.ArgsText),
 		})
 		return
 	}
@@ -1016,6 +1019,7 @@ func (a *app) roomFormTool(ev session.Event) {
 	if ev.Bytes > e.bytes {
 		e.bytes = ev.Bytes
 	}
+	e.formed = firstNonEmpty(formingPreview(firstNonEmpty(ev.Tool, e.tool), ev.ArgsText), e.formed)
 	a.roomTouched()
 }
 
@@ -1073,6 +1077,7 @@ func (a *app) roomAnnounceTool(ev session.Event) {
 		e.tool = firstNonEmpty(ev.Tool, e.tool)
 		e.text = firstNonEmpty(ev.Hint, e.text)
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		e.formed = ""
 		a.roomTouched()
 		return
 	}
@@ -1104,6 +1109,7 @@ func (a *app) roomBeginTool(ev session.Event) {
 		e.began = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.text = firstNonEmpty(ev.Hint, e.text)
+		e.formed = ""
 		a.roomTouched()
 		return
 	}
