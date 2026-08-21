@@ -816,7 +816,12 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	a.messages[0] = textMessage("system", a.system+a.memoryText+a.cardText)
+	// AND THE OTHER WINDOWS COME LAST, after the card, because that is the order
+	// of volatility and the cache reads downward: the base prompt never moves,
+	// memory moves per turn, the card moves when the conversation moves, and
+	// what a window three desks away is doing moves on nobody's schedule
+	// (taskdelta.go).
+	a.messages[0] = textMessage("system", a.system+a.memoryText+a.cardText+a.elsewhereText)
 }
 
 // refreshCardLocked re-renders the state card into message[0]. It is the card's

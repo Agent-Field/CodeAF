@@ -80,6 +80,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is openaf", "starting-aforge"},
 		{"can you access my email", "accounts"},
 
+		// The eighth wave: the chat knowing about the person's OTHER terminals.
+		// Both of these were asked of a build where the answer was "no", and
+		// both are asked again the moment it becomes yes — a person with three
+		// windows open on one repository wants to know whether the one in front
+		// of them is working from a picture of the world that includes the
+		// others.
+		{"do you know what my other windows are doing", "tasks"},
+		{"will you notice work from another terminal", "tasks"},
+		{"what else is running on this project right now", "tasks"},
+
 		// The fourth wave, and it is the one this build most needs to answer
 		// out of a page rather than out of the model's imagination: aforge
 		// carrying something from one conversation into the next. Every one of
