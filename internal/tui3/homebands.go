@@ -293,7 +293,6 @@ func (a *app) bandFoldAt(rowText string) (bandFoldLine, bool) {
 func init() {
 	registerHomeBand(homeBand{name: "state", order: bandOrderState, draw: drawStateBand})
 	registerHomeBand(homeBand{name: "work", order: bandOrderWork, draw: drawWorkBand})
-	registerHomeBand(homeBand{name: "last", order: bandOrderLeftOff, draw: drawLastBand})
 	registerHomeBand(homeBand{name: "facts", order: bandOrderSpend, draw: drawFactsBand})
 }
 
@@ -334,19 +333,6 @@ func drawWorkBand(a *app, ctx bandContext) []string {
 		}
 	}
 	return a.bandFold(ctx, "work", work, homeTaskRows*2, "tasks")
-}
-
-// drawLastBand is the last thing said in the conversation.
-func drawLastBand(a *app, ctx bandContext) []string {
-	last := a.homeLast(ctx.subject.row)
-	if last == "" {
-		return nil
-	}
-	var said []string
-	for _, wrapped := range wrap(last, ctx.width) {
-		said = append(said, ctx.pal.dim(wrapped))
-	}
-	return said
 }
 
 // drawFactsBand is the dim arithmetic under the card.

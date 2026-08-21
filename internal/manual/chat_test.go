@@ -234,6 +234,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
+		{"what happened in this conversation while I was away", "home"},
+		{"where are the files this conversation produced", "home"},
+		{"where did we leave off in this conversation", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
