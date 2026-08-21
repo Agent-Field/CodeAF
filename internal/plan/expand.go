@@ -298,6 +298,11 @@ const (
 	// division that gave back the node in different words, or in the same size.
 	RefusalOnePiece  = "the division gave back one piece, which is the node again"
 	RefusalNoSmaller = "its pieces came back no smaller than it is"
+	// RefusalNotPaying is the EV-lookahead's verdict: the node could divide,
+	// but the measured history says its parts do not buy back the fixed cost a
+	// second worker pays before it produces. It is a measured refusal, not a
+	// structural one.
+	RefusalNotPaying = "the measured history says the split does not pay for itself"
 )
 
 // JudgeSplit is the burden of proof as a predicate over one node.

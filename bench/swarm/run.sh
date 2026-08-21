@@ -46,13 +46,13 @@ Tiers (power, not coverage):
 
 tasks.txt rows may carry an optional 6th pipe-field: a comma-separated arm
 list to run for that task. `all` (the default, also the value when the field
-is absent) means baseline,swarm,inhibition,quorum.
+is absent) means baseline,swarm,inhibition,quorum,splitgate.
 EOF
   exit 0
 fi
 # The four arms in fixed order (comma-separated, like the tasks.txt field);
 # tasks.txt may select a subset.
-ARMS_DEFAULT="baseline,swarm,inhibition,quorum"
+ARMS_DEFAULT="baseline,swarm,inhibition,quorum,splitgate"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AFORGE_BIN="${AFORGE_BIN:-aforge}"
 RESULTS="${RESULTS:-$HERE/results}"
@@ -74,7 +74,7 @@ CELL_TIMEOUT="${CELL_TIMEOUT:-900}"
 # The corpus. task|category|verdict|fixture|tier[|arms] — pipe-split, read
 # from tasks.txt one per line. Adding a task is adding a row and two files;
 # this script never changes. The optional 6th field is a comma-separated arm
-# list (default `all` = baseline,swarm,inhibition,quorum).
+# list (default `all` = baseline,swarm,inhibition,quorum,splitgate).
 TASKS="${TASKS:-$HERE/tasks.txt}"
 
 
@@ -91,12 +91,13 @@ run_cell() {
   # cooperative decomposition; AFORGE_MECHANISM selects the inhibition/quorum
   # extension (baseline = none). The baseline arm runs swarm off; its
   # mechanism is pinned to baseline for a clean, comparable CSV.
-  local swarm mech
+  local swarm mech gate
   case "$arm" in
-    baseline)   swarm=0; mech=baseline ;;
-    swarm)      swarm=1; mech=baseline ;;
-    inhibition) swarm=1; mech=inhibition ;;
-    quorum)     swarm=1; mech=quorum ;;
+    baseline)   swarm=0; mech=baseline; gate=0 ;;
+    swarm)      swarm=1; mech=baseline; gate=0 ;;
+    inhibition) swarm=1; mech=inhibition; gate=0 ;;
+    quorum)     swarm=1; mech=quorum; gate=0 ;;
+    splitgate)  swarm=1; mech=splitgate; gate=1 ;;
     *) echo "unknown arm: $arm" >&2; return 1 ;;
   esac
   local dir="$RESULTS/${task}-${arm}-s${seed}"
@@ -112,7 +113,7 @@ run_cell() {
   fi
   local t0 t1 wall ec cost nodes urows verdict_out
   t0=$(date +%s)
-  (cd "$dir" && AFORGE_SWARM="$swarm" AFORGE_MECHANISM="$mech" AFORGE_MODEL="$MODEL" \
+  (cd "$dir" && AFORGE_SWARM="$swarm" AFORGE_MECHANISM="$mech" AFORGE_SPLITGATE="$gate" AFORGE_MODEL="$MODEL" \
     timeout "$CELL_TIMEOUT" \
     "$AFORGE_BIN" do "$(cat "$HERE/tasks/$task.txt")" \
       -db "$dir/store.db" -keep -timeout "$CELL_TIMEOUT" --yes-spend --json \

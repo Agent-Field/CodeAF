@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"log"
 	"strings"
 
@@ -38,6 +39,15 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	planClient, workClient *liveClient, planContextTokens int,
 	node store.Node, outcome *exec.Outcome, artifacts []string) (int, error) {
 	if graph == nil || plans == nil || !outcome.SplitRequest.Valid() {
+		return 0, nil
+	}
+	// Split gate: refuse divisions that won't pay for their overhead.
+	if os.Getenv("AFORGE_SPLITGATE") != "0" && !splitEligible(outcome.SplitRequest, node.Brief) {
+		log.Printf("split gate: refused division for %s (too small or not parallel)", node.ID)
+		return 0, nil
+	}
+	if splitOverlaps(outcome.SplitRequest) {
+		log.Printf("split gate: refused division for %s (parts overlap)", node.ID)
 		return 0, nil
 	}
 	// The planning client, not the job's. A division is a planning question
@@ -128,4 +138,41 @@ func firstScope(brief string) string {
 		s = s[:60]
 	}
 	return s
+}
+
+// splitEligible decides whether a task is big enough and parallel enough to
+// benefit from division. Refuses small tasks (<3 parts) and tasks without
+// evidence of multiple independent items (files, modules, images, etc).
+func splitEligible(req *exec.SplitRequest, brief string) bool {
+	if len(req.Parts) < 3 {
+		return false
+	}
+	evidence := strings.ToLower(req.Evidence)
+	briefLower := strings.ToLower(brief)
+	for _, word := range []string{"file", "module", "image", "item", "component",
+		"function", "test", "bug", "section", "chapter", "document"} {
+		if strings.Contains(evidence, word) || strings.Contains(briefLower, word) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitOverlaps detects when two parts share filenames or paths, meaning
+// workers would duplicate or fight over the same work.
+func splitOverlaps(req *exec.SplitRequest) bool {
+	for i := 0; i < len(req.Parts); i++ {
+		for j := i + 1; j < len(req.Parts); j++ {
+			a := strings.ToLower(req.Parts[i].Brief)
+			b := strings.ToLower(req.Parts[j].Brief)
+			for _, token := range strings.Fields(a) {
+				if len(token) > 3 && strings.Contains(b, token) {
+					if strings.Contains(token, "/") || strings.Contains(token, ".") {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
