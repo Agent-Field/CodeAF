@@ -27,10 +27,13 @@ section on what rewind does not undo before you rely on it.
 
 ## Seeing the whole conversation — the rewind timeline
 
-`/rewind` opens a fullscreen page listing the **whole** conversation, oldest first. This is
-the one that can reach turns the inline mode cannot: the inline mode picks out of the
-transcript drawn on screen, and a resumed conversation only draws its last **40** entries,
-so anything older than that is unreachable from `esc esc` and reachable here.
+`/rewind` opens a fullscreen page listing the **whole** conversation, oldest first, with no
+scrolling needed to get at the old end of it. This is the one that can reach turns the
+inline mode cannot: the inline mode picks out of the transcript **drawn on screen**, and a
+conversation you came back to opens showing its last **40** blocks. Scrolling up pulls the
+older ones in 40 at a time until you reach the first message (see the screen page), so the
+inline mode reaches as far back as you have scrolled — and `/rewind` reaches the whole thing
+without your having to.
 
 What is on it:
 
@@ -312,6 +315,12 @@ it does not recognise.
 
 Launching with no arguments resumes **this directory's most recently written conversation**,
 chosen by file modification time. A directory that has never held one gets a fresh file.
+
+It opens showing the last **40** blocks of that conversation rather than all of it, which is
+what keeps the first frame quick. Everything older is still there and still reachable:
+scroll up and aforge reads the previous 40 out of the file and puts them above what you are
+reading, over and over, until you are at the first message. While there is more above you
+the top row says `· earlier · keep scrolling`. The screen page has the keys.
 
 `aforge chat --session <path>` takes the path you named as given — *"a path a person named
 is a path they mean, existing or not"*. `~` is expanded and the directory is created. The
