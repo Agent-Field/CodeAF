@@ -1046,12 +1046,19 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "1", "2", "3":
-		// A CARD OWNS THE THREE DIGITS AND NOTHING ELSE DOES — while it is still
-		// a QUESTION. Settled, and with no card up at all, they fall through to
-		// the box below and are typed, which is what a person pressing `2` in
-		// the middle of "make it 2pm" meant.
+		// A CARD OWNS ALL THREE DIGITS WHILE IT IS STILL A QUESTION, and
+		// answers with the ones it drew. Settled, or with no card up at all,
+		// they fall through to the box below and are typed, which is what a
+		// person pressing `2` in the middle of "make it 2pm" meant.
 		if ex.asking() {
-			return a.answerCard(ex, msg.String())
+			// AND A DIGIT WITH NO CHIP UNDER IT IS INERT RATHER THAN TYPED, for
+			// the reason [app.standingKey] states: the card owns all three while
+			// it is asking, and a stray `3` left in the box would turn the next
+			// `1` into a correction instead of a yes.
+			if ex.view.offers(msg.String()) {
+				return a.answerCard(ex, msg.String())
+			}
+			return nil
 		}
 
 	case "enter":
@@ -1147,14 +1154,21 @@ func (ex *homeExchange) startTurn(now time.Time) {
 	ex.seen = false
 }
 
-// answerCard is 1 / 2 / 3 on the ratification card.
+// answerCard is a digit on the ratification card.
 //
-// THE THREE ANSWERS ARE THE CONTRACT'S THREE, and no fourth is invented here:
-// yes stands it up as proposed, a change goes back to the model to re-propose,
-// and once runs the action now and creates nothing
-// ([session.StandingAnswer]).
+// THE ANSWERS ARE THE CONTRACT'S, and no fourth is invented here: yes stands it
+// up as proposed, a change goes back to the model to re-propose, and once runs
+// the action now and creates nothing ([session.StandingAnswer]).
+//
+// WHICH OF THEM THE CARD HAS IS THE ENGINE'S ANSWER and not this pane's
+// ([standingCard.chips], from [session.StandingOptions]): a one-off reminder
+// draws two chips, and its `3` reaches here only if a caller ignored
+// [standingCard.offers], so it is refused rather than acted on.
 func (a *app) answerCard(ex *homeExchange, pressed string) tea.Cmd {
 	card := ex.card
+	if !ex.view.offers(pressed) {
+		return nil
+	}
 	switch pressed {
 	case "1":
 		ex.settle(standSetWord, standYesWord)

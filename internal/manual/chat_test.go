@@ -281,6 +281,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my reminder card disappear when I opened another chat", "asking-from-home"},
 		{"how do I know ask here is doing something", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
+		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
+		{"why is there no once on my reminder card", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

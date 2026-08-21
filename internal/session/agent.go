@@ -80,14 +80,19 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
-	system := config.System
+	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
-		system = renderSystem(config)
+		system, own = renderSystem(config), true
 	}
 	agent := &Agent{
 		config: config,
 		system: system,
-		model:  config.Model,
+		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
+		// theirs, and re-rendering ours over the top of it later would be this
+		// file deciding what another door's worker is told.
+		systemAt:  time.Now(),
+		systemOwn: own,
+		model:     config.Model,
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
 		// with the header's id, which survives every resume.
@@ -625,6 +630,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if a.remembers() {
 		a.memoryText = ""
 	}
+	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
+	// when it has gone stale enough to be worth the cold prefix (prompt.go's
+	// clockRefresh says why that is free).
+	a.refreshClockLocked(time.Now())
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
