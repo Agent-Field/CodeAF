@@ -201,6 +201,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+
+		// The eleventh wave: the ambient side — the things a conversation leaves
+		// behind that keep working after the window is closed. Every one of
+		// these is said in the ordinary words somebody uses when they are NOT
+		// asking for work now, which is the whole recognition problem: "run the
+		// tests" is a turn, and "run the tests whenever I push" is one of these.
+		{"remind me at 6 to leave", "keeping-an-eye"},
+		{"tell me when ci goes red", "keeping-an-eye"},
+		{"can you run something every monday morning", "keeping-an-eye"},
+		{"does it keep working when I close the terminal", "keeping-an-eye"},
+		{"how do I stop a reminder", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
