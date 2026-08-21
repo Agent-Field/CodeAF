@@ -287,6 +287,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never drawn in it. The page now says what is drawn and when, and this
 		// is the sentence a person types when it looks like nothing happened.
 		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		// `●` used to mean only "firing", and only inside the one window doing
+		// it. It is now a marker on disk that every window reads, so a person
+		// can meet the dot without having started anything themselves.
+		{"why does my watch show a filled dot right now", "keeping-an-eye"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

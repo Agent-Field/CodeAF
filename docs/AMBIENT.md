@@ -1,9 +1,13 @@
 # The ambient side — what aforge does when you are not asking
 
-*Design doc, 2026-08-20. Status: grooming. Decisions marked OPEN are not settled.
-Nothing here is built. Companion to CHAT-V3.md (the session) and home-design.md (the
-place a window opens onto). STANDING.md and ARCHITECTURE.md Decision 5 are the v1
-ancestors; this document says what v3 takes from them and what it leaves.*
+*Design doc, 2026-08-20; brought level with the code 2026-08-21. Status: BUILT —
+`internal/standing` (the files, the pass, the OS timer), `internal/session`
+(the card, the sentinel, the runner) and `internal/tui3` (home's band, the
+`ask here` exchange). Where this document and the code disagree, the code is
+right and this document is the bug. Companion to CHAT-V3.md (the session) and
+home-design.md (the place a window opens onto). STANDING.md and
+ARCHITECTURE.md Decision 5 are the v1 ancestors; this document says what v3
+takes from them and what it leaves.*
 
 ## The one-sentence design
 
@@ -131,14 +135,38 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
 ## Part 3 — The mechanism in v3 terms
 
 1. **Recognition, not declaration.** The model reads standing words and calls one belt
-   tool (working name `stand`; OPEN) with the person's words, a watch spec, an action,
-   and rails. The surface draws the card. Nothing stands until yes.
+   tool, `stand`, with the person's words, a watch spec, an action, and rails. The
+   surface draws the card. Nothing stands until yes.
+
+   **The card's answers are the kind's answers.** A one-off reminder offers two —
+   `1 yes, set it up` and `2 change when`, with esc declining — because "once, not
+   standing" said of a thing that already fires once and retires is a chip that does
+   nothing. Everything else keeps the third: `3 once, not standing` runs the action now
+   and arms nothing. `change when` is never in the engine's list of answers; it opens
+   the box for the person's own correction.
+
+   **And the model knows the clock.** The system prompt carries a `Now:` line with the
+   date, the minute and the zone, refreshed inside a live session so a conversation
+   opened at breakfast does not do arithmetic from breakfast's minute at lunch; a
+   relative moment goes to `stand`'s own `when.in` ("2m", "1h30m") and is resolved
+   against the real clock at the instant of the call. A moment that has already passed
+   is REFUSED with the time it is now — never quietly moved to tomorrow.
 2. **Storage is files.** `~/.aforge/v3/standing/<id>.json` — one document per charter,
    written temp + rename, flocked on mutate. `standing/ledger-YYYY-MM-DD.jsonl` —
    append-only, for the daily rail and max-per-day. `standing/<id>/runs/<n>/` — each
    firing is an ordinary session folder, so `/cost`, `/export`, the task index and the
    room all work unchanged. Runs live **outside** `projects/` so home never scans them,
    and "no news" runs are reaped after 7 days by the existing sweep law.
+
+   **A run says what it came to, in its own folder.** Each firing writes one word into
+   `runs/<n>/came-to`, and exactly one of them — `nothing` — is the sweep's licence over
+   the folder. A task firing comes to nothing when its headless child saved no file, left
+   nothing waiting for a person and had nothing to say when it finished; a run like that
+   delivers no line and draws no row, because the whole of the news would be that there
+   was no news. Everything else — a line said, work landed, a needs-your-look, a failure,
+   and any run whose folder never said what it came to — is kept like any session.
+   Reaping removes the FOLDER and nothing else: the day's ledger row is money and is
+   never swept, and the item goes on remembering that it ran and what came of it.
 3. **Who ticks.** Any open window takes `v3/locks/standing.lock` and runs the pass every
    5 minutes. The OS timer is the backup for "no terminal open". Same binary, same pass,
    same lock.
@@ -146,12 +174,29 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
    project under the person's banked rules. Anything that would ask stops the run as
    `needs your look`; its presence file says so; home sorts it to the top.
    **Rules are tenure:** no counters. What you banked is what runs unattended.
-5. **Where news lands.** In the planting conversation's journal — as a steering note if
-   the window is live, as a queued note replayed under one `while you were away` fold
-   if not — and as a glyph on home. A "no" leaves one line in the charter's own log.
-6. **Presence, felt not seen.** One dim status-line segment only when charters exist,
+5. **Where news lands: four roads, first one that ends at a person.** (a) The origin
+   conversation if it is open in this process — the row is DRAWN AT ONCE beside the
+   steering note, so a person sitting in the room hears it in the room. (b) Any other
+   open conversation of the same project, most recently touched first, because the window
+   somebody is actually sitting in is a better address than a file. (c) The origin's own
+   inbox, folded under one `while you were away` the next time it opens. (d) The
+   PROJECT's inbox for an item born in an `ask here` errand — an exchange is not a row
+   anywhere, so its own folder is a dead letter office. A firing is never steered into an
+   errand's pane. A "no" leaves one line in the item's own log and nothing anywhere else.
+6. **Presence, felt not seen.** One dim status-line segment only when items exist,
    breathing only while a firing runs. The card is the editor: pause, retire, change the
    cadence in words, in the conversation or by clicking.
+
+   **`●` crosses processes, because a marker does.** A pass runs in whichever of a live
+   window or `aforge tick` took the lock, so "firing now" is knowledge one process has
+   and every other one needs. While a pass holds an item it writes
+   `standing/<id>/running` — the process id, the moment it started, and `checking` or
+   `firing` — and removes it when that item's pass ends. Any window reads it: the row
+   wears `●`, the card says `● checking now · since 4s` or `● firing now`, and the status
+   segment turns. It is DERIVED AND ALWAYS DOUBTED: a marker whose process is gone, or
+   which is older than the 120 s one pass may last, is a leftover and draws nothing — so
+   a machine that lost power mid-firing never shows a watch that has been checking since
+   Tuesday. An item a rail skipped is never marked at all; it was in nobody's hands.
 7. **Money.** Per-firing cap + daily rail, both quoted on the card, both read from the
    spend journal that already exists. The sentinel call is billed as an auxiliary line.
 8. **Honesty.** `/status` prints keeping watch: installed / window-only / off, last
@@ -193,7 +238,7 @@ is added behind that package — rebuildable from the folders at any time, never
 truth, and no caller changes. That is the whole plan, and it is deliberately not built
 now.
 
-## Part 5 — Where you say it: home, errands, and the record (OPEN)
+## Part 5 — Where you say it: home, errands, and the record
 
 The problem in the person's words: "remind me at 6" or "tell me when CI goes red" is
 something you say from anywhere, most naturally from home. It is not a project
@@ -205,40 +250,55 @@ The tempting answer — a chat that is not stored — is wrong twice: the name i
 the record is the value. "Why did I get this reminder?" must open the conversation that
 made it. Nothing that fires may lack provenance.
 
-**The proposed rule, one sentence: home lists a conversation by what it came to.**
+**What was built instead of "home lists a conversation by what it came to": an item is
+its own row.** That earlier rule filed the conversation under the thing it made, and a
+person's own reading of the screen is what killed it — a conversation and the thing it
+left behind are two objects with two lives. The chat goes quiet and folds away; the item
+goes on firing for a year. Filing one under the other either hides a live item behind a
+fold about a dead chat, or keeps a dead chat on the list because something it made is
+still running. So an item is a row of its own, under its own project, in one band of
+three with a door for the rest — and opening it opens the conversation that asked for
+it, which is the half of the old rule that was right: **"why did I get this?" always has
+an answer, and the answer is always a door.** An item made at home that never became a
+conversation says so rather than offering a door onto nothing.
 
-- Still talking → a session row, as today.
-- Came to something that stands → shown as that thing, under its project, in a quiet
-  band: `◦ every Monday 9am · weekly update · fired Mon`. Opening it opens the
-  conversation behind it, with the card at the top and the firings under it. Saying
-  "make it 8" or "stop this" there edits it. The session is not hidden; it is filed
-  under the thing it became, the way a task's record row is a door to its transcript.
-- Came to one answer and went quiet → it folds under `…3 more, quiet since Tue`, as
-  every quiet session already does. A retired reminder is this case.
+**Answering in place was built, and it is a row.** `ask here` — one ↑ above
+`start a new conversation`, or ctrl+enter — opens a real session against the standing
+root rather than under `v3/projects/`, so home never lists it and the record still
+exists. Four rules, and the first three exist because the first cut had the exchange
+living on the home view, where opening another conversation to check something killed
+the errand mid-question and the engine answered the card nobody could see any more with
+`the card was left unanswered — nothing was set up`:
 
-No new primitive: a charter carries the id of the session that made it, and home's
-grouping reads that field. Search sees through it (a charter's words are matched the
-way task outcomes are).
+- **it outlives home.** The list of exchanges is on the app; home merely draws it.
+  Closing home, walking away, opening another conversation — none of them touch the
+  agent.
+- **several at once.** A second `ask here` ADDS one; nothing is replaced.
+- **the pane is the row's.** The exchange is drawn in the right pane only while the
+  cursor is on its row; every other row keeps its ordinary card.
+- **it is filed when it is over, seen, and left** — once its pane has been drawn after
+  it settled and the cursor has moved off it. One folder, which only ever MOVES: made
+  under `standing/exchanges/<id>/`, moved to `standing/<item id>/exchange/` when
+  something stands, moved to a project bucket if it is continued as a conversation, and
+  left where it was made — for the sweep to reap after seven days — if it came to
+  nothing.
 
-What is still open:
+**Which project owns an errand typed at home** is the project under the cursor, and the
+person's home directory (`~`) when on none; a machine-wide reminder's workspace is `~`,
+which is why home draws a `~` heading for a workspace that has items and no
+conversations at all.
 
-1. **The word.** "standing watch" is resident vocabulary and banned from the chat
-   corpus. Candidates for the band and the tool: *watches*, *keeping an eye on*, *on its
-   own*, *routines*. Pick one; use it everywhere.
-2. **Which project owns an errand typed at home.** A reminder belongs to no project; a
-   CI watch belongs to one. Proposal: the project under the cursor when you start
-   typing, `~` when on none — and home's `elsewhere` limit means, today, only this
-   window's project can take it. Lifting that limit is the same work home-design.md
-   already names.
-3. **Answering in place.** For a true one-liner, home's right pane could carry the card
-   and a turn or two without opening a conversation on screen — still a session folder
-   underneath, for the record. This is a phase-two nicety, not the mechanism.
-4. **Outward lane.** Desktop notification for `needs your look` and reminders, off by
-   default. v1 had none.
-5. **Unattended scope.** Full task under banked rules (proposed), or read-and-report
-   only until a person is back.
-6. **Reuse of `internal/watchdog` and `internal/lease`** as-is (tested, ~1.4k LOC) versus
-   a v3-styled rewrite.
+**The word** is *keeping an eye on* — the band's fold says `…3 more keeping an eye`, the
+status segment says `keeping an eye on 2`, and the manual page is `keeping-an-eye.md`.
+"standing watch" stays resident vocabulary and stays out of the chat corpus.
+
+Still open:
+
+1. **Outward lane.** Desktop notification for `needs your look` and reminders, off by
+   default. v1 had none, and neither does this.
+2. **Unattended scope beyond one project.** A firing runs a full task under banked
+   profile rules; home's `elsewhere` limit still means a window can only open a
+   conversation in its own project.
 
 ## What this is not
 

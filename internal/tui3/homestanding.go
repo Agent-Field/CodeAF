@@ -105,8 +105,13 @@ const (
 // are resolved once, where the row is built, so a card and the row it belongs
 // to can never disagree.
 type StandingItemView struct {
-	Item    standing.Item
+	Item standing.Item
+	// Running is whether a pass has this item in its hands at this instant, and
+	// Mark is what that pass says it is doing ([standing.RunningMark]). They are
+	// one answer read once: a row wearing `●` and a card that could not say what
+	// the `●` meant would be two readings of one marker.
 	Running bool
+	Mark    standing.RunningMark
 	News    bool
 }
 
@@ -165,14 +170,25 @@ func (a *app) standItems(workspace string) []StandingItemView {
 		if item.Status == standing.StatusRetired {
 			continue
 		}
+		mark, running := a.standRunning(item.ID)
 		views = append(views, StandingItemView{
 			Item:    item,
-			Running: a.stands.Running != nil && a.stands.Running(item.ID),
+			Running: running,
+			Mark:    mark,
 			News:    a.home.standNews(item),
 		})
 	}
 	standTriage(views)
 	return views
+}
+
+// standRunning is the seam asked once, with a nil seam reading as "nothing is
+// running", which is what a surface with no way to ask must say.
+func (a *app) standRunning(id string) (standing.RunningMark, bool) {
+	if a.stands.Running == nil {
+		return standing.RunningMark{}, false
+	}
+	return a.stands.Running(id)
 }
 
 // standTriage puts one project's items in the order home reads them: what needs
@@ -251,7 +267,7 @@ func standDrawn(views []StandingItemView) int {
 //
 //	◦ every Monday at 9, draft the weekly update   Mondays 9am · last Mon
 //	▲ keep main green                    needs your look · the fix touches …
-//	● check the deploy                                        running · 4m
+//	● check the deploy                              checking now · since 4s
 //
 // IT IS PACKAGE-LEVEL AND EXPORTED ON PURPOSE, for [StandingCardRows]'s reason:
 // home's errand box is a different lane's work, and the one thing that must not
@@ -320,10 +336,7 @@ func standRollup(view StandingItemView, now time.Time) string {
 	case item.NeedsPerson != "":
 		return "needs your look · " + item.NeedsPerson
 	case view.Running:
-		if age := sinceAt(item.LastFired, now); age != "" {
-			return "running · " + age
-		}
-		return "running"
+		return standRunWord(view, now)
 	case item.Status == standing.StatusPaused:
 		return homeItemPaused
 	}
@@ -347,6 +360,52 @@ func standRollup(view StandingItemView, now time.Time) string {
 		return words
 	}
 	return joinDot(words, "last "+standDayWord(item.LastFired, now))
+}
+
+// standRunWord is what a pass in flight says, on the row and on the card alike:
+//
+//	checking now · since 4s
+//	firing now
+//
+// IT SPEAKS THE MARKER'S OWN WORD and never a third one. `checking` is the look
+// — a probe running, files being fingerprinted, the sentinel deciding — and
+// `firing` is the work that followed a yes; those are two different amounts of
+// somebody's money and two different reasons to wait, so a row that flattened
+// both into "running" would be dropping the only fact this glyph carries.
+//
+// A marker with nothing to say reads as the look, because that is the half of a
+// pass every item goes through and the half a marker of unknown age was most
+// likely left by.
+func standRunWord(view StandingItemView, now time.Time) string {
+	what := strings.TrimSpace(view.Mark.What)
+	if what == "" {
+		what = standing.RunningChecking
+	}
+	return joinDot(what+" now", standRunSince(view.Mark.Since, now))
+}
+
+// standRunSince is how long the pass has been on this item, and it is the ONE
+// age on this surface counted in seconds.
+//
+// [sinceAt] answers "now" for everything under a minute, which is the right
+// coarseness for a conversation somebody last spoke in and useless here: a
+// firing starts, runs for twenty seconds and is gone, so "checking now · since
+// now" would be the card spending a clause to say nothing. Under a second it
+// says NOTHING AT ALL — a thing that started this instant has no age worth a
+// person's eye, and the emptiness law drops the clause rather than rounding it
+// to zero.
+func standRunSince(at, now time.Time) string {
+	if at.IsZero() || now.IsZero() {
+		return ""
+	}
+	age := now.Sub(at)
+	switch {
+	case age < time.Second:
+		return ""
+	case age < time.Minute:
+		return "since " + itoa(int(age/time.Second)) + "s"
+	}
+	return "since " + sinceAt(at, now)
 }
 
 // standDayWord is when something last happened, in the words a person uses for
@@ -440,6 +499,14 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 			state = append(state, pal.accent(line))
 		}
 	}
+	if view.Running {
+		// THE ONE LINE ON THIS CARD ABOUT RIGHT NOW, and it wears the glyph the
+		// row across the gutter is wearing so the two read as one claim. It is
+		// dim like every other fact here: a pass in flight is not somebody's to
+		// do — it is the machine working, which is exactly what a person is
+		// meant to feel and not look at (docs/AMBIENT.md Part 3).
+		state = append(state, pal.dim(fit(standRunMark(pal.ascii)+" "+standRunWord(view, now), width)))
+	}
 	if words := strings.TrimSpace(item.When.Words); words != "" {
 		state = append(state, pal.dim(fit(words, width)))
 	}
@@ -455,6 +522,18 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 	}
 	bands = append(bands, []string{pal.dim(fit(homeItemActions, width))})
 	return homeBands(bands, room)
+}
+
+// standRunMark is the `●` the card leads its running line with. It is
+// [homeLiveGlyph] rather than [standGlyph]'s answer on purpose: the card is
+// saying "a pass is on this right now" and nothing else, where the row's glyph
+// is one mark carrying the item's whole situation and would show `▲` on an item
+// that also needs somebody.
+func standRunMark(ascii bool) string {
+	if ascii {
+		return homeLiveASCII
+	}
+	return homeLiveGlyph
 }
 
 // standHistory is the two sentences an item can tell about itself: the last time
@@ -597,7 +676,7 @@ func (a *app) keepingCount() (int, bool) {
 			continue
 		}
 		count++
-		if a.stands.Running != nil && a.stands.Running(item.ID) {
+		if _, running := a.standRunning(item.ID); running {
 			firing = true
 		}
 	}

@@ -324,9 +324,44 @@ item is not checked and not fired, and keeps everything else it knows: what it
 has cost, when it last fired, what it last saw.
 
 To see what stands here, ask what you have set up. Each row leads with the glyph
-every aforge screen uses — `▲` needs you, `●` firing now, `◦` waiting for its
-time, `∙` paused or stopped — then your own words, then the cadence in words. A
-project with nothing set up answers `Nothing stands in this project yet.`
+every aforge screen uses — `▲` needs you, `●` being checked or fired right now,
+`◦` waiting for its time, `∙` paused or stopped — then your own words, then the
+cadence in words. A project with nothing set up answers
+`Nothing stands in this project yet.`
+
+## Why does my watch show a filled dot right now
+
+`●` on an item means a pass has that item in its hands **at this moment** — not
+that something is wrong, and not that it has news for you. It is one of two
+things, and the item's card says which:
+
+```
+● checking now · since 4s
+● firing now
+```
+
+**Checking** is the look: a probe command running, the files you are watching
+being fingerprinted, the cheap yes/no judgment deciding whether there is
+anything to say. **Firing** is the work that followed a yes — the line being
+delivered, or the overnight job running.
+
+The dot is not guessed from anything the item remembers. While a pass is working
+on an item, whichever process is doing it leaves a small marker in that item's
+own folder — `~/.aforge/v3/standing/<id>/running` — naming the process, the
+moment it started and which of the two halves it is in, and removes it when that
+item's pass ends. Every aforge screen reads that file. So a firing started by
+the OS timer with no window open at all, or by a window in another terminal,
+still shows `●` on your home and in your status line.
+
+A marker is always doubted before it is believed. If the process that wrote it
+is gone, or the marker is older than the **2 minutes** one pass may last, it is
+read as a leftover and no dot is drawn — a machine that lost power mid-firing
+never leaves a watch reading "checking now" for the rest of the week.
+
+Most passes are over in far less than a second, so the ordinary state of a
+healthy watch is `◦`. Seeing `●` means you caught one working. On the status
+line the `keeping an eye on N` segment is still while nothing is running and
+turns while something is.
 
 ## Where is the record of a reminder I made from home
 
@@ -358,14 +393,21 @@ exactly two things, and only after **7 days** with nothing touching them:
 - an **errand that came to nothing** — a folder under
   `~/.aforge/v3/standing/exchanges/` that never became a standing thing and was
   never continued as a conversation;
-- a **run that delivered nothing** — a firing that said nothing, landed nothing
-  and left nothing waiting for you. Each run writes down what it came to, and
-  only the word `nothing` may be swept.
+- a **run that came to nothing** — a firing whose work saved no file, left
+  nothing waiting for you and had nothing to say when it finished. Nothing is
+  delivered for one of those: no line in your chat, no row on home, because the
+  whole of the news would have been that there was no news. Each run writes down
+  what it came to, and only the word `nothing` may be swept.
 
 Nothing else is ever removed. Not your items, not the ledgers, not a run that
 said something, landed something, failed, or is waiting for you; not a run whose
 folder never said what it came to; not a folder something still holds open; and
 never a conversation under `~/.aforge/v3/projects/`, whatever its age.
+
+**Sweeping a run removes the folder and nothing else.** The money line stays: the
+day's ledger row for that firing is never reaped, and the item goes on
+remembering that it ran, when, and what it came to — so `4 runs · spent $0.08`
+on its card is still right long after the folders behind those runs are gone.
 
 ## A reminder fired but nothing showed up in my chat
 

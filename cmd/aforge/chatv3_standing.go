@@ -52,11 +52,6 @@ import (
 // honest destination is a file an operator can read afterwards.
 const standingLogName = "standing.log"
 
-// standingTickWindow bounds ONE pass. It is generous for a pass that found
-// nothing (a stat per item) and short enough that a wedged probe cannot hold
-// the store's lock against every other window on the machine.
-const standingTickWindow = 120 * time.Second
-
 // v3StandingRoot is where everything standing lives: ~/.aforge/v3/standing,
 // resolved through internal/home so AFORGE_HOME moves it with the rest
 // (Decision 26 — one home, one seam).
@@ -220,7 +215,7 @@ func runStandingTick(store *standing.Store) {
 		noteStanding("could not start a pass: " + err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), standingTickWindow)
+	ctx, cancel := context.WithTimeout(context.Background(), standing.TickWindow)
 	defer cancel()
 	if _, err := pass.Tick(ctx); err != nil {
 		if err == standing.ErrHeld {
@@ -249,11 +244,13 @@ func noteStanding(line string) {
 // proposes through. A nil seam is a zero StandingSeam, which internal/tui3 reads
 // as the ambient side absent: no band on home, no segment, no /status line.
 //
-// Running is deliberately NOT supplied. A firing runs inside whichever process
-// holds the tick lock, and nothing on disk says "firing now" in a way a second
-// window could believe; a guess drawn as a breathing glyph would be the screen
-// asserting what it cannot derive. The item's own LastFired and NeedsPerson are
-// the honest half, and the surface already draws those.
+// Running IS supplied, and what makes that honest is that something on disk now
+// says it. A firing runs inside whichever process holds the tick lock — a live
+// window, or the operating system's timer running `aforge tick` with nobody
+// sitting anywhere — and internal/standing's running.go is that process leaving
+// a marker in the item's folder for the length of the pass it is doing. Every
+// other window reads it, doubts it (a dead pid, an age past one pass) and draws
+// `●` only on what survives, so the glyph is derived rather than asserted.
 func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 	if seam == nil || seam.Store == nil {
 		return tui3.StandingSeam{}
@@ -268,6 +265,11 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			return items
 		},
 		Save: store.Save,
+		// The marker in the item's own folder, doubted by the store before it
+		// answers. This is the whole of "some other process is on this item
+		// right now" — the surface's `●`, the card's `checking now`, and the
+		// one segment on the status line that moves.
+		Running: store.Running,
 	}
 	if watch != nil {
 		out.Watch = func() (standing.WatchStatus, bool) {

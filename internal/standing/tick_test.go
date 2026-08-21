@@ -896,6 +896,17 @@ func TestTickWritesWhatEachRunCameTo(t *testing.T) {
 		if err != nil || back.LastRun != runDir {
 			t.Fatalf("%s: the item does not name its run: %+v %v", probe.kind, back, err)
 		}
+		// AND A RUN THAT CAME TO NOTHING STILL RAN. The folder is the only thing
+		// the sweep may reap; the item's own account of itself and the day's
+		// ledger are what say it happened at all, and the ledger is money — it is
+		// never reaped, whatever the run came to.
+		if len(back.Previous) != 1 || !strings.Contains(back.Previous[0], probe.kind) {
+			t.Fatalf("%s: the item's previous line is %v", probe.kind, back.Previous)
+		}
+		spend, err := store.Today(made.ID, now)
+		if err != nil || spend.Fired != 1 {
+			t.Fatalf("%s: the ledger counted %d firings (%v)", probe.kind, spend.Fired, err)
+		}
 	}
 }
 

@@ -242,6 +242,19 @@ type standingRunner struct {
 	// exactly one thing — the project inbox, road 4 of this file's delivery
 	// order — and an empty root simply means that road is closed.
 	root string
+	// child builds the headless session one firing's work runs in. It is [New]
+	// in every real build and it is a field for [newAgent]'s reason: it is the
+	// seam a test that wants a scripted child shares with the door that wants a
+	// live provider, and nothing else about a firing changes between them.
+	child func(Config) (*Agent, error)
+}
+
+// newChild is the runner's one way to make a firing's session.
+func (r *standingRunner) newChild(cfg Config) (*Agent, error) {
+	if r.child != nil {
+		return r.child(cfg)
+	}
+	return New(cfg)
 }
 
 // NewStandingRunner is the seam a door fills [standing.Ticker.Runner] with.
@@ -495,7 +508,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if err != nil {
 		return standing.Outcome{}, err
 	}
-	agent, err := New(cfg)
+	agent, err := r.newChild(cfg)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
@@ -515,11 +528,20 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		limit = standingRunSteps
 	}
 	var reply strings.Builder
-	needs := ""
+	needs, saved := "", false
 	for event := range events {
 		switch event.Kind {
 		case EventTextDelta:
 			reply.WriteString(event.Text)
+		case EventToolEnd:
+			// A CALL THAT SAVED SOMETHING IS THE LANDING, and [savingTools] is
+			// the one place this build says which calls those are (task_run.go).
+			// It is read on the END of a call and never on its start: a `write`
+			// that failed saved nothing, and a run whose only act was a refused
+			// write came to exactly nothing.
+			if savingTools[event.Tool] {
+				saved = true
+			}
 		case EventToolFinished:
 			steps++
 			// THE STEP CAP IS A STOP AND NOT A REFUSAL. Whatever the run has
@@ -541,7 +563,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	}
 
 	outcome := standing.Outcome{
-		Kind: "landed",
+		Kind: standingCameTo(saved, strings.TrimSpace(reply.String()), needs),
 		Text: clip(strings.TrimSpace(reply.String()), standingOutcomeClip),
 		USD:  agent.Usage().CostUSD,
 	}
@@ -549,13 +571,56 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
 		// person can allow is not a failure and is not a success; it is work
 		// waiting for them, and home sorts on exactly that.
-		outcome.Kind, outcome.NeedsPerson = "needs-you", needs
+		outcome.NeedsPerson = needs
 		if outcome.Text == "" {
 			outcome.Text = needs
 		}
 	}
+	if outcome.Kind == standing.OutcomeNothing {
+		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
+		// tell: no line, no landing, nothing waiting. Walking the delivery roads
+		// with an empty sentence would put `◦ keep main green: ` into the
+		// conversation somebody is sitting in, which is an interruption whose
+		// whole content is that it was not worth interrupting for.
+		//
+		// IT IS STILL RECORDED. The pass writes the ledger row, the item's log
+		// line and its `previous` list from this outcome whatever it says
+		// (internal/standing's tick.go), so the money and the fact that it ran
+		// survive the run folder the sweep will eventually reap.
+		return outcome, nil
+	}
 	r.deliver(item, outcome.Kind, outcome.Text, runDir)
 	return outcome, nil
+}
+
+// standingCameTo decides what one firing's work came to, from the three things
+// a headless run can leave behind.
+//
+// A RUN CAME TO NOTHING WHEN IT LEFT NOTHING: it saved no file, it stopped on
+// nothing a person has to allow, and it ended with nothing to say. That is
+// [standing.OutcomeNothing]'s own definition read back — "no line, no landing,
+// nothing waiting for the person" — and it is the ONE outcome whose run folder
+// the sweep is allowed to reap after [standing.RunKeep].
+//
+// WHY THE DELIVERABLES INDEX IS NOT ASKED. Every engine-side writer of a row in
+// it (artifacts.go) is one of `generate_image`, `generate_video`, `speak` and
+// `generate_music`, and all four are in [savingTools] already — so reading the
+// index would be a second answer to a question one map already answers, and the
+// first day the two disagreed the honest one would be whichever this function
+// did not use (design-law §ONE SOURCE OF TRUTH).
+//
+// AND A SENTENCE COUNTS AS SOMETHING. A nightly job that changed no file and
+// reported "the three flaky tests passed this time" delivered that report to
+// the person ([standingRunner.deliver]), and a run whose words somebody read is
+// not a run that came to nothing however little it touched.
+func standingCameTo(saved bool, report, needs string) string {
+	switch {
+	case needs != "":
+		return "needs-you"
+	case saved || strings.TrimSpace(report) != "":
+		return "landed"
+	}
+	return standing.OutcomeNothing
 }
 
 // standingRunConfig is the run's own session: the parent launch, pointed at a
