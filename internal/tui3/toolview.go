@@ -60,28 +60,47 @@ type toolDetail struct {
 
 // ── THE STATE MACHINE (this wave) ──
 //
-//	◌ edit internal/session/loop.go          queued: the model asked, nothing ran
+// Every wide row is the same two things: a SENTENCE that starts at the rail, and
+// a RIGHT COLUMN that ends at the frame. The sentence says what the call is
+// pointed at; the column says how it is going and what it cost.
+//
+//	├─▶ edit internal/session/loop.go                                        ◌
 //	│ pending                                 …and here is the change it will make
 //	│ @@ -1,4 +1,4 @@
 //	│ -const argsLimit = 400
 //	│ +const argsLimit = 8192
-//	? bash rm -rf build                      waiting on YOU, the whole row violet
-//	⠋ bash go test ./…                       running: the spinner, and only here
-//	  read internal/session/loop.go   · 189 lines   0.4s   done, quietly
-//	✗ bash go build ./…             exit 1        1.2s   failed, already open
+//	├─▶ bash rm -rf build                                                    ?
+//	├─▶ bash go test ./internal/tui3                                      ⠋ 4s
+//	├─▶ read internal/session/loop.go                          189 lines · 0.4s
+//	╰─▶ bash go build ./…                                     ✗ exit 1 · 1.2s
+//
+// The states, and what the column says in each:
+//
+//   - QUEUED — the model asked, nothing ran. An empty circle, dim, alone.
+//   - CONSENT — waiting on YOU, the whole row violet, and a "?" in the column.
+//   - RUNNING — the spinner, and its own age beside it: ⠋ 4s. A spinner is a
+//     claim that something is turning and says nothing else, so a two-minute
+//     `go test` carrying only a spinner is indistinguishable from a two-second
+//     one; the clock is the difference. NOTHING ELSE ANIMATES ON THIS SURFACE.
+//   - DONE — what the call came to, then how long it took: 189 lines · 0.4s.
+//     NO SUCCESS GLYPH, EVER: a column of ✓ is a column that must be read to
+//     learn nothing, and a quiet line is a success.
+//   - FAILED — the ✗ leads the column, and the row is already open.
 //
 // The spinner used to cover all four of the first states, and that was the
 // defect: a mutating call spun while the RESPONSE was still streaming and
 // nothing had started, and a call parked on a consent question spun exactly
-// like one doing work. A spinner is a claim that something is turning, so it
-// now means that and nothing else — and the two states it used to cover got
-// the marks they always deserved: an empty circle for work not begun, and the
-// question hue for work waiting on a person.
+// like one doing work.
 //
-// The elapsed time trails a finished call, dim, at the line's right end — the
-// column the spinner just vacated. It is the call's OWN duration (begin to end)
-// and not the turn's, and a call too fast to have one does not draw one: see
-// [elapsedWord].
+// THE COLUMN DROPS WHOLE SEGMENTS RATHER THAN CLIPPING CHARACTERS, in a stated
+// order — the size first, then the duration, and the mark is never given up (see
+// [app.toolTail]). Half a figure is worse than no figure: "12.4 K" is a number a
+// person has to distrust, and a column cut two cells short of its spinner is a
+// row that claims nothing is happening. Below the floor for the mark alone, the
+// column is absent entirely, which is the emptiness law.
+//
+// The figures are the call's OWN — [elapsedWord] is begin to end of the tool,
+// never the turn's span — and one too fast to have a duration draws none.
 
 // clusterRows lays out one contiguous run of tool entries — d.entries[from:to],
 // all from one turn — and appends it to out. This is where the fold lives,
@@ -217,13 +236,25 @@ func (a *app) moreRow(i int, stem string, more int) row {
 	}
 }
 
-// toolLine is the line itself.
+// toolLine is the line itself: a sentence that starts at the rail, and a right
+// column that ends at the frame.
 //
-// The pieces are measured as PLAIN text and painted afterwards, which is the
-// only way the widths land: a width measured through escape sequences is a
-// width measured wrong. When the row is too narrow for everything, the stat
-// goes first and the target is truncated last — the target is the substance,
-// and a stat nobody has room for is a number about a line nobody can read.
+// THE WIDTH IT IS GIVEN IS THE WIDTH IT TAKES, exactly, and that is the one law
+// this function has. The pieces are measured as PLAIN text and painted
+// afterwards, because a width measured through escape sequences is a width
+// measured wrong — and nothing here is reserved for machinery that is not on
+// the row. A line laid out two cells wider than the column it is drawn in is
+// cut back by [app.railJoin] with an ellipsis, and the two cells it loses are
+// the two the right column lives in: the defect that produced `0…` where a
+// spinner should have been. So the indent every tool row is drawn with is
+// subtracted HERE, from the frame's width, before anything is laid out in it
+// (render.go's INDENT LAW is what applies it).
+//
+// When the row is too narrow for everything, the right column gives up whole
+// segments in a stated order ([app.toolTail]) and the target is truncated last:
+// the target is the substance, and a figure nobody has room for is a number
+// about a line nobody can read. The target keeps [toolTargetFloor] cells
+// whatever else is on the row.
 func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	// A CALL STILL ARRIVING IS ITS OWN SENTENCE, at every tier: what is on the
 	// line is how much of the instruction has landed, not what the call did.
@@ -236,78 +267,39 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	if layoutTier(width) == tierPhone {
 		return a.toolLinePhone(e, i, last, width)
 	}
+	// THE INDENT LAW COSTS THIS ROW TWO CELLS. Every tool row is drawn two
+	// columns right of the frame's edge (workfold.go's [workIndent], applied by
+	// render.go's pass), so the width this line may lay itself out to is the
+	// frame's less that — and a line that spent the whole frame was cut back by
+	// [app.railJoin] with an ellipsis over the two cells the right column lives
+	// in. It is subtracted AFTER the tier has been chosen, because the tier is a
+	// fact about the FRAME: a row that picked its tier from its own indent would
+	// take the phone's shape two cells early.
+	width -= workIndentCols(width)
 	name, fallback := toolWords(e.tool, e.text)
 	target := toolTarget(e.tool, e.detail.Args, e.text)
 	if target == "" {
 		target = fallback
 	}
-	statPlain, statPainted := a.toolStat(e)
-	// The elapsed time rides the stat slot on its way to the right end. It is
-	// the last thing the row gives up when the terminal is narrow, because it is
-	// the only thing on the line that is not about WHAT the call did.
-	elapsed := elapsedWord(e)
-	// THE COUNT-UP, which is the same figure one state earlier: while the call
-	// runs, its age sits BESIDE the spinner rather than in place of it. The two
-	// say different things and a row needs both — the spinner is the claim that
-	// something is turning, the clock is how long it has been turning, and a
-	// two-minute `go test` with only a spinner on it is indistinguishable from a
-	// two-second one. It is measured plain and drawn painted, because the last
-	// seconds of a bounded call take a hue of their own (the countdown, below).
-	counting, countingInk := a.countClock(e)
-	// What the person answered when this call was asked about (consent.go). It
-	// rides the stat slot because it is the same kind of fact — dim, trailing,
-	// about the call rather than in it — and because a row that was approved
-	// must still read as one row.
-	if e.decision != "" {
-		if statPlain == "" {
-			statPlain, statPainted = e.decision, a.pal.dim(e.decision)
-		} else {
-			statPlain += " · " + e.decision
-			statPainted += a.pal.dim(" · " + e.decision)
-		}
-	}
-	// And what the person DID to the call while it ran: a foreground command
-	// sent to the background with ctrl+g says which job it became
-	// (background.go). It rides the same slot for the same reason — dim,
-	// trailing, about the call rather than in it — and it is last, because it is
-	// the most recent thing to have happened to the row.
-	if e.bg != "" {
-		if statPlain == "" {
-			statPlain, statPainted = e.bg, a.pal.dim(e.bg)
-		} else {
-			statPlain += " · " + e.bg
-			statPainted += a.pal.dim(" · " + e.bg)
-		}
-	}
-	mark := a.mark(e)
-
 	rail := a.pal.rail(last)
+	// MEASURED, NOT ASSUMED. [railWidth] is what the rail costs and every glyph
+	// tier is drawn to it, but the row that has to add up is this one, so the
+	// figure it adds up is the one it is about to draw.
+	railCells := ansi.StringWidth(rail)
 	nameWidth := ansi.StringWidth(name)
 
-	// The right edge holds the spinner, or the elapsed time that replaces it
-	// when the call is done; the ✗ is appended to the text instead, so a failure
-	// reads as part of the sentence rather than as a column.
-	reserve := 1
-	if e.status == toolFailed {
-		reserve = 2
+	// room is everything the sentence and the column have between them: the
+	// frame, less the rail, the name, and the single space after the name.
+	room := width - railCells - nameWidth - 1
+	tail, tailWidth := a.toolTail(e, room-toolGap-toolTargetFloor)
+	// And the target takes everything the column did not, which on a wide frame
+	// is everything: no reservation is held back for machinery that is not on
+	// this row.
+	targetRoom := room
+	if tailWidth > 0 {
+		targetRoom -= toolGap + tailWidth
 	}
-	switch {
-	case elapsed != "":
-		reserve = ansi.StringWidth(elapsed) + 1
-	case counting != "":
-		// The clock, the space, and the spinner cell it stands beside.
-		reserve = ansi.StringWidth(counting) + 2
-	}
-	room := width - railWidth - nameWidth - reserve
-	// Measured once and then spent twice: the slot's width decides whether the
-	// stat fits at all, and — when it does — how much of the line it took.
-	statWidth := ansi.StringWidth(statPlain) + 2
-	if room-statWidth < 8 {
-		statPlain, statPainted = "", ""
-	} else {
-		room -= statWidth
-	}
-	target, targetWidth := fitWidth(target, room-1)
+	target, targetWidth := toolFit(e.tool, target, targetRoom)
 
 	// A selected line takes the accent on its rail — no band, no marker
 	// column, nothing that changes the width. Selection is a brightness here,
@@ -322,38 +314,249 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		painted = a.pal.accent(rail)
 	}
 	line := painted + a.paintName(e, name)
-	used := railWidth + nameWidth
+	used := railCells + nameWidth
 	if target != "" {
 		line += " " + a.paintTarget(e, target)
 		used += 1 + targetWidth
 	}
-	if statPlain != "" {
-		line += "  " + statPainted
-		used += statWidth
-	}
-	if e.status == toolFailed {
-		line += " " + mark
-		used += 2
-		mark = ""
-	}
-	// tail is the unpainted width of whatever ends the line: one cell for a
-	// glyph, the whole word for an elapsed time, both for a call still counting.
-	tail := 1
-	switch {
-	case elapsed != "":
-		mark, tail = a.pal.dim(elapsed), ansi.StringWidth(elapsed)
-	case counting != "" && mark != "":
-		mark, tail = countingInk+" "+mark, ansi.StringWidth(counting)+2
-	}
-	if mark == "" {
+	if tailWidth == 0 {
 		return line
 	}
-	// The spinner — or what replaced it, or what now stands beside it — sits at
-	// the line's right end.
-	if pad := width - used - tail; pad > 0 {
-		line += strings.Repeat(" ", pad)
+	// The column is flush against the frame's right edge, and the row adds up to
+	// exactly the width it was given.
+	pad := width - used - tailWidth
+	if pad < 1 {
+		pad = 1
 	}
-	return line + mark
+	return line + strings.Repeat(" ", pad) + tail
+}
+
+// toolGap is the space between the sentence and the right column. One cell,
+// because a figure run straight into a path reads as part of the path.
+const toolGap = 1
+
+// toolTargetFloor is how many cells the target keeps before the row is allowed
+// to spend any on the right column.
+//
+// Seven is the last few characters of a name and the ellipsis that says the rest
+// was cut — the least that is still a FRAGMENT of a path rather than a stub of
+// one. Both tiers read it, so the wide row and the phone row give the same thing
+// up at the same moment, and it is the floor both of them have always had: the
+// wide row spelled it as eight cells of a slot that included the target's
+// leading space, and the phone row restated that as a constant of its own.
+const toolTargetFloor = 7
+
+// ── THE RIGHT COLUMN ────────────────────────────────────────────────────────
+//
+//	├─▶ web_fetch https://apnews.com/article/rates-…-c6e1f27a5c9b4e     ⠋ 4s
+//	├─▶ read internal/session/loop.go                       189 lines · 0.4s
+//	╰─▶ bash go test ./internal/tui3                       ✗ exit 1 · 1m02s
+//
+// The mark, then what the call came to, then how long it took — and a row that
+// cannot hold all three sheds the size first, the duration next, and the mark
+// never ([app.toolTail]).
+
+// tailSeg is one segment of the column: the painted text, and the cells it takes.
+// The two travel together because a width measured through escape sequences is a
+// width measured wrong, and because [app.mark] is the one thing on this row
+// whose glyph the palette chooses.
+type tailSeg struct {
+	text  string
+	width int
+}
+
+// toolTail is the right column, painted, and the cells it took.
+//
+// IT DROPS WHOLE SEGMENTS RATHER THAN CLIPPING CHARACTERS, and the order is
+// stated: the size goes first, then the duration, and the MARK IS NEVER GIVEN
+// UP while there is room for it at all. Half a figure is worse than no figure —
+// "12.4 K" is a number a person has to distrust — and the mark is the state of
+// the call, which is the one thing on the row that cannot be inferred from
+// anything else. Below the room for the mark alone the column is absent
+// entirely, which is the emptiness law: nothing, rather than a bare ellipsis.
+//
+// A FAILURE'S ✗ LEADS THE COLUMN rather than trailing the sentence. It used to
+// sit against the target, which put the loudest glyph on the surface at a
+// different column on every row; a state belongs where every other state is,
+// and a person scanning a cluster for the one that broke is scanning one column.
+func (a *app) toolTail(e *entry, budget int) (string, int) {
+	mark := a.mark(e)
+	clockPlain, clockPainted := a.toolClock(e)
+	return a.tailOf(e, tailSeg{text: mark, width: ansi.StringWidth(mark)}, clockPlain, clockPainted, budget)
+}
+
+// tailOf is the column itself, given what leads it and the clock the row tells
+// time by. The two are handed in rather than read here so the drop order below
+// is stated once and the tier decides nothing about it.
+func (a *app) tailOf(e *entry, head tailSeg, clockPlain, clockPainted string, budget int) (string, int) {
+	statPlain, statPainted := a.toolStat(e)
+	// What the person answered when this call was asked about (consent.go). It
+	// rides the size segment because it is the same kind of fact — dim, trailing,
+	// about the call rather than in it — and because a row that was approved
+	// must still read as one row.
+	if e.decision != "" {
+		statPlain, statPainted = joinFact(statPlain, statPainted, e.decision, a.pal.dim(e.decision))
+	}
+	// And what the person DID to the call while it ran: a foreground command
+	// sent to the background with ctrl+g says which job it became
+	// (background.go). It rides the same segment for the same reason, and it is
+	// last, because it is the most recent thing to have happened to the row.
+	if e.bg != "" {
+		statPlain, statPainted = joinFact(statPlain, statPainted, e.bg, a.pal.dim(e.bg))
+	}
+
+	// THE DROP ORDER, WRITTEN DOWN ONCE: what the call came to, then how long it
+	// took. The column sheds from the front of this list.
+	figures := make([]tailSeg, 0, 2)
+	if statPlain != "" {
+		figures = append(figures, tailSeg{text: statPainted, width: ansi.StringWidth(statPlain)})
+	}
+	if clockPlain != "" {
+		figures = append(figures, tailSeg{text: clockPainted, width: ansi.StringWidth(clockPlain)})
+	}
+	for from := 0; from <= len(figures); from++ {
+		text, cells := a.joinTail(head, figures[from:])
+		if cells <= budget {
+			return text, cells
+		}
+	}
+	if head.width > 0 && head.width <= budget {
+		return head.text, head.width
+	}
+	return "", 0
+}
+
+// joinTail lays the column out: the mark, then the figures.
+//
+// The mark is followed by a SPACE and the figures by a DOT, and that is not
+// decoration — the mark is the call's state and the figures are quantities about
+// it, so "⠋ 4s" is a spinner with a clock beside it while "189 lines · 0.4s" is
+// two numbers in a list. A dot after the mark would read as a third number.
+func (a *app) joinTail(mark tailSeg, figures []tailSeg) (string, int) {
+	text, cells, drawn := mark.text, mark.width, 0
+	for _, seg := range figures {
+		if seg.width == 0 {
+			continue
+		}
+		switch {
+		case cells == 0:
+			text, cells = seg.text, seg.width
+		case drawn == 0:
+			text, cells = text+" "+seg.text, cells+1+seg.width
+		default:
+			text, cells = text+a.pal.dim(" · ")+seg.text, cells+3+seg.width
+		}
+		drawn++
+	}
+	return text, cells
+}
+
+// joinFact appends one fact to another with the surface's own separator, in
+// both forms at once — a plain string to measure and a painted one to draw. It
+// is not homestanding.go's [joinDot], which joins one string to another; this
+// one keeps the measured copy and the drawn copy in step, which is the whole
+// reason the right column can add up.
+func joinFact(plain, painted, addPlain, addPainted string) (string, string) {
+	if plain == "" {
+		return addPlain, addPainted
+	}
+	return plain + " · " + addPlain, painted + " · " + addPainted
+}
+
+// toolClock is the row's ONE figure of time, plain and painted: a finished
+// call's own duration, or a running one's age with whatever it says about the
+// bound it runs under.
+//
+// The two are mutually exclusive by construction — [elapsedWord] answers only
+// for a call that has reported finishing and [app.countClock] only for one that
+// is running — and only one of them is ever on a row, because a finished call's
+// duration and a running call's age are the same figure said a different way.
+func (a *app) toolClock(e *entry) (plain, painted string) {
+	if word := elapsedWord(e); word != "" {
+		return word, a.pal.dim(word)
+	}
+	return a.countClock(e)
+}
+
+// ── THE TARGET, CUT WHERE IT CAN AFFORD TO BE ───────────────────────────────
+
+// elideFloor is the narrowest a middle cut is worth making. Under it the two
+// fragments left either side of the ellipsis are shorter than the ellipsis is
+// worth, and one readable end says more than two unreadable ones.
+const elideFloor = 12
+
+// toolFit cuts a target to the cells the row can give it — and it cuts a PATH
+// or a URL in the MIDDLE.
+//
+// A URL's two ends are the two a person reads: the host says whose page this is,
+// the tail says which page, and the query string between them is what a reader
+// skips. An end cut keeps the half nobody wanted — three fetches of one news
+// site cut at the end are three identical rows — so the target keeps both ends
+// and spends one cell on the ellipsis between them.
+//
+// A COMMAND IS CUT AT THE END, and so is a pattern, because both are read left
+// to right and their first words are what they do. A middle cut on `go test
+// ./internal/…/tui3` would hide the verb and keep the argument.
+func toolFit(tool, target string, width int) (string, int) {
+	switch tool {
+	case "read", "edit", "write", "ls", "web_fetch":
+		// The qualifier keeps its place: it is the line range the path was read
+		// with, and a cut that took it would leave a path claiming it was read
+		// whole (the parameter hierarchy, below, is what paints the two).
+		head, rest, found := strings.Cut(target, " ")
+		if !found {
+			return elideMiddle(target, width)
+		}
+		if room := width - 1 - ansi.StringWidth(rest); room >= elideFloor {
+			cut, cells := elideMiddle(head, room)
+			return cut + " " + rest, cells + 1 + ansi.StringWidth(rest)
+		}
+		return fitWidth(target, width)
+	}
+	return fitWidth(target, width)
+}
+
+// elideMiddle keeps both ends of a string, with one cell of ellipsis between
+// them, and answers with what it drew and what that measured.
+//
+// THE HEAD GROWS TO THE AUTHORITY WHERE THERE IS ONE. An even split through
+// "https://www.reuters.com/world/…" can land inside the host, which is the one
+// part of a URL a person identifies it by, so the scheme and the host are kept
+// whole whenever they fit with something left over for the tail.
+func elideMiddle(s string, width int) (string, int) {
+	if width <= 0 {
+		return "", 0
+	}
+	measured := ansi.StringWidth(s)
+	if measured <= width {
+		return s, measured
+	}
+	if width < elideFloor {
+		return fitWidth(s, width)
+	}
+	keep := width - 1
+	head := (keep + 1) / 2
+	if at := urlAuthority(s); at > head && at <= keep-elideFloor/3 {
+		head = at
+	}
+	cut := ansi.Truncate(s, head, "") + glyphMore + ansi.Cut(s, measured-(keep-head), measured)
+	return cut, ansi.StringWidth(cut)
+}
+
+// urlAuthority is how many cells of a URL are its scheme and its host — the
+// part before the path begins — or zero for anything that is not one. A path
+// has no authority and gets the even split, which is right: every segment of a
+// path is the same kind of thing.
+func urlAuthority(s string) int {
+	at := strings.Index(s, "://")
+	if at < 0 {
+		return 0
+	}
+	rest := s[at+3:]
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+		return ansi.StringWidth(s[:at+3+slash])
+	}
+	return ansi.StringWidth(s)
 }
 
 // ── THE PHONE ROW (tierPhone) ───────────────────────────────────────────────
@@ -381,6 +584,12 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 //   - THE CLOCK IS ONE FIGURE ([app.phoneClock]). A finished call's duration or
 //     a running one's age, never a bound stated beside an age — that is
 //     arithmetic, and arithmetic is the first thing forty-four columns give up.
+//   - AND IT SHEDS WHAT IT CANNOT HOLD IN THE WIDE ROW'S ORDER. The size goes
+//     first and the duration after it, and the state is never given up at all —
+//     the same order [app.toolTail] applies to the wide row's right column, off
+//     the same floor ([toolTargetFloor]). This tier reaches the moment sooner
+//     and never differently, which is what stops a person who has read one
+//     shape from having to learn a second.
 //
 // The rail stays. It costs four cells and it is what says these rows are one
 // object rather than four unrelated lines in a column of prose, which is worth
@@ -388,11 +597,6 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 
 // phoneGutterWidth is the state column: the mark, and the space after it.
 const phoneGutterWidth = 2
-
-// phoneStatFloor is how many cells the target must keep before the row is
-// allowed to spend any on a stat. It is the wide row's own floor, restated so
-// the two tiers drop the same thing at the same moment.
-const phoneStatFloor = 8
 
 func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 	name, fallback := toolWords(e.tool, e.text)
@@ -411,7 +615,7 @@ func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 	clockPlain, clockPainted := a.phoneClock(e)
 
 	rail := a.pal.rail(last)
-	railWidth := ansi.StringWidth(rail)
+	railCells := ansi.StringWidth(rail)
 	gutter, gutterWidth := a.phoneGutter(e)
 	nameWidth := ansi.StringWidth(name)
 
@@ -419,8 +623,12 @@ func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 	if clockPlain != "" {
 		reserve = ansi.StringWidth(clockPlain) + 1
 	}
-	room := width - railWidth - gutterWidth - nameWidth - reserve
-	if statWidth := ansi.StringWidth(statPlain) + 2; statPlain == "" || room-statWidth < phoneStatFloor {
+	room := width - railCells - gutterWidth - nameWidth - reserve
+	// THE WIDE ROW'S DROP ORDER, at this tier's own moment: the size goes before
+	// the duration and the state goes last of all — here it is never given up at
+	// all, because it is a gutter at the left rather than a segment of a column
+	// (see [app.toolTail], which sheds the same two figures in the same order).
+	if statWidth := ansi.StringWidth(statPlain) + 2; statPlain == "" || room-statWidth < toolTargetFloor+1 {
 		statPlain, statPainted = "", ""
 	} else {
 		room -= statWidth
@@ -437,7 +645,7 @@ func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 		painted = a.pal.accent(rail)
 	}
 	line := painted + gutter + a.paintName(e, name)
-	used := railWidth + gutterWidth + nameWidth
+	used := railCells + gutterWidth + nameWidth
 	if target != "" {
 		line += " " + a.paintTarget(e, target)
 		used += 1 + ansi.StringWidth(target)
@@ -597,6 +805,9 @@ func (a *app) formingLine(e *entry, i int, last bool, width int) string {
 	}
 	line, used := painted, ansi.StringWidth(rail)
 	phone := layoutTier(width) == tierPhone
+	// The indent law's two cells, on [app.toolLine]'s reason and after its tier
+	// question for the same one.
+	width -= workIndentCols(width)
 	// THE MARK KEEPS ITS TIER'S COLUMN — the phone's gutter, everybody else's
 	// right end (port/p2's law) — so the announcement that lands on this row
 	// changes the ink and the words, and moves nothing.
