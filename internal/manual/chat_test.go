@@ -220,6 +220,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the little circle row on home", "home"},
 		{"how do I pause a reminder", "home"},
 		{"what does keeping an eye on 2 mean", "home"},
+		// The twelfth wave: the cursor on a PROJECT rather than on one of its
+		// chats. Both of these are asked while looking at a name with a card
+		// beside it, and neither of them is a question about one conversation.
+		{"what does the right side show for a whole project", "home"},
+		{"how many conversations does a project have", "home"},
 		// The eleventh wave: the errand you say from home. Every one of these is
 		// asked with home on screen and a sentence half typed, and the honest
 		// answers — that there is a second row, that the exchange is stored
