@@ -26,8 +26,6 @@ package tui3
 import (
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -52,12 +50,12 @@ func drawProjectSessionsBand(a *app, ctx bandContext) []string {
 		// at all rather than a heading over nothing.
 		return nil
 	}
-	rows := make([]string, 0, len(project.Sessions))
+	groups := make([][]string, 0, len(project.Sessions))
 	for _, row := range project.Sessions {
 		label := homeGlyph(row, ctx.pal.ascii) + " " + homeName(row)
-		rows = append(rows, projectCardRow(label, homeNote(row, a.homeHeld(row), ctx.now), ctx.width, ctx.pal))
+		groups = append(groups, projectCardRows(label, homeNote(row, a.homeHeld(row), ctx.now), ctx.width, ctx.pal))
 	}
-	return a.bandFold(ctx, "projectsessions", rows, homeShown, projectSessionsWord)
+	return a.bandFoldPacked(ctx, "projectsessions", groups, homeShown, projectSessionsWord)
 }
 
 // bandProjectOf is the world's own reading of the project under the cursor.
@@ -91,55 +89,13 @@ func bandProjectOf(subject bandSubject) (session.Project, bool) {
 	return session.Project{}, false
 }
 
-// projectCardRow is one row of a project's card: a name on the left, a dim
-// fact on the right, and the name giving way first when the two will not fit.
+// projectCardRows is one item on a project's card: a name on the left and a
+// dim fact on the right, with the fact moving whole to a following row when
+// both cannot retain the words floor.
 //
-// It is [homeTaskLine]'s arithmetic said about the other kinds of row, and it
-// is deliberately NOT [overlayRow]: that draws the two-cell cursor lead every
+// It is deliberately NOT [overlayRow]: that draws the two-cell cursor lead every
 // row of the LIST column carries, and this column has no cursor of its own
 // (homebands.go's [app.toggleAllBandFolds] states the same fact about the keys).
-func projectCardRow(label, note string, width int, pal palette) string {
-	if width < 1 {
-		return ""
-	}
-	// THE NAME KEEPS A FLOOR AND THE TAIL IS WHAT GIVES WAY FIRST, which is the
-	// law [StandingItemRow] states for the left column and for the same reason.
-	// A conversation's tail is two or three words, but a standing item's can be
-	// a whole sentence a run stopped on — and a row that gave the tail whatever
-	// it asked for drew all rollup and no name at all. The floor is
-	// [standWordsFloor]'s own figure because it is the same question: how many
-	// cells does the thing's own name keep, whatever the fact beside it wants.
-	if note != "" {
-		switch room := width - standWordsFloor - 1; {
-		case room < projectRowFloor:
-			// Too narrow to share at all. The NAME takes the line, because a name
-			// cut in half is still recognisable and a rollup cut to an ellipsis
-			// is not a fact.
-			note = ""
-		case ansi.StringWidth(note) > room:
-			note = fit(note, room)
-		}
-	}
-	room := width
-	if note != "" {
-		room -= ansi.StringWidth(note) + 1
-	}
-	if room < projectRowFloor {
-		return pal.muted(fit(label, width))
-	}
-	label = fit(label, room)
-	line := pal.muted(label)
-	if note != "" {
-		gap := width - ansi.StringWidth(label) - ansi.StringWidth(note)
-		if gap < 1 {
-			gap = 1
-		}
-		line += strings.Repeat(" ", gap) + pal.dim(note)
-	}
-	return line
+func projectCardRows(label, note string, width int, pal palette) []string {
+	return bandSides(width, 2, standWordsFloor, label, note, pal.muted, pal.dim)
 }
-
-// projectRowFloor is the narrowest a row will still split into a name and a
-// tail. It is [homeTaskLine]'s own figure, for its own reason: under it the
-// name has nothing left and the row is all trailing fact.
-const projectRowFloor = 8

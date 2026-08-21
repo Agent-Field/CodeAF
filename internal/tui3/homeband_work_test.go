@@ -87,6 +87,19 @@ func TestTheWorkBandIsTwoLinesAndABlank(t *testing.T) {
 	}
 }
 
+func TestTheNarrowWorkBandKeepsFilesAndCost(t *testing.T) {
+	a := newTestApp(nil)
+	now := time.Now()
+	row := session.SessionRow{Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{{
+		Label: "A long named task", Status: string(session.TaskDone), Outcome: "the migration landed cleanly",
+		FilesChanged: 14, Cost: .12, EndedAt: now.Add(-time.Hour),
+	}}}}
+	ctx := ambientBandContext(a, row, now, 30)
+	rows := drawWorkBand(a, ctx)
+	assertNarrowRows(t, "work", rows, 30, "$0.12")
+	assertNarrowRows(t, "work", rows, 30, "14 files")
+}
+
 // DONE IS THE ABSENCE OF A MARK (D11). No tick, and no `done` either — the word
 // was the loudest thing on every row and it never said anything.
 func TestADoneTaskWearsNoTickAndNoWord(t *testing.T) {

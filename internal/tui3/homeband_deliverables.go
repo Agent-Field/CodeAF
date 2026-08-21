@@ -38,14 +38,12 @@ func drawDeliverablesBand(a *app, ctx bandContext) []string {
 	if len(rows) == 0 {
 		return nil
 	}
-	drawn := make([]string, 0, len(rows))
+	drawn := make([][]string, 0, len(rows))
 	for _, artifact := range rows {
 		name := filepath.Base(strings.TrimSpace(artifact.Path))
-		shown := a.pathLink(artifact.Path, name)
-		if age := sinceAt(artifact.Created, ctx.now); age != "" {
-			shown += ctx.pal.dim(" · " + age)
-		}
-		drawn = append(drawn, ctx.pal.muted(fit(shown, ctx.width)))
+		labelInk := func(text string) string { return ctx.pal.muted(a.pathLink(artifact.Path, text)) }
+		drawn = append(drawn, bandSidesWithSeparator(ctx.width, 2, 8, "· ", name,
+			sinceAt(artifact.Created, ctx.now), labelInk, ctx.pal.dim))
 	}
-	return a.bandFold(ctx, "deliverables", drawn, 3, "files")
+	return a.bandFoldPacked(ctx, "deliverables", drawn, 3, "files")
 }

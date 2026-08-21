@@ -144,80 +144,55 @@ func drawAnswerBand(a *app, ctx bandContext) []string {
 	if a.leaveAnswer == nil && !a.answeringHere(row) {
 		return nil
 	}
-	line := a.answerChipLine(question, ctx.width, pal)
-	if line == "" {
+	lines := a.answerChipLines(question, ctx.width, pal)
+	if len(lines) == 0 {
 		return nil
 	}
-	return []string{line}
+	return lines
 }
 
-// answerChip is one chip as it is drawn and as it is pressed: the key, the
-// word, and where the pair sits on the plain line.
+// answerChip is one chip as it is drawn and as it is pressed: the key and its
+// complete label stay together whichever row the packer gives them.
 type answerChip struct {
 	key   string
 	text  string
-	from  int
-	to    int
 	label string
 }
 
-// answerChips lays the chips out on one line and says where each of them
-// landed.
-//
-// THE OFFSETS ARE COLUMNS AND NOT BYTES, because what a press carries is a
-// column: the separator between two chips is one cell and two bytes, and an
-// offset counted in bytes would put every chip after the first one cell to the
-// right of where a finger has to land.
+// answerChips names the complete chips before the card packs them into rows.
 func answerChips(question session.PresenceQuestion) []answerChip {
 	chips := make([]answerChip, 0, len(question.Options))
-	at := 0
 	for _, option := range question.Options {
 		if strings.TrimSpace(option.Key) == "" {
 			continue
 		}
-		if len(chips) > 0 {
-			at += ansi.StringWidth(answerChipGap)
-		}
 		text := option.Key + " " + option.Label
-		width := ansi.StringWidth(text)
 		chips = append(chips, answerChip{
-			key: option.Key, text: text, from: at, to: at + width, label: option.Label,
+			key: option.Key, text: text, label: option.Label,
 		})
-		at += width
 	}
 	return chips
 }
 
-// answerChipLine paints them: the key bold in the question's own hue, the word
-// beside it in the same hue.
+// answerChipLines paints them: the key bold in the question's own hue, the word
+// beside it in the same hue. Whole chips move to following rows when needed;
+// a card never hides an answer merely because the answers cannot share a row.
 //
 // IT IS THE CARD'S INK AND NOT THE CARD'S HELPER. consent.go's [app.paintOffer]
 // draws the same shape and cannot be borrowed — it asks whether the pointer is
 // over the block it belongs to, and there is no block here, only a card in a
 // column. What is shared is the thing that matters, which is that a key on this
 // surface is bold and violet wherever it is offered.
-func (a *app) answerChipLine(question session.PresenceQuestion, width int, pal palette) string {
+func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal palette) []string {
 	chips := answerChips(question)
 	if len(chips) == 0 {
-		return ""
+		return nil
 	}
-	var plain, painted string
-	for i, chip := range chips {
-		if i > 0 {
-			plain += answerChipGap
-			painted += pal.ask(answerChipGap)
-		}
-		plain += chip.text
-		painted += pal.askBold(chip.key) + pal.ask(" "+chip.label)
+	painted := make([]string, 0, len(chips))
+	for _, chip := range chips {
+		painted = append(painted, pal.askBold(chip.key)+pal.ask(" "+chip.label))
 	}
-	// A LINE THAT WOULD BE CUT IS NOT DRAWN AT ALL. Half a chip row is an answer
-	// hidden behind an ellipsis, and on a card this narrow the honest thing is
-	// the row's own `▲` and the walk it has always meant (consent.go makes the
-	// same trade on its offer line, one width down).
-	if ansi.StringWidth(plain) > width {
-		return ""
-	}
-	return painted
+	return bandClauses(width, 0, func(s string) string { return s }, painted...)
 }
 
 // ── answering ───────────────────────────────────────────────────────────────
@@ -280,21 +255,17 @@ func (a *app) answerPress(x, y int) (tea.Cmd, bool) {
 	if y >= len(lines) {
 		return nil, false
 	}
-	// The painted row with its colour taken off, and the chip row found inside
-	// it: the card sits to the right of the list, so where the chips begin is a
-	// property of the frame rather than of this band.
+	// The painted row with its colour taken off, and the chip found inside it:
+	// each chip may have moved to its own row, so the clicked row is the source
+	// of truth rather than offsets from the former single-line layout.
 	plain := ansi.Strip(lines[y])
-	line := chips[0].text
-	for _, chip := range chips[1:] {
-		line += answerChipGap + chip.text
-	}
-	at := strings.Index(plain, line)
-	if at < 0 {
-		return nil, false
-	}
-	start := ansi.StringWidth(plain[:at])
 	for _, chip := range chips {
-		if x >= start+chip.from && x < start+chip.to {
+		at := strings.Index(plain, chip.text)
+		if at < 0 {
+			continue
+		}
+		start := ansi.StringWidth(plain[:at])
+		if x >= start && x < start+ansi.StringWidth(chip.text) {
 			return a.sendAnswer(row, question, chip.key)
 		}
 	}
