@@ -1,0 +1,8 @@
+Create four separate, independent Python utility modules in this directory, one file each, standard library only, each self-contained with a `if __name__ == "__main__":` self-test that runs cleanly:
+
+1. `textstats.py` — function `stats(path)` returning a dict with keys `lines`, `words`, `chars`, `avg_word_len` for the text file at `path`.
+2. `csvtool.py` — function `column_stats(path, col)` returning `{"min":…,"max":…,"mean":…}` for the numeric column named `col` of the CSV at `path`.
+3. `jsonflatten.py` — function `flatten(obj, prefix="")` flattening nested JSON dicts into dotted keys, e.g. `{"a":{"b":1}}` → `{"a.b":1}`.
+4. `cache.py` — a class `LRUCache(capacity)` with `get`/`put` in O(1); evicting least-recently-used past capacity.
+
+No file may import another. Each must import and run standalone under `python3`.

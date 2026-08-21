@@ -1,0 +1,3 @@
+This directory contains twelve image files (`img-01.png` … `img-12.png`) of varying content. For each image, write one caption file `img-NN.txt` containing: a one-sentence description of the dominant subject, a list of the three most salient colors as hex codes, and a one-word mood tag from the closed set {calm, tense, joyful, sterile, chaotic, serene}.
+
+Then write `INDEX.md` with a markdown table of all twelve rows: filename, the description, the three colors, and the mood. Captions must be derived from actually reading each image, not from filenames. Every `img-NN.png` must have a corresponding `img-NN.txt`.
