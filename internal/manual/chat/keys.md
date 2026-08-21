@@ -139,16 +139,23 @@ keystroke is the one every terminal habit tells you to hit when something seems 
 It could end a session that was running tasks, holding live background jobs, and still
 carrying a message you had typed and pressed `enter` on.
 
-**What is running is named before it stops.** If this session has tasks or background
-jobs alive, the armed line says so:
+**What is running is named before it stops, across every conversation this terminal
+holds.** If there is more than one open, the armed line says how many first — a person who
+has forgotten they left something open in another project needs that number before the work
+count means anything:
 
 ```
 ctrl+c again to quit · a task will stop
 ctrl+c again to quit · 2 tasks and a job will stop
-ctrl+c again to quit · a task and a job will stop
+ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 ```
 
-With nothing running there is no suffix at all — just `ctrl+c again to quit`.
+Each clause is absent when it is zero: one conversation drops the first, nothing running
+drops the second, and a quiet single conversation reads exactly `ctrl+c again to quit`.
+
+**The task count covers every open conversation; the background-job count covers only the
+one on screen.** There is no way to ask an agent you are not drawing what shells it has
+promoted, so the line is short of a fact there rather than guessing at one.
 
 **Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
 the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
@@ -162,12 +169,17 @@ shows `ctrl+c again to quit`, and the second press leaves with the panel still u
 
 **What quitting does.** Your unsent draft is written to disk first, with any message
 still waiting for an answer folded in underneath it, then the turn is interrupted and
-the session is closed. Nothing is lost that was typed.
+the session is closed. Nothing is lost that was typed. Every conversation this terminal
+holds is closed together, and the ones behind the screen already wrote their own boxes to
+disk when you switched away from them.
 
 **Limits.**
 
-- **`/quit` still leaves at once.** It is typed out on purpose, so it is not asked
-  twice. `/exit` is the same command.
+- **`/quit` closes one conversation, not the program.** It is typed out on purpose, so it
+  is not asked twice — but what it closes is the conversation in front, and aforge stays up
+  with the previous one forward when this terminal is holding another. It leaves only when
+  that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
+  are the same command.
 - A real signal — `kill -INT`, `kill -TERM`, or `^C` on a terminal that is not in raw
   mode — also leaves at once, through the same clean exit: draft written, session
   closed, status 0. Only the keystroke asks twice.
@@ -209,7 +221,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
 | `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
-| `tab` | Open or commit path completion, over a command's path argument only |
+| `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
 ## Keys in the message box: moving the caret
 
@@ -490,7 +502,7 @@ follows what you type. Only these keys are taken from you:
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
 | `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
-| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export ` |
+| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
 ## Keys in the model picker and the sessions roster
@@ -612,6 +624,30 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the panel — it arms the door, and a second press within 1.5
 seconds quits aforge.
+
+## Go back to the last conversation — tab
+
+**`tab`, pressed with an empty message box, goes to the conversation you were in before
+this one.** Press it again and you are back. It is `cd -`.
+
+It **does nothing at all** when there is nowhere to go: one conversation open, or none this
+terminal has been in before. A key that cannot act says so by not being advertised — and
+when it can, the legend line above the box says `space space home · tab last · / commands`.
+
+It works while a turn is running in either conversation. Nothing is interrupted: the turn
+you leave keeps streaming into its own transcript, and it is redrawn from its first token
+when you come back.
+
+**Everything else that wants `tab` gets it first**, and that is the whole rule rather than a
+claim that `tab` is free. In order: a paste bracket makes it a literal tab; the task roster
+eats it while it holds the keyboard (`esc` gives the keyboard back first); the settings
+panel changes page with it; the memory panel changes scope; the rewind timeline and the
+inline rewind lift with it; and path completion takes it over `/image ` or `/export `. Only
+when none of those is claiming it, and the box is empty, is it the way back.
+
+The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
+other key does — that is the box's contract — but switching away is the opposite of
+starting work here, so the box is still standing when you come back.
 
 ## Keys on home, and is there a shortcut for it
 

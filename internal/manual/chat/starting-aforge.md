@@ -7,11 +7,13 @@ and it works in the directory you started it in — reading, writing, running
 commands, searching, and handing longer jobs off to run on their own while you
 keep talking.
 
-It is a conversation you sit in front of. There is one conversation on screen at a
-time, it is written down as you go, and you can leave it and come back to it. It
-is not a background service and it does not keep working after you close the
-window: the work happens while you are here, except for jobs and tasks it has
-already started, which have their own rules.
+It is a conversation you sit in front of. There is one conversation **on screen**
+at a time, it is written down as you go, and you can leave it and come back to it.
+One terminal can hold several at once — up to eight, each on its own project, one
+in front and the rest running behind it; `tab` and home move between them. It is
+not a background service and it does not keep working after you close the window:
+the work happens while you are here, except for jobs and tasks it has already
+started, which have their own rules.
 
 ## What it is called
 
@@ -85,6 +87,15 @@ Type `/status` and the `place` line gives you the full path to copy.
 
 An owned workspace of that kind is quietly made into a git repository, so work
 done there has undo history like work done anywhere else.
+
+**And a conversation opened later can be in a different folder from the one you
+started in.** `enter` on home opens a row of any project, and typing a path on
+home starts a conversation there — each on **its own** workspace, with that
+project's approval rules, crew, spend ceiling and saved shapes of work, resolved
+the same way this one's were. A conversation never changes the folder it was born
+in; there is simply more than one conversation. The status line's place word is
+always the folder of the conversation on screen. See home's page under *Open
+another project from home*.
 
 ## Where your conversations are kept
 

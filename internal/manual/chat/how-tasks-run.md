@@ -130,6 +130,25 @@ everywhere else in the conversation. A relative path like `research/notes.md` is
 would have to work out a root for, and a task that ran in its own copy of the repository
 makes even that a guess.
 
+## Does a task proposal expire while I am in another conversation
+
+**Yes, and it starts the work.** A task proposal counts its own deadline down
+inside the session rather than on the screen, so it is unaffected by which
+conversation you are looking at: when the countdown runs out the task is
+approved and starts, exactly as it would have on a screen you were watching.
+A sign-in offer counts down the same way and lapses after five minutes, deciding
+nothing.
+
+**The approval question for a tool call is the one that holds.** A conversation
+you have switched away from holds it for as long as you are away, and coming back
+gives you the reading time you had left — see the permissions page.
+
+All three say `waiting on you` while they wait: on home, on the status line's
+`2 open · 1 waiting`, and in a desktop notification the moment the question goes
+up — which now fires for a conversation this terminal is holding behind the
+screen even while the terminal is focused, because a focused terminal is no
+longer evidence that anybody is looking at *that* conversation.
+
 ## How long a task gets before it is stopped
 
 Two clocks, and neither is a hard stop.

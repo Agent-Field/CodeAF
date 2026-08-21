@@ -733,7 +733,15 @@ most recent 2000 tasks — and the page scrolls rather than cutting it.
 ## Work running in another aforge window — a task started in my other terminal
 
 Two aforge windows open on one directory can see each other's running work, and `/history`
-is where they see it. Under this session's own `running` tree the page draws **one flat row
+is where they see it.
+
+**A conversation *this* terminal is holding is never one of them.** One terminal can have
+several conversations open at once, in this project or others, and every one of them writes
+the same file the rows below are read from — so they are filtered out by name before the
+page is drawn. Telling you to go to a window that is two keystrokes away in the terminal
+you are already sitting in would be the same wrong refusal home used to make about another
+project. Those conversations are reached with `tab` or from home; the count of them is on
+the status line as `2 open`. Under this session's own `running` tree the page draws **one flat row
 for every task each other window has out right now**:
 
 ```
