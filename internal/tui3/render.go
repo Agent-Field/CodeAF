@@ -413,6 +413,15 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	clock(-1)
 	// THE INDENT LAW is applied after layout so every kind of machinery,
 	// including expanded details and synthetic fold rows, obeys one rule.
+	//
+	// IT COSTS THE ROWS IT MOVES TWO CELLS, and the block that lays itself out
+	// flush to the right edge is the one that has to know: a tool line built to
+	// the frame's whole width and then shoved two columns right is two columns
+	// wider than the column it is drawn in, and [app.railJoin] cuts the overhang
+	// back with an ellipsis — which is where a running call's spinner and its
+	// clock went, leaving `0…` at the frame's edge. [app.toolLine] and
+	// [app.formingLine] subtract [workIndentCols] for exactly that reason, AFTER
+	// they have chosen their tier from the frame's own width.
 	if workIndent(width) != "" {
 		for i := range out {
 			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {

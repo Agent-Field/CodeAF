@@ -185,17 +185,26 @@ func TestThePhoneRowKeepsTheStateMachine(t *testing.T) {
 
 // ── the other tiers ─────────────────────────────────────────────────────────
 
-// EVERY WIDER FRAME IS UNTOUCHED. The same call at tierNarrow, tierStandard and
-// tierWide draws the row it drew before this tier existed: the full path in the
-// target column, the mark trailing, nothing elided and no state cell.
+// EVERY WIDER FRAME KEEPS THE WIDE ROW. The same call at tierNarrow,
+// tierStandard and tierWide draws the sentence in full — the whole path in the
+// target column, nothing elided and no state cell — with the figures in the
+// right column, which is where every wide row's figures now end
+// (toolview.go's [app.toolTail]).
 func TestTheWiderTiersAreUnchanged(t *testing.T) {
 	const path = "internal/session/transport/loop.go"
 	for _, width := range []int{60, 80, 120} {
 		a := toolAppAt(t, width, deepEdit())
 		line := toolRowAt(t, a)
 
-		if want := railLast + "edit " + path + "  +1 −1"; line != want {
-			t.Fatalf("the row at %d cells is\n\t%q\nwant\n\t%q", width, line, want)
+		head := railLast + "edit " + path
+		if !strings.HasPrefix(line, head) || !strings.HasSuffix(line, "+1 −1") {
+			t.Fatalf("the row at %d cells is\n\t%q\nwant %q with the stat at its right end", width, line, head)
+		}
+		// The row is the frame's width less the indent every tool row is drawn
+		// with (workfold.go), which is what puts the stat AT the edge rather
+		// than two cells past it.
+		if got := ansi.StringWidth(line); got != width-2 {
+			t.Fatalf("the row at %d cells measured %d, want %d", width, got, width-2)
 		}
 	}
 }

@@ -337,13 +337,13 @@ func TestEveryToolCarriesItsOwnStat(t *testing.T) {
 			name: "read counts the lines it returned",
 			tool: "read", args: `{"path":"a.go"}`,
 			output: "one\ntwo\nthree",
-			want:   "· 3 lines",
+			want:   "3 lines",
 		},
 		{
 			name: "read believes the tool's own footer over the copy it was sent",
 			tool: "read", args: `{"path":"a.go"}`,
 			output: "one\ntwo\n\n[Showing lines 1-120 of 4000. Use offset=121 to continue.]",
-			want:   "· 120 lines",
+			want:   "120 lines",
 		},
 		{
 			name: "write counts the content it wrote",
@@ -355,37 +355,37 @@ func TestEveryToolCarriesItsOwnStat(t *testing.T) {
 			name: "grep counts matches, not the lines they arrived on",
 			tool: "grep", args: `{"pattern":"func main"}`,
 			output: "a.go:3: func main()\nb.go:9: func main()",
-			want:   "· 2 matches",
+			want:   "2 matches",
 		},
 		{
 			name: "a search that found nothing says so",
 			tool: "grep", args: `{"pattern":"nope"}`,
 			output: "No matches found",
-			want:   "· 0 matches",
+			want:   "0 matches",
 		},
 		{
 			name: "find counts entries",
 			tool: "find", args: `{"pattern":"**/*.go"}`,
 			output: "a.go\nb.go\nc.go",
-			want:   "· 3 entries",
+			want:   "3 entries",
 		},
 		{
 			name: "ls counts one entry as one entry",
 			tool: "ls", args: `{"path":"."}`,
 			output: "only.go",
-			want:   "· 1 entry",
+			want:   "1 entry",
 		},
 		{
 			name: "a capped copy says at least",
 			tool: "ls", args: `{"path":"."}`,
 			output: "a\nb\nc… (900 more bytes)",
-			want:   "· 3+ entries",
+			want:   "3+ entries",
 		},
 		{
 			name: "a listing's notice block is not an entry",
 			tool: "ls", args: `{"path":"."}`,
 			output: "a\nb\n\n[500 entries limit reached. Use limit=1000 for more]",
-			want:   "· 2 entries",
+			want:   "2 entries",
 		},
 	}
 	for _, tc := range cases {
@@ -572,7 +572,7 @@ func TestTheASCIITierDrawsTheRailInASCII(t *testing.T) {
 		t.Fatalf("the ASCII stem is missing:\n%s", joined)
 	}
 	// The stat is unaffected: the tier is about glyphs, not about facts.
-	if !strings.Contains(joined, "· 2 lines") {
+	if !strings.Contains(joined, "2 lines") {
 		t.Fatalf("the ASCII tier lost the stat:\n%s", joined)
 	}
 }
