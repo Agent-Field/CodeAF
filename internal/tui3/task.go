@@ -82,6 +82,16 @@ type taskCard struct {
 	pick       int
 	modelRow   int
 	modelSpans []choiceSpan
+	// elsewhere is the one dim line saying which of this brief's files another
+	// window's work is already in, as the engine wrote it (session's
+	// TaskNotice.Elsewhere), and "" when there was nothing to say.
+	//
+	// IT IS DRAWN AS A FACT AND NOT AS AN ALARM — the same dim lane the branch
+	// point and the meta line use — because nothing about the card changes on
+	// account of it: the same three options, the same clock, the same work if you
+	// say yes. It exists so a person spends the countdown knowing something they
+	// would otherwise have found out at merge time.
+	elsewhere string
 	// deadline is when silence becomes approval, or zero when the clock is off
 	// (session's TaskNotice.Deadline). A zero deadline draws no countdown: a
 	// number counting down to nothing is a promise the engine did not make.
@@ -773,6 +783,7 @@ func (a *app) proposeTask(ev session.Event) {
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
 		options:    notice.ModelOptions,
+		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
 		// THE CARD OPENS ON "YES", because that is what the block is proposing and
@@ -1283,6 +1294,15 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 				out = append(out, stem+a.pal.dim(line))
 			}
 		}
+	}
+	if card.elsewhere != "" {
+		// WHO ELSE IS ALREADY IN THESE FILES, said once, above the branch point and
+		// below the brief — with the facts about the work rather than with the
+		// answers, because it is not something to answer. There is no row for it
+		// when there is nothing to say, which is the emptiness law and also the only
+		// thing keeping this line worth reading: a proposal that carried it every
+		// time would be carrying furniture.
+		out = append(out, stem+a.pal.dim(fit(card.elsewhere, room)))
 	}
 	if point := a.taskBranchPoint(); point != "" {
 		// The branch point sits with the assignment and above the answers, because
