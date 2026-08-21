@@ -363,6 +363,18 @@ type Event struct {
 	// EventToolBegin, EventToolEnd and EventToolFailed. Arguments that do not
 	// parse as JSON pass through as the raw text — a malformed call is still a
 	// call the person should be able to look at.
+	//
+	// THE CONTRACT IS THAT THIS STAYS PARSEABLE WHENEVER THE WIRE ARGUMENTS
+	// WERE, at every size. The cap ([argsLimit]) is spent INSIDE the oversized
+	// string values, each of which then ends in the marker [capBytes] writes —
+	// `… (12345 more bytes)` — rather than by cutting the text, which would end
+	// a 20k write's payload in the middle of a string literal and leave every
+	// reader downstream calling a well-formed call malformed.
+	//
+	// So a field a surface reads back out of this may be SHORTER than the one
+	// the model sent, and says so in its own last bytes. Anything derived from
+	// one is a floor rather than a figure: a capped write's line count is "at
+	// least this many", and internal/tui3 spells that with a trailing `+`.
 	Args string
 
 	// Output is the tool's result text on EventToolEnd and EventToolFailed,
@@ -410,7 +422,15 @@ type Event struct {
 	// EventToolForming and empty everywhere else — Args is the display JSON of a
 	// WHOLE call, and half of a JSON object is not that.
 	//
-	// A surface may show it, cut it, or ignore it. Nothing may unmarshal it.
+	// It is CUMULATIVE: every fragment carries the whole text that has arrived so
+	// far, not the piece that just landed, so a surface keeping it replaces what
+	// it held rather than appending to it. It is capped at [formingArgsLimit]
+	// from the FRONT, and Bytes beside it is the honest size of the whole.
+	//
+	// A surface may show it, cut it, or ignore it. NOTHING MAY UNMARSHAL IT — and
+	// nothing needs to: [PartialString] is the tolerant read of one field's
+	// streamed text, and it is one scanner in one place rather than a second
+	// parser per surface.
 	ArgsText string
 
 	// Took is how long ONE tool call's own work took, on EventToolFinished and

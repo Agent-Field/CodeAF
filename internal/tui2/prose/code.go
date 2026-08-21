@@ -2,6 +2,7 @@ package prose
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -236,6 +237,54 @@ func HighlightLine(s *tokens.Styler, src, lang string, tier tokens.Token) string
 		b.WriteString(p.paint(pc.text, pc.st))
 	}
 	return b.String()
+}
+
+// LexerName is chroma's own name for the language a FILE is written in — the
+// word [HighlightLine] takes as its lang — or "" when nothing in chroma's
+// registry claims that filename.
+//
+// It exists so a caller holding a PATH rather than a fence's info string can
+// still reach the one highlighter in this tree. internal/tui3 draws the body of
+// a `write` call and the text a `read` returned, and the only thing either of
+// those carries about its language is the file's own name; the alternative to
+// this function was that package importing chroma, which is the thing this
+// file's opening paragraph exists to prevent.
+//
+// The empty answer is load-bearing: a caller gets to say "nothing here is
+// source" and fall back to whatever it drew before, rather than have chroma's
+// fallback lexer paint a log file as if it were code.
+//
+// IT IS MEMOISED, and it has to be. chroma's own comment on Match says it walks
+// every file pattern of every lexer and is not fast, and the callers are drawing
+// terminal rows at thirty frames a second. The table is keyed by the name it was
+// asked about, so it is bounded by the files one session touched.
+func LexerName(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return ""
+	}
+	lexerNames.mu.RLock()
+	name, known := lexerNames.byFile[filename]
+	lexerNames.mu.RUnlock()
+	if known {
+		return name
+	}
+	name = ""
+	if lexer := lexers.Match(filename); lexer != nil {
+		name = lexer.Config().Name
+	}
+	lexerNames.mu.Lock()
+	if lexerNames.byFile == nil {
+		lexerNames.byFile = make(map[string]string, 32)
+	}
+	lexerNames.byFile[filename] = name
+	lexerNames.mu.Unlock()
+	return name
+}
+
+var lexerNames struct {
+	mu     sync.RWMutex
+	byFile map[string]string
 }
 
 // highlightPieces is the lexing itself, free of a renderer so both the fenced
