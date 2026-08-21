@@ -71,6 +71,7 @@ type WrappedAgent interface {
 	Usage() session.Usage
 	ContextTokens() int
 	Transcript() []session.DisplayEntry
+	EarlierHistory() session.EarlierHistory
 	RewindPoints() []session.RewindPoint
 	RewindAt(index int) ([]session.DisplayEntry, error)
 }
@@ -461,6 +462,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodTranscript:
 		return json.Marshal(agent.Transcript())
+
+	case MethodEarlier:
+		return json.Marshal(agent.EarlierHistory())
 
 	case MethodRewindPoints:
 		return json.Marshal(agent.RewindPoints())

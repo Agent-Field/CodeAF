@@ -134,10 +134,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the header repeats that name rather than minting a second one. A
 		// legacy flat session hands "" and the file names itself, exactly as it
 		// always did.
-		file, restored, err := openSessionFile(config.SessionFile, config.Workspace, config.Model, config.Place.ID())
+		file, replayed, err := openSessionFile(config.SessionFile, config.Workspace, config.Model, config.Place.ID())
 		if err != nil {
 			return nil, err
 		}
+		restored := replayed.messages
 		agent.file = file
 		// A resumed session keeps the name it was given: the title is a fact
 		// about the conversation in the file, and re-deriving it from the same
@@ -155,6 +156,22 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// and AGENTS.md in the footer are facts about now, not about the
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
+		// AND THE CONVERSATION ABOVE THE LATEST COMPACTION IS SHAPED HERE, ONCE,
+		// while the replayed messages are still in hand. It is shaped rather than
+		// kept as messages so the pictures a compacted region held are let go of
+		// again — a display entry keeps the PATH, not the data URL — and shaped
+		// HERE rather than on demand because this is the only moment the region
+		// exists at all: nothing after this point re-reads the file, and holding
+		// the raw messages until somebody scrolled would hold every compacted-away
+		// photo in memory to pay for a shaping that costs one walk.
+		//
+		// The floor is shaped from the same messages for the same reason it is a
+		// count of ENTRIES rather than of messages: the surface it is for indexes
+		// entries, and a second rule for how many rows a message makes is a rule
+		// that can disagree with [shapeEntries]. The journal counts messages; this
+		// is the one place the two are converted, by doing the shaping.
+		agent.earlier = shapeEntries(replayed.earlier, file)
+		agent.earlierFloor = len(shapeEntries(restored[:replayed.overlap], file))
 		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
 		// session resumed onto a model without vision — the journal remembers
 		// the model it was written on, the person can start it on another — would
@@ -1677,6 +1694,56 @@ func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return shapeEntries(a.messages, a.file)
+}
+
+// EarlierHistory is the conversation a compaction pass edited away, and where
+// the pass's own rewritten copy of it ends in the live transcript.
+//
+// THE CONVERSATION, TOLD ONCE AND WHOLE, IS `Entries` FOLLOWED BY
+// `Transcript()[Floor:]`. That is the contract, and it is a splice rather than a
+// prefix because the pass does not delete the history it shortens — it rewrites
+// it in place and journals the whole rewritten window again, so the same
+// conversation is in the file twice: once as it happened, above the marker, and
+// once with its tool results stubbed and its long runs of work folded, below.
+// Drawing both would show the session to itself twice.
+type EarlierHistory struct {
+	// Entries is the region, oldest first, in the shape [Agent.Transcript] uses.
+	// Empty when there is nothing to offer.
+	Entries []DisplayEntry
+	// Floor is how many entries at the start of [Agent.Transcript] the region
+	// replaces. Zero whenever Entries is empty.
+	Floor int
+}
+
+// EarlierHistory is what a surface needs to scroll back through a compaction:
+// the conversation above the latest pass, and the floor beneath which the live
+// transcript is that same conversation rewritten.
+//
+// IT IS HISTORY AND NOT CONTEXT. Nothing here sends it, the model does not carry
+// it, and it does not change when the person rewinds — a rewind edits the live
+// transcript, and the region above the marker was already out of the model's
+// hands before the cut was offered.
+//
+// IT IS EMPTY IN THREE CASES, and a surface must behave exactly as it always did
+// in all three: a session that was never compacted, a session compacted by a
+// build that did not write the window's length ([compactionOverlap] explains
+// why that cannot be guessed at), and a session with no journal at all. The
+// third is the honest one to remember — a memory-only conversation has no file
+// to have kept the words the pass took out.
+//
+// WHAT IT COVERS when it is not empty: the transcript exactly as it stood one
+// instant before the latest pass edited it. For a session compacted once that is
+// the whole conversation from its first word, in the original lines, before
+// anything was stubbed or folded. For a session compacted more than once it
+// still opens on the conversation's first words — a pass never folds what a
+// person said — and carries the older passes' own edits in the middle of it,
+// because those edited lines are what the file holds there. See
+// [replayedSession.earlier] for why the older markers are applied rather than
+// walked through.
+func (a *Agent) EarlierHistory() EarlierHistory {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return EarlierHistory{Entries: a.earlier, Floor: a.earlierFloor}
 }
 
 // displayEntries is the shaping without a journal behind it: [Agent.Rewind]

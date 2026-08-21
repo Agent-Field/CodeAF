@@ -32,6 +32,17 @@ import (
 // is NOT interactive: see [replayInert]. An expansion that opens on a blank is
 // the defect this wave came to end, and offering one for a row that genuinely
 // has nothing behind it would be the same defect wearing the fix's clothes.
+//
+// AND THE HISTORY IS DRAWN FROM THE WORDS, NOT FROM THE MODEL'S COPY OF THEM.
+// A compaction pass does not delete what it shortens: it rewrites the
+// conversation in place — a tool result becomes a pointer to its own bytes, a
+// long run of the model's work becomes one line — and journals the whole
+// rewritten window again below its marker. So the file holds the same
+// conversation twice, and the transcript a resumed session opens with is the
+// SHORTENED copy. [session.EarlierHistory] is the other one, with the floor that
+// says where the copy ends; this file walks the transcript down to that floor and
+// then carries on into the region, so the history reads as it was said and reads
+// exactly once. The line where the two meet is [seamMark].
 
 // replayTail is how much of a resumed conversation is drawn AT ONCE. Forty
 // entries is about two screens of scrollback — enough to remember where you
@@ -56,18 +67,47 @@ func (a *app) replay() {
 	// conversation before it would offer to scroll back into somebody else's
 	// history — so the mark is cleared first and earned second.
 	a.replayFrom, a.replayFloor = 0, a.turn
+	// And the same law applied to the region a compaction left behind: it is
+	// dropped and asked for again, so a rebuild after a rewind trusts nothing it
+	// was holding before the cut.
+	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
 	if a.agent == nil {
 		return
 	}
+	// THE REGION IS FETCHED HERE, EAGERLY, and it is the one read on this path
+	// that is not lazy. The floor it carries decides where the live transcript
+	// stops being conversation and starts being the pass's own rewritten copy of
+	// the region — and [app.moreHistory] has to know that from the first frame,
+	// not from the first scroll.
+	history := a.agent.EarlierHistory()
+	a.earlier, a.earlierFloor = history.Entries, history.Floor
+	a.earlierFrom = len(a.earlier)
+
 	all := a.agent.Transcript()
-	from := 0
-	if len(all) > replayTail {
-		from = len(all) - replayTail
+	if a.earlierFloor > len(all) {
+		a.earlierFloor = len(all)
+	}
+	// The opening helping is cut from the conversation BELOW the floor, because
+	// everything above it is drawn from the region instead — in the words it was
+	// said in rather than in the shortened form the model was left holding.
+	from := len(all) - replayTail
+	if from < a.earlierFloor {
+		from = a.earlierFloor
 	}
 	blocks, turns := a.replayBlocks(all[from:], a.turn)
 	a.entries = append(a.entries, blocks...)
 	a.turn += turns
 	a.replayFrom = from
+	// A CONVERSATION THAT WAS COMPACTED AND THEN PUT DOWN HAS ALMOST NO TAIL — a
+	// pass that fired on the last turn leaves none at all — and a resumed surface
+	// that opened on an empty screen would be the defect replay exists to prevent.
+	// So the first helping is filled out of the region, through the seam, exactly
+	// as a scroll would fill it.
+	for len(a.entries) < replayTail && a.earlierFrom > 0 {
+		if !a.backfillEarlier() {
+			break
+		}
+	}
 	a.touch()
 }
 
@@ -77,7 +117,62 @@ func (a *app) replay() {
 // It is the one question three separate things ask: the scroll, which backfills
 // rather than stopping; the marker at the top of the frame, which says so; and
 // the tests, which is how the two stay one answer.
-func (a *app) moreHistory() bool { return a.agent != nil && a.replayFrom > 0 }
+//
+// IT COUNTS THE REGION TOO, and that is this wave's correction. It used to be
+// `replayFrom > 0` and nothing else, so at the floor the marker went out and the
+// surface declared the conversation finished — while the conversation in the
+// words it was said in was still sitting in the journal above it.
+func (a *app) moreHistory() bool {
+	if a.agent == nil {
+		return false
+	}
+	return a.replayFrom > a.earlierFloor || a.earlierFrom > 0
+}
+
+// rebase hands the backfill's bookkeeping over to the region a pass has just
+// created, and it is what keeps scrolling up honest across a compaction that
+// fires while somebody is reading (app.go's session.EventCompacted).
+//
+// THE TWO LISTS ARE THE SAME LIST, which is what makes the handover exact
+// rather than a guess. The session shapes the region it is about to edit with
+// the very shaping [Agent.Transcript] uses, from the very messages it was
+// holding (internal/session's loop.go) — so a position in the transcript this
+// surface drew from is the same position in the region, and replayFrom simply
+// becomes earlierFrom. Below the new floor there is nothing left in the live
+// transcript that is not already on screen, so replayFrom lands on it.
+//
+// A READER ALREADY PAST THE OLD SEAM IS AT THE END OF THE HISTORY. What the new
+// region holds above the drawn conversation is the pass's rewritten copy of rows
+// that are already on the screen — the older region's own words — so there is
+// nothing honest left to hand up, and the offer is withdrawn rather than made
+// twice.
+//
+// It is also the one moment the seam is suppressed rather than drawn. The pass
+// puts its own row on the screen at exactly this boundary — the entryCompact
+// block that says what it stubbed and folded — and a second line saying the same
+// thing would be the surface telling the person twice.
+func (a *app) rebase() {
+	if a.agent == nil {
+		return
+	}
+	crossed := len(a.earlier) > 0 && a.earlierFrom < len(a.earlier)
+	history := a.agent.EarlierHistory()
+	a.earlier, a.earlierFloor = history.Entries, history.Floor
+	switch {
+	case crossed:
+		a.earlierFrom = 0
+	case a.replayFrom > len(a.earlier):
+		// The transcript the mark was taken against is gone and this cannot be
+		// squared with what replaced it. Handing up the whole region is the
+		// honest end of that: it is history either way, and the alternative is
+		// an index into somebody else's list.
+		a.earlierFrom = len(a.earlier)
+	default:
+		a.earlierFrom = a.replayFrom
+	}
+	a.replayFrom = a.earlierFloor
+	a.earlierSeam = true
+}
 
 // backfill materializes the helping of conversation immediately ABOVE what is
 // drawn, and reports whether it drew anything. It is what a scroll that runs
@@ -93,6 +188,14 @@ func (a *app) moreHistory() bool { return a.agent != nil && a.replayFrom > 0 }
 // the row a person is reading is exactly as many rows further down as were put
 // in front of it — which is the arithmetic [app.scroll] does, and the reason
 // this returns rather than adjusting a scroll it does not own.
+//
+// THE TRANSCRIPT DOWN TO THE FLOOR, AND THE REGION AFTER IT. The two are walked
+// by the same paging in the same helping size and prepended by the same hands
+// ([app.prepend]); all that changes at the boundary is which list the helping is
+// cut from, and the one line drawn where they meet. Below the floor is
+// conversation the transcript is the only record of; at and above it the
+// transcript holds the pass's shortened copy and the region holds the words, so
+// the region is what is drawn and the copy is never a row.
 func (a *app) backfill() bool {
 	if !a.moreHistory() {
 		return false
@@ -107,6 +210,15 @@ func (a *app) backfill() bool {
 	if a.room != nil {
 		return false
 	}
+	if a.replayFrom > a.earlierFloor {
+		return a.backfillLive()
+	}
+	return a.backfillEarlier()
+}
+
+// backfillLive hands up one helping of the conversation below the floor — the
+// part of the transcript that is not a rewritten copy of anything.
+func (a *app) backfillLive() bool {
 	all := a.agent.Transcript()
 	to := a.replayFrom
 	if to > len(all) {
@@ -116,39 +228,77 @@ func (a *app) backfill() bool {
 		a.replayFrom = 0
 		return false
 	}
+	from := to - replayTail
+	if from < a.earlierFloor {
+		from = a.earlierFloor
+	}
+	if from >= to {
+		a.replayFrom = from
+		return false
+	}
+	a.prepend(all[from:to], false)
+	a.replayFrom = from
+	return true
+}
+
+// backfillEarlier hands up one helping from ABOVE the seam — the conversation
+// the journal kept and the model let go of — and draws the seam itself the
+// first time it does.
+//
+// The paging is [replayTail] exactly as it is below the seam, which is the
+// point: from the reader's side there is one gesture and one rhythm, and the
+// boundary is a line they scroll past rather than a wall they hit.
+func (a *app) backfillEarlier() bool {
+	to := a.earlierFrom
+	if to > len(a.earlier) {
+		to = len(a.earlier)
+	}
+	if to <= 0 {
+		return false
+	}
 	from := 0
 	if to > replayTail {
 		from = to - replayTail
 	}
-	if from >= to {
-		a.replayFrom = 0
-		return false
-	}
-	// EARLIER TURNS NUMBER DOWNWARD FROM THE ONES ALREADY DRAWN, which is the
-	// only numbering that can be handed out without renumbering anything. The
-	// turn is a grouping id — it decides what folds together and what ctrl+o
-	// opens (render.go) — so shifting the turns already on screen to make room
-	// would silently move every fold the person had opened onto somebody else's
-	// cluster. Counting down instead leaves them alone.
-	//
-	// The chunk's LAST turn is made to equal the drawn conversation's floor
-	// because they are the same turn: the blocks just above the old top are the
-	// beginning of the turn whose tail was already showing.
-	blocks, turns := a.replayBlocks(all[from:to], 0)
+	a.prepend(a.earlier[from:to], !a.earlierSeam)
+	a.earlierFrom, a.earlierSeam = from, true
+	return true
+}
+
+// prepend puts one helping of conversation in front of everything drawn, with
+// the seam under it when this is the crossing.
+//
+// EARLIER TURNS NUMBER DOWNWARD FROM THE ONES ALREADY DRAWN, which is the
+// only numbering that can be handed out without renumbering anything. The
+// turn is a grouping id — it decides what folds together and what ctrl+o
+// opens (render.go) — so shifting the turns already on screen to make room
+// would silently move every fold the person had opened onto somebody else's
+// cluster. Counting down instead leaves them alone.
+//
+// The chunk's LAST turn is made to equal the drawn conversation's floor
+// because they are the same turn: the blocks just above the old top are the
+// beginning of the turn whose tail was already showing.
+func (a *app) prepend(entries []session.DisplayEntry, seam bool) {
+	blocks, turns := a.replayBlocks(entries, 0)
 	shift := a.replayFloor - turns
 	for i := range blocks {
 		blocks[i].turn += shift
 	}
+	if seam {
+		// The seam belongs to the boundary and therefore to the turn BELOW it —
+		// the floor the drawn conversation already had — so it sits with the rows
+		// it is a statement about rather than with the history above it.
+		blocks = append(blocks, entry{kind: entrySeam, text: seamMark, turn: a.replayFloor})
+	}
 	// AND EVERY POSITION THIS SURFACE HOLDS IN THE BLOCK LIST MOVES WITH IT.
 	a.shiftBlockIndices(len(blocks))
 	a.entries = append(blocks, a.entries...)
-	a.replayFrom, a.replayFloor = from, shift
+	a.replayFloor = shift
 	// The pointer was over a row of a list that has just been rebuilt around it,
 	// which is the same claim [app.dropHover] makes wherever the rows are
 	// replaced.
 	a.dropHover()
 	a.touch()
-	return true
 }
 
 // shiftBlockIndices moves everything this surface stores as a POSITION in the
@@ -188,6 +338,29 @@ func (a *app) shiftBlockIndices(by int) {
 // is a fact about the SCREEN, not about the conversation, so a rewind cannot
 // cut it and an export cannot carry it.
 const earlierMark = "· earlier · keep scrolling"
+
+// seamMark is the line drawn where the conversation the model carries ends and
+// the conversation only the journal holds begins — the boundary a compaction
+// pass left behind.
+//
+// EVERY WORD OF IT IS A LIMIT STATED PLAINLY. Above this line the transcript is
+// still complete and still readable, and the model's own copy of it is not: the
+// pass replaced tool results with pointers and long runs of its own work with
+// one line, so it can be asked about what is up there and will be answering from
+// something shorter than what the person is looking at. The row says both halves
+// because half of it would be a lie either way — "you can still read it all"
+// alone invites the question that has already been answered wrong, and the first
+// clause alone reads as loss.
+//
+// AND THE SECOND CLAUSE IS ONLY TRUE BECAUSE OF WHAT IS DRAWN ABOVE THIS ROW.
+// The rows above it come from the region, not from the pass's shortened copy of
+// it ([app.backfillEarlier]); a surface that drew the copy could not say "you can
+// still read it all" with a straight face.
+//
+// It carries no leading "· ": the dim lane it is drawn in supplies that, and
+// wraps it on a narrow frame rather than cutting it (render.go's entrySeam).
+// The manual quotes the row as the person sees it, "· " and all.
+const seamMark = "above here the model keeps a shortened record — you can still read it all"
 
 // earlierRow is the marker painted, or "" when the beginning is already drawn.
 func (a *app) earlierRow(width int) string {

@@ -118,6 +118,26 @@ type sessionEntry struct {
 	Stubbed int `json:"stubbed,omitempty"`
 	Folded  int `json:"folded,omitempty"`
 
+	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
+	// — the length of the rebuilt window [sessionFile.appendCompaction] writes
+	// out after it.
+	//
+	// It is the one thing a reader cannot work out for itself, and it is what
+	// makes the conversation above a marker readable. The lines above are the
+	// original ones and the lines below are the pass's rewritten copy OF THE SAME
+	// CONVERSATION, so a reader that showed both would draw the whole session
+	// twice; it needs to know where the copy ends and the conversation carries on.
+	// Nothing in the file says that but this number.
+	//
+	// ABSENT MEANS UNKNOWN, not zero. Every marker written before this field
+	// existed — and every legacy marker, whose kept tail was re-journaled with no
+	// count either — leaves the region above it unplaceable, and a reader must
+	// then decline to offer it rather than guess (see [compactionOverlap]). It is
+	// deliberately NOT derived from Stubbed and Folded: those are the RECORD of
+	// what the pass did, nothing rebuilds from them, and a length derived from a
+	// count is a length that drifts the day the pass changes.
+	Window int `json:"window,omitempty"`
+
 	// Dropped is how many messages a rewind removed (rewind.go). It is a COUNT
 	// rather than a cut position because the file is append-only and positions
 	// in it are not positions in the replayed transcript: a compaction marker
@@ -495,6 +515,11 @@ func partKey(part ai.ContentPart) string {
 // resuming the conversation the model last had, not the one that was already
 // summarized away.
 //
+// IT ALSO HANDS BACK WHAT IS ABOVE THAT MARKER ([replayedSession.earlier]).
+// That region is not part of the transcript and is never sent; it is what a
+// surface scrolls back into, so that the boundary reads as the seam it is
+// rather than as the beginning of the conversation.
+//
 // The claim comes BEFORE the replay, not after. A lock taken at the end would
 // leave two processes reading the same file concurrently and only then finding
 // out one of them must back off, and the loser would have paid for a replay it
@@ -505,21 +530,21 @@ func partKey(part ai.ContentPart) string {
 // it can be, so by the time the journal is opened the id already exists. Empty
 // is the legacy flat layout, where nobody outside had an opinion and the file
 // names itself. A resumed file keeps the id it was written with either way.
-func openSessionFile(path, cwd, model, id string) (*sessionFile, []ai.Message, error) {
+func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession, error) {
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
-			return nil, nil, fmt.Errorf("session file: %w", err)
+			return nil, replayedSession{}, fmt.Errorf("session file: %w", err)
 		}
 	}
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return nil, nil, fmt.Errorf("session file: %w", err)
+		return nil, replayedSession{}, fmt.Errorf("session file: %w", err)
 	}
 	locked, err := lockSessionFile(file, path)
 	if err != nil {
 		_ = file.Close()
-		return nil, nil, err
+		return nil, replayedSession{}, err
 	}
 	journal := &sessionFile{file: file, locked: locked}
 
@@ -530,7 +555,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, []ai.Message, e
 		// The claim is released here rather than left to the caller: this
 		// returns no journal, so nobody else has a handle to close.
 		_ = journal.Close()
-		return nil, nil, err
+		return nil, replayedSession{}, err
 	}
 	journal.title = replayed.title
 	journal.id = replayed.id
@@ -554,7 +579,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, []ai.Message, e
 			Timestamp: stamp(),
 		})
 	}
-	return journal, replayed.messages, nil
+	return journal, replayed, nil
 }
 
 // lockSessionFile claims the journal for this process with a non-blocking
@@ -607,6 +632,8 @@ func replaySessionFile(path string) (replayedSession, error) {
 
 	var (
 		messages []ai.Message
+		earlier  []ai.Message
+		overlap  int
 		title    string
 		id       string
 		lines    int
@@ -675,10 +702,36 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 			messages = append(messages, message)
 		case "compaction":
+			// THE REGION THIS MARKER REPLACES IS KEPT BEFORE IT IS THROWN AWAY,
+			// which is the one thing this pass does that the live transcript has
+			// no use for. It is what a surface scrolls back into: the journal
+			// holds every line of the conversation above the marker, and without
+			// this the boundary would masquerade as the beginning of the chat.
+			//
+			// It is taken with the SAME reducer state that is about to be
+			// discarded — rewind cuts already applied, an older marker's window
+			// already in place — so the region is the transcript exactly as it
+			// stood one instant before this pass edited it, and not a naive
+			// re-read of the lines above the marker (which would resurrect turns
+			// a rewind took back).
+			//
+			// The LAST marker wins because each one overwrites the snapshot the
+			// one before it took. See [replayedSession.earlier] for why the
+			// nested regions are not stacked.
+			earlier = append(earlier[:0], messages...)
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
 			rebuilt := compactionMessages(entry)
+			// AND THE REGION IS ONLY KEPT IF IT CAN BE PLACED. The pass wrote its
+			// whole rebuilt window back below the marker, so the lines above it
+			// and the first Window lines below it are two renderings of ONE
+			// conversation — a reader that could not say where the copy ends has
+			// nothing it can honestly draw, and drops the region rather than
+			// showing the session to itself twice.
+			if overlap = compactionOverlap(entry); overlap < 0 {
+				earlier, overlap = earlier[:0], 0
+			}
 			messages = append(messages[:0], rebuilt...)
 			// The frames message is the FIRST of them when an old marker carried
 			// pages, which is the order [compactionMessages] builds and the only
@@ -732,8 +785,25 @@ func replaySessionFile(path string) (replayedSession, error) {
 	if err := scanner.Err(); err != nil {
 		return replayedSession{title: title, id: id, images: images, notes: notes, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
+	repaired := repairTranscript(messages)
+	// The overlap was counted against the lines the file holds and is applied to
+	// the transcript the repair left behind, so it is clamped to it. The repair
+	// only ever drops an unanswered trailing batch and orphaned results — the tail
+	// and the rare stray — so the two agree in every session that was not killed
+	// mid-batch, and a message of drift at the seam is a row nobody can see.
+	if overlap > len(repaired) {
+		overlap = len(repaired)
+	}
 	return replayedSession{
-		messages: repairTranscript(messages),
+		messages: repaired,
+		// The earlier region goes through the SAME repair as the live one. It is
+		// never sent, so the 400 the repair exists to prevent cannot happen to
+		// it — but a tool result whose call is missing is a row a surface would
+		// draw with nothing above it either way, and two shapings of one journal
+		// that disagreed about which lines are real would be the seam lying in a
+		// second way.
+		earlier:  repairTranscript(earlier),
+		overlap:  overlap,
 		title:    title,
 		id:       id,
 		images:   images,
@@ -811,6 +881,35 @@ func compactionMessages(entry sessionEntry) []ai.Message {
 	return messages
 }
 
+// compactionOverlap is how many of the messages BELOW one marker are the pass's
+// own rewritten copy of the conversation ABOVE it, and -1 when the file does not
+// say and the region therefore cannot be placed.
+//
+// It reads [sessionEntry.Window] and nothing else, which is the whole of its
+// discipline. Two shapes answer -1:
+//
+//   - A MARKER WRITTEN BEFORE THE FIELD EXISTED. The window is down there and
+//     its length is not, so a reader can tell that the conversation is written
+//     twice and not where the second copy stops.
+//   - A LEGACY MARKER, which re-journaled the tail it kept with no count either.
+//
+// In both cases the region above is dropped and the session behaves exactly as
+// it did before any of this: the transcript below the marker is the whole of
+// what a surface can draw. A session picks the ability up the next time it
+// compacts, because that pass writes the number.
+//
+// IT DOES NOT GUESS. The length is derivable from Folded — a fold replaces its
+// run with one line, so the window is the region less the folded messages plus
+// one — and deriving it was rejected: those counts are the RECORD of what a pass
+// did, the pass is free to change what it does, and a wrong length here does not
+// fail, it silently draws somebody's conversation twice.
+func compactionOverlap(entry sessionEntry) int {
+	if entry.Window <= 0 {
+		return -1
+	}
+	return entry.Window
+}
+
 // legacyFramesNote is what a pre-phase-3 frames marker put in front of its page
 // images. It is a string a resume has to be able to reproduce, so it lives here
 // beside the only reader left of it.
@@ -837,7 +936,31 @@ func legacyCompactionNote(summary string) string {
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
 	messages []ai.Message
-	title    string
+	// earlier is the transcript as it stood ONE INSTANT BEFORE the latest
+	// compaction marker — the conversation the pass edited away, which the file
+	// still holds in full and the model no longer carries. Nil for a journal
+	// that was never compacted, which is nearly all of them.
+	//
+	// THE REGION IS ONE HOP AND IS NOT STACKED, and that is a deliberate reading
+	// of a file that could be read the other way. A modern pass RE-JOURNALS THE
+	// WHOLE REBUILT WINDOW behind its marker ([sessionFile.appendCompaction]), so
+	// the lines after an older marker already contain everything before it, edited
+	// — a walk that ignored the older markers to "reach the raw beginning" would
+	// hand a surface the same conversation twice, once as it happened and once as
+	// that pass rewrote it. Applying every marker but the last one instead costs
+	// nothing a person can see: a pass never folds a USER message ([Agent.foldLocked]),
+	// so the region still opens on the conversation's very first words, with the
+	// older passes' stubs and fold lines in it exactly where the file puts them.
+	earlier []ai.Message
+	// overlap is how many messages at the START of messages are the pass's own
+	// rewritten copy of earlier — the rebuilt window it journaled behind its
+	// marker (see [compactionOverlap]). The conversation, told once and whole, is
+	// therefore `earlier` followed by `messages[overlap:]`.
+	//
+	// Zero whenever earlier is empty, and never anything else: a region that
+	// cannot be placed is not kept.
+	overlap int
+	title   string
 	// id is the header's session id, empty for a file that has no header yet.
 	id string
 	// images is where this file's pictures came from, keyed by [partKey] — the
@@ -1049,7 +1172,12 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		TokensBefore: tokensBefore,
 		Stubbed:      pass.stubbed,
 		Folded:       pass.folded,
-		Timestamp:    stamp(),
+		// The length is written BEFORE the window it describes, which is the only
+		// order that survives a crash halfway through: a reader that finds fewer
+		// lines than the number promised has a truncated file and can say so,
+		// where a count written afterwards would simply never arrive.
+		Window:    len(window),
+		Timestamp: stamp(),
 	})
 	for _, message := range window {
 		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The window is written again

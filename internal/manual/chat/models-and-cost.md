@@ -540,6 +540,14 @@ A pass can decline: `session: nothing to compact` (everything already fits in th
 
 When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
 part of it is summarized away and the recent tail is kept, which is what compaction is.
+
+**Nothing is lost is meant literally, and you can go and look.** The session file keeps
+every original line, and scrolling up above the boundary is given those rather than the
+shortened copy — with one dim line, `· above here the model keeps a shortened record — you
+can still read it all`, where the two meet. What shrank is the model's copy, not yours (the
+screen page has the whole of that line's meaning, and the limit: a session compacted by an
+older aforge is still drawn from the shortened copy).
+
 Four ways a pass starts:
 
 - **Automatically**, after any step where the estimate is over the threshold. A failed pass is

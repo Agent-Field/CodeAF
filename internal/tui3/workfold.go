@@ -63,6 +63,15 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				(es[i].kind == entryNote && strings.HasPrefix(es[i].text, "cancel")) {
 				blocked = true
 			}
+			// A SEAM IS NEVER FOLDED AWAY. A chip hides the machinery between a
+			// question and its answer, and the run of blocks it hides is chosen by
+			// position — so a seam that happened to sit inside one would vanish
+			// with it, and the fold would be quietly claiming that the
+			// conversation above it is the same unbroken conversation. The whole
+			// group keeps its rows instead (replay.go's [entrySeam]).
+			if es[i].kind == entrySeam {
+				blocked = true
+			}
 		}
 		if answer >= 0 && es[answer].settled && !blocked && es[lo].turn != runningTurn {
 			f := workfold{turn: es[lo].turn, start: -1, answer: answer}

@@ -322,6 +322,25 @@ scroll up and aforge reads the previous 40 out of the file and puts them above w
 reading, over and over, until you are at the first message. While there is more above you
 the top row says `· earlier · keep scrolling`. The screen page has the keys.
 
+**A compaction in the middle of it does not shorten what you can read.** A pass rewrites the
+conversation for the model and writes the rewritten version back into the file below its
+marker — so the file holds the session twice, once as it happened and once shortened.
+Scrolling up is given the **original**, and one dim line is drawn where the two meet:
+
+```
+· above here the model keeps a shortened record — you can still read it all
+```
+
+Above that line you are reading the file, not the model's context: the words are the ones
+that were said, and the model's own copy of them is shorter (old tool results are pointers,
+long runs of its work are one line). Ask about something above the line and it may answer
+from the shortened version. See the screen page for the whole of that line's meaning.
+
+This needs the pass to have written down **how much it wrote back**, which aforge started
+recording with this version. A session compacted by an older aforge is drawn from the
+shortened copy, exactly as it always was, and gains the fuller history the next time it
+compacts — showing both copies would print the whole conversation twice.
+
 `aforge chat --session <path>` takes the path you named as given — *"a path a person named
 is a path they mean, existing or not"*. `~` is expanded and the directory is created. The
 launch reports it as resumed only if the file already existed.
@@ -330,6 +349,22 @@ Reopening a conversation is a forward read of the journal with no rewriting. It 
 the latest compaction marker, using that marker's summary as the context. A line that does
 not parse is skipped rather than being fatal. A `rewind` line drops that many messages and
 the read continues.
+
+The same read also keeps what is **above** that marker — the conversation as it stood one
+instant before the pass edited it — for scrolling back into. It is history and never
+context: nothing is ever sent to a model from it. It is built with the same read and the
+same rules, so a turn a `rewind` took back before the compaction stays taken back rather
+than coming back from the dead. A file compacted more than once keeps the region before the
+**latest** marker; it still opens on the conversation's first words, because a pass never
+shortens anything you typed.
+
+The `compaction` line carries a `window` count: how many message lines the pass wrote back
+below it. That is what says where the shortened copy ends and new conversation begins, so
+the screen can draw the conversation once. A marker without it — every one written before
+this version — leaves the region unusable, and the transcript below the marker is all the
+screen shows, which is what it always showed. The count is never guessed at from the
+`stubbed` and `folded` figures: those are a record of what a pass did, and a length derived
+from them would silently draw somebody's conversation twice the day a pass changed.
 
 Two repairs then make the transcript legal to send again:
 

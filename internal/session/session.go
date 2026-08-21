@@ -1306,6 +1306,23 @@ type Agent struct {
 	// sessions.
 	reasoning map[string]provider.Effort
 	messages  []ai.Message
+	// earlier is the conversation ABOVE the latest compaction marker, shaped for
+	// a surface's scrollback and held for no other reason: nothing here ever
+	// sends it, and the model does not carry it (see [Agent.EarlierTranscript]).
+	//
+	// It is DISPLAY ENTRIES rather than messages, and that is the whole of why it
+	// can be held at all. A run of ai.Message keeps every picture in it alive as
+	// the multi-megabyte data URL it was rebuilt into — the exact thing
+	// [sessionFile.images] is fingerprinted to avoid — while a display entry
+	// keeps the words, the path a picture came from, and a CAPPED copy of each
+	// tool result. So the memory is bounded by the text of the journal's earlier
+	// region and is smaller than the file that holds it.
+	earlier []DisplayEntry
+	// earlierFloor is how many entries at the START of [Agent.Transcript] are the
+	// latest pass's own rewritten copy of earlier — the stubs and fold lines it
+	// put in place of the conversation above. A surface draws the region instead
+	// of them, so the conversation is told once ([EarlierHistory]).
+	earlierFloor int
 	// personAsk is the last thing THE PERSON typed, kept apart from the
 	// transcript because the transcript cannot answer the question. Every user
 	// message in a.messages is user-role, including the ones the session wrote
