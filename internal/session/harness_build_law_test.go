@@ -34,13 +34,17 @@ func endedResponse(text, finishReason string) *ai.Response {
 // A CUT-OFF REPLY IS NOT A PUNCTUATION PROBLEM, and it does not buy a repair
 // turn. The repairer is told never to change content; handed half an object it
 // closes the braces and invents the rest, which is a page nobody wrote reaching
-// a card somebody approves.
+// a card somebody approves. What it buys instead is ONE continuation — its own
+// author finishing the page — and a continuation that hits the ceiling too is
+// discarded, so a model that cannot fit the page in two budgets spends the
+// attempt and is asked for a smaller one.
 func TestACutOffDesignSkipsTheRepairTurn(t *testing.T) {
 	const half = `{"cues": ["a", "b"], "justification": "x", "harness": {"id": {"name": "half`
+	cutStep := func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil }
 	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
+		cutStep, cutStep, // attempt one and its continuation, both cut
+		cutStep, cutStep, // attempt two, the same
+		cutStep, cutStep, // attempt three, the same
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 
@@ -51,20 +55,76 @@ func TestACutOffDesignSkipsTheRepairTurn(t *testing.T) {
 	if !strings.Contains(err.Error(), "ran out of completion budget") {
 		t.Fatalf("the failure blamed something else: %v", err)
 	}
-	// THREE ATTEMPTS AND NOT SIX. One call per attempt is the whole point: a
-	// repair turn on each would double the bill to fix a length problem with a
-	// delimiter.
-	if calls := completer.requests(); calls != harnessDesignRetries+1 {
-		t.Fatalf("a truncated reply cost %d calls, not %d", calls, harnessDesignRetries+1)
+	// TWO CALLS PER ATTEMPT AND NEVER THREE: the attempt and its continuation,
+	// with no repair turn on either — a repairer handed half an object invents
+	// the other half.
+	if calls := completer.requests(); calls != 2*(harnessDesignRetries+1) {
+		t.Fatalf("a truncated reply cost %d calls, not %d", calls, 2*(harnessDesignRetries+1))
+	}
+}
+
+// A PAGE THAT STOPPED MID-SENTENCE WAS STILL BEING WRITTEN, so before the
+// attempt is spent, its own author is handed the partial and asked for the
+// rest. The big page lands whole — the ceiling stops punishing exactly the
+// complex designs a person asked for on purpose.
+func TestACutOffDesignIsAllowedToFinishWriting(t *testing.T) {
+	const at = len(designReply) / 2
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return endedResponse(designReply[:at], "length"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(designReply[at:]), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(reviewReply), nil },
+	}}
+	agent, _ := buildAgent(t, completer, t.TempDir())
+
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
+	if err != nil {
+		t.Fatalf("a continued page was refused: %v", err)
+	}
+	if page.Id.Name != "flake-triage" {
+		t.Fatalf("the page that came back is %q", page.Id.Name)
+	}
+	// The continuation is asked over the partial AS THE ASSISTANT'S OWN TURN,
+	// or the model is being asked to finish a page it cannot see.
+	asked := completer.request(1)
+	if !strings.Contains(textOf(asked[len(asked)-2]), `"flake-triage"`) {
+		t.Fatal("the continuation was not shown the partial it is finishing")
+	}
+	if told := textOf(asked[len(asked)-1]); !strings.Contains(told, "CUT OFF") {
+		t.Fatalf("the continuation was not told what happened; it was told: %s", told)
+	}
+}
+
+// A MODEL THAT STARTS THE OBJECT OVER HAS STILL ANSWERED, if it finished this
+// time. The stitched text will not parse — half an object with a whole one
+// stapled on — so the fresh reply is tried alone before the attempt is spent.
+func TestAContinuationThatStartedOverStillLands(t *testing.T) {
+	const half = `{"cues": ["a", "b"], "justification": "x", "harness": {"id": {"name": "flake-triage`
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(designReply), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(reviewReply), nil },
+	}}
+	agent, _ := buildAgent(t, completer, t.TempDir())
+
+	page, _, err := agent.designPage(context.Background(), "anything", "test/model", designSeat{})
+	if err != nil {
+		t.Fatalf("a restarted continuation was refused: %v", err)
+	}
+	if page.Id.Name != "flake-triage" {
+		t.Fatalf("the page that came back is %q", page.Id.Name)
 	}
 }
 
 // THE MODEL IS TOLD THE ONE THING THAT WOULD HELP. A model shown only "that did
 // not parse" answers by sending the same page again, at the same length, into
-// the same ceiling.
+// the same ceiling. The demand for a smaller page is the LAST answer, after the
+// continuation has failed too — here the continuation is cut as well.
 func TestACutOffDesignIsAskedForASmallerOne(t *testing.T) {
 	const half = `{"cues": ["a", "b"], "justification": "x", "harness": {"id": {"name": "half`
 	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return endedResponse(half, "length"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(designReply), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(reviewReply), nil },
@@ -78,7 +138,7 @@ func TestACutOffDesignIsAskedForASmallerOne(t *testing.T) {
 	if page.Id.Name != "flake-triage" {
 		t.Fatalf("the page that came back is %q", page.Id.Name)
 	}
-	second := completer.request(1)
+	second := completer.request(2)
 	last := second[len(second)-1]
 	told := textOf(last)
 	if !strings.Contains(told, "SMALLER harness") {

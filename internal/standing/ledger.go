@@ -22,6 +22,12 @@ import (
 // so it does not count against MaxPerDay.
 const entryCheck = "check"
 
+// entryTidy names the consolidation pass over what is remembered ([Tidy]). It
+// belongs to nobody's item — nobody armed it — so its line carries no item id,
+// and it is counted exactly as a check is: against the day's money, never
+// against anything's run count.
+const entryTidy = "tidy"
+
 // Append writes one entry to today's ledger with O_APPEND.
 func (s *Store) Append(entry Entry) error {
 	if entry.At.IsZero() {
@@ -126,7 +132,7 @@ func (s *Store) RunsSince(from time.Time) (map[string]Spend, error) {
 // that rule again is where the daily rail and a card would come to disagree.
 func (s *Spend) count(entry Entry) {
 	s.USD += entry.USD
-	if entry.Kind != entryCheck {
+	if entry.Kind != entryCheck && entry.Kind != entryTidy {
 		s.Fired++
 	}
 }

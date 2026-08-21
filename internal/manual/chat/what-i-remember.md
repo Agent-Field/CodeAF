@@ -24,8 +24,9 @@ The memory commands have two postures:
 - `/forget <query>` — drop the one thing that best matches.
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
-default; off, nothing is carried, nothing is written, and neither of the two
-calls below is made. With it off, all three commands answer:
+default; off, nothing is carried, nothing is written, neither of the two calls
+below is made, and the background tidy never runs. With it off, all three
+commands answer:
 
 ```
 memory is off · turn it on under /settings
@@ -36,11 +37,12 @@ memory is off · turn it on under /settings
 Open `/memory`. Its twelve-row list starts with the most recently updated
 memories. Type to filter title, text and tags; the same prefix, substring
 and fuzzy subsequence ranking as the model picker is applied to the list loaded
-when the panel opened. A `*` marks a memory used at least five times. Press tab
+when the panel opened. A `*` marks a memory that has helped at least five
+times. Press tab
 to cycle the scope shown: all, user, project, env, then all again.
 
-Enter expands the selected memory to show its full text, tags, use count, age,
-and where it came from. Esc returns to the list; esc from the list closes the
+Enter expands the selected memory to show its full text, tags, how many times it
+has helped (`used · 7`), age, and where it came from. Esc returns to the list; esc from the list closes the
 panel. `/memory <query>` prints matching lines into the conversation.
 
 ## How do I edit a memory?
@@ -64,15 +66,28 @@ forgetting is one key, and an accidental forget has one undo.
 
 ## How does it decide what to put in front of the model?
 
-Before each message, a small model on its own cheap tier reads what you just
-typed against an index of **titles only** — never the full text — and answers
-which two or three remembered lines bear on this message. Only those are put in
-front of the model, as a short `<memory>` block. Most messages need none, and an
-empty answer is the ordinary one.
+It happens in two steps, and only the second one is a model.
 
-That is why a hundred remembered things do not make every message more
-expensive: the index is titles, the block is what the router asked for, and
-nothing else travels.
+First, **a ranking in the database picks the eight lines most likely to matter**
+to what you just typed. It fuses three orderings the store already keeps: the
+words themselves (a full-text match over title, text and tags), **how often each
+line has actually helped before**, and how recently it changed. They fail in
+different directions, which is the point — something you have leaned on for
+months reaches the shortlist even when it shares no word with your message, and
+something you corrected this morning reaches it on the strength of that alone.
+
+Then **a small model on its own cheap tier reads those eight lines** — titles
+only, never the full text — and answers which two or three of them bear on this
+message. Only those are put in front of the model, as a short `<memory>` block.
+Most messages need none, and an empty answer is the ordinary one.
+
+The split is deliberate. Arithmetic is good at finding candidates and bad at
+telling a near-miss from a match; a model is the opposite. So the model's whole
+job is to throw out the lines that merely sound related — one
+plausible-but-wrong line in the prompt costs more than the right one gains.
+
+That is why a thousand remembered things cost the same as eight, and the eight
+is a shortlist rather than a cap: anything remembered can reach it.
 
 Two messages are never routed at all, because there would be nothing to match:
 an empty message, and a continuation shorter than three words — `yes`, `go on`,
@@ -81,6 +96,71 @@ an empty message, and a continuation shorter than three words — `yes`, `go on`
 **If that small model is unreachable, the message goes out unchanged.** No
 error, no warning, no memory in the prompt. A memory failure is never allowed to
 break the thing you actually asked for.
+
+## Does a remembered line show its age?
+
+Yes, and it is told. Every line in the `<memory>` block carries when it was last
+written, in the same words `/memory` uses:
+
+```
+- deploys on Fridays: Deploys go out on Friday afternoons. (learned 3mo ago)
+```
+
+Something learned in the last hour reads `just now`, then hours, days, weeks and
+months. A memory old enough to be worth doubting is a memory that says so, which
+is the difference between a standing preference and a fact about a project that
+has moved on since.
+
+A line whose age is unknown — an old row from before this was recorded — simply
+carries no age rather than a zero. Nothing here asks a model to work out a date
+range for itself; it is only ever shown one.
+
+## Why did it say superseded?
+
+Because a memory was **replaced by one that contradicts it**. It is one of the
+two things here that change what is remembered without you asking — the other is
+the background tidy further down — and it is the riskier one:
+
+```
+superseded · deploys on Fridays → deploys on Tuesdays
+```
+
+It happens when the pass that reads an exchange finds something durable, and
+what the store already holds nearest to it says the opposite. The old line is
+retired and the new one takes its place, in one step, so there is never a moment
+where nothing at all is remembered about the subject.
+
+This used to happen in complete silence, and that was wrong. Retiring something
+true is the riskiest thing this feature does — it is a small model deciding, out
+of ordinary conversation and with nobody asked, that something you said has
+stopped being true. So it now says one dim line, exactly as `remember` and
+`forget` do.
+
+**The old line is not destroyed.** It is retired, not deleted: it leaves every
+list, every search and every message, and the record of what it said survives.
+If the replacement is wrong, `/remember` the original and it is written back.
+
+The background tidy can retire a line the same way, and says so in the same dim
+register — `memory tidied · 2 merged · 1 superseded`. It is held to a narrower
+rule than this pass is: it may never retire a preference, a decision or a
+correction.
+
+## Does a memory count as used when it actually helped?
+
+It asks. When a message was answered with remembered lines in front of it, the
+same cheap pass that reads the exchange afterwards is also shown those lines and
+asked which of them **bore on the answer** — as in, would the reply have been
+different without it. It costs no extra call and about ten words of answer.
+
+That number is what `used · 7` counts in `/memory`, and it is one of the three
+things the shortlist is ranked by. It counts **help, not retrieval**: a line put
+in front of a model that then had nothing to do with the reply is counted
+*against* itself, so something that keeps sounding relevant and never once
+changes an answer stops being offered. It is the same bargain aforge already
+keeps with a suggested fix that gets offered and then fails.
+
+Nothing is counted either way when that pass could not run. A provider outage is
+not evidence that a memory failed to help.
 
 ## Can you look up what we said in an earlier conversation — searching old chats
 
@@ -130,8 +210,77 @@ existing line, it replaces a line that has stopped being true, or it is skipped
 because something already says it. That is what keeps telling aforge the same
 preference in three sessions from leaving three near-identical lines behind.
 
-Nothing about this is announced. There is no card and no line in the transcript
-when a memory is written by this pass; `/memory` is how you see what it did.
+Nothing is announced when a memory is **added or refined** by this pass — no
+card, no line in the transcript; `/memory` is how you see what it did. The one
+exception is a line that **replaces** something that contradicts it, which says
+`superseded · old → new`, because retiring something you said is not a thing to
+do quietly.
+
+## Why did it say memory tidied — my memories got merged while I was away
+
+Because a third call, quite separate from the two above, went over what is
+remembered while nobody was here and tidied it. When it changes something it
+says so in one dim line and nothing else:
+
+```
+memory tidied · 2 merged · 1 superseded
+```
+
+A half that is zero is left out, and a pass that changed nothing says nothing at
+all — which is most passes. The line arrives in whichever conversation you most
+recently touched, if any is open; on a machine with no window open there is no
+line, and the change is simply there the next time you look at `/memory`.
+
+**When it runs.** It rides the same 5-minute background pass that checks
+everything standing, and three things have to be true at once: memory is **on**,
+**nobody has said anything anywhere for fifteen minutes**, and the last tidy was
+**more than six hours ago**. On top of that at least **two** remembered lines
+must have changed since the last one — one new line has already been settled
+against its neighbours on the turn that wrote it, so there would be nothing to
+merge it with.
+
+**What it may do.** It reads the fifty most recently touched lines, grouped by
+how far each one's truth reaches, and answers with at most **eight** changes:
+
+- **merge** two lines that say the same thing into one clearer line, keeping
+  every fact both of them carried;
+- **retire** a line that another line has replaced, putting the line that is
+  true now in its place.
+
+**What it costs.** One call on the **small work** class — the `consolidate` role
+in `/settings` → Providers — a few times a day at most. It spends under the same
+daily budget as everything else that runs in the background, and it is the first
+thing a spent day stops paying for.
+
+**Where the record is.** Every change is an ordinary memory event, so `/memory`
+is where you see what it did — and because a line it rewrote was last touched by
+the tidy rather than by a conversation, that row's `learned <age>` is the age of
+the rewrite and it names no session. Nothing is deleted: a retired line keeps its
+row and the store keeps what it said before. What the pass spent is one line in
+the day's ledger under `~/.aforge/v3/standing/`, and it counts against the same
+daily budget as everything else that runs in the background.
+
+## Does it clean up or delete old memories on its own?
+
+**It never deletes anything, and it never drops a memory for being old.** There
+is no expiry, no half-life and no floor on how often a memory has to be used.
+Something you told it a year ago is still there.
+
+The only thing the background tidy above ever removes from the active list is a
+line **another line has replaced** — the api moved from v2 to v3, the deploy
+window changed — and even then the old row is kept and stays readable. Age on its
+own is never a reason.
+
+**And it will never replace something you said yourself with something it
+worked out.** A `preference`, a `decision` and a `correction` are your own words
+about how you want things — a correction is you saying aforge had it wrong — and
+the tidy is not allowed to decide any of them has been superseded. It may sharpen
+the wording of one, because you can read that and change it back; it may not
+retire it. Only a plain `fact` and a `project_state` can be retired that way,
+because those are the two that go stale on their own.
+
+If you do want something gone, that is yours to do: `/forget <query>`, or delete
+(or ctrl+d) on a row in `/memory`, with one undo behind it.
 
 ## Can you remember this for me?
 
@@ -177,7 +326,10 @@ list, every search and every message from that instant.
 
 ## What does remembering cost?
 
-Two calls per message, both on the cheapest of the four crew classes — the
+Two calls per message — plus one that is not per message at all: the background
+tidy, on the **small work** class, a few times a day at most while nobody is
+here. The two that ride every message are both on the cheapest of the four crew
+classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
 `nex-agi/nex-n2-mini`. Each goes out with a short
