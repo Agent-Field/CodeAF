@@ -914,12 +914,12 @@ change by asking is a row you find changed in the panel, and the reverse. `setti
 the read beside it, listing every row by the key `change_setting` names. Which rows
 aforge refuses to change for you, and why, is on the permissions page.
 
-The project layer, `<workspace>/.openaf/config.json`, is deliberately not writable from
+The project layer, `<workspace>/.aforge-v3/config.json`, is deliberately not writable from
 the panel — or from `change_setting`, which writes your profile only. The foot line says
 so:
 
 ```
-saved to your profile · a project's own .openaf/config.json is a hand edit
+saved to your profile · a project's own .aforge-v3/config.json is a hand edit
 ```
 
 So a value set here follows you between projects, and a value a project sets for itself

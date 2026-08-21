@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
@@ -335,24 +336,96 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 			// cannot be inherited: it is minted with the folder, below.
 			root = workspace
 		}
-		return v3MintSession(filepath.Dir(dir), root, v3LaunchDir(), current.Owned)
+		return v3MintSession(filepath.Dir(dir), root,
+			v3StampLaunchDir(v3LaunchDir(), root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		return session.Place{}, err
 	}
-	return v3MintSession(bucket, workspace, v3LaunchDir(), false)
+	return v3MintSession(bucket, workspace,
+		v3StampLaunchDir(v3LaunchDir(), workspace), false)
 }
 
 // v3LaunchDir is where the person is standing, and "" when even that cannot be
 // read — which is a field of meta.json left empty rather than a launch that
 // fails.
+//
+// IT IS CAPTURED ONCE, on the first call, and every later call reads the same
+// answer back. The reason is that a process can now open several conversations
+// and one of them may be about another project entirely: the launch directory is
+// a fact about the WINDOW — where the person was standing when they typed
+// `aforge` — and re-reading it per conversation would only be a way for it to
+// come back different. Nothing in this process changes directory; `aforge
+// engine` is the one door that does and it does so before it opens anything
+// (engine.go), so its first call captures the workspace it moved into, exactly
+// as the per-call read did.
+var v3Standing struct {
+	once sync.Once
+	dir  string
+}
+
 func v3LaunchDir() string {
-	dir, err := os.Getwd()
-	if err != nil {
+	v3Standing.once.Do(func() {
+		if dir, err := os.Getwd(); err == nil {
+			v3Standing.dir = dir
+		}
+	})
+	return v3Standing.dir
+}
+
+// v3StampLaunchDir is what a new session folder RECORDS as the launch directory,
+// and the one case where the honest answer is nothing.
+//
+// [session.Meta.LaunchDir] is "where the person actually stood when the session
+// opened", and it is read by two things: [projectPath] names the project of an
+// owned session from it, and the idle sweep marks a session disposable if EITHER
+// its workspace or its launch directory is under a temp directory
+// (internal/session's sweep.go). The second is the trap. A process started in
+// /tmp — by a script, by an editor, by a test harness — that then opens a
+// conversation in ~/work/repo would stamp that conversation as litter and have
+// it reaped once it went idle, in a project the person very much meant.
+//
+// SO THE LAUNCH DIRECTORY TRAVELS ONLY WHILE IT AGREES WITH THE WORKSPACE ABOUT
+// BEING TEMPORARY. When it does not, the field is left empty, which the sweep
+// reads as not-temporary and meta.json omits. A conversation opened in /tmp is
+// still litter, because its workspace says so on its own.
+func v3StampLaunchDir(launchDir, workspace string) string {
+	if strings.TrimSpace(launchDir) == "" {
 		return ""
 	}
-	return dir
+	if v3TempPath(launchDir) && !v3TempPath(workspace) {
+		return ""
+	}
+	return launchDir
+}
+
+// v3TempPath reports whether a path sits inside a directory the machine itself
+// considers disposable.
+//
+// IT IS THE SAME RULE internal/session's sweep applies to the two fields of
+// meta.json, spelled here because that one is unexported and because this side
+// has to answer the question BEFORE the file is written rather than after. Both
+// the configured temp directory and /tmp are asked, because TMPDIR moves the
+// first without making the second any less of a temp directory to the person who
+// typed it. The pair is pinned by a test; if the sweep's rule ever widens, this
+// one widens with it or a conversation gets reaped under somebody.
+func v3TempPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	path = filepath.Clean(path)
+	for _, temporary := range []string{os.TempDir(), "/tmp"} {
+		temporary = filepath.Clean(strings.TrimSpace(temporary))
+		if temporary == "" || temporary == string(filepath.Separator) {
+			continue
+		}
+		if path == temporary || strings.HasPrefix(path, temporary+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── the bucket, read and groomed ────────────────────────────────────────────

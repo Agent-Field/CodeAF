@@ -460,7 +460,7 @@ func (a *app) openHome() tea.Cmd {
 // themselves; a switch would be a third answer that has to be kept in step with
 // two facts that are already true.
 func (a *app) landHome() {
-	if a.hosted() || a.resume == nil {
+	if a.hosted() || !a.canOpen() {
 		return
 	}
 	// ONE READ ANSWERS BOTH QUESTIONS. Whether to greet somebody now, and
@@ -1287,7 +1287,7 @@ func (a *app) homeEnter() tea.Cmd {
 // the new conversation owes itself, so the submit below is talking to the new
 // agent and not to the one that just closed.
 func (a *app) homeStart(text string) tea.Cmd {
-	if a.fresh == nil {
+	if !a.canStart() {
 		a.home.say(newUnavailableWord, "")
 		return nil
 	}
@@ -1334,7 +1334,7 @@ func (a *app) homeHeldNow(row session.SessionRow) bool {
 // homeOpens reports whether THIS window can open a row. See this file's header
 // for why the answer is "only its own project's" in this slice.
 func (a *app) homeOpens(line homeLine) bool {
-	if a.resume == nil {
+	if !a.canOpen() {
 		return false
 	}
 	return a.home.bucket != "" && filepath.Clean(line.dir) == a.home.bucket
@@ -1416,7 +1416,7 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 // which is deliberate: a door that is drawn is a door that works, and one that
 // would open on nothing is neither drawn nor bound.
 func (a *app) homeDoorOpen() bool {
-	return a.homeWorth && a.resume != nil && !a.hosted() && !a.home.open
+	return a.homeWorth && a.canOpen() && !a.hosted() && !a.home.open
 }
 
 // homeDoorShowing reports whether the foot of the conversation should advertise

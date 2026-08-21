@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -466,6 +465,14 @@ type app struct {
 	ctx   context.Context
 	agent Agent
 	fresh func() (Agent, string, error)
+	// start and open are the agent-building seam (tui3.go's [Conversation]):
+	// they hand back the agent AND the closures minted around it, so /new and a
+	// resume rebind the approval trio, the recent list, the draft and the recall
+	// list in the same breath as the agent. They are preferred over fresh and
+	// resume wherever both are wired; the pair below is what a door that cannot
+	// answer the seam still gets ([app.nextConversation], [app.openConversation]).
+	start func(workspace string) (Conversation, error)
+	open  func(workspace, transcript string) (Conversation, error)
 	// workspace is the directory this conversation is about, whole; place is
 	// its base name, which is what the status line has room for. The whole path
 	// is what history is keyed by and what the @ completion walks.
@@ -1220,27 +1227,13 @@ func newApp(ctx context.Context, opts Options) *app {
 			place = cwd
 		}
 	}
-	// THE PLACE CARRIES THE MACHINE (host.go): on a remote session every
-	// rendering of where-you-are reads `devbox:app`, because the connection is
-	// shown as the place and is shown nowhere else.
-	shown := ""
-	if place != "" {
-		shown = filepath.Base(place)
-	}
-	// AND AN OWNED SESSION IS NAMED, NOT PATHED (host.go's [ownedWord]). The
-	// base name of an owned workspace is the literal word "work", which is the
-	// least informative thing the status line could possibly say about where a
-	// person is.
-	if opts.Owned {
-		shown = ownedWord
-	}
-	if host != "" && shown != "" {
-		shown = host + ":" + shown
-	}
+	shown := placeShown(place, opts.Owned, host)
 	a := &app{
 		ctx:              ctx,
 		agent:            opts.Agent,
 		fresh:            opts.Fresh,
+		start:            opts.Start,
+		open:             opts.Open,
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		owned:            opts.Owned,
@@ -4078,6 +4071,108 @@ func (a *app) slash(line string) tea.Cmd {
 // to refuse in the same words when it is not there (home.go).
 const newUnavailableWord = "/new is unavailable here"
 
+// canStart and canOpen report whether this surface has a door onto a NEW
+// conversation and onto an EARLIER one.
+//
+// Two seams answer each: the older pair that hands back an agent alone
+// ([Options.Fresh], [Options.Resume]) and the pair that hands back the whole
+// conversation ([Options.Start], [Options.Open]). Every refusal in the surface
+// asks these rather than one field, so a door that wires only one of the two
+// still has working rows instead of a /new that says it is unavailable while
+// the seam behind it is sitting there.
+func (a *app) canStart() bool { return a.start != nil || a.fresh != nil }
+func (a *app) canOpen() bool  { return a.open != nil || a.resume != nil }
+
+// nextConversation asks the door for a fresh conversation in THIS
+// conversation's own workspace, which is what the empty string means to the
+// seam (tui3.go's [Options.Start]).
+//
+// The bool is whether what came back is a WHOLE conversation. The fallback
+// builds one carrying nothing but the agent and its file, and [app.takeUp] then
+// leaves every other seam standing — which is exactly what the older Fresh door
+// has always done, said once here instead of branched around downstream.
+func (a *app) nextConversation() (Conversation, bool, error) {
+	if a.start != nil {
+		conv, err := a.start("")
+		return conv, true, err
+	}
+	agent, file, err := a.fresh()
+	if err != nil {
+		return Conversation{}, false, err
+	}
+	return Conversation{Agent: agent, SessionFile: file}, false, nil
+}
+
+// openConversation is the same question about a transcript somebody picked.
+func (a *app) openConversation(file string) (Conversation, bool, error) {
+	if a.open != nil {
+		conv, err := a.open("", file)
+		return conv, true, err
+	}
+	agent, err := a.resume(file)
+	if err != nil {
+		return Conversation{}, false, err
+	}
+	return Conversation{Agent: agent, SessionFile: file}, false, nil
+}
+
+// takeUp takes up a conversation the door built: the agent, and — when the door
+// answered the whole seam — the per-agent closures that came with it.
+//
+// THIS IS WHERE THE APPROVAL BUG IS FIXED. The trio below used to be wired once,
+// at boot, around the agent the door opened before the surface existed, and it
+// stayed wired to that agent through every /new and every resume. So an "always"
+// answered in a conversation opened later was written to the profile correctly
+// and pushed into a closed session (cmd/aforge's chatv3_approval.go says what the
+// push is for), which the person had no way to see: the card said saved, it was
+// saved, and the very next call asked again. Rebinding here means the closure a
+// keystroke reaches is always the one minted around the agent that keystroke is
+// about.
+//
+// WHAT THE OLDER SEAM RETURNS IS NOT A CONVERSATION and must not be treated as
+// one — a bundle with nine zero fields would silently clear the recent list, the
+// draft and the trio. That is what `whole` says, and it is the caller's own fact
+// rather than something guessed from the fields.
+func (a *app) takeUp(conv Conversation, whole bool) {
+	if conv.Agent != nil {
+		a.agent = conv.Agent
+	}
+	a.file = conv.SessionFile
+	if !whole {
+		return
+	}
+	if workspace := strings.TrimSpace(conv.Workspace); workspace != "" {
+		a.workspace = workspace
+	}
+	a.owned = conv.Owned
+	if shown := strings.TrimSpace(conv.Place); shown != "" {
+		a.place = shown
+	} else {
+		// The door usually leaves this to the surface, because what a place is
+		// CALLED is a rendering question and this is the package that answers it
+		// (host.go's [placeShown]).
+		a.place = placeShown(a.workspace, a.owned, a.host)
+	}
+	if conv.ContextWindow > 0 {
+		// Zero is nobody knowing, and a meter drawn against an unknown window
+		// means nothing — so the one this surface already has stands.
+		a.ctxWindow = conv.ContextWindow
+	}
+	// These four ARE cleared by a zero, and deliberately: a project that keeps no
+	// draft and a workspace that records no history are answering about their own
+	// directory, and carrying the previous conversation's answer into them would
+	// be keeping what somebody's repository asked us not to keep (draft.go, and
+	// the door's per-workspace read of the same two rows).
+	a.draftFile = conv.DraftFile
+	a.history = conv.History
+	a.saveApproval = conv.SaveApproval
+	a.saveBashApproval = conv.SaveBashApproval
+	a.applyApprovals = conv.ApplyApprovals
+	if conv.RecentSessions != nil {
+		a.recentSessions = conv.RecentSessions
+	}
+}
+
 // renew closes this conversation and opens the next one on the same config.
 // The transcript is cleared because it belongs to the agent that just closed:
 // a fresh session file with the old conversation still on screen would be the
@@ -4085,7 +4180,7 @@ const newUnavailableWord = "/new is unavailable here"
 // It returns the one command the next conversation owes itself: its own
 // standing task subscription (task.go).
 func (a *app) renew() tea.Cmd {
-	if a.fresh == nil {
+	if !a.canStart() {
 		a.note(newUnavailableWord)
 		return nil
 	}
@@ -4095,12 +4190,14 @@ func (a *app) renew() tea.Cmd {
 	if err := a.agent.Close(); err != nil {
 		a.note("close failed: " + err.Error())
 	}
-	agent, file, err := a.fresh()
+	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
 		return nil
 	}
-	a.agent, a.file = agent, file
+	a.takeUp(conv, whole)
+	agent := a.agent
+	file := a.file
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
@@ -4156,6 +4253,13 @@ func (a *app) renew() tea.Cmd {
 		a.note("new session · " + a.hostedPath(file))
 	} else {
 		a.note("new session")
+	}
+	if conv.Notice != "" {
+		// The door had something to say about HOW this conversation came to be
+		// open — "session open elsewhere — started a new one" is the sentence
+		// that exists — and the entry line is where the first conversation's own
+		// notice lands too ([Options.Notice]).
+		a.note(conv.Notice)
 	}
 	// AND THE PROJECT'S RECORD IS READ AGAIN ON THE WAY OUT. [app.dropTasks] takes
 	// the snapshot with the nodes, because the live rows merged into it belonged

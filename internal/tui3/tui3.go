@@ -171,6 +171,66 @@ type Agent interface {
 	EarlierHistory() session.EarlierHistory
 }
 
+// Conversation is one live agent and everything the door resolved around it:
+// where it works, what it may keep, and the seams that answer for THAT agent
+// and no other.
+//
+// IT EXISTS BECAUSE THE CLOSURES ARE PER AGENT, and holding that as eleven
+// separate fields on Options was a bug rather than a style. The consent card's
+// "always" is written to disk and then handed to the gate the session is
+// running behind (cmd/aforge's chatv3_approval.go); when the trio was built once
+// at boot, an always answered after a /new or a resume was saved correctly, said
+// "saved" correctly, and pushed the rebuilt gate into the agent that had just
+// been closed — so it did not answer the very next call, as the manual says it
+// does, but the next launch, with nothing on screen saying so. Minting the
+// closures in the same call that builds the agent is what makes that
+// impossible: there is no moment at which the surface holds an agent and a
+// closure that disagree about which conversation they are.
+//
+// A door that cannot fill a field leaves it zero, and the surface keeps what it
+// had — see [app.takeUp], which is the one place a conversation is taken up.
+type Conversation struct {
+	// Agent is the conversation itself. Required; everything else may be zero.
+	Agent Agent
+	// SessionFile is the transcript this conversation writes.
+	SessionFile string
+	// Workspace is the directory it works in, and Owned says that directory is
+	// the session's own work/ rather than a project it borrowed — the same two
+	// facts [Options.Workspace] and [Options.Owned] carry for the first one.
+	// Place is the base name to draw; empty lets the surface name it from the
+	// two above, which is what every door does today.
+	Workspace string
+	Place     string
+	Owned     bool
+	// Resumed says the transcript was picked up rather than made, and Notice is
+	// the one sentence the door wants on the entry line about how this
+	// conversation came to be open.
+	Resumed bool
+	Notice  string
+	// ContextWindow is how many tokens this conversation's model accepts. Zero
+	// leaves the surface's meter where it was, because a percentage of an
+	// unknown means nothing.
+	ContextWindow int
+	// DraftFile is where this conversation's unsent sentence is kept, and empty
+	// is the project saying keep nothing — which is already how the surface
+	// spells "not kept at all" (draft.go).
+	DraftFile string
+	// History is the recall list this conversation's up arrow walks, and nil is
+	// this WORKSPACE keeping none. It is the store the door opened once per
+	// process rather than one per conversation: the file is one file and the
+	// entries carry the directory they were typed in, so the enablement is the
+	// only half of the answer that is per workspace and this field is that half
+	// said honestly — the store when the answer is yes, nothing when it is no.
+	History History
+	// RecentSessions is this conversation's own project's list, and the three
+	// approval seams are bound to the agent above. Each is nil on a door that
+	// cannot answer it, and the surface then keeps whatever it was holding.
+	RecentSessions   func() []Session
+	SaveApproval     func(tool string) error
+	SaveBashApproval func(command string) error
+	ApplyApprovals   func() error
+}
+
 // Options configures one surface.
 type Options struct {
 	// Agent is the conversation this surface shows. Required.
@@ -181,9 +241,34 @@ type Options struct {
 	Memory MemoryStore
 
 	// Fresh builds a replacement agent on the same Config with a new session
-	// file, and returns it with that file's path. It is what /new calls. Nil
-	// makes /new report that it is unavailable rather than pretending.
+	// file, and returns it with that file's path. It is what /new calls when no
+	// [Options.Start] was wired. Nil makes /new report that it is unavailable
+	// rather than pretending.
+	//
+	// IT IS THE OLDER HALF OF THE SEAM and it carries only the agent, which is
+	// exactly the bug [Options.Start] exists to fix: everything else the door
+	// built around the conversation — the approval trio, the recent list, the
+	// draft — stays bound to the conversation that was just closed. The doors
+	// that can wire Start do; the hosted one cannot (there is one remote agent
+	// by construction, chatv3_host.go) and keeps this.
 	Fresh func() (Agent, string, error)
+
+	// Open resumes a transcript in its own workspace, and hands back the agent
+	// with the closures that belong to it. Start mints a fresh conversation in
+	// a workspace. An empty workspace is THIS conversation's own, which is what
+	// /new and the resume picker mean.
+	//
+	// They are the agent-building seam: the door owns config resolution, session
+	// files and governance, and the surface owns nothing but the asking. What
+	// makes them different from [Options.Fresh] and [Options.Resume] is that
+	// they return a [Conversation] — the agent AND the per-conversation seams
+	// minted around it, in the same call — so a surface that swaps conversations
+	// cannot go on holding a closure built around the one it just closed.
+	//
+	// Nil on both is a surface that falls back to Fresh and Resume, which is
+	// what the hosted door and every test that predates this seam are.
+	Open  func(workspace, transcript string) (Conversation, error)
+	Start func(workspace string) (Conversation, error)
 
 	// Workspace is the directory the agent works in; its base name is the
 	// place shown in the status line. Empty takes the process's cwd.
@@ -372,7 +457,8 @@ type Options struct {
 	// Resume opens one of them, by transcript path, and hands back the agent
 	// for it. The surface closes the agent it was holding first. Nil makes the
 	// welcome box's rows and /resume report that resuming is unavailable rather
-	// than silently doing nothing.
+	// than silently doing nothing — unless [Options.Open] is wired, which is the
+	// same door answered whole and is preferred wherever both are there.
 	//
 	// A path another window is holding open comes back as
 	// [session.ErrSessionLocked] and is REPORTED rather than worked around: a

@@ -1,9 +1,25 @@
 package main
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
+
+// v3Gate is the one method of a running session these seams reach for: the door
+// onto the gate a conversation is behind right now
+// ([session.Agent.SetApprovalPolicy]).
+//
+// IT IS AN INTERFACE SO THE BINDING CAN BE READ. Which agent a banked rule
+// reaches is the whole of what went wrong here — the trio was minted once around
+// the boot agent and went on pushing into it after /new had closed it — and
+// internal/session keeps the standing gate private, as it should. Narrowing the
+// parameter to the method that is actually used lets a test hold the receiving
+// end and say which conversation was written to, without any of internal/session
+// growing a reader for the sake of a test.
+type v3Gate interface {
+	SetApprovalPolicy(policy *approval.Policy)
+}
 
 // The consent card's door back to disk: where "always" is written down.
 //
@@ -65,7 +81,7 @@ func saveBashApproval(profileDir, command string) error {
 // stays standing. That case needs a settings file to have stopped parsing
 // between the write and the read a moment later, which the launch's own read of
 // the same rows would already have refused to start on.
-func bankToolApproval(agent *session.Agent, workspace, profileDir string, yolo bool) func(string) error {
+func bankToolApproval(agent v3Gate, workspace, profileDir string, yolo bool) func(string) error {
 	return func(tool string) error {
 		if err := saveToolApproval(profileDir, tool); err != nil {
 			return err
@@ -75,7 +91,7 @@ func bankToolApproval(agent *session.Agent, workspace, profileDir string, yolo b
 	}
 }
 
-func bankBashApproval(agent *session.Agent, workspace, profileDir string, yolo bool) func(string) error {
+func bankBashApproval(agent v3Gate, workspace, profileDir string, yolo bool) func(string) error {
 	return func(command string) error {
 		if err := saveBashApproval(profileDir, command); err != nil {
 			return err
@@ -96,7 +112,7 @@ func bankBashApproval(agent *session.Agent, workspace, profileDir string, yolo b
 // heard about it. A rebuild that fails means the rule is gone from the file and
 // still standing in this session, and the panel says exactly that — the receipt
 // names the next session rather than claiming the line is already gone.
-func applyV3Approvals(agent *session.Agent, workspace, profileDir string, yolo bool) func() error {
+func applyV3Approvals(agent v3Gate, workspace, profileDir string, yolo bool) func() error {
 	return func() error {
 		policy, err := v3Policy(workspace, profileDir, yolo)
 		if err != nil {
@@ -137,7 +153,7 @@ func v3CurrentGate(cfg session.Config, workspace, profileDir string, yolo bool) 
 // into the running session. A rebuild that fails pushes nothing, and
 // [session.Agent.SetApprovalPolicy] refuses a nil for the same reason: the safe
 // answer to "I could not read the rules" is the gate that is already there.
-func refreshV3Policy(agent *session.Agent, workspace, profileDir string, yolo bool) {
+func refreshV3Policy(agent v3Gate, workspace, profileDir string, yolo bool) {
 	if agent == nil {
 		return
 	}

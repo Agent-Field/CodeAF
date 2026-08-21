@@ -246,13 +246,13 @@ const sessionBusyWord = "open in another window — go there, or start a new con
 // hold different files by construction, because every caller answers a request
 // for the conversation already open by staying in it rather than reopening it.
 func (a *app) openSession(chosen Session) (tea.Cmd, string) {
-	if a.resume == nil {
+	if !a.canOpen() {
 		// The picker's sentence, said once (resume.go): the box and the list are
 		// two doors onto the same missing seam, and a surface that explained it
 		// twice in two different words would read as two different faults.
 		return nil, resumeUnavailableWord
 	}
-	agent, err := a.resume(chosen.File)
+	conv, whole, err := a.openConversation(chosen.File)
 	if err != nil {
 		if errors.Is(err, session.ErrSessionLocked) {
 			return nil, sessionBusyWord
@@ -267,7 +267,8 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 			a.note("close failed: " + err.Error())
 		}
 	}
-	a.agent, a.file = agent, chosen.File
+	a.takeUp(conv, whole)
+	agent := a.agent
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
@@ -299,7 +300,13 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	a.offset, a.stick = 0, true
 	a.replay()
 	a.measureContext()
-	a.note("resumed " + a.hostedPath(chosen.File))
+	a.note("resumed " + a.hostedPath(a.file))
+	if conv.Notice != "" {
+		// The door had something to say about how this conversation came to be
+		// open, and the entry line is where the first one's notice lands too
+		// ([Options.Notice]).
+		a.note(conv.Notice)
+	}
 	//nolint:staticcheck // the batch below is this function's whole result.
 	// The conversation that just opened subscribes to its OWN lanes: the rail's
 	// updates and the turns the session starts by itself. A resumed session is
