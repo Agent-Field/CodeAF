@@ -254,6 +254,18 @@ type Outcome struct {
 	// Promote is the executor's explicit verdict that a reflex needs the normal
 	// compiled path. Text remains the useful partial discovered before stopping.
 	Promote bool
+	// SplitRequest is the leaf's own finding that it is holding more than one
+	// agent's job, and its account of how the job divides. It is for the
+	// settlement path that grows the graph: nil — every leaf that never asked,
+	// which is every leaf outside swarm mode — is what keeps that path unentered
+	// and this field free.
+	//
+	// It is separate from Promote because the two say opposite things about the
+	// work. Promote says "this is bigger than the shape I was given, run it
+	// again properly"; this says "this is several things, and here they are" —
+	// the difference between an escalation and a division. Text remains the
+	// partial the leaf produced before it stopped, and the parts consume it.
+	SplitRequest *SplitRequest
 	// ServiceRequests are live ownership leases requested through job.keep.
 	// The resident must adopt or stop every lease before settling the leaf.
 	ServiceRequests []ServiceRequest
@@ -326,6 +338,71 @@ func (o *Outcome) Calibrate(note string) {
 	}
 }
 
+// SplitPart is one of the jobs a leaf found inside its own assignment.
+//
+// Title is what the part is called where a person reads the graph. Summary is
+// the one line that tells a planner what this part is FOR, so a division can be
+// weighed against its siblings without opening any of them. Brief is the part's
+// whole assignment, written to be handed to an agent that will read nothing
+// else — which is the ownable-subject test in structural form: a brief that has
+// to say "after the previous part finishes" is describing a phase, and a phase
+// is not a part.
+type SplitPart struct {
+	Title   string
+	Summary string
+	Brief   string
+}
+
+// SplitRequest is a leaf saying, in the middle of its own run, that it is
+// holding more than one agent's job.
+//
+// Until this existed a node could only grow the graph by failing first: it
+// spent its whole budget, settled overrun, and the remainder was replanned
+// afterwards — the same decision this carries, bought at the price of a wasted
+// leaf. So the cheap version is the one the worker asks for, and the expensive
+// one stays as the backstop for the leaf that never noticed.
+//
+// It is a request and not an instruction. What is done with it is the
+// settlement path's business and it goes through the same governor every other
+// way of growing a running job goes through, so a leaf that asks to divide into
+// nine gets whatever the caps and the planner between them allow — including
+// nothing, which delivers the partial exactly as a refused overrun does.
+type SplitRequest struct {
+	// Parts are the jobs the leaf believes it is holding, in no particular
+	// order — a division exists to be run at the same time, and parts that have
+	// an order are a sequence somebody has mislabelled.
+	Parts []SplitPart
+	// Evidence is what the leaf actually read or discovered that revealed the
+	// division: the file it opened, the count it found, the shape of the thing
+	// in front of it. It is here because a division decided from the assignment
+	// alone is the division the build already made and refused; what makes this
+	// one worth a round is that it was made against what is really there, and a
+	// planner handed the request without the finding cannot tell the two apart.
+	Evidence string
+}
+
+// Valid reports whether a request is one the growth path may act on: two or
+// more parts, each of which names itself and carries an assignment.
+//
+// A one-part "division" is the split that only restates, which plan.WorthKeeping
+// would refuse a round later at the price of a planning call — so it is refused
+// here, for free. A part with no brief is a title with nothing behind it, and
+// handing an agent one is how a node comes to be executed against its own name.
+//
+// It is nil-safe because every caller reaches it through a field that is nil on
+// every leaf that never asked.
+func (r *SplitRequest) Valid() bool {
+	if r == nil || len(r.Parts) < 2 {
+		return false
+	}
+	for _, part := range r.Parts {
+		if strings.TrimSpace(part.Title) == "" || strings.TrimSpace(part.Brief) == "" {
+			return false
+		}
+	}
+	return true
+}
+
 // ranLimit and ranArgumentBytes bound the record. Forty calls is well past the
 // length of any single verification pass and small enough to hand to a judge
 // whole; the argument clip keeps a command recognisable without carrying a
@@ -386,6 +463,25 @@ const (
 	// spent — and separate from StopError because nothing failed. See
 	// straggler.go.
 	StopOverrun StopReason = "overrun"
+
+	// StopSplit is the cooperative ending: the leaf found mid-work that it was
+	// holding several agents' jobs, said what they were, and stopped so they
+	// could run instead of it.
+	//
+	// It is its own reason rather than one of the endings above because every
+	// one of those would misreport it. StopDone says the work is finished and
+	// it is not. StopPromote says the shape was wrong and the same work should
+	// be run again properly, which is an escalation and not a division.
+	// StopBudget and StopOverrun say a resource ran out, and nothing did — the
+	// grant was untouched and the leaf gave it back.
+	//
+	// It deliberately does NOT make Outcome.Overran true. Overran is the
+	// question "was there work left when the resources ran out", and the
+	// continuation subsystem it gates exists to replan a remainder from an
+	// exhaustion. A cooperative split has its own path with its own reason in
+	// the growth journal, and letting both fire on one settlement would spend
+	// two rounds on one decision.
+	StopSplit StopReason = "split"
 )
 
 // Abandoned is the node watchdog's own ending: the executor was still inside a
