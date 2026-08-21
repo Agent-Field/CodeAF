@@ -662,6 +662,15 @@ type app struct {
 	// never claims to — see [app.waitingWords] for what it is allowed to say.
 	awaited time.Time
 
+	// retrying says the request the clock above is timing is a SECOND ATTEMPT:
+	// the one before it was cut and asked again (session.EventRetrying).
+	//
+	// It is the one fact that separates "waiting for" from "trying again", and it
+	// is REPORTED rather than inferred — the surface is never allowed to guess
+	// that a wait is a retry, because a person who reads "trying again" on a
+	// first attempt has been told something that did not happen.
+	retrying bool
+
 	// The paint clock. dirty says the row list no longer matches the entries;
 	// painting says a frameMsg is already on its way, so a burst of deltas
 	// schedules one tick and not one each. paints counts frame SLOTS of
@@ -2277,11 +2286,20 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// The stream has spoken. Whatever it says next it is no longer a request
 		// with nothing back from it, which is the only thing the clock is about.
 		a.awaited = time.Time{}
+		// And it is no longer a SECOND attempt either. "trying again" is only
+		// honest while the trying is what is happening; the moment the new
+		// stream speaks, this is the reply and nothing else needs saying.
+		a.retrying = false
 	case session.EventCompacting:
 		// A pass that is running has a row of its own saying so, and two answers
 		// to one question is one too many — the rule [app.ellipsis] is written
 		// to. The clock stands down for it and picks up again when it ends.
 		a.awaited = time.Time{}
+	case session.EventRetrying:
+		// The request that was open has been cut and is being sent again, so the
+		// wait starts over from HERE — the previous anchor measured a request
+		// that no longer exists.
+		a.awaited = time.Now()
 	case session.EventToolEnd, session.EventToolFailed, session.EventCompacted:
 		// The batch has closed, or the pass has, and in both cases the loop's
 		// very next act is another request. Timing from HERE and not from the
@@ -2463,6 +2481,18 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// attempt it is on, and what it took off (internal/provider's
 		// endpoints.go). Same dim one-liner as the nudge, and for the same
 		// reason: it is already being handled, the person only needs to see it.
+		a.note(ev.Text)
+
+	case session.EventRetrying:
+		// The request was cut and is being asked again (internal/provider's
+		// streamguard.go). EVERYTHING THE DEAD ATTEMPT DREW GOES, because the
+		// engine has already thrown away everything the dead attempt SAID: the
+		// text belongs to a response that will never exist, and half a dead
+		// answer sitting above the live one is the surface telling a story the
+		// transcript does not contain.
+		a.dropLive()
+		a.resolveUnfinished()
+		a.retrying = true
 		a.note(ev.Text)
 
 	case session.EventGuardianAllowed:
@@ -2689,6 +2719,36 @@ func (a *app) closeLive() {
 		e.settled, e.stale = true, true
 	}
 	a.live = -1
+}
+
+// dropLive throws away the assistant block the CURRENT attempt was streaming
+// into, because that attempt has been cut and its text is void.
+//
+// It is the one place on this surface where something a person watched arrive is
+// REMOVED rather than settled, and the asymmetry is the point: an interrupt
+// leaves the partial reply on screen because the engine keeps it in the
+// transcript, while a cut stream leaves nothing anywhere. A row the transcript
+// does not contain must not stay on the page — the next question would be
+// answered underneath somebody else's abandoned sentence, and the person would
+// have no way of telling which of the two the model actually read.
+//
+// The block is truncated when it is the last thing on screen, which is what a
+// cut mid-text always leaves, and emptied otherwise: removing an entry from the
+// middle would move every index after it, and the forming rows, the selection
+// and the thought marker are all held by index.
+func (a *app) dropLive() {
+	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
+		a.live = -1
+		return
+	}
+	if a.live == len(a.entries)-1 {
+		a.entries = a.entries[:a.live]
+	} else {
+		a.entries[a.live].text = ""
+		a.entries[a.live].stale = true
+	}
+	a.live = -1
+	a.touch()
 }
 
 // said puts one of the PERSON'S OWN lines into the transcript without cutting

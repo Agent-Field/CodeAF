@@ -30,6 +30,26 @@ const retryBaseDelay = 2 * time.Second
 // otherwise turn one bad output ceiling into an unbounded, silent spend.
 const truncationContinuations = 2
 
+// ── what a cut stream is worth asking again ─────────────────────────────────
+//
+// A stream the guard cut (internal/provider's streamguard.go) is a different
+// kind of failure from a torn connection, and it gets its own budget rather than
+// spending the transport one above: the request never failed, so there is
+// nothing here to back off from, and the same three attempts that make sense for
+// a socket would keep a model that has lost the thread going four times over a
+// context that is only getting worse.
+//
+// SILENCE IS WORTH ASKING TWICE. The endpoint is very often simply a bad draw
+// out of a router's pool, and the second try lands on a different one.
+//
+// DEGENERATION IS WORTH ASKING ONCE. If the same transcript produces soup twice,
+// the transcript is the problem and asking a third time spends the whole prompt
+// to be told so again — which is the point at which the person is told instead.
+const (
+	silentRetries = 2
+	babbleRetries = 1
+)
+
 const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
 	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
 	"when writing is in scope, and keep the final report short."
@@ -341,7 +361,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// request being measured.
 		a.guardOversizeRequest(ctx, hub)
 
-		response, err := a.completeWithRetry(ctx, model, effort, partial, warm, forming)
+		response, err := a.completeWithRetry(ctx, hub, model, effort, partial, warm, forming)
 		if err != nil {
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
@@ -534,11 +554,17 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // stamp here would be dropped every time and the knob would do nothing. Nothing
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
-func (a *Agent) completeWithRetry(ctx context.Context, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, error) {
+func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, error) {
 	if effort != provider.EffortNone {
 		ctx = provider.WithConfiguredReasoningEffort(ctx, effort)
 	}
 	var lastErr error
+	// cuts counts the attempts the STREAM GUARD ended — a stall, or a reply that
+	// stopped being language. They are counted apart from the transport attempts
+	// below for the reason the constants say, and the loop's own attempt number
+	// does not advance for one: a cut is not evidence that the endpoint is
+	// failing, so it must not shorten the patience a real fault gets.
+	cuts := 0
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -567,6 +593,20 @@ func (a *Agent) completeWithRetry(ctx context.Context, model string, effort prov
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
+		// loop are exactly what a cut needs — the soup that was streamed, the
+		// reads it started, the calls it was half-way through asking for — so a
+		// cut re-enters the loop through the same door a fault does, and the junk
+		// is gone before the next request is assembled.
+		if cut, isCut := provider.CutFrom(err); isCut {
+			if cuts >= cutBudget(cut) {
+				return nil, cutFailure(cut, cuts+1)
+			}
+			cuts++
+			hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut)})
+			attempt--
+			continue
+		}
 		errMsg := err.Error()
 		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
 			return nil, err
@@ -579,6 +619,62 @@ func (a *Agent) completeWithRetry(ctx context.Context, model string, effort prov
 		}
 	}
 	return nil, fmt.Errorf("after %d retries: %w", maxRetries, lastErr)
+}
+
+// cutBudget is how many times a cut of this kind is worth asking again. See the
+// constants for why the two answers differ.
+func cutBudget(cut *provider.StreamCut) int {
+	if cut.Reason == provider.CutBabble {
+		return babbleRetries
+	}
+	return silentRetries
+}
+
+// cutNotice is the dim line the person sees while the question is asked again.
+//
+// It says what happened and that something is being done about it, and nothing
+// else: the turn is still going, nobody has to decide anything, and a note that
+// asked for a decision here would be interrupting a wait it cannot shorten.
+func cutNotice(cut *provider.StreamCut) string {
+	switch cut.Reason {
+	case provider.CutBabble:
+		return "the reply lost its thread — that text was dropped, asking again"
+	case provider.CutStalled:
+		return "the model went quiet mid-reply — asking again"
+	default:
+		return "nothing came back from the model — asking again"
+	}
+}
+
+// cutFailure is the sentence the turn ends on when asking again did not help.
+//
+// It names what happened in the person's own terms and then names the TWO DOORS
+// that actually open. Both are real and both are one keystroke: a different
+// model is a different set of weights on the same conversation, and compaction
+// is the same weights on a shorter one — and a long conversation is exactly the
+// condition a reply loses its thread in, which is why the second door is offered
+// at all rather than being general advice.
+func cutFailure(cut *provider.StreamCut, attempts int) error {
+	if cut.Reason == provider.CutBabble {
+		return errors.New("the reply lost its thread " + timesWord(attempts) +
+			" — it came back as repetition and jumbled text, so none of it was kept. " +
+			"a different model may hold it (/model), or /compact to lighten the conversation")
+	}
+	return fmt.Errorf("%s, %s. a different model may answer — /model",
+		cut.Error(), timesWord(attempts))
+}
+
+// timesWord counts the way a person counts. Small numbers have words.
+func timesWord(n int) string {
+	switch n {
+	case 1:
+		return "once"
+	case 2:
+		return "twice"
+	case 3:
+		return "three times"
+	}
+	return fmt.Sprintf("%d times", n)
 }
 
 func backoffWait(ctx context.Context, delay time.Duration) error {
