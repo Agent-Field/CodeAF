@@ -941,6 +941,11 @@ func standWeekFacts(week map[string]standing.Spend, ids []string, one bool) stri
 // drawn on every keystroke and every pointer movement, and the store is a
 // directory of documents ([app.homeHeld] states the same law about the lock).
 func (a *app) readStandBands() {
+	// phone lane: the two facts the column's own build needs and cannot ask the
+	// app for — which shape it is drawn in, and where the standing store lives
+	// (homephone.go). They are settled here because this is the one call that
+	// runs before every build of the list.
+	a.home.phone, a.home.standRoot = a.homePhone(), a.standingHome()
 	if a.stands.Items == nil {
 		a.home.items, a.home.bare = nil, nil
 		return

@@ -1652,7 +1652,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call nobody
 			// can see (taskview.go, home.go).
 			if a.taskSheet.open {
-				return a, a.taskSheetPress(msg.Mouse().Y)
+				// phone lane: the record card's foot is two bands, so the press
+				// needs the column as well as the row (taskphone.go).
+				return a, a.taskSheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			if a.home.open {
 				return a, a.homePress(msg.Mouse().X, msg.Mouse().Y)

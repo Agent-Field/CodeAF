@@ -971,9 +971,9 @@ type taskSheetHit struct {
 // CHANGE something, so a pointer passing over one must not be able to flip it;
 // these rows open a page onto work, which is the gesture the roster's column has
 // always answered on the first press.
-func (a *app) taskSheetPress(y int) tea.Cmd {
+func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if a.taskSheet.detailOn {
-		a.taskCardPress(y)
+		a.taskCardPress(x, y)
 		return nil
 	}
 	width, height := a.size()

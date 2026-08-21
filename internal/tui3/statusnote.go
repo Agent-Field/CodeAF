@@ -84,14 +84,10 @@ func (a *app) statusText() string {
 		}
 		items = append(items, item)
 	}
-	// AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It is the one
-	// fact on this list that is not a status-line segment at any width: the
-	// segment says how MANY things are standing, and this says whether they are
-	// still looked at once every terminal is closed (homestanding.go's
-	// [app.watchLine]). A seam with no answer prints no line.
-	if word, ok := a.watchLine(); ok {
-		items = append(items, deckItem{label: homeWatchLabel, value: word})
-	}
+	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
+	// made it the one fact /status carried that the phone's own sheet did not —
+	// on the tier where every other fact had moved into that sheet. It is part of
+	// [app.deckItems] now, so both surfaces say it and neither says it twice.
 	if a.file != "" {
 		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
 		// this list a person is actively invited to copy, and over a connection it

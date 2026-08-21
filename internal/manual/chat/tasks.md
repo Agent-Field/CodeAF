@@ -776,6 +776,24 @@ Clicking a row does what `enter` on it does, on the **first** press — the page
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
+## Open a task by tapping — tasks with a thumb, under 60 columns
+
+Every door onto a piece of work is a tap target at phone width, and none of them is a new
+door — they are the ones above, reshaped:
+
+- **The strip along the top.** A tap on a chip opens that task's room, as it always has. A
+  tap **anywhere else on the strip** opens the roster, which at this width is the page over
+  the whole body. The chips are a few cells apart at 44 columns, and a press that missed one
+  used to mean nothing at all.
+- **The roster's rows.** Every row is a full-width target and one press opens it — a room,
+  or the record card — which is what a click already did at every width.
+- **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
+  sentence about keys; under 60 columns the two things a thumb can do become bands instead —
+  `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
+  scroll is the screen itself.
+- **A task row on home's sheet.** Tapping a task on the work band of a conversation's card
+  opens **that task's record** — the same card `enter` opens on the task page.
+
 ## Going inside an old task — see what a past task did, read a finished task's report
 
 `enter` on any `earlier` row — on the task page, or on the dulled record rows at the bottom

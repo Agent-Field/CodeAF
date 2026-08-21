@@ -476,6 +476,13 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 	// is.
 	if a.stripMore.holds(x) {
 		a.railTake(true)
+		return nil, true
+	}
+	// phone lane: the whole row is the door to the roster at [tierPhone]
+	// (taskphone.go). A press that missed a chip used to mean nothing at all,
+	// and the chips at this width are three cells apart.
+	if stripOpensRoster(width) {
+		a.railTake(true)
 	}
 	return nil, true
 }
