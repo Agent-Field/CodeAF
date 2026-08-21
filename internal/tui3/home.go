@@ -376,6 +376,7 @@ type homeView struct {
 	// this frame, so a click can find one. Both die with the screen.
 	bandOpen  map[string]bool
 	foldLines []bandFoldLine
+	repos     map[string]homeRepoReading
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -431,6 +432,7 @@ func (a *app) openHome() tea.Cmd {
 	a.readStandBands()
 	a.home.build()
 	a.home.point(a.file)
+	a.refreshHomeRepo(time.Now())
 	a.touch()
 	return homeTick()
 }
@@ -1269,6 +1271,37 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
+	// THESE LETTERS ARE DOORS ONLY ON AN EMPTY SESSION CARD. Once somebody has
+	// typed, every bare letter belongs to their sentence.
+	if h.box.empty() {
+		if line, ok := h.focusedLine(); ok && line.kind == homeSession {
+			switch msg.String() {
+			case "n":
+				if !a.homeOpens(line) {
+					path := homeWhere(line)
+					h.say(homeElsewhereWord+" · "+path, strings.TrimSpace(line.row.ProjectDir))
+					return nil
+				}
+				return a.homeStart("")
+			case "o":
+				path := strings.TrimSpace(line.row.Workspace)
+				if path == "" || processOpener(path) != nil {
+					h.say("could not open "+path, "")
+					return nil
+				}
+				h.say("opened "+path, path)
+				return nil
+			case "y":
+				path := strings.TrimSpace(line.row.Workspace)
+				if path == "" {
+					h.say("could not copy path", "")
+					return nil
+				}
+				h.say("copied "+path, path)
+				return tea.Raw(osc52(path, a.tmux))
+			}
+		}
+	}
 	switch msg.String() {
 	case "tab":
 		// THE OTHER HALF OF THE TOGGLE. With no exchange there is one zone and
@@ -1294,15 +1327,19 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "up", "ctrl+p":
 		h.move(-1)
+		a.refreshHomeRepo(time.Now())
 		return nil
 	case "down", "ctrl+n":
 		h.move(1)
+		a.refreshHomeRepo(time.Now())
 		return nil
 	case "pgup":
 		h.move(-homeShown)
+		a.refreshHomeRepo(time.Now())
 		return nil
 	case "pgdown":
 		h.move(homeShown)
+		a.refreshHomeRepo(time.Now())
 		return nil
 
 	case "enter":
