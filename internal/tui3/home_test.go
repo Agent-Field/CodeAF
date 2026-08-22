@@ -213,7 +213,9 @@ func TestHomeListsEveryProjectAndItsConversations(t *testing.T) {
 		t.Fatal("/home did not open")
 	}
 	text := homeText(a)
-	for _, want := range []string{"home", "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
+	// The screen names itself with the program's own name now, on the pulse line
+	// at the top of it (pulse.go).
+	for _, want := range []string{pulseName, "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home does not mention %q:\n%s", want, text)
 		}
