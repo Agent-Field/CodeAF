@@ -194,7 +194,7 @@ func (a *Agent) standingWatch() standing.Watch {
 // RECOGNITION rather than mechanics: the tool is useless unless the model
 // notices that an ordinary sentence was a standing one, and nothing else in
 // this build watches for those words.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. altitude is HOW FAR IT REACHES — conversation, project or machine — and THE CARD ALWAYS NAMES IT, so it is never guessed quietly: their own scope words choose it (\"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine), and leaving it out stands it where they said it. title is three or four words for a row too narrow for their sentence; grant is one sentence recording what acting on it may do without asking, and only when they said something like it. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"What to do: propose a new one, list what stands here, or pause, resume or stop one that already does."},` +
@@ -230,6 +230,9 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"when_words":{"type":"string","description":"The cadence said back in a person's words — \"Mondays at 9am\", \"every couple of minutes\". The card quotes this and never the spec."},` +
 	`"cost_words":{"type":"string","description":"What it costs, honestly, in a person's words — \"about 2 cents a run, at most once a day\". Work it out from the rails you are sending."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
+	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation is this chat alone and it dies with the chat; project is every conversation and every task in this project; machine is everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\", \"only here\" is conversation; \"everywhere\", \"all my projects\", \"on this machine\" is machine. Leave it out when they said nothing about scope and it stands where they said it."},` +
+	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\", \"main stays green\". Their own sentence is still what every screen leads with; this is only what a narrow row falls back to."},` +
+	`"grant":{"type":"string","description":"One sentence, in their words, recording what acting on this may do without asking — \"open a pull request but never merge it\". Send it only when they said something like it; with none, it may only tell them things."},` +
 	`"id":{"type":"string","description":"Which item pause, resume and stop are about. Their own words work too."}` +
 	`},"required":["op"],"additionalProperties":false}`
 
@@ -241,6 +244,9 @@ type standArguments struct {
 	CostWords string `json:"cost_words"`
 	Guessed   bool   `json:"guessed"`
 	ID        string `json:"id"`
+	Altitude  string `json:"altitude"`
+	Title     string `json:"title"`
+	Grant     string `json:"grant"`
 	When      struct {
 		Kind    string `json:"kind"`
 		At      string `json:"at"`
@@ -496,7 +502,39 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 		When:      when,
 		Does:      does,
 		Rails:     rails,
+		Altitude:  a.standingAltitude(parsed.Altitude),
+		// THE BRIEF IS HALF WRITTEN IN THIS WAVE, and honestly so: a title for a
+		// row too narrow for a sentence is something the model can write at
+		// proposal time, and the compiled prompt is not — nothing follows one
+		// yet, so nothing pretends to have one and [standing.Item.Prompt] reads
+		// as the person's own words.
+		Brief: standing.Brief{Title: strings.TrimSpace(parsed.Title)},
+		Grant: strings.TrimSpace(parsed.Grant),
 	}, ""
+}
+
+// standingAltitude is the reach the card will name.
+//
+// ALTITUDE IS DECIDED ON THE CARD AND NEVER GUESSED SILENTLY, so what the model
+// sends is what stands, and a word that is not one of the three is refused by
+// [standing.Item.Validate] before anybody is asked — there is no second list of
+// them here.
+//
+// WHERE IT WAS SAID IS THE DEFAULT. A sentence said in a project is about that
+// project, which is what every item made before altitudes were spelled already
+// was; a sentence said in a conversation that belongs to no project at all is
+// about the person, and this build already files those under their home
+// directory ([Agent.standingWorkspace]) — so home IS the machine-wide
+// convention, asked here rather than invented.
+func (a *Agent) standingAltitude(raw string) standing.Altitude {
+	if named := standing.Altitude(strings.ToLower(strings.TrimSpace(raw))); named != "" {
+		return named
+	}
+	if house, err := os.UserHomeDir(); err == nil && strings.TrimSpace(house) != "" &&
+		filepath.Clean(house) == filepath.Clean(a.standingWorkspace()) {
+		return standing.AltitudeMachine
+	}
+	return standing.AltitudeProject
 }
 
 func standingWhen(parsed standArguments, now time.Time) (standing.When, string) {
@@ -1136,6 +1174,26 @@ func (a *Agent) standSetStatus(parsed standArguments, status standing.Status) (s
 			return item.Words + " is already running.", false, nil
 		}
 	}
+	item, word, err := a.standingMove(store, item, status)
+	if err != nil {
+		return "nothing changed: " + err.Error(), true, nil
+	}
+	if status == standing.StatusRetired {
+		return word + ": " + item.Words + "\nIt will not fire again. Setting it up afresh is a new card.", false, nil
+	}
+	return word + ": " + item.Words, false, nil
+}
+
+// standingMove is THE ONE PATH A STATUS CHANGE TAKES, whichever gesture asked
+// for it: the model's `stand` op here, and the page's own stand-down and pause
+// keys (standing_orders.go). It stamps the person's reason on a stop, writes,
+// tells whoever is watching the turn, and answers the item as it now reads and
+// the word the news travels under.
+//
+// IT IS ONE PATH BECAUSE THE REASON IS ONE FACT. [standing.Item.RetiredWhy]
+// names its own spellings, and two doors writing "stopped by you" separately is
+// two chances for one of them to say something else the day the wording moves.
+func (a *Agent) standingMove(store standingStore, item standing.Item, status standing.Status) (standing.Item, string, error) {
 	item.Status = status
 	item.RetiredWhy = ""
 	word := "resumed"
@@ -1145,17 +1203,18 @@ func (a *Agent) standSetStatus(parsed standArguments, status standing.Status) (s
 	case standing.StatusRetired:
 		word = "stopped"
 		// The person's own reason, in the words [standing.Item] reserves for it.
-		item.RetiredWhy = "stopped by you"
+		item.RetiredWhy = standingStoppedWhy
 	}
 	if err := store.Save(item); err != nil {
-		return "nothing changed: " + err.Error(), true, nil
+		return item, word, err
 	}
 	a.emitStandingUpdate(word, item, "")
-	if status == standing.StatusRetired {
-		return word + ": " + item.Words + "\nIt will not fire again. Setting it up afresh is a new card.", false, nil
-	}
-	return word + ": " + item.Words, false, nil
+	return item, word, nil
 }
+
+// standingStoppedWhy is what a stopped item's document records, and it is one
+// of the cases [standing.Item.RetiredWhy] spells out.
+const standingStoppedWhy = "stopped by you"
 
 // standingNamed resolves an id OR the person's own words to one item.
 //
