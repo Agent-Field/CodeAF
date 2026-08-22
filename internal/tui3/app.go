@@ -674,6 +674,14 @@ type app struct {
 	// the layout, read by the click (render.go's [app.identityParts], and
 	// [app.statusPress] below). An empty span means there is nothing to press.
 	modelSpan hudSpan
+	// keepSpan is where the `keeping an eye on N` segment was last drawn, and
+	// keepRow which of the status row's rows it landed on — the same bargain
+	// modelSpan makes, for the same reason and one more: that cluster is
+	// right-aligned, so where a segment sits depends on every segment beside it
+	// and on the frame's width, and only the layout can answer it
+	// (standdoor.go, render.go's [app.statusRows]).
+	keepSpan hudSpan
+	keepRow  int
 	// stripSpans is where the task strip's chips were last drawn, and stripMore
 	// the columns of its overflow mark — the same bargain modelSpan makes, for
 	// the same reason: the row that lays the chips out is the row that knows
@@ -2008,6 +2016,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (standing.go's [app.standingPress]).
 			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
+			}
+			// AND THE `keeping an eye on N` SEGMENT IS A DOOR ONTO /standing,
+			// read directly before the model's name because they are two segments
+			// of the same row and neither swallows the other's columns
+			// (standdoor.go).
+			if a.keepingPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
 			}
 			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name

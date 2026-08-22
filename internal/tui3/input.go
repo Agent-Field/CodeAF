@@ -514,6 +514,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		return a.enter()
 
+	case standMarkKey:
+		// KEEP THIS TRUE (standmark.go). It is read directly beside enter because
+		// it is enter — the same road with the sentence marked as something that
+		// should stand, so the model shapes it into a card instead of doing it
+		// once. It sits ABOVE the newline pair below because those two are the
+		// other spellings of a different gesture entirely, and a chord that fell
+		// through to them would open a line where somebody meant to send.
+		return a.enterStanding()
+
 	case "alt+enter", "ctrl+j":
 		// Open a line. Two spellings because terminals disagree about which one
 		// they can even send: alt+enter is the one people reach for, ctrl+j is
@@ -748,7 +757,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // enter is the submit key, and it has one first meaning: send the draft.
-func (a *app) enter() tea.Cmd {
+func (a *app) enter() tea.Cmd { return a.enterLine(false) }
+
+// enterLine is that key's whole road, with the one thing the CHORD changes left
+// as an argument: whether the person marked this sentence as something to keep
+// true (standmark.go). Everything above the send is identical either way — the
+// recall history, the draft file, the slash, the mentions — and it is one
+// function so it stays that way.
+func (a *app) enterLine(marked bool) tea.Cmd {
 	line := strings.TrimSpace(a.input.String())
 	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
 	// empty message — "what is this?" is often the picture itself — so the two
@@ -806,10 +822,18 @@ func (a *app) enter() tea.Cmd {
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.
 	if a.parking() {
-		return a.park(line)
+		// AND THE MARK WAITS WITH THE WORDS. A marked sentence typed over a
+		// running answer is parked like any other, and it goes through the marked
+		// door when its turn comes: a mark dropped on the way into the queue would
+		// be the sentence quietly becoming ordinary work, which is the one ending
+		// this gesture exists to rule out (park.go).
+		return a.park(line, marked)
 	}
 	if held {
 		return a.submitImages(line)
+	}
+	if marked {
+		return a.submitStanding(line)
 	}
 	return a.submit(line)
 }

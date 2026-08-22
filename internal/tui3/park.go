@@ -49,6 +49,11 @@ import (
 type parked struct {
 	text  string
 	chips []chip
+	// standing says the person MARKED this one as something to keep true
+	// (standmark.go). It travels with the words for the chips' own reason: the
+	// gesture was made when the message was typed, and a queue that forgot it
+	// would send the sentence as ordinary work minutes later.
+	standing bool
 }
 
 // parking reports whether plain enter parks rather than sends.
@@ -65,14 +70,14 @@ func (a *app) parking() bool { return a.state == stateWorking }
 // draft file is done with, exactly as a sent message spends them, because from
 // the person's side they have said the thing — it is only the model that has not
 // heard it yet.
-func (a *app) park(text string) tea.Cmd {
+func (a *app) park(text string, standing bool) tea.Cmd {
 	text = strings.TrimSpace(text)
 	chips := append([]chip(nil), a.chips...)
 	if text == "" && len(chips) == 0 {
 		return nil
 	}
 	a.chips = nil
-	a.parks = append(a.parks, parked{text: text, chips: chips})
+	a.parks = append(a.parks, parked{text: text, chips: chips, standing: standing})
 	a.follow()
 	a.touch()
 	return nil
@@ -109,6 +114,11 @@ func (a *app) sendParked() tea.Cmd {
 		cmd := a.submitImages(next.text)
 		a.chips = held
 		return cmd
+	}
+	// A MARKED MESSAGE GOES THROUGH THE MARKED DOOR, however long it waited
+	// (standmark.go).
+	if next.standing {
+		return a.submitStanding(next.text)
 	}
 	return a.submit(next.text)
 }

@@ -125,6 +125,16 @@ type Welcome struct {
 // SubmitArgs carries Submit and FollowUp.
 type SubmitArgs struct {
 	Text string `json:"text"`
+	// Standing says the person MARKED this draft as something to keep true
+	// (internal/session's standing_mark.go), so the engine opens the turn
+	// through SubmitStanding rather than Submit.
+	//
+	// IT IS A FIELD RATHER THAN A METHOD OF ITS OWN because the two differ in
+	// what the engine puts in front of the sentence and in nothing a wire can
+	// see: same argument, same StreamRef, same event frames. An older engine
+	// that does not read it runs the ordinary turn, which is the one direction
+	// this may fail in that leaves the person's words intact.
+	Standing bool `json:"standing,omitempty"`
 }
 
 // SubmitImageArgs carries SubmitImage. Images travel with their bytes filled

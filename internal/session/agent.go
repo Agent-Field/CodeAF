@@ -526,7 +526,18 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	return a.submitUser(ctx, userText(text))
+}
 
+// submitUser is Submit's body with the MESSAGE left to the caller: the closed
+// check, the steering splice, the spend rail and the turn are the same four
+// things whatever the person's message turned out to be, and the second door
+// onto them is a draft they marked standing (standing_mark.go).
+//
+// It is factored rather than copied for [Agent.SubmitImage]'s own reason: the
+// steering rules and the rail are laws about a turn starting, and two functions
+// applying them separately is two chances for one of them to stop.
+func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -538,7 +549,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		// between an assistant's tool_calls and their results is a shape every
 		// provider rejects. The loop appends it at the next step boundary,
 		// where it is journaled like any other user message.
-		a.steering = append(a.steering, userText(text))
+		a.steering = append(a.steering, user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
@@ -554,7 +565,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
-	events := a.startTurnLocked(ctx, userText(text), nil)
+	events := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
 	return events, nil
 }
@@ -639,6 +650,18 @@ type userMessage struct {
 	// was running drains what is left of the queue at its end. Both are places
 	// where "does anybody have to say something about this" is the question.
 	wake bool
+
+	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
+	// them. Empty in every ordinary case, and set by exactly one door: a draft
+	// the person MARKED STANDING, whose message carries an instruction in front
+	// of the sentence (standing_mark.go).
+	//
+	// THE INSTRUCTION IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
+	// transcript that replayed the instruction would show somebody a paragraph
+	// they never typed, on the row that is supposed to be the one thing on the
+	// screen that is theirs — so the journal and the store keep this, and only
+	// the messages this turn reasons from carry the rest.
+	said string
 
 	// authored marks a line the SESSION wrote rather than the person: every note
 	// that goes through [Agent.enqueueNote], whether or not anybody owes it an
@@ -1159,10 +1182,18 @@ func (a *Agent) recordLocked(message ai.Message) {
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
 	a.messages = append(a.messages, user.message)
+	// AND WHAT IS KEPT IS WHAT THEY SAID. A marked draft's message carries an
+	// instruction the person never typed and never sees (standing_mark.go); the
+	// turn reasons from it and nothing outlives it, because a replay is a
+	// reading of the conversation and that paragraph was never part of one.
+	kept := user.message
+	if user.said != "" {
+		kept = textMessage("user", user.said)
+	}
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own
 	// words are the last thing that should depend on which layout they opened in.
-	a.chatlog.post(user.message)
+	a.chatlog.post(kept)
 	if a.file == nil {
 		return
 	}
@@ -1175,13 +1206,13 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		a.file.appendNote(user.message)
 		return
 	}
-	a.file.appendMessage(user.message, user.refs...)
+	a.file.appendMessage(kept, user.refs...)
 	// AND THE FOLDER LEARNS THE PERSON WAS HERE. Resume order is on when the
 	// person last spoke and not on file mtime (place.go's [Meta.LastUserAt]),
 	// and this line — the one place the person's own words reach the journal —
 	// is the only honest witness to that. A session with no folder stamps
 	// nothing (placemeta.go).
-	a.stampUserLocked(messageContentText(user.message))
+	a.stampUserLocked(messageContentText(kept))
 }
 
 func (a *Agent) record(message ai.Message) {

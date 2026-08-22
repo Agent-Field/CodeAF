@@ -22,6 +22,13 @@ func (f *fakeAgent) SubmitImage(ctx context.Context, text string, _ []session.Im
 	return f.Submit(ctx, text)
 }
 
+// SubmitStanding is the marked door: the same turn, remembered separately, so a
+// test can tell which of the two a keystroke used (standmark.go).
+func (f *fakeAgent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
+	f.marked = append(f.marked, text)
+	return f.Submit(ctx, text)
+}
+
 // imageAgent is the scripted session for this file: it records the message the
 // tray assembled and can refuse it the way the vision gate does.
 type imageAgent struct {
