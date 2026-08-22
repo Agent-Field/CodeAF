@@ -336,10 +336,19 @@ func StandingItemRow(a *app, view StandingItemView, width int, now time.Time, se
 	// label with what is left — which drew a row that was ALL rollup and no
 	// words at all. The tail is clipped first; the card beside it has the
 	// sentence in full.
-	if room := width - standWordsFloor - 3; room > 0 && ansi.StringWidth(note) > room {
-		note = fit(note, room)
-	}
+	note = standFitNote(note, width)
 	return overlayRowTinted(label, note, standRowInk(view), sel, markNone, hover, width, pal)
+}
+
+// standFitNote is that clip, and it is a function because the standing orders
+// page makes the same trade on the same two strings (standingpage.go): the
+// rollup gives way first, and the words a person recognizes the thing by keep
+// [standWordsFloor] cells whatever the tail wants.
+func standFitNote(note string, width int) string {
+	if room := width - standWordsFloor - 3; room > 0 && ansi.StringWidth(note) > room {
+		return fit(note, room)
+	}
+	return note
 }
 
 // standWordsFloor is how many cells a row keeps for the person's own words
