@@ -59,14 +59,9 @@ func (a *Agent) StandingHere() (stand []standing.Item, excepted []standing.Item)
 			if !item.ExceptedFrom(workspace, sessionID) {
 				continue
 			}
-			// ASKED OF THE ITEM WITH ITS EXCEPTIONS TAKEN OFF, because the question is
-			// exactly "would this have reached here?" and [standing.Item.AppliesTo]
-			// answers no to both an order that never reached and one the person kept
-			// out. Re-deriving the altitudes here would be the contract's own
-			// arithmetic written a second time.
-			reach := item
-			reach.Exceptions = nil
-			if reach.AppliesTo(workspace, sessionID) {
+			// The question is exactly "would this have reached here?", and the
+			// contract now answers it directly ([standing.Item.Reaches]).
+			if item.Reaches(workspace, sessionID) {
 				excepted = append(excepted, item)
 			}
 		case standing.StatusPaused:

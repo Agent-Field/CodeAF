@@ -423,15 +423,14 @@ func (it Item) Prompt() string {
 	return it.Words
 }
 
-// AppliesTo answers whether this item governs the given place: a machine item
-// reaches everywhere, a project item reaches its workspace, a conversation
-// item reaches only its own session — and an exception beats all three.
-// Callers pass what they know; an empty sessionID is a place with no
-// conversation (a task's worktree, a firing).
-func (it Item) AppliesTo(workspace, sessionID string) bool {
-	if it.ExceptedFrom(workspace, sessionID) {
-		return false
-	}
+// Reaches answers whether this item's altitude covers the given place, WITH
+// EXCEPTIONS IGNORED. It exists because a page drawing its dim "not here"
+// lines asks exactly "would this have applied but for the person keeping it
+// out" — and before it was in the contract, the one caller answered that by
+// copying the item and clearing its exceptions, which is the contract's own
+// arithmetic written a second time. Callers pass what they know; an empty
+// sessionID is a place with no conversation (a task's worktree, a firing).
+func (it Item) Reaches(workspace, sessionID string) bool {
 	switch it.Level() {
 	case AltitudeMachine:
 		return true
@@ -441,6 +440,13 @@ func (it Item) AppliesTo(workspace, sessionID string) bool {
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}
 	return false
+}
+
+// AppliesTo answers whether this item governs the given place: its reach,
+// minus the places the person kept it out of. An exception beats every
+// altitude.
+func (it Item) AppliesTo(workspace, sessionID string) bool {
+	return !it.ExceptedFrom(workspace, sessionID) && it.Reaches(workspace, sessionID)
 }
 
 // ExceptedFrom answers whether the person excepted this item from the place.
