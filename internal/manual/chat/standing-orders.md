@@ -5,8 +5,9 @@ tests before you say you are done", "never touch the public API in this repo", "
 Monday draft the weekly update". It stays in force until you stop it.
 
 It is the same one object as a reminder or a watch — see the keeping-an-eye page for
-cadences, what a firing costs, and where the news lands. This page is about the part
-that is a **rule**: where it applies, how to see what is standing, and how to stop one.
+cadences, how it shares the daily allowance, and where the news lands. This page is
+about the part that is a **rule**: where it applies, how to see what is standing, and
+how to stop one.
 
 ## Rules, always do this, automations — all the same one thing
 
@@ -26,8 +27,8 @@ rewritten; a short title may be drawn beside it on narrow rows.
 
 Every one of them arrives as a card in the conversation, and **nothing is created until
 you answer it**. The card carries your sentence, when it wakes, where it reaches, and
-what it may spend. `esc` or `0` declines, and a card left unanswered when the turn ends
-sets nothing up: `the card was left unanswered — nothing was set up`.
+that it shares the day's allowance. `esc` or `0` declines, and a card left unanswered
+when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
@@ -164,8 +165,9 @@ Honest limits, so you do not rely on something that is not built:
   orders before an ordinary turn or a task and applies them, so "never touch the public
   API" does not stop a turn from touching it — it stands, it is on the page, and the
   enforcement is a later wave.
-- **Money is not per order.** What a firing may spend is quoted on the card and bounded
-  by the same daily budget everything else uses.
+- **Money is not per order.** The card says it shares the day's allowance — the same
+  machine-wide `daily_budget_usd` setting everything standing uses. If you named a
+  per-run or per-day limit yourself, the card says your limit back instead.
 - **There is no outward lane.** No phone, no email, no desktop notification. News lands
   in a chat you have open, or waits — the keeping-an-eye page has the order it is
   delivered in.

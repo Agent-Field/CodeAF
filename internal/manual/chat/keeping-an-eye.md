@@ -12,11 +12,11 @@ words. Nothing is ever set up without a card you answer.
 
 Say it the way you would say it to a person: "remind me at 6 to leave", "remind
 me on Friday to send the invoice". A card comes up with your own sentence on it,
-when it will fire, and what it costs. Say yes and it stands. The card has **no
-countdown on it** — it waits for you — and nothing is set up until you answer.
+when it will fire, and that it shares the day's allowance. Say yes and it stands.
+The card has **no countdown on it** — it waits for you — and nothing is set up
+until you answer.
 
-A reminder fires once, says one line to you, and retires. Its cap is
-**1 firing a day**, because a moment cannot happen twice.
+A reminder fires once, says one line to you, and retires.
 
 The line looks like this, wherever it reaches you:
 
@@ -270,7 +270,7 @@ the item is marked as needing you. That is the whole of "unattended": what you
 already allowed is what runs, and nothing else.
 
 One firing's work is bounded at **60 tool calls** unless the card said otherwise,
-and at its per-run cost cap. Crossing either cuts the turn where it stands;
+and by a quiet per-run backstop. Crossing either cuts the turn where it stands;
 whatever it already did stands with it.
 
 ## Tonight — overnight and long-horizon work
@@ -312,24 +312,25 @@ to; your own sentence is still what every screen leads with, and it is never
 rewritten. And if you say what acting on it may do without asking — "open a pull
 request but never merge it" — that sentence is written down and shown on the
 card. It is a record you can read: what actually bounds a firing today is still
-the rails below and the permissions you have already banked.
+the shared allowance, quiet backstops and the permissions you have already banked.
 
-## What does it cost?
+## What does it cost — one daily allowance, not money per order
 
-Two figures, both quoted on the card before you answer, both of them yours to
-change by saying so:
+Everything standing shares one machine-wide daily allowance: the same
+`daily_budget_usd` row `/budget` and the settings sheet already write. When that
+setting has a dollar figure, the card says `shares the day's $… allowance`; when
+it is unlimited, the card says `shares the day's allowance` without inventing a
+figure.
 
-| Rail | Default | What it bounds |
-| --- | --- | --- |
-| per run | **$0.15** | everything one firing spends — the look, the judgement, the work |
-| a day | **10** firings | how many times it may fire in one local day (**1** for a one-off reminder) |
-
-Above those sits your **daily budget** — the same `daily_budget_usd` row `/budget`
-and the settings sheet already write, not a second number invented for this. The
-ambient side spends inside it or asks.
+There are quiet per-run and per-day backstops inside each item so one noisy order
+cannot consume the pool unchecked, but aforge does not ask the model to negotiate
+them and does not quote them on an ordinary card. The real protection is the
+shared allowance and the approval rules you already banked. If you said "spend at
+most a dollar" or named a daily firing limit yourself, that is different: the
+card says your limit back exactly, and the item keeps it.
 
 A check that fires nothing still costs the look and the one small judgement call,
-which is why the cap is quoted per run and not per firing.
+so it shares the allowance even when it has nothing to say.
 
 ## How many times did my watch run this week, and what did it spend?
 
@@ -659,7 +660,7 @@ transcript reads with the same tools as any other conversation.
 - **It will not reach your phone.** There is no notification, no email, no
   outward lane at all. News lands in a chat you have open, or waits on home and
   in the next chat you open in that project ("Where a reminder arrives").
-- **It will not spend past the rails without asking.**
+- **It will not spend past the shared allowance or its quiet backstops without asking.**
 - **It cannot do anything unattended that you have not already allowed.** Nobody
   is there to answer a permission card, so the run stops and says so.
 - **A firing cannot set up another standing item.** The tool is absent inside

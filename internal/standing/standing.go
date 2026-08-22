@@ -196,8 +196,9 @@ type Action struct {
 }
 
 // Rails bound an item. They are mandatory by construction: [Store.Create]
-// refuses an item whose PerRunUSD or MaxPerDay is zero, and the proposal card
-// quotes both before the person answers.
+// refuses an item whose PerRunUSD or MaxPerDay is zero. They stay quiet on the
+// proposal card unless the person named money themselves, because the ordinary
+// promise is the machine-wide daily allowance.
 type Rails struct {
 	// PerRunUSD is the most one firing may spend, probe and sentinel included.
 	PerRunUSD float64 `json:"perRunUsd"`
