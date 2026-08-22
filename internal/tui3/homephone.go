@@ -618,7 +618,11 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			standRollup(line.view, h.world.Read), standRowInk(line.view)
 	case homeExchangeRow:
 		return homeAskHereGlyph + " " + exchangeTitle(line.ex.spoke),
-			a.exchangeTail(line.ex), exchangeTailInk(line.ex)
+			// bridge lane: the one-spinner law is the wide frame's (homespinner.go).
+			// THE INBOX IS ITS OWN SURFACE and keeps the tail it already drew — its
+			// rows are twelve on a phone, not a column of live things beside two
+			// others, and the law it does keep is homephone.go's own second one.
+			a.exchangeTail(line.ex, true), exchangeTailInk(line.ex)
 	case homePhoneNews:
 		note := line.note
 		if note == nil {
