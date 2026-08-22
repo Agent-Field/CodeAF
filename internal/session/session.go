@@ -1427,6 +1427,13 @@ type Agent struct {
 	// rendered into the transcript's first message, and message[0] is rebuilt
 	// from a.system plus the two of them rather than appended to.
 	cardText string
+	// standingText is the <standing> block message[0] currently carries
+	// (standing_world.go): the orders the person holds over this conversation,
+	// which the model must work within. It sits under mu beside the three blocks
+	// below for their reason, and it is re-rendered at the start of every turn —
+	// an unchanged set renders the same bytes, so a conversation whose orders
+	// have not moved leaves message[0] exactly as the provider cached it.
+	standingText string
 	// elsewhereText is the <elsewhere> block message[0] currently carries
 	// (taskdelta.go): what the OTHER windows on this project landed and are
 	// running. It sits under mu beside the two above for their reason, and it

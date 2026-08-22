@@ -159,11 +159,16 @@ see what is true before you decide.
 
 Honest limits, so you do not rely on something that is not built:
 
-- **An order does not yet reach into ordinary work.** In this build an order can say
-  something to you, or run the work its own card was agreed for. Nothing yet reads your
-  orders before an ordinary turn or a task and applies them, so "never touch the public
-  API" does not stop a turn from touching it — it stands, it is on the page, and the
-  enforcement is a later wave.
+- **An order shapes new work; nothing acts on a landing yet.** Every conversation and
+  every task that starts in a place your orders reach now opens knowing them. They ride
+  under the heading `Standing orders`, they say they are your conditions and not
+  suggestions, and a task that cannot honour one is told to say so in its report. So
+  "never touch the public API" is in front of a task before it writes a line. What is
+  **not** built is the other direction: nothing re-reads your orders *after* a change
+  lands and starts work to put it right, so a change that slipped past one is still
+  yours to catch. That half is a later wave.
+- **At most eight orders ride along.** When more than eight stand over one place, the
+  ones that have stood the longest go, and the rest are counted — `…3 more`.
 - **Money is not per order.** What a firing may spend is quoted on the card and bounded
   by the same daily budget everything else uses.
 - **There is no outward lane.** No phone, no email, no desktop notification. News lands

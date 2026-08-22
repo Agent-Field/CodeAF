@@ -717,6 +717,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
 	a.refreshClockLocked(time.Now())
+	// AND SO ARE THE PERSON'S STANDING ORDERS, on the same trigger and for the
+	// same reason the clock has one: a turn must reason with the conditions that
+	// hold now, and an order stood up while this conversation was open is not
+	// something the next turn may still be blind to (standing_world.go).
+	a.refreshStandingLocked()
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub

@@ -721,6 +721,12 @@ func (g *TaskGraph) runFrontier() {
 	// by everything that announces a node — no reading of /proc belongs under
 	// it, however cheap.
 	busy := g.governor.holds()
+	// AND THE PERSON'S STANDING ORDERS ARE RESOLVED BEFORE THE LOCK TOO, and at
+	// most once a pass, for the governor's reason: every node in one graph sits
+	// in one place, so the answer is the same for all of them, and reading a
+	// folder per starting node would be the same question asked ten times
+	// (standing_world.go).
+	orders := g.standingWorld()
 
 	g.mu.Lock()
 	var starting, failing, waiting []*TaskNode
@@ -772,7 +778,7 @@ func (g *TaskGraph) runFrontier() {
 		}
 		// JIT: the brief is assembled here, with the prerequisites' reports in
 		// hand, and never at proposal time when they did not exist yet.
-		node.brief = g.briefLocked(node)
+		node.brief = g.briefLocked(node, orders)
 		node.state = TaskRunning
 		node.started = time.Now()
 		// The hold is lifted by the start itself, so the running update this
@@ -880,11 +886,18 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 	return ready, ""
 }
 
-// briefLocked assembles what one node is handed: its own brief, and then what
-// the work before it learned. The heading is plain words rather than a marker
-// because the node reads it as prose — it is a colleague being told what the
-// last shift found, not a data structure.
-func (g *TaskGraph) briefLocked(node *TaskNode) string {
+// briefLocked assembles what one node is handed: its own brief, then what the
+// work before it learned, then the standing orders the person holds over this
+// place. The headings are plain words rather than markers because the node reads
+// them as prose — it is a colleague being told what the last shift found and
+// what the house rules are, not a data structure.
+//
+// THE ORDERS COME LAST AND NOT FIRST. What the node is doing and what it was
+// told by the work ahead of it are the job; the orders are the conditions the
+// job is done under, and a brief that opened with them would read as the job
+// being about the conditions. `orders` is [TaskGraph.standingWorld]'s answer,
+// resolved ONCE per frontier pass outside this lock.
+func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	var learned strings.Builder
 	for _, id := range node.dependsOn {
 		prerequisite := g.nodes[id]
@@ -894,10 +907,16 @@ func (g *TaskGraph) briefLocked(node *TaskNode) string {
 		fmt.Fprintf(&learned, "\n\n%s (task %d):\n%s",
 			prerequisite.spec.title, id, prerequisite.report)
 	}
-	if learned.Len() == 0 {
-		return node.spec.brief
+	brief := node.spec.brief
+	if learned.Len() > 0 {
+		brief += "\n\nWhat the work before you learned:" + learned.String()
 	}
-	return node.spec.brief + "\n\nWhat the work before you learned:" + learned.String()
+	if orders != "" {
+		// The section is rendered with a trailing newline for the block the
+		// conversation wraps it in; a brief is prose and ends where it ends.
+		brief += "\n\n" + strings.TrimRight(orders, "\n")
+	}
+	return brief
 }
 
 // complete settles one node and turns the frontier again. The runner has
