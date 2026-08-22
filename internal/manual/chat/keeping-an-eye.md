@@ -286,6 +286,34 @@ The result is waiting for you — in the chat that asked for it if it is open, a
 otherwise wherever the delivery rules put it (see "Where a reminder arrives").
 Close the lid.
 
+## How far does it reach — just this chat, this project, or everywhere
+
+Everything you set up has one **reach**, and the card names it before you answer:
+
+| Reach | What it governs |
+| --- | --- |
+| this conversation | this chat alone, and it goes when the chat does |
+| this project | every conversation and every task in this project |
+| everywhere | everything you do on this machine |
+
+**Where you said it is the default.** Said in a project, it stands for that
+project — which is what everything set up before reaches were spelled already
+did, so nothing you already have has changed. Said in a chat that belongs to no
+project at all, it stands everywhere.
+
+**Your own words move it.** "Just this chat" and "only here" keep it to the
+conversation; "everywhere", "all my projects" and "on this machine" lift it to
+the whole machine. Nothing is ever widened quietly — the card states the reach,
+and "make it just this project" on the card is a correction like any other.
+
+Two smaller things ride the same card. A short **title** — three or four words,
+like `main stays green` — is what a row too narrow for your sentence falls back
+to; your own sentence is still what every screen leads with, and it is never
+rewritten. And if you say what acting on it may do without asking — "open a pull
+request but never merge it" — that sentence is written down and shown on the
+card. It is a record you can read: what actually bounds a firing today is still
+the rails below and the permissions you have already banked.
+
 ## What does it cost?
 
 Two figures, both quoted on the card before you answer, both of them yours to

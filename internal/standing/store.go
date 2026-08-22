@@ -153,6 +153,60 @@ func (s *Store) ForWorkspace(workspace string) ([]Item, error) {
 	return kept, nil
 }
 
+// Applicable is THE ONE RESOLVER: which standing things reach this place, in
+// the order a person reads them. Every seam that asks "what stands over here?"
+// asks this and nothing else, so a conversation, a page and a task's world can
+// never come to three different answers about one item.
+//
+// IT IS THREE SHELVES AND NOT A SORT KEY. This conversation's own orders lead,
+// then this project's, then the machine's — narrowest first, because the
+// nearest one is the one somebody just made and the one they mean when they say
+// "not here". Within a shelf the most recently touched leads, and that is
+// [Item.Updated] rather than Created: an order paused, excepted or edited this
+// morning is the one they are thinking about.
+//
+// ONLY WHAT IS ACTUALLY STANDING. A paused order governs nothing while it is
+// paused and a retired one is over, so neither is here — a list that included
+// them would be saying something is true of this place that is not.
+//
+// Callers pass what they know; an empty sessionID is a place with no
+// conversation ([Item.AppliesTo]), which is what a task's worktree and a firing
+// both are.
+func (s *Store) Applicable(workspace, sessionID string) ([]Item, error) {
+	items, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	kept := items[:0]
+	for _, item := range items {
+		if item.Status != StatusActive || !item.AppliesTo(workspace, sessionID) {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	sort.SliceStable(kept, func(a, b int) bool {
+		if shelf(kept[a]) != shelf(kept[b]) {
+			return shelf(kept[a]) < shelf(kept[b])
+		}
+		return kept[a].Updated.After(kept[b].Updated)
+	})
+	return kept, nil
+}
+
+// shelf is which of the three shelves an item is drawn on, nearest first. It is
+// [Item.Level] as a number, because the order is arithmetic and the altitudes
+// are words; it is unexported because a surface that wants the shelf itself
+// already has it by name.
+func shelf(item Item) int {
+	switch item.Level() {
+	case AltitudeConversation:
+		return 0
+	case AltitudeProject:
+		return 1
+	}
+	return 2
+}
+
 // Log adds one line to an item's own log: a check that found something, a
 // firing, a pause, a stop. NEVER A LINE PER QUIET CHECK — a watch that looks
 // every five minutes for a year would otherwise leave a hundred thousand lines
