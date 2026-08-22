@@ -267,6 +267,77 @@ func TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem(t *testing.T) {
 	}
 }
 
+// A RULE STANDS UP WITH NOTHING BUT ITS SENTENCE AND ITS REACH.
+//
+// The three fields every other kind carries are all about waking — a cadence to
+// say back, an action to be the content of a firing, a budget to bound one — and
+// a hold does none of those. So the item carries no rails and no action, and the
+// CARD is told nothing about cost, which is what stops it quoting the day's
+// allowance under something that can never draw on it.
+func TestAHoldStandsWithNoRailsNoActionAndNothingAboutMoney(t *testing.T) {
+	store := newFakeStanding(t)
+	call := `{"op":"propose","words":"always run the tests before you say you are done",` +
+		`"when":{"kind":"hold"},"when_words":"always","title":"tests before done"}`
+	completer := &scriptedCompleter{steps: []step{standCall("s1", call), finalText("set up")}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.Standing.DailyRailUSD = 20
+	})
+
+	events, err := agent.Submit(context.Background(), "always run the tests before you say you are done")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	created := store.created[0]
+	if created.When.Kind != standing.WhenHold {
+		t.Fatalf("the item wakes on %q", created.When.Kind)
+	}
+	if created.Rails.PerRunUSD != 0 || created.Rails.MaxPerDay != 0 {
+		t.Fatalf("a rule was given a budget: %+v", created.Rails)
+	}
+	if created.Does.Kind != "" {
+		t.Fatalf("a rule was given something to do: %+v", created.Does)
+	}
+	// AND NO CADENCE, however the model said it back. "always" is not a moment,
+	// and a `when ·` band under a rule would be the card reading a rhythm into it.
+	if created.When.Words != "" {
+		t.Fatalf("a rule was given a cadence: %q", created.When.Words)
+	}
+	card, found := firstOfKind(collected, EventStandingProposal)
+	if !found {
+		t.Fatalf("no card was drawn: %v", kinds(collected))
+	}
+	if card.Standing.CostWords != "" || card.Standing.WhenWords != "" {
+		t.Fatalf("the card for a rule says when=%q cost=%q, wanted neither",
+			card.Standing.WhenWords, card.Standing.CostWords)
+	}
+}
+
+// AND AN ACTION SENT WITH A HOLD IS REFUSED RATHER THAN QUIETLY DROPPED. A model
+// that asked for a rule AND a line to say meant one of the two, and standing one
+// up with an action nothing will ever run would leave the person holding a card
+// whose promise cannot be kept.
+func TestAHoldWithSomethingToDoIsRefused(t *testing.T) {
+	store := newFakeStanding(t)
+	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
+	args := json.RawMessage(`{"op":"propose","words":"always use tabs",` +
+		`"when":{"kind":"hold"},"does":{"kind":"say","say":"use tabs"}}`)
+
+	text, isError, err := agent.standTool(context.Background(), args)
+	if err != nil || !isError || !strings.Contains(text, "a hold does nothing") {
+		t.Fatalf("a hold with an action = %q isError=%v err=%v", text, isError, err)
+	}
+	if len(store.created) != 0 {
+		t.Fatal("a refused hold created an item")
+	}
+}
+
 func TestStandingValidateStillRefusesAnExplicitZeroRail(t *testing.T) {
 	store := newFakeStanding(t)
 	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
@@ -1423,7 +1494,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	gone := time.Date(2026, 8, 21, 5, 42, 0, 0, time.Local)
 	var parsed standArguments
 	parsed.Rails.Expires = gone.Format("2006-01-02T15:04:05")
-	rails, problem := standingRails(parsed, now)
+	rails, problem := standingRails(parsed, standing.WhenAt, now)
 	want := "Invalid arguments: rails.expires " + standingClock(gone) +
 		" has already passed — it is now " + standingClock(now) +
 		" (Friday 2026-08-21). Work it out from that time, or leave it out for something that never expires."
@@ -1435,7 +1506,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	}
 	// And one in the future is untouched.
 	parsed.Rails.Expires = now.Add(time.Hour).Format("2006-01-02T15:04:05")
-	if rails, problem = standingRails(parsed, now); problem != "" {
+	if rails, problem = standingRails(parsed, standing.WhenAt, now); problem != "" {
 		t.Fatalf("a future expiry was refused: %q", problem)
 	}
 	if !rails.Expires.Equal(now.Add(time.Hour)) {

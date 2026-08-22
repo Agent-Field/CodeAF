@@ -465,6 +465,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does this rule apply to all my projects", "standing-orders"},
 		{"not in this project", "standing-orders"},
 		{"why does it say 3 standing orders here", "standing-orders"},
+		// The wave that gave a rule with no trigger a shape of its own. These are
+		// the words somebody uses for one before they have heard the word
+		// "standing" at all — a style rule, a convention, a preference — plus the
+		// two questions the shape provokes: how do I set one, and how does it know
+		// I meant always rather than just now.
+		{"always do it this way", "standing-orders"},
+		{"can you remember my coding style rule", "standing-orders"},
+		{"how do I set a standing order", "standing-orders"},
+		{"how does it know I mean always", "standing-orders"},
+		{"is that an instruction or a rule", "standing-orders"},
+		{"our conventions for this repo", "standing-orders"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -20,8 +20,81 @@ the sentence in your own words and aforge offers to make it a standing order:
 - "tell me when CI on main goes red"
 
 They differ only in what wakes them — a clock, a look at the world, or nothing at all
-for a rule that simply stays true. Your own sentence is kept word for word and is never
-rewritten; a short title may be drawn beside it on narrow rows.
+for a rule that simply stays true and **holds**. Your own sentence is kept word for
+word and is never rewritten; a short title may be drawn beside it on narrow rows.
+
+## How do I set one up — you just say it
+
+There is no command for this, no form, no `rules:` block in a config file and no macro
+language. **You say the sentence**: "always run the tests before you tell me it works".
+aforge recognises it and puts a card in the conversation; you answer the card, and it
+stands.
+
+- **In a conversation** — say it. The card appears in the transcript with your own
+  sentence on it. `1` sets it up, `2` changes when it wakes, `3` does the thing once
+  and leaves nothing behind, and `0` or `esc` says no.
+- **From the home screen** — the `ask here` box takes the same sentence, and the card
+  is drawn beside it with the same answers.
+
+You can also ask for one in as many words — "make that a standing order", "remember
+that for this project", "set that as a rule" — and the card still comes. Nothing is
+ever created without one.
+
+`/standing` (or `/orders`) shows what already stands over the conversation you are in;
+`/home` shows everything standing on the machine, grouped by project.
+
+## How does it know I mean always — instruction, or standing order
+
+"Make sure" turns up in as many one-off instructions as it does in rules, so aforge
+does not decide by the words. It asks one question about your sentence: **can it be
+satisfied once and then forgotten?**
+
+- **Yes — then it is part of the work you just asked for**, not a standing order.
+  "Make sure this website you're building is 3 pages" is finished the moment the site
+  has three pages. It becomes an acceptance criterion for the work in hand, and no card
+  is drawn.
+- **No — then it stands.** "Make sure the tests never break" can never be finished:
+  work nobody has done yet could break them tomorrow. That is a rule, and it gets a
+  card.
+
+A sentence about the thing being built right now — "this website you're building",
+"this PR", "what you're doing" — is about that thing, whatever words are in it. An
+"always" in there is emphasis, not a rule.
+
+**When it genuinely cannot tell, it does the instruction and offers the rule in one
+line** instead of guessing. It applies your sentence to the work in front of it and
+says something like *if you want this to hold for future work here too, say so and I'll
+set it standing*. A card you did not ask for is worse than a question.
+
+## Always do it this way — coding style rules, conventions and preferences
+
+*Always do it this way. A coding style rule. Our conventions. My preferences.*
+
+"Always run the tests before you tell me it works." "Never touch the public API in this
+repo." "We use tabs here." "Prefer small commits." None of these has a time in it, and
+none of them is waiting for anything to happen. They are simply true, and they stay
+true.
+
+aforge keeps that kind as a standing order that **holds**. It never fires, it is never
+checked, and it costs nothing. What it does instead is ride into the world of the work
+it reaches: a new conversation in this project opens already knowing it, and a task
+starts with it in its brief under the heading `Standing orders`, told these are your
+conditions and not suggestions.
+
+Because nothing about one ever wakes, its card is short — your sentence, and the
+`where ·` band saying how far it reaches. **No cadence line and no cost line**: there
+is no moment to quote, and there is nothing it can spend. On every screen that lists
+it, where a watch says what it last found, a rule says one word:
+
+```
+◦ never touch the public API                                          holds
+```
+
+On the home screen's `keeping an eye on` list, the ones that hold sit **after**
+everything with an appointment, newest first — a rule has no "next", so it does not
+belong in a queue of what happens next.
+
+`p` pauses one, which stops it reaching new work; `s` stops it for good.
 
 ## Nothing stands until you say yes
 
@@ -78,13 +151,14 @@ are sitting.
   for this project
   ◦ draft the weekly update                                  Mondays at 9am
   everywhere
-  ◦ never touch the public API                       checked 4m ago · nothing
+  ◦ never touch the public API                                        holds
   ─ not here: post the standup
 ```
 
 Each row leads with the mark every aforge screen uses — `▲` needs you, `●` being
 checked or fired right now, `◦` waiting for its time, `∙` paused or stopped — then what
-the order is called, then where it stands.
+the order is called, then where it stands. A rule that never wakes says `holds` there,
+because it has no cadence and nothing it last found.
 
 **A shelf with nothing on it is not drawn at all**, heading included. With nothing
 standing here the page does not open: aforge says one line instead,

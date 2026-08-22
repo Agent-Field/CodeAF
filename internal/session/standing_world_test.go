@@ -182,6 +182,46 @@ func TestAPausedOrderNeverReachesANodesWorld(t *testing.T) {
 	}
 }
 
+// A HOLD IS WHAT THE BIRTH SEAM IS FOR.
+//
+// A rule never wakes: no pass will ever check it, fire it or spend a cent on it,
+// so riding into the world of the work that starts is not one of the ways it is
+// kept — it is THE way. This is the same section every other kind rides in, and
+// the point of the test is that nothing about a rule's emptiness keeps it out of
+// one: no rails, no action, no cadence, and it still reaches the node.
+func TestAHoldRidesIntoTheWorldOfTheWorkThatStarts(t *testing.T) {
+	agent, store := ordersAgent(t)
+	workspace, session := agent.standingPlace()
+	rule, err := store.Create(standing.Item{
+		Words:     "always run the tests before you say you are done",
+		Workspace: workspace,
+		Origin:    standing.Origin{SessionID: session},
+		When:      standing.When{Kind: standing.WhenHold},
+		Altitude:  standing.AltitudeProject,
+	})
+	if err != nil {
+		t.Fatalf("cannot stand a rule up: %v", err)
+	}
+	if rule.Spends() || !rule.NextDue.IsZero() {
+		t.Fatalf("a rule was stood up as something that wakes: %+v", rule.When)
+	}
+
+	world := oneNodesWorld(t, agent, "fix the crash in the parser")
+	if !strings.Contains(world, "always run the tests before you say you are done") {
+		t.Fatalf("the rule never reached the node:\n%s", world)
+	}
+	if !strings.Contains(world, standingWorldIntro) {
+		t.Fatalf("the rule arrived with nothing saying whose it is:\n%s", world)
+	}
+
+	// AND INTO A CONVERSATION'S OWN INSTRUCTIONS, which is the other half of the
+	// same seam: the model reasoning in this chat is under the rule from the top
+	// of the very next turn.
+	if prompt := theSystemPrompt(t, agent); !strings.Contains(prompt, "always run the tests before you say you are done") {
+		t.Fatalf("the rule never reached the conversation's own world:\n%s", prompt)
+	}
+}
+
 // ── the birth seam, in a conversation ───────────────────────────────────────
 
 // The conversation's own world gains the section when something stands over it

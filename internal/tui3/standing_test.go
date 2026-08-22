@@ -686,3 +686,41 @@ func TestTheStandingLaneRearmsAfterAFiring(t *testing.T) {
 		}
 	}
 }
+
+// A RULE'S CARD IS ITS SENTENCE AND ITS REACH, AND NOTHING ELSE.
+//
+// A hold has no moment, no rhythm and no condition, so a `when ·` band under one
+// would be the card reading a cadence into the word "always"; and it never wakes,
+// so it never runs a probe, buys a judgment or launches work, and a `costs ·`
+// band would be asking somebody to weigh a figure nothing can ever draw on. The
+// notice here carries both anyway — the surface is what a person reads, and it
+// refuses to draw either whoever filled it in.
+func TestARulesCardDrawsNoCadenceAndNoCost(t *testing.T) {
+	a, _, _ := standApp(t)
+	rule := standItem()
+	rule.Words = "never touch the public API"
+	rule.When = standing.When{Kind: standing.WhenHold}
+	rule.Does, rule.Rails = standing.Action{}, standing.Rails{}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		Item:      rule,
+		WhenWords: "always",
+		CostWords: "shares the day's $20.00 allowance",
+	})})
+
+	text := standText(a)
+	if strings.Contains(text, standWhenTag) {
+		t.Fatalf("a rule's card claims a cadence:\n%s", text)
+	}
+	if strings.Contains(text, standCostTag) {
+		t.Fatalf("a rule's card quotes money it can never spend:\n%s", text)
+	}
+	// THE WHERE BAND IS UNCHANGED AND IS STILL NEVER DROPPED: an order whose
+	// reach was not on the card is an order somebody agreed to without knowing
+	// where it applies.
+	if !strings.Contains(text, standWhereTag+standProjectWord) {
+		t.Fatalf("a rule's card does not say how far it reaches:\n%s", text)
+	}
+	if !strings.Contains(text, "never touch the public API") {
+		t.Fatalf("a rule's card lost the person's own sentence:\n%s", text)
+	}
+}
