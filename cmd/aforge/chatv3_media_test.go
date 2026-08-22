@@ -196,14 +196,14 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 	resolve := v3MediaModel(models, t.TempDir(), nil)
 
 	for _, test := range []struct{ modality, want string }{
-		{"image", "krea/krea-2-medium-turbo"},
-		{"speech", "fish-audio/s1"},
+		{"image", "bytedance-seed/seedream-5-0-pro"},
+		{"speech", "fish-audio/s2.1-pro"},
 		// COMPOSING IS ITS OWN WORD and answers on a cold machine like the
 		// other three: the offline catalog publishes Lyria with a "music"
 		// output, so the curated rung is capability-checked and taken rather
 		// than passed over.
-		{"music", "google/lyria-3-pro-preview"},
-		{"video", "bytedance/seedance-2.0-mini"},
+		{"music", "google/lyria-3-clip-preview"},
+		{"video", "bytedance/seedance-2.5"},
 	} {
 		if got := resolve(test.modality); got != test.want {
 			t.Fatalf("%s on an offline catalog resolved to %q, want %q", test.modality, got, test.want)

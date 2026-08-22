@@ -55,8 +55,8 @@ func TestALazyCatalogFaultDegradesToTheKnownDefaults(t *testing.T) {
 	// The future is asked again, which is where the replayed panic would land.
 	// The fallback rows are led by the name internal/config prefers for the
 	// video slot, so a cold machine resolves to the same model a warm one does.
-	if got := lazy.ModelsWithOutput("video"); len(got) == 0 || got[0].ID != "bytedance/seedance-2.0-mini" {
-		t.Fatalf("second question returned %+v, want the fallback video models led by bytedance/seedance-2.0-mini", got)
+	if got := lazy.ModelsWithOutput("video"); len(got) == 0 || got[0].ID != "bytedance/seedance-2.5" {
+		t.Fatalf("second question returned %+v, want the fallback video models led by bytedance/seedance-2.5", got)
 	}
 	if _, ok := lazy.Model("vendor/absent"); ok {
 		t.Fatal("an unknown model must still answer false")

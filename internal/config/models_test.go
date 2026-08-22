@@ -62,10 +62,11 @@ func TestBestMediaModelFollowsThePreferenceOrderThenPrice(t *testing.T) {
 		{"id":"google/lyria-3-clip-preview","architecture":{"output_modalities":["music"]},"pricing":{"request":"0.04"}},
 		{"id":"bytedance/seedance-1-5-pro","architecture":{"output_modalities":["video"]},"pricing":{"request":"0.5"}}`)
 	for modality, want := range map[string]string{
-		// gpt-image-1.5 outranks krea in the documented image order. None of
-		// the three leaders is advertised here, so each modality falls to the
-		// rung under it: the paid TTS ahead of the cheap Kokoro, and the older
-		// Lyria and Seedance rows.
+		// gpt-image-1.5 outranks krea in the documented image order. The image,
+		// speech and video leaders are not advertised here, so those fall to
+		// the rung under them: the paid TTS ahead of the cheap Kokoro, and the
+		// older Seedance row. The music leader — the clip row — is advertised
+		// and simply wins.
 		"image":  "openai/gpt-image-1.5",
 		"speech": "openai/gpt-4o-mini-tts",
 		"music":  "google/lyria-3-clip-preview",
@@ -83,14 +84,15 @@ func TestBestMediaModelFollowsThePreferenceOrderThenPrice(t *testing.T) {
 		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["speech"]}},
 		{"id":"fish-audio/s1","architecture":{"output_modalities":["speech"]}},
-		{"id":"google/lyria-3-clip-preview","architecture":{"output_modalities":["music"]},"pricing":{"request":"0.04"}},
-		{"id":"google/lyria-3-pro-preview","architecture":{"output_modalities":["music"]},"pricing":{"request":"0.01"}},
+		{"id":"fish-audio/s2.1-pro","architecture":{"output_modalities":["speech"]}},
+		{"id":"google/lyria-3-clip-preview","architecture":{"output_modalities":["music"]},"pricing":{"request":"0.01"}},
+		{"id":"google/lyria-3-pro-preview","architecture":{"output_modalities":["music"]},"pricing":{"request":"0.04"}},
 		{"id":"bytedance/seedance-1-5-pro","architecture":{"output_modalities":["video"]},"pricing":{"request":"0.5"}},
-		{"id":"bytedance/seedance-2.0-mini","architecture":{"output_modalities":["video"]},"pricing":{"request":"0.05"}}`)
+		{"id":"bytedance/seedance-2.5","architecture":{"output_modalities":["video"]},"pricing":{"request":"0.05"}}`)
 	for modality, want := range map[string]string{
-		"speech": "fish-audio/s1",
-		"music":  "google/lyria-3-pro-preview",
-		"video":  "bytedance/seedance-2.0-mini",
+		"speech": "fish-audio/s2.1-pro",
+		"music":  "google/lyria-3-clip-preview",
+		"video":  "bytedance/seedance-2.5",
 	} {
 		if got := BestMediaModel(leaders, modality); got != want {
 			t.Fatalf("best %s = %q, want %q", modality, got, want)
