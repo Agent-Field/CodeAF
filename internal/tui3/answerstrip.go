@@ -8,28 +8,30 @@ import (
 )
 
 // answerStrip is the one-line bridge between the card being read and home's
-// keys. It reads the preview once so hover and cursor cannot make the strip
-// describe different rows in the same frame.
+// keys, AND IT IS AN ANSWER, NOT A MIRROR: it draws only when the cursor's row
+// carries a question the person can answer from here. An earlier draft fell
+// back to previewing whatever the cursor was on, and that permanent row moved
+// home's geometry on every frame — the pad law and the straight gutter both
+// broke for a line that repeated what the list already said. A row that only
+// appears when something can be answered is the only row whose cost the foot's
+// budget can always explain.
 func (a *app) answerStrip(width int, now time.Time) []string {
 	line, ok := a.home.previewLine()
-	if !ok || width < 1 {
+	if !ok || width < 1 || line.kind != homeSession {
 		return nil
 	}
 	lead := "› "
-	if line.kind != homeSession {
-		return oneAnswerStripRow(a.answerStripPreview(line, lead, width))
-	}
 	row := a.homeTrue(line.row)
 	question, offered := answerable(row, now)
 	if !offered || (a.leaveAnswer == nil && !a.answeringHere(row)) {
-		return oneAnswerStripRow(a.answerStripPreview(line, lead, width))
+		return nil
 	}
 	if _, sent := a.answerSent(row, question); sent {
-		return oneAnswerStripRow(a.answerStripPreview(line, lead, width))
+		return nil
 	}
 	chips := answerChips(question)
 	if len(chips) == 0 {
-		return oneAnswerStripRow(a.answerStripPreview(line, lead, width))
+		return nil
 	}
 	answers := make([]string, 0, len(chips))
 	for _, chip := range chips {
@@ -44,31 +46,4 @@ func (a *app) answerStrip(width int, now time.Time) []string {
 	left := fit(lead+strings.TrimSpace(question.Text), room)
 	gap := width - ansi.StringWidth(left) - tailWidth
 	return []string{a.pal.ink(left) + strings.Repeat(" ", gap) + a.pal.ask(tail)}
-}
-
-func oneAnswerStripRow(row string) []string {
-	if row == "" {
-		return nil
-	}
-	return []string{row}
-}
-
-// answerStripPreview keeps the existing hover-or-cursor choice visible when
-// there is no answer to take. Rows without a one-line card title draw nothing,
-// preserving THE EMPTINESS LAW instead of inventing a label for them.
-func (a *app) answerStripPreview(line homeLine, lead string, width int) string {
-	var text string
-	switch line.kind {
-	case homeSession:
-		text = homeName(a.homeTrue(line.row))
-	case homeItem:
-		text = line.item.Title()
-	case homeProject:
-		text = line.project
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	return a.pal.dim(fit(lead+text, width))
 }

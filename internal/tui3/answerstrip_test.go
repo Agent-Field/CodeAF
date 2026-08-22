@@ -33,15 +33,15 @@ func TestAnswerStripShowsTheCursorRowsAnswerableCard(t *testing.T) {
 	}
 }
 
-func TestAnswerStripFallsBackToThePreview(t *testing.T) {
+// THE STRIP IS AN ANSWER, NOT A MIRROR: a cursor row with nothing to answer
+// draws no strip at all. An always-on preview row moved home's geometry on
+// every frame and broke the pad and gutter laws for a line the list already
+// said.
+func TestAnswerStripDrawsNothingWithoutAnAnswer(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "approve schema change"), time.Now())
 	lab.a.home.point(lab.a.file)
-	strip := drawnAnswerStrip(lab.a)
-	if !strings.Contains(strings.ToLower(strip), "porting the resume picker") {
-		t.Fatalf("the strip did not fall back to the preview row: %q\n%s", strip, homeText(lab.a))
-	}
-	if strings.Contains(strip, "1 allow once") {
-		t.Fatalf("the preview fallback kept another row's answers: %q", strip)
+	if strip := drawnAnswerStrip(lab.a); strip != "" {
+		t.Fatalf("a row with nothing to answer drew a strip: %q\n%s", strip, homeText(lab.a))
 	}
 }
 
