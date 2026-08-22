@@ -106,6 +106,77 @@ when the turn ends sets nothing up: `the card was left unanswered — nothing wa
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
 
+## Make it standing on purpose — force it to be standing, make this permanent
+
+Type the sentence and press **`ctrl+enter`** instead of `enter`. That send means "keep
+this true", and aforge is *told* rather than left to work it out: it shapes your sentence
+into a standing order's card — when it wakes, what it does, how far it reaches — and it
+does **not** carry the sentence out as one-off work as well.
+
+The card that comes back is the ordinary ratification card, so nothing stands until you
+answer it. `ctrl+enter` decides how the sentence is *read*, never whether something is
+created.
+
+If the sentence cannot stand at all — "what time is it?", a one-off command with no
+condition in it — aforge says so in one short line, tells you what would make it stand,
+and does nothing else. It never quietly does it instead.
+
+Two things it refuses rather than sending:
+
+- A box holding pictures or a picked shape of work:
+  `ctrl+enter keeps a sentence true — take the pictures or the shape of work off first`.
+  Your draft stays in the box.
+- A build with no ambient side at all: `nothing here can hold a standing order`.
+
+A slash command is unaffected — `ctrl+enter` on `/standing` is just `/standing`.
+
+**One limit, and it is the terminal's.** `ctrl+enter` reaches aforge only on a terminal
+that can tell it apart from a plain `enter` (the kitty protocol, win32-input). `alt+enter`
+cannot be borrowed for it here — in a conversation that chord opens a new line in the
+message. If `ctrl+enter` does nothing on your terminal, say it in words instead: "always
+run the tests before you say you are done" is recognised on its own.
+
+## It didn't notice — it did the rule once instead of keeping it
+
+This is the failure the chord above exists for. Say "run the tests whenever I push" and
+aforge may read it as work to do now: the tests run, you see something happen, and
+**nothing was set up**. There is no error, because nothing failed — it answered a
+different request.
+
+Two things help:
+
+- **Say it again with `ctrl+enter`.** That send cannot be read as work.
+- **Watch the hint under the box.** When your draft looks like a condition, the line at
+  the right end of the rule under the message box reads `ctrl+enter keeps this true`. It
+  appears on drafts beginning with or containing `always`, `never`, `every`, `whenever`,
+  `each time`, `from now on`, `remind me`, `keep an eye`, and on `make sure` beside a
+  `never` or an `always`. It vanishes the moment the draft stops matching or is emptied,
+  and it never moves the box — it rides a line that is on the screen either way.
+
+That word list is a courtesy for teaching you the chord, **not** the rule for what can
+stand. Plenty of standing sentences never trip it, and they are still recognised when you
+just say them. The hint is also absent wherever the chord would refuse — a tray with
+pictures on it, a picked shape of work, a build with no ambient side.
+
+To check afterwards whether anything actually stands, open `/standing`, or read the
+`◦ keeping an eye on N` count at the foot of the screen.
+
+## keeping an eye on 2 — the count at the foot of the screen opens the page
+
+The status line's `◦ keeping an eye on N` segment is a **door**. Click it and the standing
+orders page opens — the same page `/standing` and `/orders` open, showing which N those
+are. It brightens under the pointer, the way the model's name beside it does.
+
+It counts the active orders reaching **this** window's project, so it is the fastest
+answer to "did that actually stand?". Nothing standing here means no segment at all and
+nothing to press.
+
+Its mark moves while an order of this place is being acted on right now, and is still
+otherwise — so movement there means one of your orders is working, out of the corner of
+your eye. The keeping-an-eye page has the marks in full.
+
+With the mouse turned off, `/standing` is the keyboard door and always has been.
+
 ## Where an order reaches — this conversation, this project, everywhere
 
 Three reaches, and the card always names the one it is asking for, on its own band:

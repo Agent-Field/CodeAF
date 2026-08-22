@@ -10,6 +10,9 @@ same thing — it is a second spelling for terminals that swallow `alt+enter`.
 `shift+enter` is **not bound** anywhere in the v3 chat. If you press it, nothing
 happens. Use `alt+enter` or `ctrl+j`.
 
+`ctrl+enter` sends it as **something to keep true** — a standing order — instead of
+work to do once. The standing orders page has the whole of it.
+
 What `enter` does depends on what is in the box:
 
 - Text in the box: it is sent.
@@ -194,6 +197,7 @@ These apply with no overlay up, no room open, and no mode on.
 | Chord | What it does |
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
+| `ctrl+enter` | Send it as something to **keep true** — aforge shapes it into a standing order's card instead of doing it once. See the standing orders page |
 | `alt+enter` | Open a new line in the message |
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
@@ -946,9 +950,10 @@ Only the left button acts. A press is resolved in this order:
    pressing it asks to stop that work instead of opening its room. **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
    a press anywhere on it opens the column again, which is exactly what `ctrl+g` does.
-9. The model name in the status row, which opens the model picker. A press elsewhere
-   on the status row falls through. On a narrow terminal the whole two-row deck
-   answers.
+9. Two segments of the status row: `◦ keeping an eye on N`, which opens the standing
+   orders page, and the model name, which opens the model picker. A press elsewhere on
+   the status row falls through — the rest of it is figures, not controls. On a narrow
+   terminal the whole two-row deck answers.
 10. A message of yours **waiting** for the answer to finish, in the block above the
    box — a click anywhere along its line takes that message back into the box to be
    edited, and the block loses it. The whole line answers, because nothing shares it.

@@ -48,6 +48,11 @@ type fakeAgent struct {
 	// levels is the reasoning strength held per model id, the session's own map
 	// as far as the surface can see it (internal/session's agent.go).
 	levels map[string]string
+	// marked is every sentence that went through the MARKED door — the chord
+	// that means "keep this true" (standmark.go). It is kept beside `sent`
+	// rather than folded into it because which door a message took is the whole
+	// question those tests ask.
+	marked []string
 }
 
 func (f *fakeAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -243,6 +248,11 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case standMarkKey:
+		// The marked send (standmark.go). It is spelled out here because the
+		// fall-through below only builds single-rune chords, and a chord that
+		// silently became the zero key would be a test pressing nothing.
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
 	case "alt+backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
 	case "ctrl+backspace":

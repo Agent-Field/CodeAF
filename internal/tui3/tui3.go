@@ -73,6 +73,14 @@ type Agent interface {
 	// the blind model; which is why the surface keeps the attachment tray until
 	// this has answered (attach.go).
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
+	// SubmitStanding is Submit for a draft the person MARKED as something to
+	// keep true — the chord on the box (standmark.go). The turn is an ordinary
+	// one in every respect except what the engine puts in front of the sentence:
+	// an instruction that the sentence was marked, so it is shaped into a
+	// standing order's card and never carried out as one-off work (internal/
+	// session's standing_mark.go). It refuses — with an error and no stream —
+	// where this build has no ambient side to hold one.
+	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	// Interrupt cancels the in-flight turn, keeping its partial reply.
 	Interrupt()
 	// Compact runs a compaction pass now.
