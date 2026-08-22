@@ -1210,6 +1210,12 @@ type app struct {
 	// anything; closed, it costs the frame nothing.
 	permPanel permPanel
 
+	// standPage is the list /standing opens over what stands here — this
+	// conversation's orders, this project's and the machine's (standingpage.go).
+	// It reads the engine's own seam, so a surface whose agent has no ambient
+	// side opens nothing at all; closed, it costs the frame nothing.
+	standPage standPage
+
 	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
 	// Closed, it costs the frame nothing.
 	copy copyMode
@@ -1914,6 +1920,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// anywhere else closes the list.
 			if a.permPanel.open {
 				return a, a.permPanelPress(msg.Mouse().Y)
+			}
+			// AND THE STANDING PAGE IS THE FOURTH, on the same terms except for
+			// what a press on a row DOES: it moves the cursor and never acts,
+			// because every verb there is a key and enter leaves this
+			// conversation (standingpage.go).
+			if a.standPage.open {
+				return a, a.standPagePress(msg.Mouse().Y)
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
@@ -4133,6 +4146,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// on a card, so the only way anybody could name one at a command line is
 		// by reading it off this list first (permissions.go).
 		a.openPermissions()
+		return nil
+
+	case "standing":
+		// WHAT IS ALREADY TRUE HERE, as a list, with the three keys that take one
+		// back on it (standingpage.go). No argument form, for /permissions' reason
+		// and one more: an order is a sentence somebody said out loud months ago,
+		// and the only way anybody could name one at a command line is by reading
+		// it off this page first.
+		a.openStanding()
 		return nil
 
 	case "harness", "harnesses":

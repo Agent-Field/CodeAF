@@ -2373,6 +2373,11 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
+	case a.standPage.open:
+		// The standing page names its verbs here because they are the half of it
+		// nobody can guess: three of the four are bare letters, and one of them
+		// stops a thing for good (standingpage.go).
+		return standPageVerbs
 	case a.copy.on:
 		return "v select · a block · y yank · esc"
 	case a.rew.on:

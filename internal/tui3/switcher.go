@@ -303,6 +303,11 @@ func (a *app) closeForSwitch() {
 	a.taskPick.close()
 	a.memPanel.close()
 	a.permPanel.close()
+	// AND THE STANDING PAGE, which is a door onto what stands over the
+	// conversation this window was holding: the shelves are read per
+	// conversation, so one left open across a switch would be three headings
+	// about somewhere else (standingpage.go).
+	a.standPage.close()
 	a.roster.close()
 	a.shelf.close()
 	a.closeLists()

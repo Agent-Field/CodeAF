@@ -1054,6 +1054,8 @@ func (a *app) overlayHeight() int {
 		want = a.harnPick.height(width)
 	case a.permPanel.open:
 		want = a.permPanel.height(width)
+	case a.standPage.open:
+		want = a.standPage.height(width, a.now())
 	case a.menu.open:
 		want = a.menu.height(width)
 	case a.comp.open:
@@ -1107,6 +1109,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
+	case a.standPage.open:
+		return a.standPage.draw(width, n, a.pal, hover, a.now())
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:

@@ -99,6 +99,19 @@ var commands = []command{
 	// something has surprised them. /perms is here because it is what fingers
 	// type; the row shows the whole word.
 	{name: "permissions", desc: "what runs without asking · drop one with d", alias: []string{"perms"}},
+	// AND WHAT IS ALREADY TRUE HERE, beside what may run without asking
+	// (standingpage.go). The pair is the same question asked twice — one is what
+	// this thing may do when you ask it, the other is what it keeps doing when
+	// nobody asks — and this row sits under that one for the reason that one
+	// sits down here: [menuRows] shows eight rows at once, position in this
+	// table is a claim about frequency, and a page a person opens when something
+	// has surprised them may not push /compact into a scroll.
+	//
+	// /orders is here because it is the other word people bring for the thing:
+	// a standing order is the concept, and half of them will type the noun they
+	// remember rather than the adjective this surface chose.
+	{name: "standing", desc: "what stands over this conversation · stop, pause or not here",
+		alias: []string{"orders"}},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -642,6 +655,7 @@ func helpText(file string) string {
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
+		"p s n          in /standing: pause one · stop it · not here",
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {
