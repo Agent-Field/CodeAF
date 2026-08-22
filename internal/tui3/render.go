@@ -1925,6 +1925,13 @@ func (a *app) stateWord() (string, string) {
 		word := a.copyWord()
 		return word, a.pal.accent(word)
 	}
+	// A sweep's receipt outranks the run state for the seconds it stands: the
+	// person's eye is on the status line asking exactly one question — did the
+	// copy land — and the turn's own word is back the moment it expires
+	// (dragselect.go).
+	if word := a.dragWord(); word != "" {
+		return word, a.pal.accent(word)
+	}
 	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it

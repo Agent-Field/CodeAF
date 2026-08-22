@@ -128,6 +128,7 @@ func TestTheHarnessOfferAnswersToThePointer(t *testing.T) {
 	}
 	at := a.harnessTaps[0]
 	drive(t, a, tea.MouseClickMsg{X: at.span.from + 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: at.span.from + 1, Y: y, Button: tea.MouseLeft})
 	if len(agent.answers) != 1 || !agent.answers[0].run {
 		t.Fatalf("the press answered %+v, want a run", agent.answers)
 	}

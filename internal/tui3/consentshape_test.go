@@ -210,9 +210,10 @@ func TestTheBeatAnswersToThePointer(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the beat drew %q", line)
 	}
-	drive(t, a, tea.MouseClickMsg{
-		X: at + 4, Y: chromeRowY(t, a, consentOfferRow), Button: tea.MouseLeft,
-	})
+	// Measured once: the press answers, and the offer row is gone by the release.
+	x, y := at+4, chromeRowY(t, a, consentOfferRow)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(saved.commands) != 1 || saved.commands[0] != "git *" {
 		t.Fatalf("a press on the second shape banked %q", saved.commands)
 	}

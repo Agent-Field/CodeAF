@@ -104,6 +104,7 @@ func TestPressingTheFocusHeaderLeavesTheRoom(t *testing.T) {
 	clickRail(t, a, 0)
 
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: 0, Button: tea.MouseLeft})
 	if a.roomOpen() {
 		t.Fatal("a press on the focus header did not return to the conversation")
 	}
@@ -148,6 +149,7 @@ func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	}
 	x, y := a.modelSpan.from+1, a.height-1
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 
 	if !a.pick.open {
 		t.Fatalf("pressing the model at x=%d did not open the picker", x)
@@ -176,6 +178,7 @@ func TestPressingTheTelemetryDoesNotOpenThePicker(t *testing.T) {
 	_ = frame(a)
 
 	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.width - 2, Y: a.height - 1, Button: tea.MouseLeft})
 	if a.pick.open {
 		t.Fatal("a press on the telemetry opened the model picker")
 	}

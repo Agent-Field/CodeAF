@@ -179,6 +179,7 @@ func TestTheStripCountsWhatItCannotHoldAndOpensTheRoster(t *testing.T) {
 	// THE +N IS THE DOOR TO THE WHOLE ROSTER, which on this frame is the roster
 	// over the body (task.go's [app.railFull]).
 	drive(t, a, tea.MouseClickMsg{X: a.stripMore.from, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.stripMore.from, Y: 0, Button: tea.MouseLeft})
 	if !a.railHold || !a.railFull() {
 		t.Fatalf("the overflow mark did not open the roster: hold=%v full=%v", a.railHold, a.railFull())
 	}
@@ -209,6 +210,7 @@ func TestAStripChipOpensThatNodesRoom(t *testing.T) {
 		t.Fatalf("the second node has no chip on the strip:\n%q", stripText(a))
 	}
 	drive(t, a, tea.MouseClickMsg{X: at, Y: a.headHeight(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: at, Y: a.headHeight(), Button: tea.MouseLeft})
 	if !a.roomOpen() || a.room.id != 9 {
 		t.Fatalf("the chip did not open its node's room: open=%v", a.roomOpen())
 	}
@@ -221,6 +223,7 @@ func TestAStripChipOpensThatNodesRoom(t *testing.T) {
 	// A press in the gap after the chips is still the strip's: falling through to
 	// the page under it would act on a row the pointer was not over.
 	drive(t, a, tea.MouseClickMsg{X: a.width - 1, Y: a.headHeight(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.width - 1, Y: a.headHeight(), Button: tea.MouseLeft})
 	if !a.roomOpen() {
 		t.Fatal("a press on the strip's empty end fell through and closed the room")
 	}

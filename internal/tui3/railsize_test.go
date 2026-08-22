@@ -15,10 +15,12 @@ func TestRailSeamClickTogglesTheWideTier(t *testing.T) {
 	y := a.bodyTop()
 
 	drive(t, a, tea.MouseClickMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
 	if !a.railWide || a.railWidth() != railWideCols {
 		t.Fatalf("seam press did not widen the rail: wide=%v width=%d", a.railWide, a.railWidth())
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
 	if a.railWide || a.railWidth() != railCols {
 		t.Fatalf("second seam press did not narrow the rail: wide=%v width=%d", a.railWide, a.railWidth())
 	}
@@ -40,6 +42,7 @@ func TestRailFooterHintFollowsFocusAndTogglesBothWays(t *testing.T) {
 		for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
 			if line, ok := a.railLineAt(y); ok && line.hint {
 				drive(t, a, tea.MouseClickMsg{X: a.railLeft() + 3, Y: y, Button: tea.MouseLeft})
+				drive(t, a, tea.MouseReleaseMsg{X: a.railLeft() + 3, Y: y, Button: tea.MouseLeft})
 				return
 			}
 		}
@@ -94,6 +97,10 @@ func TestRailNodeContentStillOpensItsRoom(t *testing.T) {
 		t.Fatal("node 7 is not visible in the rail")
 	}
 	drive(t, a, tea.MouseClickMsg{
+		X: a.railLeft() + len([]rune(railSeam)) + 1,
+		Y: y, Button: tea.MouseLeft,
+	})
+	drive(t, a, tea.MouseReleaseMsg{
 		X: a.railLeft() + len([]rune(railSeam)) + 1,
 		Y: y, Button: tea.MouseLeft,
 	})

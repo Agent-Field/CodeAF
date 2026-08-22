@@ -297,6 +297,7 @@ func TestClickingAStandingChipAnswersIt(t *testing.T) {
 	})})
 	x, y := standChipAt(t, a, standYes)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
 		t.Fatalf("a click on the first chip did not approve: %+v", agent.answered)
 	}
