@@ -1464,6 +1464,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		// linear mode's rule is the same for both.
 		a.welcome.step = welcomeFrames
 	}
+	a.noteStandingHere()
 	a.measureContext()
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
