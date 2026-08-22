@@ -54,18 +54,29 @@ func (a *Agent) StandingHere() (stand []standing.Item, excepted []standing.Item)
 		return stand, nil
 	}
 	for _, item := range all {
-		if item.Status != standing.StatusActive || !item.ExceptedFrom(workspace, sessionID) {
-			continue
-		}
-		// ASKED OF THE ITEM WITH ITS EXCEPTIONS TAKEN OFF, because the question is
-		// exactly "would this have reached here?" and [standing.Item.AppliesTo]
-		// answers no to both an order that never reached and one the person kept
-		// out. Re-deriving the altitudes here would be the contract's own
-		// arithmetic written a second time.
-		reach := item
-		reach.Exceptions = nil
-		if reach.AppliesTo(workspace, sessionID) {
-			excepted = append(excepted, item)
+		switch item.Status {
+		case standing.StatusActive:
+			if !item.ExceptedFrom(workspace, sessionID) {
+				continue
+			}
+			// ASKED OF THE ITEM WITH ITS EXCEPTIONS TAKEN OFF, because the question is
+			// exactly "would this have reached here?" and [standing.Item.AppliesTo]
+			// answers no to both an order that never reached and one the person kept
+			// out. Re-deriving the altitudes here would be the contract's own
+			// arithmetic written a second time.
+			reach := item
+			reach.Exceptions = nil
+			if reach.AppliesTo(workspace, sessionID) {
+				excepted = append(excepted, item)
+			}
+		case standing.StatusPaused:
+			// A PAUSED ORDER STILL STANDS OVER ITS PLACE. The resolver answers what
+			// GOVERNS a place, so the seams that spend money never see a paused item
+			// — but the page is where resume lives, and a row that vanished on the
+			// pause keypress would make the other half of that key unreachable.
+			if item.AppliesTo(workspace, sessionID) {
+				stand = append(stand, item)
+			}
 		}
 	}
 	return stand, excepted

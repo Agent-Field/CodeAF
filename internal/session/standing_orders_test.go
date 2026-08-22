@@ -100,6 +100,36 @@ func TestWhatStandsHereIsThisChatThenThisProjectThenTheMachine(t *testing.T) {
 	}
 }
 
+// A paused order must not vanish from the page on the pause keypress, or the
+// resume half of that one key becomes unreachable. The resolver itself still
+// answers active only — the seams that spend money never see a paused item.
+func TestAPausedOrderStillStandsOverItsPlaceSoResumeStaysReachable(t *testing.T) {
+	agent, store := ordersAgent(t)
+	workspace, session := agent.standingPlace()
+
+	paused := anOrder(t, store, "paused but present", workspace, standing.AltitudeProject, session)
+	paused.Status = standing.StatusPaused
+	if err := store.Save(paused); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	retired := anOrder(t, store, "gone for good", workspace, standing.AltitudeProject, session)
+	retired.Status = standing.StatusRetired
+	if err := store.Save(retired); err != nil {
+		t.Fatalf("retire: %v", err)
+	}
+
+	stand, _ := agent.StandingHere()
+	if got := strings.Join(said(stand), "|"); !strings.Contains(got, "paused but present") {
+		t.Fatalf("the paused order is missing from what stands here: %q", got)
+	}
+	if got := strings.Join(said(stand), "|"); strings.Contains(got, "gone for good") {
+		t.Fatalf("a retired order is over and must not be listed: %q", got)
+	}
+	if status, err := agent.StandingPause(paused.ID); err != nil || status != standing.StatusActive {
+		t.Fatalf("resume from the page came to (%q, %v), wanted active", status, err)
+	}
+}
+
 func TestNothingStandsAnywhereWhenTheAmbientSideIsOff(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	stand, excepted := agent.StandingHere()
@@ -219,8 +249,10 @@ func TestPauseIsAToggleAndAStoppedOrderIsNotResumedByIt(t *testing.T) {
 	if status != standing.StatusPaused {
 		t.Fatalf("pausing answered %q", status)
 	}
-	if stand, _ := agent.StandingHere(); len(stand) != 0 {
-		t.Fatalf("a paused order still stands here: %q", said(stand))
+	// THE ROW MUST SURVIVE THE KEYPRESS: a paused order still lists among what
+	// stands here — otherwise the resume half of the same key is unreachable.
+	if stand, _ := agent.StandingHere(); len(stand) != 1 {
+		t.Fatalf("a paused order vanished from the page: %q", said(stand))
 	}
 
 	status, err = agent.StandingPause(made.ID)
