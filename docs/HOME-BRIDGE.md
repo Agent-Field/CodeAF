@@ -64,6 +64,24 @@ aforge                                        on watch · 4 orders · $1.10 toda
 - **THE DOOR LAW HOLDS.** Typing anywhere is still a new conversation. Steering
   a row means entering it; the strip answers cards, it does not compose.
 
+## Color
+
+The palette is the closed pastel set in `internal/tui3/styles.go`, and the
+bridge adds no hue to it. Differentiation comes from MAPPING MEANING, not from
+new color: the ▲ needs-you glyph wears the question violet (`hueAsk`) — a
+needs-you row IS the person-being-waited-on state D11 reserves violet for, and
+nothing else on home may wear it; ● moving glyphs wear the spinner's own
+`hueMuted` so still and animated rows agree; landed/kept clauses wear `hueAdd`;
+a bound nearing its ceiling (the pool at "$4.80 of $5") wears `hueWarn` — a
+bound about to matter is not a failure; `hueBad` only for a genuinely failed
+thing; headings that lead and the `aforge` name wear `hueAccent`; zone labels,
+ages and clauses stay `hueDim` — the surface talking about itself.
+
+THE GLYPH CARRIES THE HUE; THE TEXT STAYS CALM. A whole row in a status color
+is jarring; one tinted glyph and at most one tinted leading clause beside ink
+and dim text is the grammar every zone follows, and it is how a busy home
+stays pastel rather than carnival.
+
 ## The width ladder
 
 Columns → strips → stack, one system: ≥110 cols draws three columns
