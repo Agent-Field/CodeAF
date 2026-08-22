@@ -1731,12 +1731,17 @@ func (h *homeView) focusedExchange() *homeExchange {
 // same in all three would be a row saying only that an errand exists.
 func (a *app) exchangeRowLine(line homeLine, at, width int, pal palette) string {
 	label := homeAskHereGlyph + " " + exchangeTitle(line.ex.spoke)
-	return overlayRowTinted(label, a.exchangeTail(line.ex), exchangeTailInk(line.ex),
+	// bridge lane: an errand thinking is one of the moving things on this page,
+	// so its tail turns only when this row is the one the page gave the spinner
+	// to and holds the still `●` otherwise (homespinner.go).
+	return overlayRowTinted(label, a.exchangeTail(line.ex, a.homeSpins(at)), exchangeTailInk(line.ex),
 		at == a.home.cursor, markNone, at == a.home.hover, width, pal)
 }
 
-// exchangeTail is that trailing fact.
-func (a *app) exchangeTail(ex *homeExchange) string {
+// exchangeTail is that trailing fact. spins is whether this row is the ONE the
+// page animates; a working errand that is not it says the same thing with the
+// still mark ([app.homeSpins]).
+func (a *app) exchangeTail(ex *homeExchange, spins bool) string {
 	switch {
 	case ex.waiting():
 		// THE ONE SHAPE ON THIS SCREEN THAT POINTS AT ANYTHING, and an exchange
@@ -1754,7 +1759,14 @@ func (a *app) exchangeTail(ex *homeExchange) string {
 				word += " · " + clock
 			}
 		}
-		return a.exchangeSpin() + " " + word
+		mark := a.exchangeSpin()
+		if !spins {
+			mark = homeLiveGlyph
+			if a.pal.ascii {
+				mark = homeLiveASCII
+			}
+		}
+		return mark + " " + word
 	default:
 		glyph := standOffGlyph
 		if a.pal.ascii {

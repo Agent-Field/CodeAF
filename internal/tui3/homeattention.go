@@ -234,19 +234,6 @@ type homeAttention struct {
 // everywhere else ([palette.add]).
 func attentionLanded(pal palette, s string) string { return pal.add(s) }
 
-// homeWide is whether this frame is wide enough to hold the detail column, and
-// therefore wide enough for the zones to keep their labels over nothing.
-//
-// IT IS ANSWERED WHEN HOME OPENS AND NOT ONLY WHEN IT IS DRAWN. The tier is a
-// property of the terminal, which is known before the first frame; a flag left
-// at its zero value until the draw would build the column one shape, hand a
-// cursor to it, and then rebuild it another — and every line number anything
-// held would be two rows stale.
-func (a *app) homeWide() bool {
-	width, _ := a.size()
-	return width >= homeMinDetail
-}
-
 // ── the build ───────────────────────────────────────────────────────────────
 
 // buildAttention puts the two zones above the list.
@@ -279,16 +266,18 @@ func (h *homeView) buildAttention() {
 // gave, and one door where there is more than it draws.
 //
 // AN EMPTY ZONE KEEPS ITS LABEL AT THE WIDE TIER and vanishes whole below it —
-// this file's fourth law. [homeView.wide] is settled by the frame before the
-// column is built, exactly as [homeView.phone] is (home.go's [app.homeFrame]),
-// so the shape of the list is decided once per width rather than argued about
-// per row.
+// this file's fourth law. [homeView.wide] is read off the tier the frame settled
+// before the column was built, exactly as [homeView.phone] is (home.go's
+// [app.homeFrame] settles both, homebridge.go holds the ladder), so the shape of
+// the list is decided once per width rather than argued about per row. It holds
+// over the zones' own column at [homeTierColumns] as well: a label with nothing
+// under it is where a person LOOKS for the thing that is not there.
 func (h *homeView) attentionZone(zone homeZone) {
 	rows := zone.gather(h)
 	sort.SliceStable(rows, func(i, j int) bool {
 		return zone.order(rows[i].zone, rows[j].zone)
 	})
-	if len(rows) == 0 && !h.wide {
+	if len(rows) == 0 && !h.wide() {
 		return
 	}
 	h.lines = append(h.lines, homeLine{kind: homeAttentionZone, project: zone.word})
@@ -695,6 +684,18 @@ func (a *app) attentionLine(line homeLine, at, width int, pal palette) (string, 
 // tells two rows apart; the place is where it lives.
 const attentionNameFloor = 16
 
+// attentionRoomy reports that a tail may stand beside a name in a row with this
+// much room: either the WHOLE NAME still fits next to it, or the name still has
+// its floor.
+//
+// THE FLOOR IS A FALLBACK AND NOT A TOLL. Asked as the floor alone it is a
+// question about the longest name a row could have rather than about the name
+// this row HAS — which on the zones' own narrow column at [homeTierColumns]
+// takes the place and the age off a row of ten cells with fourteen to spare.
+func attentionRoomy(left, name int) bool {
+	return left >= name || left >= attentionNameFloor
+}
+
 // attentionRow is one zone row: the mark, the name, and the clauses against the
 // right edge.
 //
@@ -735,28 +736,12 @@ func (a *app) attentionRow(line homeLine, at, width int, pal palette) string {
 	zone := line.zone
 	selected, hovered := at == h.cursor, at == h.hover
 
-	// The tail as plain text, and the same tail painted clause by clause. The
-	// two are built together because the arithmetic below measures the first and
-	// the frame draws the second.
-	quiet := attentionQuiet(pal, selected)
-	tail := joinDot(zone.place, sinceAt(zone.at, h.world.Read))
-	painted := quiet(tail)
-	if zone.lead != "" && zone.leadInk != nil {
-		whole := joinDot(zone.lead, tail)
-		painted = zone.leadInk(pal, zone.lead) + quiet(strings.TrimPrefix(whole, zone.lead))
-		tail = whole
-	}
-	mark := attentionMark(pal, zone.word)
+	mark := a.attentionMark(pal, zone.word, at)
 	markWidth := ansi.StringWidth(mark)
 	room := width - 2 - markWidth - 1
+	tail, painted := a.attentionTail(zone, pal, selected, room)
 	if tail != "" {
-		// THE NAME OUTRANKS THE TAIL. Where the two cannot both fit, the tail is
-		// the one that gives way — the card beside the row has all of it.
-		if left := room - ansi.StringWidth(tail) - 1; left < attentionNameFloor {
-			tail, painted = "", ""
-		} else {
-			room = left
-		}
+		room -= ansi.StringWidth(tail) + 1
 	}
 	name := fit(zone.name, room)
 	inked := pal.ink(name)
@@ -778,6 +763,43 @@ func (a *app) attentionRow(line homeLine, at, width int, pal palette) string {
 		return pal.hover(text, width)
 	}
 	return text
+}
+
+// attentionTail is the clauses against the right edge of a zone row: as plain
+// text, and painted clause by clause. The two are built together because the
+// arithmetic measures the first and the frame draws the second.
+//
+// THE NAME OUTRANKS THE TAIL, and the tail gives way ONE CLAUSE AT A TIME rather
+// than all at once — the place goes, then the lead, and THE AGE IS THE LAST
+// THING TO GO. Which order that is says what these rows are for: the place is
+// the answer to "where", and the card beside the row has it in full; the age is
+// the answer to "how long has this been standing still", which is the very thing
+// `needs you` is ordered by, and a column ordered by a wait it never draws is a
+// column asking to be taken on trust.
+func (a *app) attentionTail(zone *homeAttention, pal palette, selected bool, room int) (string, string) {
+	quiet := attentionQuiet(pal, selected)
+	lead := ""
+	if zone.leadInk != nil {
+		lead = zone.lead
+	}
+	age := sinceAt(zone.at, a.home.world.Read)
+	for _, text := range []string{
+		joinDot(lead, joinDot(zone.place, age)),
+		joinDot(lead, age),
+		age,
+	} {
+		if text == "" {
+			return "", ""
+		}
+		if !attentionRoomy(room-ansi.StringWidth(text)-1, ansi.StringWidth(zone.name)) {
+			continue
+		}
+		if lead != "" && strings.HasPrefix(text, lead) {
+			return text, zone.leadInk(pal, lead) + quiet(strings.TrimPrefix(text, lead))
+		}
+		return text, quiet(text)
+	}
+	return "", ""
 }
 
 // attentionQuiet is how a zone row's tail is painted: dim, and ink on the row
@@ -802,14 +824,21 @@ func attentionQuiet(pal palette, selected bool) func(string) string {
 // THE TWO MARKS ARE THE COLUMN'S OWN and not a third vocabulary: `▲` is the only
 // shape on this screen that points at anything and it means "asking for a hand"
 // wherever it appears (home.go's glyph block); `●` is the still tier of
-// "something is happening". The moving zone deliberately does NOT spin — ONE
-// SPINNER is a law about the whole screen and the lane that assembles the three
-// columns owns it (docs/HOME-BRIDGE.md), so until then these rows hold the still
-// mark and the list below keeps the animation it already had.
-func attentionMark(pal palette, word string) string {
+// "something is happening".
+//
+// AND EXACTLY ONE ROW IN THE MOVING ZONE TURNS: the spinner stands in for that
+// zone's own still mark on the one line the page gave it and nowhere else, in
+// the same hue, so a strip of live rows reads as one thing moving among several
+// rather than as a column of weather (homespinner.go holds the whole law, and
+// docs/HOME-BRIDGE.md the reason).
+func (a *app) attentionMark(pal palette, word string, at int) string {
 	zone, ok := attentionZoneOf(word)
 	if !ok {
 		return ""
 	}
-	return zone.ink(pal, zone.mark(pal.ascii))
+	mark := zone.mark(pal.ascii)
+	if word == attentionMovingWord && a.homeSpins(at) {
+		mark = a.homeSpinGlyph()
+	}
+	return zone.ink(pal, mark)
 }

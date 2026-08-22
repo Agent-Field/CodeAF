@@ -114,10 +114,11 @@ acts — every verb here is a key.
 
 ## Not in this project — the "not here" exception
 
-An order that reaches wide is usually right and occasionally wrong in one place. `n` on
-the standing orders page writes that down: the order stays exactly as it is, and this
-place is excepted from it. It then draws as one dim line under its own shelf rather than
-as a row:
+*Not in this project.* An order that reaches wide is usually right and occasionally wrong
+in one project. `n` on the standing orders page writes that down: the order stays exactly
+as it is, and this project is excepted from it — it does not run here, and it does not
+run in this conversation either where that is the exception you made. It then draws as
+one dim line under its own shelf rather than as a row:
 
 ```
 ─ not here: post the standup
