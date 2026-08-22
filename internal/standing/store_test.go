@@ -111,6 +111,52 @@ func TestCreateRefusesAnItemWithoutRails(t *testing.T) {
 	}
 }
 
+// A HOLD IS THE ONE SHAPE ADMITTED WITH NO RAILS AND NO ACTION, and every waking
+// kind is still refused without them.
+//
+// The exemption is not a relaxation, it is arithmetic: a rule never wakes, so it
+// never runs a probe, never buys a judgment and never launches work — there is no
+// firing for a budget to bound and none for an action to be the content of. The
+// second half of this test is the half that matters: the moment "no rails" became
+// representable, the admission law had to keep refusing it everywhere else.
+func TestValidateAdmitsAHoldWithNoRailsAndStillRefusesAWatchWithout(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+
+	rule := Item{Words: "always use tabs here", Workspace: "/tmp/project", When: When{Kind: WhenHold}}
+	made, err := store.Create(rule)
+	if err != nil {
+		t.Fatalf("a rule with no rails and no action was refused: %v", err)
+	}
+	if !made.NextDue.IsZero() {
+		t.Fatalf("a rule was given a next moment: %s", made.NextDue)
+	}
+	if made.Spends() {
+		t.Fatal("a rule says it can spend")
+	}
+
+	bare := reminder("remind me at 6", now.Add(time.Hour))
+	bare.Rails = Rails{}
+	if err := bare.Validate(); err == nil {
+		t.Fatal("a reminder with no rails was admitted")
+	}
+	watch := reminder("tell me when CI goes red", time.Time{})
+	watch.When = When{Kind: WhenProbe, Probe: Probe{Command: "gh run list"}}
+	watch.Does = Action{}
+	if err := watch.Validate(); err == nil {
+		t.Fatal("a watch with nothing to do was admitted")
+	}
+	// AND A RULE WITH AN ACTION IS STILL A RULE. Nothing here refuses one — the
+	// `stand` tool is where a model is told a hold takes no action — so what this
+	// pins is only that the exemption did not become a hole: the rails are what a
+	// hold is excused, and the words and the workspace are not.
+	nameless := rule
+	nameless.Words = ""
+	if err := nameless.Validate(); err == nil {
+		t.Fatal("a rule with nobody's words was admitted")
+	}
+}
+
 func TestSaveRewritesAndRestamps(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)

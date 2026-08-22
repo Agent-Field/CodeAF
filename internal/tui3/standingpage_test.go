@@ -507,3 +507,36 @@ func TestTheRatificationCardNamesWhereItReaches(t *testing.T) {
 		}
 	}
 }
+
+// ── a rule that never wakes ─────────────────────────────────────────────────
+
+// THE PAGE SAYS `holds` AND THE MARK STAYS THE ORDINARY ONE.
+//
+// A rule is not a fourth state — it is active, and `◦` is what active looks like
+// on every aforge screen. What changes is the tail: where a watch says what it
+// last found and a routine says its cadence, a rule says the one thing that is
+// true of it. The clause is [standRollup]'s, exactly as every other row's is.
+func TestTheStandingPageSaysARuleHolds(t *testing.T) {
+	rule := standOrder("h1", "never touch the public API", standing.AltitudeProject)
+	rule.When = standing.When{Kind: standing.WhenHold}
+	rule.Does, rule.Rails = standing.Action{}, standing.Rails{}
+	a, _ := standPageApp(t, []standing.Item{rule}, nil)
+	typeLine(t, a, "/standing")
+	if !a.standPage.open {
+		t.Fatal("/standing opened nothing")
+	}
+	screen := standPageScreen(a)
+	if !strings.Contains(screen, standWaitGlyph+" never touch the public API") {
+		t.Fatalf("the rule is not drawn as an ordinary waiting row:\n%s", screen)
+	}
+	if !strings.Contains(screen, standHoldsWord) {
+		t.Fatalf("the page does not say %q for a rule:\n%s", standHoldsWord, screen)
+	}
+	// AND NOT IN THE MACHINERY'S WORDS. "hold kind" and "no trigger" are this
+	// codebase's names for the shape; what a person reads is what it is doing.
+	for _, banned := range []string{"hold kind", "no trigger", "whenhold"} {
+		if strings.Contains(strings.ToLower(screen), banned) {
+			t.Fatalf("the page says %q:\n%s", banned, screen)
+		}
+	}
+}

@@ -154,6 +154,19 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		return t.Store.Save(item)
 	}
 
+	// AND A HOLD IS WALKED PAST IN SILENCE. It has no moment, no rhythm and no
+	// probe, so there is nothing about it that could be due; its whole work was
+	// done at birth, riding into the world of every conversation and every task it
+	// reaches (internal/session/standing_world.go). Nothing is looked at, so
+	// NOTHING IS WRITTEN: no marker goes up, no probe runs, no judgment is bought,
+	// no ledger line, no log line, and NextDue stays empty for the rest of its
+	// life. It is not counted as skipped either — the rails held nothing back,
+	// there was simply nothing here to wake. It is asked AFTER the expiry above
+	// because a rule the person gave an end to still has to reach that end.
+	if item.When.Kind == WhenHold {
+		return nil
+	}
+
 	// RAIL TWO: it has already run today as often as the person allowed.
 	mine, err := t.Store.Today(item.ID, now)
 	if err != nil {
