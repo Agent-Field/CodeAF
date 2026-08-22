@@ -43,7 +43,7 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 		"unrelated_other_person": "left alone",
 	})
 
-	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, dir, false)
+	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, dir, false, false)
 	if err != nil {
 		t.Fatalf("the rows did not load: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 }
 
 func TestAnEmptyProfileGatesEverythingAndFollowsTheSessionModel(t *testing.T) {
-	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, t.TempDir(), false)
+	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, t.TempDir(), false, false)
 	if err != nil {
 		t.Fatalf("a fresh install has to boot: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestAnEmptyProfileGatesEverythingAndFollowsTheSessionModel(t *testing.T) {
 	// The floor is still there and is still the conversation's model — it is what
 	// a class somebody CLEARED falls to.
 	cleared, err := applyV3Governance(session.Config{Model: "session/model"},
-		v3Profile(t, map[string]any{"models.tiers.low": ""}), false)
+		v3Profile(t, map[string]any{"models.tiers.low": ""}), false, false)
 	if err != nil {
 		t.Fatalf("a cleared class has to boot: %v", err)
 	}
@@ -133,19 +133,19 @@ func TestAnUnreadableRowStopsTheLaunchAndNamesItself(t *testing.T) {
 	// A typo in the approvals row is a rule somebody thinks is protecting them.
 	// It must not be skipped, and the message must say which row to open.
 	dir := v3Profile(t, map[string]any{"tools.approval": "bash:always"})
-	if _, err := applyV3Governance(session.Config{}, dir, false); err == nil {
+	if _, err := applyV3Governance(session.Config{}, dir, false, false); err == nil {
 		t.Fatal("a malformed approvals row booted")
 	} else if !strings.Contains(err.Error(), "tools.approval") || !strings.Contains(err.Error(), "always") {
 		t.Fatalf("the error does not name the row and the value: %v", err)
 	}
 
 	dir = v3Profile(t, map[string]any{"tools.approval": "bash"})
-	if _, err := applyV3Governance(session.Config{}, dir, false); err == nil {
+	if _, err := applyV3Governance(session.Config{}, dir, false, false); err == nil {
 		t.Fatal("a row that is not a pair booted")
 	}
 
 	dir = v3Profile(t, map[string]any{"models.roles": "title"})
-	_, err := applyV3Governance(session.Config{}, dir, false)
+	_, err := applyV3Governance(session.Config{}, dir, false, false)
 	if err == nil || !strings.Contains(err.Error(), "models.roles") {
 		t.Fatalf("a malformed roles row has to name itself: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestYoloIsADefaultAndNotAnOverride(t *testing.T) {
 		"tools.approvalMode": "prompt",
 		"tools.approval":     "bash:prompt",
 	})
-	cfg, err := applyV3Governance(session.Config{}, dir, true)
+	cfg, err := applyV3Governance(session.Config{}, dir, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestYoloIsADefaultAndNotAnOverride(t *testing.T) {
 		t.Fatalf("--yolo overrode a written rule: %s", got)
 	}
 	// And without it the same profile asks.
-	cfg, err = applyV3Governance(session.Config{}, dir, false)
+	cfg, err = applyV3Governance(session.Config{}, dir, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	t.Setenv("EXA_API_KEY", "")
 	t.Setenv("JINA_API_KEY", "")
 
-	cfg, err := applyV3Governance(session.Config{}, t.TempDir(), false)
+	cfg, err := applyV3Governance(session.Config{}, t.TempDir(), false, false)
 	if err != nil {
 		t.Fatalf("the rows did not load: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	}
 
 	t.Setenv("EXA_API_KEY", "a-key")
-	keyed, err := applyV3Governance(session.Config{}, t.TempDir(), false)
+	keyed, err := applyV3Governance(session.Config{}, t.TempDir(), false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	// the search plug leaves the fetcher free.
 	pinned, err := applyV3Governance(session.Config{}, v3Profile(t, map[string]any{
 		"search.provider": "duckduckgo",
-	}), false)
+	}), false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

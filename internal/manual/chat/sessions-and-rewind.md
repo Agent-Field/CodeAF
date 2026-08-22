@@ -494,7 +494,7 @@ Here is what it says when it cannot do what you asked.
 - `aforge resume` takes no positional arguments and refuses `--once`:
   `aforge resume opens the session picker; for one headless message use: aforge chat --once "text"`.
   Its usage line is
-  `usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo]`.
+  `usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo] [--one-model]`.
 - `aforge resume` does not resume anything by itself. The surface opens exactly as bare
   `aforge` does, on this directory's most recent conversation, with the picker over it — so
   `esc` lands you where you would have been anyway.

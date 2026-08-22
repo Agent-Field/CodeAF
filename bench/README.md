@@ -106,9 +106,44 @@ taken three ways, against the same recorded pi and opencode rows.
   decides both the shape of the work and the worker that takes it.
 - `pipeline` — `aforge plan --brief` first, then `aforge run` over the resulting
   graph. This is the parallel shape and is what the PR-review comparison used.
+- `chat` — `aforge chat --once "<issue text>" --yolo --one-model`. The chat
+  surface's brain, one turn, nobody watching.
 
 The workspace is the clone itself (`-w` in every shape, including `do`'s), so
-the agent's writes are the diff being measured.
+the agent's writes are the diff being measured — except `chat`, which has no
+`-w` and takes the process's directory, so that one shape is run from inside
+the clone.
+
+### The `chat` shape is answering a different question
+
+The other four modes are ways of running an *errand*. `chat` is one
+conversational **turn**: no graph is compiled, so there is no delivery gate, no
+replan, no `done.json`, and the `subharness_chosen` column reads `n/a` because
+there was no worker to choose. Structurally it is closest to `node` — one
+agent, one invocation — and it is the row to quote when the question is "what
+would a person typing this into chat have got?", not "how well does the
+compiler decompose this?".
+
+Three things about the cell are the command's shape rather than a choice:
+
+- **`--yolo` is not optional.** Nobody is watching, so consent is refused rather
+  than assumed, and a cell without it changes zero files while looking healthy.
+- **`--one-model` is not optional either, and this is the subtle one.** A chat
+  session resolves its auxiliary calls — titles, safety, compaction, the check
+  on finished work — through the crew rows and role pins in the operator's
+  `/settings`. `-model` alone therefore measures *that machine's profile* as
+  much as the named model: on one trivial task, 22% of the spend went to a
+  model the run never named. `--one-model` settles every text call on the
+  session model for that run without writing any setting.
+- **`AFORGE_HOME` is set per cell.** Chat keeps its state in the shared home;
+  four parallel cells sharing one would be four writers on one store, and the
+  cells would leak into each other and into the operator's own history.
+
+Its cost is not read from a summary line, because `--once` does not print one —
+it ends with the reply. The spend is summed from the `usage` records in the
+cell's own session transcript, one per model, **including the ones marked
+`aux`**: those are exactly the calls `--one-model` exists to make legible, and
+a reader that skips them under-reports.
 
 Substitution into the graph template goes through `python3` rather than `sed`:
 issue bodies contain quotes and newlines that would otherwise produce a graph

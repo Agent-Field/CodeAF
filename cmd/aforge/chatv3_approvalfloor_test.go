@@ -22,7 +22,7 @@ import (
 // layer in the way.
 func gateOf(t *testing.T, profileDir string) approval.Policy {
 	t.Helper()
-	cfg, err := applyV3Governance(session.Config{}, profileDir, false)
+	cfg, err := applyV3Governance(session.Config{}, profileDir, false, false)
 	if err != nil {
 		t.Fatalf("the rows did not load: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestTheBankingSeamWritesTheRowAndTheRebuildCarriesIt(t *testing.T) {
 // from it would ask again about the tool somebody had just answered for.
 func TestASecondConversationOpensOnTheGateAsItStandsNow(t *testing.T) {
 	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
-	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, false)
+	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, false, false)
 	if err != nil {
 		t.Fatalf("the launch did not load: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestASecondConversationOpensOnTheGateAsItStandsNow(t *testing.T) {
 // always on a card.
 func TestTheSecondConversationKeepsTheLaunchsPosture(t *testing.T) {
 	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
-	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, true)
+	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, true, false)
 	if err != nil {
 		t.Fatalf("the launch did not load: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestTheSecondConversationKeepsTheLaunchsPosture(t *testing.T) {
 // A rebuild that cannot read the rows leaves the launch's gate in place. The
 // answer to "I could not read the rules" is never a session with no rules.
 func TestAnUnreadableRowLeavesTheSecondConversationOnTheLaunchsGate(t *testing.T) {
-	launch, err := applyV3Governance(session.Config{Model: "m"}, t.TempDir(), false)
+	launch, err := applyV3Governance(session.Config{Model: "m"}, t.TempDir(), false, false)
 	if err != nil {
 		t.Fatalf("the launch did not load: %v", err)
 	}

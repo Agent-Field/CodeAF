@@ -348,6 +348,39 @@ Two things worth knowing:
   the migration with opus` runs the planner *and* every node on opus; `make a harness for
   triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
 
+## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
+
+`aforge chat --one-model` and `aforge resume --one-model` run **every text call on the model
+you are talking to**, for that session only.
+
+Without it, the calls aforge makes on your behalf go to the crew, which is the point of the
+crew — but it means a session started with `--model X` did not spend all of its money on X.
+Measured on one trivial task: 22% of the dollars went to a model the run never named. That is
+correct behaviour and a surprise to anyone reading a bill, so this is the flag for the case
+where **one model has to answer for the whole run** — comparing two models against each
+other, timing a benchmark cell, or attributing a cost.
+
+It settles four things on your model: the four crew classes, any role you pinned, the model
+that work leaving the conversation runs on, and the fallback chain aforge would otherwise hop
+to when a model refuses the request outright.
+
+**It changes no setting and writes nothing.** Your crew rows and pins are untouched, `/crew`
+still says what it said, and the next session without the flag reads them exactly as before.
+It is a posture for one run, not an edit.
+
+Two things it deliberately does not do:
+
+- **Drawing, seeing, speaking and filming are untouched.** Those roles need a model that can
+  do them — the model you are talking to may be text-only, and pointing `view_image` at it
+  would not make the run single-model, it would make it fail.
+- **It cannot travel over `--host`.** The session is built on the far machine and that
+  machine's rows are the ones answering, so combining them is refused rather than quietly
+  ignored: `--one-model settles this machine's model rows; over --host the far machine
+  answers them, so the two cannot be combined`.
+
+Standing items never take this posture, whatever the session that set them up was started
+with. They fire on their own clock long after your run ended, and the crew answers for them.
+
 ## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.

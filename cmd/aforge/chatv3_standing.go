@@ -180,7 +180,11 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 	// somebody took for a session they were sitting in front of, and carrying it
 	// into work that runs while they sleep would be reading a flag as a standing
 	// promise about calls nobody has written yet.
-	cfg, err = applyV3Governance(cfg, settings.ProfileDir, false)
+	// NOT one-model either, and for the same shape of reason: it is a posture
+	// for a run somebody is measuring, and a standing item fires on its own
+	// clock long after that run ended. The tier rows answer here as they always
+	// have.
+	cfg, err = applyV3Governance(cfg, settings.ProfileDir, false, false)
 	if err != nil {
 		return session.Config{}, err
 	}

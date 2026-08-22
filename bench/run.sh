@@ -40,6 +40,12 @@ BASE_COMMIT="${BASE_COMMIT:-}"
 #            compiler picks is what gets measured, including picking linear.
 #   pipeline plan the graph first, then run it. The parallel shape, and what the
 #            PR-review comparison used.
+#   chat     `aforge chat --once` — the chat surface's brain, one turn, nobody
+#            watching. NOT a fifth way to run an errand: it compiles no graph,
+#            so there is no delivery gate, no replan, no done.json and no worker
+#            column. It is here to answer a different question than the other
+#            four — what a person typing into chat would have got — and it is
+#            structurally the closest shape to `node`, not to `select`.
 AFORGE_MODE="${AFORGE_MODE:-node}"
 AFORGE_BIN="${AFORGE_BIN:-aforge}"
 
@@ -218,6 +224,22 @@ compose_aforge() {
       AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" "do" "$prompt" \
         -w "$dir" -keep -model "$MODEL" -timeout "$(seconds_of "$CELL_TIMEOUT")")
       ;;
+    chat)
+      # The chat surface's brain, one turn, nobody watching (docs/HEADLESS.md
+      # section 3). Three things differ from every other shape here and all
+      # three are the command's, not this script's:
+      #
+      #   no -w        the workspace is the process's directory, so run_harness
+      #                cd's into the clone for this mode alone.
+      #   --yolo       nobody is there to approve a tool call, and the honest
+      #                posture for that is said in advance rather than defaulted.
+      #   --one-model  a chat session resolves its auxiliary calls through the
+      #                tier rows and role pins, so --model alone measures the
+      #                machine's /settings as much as the model. Without this
+      #                the cell is not the single-model cell the row claims.
+      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" chat \
+        --once "$prompt" --yolo --one-model -model "$MODEL")
+      ;;
     *)
       AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
@@ -246,7 +268,11 @@ PY
 render_cell_graph() {
   local prompt="$1" cell="$2"
   case "$AFORGE_MODE" in
-    pipeline|select) return 0 ;;
+    # None of these three execute a file. Rendering one anyway would leave a
+    # graph.json beside the evidence that nothing in the cell ever read, which
+    # is worse than no file: the next person to open the directory reads it as
+    # what ran.
+    pipeline|select|chat) return 0 ;;
     swe) render_graph "$prompt" "$(echo "$prompt" | head -1)" "$cell/graph.json" "$AFORGE_SUBHARNESS" ;;
     *)   render_graph "$prompt" "$(echo "$prompt" | head -1)" "$cell/graph.json" ;;
   esac
@@ -265,7 +291,15 @@ run_harness() {
       else
         render_cell_graph "$prompt" "$cell" || return 1
       fi
-      "${AFORGE_ARGV[@]}" >>"$log" 2>&1
+      # `chat` has no -w: its workspace is wherever the process is standing, so
+      # this is the one shape the harness has to walk into the clone for. Every
+      # other shape is told the directory and must NOT be cd'd, because their
+      # -w is what the diff is measured against.
+      if [ "$AFORGE_MODE" = "chat" ]; then
+        (cd "$dir" && AFORGE_HOME="$cell/home" "${AFORGE_ARGV[@]}") >>"$log" 2>&1
+      else
+        "${AFORGE_ARGV[@]}" >>"$log" 2>&1
+      fi
       ;;
     pi)
       (cd "$dir" && "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$PI_BIN" -p --provider openrouter --model "$MODEL" "$prompt") >>"$log" 2>&1
@@ -288,9 +322,41 @@ run_harness() {
 # opencode there is nothing to read, and the account-level delta is not a
 # substitute — see bench/README.md.
 harness_cost() {
-  local harness="$1" log="$2"
+  local harness="$1" log="$2" cell="${3:-}"
   if [ "$harness" != "aforge" ]; then
     echo "n/a,not-self-reported"
+    return
+  fi
+  # `chat --once` ends with the reply, not with a summary line, so there is no
+  # $ figure to grep. Its accounting is in the session transcript instead: one
+  # usage record per model, each with its own costUsd, and the ones made BESIDE
+  # the turn marked aux. Every record counts — reading only the un-aux one is
+  # how a cell under-reports the exact spend --one-model exists to make legible.
+  if [ "$AFORGE_MODE" = "chat" ]; then
+    local total
+    total="$(CELL="$cell" python3 - <<'PY' 2>/dev/null
+import glob, json, os
+total = 0.0
+seen = False
+for path in glob.glob(os.path.join(os.environ["CELL"], "home/v3/projects/*/*/transcript.jsonl")):
+    for line in open(path, errors="replace"):
+        try:
+            used = json.loads(line).get("usage")
+        except Exception:
+            continue
+        if used and used.get("costUsd") is not None:
+            total += float(used["costUsd"])
+            seen = True
+print(f"{total:.4f}" if seen else "")
+PY
+)"
+    if [ -n "$total" ]; then
+      echo "$total,self-reported"
+    else
+      # No transcript is not $0.00. A cell that died before its first turn
+      # spent nothing measurable, and recording zero would read as a cheap run.
+      echo "n/a,not-self-reported"
+    fi
     return
   fi
   local cost
@@ -381,6 +447,9 @@ subharness_chosen() {
   fi
   case "$AFORGE_MODE" in
     select) store_subharness "$log" ;;
+    # One conversational turn compiles no graph and keeps no store, so there is
+    # no worker to read. n/a, not "linear": absence of a choice, not a choice.
+    chat)   echo "n/a" ;;
     swe)    graph_subharness "$cell/done.json" "$AFORGE_SUBHARNESS" ;;
     *)      graph_subharness "$cell/done.json" "" ;;
   esac
@@ -452,7 +521,7 @@ dry_cell() {
   fi
   quote_argv "${AFORGE_ARGV[@]}"
   case "$AFORGE_MODE" in
-    pipeline|select) ;;
+    pipeline|select|chat) ;;
     *)
       [ -f "$cell/graph.json" ] && printf '          graph:   %s (worker: %s)\n' \
         "$cell/graph.json" "$(graph_subharness "$cell/graph.json" "")"
@@ -510,7 +579,7 @@ Work in this repository. Implement the change and make the existing test suite p
 
     changed="$(changed_files "$dir")"
     counts="$(run_suite "$dir" "$cell/pytest.log")"
-    cost="$(harness_cost "$harness" "$cell/harness.log")"
+    cost="$(harness_cost "$harness" "$cell/harness.log" "$cell")"
     worker="$(subharness_chosen "$harness" "$cell" "$cell/harness.log")"
     failed_nodes="$(nodes_failed "$harness" "$cell")"
     stow_store "$cell/harness.log" "$cell"

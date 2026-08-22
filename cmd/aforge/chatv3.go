@@ -56,6 +56,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
+	oneModel := flags.Bool("one-model", false,
+		"every text call this session makes runs on the session model: the tier rows, the role pins, "+
+			"the fallback chain and the task model all stand down")
 	if err := flags.Parse(reorder(args, map[string]bool{
 		"model": true, "once": true, "session": true, "reasoning": true, "host": true,
 	})); err != nil {
@@ -66,9 +69,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo] [--one-model]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--once "text"] [--no-compact] [--yolo]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]`)
+	}
+	// --one-model is about THIS machine's settings rows, and over --host the
+	// rows that answer are the far machine's (chatv3_host.go). A flag that
+	// looked like it applied and did not would be worse than one that is not
+	// there, so the combination is refused rather than quietly dropped.
+	if *oneModel && strings.TrimSpace(*host) != "" {
+		return fmt.Errorf("--one-model settles this machine's model rows; over --host the far machine answers them, so the two cannot be combined")
 	}
 	// A picker with nobody watching is not a picker. --once is the headless
 	// door, and the two are a contradiction rather than a combination, so it is
@@ -121,6 +131,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Model:     *model,
 		NoCompact: *noCompact,
 		Yolo:      *yolo,
+		OneModel:  *oneModel,
 	}
 	boot := seed
 	boot.Session = *file
@@ -388,6 +399,13 @@ type v3Options struct {
 	// NoCompact and Yolo are the two flags that change what a session may do.
 	NoCompact bool
 	Yolo      bool
+	// OneModel settles every text call this session makes onto the session
+	// model. It is a MEASUREMENT POSTURE rather than a preference: a run whose
+	// spend and quality are being attributed to one model cannot have a tier
+	// row quietly answering a quarter of its calls on another. It changes no
+	// setting and writes nothing — the rows are still there, and the next
+	// session without the flag reads them exactly as before.
+	OneModel bool
 }
 
 // v3Launch is that assembly, done. The pieces are handed back rather than kept
@@ -568,7 +586,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// What this session may do without asking, which model answers its
 	// auxiliary calls, and what it may spend. All three are settings rows, and a
 	// row that cannot be read stops the launch here rather than downstream.
-	cfg, err = applyV3Governance(cfg, settings.ProfileDir, opts.Yolo)
+	cfg, err = applyV3Governance(cfg, settings.ProfileDir, opts.Yolo, opts.OneModel)
 	if err != nil {
 		return nil, err
 	}
@@ -740,15 +758,32 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 // (internal/config's projectconfig.go). A caller with no workspace — a test, a
 // door that has not resolved a directory — gets an empty layer rather than a
 // lookup in whatever directory the process happens to be sitting in.
-func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (session.Config, error) {
+func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel bool) (session.Config, error) {
 	workspace := strings.TrimSpace(cfg.Workspace)
 	policy, err := v3Policy(workspace, profileDir, yolo)
 	if err != nil {
 		return cfg, err
 	}
-	source, err := v3RolesSource(workspace, profileDir)
-	if err != nil {
-		return cfg, err
+	// --one-model withholds the ladder rather than filling it in. Every rung
+	// below already ends at the session model when nothing answers — the roles
+	// ladder falls through pin, then tier, then sessionDefault (internal/roles'
+	// ResolveCall); an empty task model reads the live conversation model
+	// (internal/session's defaultTaskModel); an empty fallback chain hops
+	// nowhere. So the flag is three unset states this build has always handled,
+	// NOT a fourth resolution path that could drift from the other three.
+	//
+	// The media slots are deliberately untouched. Vision, image, speech and
+	// video are capability-qualified — a text model cannot answer view_image —
+	// so settling them on the session model would not make the run single-model,
+	// it would make it broken. The flag says every TEXT call, and means it.
+	// The rows are not even read under the flag. Reading them only to discard
+	// the answer would make a malformed pins row stop a launch that had already
+	// said it does not care what the pins say.
+	var source func(string) (string, bool)
+	if !oneModel {
+		if source, err = v3RolesSource(workspace, profileDir); err != nil {
+			return cfg, err
+		}
 	}
 	rail, err := config.ProjectFloatAt(workspace, profileDir, config.KeySpendRail)
 	if err != nil {
@@ -763,6 +798,13 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// picked, by being cloned. Which models a person's questions may go to is
 	// theirs to say.
 	cfg.ModelFallbacks = config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
+	if oneModel {
+		// A chain that hops to a second model on a failure is the one remaining
+		// way a single-model run stops being one, and it fires exactly when
+		// nobody is watching. Empty is "no hop", which is what this build has
+		// always done for a person who set no chain.
+		cfg.ModelFallbacks = nil
+	}
 	// The guardian (internal/session's guardian.go) reads PROFILE-ONLY, unlike
 	// the two rows above it, and the reason is the one that keeps the search keys
 	// out of the project layer too: a repository that could turn this on would be
@@ -776,6 +818,12 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// this could send a visitor's work — and their credit — to a model they never
 	// picked, by being cloned.
 	cfg.TaskModel = config.TaskModelAt(profileDir)
+	if oneModel {
+		// Empty is not "no model", it is "the model this conversation is on
+		// right now" (internal/session's defaultTaskModel), which is precisely
+		// what the flag promises for work that leaves the conversation.
+		cfg.TaskModel = ""
+	}
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
