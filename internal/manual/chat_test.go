@@ -476,6 +476,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how does it know I mean always", "standing-orders"},
 		{"is that an instruction or a rule", "standing-orders"},
 		{"our conventions for this repo", "standing-orders"},
+		// The deliberate gesture and the visible door, in the words of somebody
+		// reaching for them — or noticing that recognition missed.
+		{"how do I force it to be standing", "standing-orders"},
+		{"how do I make this permanent", "standing-orders"},
+		{"it didn't notice this was a rule and did it once", "standing-orders"},
+		{"can I click keeping an eye on 2", "standing-orders"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

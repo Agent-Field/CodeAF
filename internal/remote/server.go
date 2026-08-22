@@ -52,6 +52,7 @@ import (
 // drive a scripted agent and never open a socket.
 type WrappedAgent interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
+	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	FollowUp(text string) (<-chan session.Event, error)
 	Interrupt()
@@ -354,6 +355,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
 			return nil, err
+		}
+		// A MARKED DRAFT IS THE SAME CALL THROUGH THE OTHER DOOR. What differs
+		// is the instruction the engine puts in front of the sentence, which
+		// lives on this side of the wire (internal/session's standing_mark.go).
+		if args.Standing {
+			return s.open(agent.SubmitStanding(context.Background(), args.Text))
 		}
 		return s.open(agent.Submit(context.Background(), args.Text))
 

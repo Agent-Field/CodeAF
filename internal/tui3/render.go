@@ -1036,6 +1036,11 @@ func (a *app) status(width int) string {
 // row on chrome, and it spends it exactly where the alternative is truncating
 // the numbers a person opened the terminal to read.
 func (a *app) statusRows(width int) []string {
+	// THE DOOR IS CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE IT
+	// LANDED, so a span is its own answer to "was it drawn on this frame"
+	// (standdoor.go). Every early return below is a row with no keeping segment
+	// on it, and each of them leaves this cleared.
+	a.keepSpan, a.keepRow = hudSpan{}, 0
 	if width < 1 {
 		a.modelSpan = hudSpan{}
 		return []string{""}
@@ -1058,7 +1063,11 @@ func (a *app) statusRows(width int) []string {
 	if a.roomOpen() {
 		paint = a.pal.accent
 	}
+	// The right cluster is right-aligned in both shapes below, so where the
+	// keeping segment landed is one piece of arithmetic said once.
+	base := width - ansi.StringWidth(plainRight)
 	if wrapped {
+		a.markKeepingDoor(parts, base, 1)
 		return []string{
 			fit(a.paintIdentity(left, paint), width),
 			rightAlign(right, plainRight, width),
@@ -1072,6 +1081,7 @@ func (a *app) statusRows(width int) []string {
 		a.modelSpan = hudSpan{}
 		return []string{fit(right, width)}
 	}
+	a.markKeepingDoor(parts, base, 0)
 	return []string{a.paintIdentity(left, paint) + strings.Repeat(" ", gap) + right}
 }
 
@@ -1488,6 +1498,14 @@ func (a *app) paintPart(part hudPart) string {
 		// breathes while a firing is in flight and its TEXT must not, or the fade
 		// ramp would paint it bright forever (homestanding.go's [app.keepingWord]
 		// says the whole of it).
+		//
+		// AND IT BRIGHTENS UNDER THE POINTER, because it is a door: pressing it
+		// opens /standing, and a label that is also a control has to say so
+		// (standdoor.go, and [app.paintIdentity] for the same decision about the
+		// model's name).
+		if a.hoveringKeeping() {
+			return a.pal.accent(a.keepingWord())
+		}
 		return a.pal.dim(a.keepingWord())
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
@@ -2457,6 +2475,18 @@ func (a *app) hintWord() string {
 		return parkedHint[1]
 	case a.state == stateWorking:
 		return "esc interrupt"
+	case a.standMarkOffered():
+		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the chord that makes
+		// it one (standmark.go). It ranks HERE — under the running turn, over the
+		// column's own line — for this slot's ordering law: the chord is read at
+		// the bottom of [app.key]'s plain switch, so every state above has already
+		// taken the keyboard, and esc while an answer is streaming is a key the
+		// person is far more likely to want next.
+		//
+		// It costs no rows. The legend is on the frame in every state, and this is
+		// the slot it already carries — so a draft that starts looking like a rule
+		// changes one word at the end of a line and moves nothing.
+		return standMarkHint
 	case a.railAway && a.railAvail():
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
 		// [app.railStow]). It ranks LAST, under every state above it, because it is

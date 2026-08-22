@@ -635,6 +635,11 @@ func helpText(file string) string {
 		// why the line says what it needs rather than promising it always works.
 		"tab            go back to the last conversation, with an empty box",
 		"alt+enter      open a line · enter sends",
+		// THE MARKED SEND (standmark.go). It is on this sheet because it is the
+		// one key here that changes what a sentence MEANS rather than where it
+		// goes, and nothing else on the screen names it until a draft happens to
+		// look like a rule.
+		standMarkKey + "     keep this true · a standing order's card, never work done once",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
