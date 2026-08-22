@@ -33,3 +33,27 @@ func TestSplitPaysOnlyAboveTheBaseRate(t *testing.T) {
 		t.Fatal("fewer than two named parts is not a split to gate")
 	}
 }
+
+// The starvation gate: with no idle dispatch slots a split is refused unless
+// measured capacity evidence says the node provably exceeds one worker's
+// envelope. A nil probe is never a refusal, preserving the path of every
+// caller from before the probe existed.
+func TestStarvedSlotsBlocksOnlyWithoutCapacityEvidence(t *testing.T) {
+	noSlots := func() int { return 0 }
+	idle := func() int { return 2 }
+	noEvidence := plan.Options{}
+	evidence := plan.Options{CapacitySamples: 8}
+
+	if !starvedSlots(noSlots, noEvidence) {
+		t.Fatal("no idle slots and no capacity evidence: the split is refused")
+	}
+	if starvedSlots(idle, noEvidence) {
+		t.Fatal("idle slots run the parts: the split proceeds")
+	}
+	if starvedSlots(noSlots, evidence) {
+		t.Fatal("measured capacity evidence overrules current load: the split proceeds")
+	}
+	if starvedSlots(nil, noEvidence) {
+		t.Fatal("a nil probe proves nothing and refuses nothing")
+	}
+}

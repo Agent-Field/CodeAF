@@ -102,6 +102,9 @@ type Runner struct {
 	// is not allowed to mistake for "nothing to do."
 	passFaults atomic.Int64
 	craft      *CraftRunner
+	// staleAge bounds how long a claim may sit running before the tick
+	// reaper returns it to pending; defaults to staleClaimAge.
+	staleAge  time.Duration
 	// expand is the depth loop, moved out of the plan build and into the
 	// schedule. Nil is the whole rollback: with no hook, a claimed node goes
 	// straight to its worker exactly as it did before claim-time division
@@ -135,6 +138,7 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		activePractice:      make(map[string]context.CancelFunc),
 		serviceConsentGrace: ServiceConsentGrace,
 		governor:            executor.HostGovernor(),
+		staleAge:            staleClaimAge,
 		drain:               make(chan struct{}),
 		wake:                make(chan struct{}, 1),
 	}
@@ -192,6 +196,23 @@ func (r *Runner) WithCraftRunner(craft *CraftRunner) *Runner {
 // behaviour: every claimed node goes to a worker whole.
 func (r *Runner) WithExpand(expand ExpandFunc) *Runner {
 	r.expand = expand
+	return r
+}
+
+// FreeSlots reports how many dispatch slots are unheld right now. The
+// claim-time expander consults it before multiplying nodes: with every slot
+// held, decomposition buys no parallelism and pays pure cost, which is the
+// split-waste this field exists to refuse.
+func (r *Runner) FreeSlots() int {
+	return cap(r.slots) - len(r.slots)
+}
+
+// WithStaleAge sets how long a claim may sit running before the tick reaper
+// returns the node to pending. Callers that know their longest possible leaf
+// deadline set it just above it; the default (staleClaimAge) covers jobs with
+// no deadline to compare against.
+func (r *Runner) WithStaleAge(age time.Duration) *Runner {
+	r.staleAge = age
 	return r
 }
 
@@ -467,7 +488,7 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 	// is never touched; only a claim that has outlived any possible worker
 	// behind it is returned to pending. The CAS inside Release means a live
 	// worker keeps its claim — the token has moved and the release fails.
-	if released, err := r.graph.ReleaseStale(staleClaimAge); err == nil && len(released) > 0 {
+	if released, err := r.graph.ReleaseStale(r.staleAge); err == nil && len(released) > 0 {
 		// A released node reopens the ready set, so the pass that freed it
 		// should look again immediately rather than at the tick.
 		defer r.nudge()
