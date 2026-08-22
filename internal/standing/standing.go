@@ -227,6 +227,50 @@ type Origin struct {
 	TurnIDs []string `json:"turnIds,omitempty"`
 }
 
+// ── altitude: how far an item reaches ───────────────────────────────────────
+
+// Altitude is an item's reach — which work it governs and which surfaces list
+// it. It is decided on the ratification card and it never drifts afterward;
+// widening it is a new card. docs/STANDING-ORDERS.md is the design.
+type Altitude string
+
+const (
+	// AltitudeConversation governs one conversation and dies with it. It
+	// requires Origin.SessionID: a reach with no place to reach is an error.
+	AltitudeConversation Altitude = "conversation"
+	// AltitudeProject governs every conversation and every task in one
+	// workspace. IT IS WHAT THE ZERO VALUE MEANS: every item made before
+	// altitudes were spelled was workspace-scoped, so an empty altitude reads
+	// as this and nothing migrates.
+	AltitudeProject Altitude = "project"
+	// AltitudeMachine governs everything the person does on this machine. It
+	// keeps the existing convention that a machine-wide item's workspace is
+	// the person's home.
+	AltitudeMachine Altitude = "machine"
+)
+
+// Brief is the working half of an item: a short title for rows too narrow for
+// a sentence, and the compiled prompt the machinery follows. The person's
+// Words are NEVER rewritten — they are the reason the item exists, and every
+// surface that opens the item shows both halves, words first. An empty Brief
+// reads as the Words themselves. Editing a brief down (narrower, gentler) is
+// free; editing it up (more reach, more action) is a new ratification card —
+// the session lane enforces that law, not this package.
+type Brief struct {
+	Title  string `json:"title,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
+}
+
+// Exception is one place an item deliberately does not reach: a workspace, or
+// a single conversation. Exactly one field is set. Exceptions are made by the
+// person — from the place ("not here"), or from the item's own record pointing
+// at a place — and never by the machinery. Both gestures write the same fact.
+type Exception struct {
+	Workspace string    `json:"workspace,omitempty"`
+	SessionID string    `json:"sessionId,omitempty"`
+	At        time.Time `json:"at"`
+}
+
 // Item is one standing thing. The top half is what the person agreed to and
 // never changes without another card; the bottom half is the item's own
 // present, rewritten on every check.
@@ -244,6 +288,16 @@ type Item struct {
 	When      When   `json:"when"`
 	Does      Action `json:"does"`
 	Rails     Rails  `json:"rails"`
+	// Altitude is the item's reach (see [Altitude]); empty reads as project.
+	Altitude Altitude `json:"altitude,omitempty"`
+	// Brief is the working title and compiled prompt; empty reads as Words.
+	Brief Brief `json:"brief,omitempty"`
+	// Grant is one sentence of what acting on this item may do without asking,
+	// quoted on the card that ratified it. Empty means say-only, which is what
+	// every item made before grants were spelled could do.
+	Grant string `json:"grant,omitempty"`
+	// Exceptions are the places this item deliberately does not reach.
+	Exceptions []Exception `json:"exceptions,omitempty"`
 
 	Status  Status    `json:"status"`
 	Created time.Time `json:"created"`
@@ -290,6 +344,20 @@ func (it Item) Validate() error {
 	case it.Rails.MaxPerDay <= 0:
 		return errors.New("an item needs a max per day")
 	}
+	switch it.Altitude {
+	case "", AltitudeProject, AltitudeMachine:
+	case AltitudeConversation:
+		if it.Origin.SessionID == "" {
+			return errors.New("a conversation item needs its conversation")
+		}
+	default:
+		return errors.New("unknown altitude: " + string(it.Altitude))
+	}
+	for _, ex := range it.Exceptions {
+		if (ex.Workspace == "") == (ex.SessionID == "") {
+			return errors.New("an exception is exactly one of a workspace or a conversation")
+		}
+	}
 	switch it.When.Kind {
 	case WhenAt:
 		if it.When.At.IsZero() {
@@ -327,6 +395,65 @@ func (it Item) Validate() error {
 		return errors.New("unknown action: " + string(it.Does.Kind))
 	}
 	return nil
+}
+
+// Level is the altitude with the zero value resolved to its meaning.
+func (it Item) Level() Altitude {
+	if it.Altitude == "" {
+		return AltitudeProject
+	}
+	return it.Altitude
+}
+
+// Title is what a row too narrow for a sentence leads with: the brief's title,
+// or the words themselves when nobody wrote one.
+func (it Item) Title() string {
+	if it.Brief.Title != "" {
+		return it.Brief.Title
+	}
+	return it.Words
+}
+
+// Prompt is the instruction the machinery follows: the compiled brief, or the
+// person's words themselves when nobody compiled one.
+func (it Item) Prompt() string {
+	if it.Brief.Prompt != "" {
+		return it.Brief.Prompt
+	}
+	return it.Words
+}
+
+// AppliesTo answers whether this item governs the given place: a machine item
+// reaches everywhere, a project item reaches its workspace, a conversation
+// item reaches only its own session — and an exception beats all three.
+// Callers pass what they know; an empty sessionID is a place with no
+// conversation (a task's worktree, a firing).
+func (it Item) AppliesTo(workspace, sessionID string) bool {
+	if it.ExceptedFrom(workspace, sessionID) {
+		return false
+	}
+	switch it.Level() {
+	case AltitudeMachine:
+		return true
+	case AltitudeProject:
+		return workspace != "" && it.Workspace == workspace
+	case AltitudeConversation:
+		return sessionID != "" && it.Origin.SessionID == sessionID
+	}
+	return false
+}
+
+// ExceptedFrom answers whether the person excepted this item from the place.
+func (it Item) ExceptedFrom(workspace, sessionID string) bool {
+	for _, ex := range it.Exceptions {
+		if ex.Workspace != "" && ex.Workspace == workspace {
+			return true
+		}
+		if ex.SessionID != "" && ex.SessionID == sessionID {
+			return true
+		}
+	}
+	return false
 }
 
 // Glyph is the one character a row leads with, decided here so every surface
