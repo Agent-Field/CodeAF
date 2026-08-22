@@ -7,8 +7,8 @@ package session
 //
 // A STANDING ITEM IS A TASK WITH A WHEN. That is the whole framing, and it is
 // why the card below is the task card with two more bands: when it wakes, and
-// what it costs per run. The proposal rides the same hub, waits on the same
-// kind of answer channel, and is ignored when late for the same reason
+// the daily allowance it shares. The proposal rides the same hub, waits on the
+// same kind of answer channel, and is ignored when late for the same reason
 // [Agent.ResolveTask] ignores a late answer.
 //
 // NOTHING STANDS UNTIL THE ANSWER IS YES, AND NOBODY PRESENT MEANS NO. A task
@@ -118,6 +118,8 @@ type Standing struct {
 	// operating system the package cannot arrange one for), and then nothing is
 	// installed and nothing is said.
 	Watch standing.Watch
-	// DailyRailUSD is quoted on the card beside the per-run cap.
+	// DailyRailUSD is the one machine-wide allowance quoted on cards when the
+	// person named no per-item money. Zero means the allowance is unlimited, so
+	// the card names the shared allowance without inventing a figure.
 	DailyRailUSD float64
 }

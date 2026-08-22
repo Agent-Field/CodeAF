@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -192,7 +193,9 @@ func TestStandingApprovedCreatesTheItemItShowed(t *testing.T) {
 		standCall("s1", aReminder()),
 		finalText("set up"),
 	}}
-	agent := standingAgent(t, completer, store, nil)
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.Standing.DailyRailUSD = 20
+	})
 
 	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
 	if err != nil {
@@ -212,9 +215,7 @@ func TestStandingApprovedCreatesTheItemItShowed(t *testing.T) {
 	if created.Workspace == "" {
 		t.Fatal("the item has no workspace")
 	}
-	// A reminder is the one shape whose day cap is one: it fires once and
-	// retires, and ten would be arithmetic about something that cannot happen.
-	if created.Rails.MaxPerDay != standingReminderPerDay || created.Rails.PerRunUSD != standingPerRunUSD {
+	if created.Rails.MaxPerDay != standDefaultMaxPerDay || created.Rails.PerRunUSD != standDefaultPerRunUSD {
 		t.Fatalf("rails = %+v, want the defaults", created.Rails)
 	}
 	if created.Origin.SessionID == "" || len(created.Origin.TurnIDs) != 1 {
@@ -224,12 +225,63 @@ func TestStandingApprovedCreatesTheItemItShowed(t *testing.T) {
 	if !found || card.Standing.WhenWords != "at 6 this evening" {
 		t.Fatalf("the card did not carry the cadence in words: %+v", card.Standing)
 	}
+	if card.Standing.CostWords != "shares the day's $20.00 allowance" {
+		t.Fatalf("card cost = %q, want the shared allowance", card.Standing.CostWords)
+	}
 	update, found := firstOfKind(collected, EventStandingUpdate)
 	if !found || update.Standing.Update != "stood" {
 		t.Fatalf("nothing reported that it now stands: %v", kinds(collected))
 	}
 	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "set up "+created.ID) {
 		t.Fatalf("tool result = %q, want the id back", output)
+	}
+}
+
+func TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem(t *testing.T) {
+	store := newFakeStanding(t)
+	at := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	call := `{"op":"propose","words":"remind me later, spend at most a dollar",` +
+		`"when":{"kind":"at","at":` + strconv.Quote(at) + `},` +
+		`"does":{"kind":"say","say":"time to leave"},` +
+		`"rails":{"per_run_usd":1,"max_per_day":2},` +
+		`"when_words":"later","cost_words":"at most a dollar a run, twice today"}`
+	completer := &scriptedCompleter{steps: []step{standCall("s1", call), finalText("set up")}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.Standing.DailyRailUSD = 20
+	})
+
+	events, err := agent.Submit(context.Background(), "remind me later, spend at most a dollar")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+
+	if len(store.created) != 1 || store.created[0].Rails.PerRunUSD != 1 || store.created[0].Rails.MaxPerDay != 2 {
+		t.Fatalf("created rails = %+v, want the person's 1 and 2", store.created)
+	}
+	card, found := firstOfKind(collected, EventStandingProposal)
+	if !found || card.Standing.CostWords != "at most a dollar a run, twice today" {
+		t.Fatalf("card cost = %+v, want the person's words verbatim", card.Standing)
+	}
+}
+
+func TestStandingValidateStillRefusesAnExplicitZeroRail(t *testing.T) {
+	store := newFakeStanding(t)
+	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
+	at := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	args := json.RawMessage(`{"op":"propose","words":"remind me later",` +
+		`"when":{"kind":"at","at":` + strconv.Quote(at) + `},` +
+		`"does":{"kind":"say","say":"time to leave"},` +
+		`"rails":{"per_run_usd":0}}`)
+
+	text, isError, err := agent.standTool(context.Background(), args)
+	if err != nil || !isError || !strings.Contains(text, "an item needs a per-run budget") {
+		t.Fatalf("zero rail = %q isError=%v err=%v", text, isError, err)
+	}
+	if len(store.created) != 0 {
+		t.Fatal("an explicit zero rail created an item")
 	}
 }
 
@@ -1371,10 +1423,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	gone := time.Date(2026, 8, 21, 5, 42, 0, 0, time.Local)
 	var parsed standArguments
 	parsed.Rails.Expires = gone.Format("2006-01-02T15:04:05")
-	when := standing.When{Kind: standing.WhenEvery, Every: "24h"}
-	does := standing.Action{Kind: standing.ActionSay, Say: "hello"}
-
-	rails, problem := standingRails(parsed, when, does, now)
+	rails, problem := standingRails(parsed, now)
 	want := "Invalid arguments: rails.expires " + standingClock(gone) +
 		" has already passed — it is now " + standingClock(now) +
 		" (Friday 2026-08-21). Work it out from that time, or leave it out for something that never expires."
@@ -1386,7 +1435,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	}
 	// And one in the future is untouched.
 	parsed.Rails.Expires = now.Add(time.Hour).Format("2006-01-02T15:04:05")
-	if rails, problem = standingRails(parsed, when, does, now); problem != "" {
+	if rails, problem = standingRails(parsed, now); problem != "" {
 		t.Fatalf("a future expiry was refused: %q", problem)
 	}
 	if !rails.Expires.Equal(now.Add(time.Hour)) {
