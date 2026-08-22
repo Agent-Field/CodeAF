@@ -104,9 +104,9 @@ you asked for a particular voice, because a voice the model does not have is a
 failed generation rather than a near miss.
 
 With no speech model set in `/settings` → Providers, the default is
-`fish-audio/s1`, falling back to `hexgrad/kokoro-82m` and then
-`openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A model you
-set yourself wins over all three.
+`fish-audio/s2.1-pro`, falling back to `fish-audio/s1`, then `hexgrad/kokoro-82m`
+and then `openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A
+model you set yourself wins over all of them.
 
 There is no duration in the result: nothing here opens the mp3 to measure it, and
 a guessed length would be worse than none. Play the file to hear it — aforge
@@ -181,7 +181,7 @@ A render that fails says so the same way: `job 3 failed: video generation timed
 out (<model>); no video was saved`. Nothing waits for it and nothing polls it.
 
 With no video model set in `/settings` → Providers, the default is
-`bytedance/seedance-2.0-mini`, falling back to `bytedance/seedance-1-5-pro` on a
+`bytedance/seedance-2.5`, falling back to `bytedance/seedance-2.0-mini` on a
 catalog that does not advertise it. A model you set yourself wins over both.
 
 Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,

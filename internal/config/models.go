@@ -30,12 +30,12 @@ const (
 // to the most expensive advertised model of that modality, because price is
 // the only quality signal a catalog row carries.
 var bestMediaPreferences = map[string][]string{
-	"image": {"google/gemini-3-pro-image", "openai/gpt-image-1.5", preferredImageModel},
-	// The three generation slots lead with the name the same slot's resolver
-	// leads with, so "best" and an unset row cannot disagree about what this
-	// build thinks the good model is. Underneath each of them the older order
-	// is kept exactly as it stood.
-	"speech": {preferredSpeechModel, hostedSpeechModel, kokoroSpeechModel},
+	// Every generation slot leads with the name the same slot's resolver leads
+	// with, so "best" and an unset row cannot disagree about what this build
+	// thinks the good model is. Underneath each of them the older order is
+	// kept exactly as it stood.
+	"image":  {preferredImageModel, "google/gemini-3-pro-image", "openai/gpt-image-1.5", fallbackImageModel},
+	"speech": {preferredSpeechModel, priorSpeechModel, hostedSpeechModel, kokoroSpeechModel},
 	"music":  {preferredMusicModel, "google/lyria-3", fallbackMusicModel},
 	"video":  {preferredVideoModel, "google/veo-3.5", fallbackVideoModel},
 	// The four PERCEPTION words have preference orders too, and they are read

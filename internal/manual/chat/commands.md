@@ -1128,15 +1128,16 @@ the names at the head of each list — what an `automatic` row actually gets:
 
 | kind | default |
 | --- | --- |
-| draws | `krea/krea-2-medium-turbo` |
-| speaks | `fish-audio/s1` |
-| composes | `google/lyria-3-pro-preview` |
-| films | `bytedance/seedance-2.0-mini` |
+| draws | `bytedance-seed/seedream-5-0-pro` |
+| speaks | `fish-audio/s2.1-pro` |
+| composes | `google/lyria-3-clip-preview` |
+| films | `bytedance/seedance-2.5` |
 | looks at an image | `google/gemini-3.7-flash` |
 
-Each list has older names under its leader — `hexgrad/kokoro-82m` and
-`openai/gpt-4o-mini-tts` under speech, `google/lyria-3-clip-preview` under music,
-`bytedance/seedance-1-5-pro` under video, `qwen/qwen3.8-27b` under looking — used when
+Each list has older names under its leader — `krea/krea-2-medium-turbo` under drawing,
+`fish-audio/s1`, `openai/gpt-4o-mini-tts` and `hexgrad/kokoro-82m` under speech,
+`google/lyria-3-pro-preview` under music, `bytedance/seedance-2.0-mini` under video,
+`qwen/qwen3.8-27b` under looking — used when
 your catalog does not advertise the leader. When the whole list misses, the catalog's own
 rows are used — settled ones first: a row whose name marks it experimental (`-exp`,
 `-preview`, `:free`, alpha, beta, a stealth vendor) is passed over while any ordinary row
