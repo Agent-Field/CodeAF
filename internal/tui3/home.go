@@ -438,6 +438,12 @@ type homeLine struct {
 	// note is the phone inbox's `since you left` row — one thing that happened
 	// while you were away — and is nil on every other line (homephone.go).
 	note *homePhoneNote
+	// zone is what this row says while it is standing in one of the two zones
+	// above the list — `needs you`, `moving` — and nil on every line of the list
+	// itself (homeattention.go). A zone row keeps the KIND of the thing it stands
+	// for, so this field is the only thing that tells the two views of one live
+	// object apart.
+	zone *homeAttention
 	// item is the standing item, for [homeItem], and view carries the two facts
 	// about NOW that the document does not hold (homestanding.go's
 	// [StandingItemView]). They are resolved when the row is built, so a row and
@@ -570,6 +576,13 @@ type homeView struct {
 	msg     string
 	msgPath string
 
+	// wide says the frame is wide enough to hold the detail column
+	// ([homeMinDetail]), settled by the draw before the column is built exactly as
+	// [homeView.phone] is. It is here because ONE law needs it: the two zones keep
+	// their labels over nothing at this tier and vanish whole below it
+	// (homeattention.go).
+	wide bool
+
 	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
 	// the inbox, the triage sections somebody folded, the machine's news as the
 	// `since you left` section reads it, and where the action bar landed.
@@ -641,6 +654,7 @@ func (a *app) openHome() tea.Cmd {
 		world:        session.ReadWorld(a.placesRoot()),
 		seen:         session.LastLook(a.placesRoot()),
 		bucket:       homeBucketOf(a.file),
+		wide:         a.homeWide(),
 		hover:        -1,
 		last:         map[string]session.Summary{},
 		news:         map[string]homeNewsCache{},
@@ -725,6 +739,7 @@ func (a *app) landHome() {
 		world:     world,
 		seen:      session.LastLook(a.placesRoot()),
 		bucket:    homeBucketOf(a.file),
+		wide:      a.homeWide(),
 		hover:     -1,
 		last:      map[string]session.Summary{},
 		expanded:  map[string]bool{},
@@ -863,6 +878,12 @@ func (h *homeView) build() {
 	// number would take the exchange off the screen at the instant it asked a
 	// question (homeexchange.go).
 	previousExchange := h.focusedExchange()
+	// AND SO IS THE ZONE IT WAS STANDING IN. A row in `needs you` and the same
+	// row under its own project are two views of one live object, which the four
+	// restores above cannot tell apart — so the zone is remembered here and the
+	// cursor put back into it after they have run (homeattention.go's
+	// [homeView.pointZone] carries the whole of why).
+	defer h.pointZone(h.cursorZone())
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -949,12 +970,9 @@ func (h *homeView) pointItem(id string) {
 	if id == "" {
 		return
 	}
-	for at, line := range h.lines {
-		if line.kind == homeItem && line.item.ID == id {
-			h.cursor = at
-			return
-		}
-	}
+	h.pointAt(func(line homeLine) bool {
+		return line.kind == homeItem && line.item.ID == id
+	})
 }
 
 // pointAction puts the cursor on "start a new conversation", which is the last
@@ -1620,12 +1638,11 @@ func (h *homeView) previewLine() (homeLine, bool) {
 // point puts the cursor on the row holding a transcript, and leaves it where it
 // is when that conversation is not on the list any more.
 func (h *homeView) point(transcript string) {
-	for at, line := range h.lines {
-		if line.kind == homeSession && line.row.Transcript == transcript {
-			h.cursor = at
-			return
-		}
-	}
+	// attention lane: the list's row is preferred over the same conversation's
+	// row in a zone above it (homeattention.go's [homeView.pointAt]).
+	h.pointAt(func(line homeLine) bool {
+		return line.kind == homeSession && line.row.Transcript == transcript
+	})
 }
 
 // clamp walks from a line number to the nearest one a cursor may rest on,
@@ -1672,6 +1689,10 @@ func (l homeLine) stop() bool {
 		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
+		return true
+	// attention lane: a strip's fold is a door like every other fold on this
+	// column; its label is not, for [homeHeading]'s reason (homeattention.go).
+	case homeAttentionMore:
 		return true
 	}
 	return false
@@ -2098,6 +2119,9 @@ func (h *homeView) buildFor() {
 		h.buildPhone()
 		return
 	}
+	// attention lane: `needs you` and `moving` ride above the list, gathered from
+	// the same reading it is built from (homeattention.go).
+	h.buildAttention()
 	h.buildWorld()
 }
 
@@ -2145,6 +2169,11 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	case homeMoreProjects:
 		h.foldElsewhere(line.folded)
+		return nil
+	case homeAttentionMore:
+		// attention lane: one strip's own tail, keyed by the strip it belongs to
+		// (homeattention.go).
+		h.foldZone(line.dir, line.folded)
 		return nil
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
@@ -2654,6 +2683,15 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	// attention lane: a strip's tail is a fold like the four above it
+	// (homeattention.go).
+	if a.home.lines[at].kind == homeAttentionMore {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.foldZone(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
+		return nil
+	}
 	if a.home.cursor == at {
 		return a.homeEnter()
 	}
@@ -2795,8 +2833,12 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// (homephone.go). THE SHAPE IS SETTLED BEFORE THE FRAME IS DRAWN, so a
 	// terminal dragged across the breakpoint — a phone being rotated — is rebuilt
 	// here, with the cursor kept on whatever row it was on.
-	if phone := layoutTier(width) == tierPhone; phone != a.home.phone {
-		a.home.phone = phone
+	// attention lane: the zones' stable-geography law is a width law too, so the
+	// second tier is settled in the same breath and by the same rule — the shape
+	// of the column is decided before the column is drawn (homeattention.go).
+	phone, wide := layoutTier(width) == tierPhone, width >= homeMinDetail
+	if phone != a.home.phone || wide != a.home.wide {
+		a.home.phone, a.home.wide = phone, wide
 		a.home.build()
 	}
 	if a.home.phone {
@@ -3070,6 +3112,11 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 // homeLine draws one line of the left column.
 func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	h := &a.home
+	// attention lane: the two zones above the list draw their own labels, rows
+	// and fold, and answer false for everything else (homeattention.go).
+	if text, ok := a.attentionLine(line, at, width, pal); ok {
+		return text
+	}
 	switch line.kind {
 	case homeBlank:
 		return ""

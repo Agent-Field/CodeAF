@@ -120,6 +120,73 @@ you last spoke. Quiet ones past the first four collapse into one dim line,
 **The list never touches the rule above the box.** One blank row always sits between the
 last line of the list and the foot of the frame, in both of home's shapes.
 
+## What needs me — the needs you strip at the top of home
+
+Above the projects, home draws a strip labelled `needs you`. It is **everything on this
+machine that has stopped and is waiting on you**, from every project at once, whatever
+kind of thing it is:
+
+- a conversation in another window stopped on a question — a command to approve, a task
+  to approve, a card about something standing;
+- a task that has **landed and needs your look**, which is work nothing more will happen
+  to until you read it — its row says `landed` and is named after the task;
+- a reminder or a watch that stopped and wants an answer;
+- an `ask here` errand holding a card.
+
+```
+  needs you
+  ▲ Pricing Research                 beta · 3h
+  ▲ keep main green                 alpha · 1h
+  ▲ port the parser       landed · alpha · 30m
+```
+
+Each row is `▲`, the thing's own name, then the project and how long it has been waiting.
+**The longest wait is at the top.** Nothing else re-orders it.
+
+A row here is a **door of the kind it always was**: `enter` opens the conversation, or the
+chat that asked for a reminder, exactly as it does on the row further down the screen. The
+card on the right is that thing's card, and where the question can be answered from home,
+`1`, `2` and `3` answer it from this row too (see *Answer a question from home*).
+
+**A row appears in the strip and under its project both.** They are two views of one live
+thing, not two things — pressing `enter` on either goes to the same place.
+
+## What is running everywhere — the moving strip
+
+Under it is `moving`: **everything in flight anywhere on the machine**.
+
+```
+  moving
+  ● Odysseys Wave 4                 gamma · 8m
+  ▸ …2 more
+```
+
+A conversation is here when it has tasks running, and also when it is simply **mid-turn** —
+the model thinking or a tool out, with no task ever made. Conversations this terminal is
+holding open behind the one on screen count too, and so do a watch that is firing and an
+errand that is thinking.
+
+The order is **busiest first** — most tasks running — and the longest-running settles a
+tie. The row is `●`, the name, the project, and how long it has been going. **Five rows,
+then `▸ …N more`**, which `enter` or a click opens in place, exactly like every other fold
+here; the rest are all in the list below anyway.
+
+`●` is still here rather than turning. The spinner is the list's.
+
+## Are the strips there when nothing is happening
+
+At **80 columns and wider** the two labels are always drawn, even with nothing under them —
+an empty `needs you` is the good news, and a screen whose shape moves every time a task
+lands is not a screen you can learn. Under 80 columns, where every row is dear, an empty
+strip is not drawn at all.
+
+**Typing takes both strips away.** A search is the matches rising out of the box with
+`? ask here` and `+ start a new conversation` against it, at every width — no strips, no
+headings, no tiers.
+
+A machine with no conversations on it yet has neither strip: it says
+`nothing here yet — say something and this fills up` and nothing else.
+
 ## Why are most projects collapsed on home — the elsewhere block
 
 Home opens **three** projects and folds every other one to a single line under a dim rule:
