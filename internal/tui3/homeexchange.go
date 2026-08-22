@@ -1704,12 +1704,9 @@ func (h *homeView) pointExchange(ex *homeExchange) {
 	if ex == nil {
 		return
 	}
-	for at, line := range h.lines {
-		if line.kind == homeExchangeRow && line.ex == ex {
-			h.cursor = at
-			return
-		}
-	}
+	h.pointAt(func(line homeLine) bool {
+		return line.kind == homeExchangeRow && line.ex == ex
+	})
 }
 
 // focusedExchange is the exchange under the cursor as [homeView] sees it, for
