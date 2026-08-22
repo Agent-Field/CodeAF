@@ -2831,7 +2831,8 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// as one block with a lid on it, and the last conversation on the screen —
 	// which in a drop-up is the row somebody is about to press enter on — is the
 	// one that suffers for it.
-	const foot = 3
+	strip := a.answerStrip(width, time.Now())
+	foot := 3 + len(strip)
 	const pad = 1
 	room := height - len(lines) - foot - pad
 	if room < 1 {
@@ -2881,6 +2882,9 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	}
 	if caretX > width-1 {
 		caretX = width - 1
+	}
+	for _, row := range strip {
+		add(row, -1)
 	}
 	if a.home.msg != "" {
 		// DIM, AND NOT THE FAULT COLOUR. Every refusal this screen has is a fact
