@@ -1056,6 +1056,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		connectHub:     parent.connectHub,
 		Media:          parent.Media,
 		MediaModel:     parent.MediaModel,
+		MediaPick:      parent.MediaPick,
 		DocumentEngine: parent.DocumentEngine,
 	}, client)
 	if err != nil {
