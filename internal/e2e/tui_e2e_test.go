@@ -50,7 +50,7 @@ func testHomeShape(t *testing.T) {
 	ws := newWorkspace(t, "shapews", false)
 	r := start(t, "afe2e_shape", home, ws, 120, 40)
 
-	screen := r.waitFor(20*time.Second, "home", "esc close")
+	screen := r.waitFor(20*time.Second, "aforge", "esc close")
 	t.Logf("home greeted on launch:\n%s", screen)
 
 	for _, want := range []string{
@@ -102,7 +102,7 @@ func testHomeShape(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	back := r.waitFor(15*time.Second, "home", "esc close", "─ elsewhere ")
+	back := r.waitFor(15*time.Second, "aforge", "esc close", "─ elsewhere ")
 	t.Logf("/home reopened it:\n%s", back)
 
 	// And two spaces on an empty box is the other door.
@@ -110,7 +110,7 @@ func testHomeShape(t *testing.T) {
 	time.Sleep(1200 * time.Millisecond)
 	r.keys("Space")
 	r.keys("Space")
-	gesture := r.waitFor(15*time.Second, "home", "esc close")
+	gesture := r.waitFor(15*time.Second, "aforge", "esc close")
 	t.Logf("space space opened home:\n%s", gesture)
 }
 
@@ -132,7 +132,7 @@ func testRealConversation(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	card := r.waitFor(20*time.Second, "home", "esc close", "› what is 2+2")
+	card := r.waitFor(20*time.Second, "aforge", "esc close", "› what is 2+2")
 	t.Logf("home, with the conversation's card up:\n%s", card)
 
 	// The left-off band: the person's last message as one muted `› ` line.
@@ -196,7 +196,7 @@ func testAskHere(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	r.waitFor(20*time.Second, "home", "esc close")
+	r.waitFor(20*time.Second, "aforge", "esc close")
 
 	r.lit("remind me in 1 minute to drink water")
 	time.Sleep(700 * time.Millisecond)
@@ -284,7 +284,7 @@ func testAskHere(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	again := r.waitFor(20*time.Second, "home", "esc close")
+	again := r.waitFor(20*time.Second, "aforge", "esc close")
 	if !strings.Contains(again, "? remind me in 1 minute") || !strings.Contains(again, "waiting on you") {
 		t.Errorf("the exchange did not outlive the screen it was asked on:\n%s", again)
 	}
@@ -478,7 +478,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	}
 	other := newWorkspace(t, "otherws", false)
 	r2 := start(t, "afe2e_fire_back", home, other, 120, 40)
-	r2.waitFor(25*time.Second, "home", "esc close", "─ elsewhere ")
+	r2.waitFor(25*time.Second, "aforge", "esc close", "─ elsewhere ")
 	folded := r2.capture()
 	t.Logf("home after the firing, from another project:\n%s", folded)
 	row := foldedRow(folded, "firews")
@@ -503,7 +503,7 @@ func openHome(t *testing.T, r *rig) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	r.waitFor(20*time.Second, "home", "esc close")
+	r.waitFor(20*time.Second, "aforge", "esc close")
 }
 
 // standReminder types one sentence into home's box, asks it there, waits for
@@ -586,7 +586,7 @@ func testHover(t *testing.T) {
 	}
 	ws := newWorkspace(t, "hoverws", false)
 	r := start(t, "afe2e_hover", home, ws, 120, 40)
-	screen := r.waitFor(25*time.Second, "home", "esc close", "Seed Beta")
+	screen := r.waitFor(25*time.Second, "aforge", "esc close", "Seed Beta")
 
 	rows := r.lines()
 	target := -1
@@ -638,7 +638,7 @@ func testFolds(t *testing.T) {
 	ws := newWorkspace(t, "foldws", false)
 	r := start(t, "afe2e_fold", home, ws, 120, 40)
 
-	screen := r.waitFor(25*time.Second, "home", "esc close", "since you left")
+	screen := r.waitFor(25*time.Second, "aforge", "esc close", "since you left")
 	t.Logf("the card with four things waiting:\n%s", screen)
 	if !strings.Contains(screen, "◆ 4 things since you left") {
 		t.Errorf("the news heading does not read `◆ 4 things since you left`:\n%s", firstMatch(screen, "since you left"))
