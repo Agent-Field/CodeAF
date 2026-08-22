@@ -118,6 +118,7 @@ func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
 	// The second chip's own columns.
 	span := card.modelSpans[1]
 	drive(t, a, tea.MouseClickMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
 
 	if a.task.model != "anthropic/claude-opus-4.8" {
 		t.Fatalf("the click picked %q", a.task.model)

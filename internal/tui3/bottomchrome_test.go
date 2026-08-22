@@ -196,10 +196,12 @@ func TestPressingTheJumpChipReturnsToTheLiveEdge(t *testing.T) {
 	// A press to the LEFT of the chip is a press on empty space, which is
 	// nothing on this surface.
 	drive(t, a, clickAt(0, at))
+	drive(t, a, releaseAt(0, at))
 	if a.stick {
 		t.Fatal("a press on the empty half of the gap row jumped the conversation")
 	}
 	drive(t, a, clickAt(a.jumpSpan.from+1, at))
+	drive(t, a, releaseAt(a.jumpSpan.from+1, at))
 	if !a.stick {
 		t.Fatal("pressing the chip did not rejoin the live edge")
 	}

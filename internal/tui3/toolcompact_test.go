@@ -310,6 +310,7 @@ func TestThePhoneSheetClosesOnATap(t *testing.T) {
 			openPhoneTool(t, a)
 
 			drive(t, a, tea.MouseClickMsg{Y: tc.row(a), Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{Y: tc.row(a), Button: tea.MouseLeft})
 			if a.expand.open {
 				t.Fatalf("a tap on %s did not close the sheet", tc.name)
 			}
@@ -328,6 +329,7 @@ func TestThePhoneSheetSwallowsATapOnNothing(t *testing.T) {
 
 	// The row above the foot's rule on a sheet with one line of body: padding.
 	drive(t, a, tea.MouseClickMsg{Y: a.height - 4, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{Y: a.height - 4, Button: tea.MouseLeft})
 	if !a.expand.open {
 		t.Fatal("a tap on the sheet's padding closed it")
 	}
@@ -385,6 +387,7 @@ func TestThePhoneSheetLiftsTheCap(t *testing.T) {
 		t.Fatalf("a capped read drew no foot:\n%s", strings.Join(sheet, "\n"))
 	}
 	drive(t, a, tea.MouseClickMsg{Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{Y: at, Button: tea.MouseLeft})
 	if !a.entries[first(t, a)].full {
 		t.Fatal("a tap on the foot did not lift the cap")
 	}

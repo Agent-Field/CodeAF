@@ -314,8 +314,13 @@ If you type `/copy` and the screen does not change, one of those two is why.
 
 ## /select — drag to select with your mouse
 
-`/select` hands the pointer back to the terminal so you can drag-select text with the
-mouse. It is the same thing ctrl+s does.
+You usually do not need this any more: **dragging over the conversation already
+selects and copies** — sweep with the left button down, the rows highlight, and on
+release their text is on your clipboard, with `copied · N lines` on the status line
+(see the keys page's *Selecting text with your mouse*).
+
+`/select` is for when you want your **terminal's own** selection instead: it hands the
+pointer back so a drag selects text natively. It is the same thing ctrl+s does.
 
 It toggles. Pressing it again takes the pointer back, and so does the next ordinary
 keystroke.

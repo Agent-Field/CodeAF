@@ -418,6 +418,7 @@ func clickEntry(t *testing.T, a *app, entry int) {
 	for i, r := range body {
 		if r.entry == entry {
 			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
 			return
 		}
 	}

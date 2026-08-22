@@ -477,6 +477,7 @@ func TestTheConnectionsTabTakesTheMouse(t *testing.T) {
 		for y, hit := range hits {
 			if hit.kind == sheetHitRow && hit.index == item {
 				drive(t, a, clickAt(4, y))
+				drive(t, a, releaseAt(4, y))
 				return
 			}
 		}

@@ -288,6 +288,7 @@ func TestClickingTheFootOpensAndTucksTheTable(t *testing.T) {
 	}
 
 	drive(t, a, tea.MouseClickMsg{X: r.foot.span.from, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.foot.span.from, Y: y, Button: tea.MouseLeft})
 	said := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(said, mdTuckWord) {
 		t.Fatalf("the press did not open the table:\n%s", said)
@@ -303,6 +304,7 @@ func TestClickingTheFootOpensAndTucksTheTable(t *testing.T) {
 		t.Fatalf("the opened table lost its way back:\n%s", said)
 	}
 	drive(t, a, tea.MouseClickMsg{X: r.foot.span.to - 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.foot.span.to - 1, Y: y, Button: tea.MouseLeft})
 	if said := strings.Join(plainRows(a), "\n"); !strings.Contains(said, mdOpenWord) {
 		t.Fatalf("the second press did not tuck the table back:\n%s", said)
 	}
@@ -317,6 +319,7 @@ func TestAPressBesideTheFootDoesNothing(t *testing.T) {
 		t.Fatalf("the answer grew no foot:\n%s", strings.Join(plainRows(a), "\n"))
 	}
 	drive(t, a, tea.MouseClickMsg{X: r.foot.span.to + 4, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.foot.span.to + 4, Y: y, Button: tea.MouseLeft})
 	if said := strings.Join(plainRows(a), "\n"); !strings.Contains(said, mdOpenWord) {
 		t.Fatalf("a press in the margin opened the table anyway:\n%s", said)
 	}
@@ -331,6 +334,7 @@ func TestAnOpenTableSurvivesAResize(t *testing.T) {
 		t.Fatal("the answer grew no foot")
 	}
 	drive(t, a, tea.MouseClickMsg{X: r.foot.span.from, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.foot.span.from, Y: y, Button: tea.MouseLeft})
 
 	for _, width := range []int{120, 100, 72, 64, 80} {
 		a.width = width

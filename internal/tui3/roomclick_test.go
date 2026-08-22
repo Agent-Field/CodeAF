@@ -41,6 +41,8 @@ func clickRailNode(t *testing.T, a *app, id uint64) {
 			// before it are the column's handle and the one after them folds.
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
 				Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
+				Y: y, Button: tea.MouseLeft})
 			return
 		}
 	}
@@ -82,6 +84,7 @@ func TestAPressOnTheEmptyPartOfARoomStaysInTheRoom(t *testing.T) {
 
 	y := deadRowInRoom(t, a)
 	drive(t, a, tea.MouseClickMsg{X: 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 1, Y: y, Button: tea.MouseLeft})
 	if !a.roomOpen() {
 		t.Fatalf("a press on row %d of the page threw the reader out of the room", y)
 	}
@@ -93,6 +96,7 @@ func TestAPressOnTheEmptyPartOfARoomStaysInTheRoom(t *testing.T) {
 	// runs out under a short page, so the pointer resolves to no row at all.
 	// That used to be the same exit and it is the same nothing now.
 	drive(t, a, tea.MouseClickMsg{X: 1, Y: a.bodyTop() + a.viewHeight() - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 1, Y: a.bodyTop() + a.viewHeight() - 1, Button: tea.MouseLeft})
 	if !a.roomOpen() {
 		t.Fatal("a press on the slack under the page closed it")
 	}
@@ -116,6 +120,7 @@ func TestAPressOnNothingInTheConversationDoesNothing(t *testing.T) {
 	sel, stick := a.sel, a.stick
 	y := a.bodyTop() + a.viewHeight() - 1
 	drive(t, a, tea.MouseClickMsg{X: 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 1, Y: y, Button: tea.MouseLeft})
 	if a.roomOpen() {
 		t.Fatal("a press on the conversation's empty space opened a room")
 	}
@@ -145,6 +150,7 @@ func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
 			t.Fatalf("the pinned header does not name the way out:\n%q", head)
 		}
 		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
 		if a.roomOpen() {
 			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
 		}
@@ -197,6 +203,7 @@ func TestTheColumnsStowLineStillAnswersFromInsideARoom(t *testing.T) {
 		t.Fatal("the column drew no door out of itself")
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 2, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 2, Y: at, Button: tea.MouseLeft})
 	if a.railShowing() {
 		t.Fatal("a press on the column's own door did not put it away")
 	}
@@ -224,6 +231,7 @@ func TestTheRoomApprovalRowStillAnswersAPress(t *testing.T) {
 		t.Fatal("the approval row recorded no answers to press")
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
 	if len(agent.answers) == 0 {
 		t.Fatal("a press on the approval row answered nothing")
 	}

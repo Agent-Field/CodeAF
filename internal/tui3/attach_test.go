@@ -187,6 +187,7 @@ func TestAClickOnAChipTakesThatChipOff(t *testing.T) {
 	x := len(inputPad) + ansi.StringWidth(chipLabels(a.chips, a.pal)[0]) + len(chipGap) + 1
 
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if want := []string{"one.png"}; !equalStrings(chipNames(a), want) {
 		t.Fatalf("chips are %v, want %v — the click removed the wrong one", chipNames(a), want)
 	}

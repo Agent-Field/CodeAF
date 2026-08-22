@@ -304,6 +304,7 @@ func clickHit(t *testing.T, a *app, want hitKind) {
 	for i, r := range body {
 		if r.hit == want {
 			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
 			return
 		}
 	}
@@ -727,12 +728,14 @@ func TestAClickOpensTheCallUnderIt(t *testing.T) {
 	y := a.bodyTop() + at
 
 	drive(t, a, tea.MouseClickMsg{Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{Y: y, Button: tea.MouseLeft})
 	body := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(body, "42 lines") {
 		t.Fatalf("the click did not open the call under it (y=%d):\n%s", y, body)
 	}
 
 	drive(t, a, tea.MouseClickMsg{Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{Y: y, Button: tea.MouseLeft})
 	if strings.Contains(strings.Join(plainRows(a), "\n"), "│ 42 lines") {
 		t.Fatal("a second click did not close the call")
 	}

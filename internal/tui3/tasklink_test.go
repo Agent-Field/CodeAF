@@ -211,6 +211,7 @@ func TestClickingATaskLinkOpensThatNodesRoom(t *testing.T) {
 	// The SECOND link opens the second node — the columns are what routes it, so
 	// pressing the wrong ones would open the wrong room.
 	drive(t, a, tea.MouseClickMsg{X: r.links[1].span.from + 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.links[1].span.from + 1, Y: y, Button: tea.MouseLeft})
 	if !a.roomOpen() || a.room.id != 8 {
 		t.Fatalf("the second link did not open node 8: open=%v", a.roomOpen())
 	}
@@ -218,6 +219,7 @@ func TestClickingATaskLinkOpensThatNodesRoom(t *testing.T) {
 	// A press in the PROSE beside a link is not a link press: it falls through to
 	// the row's own answer, which for a paragraph on a page is the way out.
 	drive(t, a, tea.MouseClickMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: r.links[0].span.from - 2, Y: y, Button: tea.MouseLeft})
 	if a.roomOpen() {
 		t.Fatal("a click on the sentence between two links was swallowed by one of them")
 	}
