@@ -58,7 +58,7 @@ func TestTheProjectFileBeatsTheProfileAtTheSessionConfig(t *testing.T) {
 	cfg, err := applyV3Governance(session.Config{
 		Workspace: workspace,
 		Model:     "session/model",
-	}, profile, false)
+	}, profile, false, false)
 	if err != nil {
 		t.Fatalf("the project layer did not load: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestAWorkspaceWithNoProjectFileLeavesTheProfileInCharge(t *testing.T) {
 	cfg, err := applyV3Governance(session.Config{
 		Workspace: t.TempDir(),
 		Model:     "session/model",
-	}, profile, false)
+	}, profile, false, false)
 	if err != nil {
 		t.Fatalf("a bare workspace has to boot: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestABrokenProjectFileStopsTheLaunchAndNamesTheFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"tools.approvalMode": `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := applyV3Governance(session.Config{Workspace: workspace}, t.TempDir(), false)
+	_, err := applyV3Governance(session.Config{Workspace: workspace}, t.TempDir(), false, false)
 	if err == nil {
 		t.Fatal("a truncated project file booted")
 	}
@@ -154,7 +154,7 @@ func TestABrokenProjectFileStopsTheLaunchAndNamesTheFile(t *testing.T) {
 	// And a row a repository may not answer at all is refused rather than
 	// honored — a checked-in file does not get to move somebody's budget.
 	nested := v3Project(t, map[string]any{"tools": map[string]any{"approvalMode": "allow"}})
-	if _, err := applyV3Governance(session.Config{Workspace: nested}, t.TempDir(), false); err == nil {
+	if _, err := applyV3Governance(session.Config{Workspace: nested}, t.TempDir(), false, false); err == nil {
 		t.Fatal("a nested project file booted, and its gate row would never have applied")
 	}
 }
@@ -163,7 +163,7 @@ func TestABrokenProjectFileStopsTheLaunchAndNamesTheFile(t *testing.T) {
 // what the repository did not write down and leaves what it did alone.
 func TestYoloIsADefaultAgainstTheProjectFileToo(t *testing.T) {
 	workspace := v3Project(t, map[string]any{"tools.approval": "bash:prompt"})
-	cfg, err := applyV3Governance(session.Config{Workspace: workspace}, t.TempDir(), true)
+	cfg, err := applyV3Governance(session.Config{Workspace: workspace}, t.TempDir(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

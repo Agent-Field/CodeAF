@@ -50,7 +50,7 @@ func TestThePinnedPainterReachesTheSessionAndTheTiersDoNot(t *testing.T) {
 		"models.roles":      "imagegen:paint/model",
 		"models.tiers.high": "some/chat-model",
 	})
-	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, pinned, false)
+	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, pinned, false, false)
 	if err != nil {
 		t.Fatalf("the rows did not load: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestThePinnedPainterReachesTheSessionAndTheTiersDoNot(t *testing.T) {
 	// No pin is no painter, whatever the tiers say. This is the case that keeps
 	// generate_image off an unconfigured belt.
 	tiers := v3Profile(t, map[string]any{"models.tiers.high": "some/chat-model"})
-	cfg, err = applyV3Governance(session.Config{Model: "session/model"}, tiers, false)
+	cfg, err = applyV3Governance(session.Config{Model: "session/model"}, tiers, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

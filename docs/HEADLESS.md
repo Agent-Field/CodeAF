@@ -244,6 +244,7 @@ esac
 
 | Command | What it is for |
 | --- | --- |
+| `aforge chat --once "<text>" [--model slug] [--yolo] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. See below — it is a different shape from `do`. |
 | `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. |
 | `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--subharness name]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
@@ -255,6 +256,73 @@ esac
 | `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
 | `aforge models` | The router ledger — ratings and how many observations back each. |
 | `aforge rebuild [--yes]` | Discard every derived table and replay the journal. |
+
+### `aforge chat --once` — one turn, and what it is not
+
+`--once` is the headless door to the chat surface: it opens the same session
+`aforge chat` opens, submits one message, prints the reply, and exits. It is
+the right command for measuring *the chat experience*, and the wrong one for
+measuring a job.
+
+It differs from `do` in three ways a harness will trip over:
+
+- **It is one turn, not one errand.** No graph is compiled, so there is no
+  delivery gate, no replan, no `done.json` and no node count. `do`'s "the
+  compiler decides the shape" is exactly the thing that is absent here.
+- **There is no `-w`.** The workspace is the process's current directory, so a
+  harness cell has to `cd` into the clone rather than point at it.
+- **It prints no `$` summary line.** `do` ends with
+  `<elapsed> · <n> nodes · $<spend>`; `--once` ends with the reply. The spend
+  is in the session transcript instead — `usage` records in
+  `$AFORGE_HOME/v3/projects/<slug>/<session>/transcript.jsonl`, one per model,
+  each with `costUsd` and a `calls` count, and `aux: true` on the calls made
+  beside the turn rather than by it. **Sum `costUsd` across every record**; a
+  harness that reads only the un-`aux` one under-reports.
+
+Nobody is watching a `--once` run, so it takes an explicit posture rather than
+a default: consent is refused rather than assumed (`--yolo` is how you say in
+advance that tool calls may run), and standing items are absent — a clock armed
+by an unwatched run would be the harness agreeing on somebody's behalf.
+
+### `--one-model` — the measurement posture
+
+A chat session does not run every call on `--model`. Auxiliary calls resolve
+through the tier rows and role pins in `/settings` (`models.tiers.*`,
+`models.roles`), so a profile that points `planner` at one model and `reflex`
+at another will spend part of every turn there — measured on one trivial task:
+22% of its dollars, on a model the run never named.
+
+`--one-model` settles every **text** call on the session model for that run:
+
+```
+aforge chat --once "<text>" --yolo --one-model --model deepseek/deepseek-v4-flash-0731
+```
+
+It **changes no setting and writes nothing**. The rows are still there and the
+next session without the flag reads them exactly as before. What it does is
+withhold three inputs, each of which this build has always handled as "unset":
+
+| Input | Withheld | What answers instead |
+| --- | --- | --- |
+| role pins and tier rows | `RolesSource` is not built | `roles.ResolveCall`'s last rung: the session model |
+| `task.model` | passed empty | `defaultTaskModel`: the model the conversation is on right now |
+| `models.fallbacks` | passed empty | nothing — no hop to a second model on a failure |
+
+Because these are the ladder's own fall-through states rather than a fourth
+resolution path, the flag cannot drift from the behaviour it is settling.
+
+Two deliberate limits:
+
+- **Media slots are untouched.** Vision, image, speech and video are
+  capability-qualified — a text model cannot answer `view_image` — so settling
+  them on the session model would not make a run single-model, it would make it
+  broken.
+- **It is refused with `--host`.** Over ssh the far machine owns those rows, and
+  a flag that looked like it applied and did not would be worse than no flag.
+
+Standing items never take this posture, whatever the session that created them
+was started with: they fire on their own clock long after the measured run
+ended.
 
 ---
 
@@ -303,6 +371,13 @@ Rules that came from getting them wrong:
 - **Do not change host, model, or `AFORGE_MODELS` mid-campaign.** Wall clock and
   cost are reported columns; changing what produces them mid-run corrupts the
   comparison rather than improving it.
+- **`--model` alone does not pin a chat cell to one model.** The tier rows and
+  role pins answer the auxiliary calls, so a campaign attributing spend and
+  quality to a named model must pass `--one-model` — or measure a profile it
+  did not record. `do` has no such rows and needs no flag; a run whose numbers
+  are being compared across the two shapes should say which is which. Verify
+  rather than assume: the `usage` records in the session transcript name the
+  model that actually served each call.
 - **`-timeout` is part of the result.** A cell that hit the wall measured the
   wall as much as the work. Report the timeout rate beside the score or the
   score is not what it appears to be.

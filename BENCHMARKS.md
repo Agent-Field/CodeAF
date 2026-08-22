@@ -368,6 +368,109 @@ into the specialist cheaply); observation slimming (pi's reads average ~1KB;
 the 2000-line read is the default the leaf reaches for); the engine's
 multi-tier model pools; hard mode.
 
+## 7. `do` against `chat --once` — 2026-08-21 (chat-v3-task)
+
+The two headless doors on the same four issues: `aforge do` with nothing forced
+(`AFORGE_MODE=select`) against `aforge chat --once --yolo --one-model`
+(`AFORGE_MODE=chat`). Same pin, same model, same pre-built venv, same pytest
+judge. Both grids ran four cells in parallel (`bench/parallel/`).
+
+**Read section 5.1 before reading the table. One of these four issues does not
+measure what it appears to measure, and it is the one with the largest margin.**
+
+| issue | `chat --once` | `do` (select) | master `node`, §1 |
+| --- | --- | --- | --- |
+| #20 CI workflow | 0 files · 317 · 48s · $0.026 | 0 files · 317 · 1m27s · $0.003 | "workflow added" · 1m25s · $0.005 |
+| #21 arithmetic | 10 files · 565 · 1m00s · $0.088 | 9 files · 565 · 8m20s · $0.050 | 554 · 5m56s · $0.185 |
+| #22 currency | 9 files · 559 · 7m09s · $0.736 | 8 files · **564** · 11m53s · **$0.243** | 558 · 9m49s · $0.205 |
+| #23 optional deps | 2 files · 317 · 58s · $0.031 | 2 files · 317 · 1m50s · $0.012 | 321 · 1m52s · $0.014 |
+| **total** | **$0.882** | **$0.308** | $0.409 |
+
+Discarding #21 as unmeasurable: **chat $0.794, `do` $0.258 — 3.1x.**
+
+**chat is faster and consistently dearer, for the same output.** Every cell
+landed 1.8x–8.3x quicker at 1.8x–8.6x the cost, and on three of four the two
+doors produced the same score. One conversational turn front-loads the whole
+context and drives straight at the answer; `do` compiles a graph and walks it.
+Where the task is small the trade is bad — #20 is the same zero-file refusal for
+8.6x the money.
+
+**#22 is the only cell in this section that measures capability** (5.1), and it
+goes to `do`: 564 against 559, at a third of the cost. Both doors wrote a real
+module from nothing — `do` a 334-line `currencies.py` with 55 tests, chat a
+378-line `currency.py` with 50.
+
+**#20 is a correct refusal scored as a zero by the CSV.** `.github/workflows/
+code-check.yml` already exists at the pinned base and already does what #20 asks
+— PR trigger on `main`, pytest job, failure blocks the merge. Both doors read
+it, ran the suite, wrote nothing, and reported that the one remaining piece is a
+branch-protection setting no workflow file can set. `changed_files=0` is the
+right answer here; §1's "workflow added" row for the same issue is the one worth
+re-examining.
+
+**Both doors shipped the same defect on #23, and the judge could not see it.**
+Each moved `typer`/`rich` to a `[cli]` extra without adding `[cli]` to the `dev`
+extra and without guarding the imports in `cli.py`. The maintainers' own merged
+fix (`8d868e2`) does both. Measured on fresh venvs from the same clones:
+
+| | fresh `pip install -e ".[dev]"` then pytest |
+| --- | --- |
+| upstream `8d868e2` | 317 passed, 1 skipped |
+| `do` #23 | **299 passed, 2 skipped** |
+| chat #23 | **299 passed, 2 skipped** |
+
+18 CLI tests silently leave the suite — `tests/test_cli.py` opens with
+`pytest.importorskip("typer")` — and pytest still exits 0. The grid scored both
+cells 317/0 only because `run.sh` builds the venv *before* the harness runs, so
+the suite was judged against the old dependency set. The package also keeps
+`bambara-normalize` in `[project.scripts]` while `cli.py` imports typer
+unguarded, so a core-only install ships a console script that stack-traces.
+
+Same model, same omission, both doors: this is a model-level blind spot about
+what a packaging change does to the code consuming it, not a property of either
+surface. It is the only failure in this section not explained by 5.1.
+
+**Every cell ran on one model, and that was checked rather than assumed.** A
+chat session resolves its auxiliary calls — titles, safety, compaction, the
+check on finished work — through the operator's crew rows and role pins, so
+`-model` alone does not pin a chat cell: on one trivial task 22% of the spend
+went to a model the run never named. The `chat` cells therefore pass
+`--one-model` (`docs/HEADLESS.md`). Read back out of the transcripts and the
+kept stores afterwards, all eight cells served 100% of their spend from
+`deepseek/deepseek-v4-flash-0731`.
+
+### 5.1 #21 is void — the clone contains the answer
+
+**`bench/run.sh` does not isolate the clone's history.** With `BASE_COMMIT` set
+it clones the repository whole and checks the pin out, so the working tree is at
+the base commit while `refs/heads/main` still points at `3bef02f` — the merge of
+PR #25, the maintainers' fix for #21 — and every other branch is present too.
+The answer is one `git show` away.
+
+Both doors produced `src/bambara_normalizer/arithmetic.py` **byte-identical to
+upstream's**, with all eight modified files matching upstream's diffstat exactly
+(README 76, `__init__` 14, `cli` 8, `config` 6, `normalizer` 1, `numeric` 22,
+`spans` 7, `test_numeric` 20) and `test_arithmetic.py` at upstream's 170 lines.
+That is reproduction, not convergence.
+
+**This is a flaw in the harness, not in either door, and §1's recorded #21 row
+ran the same protocol against the same clone.** The comparison between rows
+stays internally fair; the absolute claim does not. #21 measures retrieval.
+
+The same exposure covers #23 (fixed upstream in `8d868e2`, also reachable) —
+though there both doors produced something *worse* than the reachable answer,
+which is its own evidence that nothing was copied there. #22 has no upstream
+fix in the repository at all, which is what makes it the one clean cell.
+
+**Two fixes before this section's numbers are quoted anywhere else:**
+
+1. **Isolate the clone's history.** Clone at the pin with no other refs, or
+   strip remotes and tags after checkout.
+2. **Rebuild the venv after the harness runs**, or run the suite twice. The
+   current order is what hid the #23 defect behind a 317/0 score.
+
+Neither has been done; every number in this section predates both.
+
 ## 5. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
