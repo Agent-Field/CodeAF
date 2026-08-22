@@ -976,7 +976,12 @@ func (a *Agent) refreshSystemLocked() {
 	// memory moves per turn, the card moves when the conversation moves, and
 	// what a window three desks away is doing moves on nobody's schedule
 	// (taskdelta.go).
-	a.messages[0] = textMessage("system", a.system+a.memoryText+a.cardText+a.elsewhereText)
+	// AND THE STANDING ORDERS COME FIRST OF THE FOUR, immediately after the base
+	// prompt, because the order of these blocks is the order of volatility and
+	// the cache reads downward. An order is the least volatile thing here: it was
+	// agreed on a card, it holds until the person says otherwise, and a
+	// conversation may run all day without one moving (standing_world.go).
+	a.messages[0] = textMessage("system", a.system+a.standingText+a.memoryText+a.cardText+a.elsewhereText)
 }
 
 // refreshCardLocked re-renders the state card into message[0]. It is the card's
