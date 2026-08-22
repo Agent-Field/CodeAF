@@ -505,6 +505,15 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
 }
 
+// SubmitStanding is Submit for a draft the person marked as something to keep
+// true. It rides the same method as an ordinary send with one flag on it, for
+// the reason [SubmitArgs.Standing] states: the two turns differ only in what the
+// ENGINE puts in front of the sentence, which is not a thing a wire can carry
+// halfway.
+func (a *Agent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
+	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text, Standing: true})
+}
+
 // SubmitImage is Submit with pictures. THE BYTES ARE READ HERE, on the machine
 // the person is sitting at, because that is the only machine the path means
 // anything on: /image points at a file on their laptop and the engine has no way

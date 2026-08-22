@@ -465,6 +465,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does this rule apply to all my projects", "standing-orders"},
 		{"not in this project", "standing-orders"},
 		{"why does it say 3 standing orders here", "standing-orders"},
+		{"how do I force it to be standing", "standing-orders"},
+		{"how do I make this permanent", "standing-orders"},
+		{"it didn't notice this was a rule and did it once", "standing-orders"},
+		{"can I click keeping an eye on 2", "standing-orders"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

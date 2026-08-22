@@ -147,6 +147,12 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
+	// hoverKeeping is the `keeping an eye on N` segment of the status row, which
+	// is a door onto /standing (standdoor.go). It is a kind of its own rather
+	// than a second reading of [hoverStatusModel] for the reason that one covers
+	// both of ITS subjects with one kind: what lights has to be what the press
+	// acts on, and these two segments open two different things.
+	hoverKeeping
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -496,6 +502,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// (statusdeck.go's [app.deckPress]).
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
+			}
+			// The two doors on this row, in the order [app.press] reads them
+			// (app.go): the keeping segment onto /standing, then the model's name
+			// onto the picker (standdoor.go).
+			if mark.index == a.keepRow && a.keepSpan.holds(x) {
+				return hoverAt{kind: hoverKeeping}
 			}
 			if mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}

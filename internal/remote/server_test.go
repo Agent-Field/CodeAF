@@ -40,6 +40,7 @@ type fakeAgent struct {
 
 	streams []chan session.Event
 	sent    []string
+	marked  []string
 	follows []string
 	images  []session.Image
 
@@ -96,6 +97,19 @@ func (f *fakeAgent) Submit(_ context.Context, text string) (<-chan session.Event
 		}
 		close(done)
 		return done, nil
+	}
+	return f.open(), nil
+}
+
+// SubmitStanding is the marked door — a draft the person said should keep being
+// true (internal/session's standing_mark.go). It is remembered separately so a
+// test can tell which of the two doors one frame opened.
+func (f *fakeAgent) SubmitStanding(_ context.Context, text string) (<-chan session.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.marked = append(f.marked, text)
+	if f.failing != nil {
+		return nil, f.failing
 	}
 	return f.open(), nil
 }
