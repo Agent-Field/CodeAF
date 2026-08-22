@@ -117,6 +117,49 @@ func TestRefusalStripsOptionalParametersInOrderAndSaysSo(t *testing.T) {
 	}
 }
 
+// The router has a second spelling for "your filter removed everything":
+// "All providers have been ignored", produced when `provider.ignore` covers
+// every endpoint serving the model — which this process's own velocity ledger
+// can cause on a model with one provider. The first rung of the ladder drops
+// that list, so the phrase must be in the ladder's vocabulary; it once was
+// not, and a wave of task nodes died on instant 404s instead of one retry.
+func TestAnAllProvidersIgnoredRefusalClimbsTheLadder(t *testing.T) {
+	const allIgnoredBody = `{"error":{"message":"All providers have been ignored. ` +
+		`To change your default ignored providers, visit: https://openrouter.ai/settings/privacy","code":404}}`
+	recorded := &capture{}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		body := recorded.body(len(recorded.bodies) - 1)
+		writer.Header().Set("Content-Type", "application/json")
+		// The endpoint accepts the moment the filter is gone — the first rung.
+		if prefs, _ := body["provider"].(map[string]any); prefs != nil && prefs["require_parameters"] != nil {
+			writer.WriteHeader(http.StatusNotFound)
+			_, _ = writer.Write([]byte(allIgnoredBody))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop",` +
+			`"message":{"role":"assistant","content":"ok"}}]}`))
+	})
+	config := Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1",
+		HTTPClient: handlerClient(handler), Model: "sim/model"}
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var notices []string
+	response, err := client.CompleteWithMessages(noticeContext(context.Background(), &notices), userMessages("hi"))
+	if err != nil {
+		t.Fatalf("the first rung should have landed the call: %v", err)
+	}
+	if response == nil {
+		t.Fatal("no response")
+	}
+	if len(notices) == 0 || !strings.Contains(notices[0], "relaxed the endpoint filter") {
+		t.Fatalf("notices = %#v, want the endpoint filter relaxed first", notices)
+	}
+}
+
 func TestRefusalFallsBackToTheConfiguredModelAsConfigured(t *testing.T) {
 	// Nothing about the request's shape is servable on the first model; the
 	// second one takes it whole.

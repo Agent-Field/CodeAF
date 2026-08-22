@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -189,6 +190,41 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 		return
 	}
 	c.velocity.observe(model, served, ttft, tokens, elapsed)
+}
+
+// notePacedProvider folds one provider-named 429 into the ledger, under the
+// same gate as noteVelocity: a session that asked for no routing is not
+// steered either, and only the router's own errors carry a provider name to
+// act on. The retry loop calls this with the refusal body's named endpoint so
+// every request encoded after it routes around the saturated pool instead of
+// joining the queue behind it — the retries of the call that drew the 429
+// still wait it out, because their body is already written.
+func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
+	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+		return
+	}
+	c.velocity.pace(model, served, wait)
+}
+
+// pacedProviderName reads which endpoint a 429 came from, "" when the body
+// does not say. OpenRouter names the upstream in the error's metadata when the
+// limit is one provider's shared pool rather than this account — exactly the
+// case where another endpoint could answer right now and waiting is the wrong
+// move. Decoded leniently and separately from errorBody: metadata is the
+// router's dialect, and a provider that shapes its errors differently simply
+// answers "" here and keeps the pacing behaviour it always had.
+func pacedProviderName(payload []byte) string {
+	var decoded struct {
+		Error struct {
+			Metadata struct {
+				ProviderName string `json:"provider_name"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(decoded.Error.Metadata.ProviderName)
 }
 
 // ── THE LAG LAW ─────────────────────────────────────────────────────────────
@@ -422,8 +458,57 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 		}
 		healthy = append(healthy, entry.provider)
 	}
+	// THE LEDGER MAY NEVER REFUSE EVERYTHING IT KNOWS. On a model with one
+	// provider — and single-provider models are common — three slow answers
+	// used to put that one name in `ignore` and turn every request for five
+	// minutes into an instant "All providers have been ignored" 404. A verdict
+	// that condemns the whole set is not a preference, it is an outage this
+	// process built for itself; when nothing is left to prefer, the honest
+	// answer is no verdict at all, and the sort word chooses among slow lanes.
+	if len(healthy) == 0 && len(demoted) == 0 {
+		return nil, nil
+	}
 	if len(healthy) == 0 {
 		return nil, ignore
 	}
 	return append(healthy, demoted...), ignore
+}
+
+// pace is the ledger taking a provider at its word: a 429 that NAMES the
+// endpoint it came from is that endpoint saying "not now", which is better
+// evidence than any number of timed answers. The lane is refused outright for
+// the given wait so the next encoded request routes around it instead of
+// queueing behind a pool somebody else is saturating.
+//
+// The strikes are set rather than incremented, so recovery is the one already
+// written: the cooldown expires, the lane comes back on probation, and its
+// first fast answer walks it out (observe). A wait the provider did not name,
+// or named absurdly, is clamped to the same cooldown a laggy lane serves —
+// pacing is a claim about the next minutes, never about the day.
+func (l *velocityLedger) pace(model, served string, wait time.Duration) {
+	if l == nil {
+		return
+	}
+	key := normalizeModel(model)
+	served = strings.TrimSpace(served)
+	if key == "" || served == "" {
+		return
+	}
+	if wait <= 0 || wait > ignoreCooldown {
+		wait = ignoreCooldown
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	lanes := l.lanes[key]
+	if lanes == nil {
+		lanes = map[string]*lane{}
+		l.lanes[key] = lanes
+	}
+	entry := lanes[served]
+	if entry == nil {
+		entry = &lane{provider: served, seen: len(lanes)}
+		lanes[served] = entry
+	}
+	entry.strikes = ignoreAfter
+	entry.ignoredUntil = l.now().Add(wait)
 }
