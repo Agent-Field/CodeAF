@@ -184,7 +184,15 @@ func (a *Agent) standingOrders() *standing.Store {
 // something set up in this conversation is something this conversation finds.
 func (a *Agent) standingPlace() (workspace, sessionID string) {
 	a.mu.Lock()
-	id := a.sessionID()
-	a.mu.Unlock()
-	return a.standingWorkspace(), id
+	defer a.mu.Unlock()
+	return a.standingPlaceLocked()
+}
+
+// standingPlaceLocked is [Agent.standingPlace] for the callers that already hold
+// a.mu — the birth seam's block, rendered inside [Agent.startTurnLocked]. It is
+// the same two lines rather than a second reading of them, because a place
+// answered differently in two functions is an order that reaches a conversation
+// from the page and not from the prompt.
+func (a *Agent) standingPlaceLocked() (workspace, sessionID string) {
+	return a.standingWorkspace(), a.sessionID()
 }
