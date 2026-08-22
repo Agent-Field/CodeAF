@@ -460,9 +460,12 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	// left column is built from rather than on where the words land in the
 	// frame, because the detail pane repeats the focused conversation's name and
 	// a search over the whole screen would find that copy first.
+	// The LIST's rows and not the zones' above it: a waiting conversation is a
+	// `needs you` row as well, which is a second view of the same object and not
+	// a second conversation (homeattention.go's first law).
 	var order []string
 	for _, line := range a.home.lines {
-		if line.kind == homeSession {
+		if line.kind == homeSession && line.zone == nil {
 			order = append(order, homeName(line.row))
 		}
 	}
@@ -748,10 +751,11 @@ func homeRestLab(t *testing.T) (*app, string) {
 func TestHomeWithNothingTypedHangsFromTheTop(t *testing.T) {
 	a, mine := homeRestLab(t)
 
-	// The head is four rows — title, blank, rule, blank — then the project's
+	// The head is four rows — title, blank, rule, blank — then the two zone
+	// strips and the blank under them (homeattention.go), then the project's
 	// heading, then the row. Anything further down is a list that floated to the
 	// bottom of the frame with nobody typing at it.
-	if at := homeRowY(t, a, mine); at > 6 {
+	if at := homeRowY(t, a, mine); at > 9 {
 		t.Fatalf("the list did not hang from the top (row %d):\n%s", at, homeText(a))
 	}
 	if strings.Contains(homeText(a), homeStartWord) {
@@ -854,9 +858,12 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 	a.openHome()
 	_, height := a.size()
 
-	// AT REST: up in the list, well clear of the box, and on a conversation.
+	// AT REST: up in the list, well clear of the box, and on a conversation. The
+	// bound carries the two zone strips standing over the list, which cost three
+	// rows on a quiet machine and are drawn at this width whether or not they
+	// have anything in them (homeattention.go).
 	rest := homeCursorY(t, a)
-	if rest > 6 {
+	if rest > 9 {
 		t.Fatalf("the resting cursor is on row %d, want it up in the list:\n%s", rest, homeText(a))
 	}
 	if row := a.home.focused(); row.Transcript != mine {
