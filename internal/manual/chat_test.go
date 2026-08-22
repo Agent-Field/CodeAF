@@ -454,6 +454,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person says about that are the plain question and the plain wish.
 		{"does it run when my terminal is closed", "keeping-an-eye"},
 		{"turn off background checks", "keeping-an-eye"},
+		// The wave that gave the ambient side a reach: an order that governs one
+		// chat, one project, or everything. Each of these is what somebody types
+		// looking at the page, at the card's `where` band, or at the one line a
+		// conversation opens with.
+		{"what rules do you have here", "standing-orders"},
+		{"how do I make it always do something", "standing-orders"},
+		{"do you have automations", "standing-orders"},
+		{"what does the standing orders page show", "standing-orders"},
+		{"does this rule apply to all my projects", "standing-orders"},
+		{"not in this project", "standing-orders"},
+		{"why does it say 3 standing orders here", "standing-orders"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
