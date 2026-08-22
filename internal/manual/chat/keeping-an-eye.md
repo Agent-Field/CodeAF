@@ -459,17 +459,25 @@ If your words match more than one, it will not guess — pausing the wrong watch
 a silence you would not notice until it mattered — so it answers
 `"CI" matches more than one — say which:` and lists them.
 
+`s` on the `/standing` page does the same thing to the row under the cursor, and
+`n` there is the third answer: keep it, but not in this place. The
+standing-orders page has both.
+
 ## How do I pause one and start it again?
 
 "Pause the weekly update for now" and "start the weekly update again". A paused
 item is not checked and not fired, and keeps everything else it knows: what it
 has cost, when it last fired, what it last saw.
 
-To see what stands here, ask what you have set up. Each row leads with the glyph
-every aforge screen uses — `▲` needs you, `●` being checked or fired right now,
-`◦` waiting for its time, `∙` paused or stopped — then your own words, then the
-cadence in words. A project with nothing set up answers
+To see what stands here, ask what you have set up, or type `/standing` for the page
+of it with `p` and `s` on its rows. Each row leads with the glyph every aforge
+screen uses — `▲` needs you, `●` being checked or fired right now, `◦` waiting
+for its time, `∙` paused or stopped — then your own words, then the cadence in
+words. A project with nothing set up answers
 `Nothing stands in this project yet.`
+
+Where an order applies — this conversation, this project, or everywhere — and how
+to except one place from it are on the standing-orders page.
 
 ## Why does my watch show a filled dot right now
 

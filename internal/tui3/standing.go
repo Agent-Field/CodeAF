@@ -422,7 +422,10 @@ func standUpdateWord(update, text string) string {
 	case "paused":
 		return "paused"
 	case "resumed":
-		return "going again"
+		// The word the standing page's own receipt uses, said once
+		// (standingpage.go): one event read by a person in two places may not
+		// be two different words.
+		return standResumedWord
 	case "failed":
 		if text == "" {
 			return "stopped"
@@ -792,6 +795,17 @@ func (a *app) standBands(card *standingCard, width int) []string {
 		for _, line := range wrap(word, width) {
 			out = append(out, a.pal.dim(line))
 		}
+	}
+	// AND HOW FAR IT REACHES, ALWAYS SAID, which is the one band here that is
+	// never dropped. The other two can be empty because a notice may carry no
+	// words for them; a reach cannot — [standing.Item.Level] resolves the zero
+	// value to a real answer — and an order whose reach was not on the card is
+	// an order somebody agreed to without knowing where it applies
+	// (docs/STANDING-ORDERS.md: the card always names it before anything
+	// stands). It is drawn in the person's own words and never the field's
+	// ([standLevelWord]).
+	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
+		out = append(out, a.pal.dim(line))
 	}
 	cost := card.cost
 	if checked := standChecked(card.item.When.Kind); checked != "" {

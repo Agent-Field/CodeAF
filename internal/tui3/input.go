@@ -345,6 +345,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.permPanelKey(msg)
 	}
 
+	// And the standing page, which is that panel's twin in every respect that
+	// matters here: opened by a command, nothing being typed under it, and esc
+	// leaving the conversation exactly as it was (standingpage.go). Being modal
+	// is what frees a bare p, s and n to mean pause, stop and not here.
+	if a.standPage.open && msg.String() != "ctrl+c" {
+		return a.standPageKey(msg)
+	}
+
 	if msg.String() == "ctrl+c" {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
