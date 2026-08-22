@@ -118,13 +118,18 @@ func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
 
 	a := lab.app(transcript)
 	band.wire(a)
-	a.openHome()
+	openHomeOn(a, transcript)
 
 	lines := homeLines(a)
 	joined := strings.Join(lines, "\n")
 
-	ask := homeRowAt(lines, "keep main green")
-	run := homeRowAt(lines, "check the deploy")
+	// THE TWO HOT ROWS ARE FOUND BY WHAT THEY SAY ABOUT THEMSELVES and not by
+	// their words alone: an item that needs somebody and an item that is firing
+	// are both drawn a second time in the zones above the list, where the first
+	// stands under `needs you` and the second wears this page's ONE spinner
+	// (homespinner.go). The rollup is the band row's own and appears nowhere else.
+	ask := homeRowAt(lines, "needs your look")
+	run := homeRowAt(lines, standing.RunningChecking+" now")
 	chat := homeRowAt(lines, homeIdleGlyph+" Pricing Research")
 	wait := homeRowAt(lines, "tell me when")
 	fold := homeRowAt(lines, homeItemsFoldWord)
@@ -612,7 +617,7 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 	a := lab.app(transcript)
 	a.workspace = "/w/quiet"
 	band.wire(a)
-	a.openHome()
+	openHomeOn(a, transcript)
 
 	lines := homeLines(a)
 	joined := strings.Join(lines, "\n")

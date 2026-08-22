@@ -157,16 +157,13 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 //
 // The linear tier never animates ([glyphRunASCII]'s block states the law), so
 // it never earns the clock either.
+//
+// bridge lane: AND IT IS ONE ROW, WHATEVER IS HAPPENING. The clock is earned by
+// the single line the one-spinner law picked (homespinner.go), so a machine with
+// twenty things out wakes it exactly as often — and costs the wire exactly as
+// much — as a machine with one.
 func (a *app) homeAnimating() bool {
-	if !a.home.open || a.linear {
-		return false
-	}
-	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Tasks.Running > 0 {
-			return true
-		}
-	}
-	return false
+	return a.home.open && a.homeSpins(a.home.spin)
 }
 
 // homeMinDetail is the width below which the detail column is not drawn at all.
@@ -576,12 +573,24 @@ type homeView struct {
 	msg     string
 	msgPath string
 
-	// wide says the frame is wide enough to hold the detail column
-	// ([homeMinDetail]), settled by the draw before the column is built exactly as
-	// [homeView.phone] is. It is here because ONE law needs it: the two zones keep
-	// their labels over nothing at this tier and vanish whole below it
+	// tier is which of home's three shapes this frame has room for — the list
+	// alone, the list and a card, or the zones in a column of their own beside
+	// both (homebridge.go's [homeTierAt]) — settled by the draw before the column
+	// is built exactly as [homeView.phone] is. The shape decides what the column
+	// HOLDS and not only where it is drawn: the zones keep their labels over
+	// nothing at the two wider tiers and vanish whole below them
 	// (homeattention.go).
-	wide bool
+	tier homeTier
+	// zoneTop and zoneRows belong to the zones' own column at [homeTierColumns]:
+	// which of its rows it is showing, and which line of it landed on each screen
+	// row so a press can find one (homebridge.go). Both are meaningless at every
+	// narrower tier, where the zones are strips inside the one column [top] and
+	// the frame's own hit map already answer for.
+	zoneTop  int
+	zoneRows []int
+	// spin is the ONE line on this page that animates, and [homeRest] when
+	// nothing on it is moving (homespinner.go).
+	spin int
 
 	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
 	// the inbox, the triage sections somebody folded, the machine's news as the
@@ -663,7 +672,7 @@ func (a *app) openHome() tea.Cmd {
 		world:        session.ReadWorld(a.placesRoot()),
 		seen:         session.LastLook(a.placesRoot()),
 		bucket:       homeBucketOf(a.file),
-		wide:         a.homeWide(),
+		tier:         a.homeTierNow(),
 		hover:        -1,
 		last:         map[string]session.Summary{},
 		news:         map[string]homeNewsCache{},
@@ -682,7 +691,7 @@ func (a *app) openHome() tea.Cmd {
 	// projects this has to answer for ([homeView.readGone]).
 	a.home.readGone()
 	a.home.build()
-	a.home.point(a.file)
+	a.home.openAt(a.file)
 	a.refreshHomeRepo(time.Now())
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
@@ -748,7 +757,7 @@ func (a *app) landHome() {
 		world:     world,
 		seen:      session.LastLook(a.placesRoot()),
 		bucket:    homeBucketOf(a.file),
-		wide:      a.homeWide(),
+		tier:      a.homeTierNow(),
 		hover:     -1,
 		last:      map[string]session.Summary{},
 		expanded:  map[string]bool{},
@@ -758,13 +767,11 @@ func (a *app) landHome() {
 	a.readStandBands()
 	a.home.readGone()
 	a.home.build()
-	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS IN, which is the
-	// resume picker's law and it matters more here: enter is a confirm key, and
-	// a screen that greeted somebody with the cursor on a stranger's row would
-	// make the cheapest keystroke on it the wrong one. Landed on the row you
-	// were already in, enter and esc mean the same calm thing — go on with what
-	// I was doing (resume.go's [roster.start] holds the original of this).
-	a.home.point(a.file)
+	// AND THE CURSOR OPENS ON NOTHING, which is the greeting's own law said one
+	// way further ([homeView.openAt]): the first thing on the screen is the
+	// machine's card rather than a row, and esc still means what it always meant
+	// here — go on with what I was doing.
+	a.home.openAt(a.file)
 	// AND THE WELCOME BOX RETIRES WITHOUT EVER DRAWING. Its right column is the
 	// four most recent conversations in this directory, and home's left column
 	// is every conversation in every project — the same rows and more, under a
@@ -1911,6 +1918,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch msg.String() {
 	case "tab":
+		// bridge lane: AT THE COLUMNS TIER TAB IS THE KEY BETWEEN THE ZONES —
+		// `needs you`, `moving`, the places, and the errand in the pane when there
+		// is one to talk to (homebridge.go's [homeView.tab]). It is named on the
+		// line under the foot at that tier and at no other.
+		if a.homeTab() {
+			return nil
+		}
 		// THE OTHER HALF OF THE TOGGLE, and it is about the row under the
 		// cursor: tab takes the keyboard into the exchange the pane is drawing.
 		// With the cursor anywhere else there is one zone and nothing to toggle,
@@ -2178,6 +2192,11 @@ func (h *homeView) rebuild() {
 // disagree. The phone's inbox is homephone.go's; every wider frame is
 // [homeView.buildWorld]'s, untouched.
 func (h *homeView) buildFor() {
+	// bridge lane: whichever shape the column takes, THE ONE MOVING CELL is
+	// chosen with the lines rather than at the draw (homespinner.go). It is
+	// settled here, in the one place both fillers pass through, for the reason
+	// they both pass through it.
+	defer func() { h.spin = h.spinAt() }()
 	if h.phone {
 		h.buildPhone()
 		return
@@ -2715,6 +2734,14 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		return a.exchangePress(column, row)
 	}
 	at := hits[y]
+	// bridge lane: at [homeTierColumns] this screen row also carries a row of the
+	// zones' column, and which of the two a press meant is a question about the x
+	// (homebridge.go). Everything below acts on the line it lands on and cannot
+	// tell which column that line was drawn in — a zone row is a door of the kind
+	// it always was.
+	if zoned, ok := a.homeZoneHit(x, y); ok {
+		at = zoned
+	}
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
 	}
@@ -2874,7 +2901,14 @@ func (a *app) homeHover(x, y int) {
 	// the pane's side, exactly as it does for a press ([app.homePane]).
 	left, right := homeColumns(width)
 	if !inPane && (right <= 0 || x < left) && y >= 0 && y < len(hits) {
-		if at := hits[y]; at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
+		at := hits[y]
+		// bridge lane: and the zones' column is hit-tested the way the press does
+		// it, so the row that lights up is the row a click would take
+		// (homebridge.go).
+		if zoned, ok := a.homeZoneHit(x, y); ok {
+			at = zoned
+		}
+		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
 	}
@@ -2907,9 +2941,12 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// attention lane: the zones' stable-geography law is a width law too, so the
 	// second tier is settled in the same breath and by the same rule — the shape
 	// of the column is decided before the column is drawn (homeattention.go).
-	phone, wide := layoutTier(width) == tierPhone, width >= homeMinDetail
-	if phone != a.home.phone || wide != a.home.wide {
-		a.home.phone, a.home.wide = phone, wide
+	// bridge lane: and the third tier is settled in the same breath and the same
+	// place, because it is the same kind of fact — one width, one shape, decided
+	// before the lines are made (homebridge.go).
+	phone, tier := layoutTier(width) == tierPhone, homeTierAt(width)
+	if phone != a.home.phone || tier != a.home.tier {
+		a.home.phone, a.home.tier = phone, tier
 		a.home.build()
 	}
 	if a.home.phone {
@@ -2922,10 +2959,16 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// the right column was drawn there, and -1 everywhere else. Only the body
 	// ever fills it in.
 	var panes []int
+	// zones is the same map for the ZONES' column, which at [homeTierColumns]
+	// shares its screen rows with the list beside it: one row of the frame now
+	// answers for two lines, and the x is what tells them apart
+	// (homebridge.go's [app.homeZoneHit]).
+	var zones []int
 	add := func(text string, hit int) {
 		lines = append(lines, text)
 		hits = append(hits, hit)
 		panes = append(panes, -1)
+		zones = append(zones, -1)
 	}
 
 	// THE TOP LINE IS THE PULSE (pulse.go): this program on the left, and on the
@@ -2952,11 +2995,12 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	}
 
 	left, right := homeColumns(width)
-	a.home.top = listTop(a.home.cursor, a.home.top, len(a.home.lines), room)
+	a.homeWindow(room)
 	body := a.homeBody(left, right, room, pal)
 	for _, drawn := range body {
 		add(drawn.text, drawn.hit)
 		panes[len(panes)-1] = drawn.pane
+		zones[len(zones)-1] = drawn.zone
 	}
 	add("", -1)
 
@@ -3021,9 +3065,11 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		keep := lines[:1]
 		keepHits := hits[:1]
 		keepPanes := panes[:1]
+		keepZones := zones[:1]
 		lines = append(keep, lines[len(lines)-(height-1):]...)
 		hits = append(keepHits, hits[len(hits)-(height-1):]...)
 		panes = append(keepPanes, panes[len(panes)-(height-1):]...)
+		zones = append(keepZones, zones[len(zones)-(height-1):]...)
 	}
 	for len(lines) < height {
 		add("", -1)
@@ -3032,7 +3078,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// the draw for the reason [standingCard.choiceRow] is: the press and the
 	// hover resolve against what this frame actually drew, so a stale map is a
 	// click answering for a row that has moved.
-	a.home.pane = panes
+	a.home.pane, a.home.zoneRows = panes, zones
 	return lines, hits, caretX, caretY
 }
 
@@ -3043,21 +3089,37 @@ type homeDrawn struct {
 	hit  int
 	// pane is which row of the right column landed on this screen line, or -1.
 	pane int
+	// zone is which line of the ZONES' column landed on it, or -1 — the same
+	// answer for the first of the three columns that `hit` is for the second
+	// (homebridge.go).
+	zone int
 }
 
-// homeColumns splits the frame: the list on the left and the focused
-// conversation on the right, with the detail dropped entirely on a frame too
-// narrow to hold two readable columns ([homeMinDetail]).
+// homeColumns splits the frame: everything the list has on the left and the
+// card on the right, with the detail dropped entirely on a frame too narrow to
+// hold two readable columns ([homeMinDetail]).
+//
+// AT THE COLUMNS TIER THE LEFT HALF IS TWO COLUMNS, and this still answers for
+// both of them as one number: the card's edge is measured off the WIDTH and
+// never off what the zones found, so it stands in the same cell whether the
+// zones are drawn beside the list or the list has taken their room
+// (homebridge.go's [homeView.threeColumns]). Everything that resolves a pointer
+// against the card — the press, the hover, the pane — reads this and needs to
+// know nothing about the tier.
 func homeColumns(width int) (left, right int) {
 	if width < homeMinDetail {
 		return width, 0
 	}
-	left = width / 2
-	if left > 46 {
-		left = 46
+	if width >= homeMinColumns {
+		zone, places, card := homeThreeColumns(width)
+		return zone + homeGutter + places, card
 	}
-	if left < 30 {
-		left = 30
+	left = width / 2
+	if left > homeListCap {
+		left = homeListCap
+	}
+	if left < homeListFloor {
+		left = homeListFloor
 	}
 	right = width - left - homeGutter
 	if right < homeDetailFloor {
@@ -3088,7 +3150,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 			if i < len(pane) {
 				text = pane[i]
 			}
-			drawn = append(drawn, homeDrawn{text: text, hit: -1, pane: i})
+			drawn = append(drawn, homeDrawn{text: text, hit: -1, pane: i, zone: -1})
 		}
 		return drawn
 	}
@@ -3112,7 +3174,11 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// would take the outcome, the last line said and the arithmetic off the card
 	// entirely and leave a title floating in the middle of the frame. The list is
 	// the thing typing is about; the card beside it reads top down, as a card does.
-	column := a.homeList(left, room, pal)
+	// bridge lane: at [homeTierColumns] this is TWO columns rather than one — the
+	// zones in their own, the places beside them — and it comes back the same
+	// shape either way, so nothing below this line knows which it got
+	// (homebridge.go's [app.homeLeft]).
+	column := a.homeLeft(left, room, pal)
 	lift := a.homeLift(len(column), room)
 	var detail []string
 	if right > 0 {
@@ -3120,9 +3186,9 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	}
 	drawn := make([]homeDrawn, 0, room)
 	for i := 0; i < room; i++ {
-		text, hit, pane := "", -1, -1
+		text, hit, pane, zone := "", -1, -1, -1
 		if at := i - lift; at >= 0 && at < len(column) {
-			text, hit = column[at].text, column[at].hit
+			text, hit, zone = column[at].text, column[at].hit, column[at].zone
 		}
 		if right > 0 && i < len(detail) {
 			// THE PANE'S ROWS ARE THE BODY'S ROWS, ONE FOR ONE. The detail
@@ -3143,7 +3209,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 			}
 			text += strings.Repeat(" ", pad+homeGutter) + detail[i]
 		}
-		drawn = append(drawn, homeDrawn{text: text, hit: hit, pane: pane})
+		drawn = append(drawn, homeDrawn{text: text, hit: hit, pane: pane, zone: zone})
 	}
 	return drawn
 }
@@ -3174,11 +3240,32 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 		if h.searching() {
 			word = homeNoMatchWord
 		}
-		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1}}
+		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1, zone: -1}}
+	}
+	return a.homeRows(h.top, len(h.lines), width, room, pal)
+}
+
+// homeRows is ONE column's window of the line list: at most room rows, from
+// `top`, stopping short of `end`.
+//
+// THE END IS A PARAMETER BECAUSE THE LIST IS DRAWN IN TWO PLACES NOW. At
+// [homeTierColumns] the zones are a column of their own and the places are the
+// column beside it, both windows onto the one list of lines (homebridge.go), and
+// a row of either is drawn by the same [app.homeLine] against the width its own
+// column has.
+func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
+	h := &a.home
+	if top < 0 {
+		top = 0
+	}
+	if end > len(h.lines) {
+		end = len(h.lines)
 	}
 	drawn := make([]homeDrawn, 0, room)
-	for at := h.top; at < len(h.lines) && len(drawn) < room; at++ {
-		drawn = append(drawn, homeDrawn{text: a.homeLine(h.lines[at], at, width, pal), hit: at, pane: -1})
+	for at := top; at < end && len(drawn) < room; at++ {
+		drawn = append(drawn, homeDrawn{
+			text: a.homeLine(h.lines[at], at, width, pal), hit: at, pane: -1, zone: -1,
+		})
 	}
 	return drawn
 }
@@ -3282,7 +3369,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// opens home would watch their own row say the wrong thing for five seconds
 	// ([app.homeTrue]).
 	row := a.homeTrue(line.row)
-	label := a.homeRowGlyph(row) + " " + homeName(row)
+	label := a.homeRowGlyph(row, a.homeSpins(at)) + " " + homeName(row)
 	note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeRowGone(row),
 		a.homeFresh(row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
@@ -3557,12 +3644,17 @@ func homeNote(row session.SessionRow, held, ours, gone bool, fresh int, now time
 // homeRowGlyph is [homeGlyph] with the two facts only the app can add: the
 // frame count that turns a running row's spinner, and the look stamp that earns
 // a resting row the tick (the glyph block above says why each exists).
-func (a *app) homeRowGlyph(row session.SessionRow) string {
+//
+// bridge lane: AND WHETHER THIS ROW IS THE ONE THAT MOVES. A running row that is
+// not the page's one spinner keeps `●`, which is the still tier of the same fact
+// and what [homeGlyph] already answers for it — so the law costs this function a
+// condition and no vocabulary (homespinner.go).
+func (a *app) homeRowGlyph(row session.SessionRow, spins bool) string {
 	if row.NeedsPerson() {
 		return homeGlyph(row, a.pal.ascii)
 	}
-	if row.Tasks.Running > 0 && !a.linear {
-		return tokens.Spinner(a.paints / spinnerStep)
+	if row.Tasks.Running > 0 && spins {
+		return a.homeSpinGlyph()
 	}
 	if row.Tasks.Running == 0 && row.Tasks.Incomplete == 0 && a.homeFresh(row) > 0 {
 		if a.pal.ascii {
@@ -3995,7 +4087,17 @@ func (a *app) homeLast(row session.SessionRow) string {
 
 // homeHint is the line under the foot: what the keyboard does, and what the box
 // will do with what is in it.
+//
+// bridge lane: and it gains ONE clause at the widest tier, where there is a key
+// that does not exist at any other — tab, between the zones (homebridge.go). It
+// is added here rather than written into each sentence below so that a hint and
+// the frame it is drawn under can never disagree about which tier this is.
 func (a *app) homeHint() string {
+	return homeHintWithTab(a.homeHintWords(), a.homeTabbable())
+}
+
+// homeHintWords is that line before the tier's own key is put on it.
+func (a *app) homeHintWords() string {
 	if ex := a.paneExchange(); ex != nil {
 		if ex.focused {
 			return exchangeHint(ex)

@@ -24,9 +24,12 @@ you leave.
 ## Why did a dashboard open when I started aforge — home greets you
 
 **Home is the first thing you see when you open aforge.** The conversation your launch
-would have opened is loaded and waiting underneath it: `esc` drops straight into it, and so
-does `enter` on the row you are already standing on, which is where the cursor starts. In
+would have opened is loaded and waiting underneath it: `esc` drops straight into it. In
 effect the launch is the launch you always had, with home already open on top of it.
+
+**The cursor starts on no row at all** — home opens at rest, so the first thing you see is
+the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` or
+`tab` walks into the list; `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -61,7 +64,8 @@ Once you are in a conversation, `/home` opens the screen whenever you want it.
 
 ## Everything I have ever worked on — what home shows
 
-Two columns, no borders.
+Two columns, no borders — three of them on a frame 110 columns or wider (see *The three
+columns on a wide home*).
 
 **On the left**, the projects on this machine, in **two tiers**. **With nothing typed the
 list hangs from the top of the frame**, as a page you are reading should:
@@ -94,19 +98,21 @@ Home was an unorganised wall before this: every project on the machine got a hea
 four rows, most of them saying `elsewhere`, and the one project you could actually act in
 was wherever recency happened to put it.
 
-The cursor opens on the conversation this window is in, and the preview on the right
-follows it — **or follows your mouse pointer**, whenever the pointer is resting on a row of
-the list. The pane shows the row under the pointer while the pointer is on one, and the
+The cursor opens on **no row at all** — home opens at rest, with the machine's own card on
+the right (*Home opens at rest*). Once you move it, the preview on the right follows the
+cursor — **or follows your mouse pointer**, whenever the pointer is resting on a row of the
+list. The pane shows the row under the pointer while the pointer is on one, and the
 cursor's row otherwise.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
 spoke in it — or `open` where **this** terminal is holding the conversation behind the one
 on screen, or `another window` where a *different* terminal is sitting on it and this one
 therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
-on you, a **turning spinner** where something is running this instant, `◌` work was left
+on you, `●` something is running in it, `◌` work was left
 unfinished, `✓` work landed since you last looked (see *What landed while I was away*),
-`○` at rest. In screen-reader (linear) mode nothing animates and they are `!`, `*`, `o`,
-`+` and `-`.
+`○` at rest. **Exactly one row on the whole screen turns** — the most recently active one,
+which wears the spinner instead of its `●` (see *Why does only one row spin*). In
+screen-reader (linear) mode nothing animates and the glyphs are `!`, `*`, `o`, `+` and `-`.
 
 The left list stays deliberately calm — every row is dim except the one the cursor is on,
 which takes the highlight. The one exception is `waiting on you`, which is brought up out
@@ -172,7 +178,27 @@ tie. The row is `●`, the name, the project, and how long it has been going. **
 then `▸ …N more`**, which `enter` or a click opens in place, exactly like every other fold
 here; the rest are all in the list below anyway.
 
-`●` is still here rather than turning. The spinner is the list's.
+Most of these rows hold a still `●`. One of them turns — see *Why does only one row spin*.
+
+## Why does only one row spin — the one spinner on home
+
+However many things are moving on the machine, **exactly one row on home animates**: the
+one that started most recently. Every other live row — in `moving`, under its project, an
+`ask here` errand mid-turn — holds the still `●` instead.
+
+Two reasons, and they are the same reason:
+
+- **Calm.** Eleven braille cells turning at once in three columns is a screen you cannot
+  glance at, and one moving cell says *this machine is working* exactly as well.
+- **A flat wire.** Home is otherwise a still page redrawn every three seconds. The frame
+  the spinner costs is the same frame whether one thing is running or twenty, so a busy
+  machine costs an ssh connection no more than a quiet one.
+
+When the `moving` zone is on the screen, the spinner is in it — that zone's whole subject
+is what is happening right now. The zone itself is ordered **busiest first**; the spinner
+goes to the most recent, and those are two different questions on purpose.
+
+In screen-reader (linear) mode nothing turns at all.
 
 ## Are the strips there when nothing is happening
 
@@ -187,6 +213,53 @@ headings, no tiers.
 
 A machine with no conversations on it yet has neither strip: it says
 `nothing here yet — say something and this fills up` and nothing else.
+
+## The three columns on a wide home — needs you, the projects, the card
+
+At **110 columns and wider** the two strips stop standing over the list and take a **column
+of their own** on the left. Home is then three columns and no borders — the separation is
+made of alignment and space:
+
+```
+ aforge                                        on watch · 4 orders · $1.10 today · fri 9:41
+ ──────────────────────────────────────────────────────────────────────────────────────────
+  needs you                    aforge                         keeping an eye on
+  ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
+  moving                       ○ rename plan      yesterday   since you left
+  ● port sweep          8m     hax-sdk                        ◆ 2 tasks landed        aforge
+                               ▲ schema migration        2h   today
+                               ─ elsewhere ─                  3 chats · 5 tasks · $1.10
+ ──────────────────────────────────────────────────────────────────────────────────────────
+  type to search or start something new · ↑↓ pick · enter open
+  ↑↓ move · enter open · tab next zone · esc close
+```
+
+- **Left — what needs you, and what is moving.** The same two zones, the same rows, the
+  same doors: `enter` opens the thing, `1`/`2`/`3` answer a question on it, a click selects
+  it. Rows here are short — the name, then how long it has been waiting or running, with
+  the project where there is room for it. The card on the right is that row's card.
+- **Middle — the projects.** The list, unchanged: headings, conversations, the things
+  keeping an eye on each project, the quiet folds and the `elsewhere` block. It is the
+  **widest** column at every width, because it is the one holding everything.
+- **Right — the card.** Always a card, never a second list: the row the cursor is on, or
+  the machine's own with the cursor on no row.
+
+**`tab` moves between the zones** — `needs you`, then `moving`, then the list, then round
+again — and lands on the first row of each. A zone with nothing in it is skipped, because
+its label is not a row. The foot names the key at this width: `tab next zone`. `esc` still
+closes home from wherever the cursor is.
+
+`↑` and `↓` walk **every** row on the page in reading order — down through the zones on the
+left, then into the list — so nothing needs `tab` to be reachable.
+
+The narrower shapes are the same screen folded down:
+
+| Frame | What home draws |
+|---|---|
+| 110 columns and wider | three columns: the zones, the projects, the card |
+| 80–109 | the zones as two strips **above** the list, and the card beside it |
+| 60–79 | the list alone, full width — no card, no strips over nothing |
+| under 60 | the phone shape: one stacked column and a sheet (*Home on a phone*) |
 
 ## Why are most projects collapsed on home — the elsewhere block
 
@@ -277,12 +350,28 @@ money. The clock always draws.
 The count on this line and the rows on the machine's card are **one reading**, taken once
 every three seconds: the top line cannot say `4 orders` over a card that lists three.
 
+## Home opens at rest — the cursor starts on no row
+
+**Home opens with the cursor on nothing.** No row is highlighted, `enter` has nothing to
+open, and the right side is **the machine's own card** — what is keeping an eye on things,
+what happened since you left, what the day has come to. The morning glance is the default
+view rather than somewhere you navigate to.
+
+The first `↓` — or `tab` — walks into the top of `needs you`, or into the list where
+nothing is waiting. `↑` off the top row of the list comes back out to rest again, and the
+three-second rescan leaves the cursor where you left it either way. On a frame too narrow
+for a card (under 80 columns) home opens on the conversation this window is in, because
+there is no card there to open onto.
+
+`esc` from rest does what `esc` always does here: back to the conversation you came from.
+
 ## The machine's own card — what the right side shows with the cursor on no row
 
-Press `↑` on the top row of the left column and the cursor **leaves the list**. Nothing is
-highlighted, `enter` has nothing to open, and the right side becomes **the machine's own
-card** — the morning glance. `↓` walks straight back into the first row. The card stays put
-while you read it — the three-second rescan leaves the cursor off the list.
+This is the card home opens on, and the one you get back by pressing `↑` off the top row of
+the left column: the cursor **leaves the list**, nothing is highlighted, `enter` has nothing
+to open, and the right side is **the machine's own card** — the morning glance. `↓` walks
+straight back into the first row. The card stays put while you read it — the three-second
+rescan leaves the cursor off the list.
 
 It is three bands, each drawn only if it has anything to say:
 

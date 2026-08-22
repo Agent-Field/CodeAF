@@ -727,7 +727,9 @@ you type.
 
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
-`pgup`/`pgdown` jump four · `enter` acts on the row under the cursor · `backspace`,
+`pgup`/`pgdown` jump four · `enter` acts on the row under the cursor · **`tab` moves to the
+next zone** on a frame 110 columns or wider, where home draws three columns — `needs you`,
+`moving`, the list, then round again; the foot names it `tab next zone` · `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
