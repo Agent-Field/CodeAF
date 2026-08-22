@@ -344,6 +344,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// a person can tell that this is not several terminals, and it is paid on
 	// the switch rather than on the frame.
 	a.replay()
+	a.noteStandingHere()
 	a.measureContext()
 	// The rail is rebuilt from the engine's own index rather than carried, which
 	// is the same door the "@" completion reads (taskmention.go).
