@@ -88,7 +88,7 @@ func TestVisionModelResolutionOrder(t *testing.T) {
 		{"id":"first/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
 		{"id":"talk/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
 		{"id":"work/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
-		{"id":"qwen/qwen3.5-vl-32b-instruct","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+		{"id":"google/gemini-3.7-flash","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
 		{"id":"text/only","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`)
 	if got := configured.ResolveVisionModel(models, "talk/vision", "work/vision"); got != "talk/vision" {
 		t.Fatalf("vision talk preference = %q", got)

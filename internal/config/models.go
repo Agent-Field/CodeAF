@@ -43,7 +43,7 @@ var bestMediaPreferences = map[string][]string{
 	// tool argument for "the best pair of eyes", and the price tie-break the
 	// generation slots fall back on is exactly wrong here — the most expensive
 	// model that can see is not the one a fallback should quietly choose.
-	"vision":     {preferredVisionModel},
+	"vision":     {preferredVisionModel, fallbackVisionModel},
 	"voice":      {DefaultVoiceModel},
 	"transcribe": {DefaultVoiceModel},
 	"listen":     {preferredPerceptionModel},
@@ -95,7 +95,43 @@ func CandidateMediaModel(models *catalog.Catalog, modality string) string {
 			}
 		}
 	}
+	// The preference list missed — every curated name has left the catalog —
+	// and the election falls to catalog order, which is newest-first. Newest
+	// is where the experiments live: rows named -exp, -preview, :free, or a
+	// stealth vendor, whose endpoints are often gated behind a data-policy
+	// opt-in most accounts have not made, so a fallback nobody chose would
+	// land every call on a 404 about privacy settings. A row that advertises
+	// itself as provisional is passed over while any settled row exists; when
+	// the whole modality is experiments, the first one is still the answer.
+	for _, candidate := range candidates {
+		if !provisionalModelID(candidate.ID) {
+			return candidate.ID
+		}
+	}
 	return candidates[0].ID
+}
+
+// provisionalModelID reads the markers vendors put in a slug to say "do not
+// depend on this": experimental and preview suffixes, the free tier, alpha and
+// beta tags, and the stealth vendor whose whole catalog is auditions. It is a
+// PREFERENCE among capable rows and never a capability claim — the catalog
+// stays the only authority on what a model can do; this only decides which of
+// several equally capable rows a fallback nobody chose should reach for first.
+func provisionalModelID(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if strings.HasPrefix(id, "stealth/") {
+		return true
+	}
+	if strings.HasSuffix(id, ":free") {
+		return true
+	}
+	for _, token := range modelTokens(id) {
+		switch token {
+		case "exp", "experimental", "preview", "alpha", "beta":
+			return true
+		}
+	}
+	return false
 }
 
 // FallbackMediaModel is the curated rung, and empty for a modality this build

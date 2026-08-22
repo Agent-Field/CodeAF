@@ -1132,12 +1132,16 @@ the names at the head of each list — what an `automatic` row actually gets:
 | speaks | `fish-audio/s1` |
 | composes | `google/lyria-3-pro-preview` |
 | films | `bytedance/seedance-2.0-mini` |
-| looks at an image | `qwen/qwen3.5-vl-32b-instruct` |
+| looks at an image | `google/gemini-3.7-flash` |
 
 Each list has older names under its leader — `hexgrad/kokoro-82m` and
 `openai/gpt-4o-mini-tts` under speech, `google/lyria-3-clip-preview` under music,
-`bytedance/seedance-1-5-pro` under video — used when your catalog does not advertise the
-leader. **These are defaults, not choices made for you**: a row you set, or the matching
+`bytedance/seedance-1-5-pro` under video, `qwen/qwen3.8-27b` under looking — used when
+your catalog does not advertise the leader. When the whole list misses, the catalog's own
+rows are used — settled ones first: a row whose name marks it experimental (`-exp`,
+`-preview`, `:free`, alpha, beta, a stealth vendor) is passed over while any ordinary row
+can do the job, because those rows often sit behind a data-policy opt-in your provider
+account may not have made. **These are defaults, not choices made for you**: a row you set, or the matching
 environment variable, wins over every one of them and is never overwritten.
 
 **Every step is checked against what the catalog says the model can do.** A row or a pin

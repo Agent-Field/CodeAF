@@ -134,7 +134,17 @@ const (
 	preferredVideoModel = "bytedance/seedance-2.0-mini"
 	fallbackVideoModel  = "bytedance/seedance-1-5-pro"
 
-	preferredVisionModel = "qwen/qwen3.5-vl-32b-instruct"
+	// preferredVisionModel is the remembered pair of eyes, and it earns its
+	// keep by being BORING: a stable, paid, multi-endpoint row. Its previous
+	// value (qwen/qwen3.5-vl-32b-instruct) quietly left the catalog, the
+	// preference missed, and the election fell to the newest row in catalog
+	// order — an -exp model whose only endpoints the account's data policy
+	// refused, so every look failed with a 404 about privacy settings. The
+	// fallback list in models.go keeps a second name under this one.
+	preferredVisionModel = "google/gemini-3.7-flash"
+	// fallbackVisionModel is the second pair of eyes, from a different vendor
+	// on different endpoints, for a catalog where Google's row is missing.
+	fallbackVisionModel = "qwen/qwen3.8-27b"
 
 	// preferredPerceptionModel is the remembered name for the two slots that
 	// hand a chat model a sound or a film and read back a sentence about it. It

@@ -110,6 +110,42 @@ func TestBestMediaModelFollowsThePreferenceOrderThenPrice(t *testing.T) {
 	}
 }
 
+// When every curated name has left the catalog, the election falls to catalog
+// order — which is newest-first, and newest is where the experiments live. A
+// row that advertises itself as provisional (-exp, -preview, :free, a stealth
+// vendor) often sits behind a data-policy opt-in the account has not made, so
+// a fallback nobody chose reaches for a settled row first. This is exactly how
+// the looking model once landed on an -exp row whose every call 404ed about
+// privacy settings.
+func TestCandidateMediaModelPassesOverProvisionalRows(t *testing.T) {
+	eyes := `"architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}`
+	models := runtimeCatalog(t, `
+		{"id":"vendor/newest-eyes-exp",`+eyes+`},
+		{"id":"stealth/audition",`+eyes+`},
+		{"id":"vendor/notes-preview",`+eyes+`},
+		{"id":"vendor/open-eyes:free",`+eyes+`},
+		{"id":"vendor/settled-eyes",`+eyes+`}`)
+	if got := CandidateMediaModel(models, "vision"); got != "vendor/settled-eyes" {
+		t.Fatalf("candidate = %q, want the settled row past every experiment", got)
+	}
+
+	// A modality that is nothing but experiments still answers: a provisional
+	// pair of eyes beats none at all.
+	onlyExperiments := runtimeCatalog(t, `{"id":"vendor/eyes-exp",`+eyes+`}`)
+	if got := CandidateMediaModel(onlyExperiments, "vision"); got != "vendor/eyes-exp" {
+		t.Fatalf("candidate = %q, want the only row however provisional", got)
+	}
+
+	// The curated preference order still outranks the hygiene: a name this
+	// build vouches for is taken wherever it sits in the catalog.
+	preferred := runtimeCatalog(t, `
+		{"id":"vendor/newest-eyes-exp",`+eyes+`},
+		{"id":"google/gemini-3.7-flash",`+eyes+`}`)
+	if got := CandidateMediaModel(preferred, "vision"); got != preferredVisionModel {
+		t.Fatalf("candidate = %q, want the curated preference %q", got, preferredVisionModel)
+	}
+}
+
 func TestResolveMediaModelReadsAllThreeSpellingsAndRefusesWrongModality(t *testing.T) {
 	models := runtimeCatalog(t, `
 		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.02"}},
