@@ -6,15 +6,18 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
-// standingHereAgent is the optional door onto the orders governing the
-// conversation. Scripted agents that predate standing orders remain valid.
-type standingHereAgent interface {
+// standingCountAgent is the one door the threshold needs: how many orders
+// stand here. It is DELIBERATELY NARROWER than the page's [standingHereAgent]
+// — the threshold only reads, and an agent that can be counted over but not
+// written to (a test's fake, a surface with no write doors) still gets its
+// line. Each surface asserts the slice of the engine it actually uses.
+type standingCountAgent interface {
 	StandingHere() (stand []standing.Item, excepted []standing.Item)
 }
 
 // noteStandingHere marks the threshold once when a conversation is opened.
 func (a *app) noteStandingHere() {
-	agent, ok := a.agent.(standingHereAgent)
+	agent, ok := a.agent.(standingCountAgent)
 	if !ok {
 		return
 	}
