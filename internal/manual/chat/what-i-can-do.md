@@ -248,7 +248,7 @@ closed — "tell me when CI goes red", "every Monday draft the update", "keep ma
 green" — a watch is the wrong tool and there is a right one: see the
 keeping-an-eye page.
 
-## Can you tell me when something has finished — when it goes quiet or stops changing?
+## Can you tell me when something has finished — how do I know it went quiet or stopped changing?
 
 Yes: `watch` with `on=quiet`. It is the inverse of every other mode — the news is
 the output **not** moving. Use it for the very large class of things that finish

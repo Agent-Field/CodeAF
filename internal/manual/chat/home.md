@@ -5,9 +5,10 @@
 Type `/home`. It takes the whole screen and shows **every project on this machine and
 every session in them**, not just the folder this window was started in.
 
-The top line reads `home`, with `esc close` on the right. `esc` puts you back in exactly
-the chat you came from, untouched — nothing was closed and nothing was sent while you were
-looking.
+The top line reads `aforge` on the left, with the machine's own vital signs dim on the
+right — `on watch · 4 orders · $1.10 today · fri 9:41am` (its own section below). The way out
+is named at the foot, on the hint line: `esc close`. `esc` puts you back in exactly the chat
+you came from, untouched — nothing was closed and nothing was sent while you were looking.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
@@ -183,6 +184,79 @@ thing.
 The right-hand pane, while the cursor is on a project's line, shows the project's own
 card: its name, and the folder it lives in.
 
+## The line at the top of home — the pulse, on watch, orders, spend today, the clock
+
+The top line of home is the program's name and, right-aligned and dim, what is true of the
+**whole machine** right now:
+
+```
+ aforge                          on watch · 4 orders · $1.10 today · fri 9:41am
+```
+
+- `on watch · 4 orders` — the **standing orders** active across every project:
+  reminders, routines, watches, the things keeping an eye on something for you. The words
+  brighten slightly while a check or a firing is actually in flight, the way the status
+  line's own `keeping an eye on 2` does.
+- `$1.10 today` — what the machine has spent **since midnight**: the tasks that ran and the
+  standing things that fired. It turns amber once you are four fifths of the way through
+  your daily allowance, and it never prints a fraction — what the day is allowed is on the
+  machine's card, and nowhere else.
+- `fri 9:41am` — the day and the time.
+
+**Every segment but the clock disappears unless it is true.** Nothing standing means no
+`on watch` at all — never `0 orders` — and a day that has cost nothing says nothing about
+money. The clock always draws.
+
+The count on this line and the rows on the machine's card are **one reading**, taken once
+every three seconds: the top line cannot say `4 orders` over a card that lists three.
+
+## The machine's own card — what the right side shows with the cursor on no row
+
+Press `↑` on the top row of the left column and the cursor **leaves the list**. Nothing is
+highlighted, `enter` has nothing to open, and the right side becomes **the machine's own
+card** — the morning glance. `↓` walks straight back into the first row. The card stays put
+while you read it — the three-second rescan leaves the cursor off the list.
+
+It is three bands, each drawn only if it has anything to say:
+
+```
+keeping an eye on
+◦ tests sweep                in 2h
+◦ weekly review            mon 8am
+
+since you left
+◆ 2 tasks landed             aforge
+◆ the cert expires in 9 days hax-sdk
+
+today
+  3 chats · 5 tasks · $1.10 of $5.00
+```
+
+- **`keeping an eye on`** — every active standing order on **every** project, soonest
+  first, each with its next due time (`in 2h`) or the cadence you asked for
+  (`mon 8am`). Anything **waiting on you** is deliberately not here: that is a job for you
+  rather than a thing being watched, and it belongs with the rest of what needs you. Paused
+  and stopped things are not here either. Past four, the rest fold to
+  `▸ …3 more keeping an eye`.
+- **`since you left`** — everything that happened across all your projects while you were
+  not looking: news a standing thing left in a conversation or a project, and work that
+  landed after you last spoke there. It is the same list the phone-shaped home shows under
+  the same words. **Every row is a door**: click one and the conversation it names opens,
+  exactly as clicking that conversation on the left would. Past four rows, `▸ …N more
+  things`.
+- **`today`** — the local day: `3 chats · 5 tasks · $1.10 of $5.00`. Chats are the
+  conversations you spoke in today, tasks the work that ran today, and the money is what
+  that work cost. `of $5.00` is your **daily allowance** — the same budget everything
+  standing is held to — and this is the only place on the screen it appears.
+
+`m` on the machine's card opens every fold on it, and again closes them, exactly as it does
+on any other card here.
+
+**Nothing that is zero is drawn.** A day with no work in it says `2 chats` and stops; a
+machine nobody has touched today has no `today` band at all — never `0 chats · 0 tasks ·
+$0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
+side, which is the good news said with space.
+
 ## The pane on the right of home — the preview of the session under the cursor or pointer
 
 **On the right** is a preview of one row of the left column: **the row under your mouse
@@ -214,7 +288,8 @@ rather than by name alone. On a **folded project's line** it shows that project'
 instead — the project's name, and the folder it lives in. It goes **empty** — nothing drawn
 at all — when the row it is about is neither: a project's `…13 more` line, or the
 `start a new conversation` row, which has nothing to preview because that chat does not
-exist yet.
+exist yet. With the cursor on **no row at all** it is the machine's own card instead (its
+own section, above).
 
 A frame too short for all of that drops bands from the bottom — the facts go first — and
 never touches the name. Under 80 columns the right column is dropped entirely and the list
