@@ -304,9 +304,12 @@ func TestTypingTakesTheZonesAway(t *testing.T) {
 // THE MARK CARRIES THE MEANING AND THE TEXT STAYS CALM: `▲` in the question hue,
 // `●` in the still blue under it, and the name in ink either way.
 func TestTheZoneMarksAreTheOnlyColouredCells(t *testing.T) {
-	pal := newTestApp(&fakeAgent{model: "m"}).pal
-	ask := attentionMark(pal, attentionNeedsWord)
-	moving := attentionMark(pal, attentionMovingWord)
+	a := newTestApp(&fakeAgent{model: "m"})
+	pal := a.pal
+	// bridge lane: [homeRest] is a line number no row has, so both marks come
+	// back still — the one row that turns is chosen per page (homespinner.go).
+	ask := a.attentionMark(pal, attentionNeedsWord, homeRest)
+	moving := a.attentionMark(pal, attentionMovingWord, homeRest)
 	if ask == homeAskGlyph || moving == homeLiveGlyph {
 		t.Fatalf("a zone mark is unpainted: %q %q", ask, moving)
 	}

@@ -176,6 +176,18 @@ func (l *homeLab) launch(standing string, landing bool) *app {
 	return a
 }
 
+// openHomeOn opens home and stands the cursor on one conversation.
+//
+// HOME OPENS AT REST (homebridge.go's [homeView.openAt]) — on no row at all,
+// with the machine's own card on the right — which is right for a person
+// arriving at a dashboard and beside the point for a test whose subject is a
+// ROW. This puts the cursor where the first ↓ or the first click would put it,
+// so what follows is about the row it names and not about where home opens.
+func openHomeOn(a *app, transcript string) {
+	a.openHome()
+	a.home.point(transcript)
+}
+
 // mustFrame is the whole screen, whatever is on it — home, or the conversation
 // under it once home has gone.
 func mustFrame(a *app) string {
@@ -302,7 +314,7 @@ func TestHomeWillNotCallAStaleRowRunning(t *testing.T) {
 	})
 
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	row := a.home.focused()
 	if row.Tasks.Running != 0 {
 		t.Fatalf("home called %d rows running in a conversation nobody is holding", row.Tasks.Running)
@@ -375,7 +387,7 @@ func TestHomeCallsARowIncompleteWhenTheLiveSessionDoesNotNameIt(t *testing.T) {
 	lab.presence("-tmp-alpha", "aaaa000000000001", session.PresenceIdle, "", now)
 
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	row := a.home.focused()
 	if row.Tasks.Running != 0 || row.Tasks.Incomplete != 1 {
 		t.Fatalf("rolled up %d running / %d incomplete, want 0 / 1", row.Tasks.Running, row.Tasks.Incomplete)
@@ -400,7 +412,7 @@ func TestHomeDoesNotBelieveAStalePresence(t *testing.T) {
 		session.PresenceTask{ID: "7", Title: "Port the thing", State: "running"})
 
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	row := a.home.focused()
 	if row.Live {
 		t.Fatal("home believed a presence nobody had refreshed for a minute")
@@ -736,7 +748,10 @@ func homeRestLab(t *testing.T) (*app, string) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "an older one", "/tmp/alpha", now.Add(-2*time.Hour))
 	lab.session("-tmp-beta", "bbbb000000000001", "somewhere else", "/tmp/beta", now.Add(-3*time.Hour))
 	a := lab.app(mine)
-	a.openHome()
+	// The rest these tests are about is an empty BOX, not the cursor's own rest:
+	// they are about the shape of a home nobody is typing at, so the cursor
+	// stands on a row exactly as the first ↓ would leave it ([openHomeOn]).
+	openHomeOn(a, mine)
 	return a, mine
 }
 
@@ -794,11 +809,13 @@ func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
 	}
 }
 
-// AND IT IS STILL DRAWN ON A LAUNCH THAT GREETS YOU, which is the case that broke.
-// A session folder nobody has spoken in yet is not a row the world reports, so
-// the cursor cannot open on it — and where it lands instead must still be a
-// CONVERSATION, because that is what keeps the card beside it drawn.
-func TestAFreshLaunchStillRestsOnAConversationWithItsCard(t *testing.T) {
+// AND A LAUNCH THAT GREETS YOU OPENS AT REST, which is what became of the case
+// that broke. A session folder nobody has spoken in yet is not a row the world
+// reports, so the cursor never had a row to open on — it now opens on NO row at
+// all (homebridge.go's [homeView.openAt]), the card beside it is the machine's,
+// and the first ↓ finds a conversation with a card of its own rather than the
+// fold line that used to swallow it.
+func TestAFreshLaunchOpensAtRestAndTheFirstArrowFindsAConversation(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	// Enough conversations that the project collapses a tail — the fold line was
@@ -831,15 +848,21 @@ func TestAFreshLaunchStillRestsOnAConversationWithItsCard(t *testing.T) {
 	if !strings.Contains(homeText(a), "more") {
 		t.Fatal("nothing collapsed, so the fold line this guards against is not on the screen")
 	}
+	if !a.home.resting() {
+		t.Fatalf("a greeted launch did not open at rest:\n%s", homeText(a))
+	}
+	if subject, ok := a.homeSubject(); !ok || subject.kind != bandKindMachine {
+		t.Fatalf("the card at rest is %v (ok=%v), want the machine's", subject.kind, ok)
+	}
+	a.home.move(1)
 	line, ok := a.home.focusedLine()
 	if !ok || line.kind != homeSession {
-		t.Fatalf("a greeted launch rests the cursor on kind %v, want a conversation:\n%s",
-			line.kind, homeText(a))
+		t.Fatalf("the first ↓ landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
 	}
 	width, _ := a.size()
 	_, right := homeColumns(width)
 	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
-		t.Fatalf("a greeted launch draws no preview card:\n%s", homeText(a))
+		t.Fatalf("the row the first ↓ found draws no preview card:\n%s", homeText(a))
 	}
 }
 
@@ -855,7 +878,9 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 	lab.session("-tmp-gamma", "cccc000000000001", "nothing to do with it", "/tmp/gamma", now.Add(-9*time.Hour))
 
 	a := lab.app(mine)
-	a.openHome()
+	// The rest in the name is the BOX's, so the cursor stands on a row exactly as
+	// the first ↓ would leave it ([openHomeOn]).
+	openHomeOn(a, mine)
 	_, height := a.size()
 
 	// AT REST: up in the list, well clear of the box, and on a conversation. The
@@ -1124,7 +1149,7 @@ func TestTheDropUpDoesNotLiftTheCardWithIt(t *testing.T) {
 	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
 
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	titleRow := func() int {
 		width, height := a.size()
 		lines, _, _, _ := a.homeFrame(width, height)
@@ -1390,7 +1415,7 @@ func TestTheFactsFooterOmitsWhatIsNotAFact(t *testing.T) {
 	now := time.Now()
 	quiet := lab.session("-tmp-alpha", "aaaa000000000001", "just talking", "/tmp/alpha", now.Add(-2*time.Hour))
 	a := lab.app(quiet)
-	a.openHome()
+	openHomeOn(a, quiet)
 	text := homeText(a)
 	for _, banned := range []string{"spent $0", "0 tokens", "$0.00"} {
 		if strings.Contains(text, banned) {
@@ -1407,7 +1432,7 @@ func TestTheFactsFooterOmitsWhatIsNotAFact(t *testing.T) {
 		SessionID: "aaaa000000000001", EndedAt: now.Add(-time.Minute),
 	})
 	a = lab.app(quiet)
-	a.openHome()
+	openHomeOn(a, quiet)
 	if got := homeText(a); !strings.Contains(got, "spent $1.25 · 34k tokens · last active 1m") {
 		t.Fatalf("the footer does not read as one line of facts:\n%s", got)
 	}
@@ -1427,7 +1452,7 @@ func TestTheTitleBandSurvivesAShortFrame(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "another", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	for _, height := range []int{24, 16, 12, 10, 9} {
 		a.width, a.height = 100, height
 		text := homeText(a)
@@ -1693,7 +1718,7 @@ func TestHomeRescanPicksUpAConversationFromAnotherWindow(t *testing.T) {
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
 	a := lab.app(mine)
-	a.openHome()
+	openHomeOn(a, mine)
 	if strings.Contains(homeText(a), "Arrived Later") {
 		t.Fatal("the conversation was there before it was written")
 	}
@@ -1742,10 +1767,13 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	if !strings.Contains(ansi.Strip(frame), "esc close") {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
-	// AND THE CURSOR IS ON THE CONVERSATION THAT IS LOADED UNDERNEATH, so the
-	// cheapest keystroke on the screen is the calm one.
-	if got := a.home.focused().Transcript; got != mine {
-		t.Fatalf("the cursor opened on %q, want the conversation this window is in", got)
+	// AND THE CURSOR IS ON NO ROW AT ALL: home opens at rest, so the first thing
+	// a greeted person sees is the machine's own card rather than a highlighted
+	// row somewhere in the list (homebridge.go's [homeView.openAt]). esc still
+	// means what it always meant here — go on with what I was doing.
+	if !a.home.resting() {
+		t.Fatalf("a greeted launch opened on %q, want no row at all",
+			homeName(a.home.focused()))
 	}
 }
 
@@ -1850,6 +1878,9 @@ func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
 
 	a := lab.launch(mine, true)
+	// The landing opens at rest, so this is a person walking into the list and
+	// pressing enter on the row they were already in ([openHomeOn]).
+	a.home.point(mine)
 	before := len(a.entries)
 	a.homeEnter()
 	if a.home.open {
@@ -2171,6 +2202,9 @@ func TestTheDoorAndHomeBounceBackAndForth(t *testing.T) {
 	if !a.home.open {
 		t.Fatal("the launch did not land on home")
 	}
+	// The landing opens at rest and enter has nothing to open there, so the trip
+	// starts where the first ↓ would leave it: on this window's own row.
+	a.home.point(mine)
 	a.homeEnter()
 	if a.home.open {
 		t.Fatal("enter did not step into the conversation")
@@ -2449,7 +2483,7 @@ func TestHomeLinksTheProjectDirectoryItNames(t *testing.T) {
 	// Whether a link is written at all is read off TERM at construction, and
 	// TERM belongs to whoever ran the tests.
 	a.pathLinks = true
-	a.openHome()
+	openHomeOn(a, mine)
 
 	width, height := a.size()
 	lines, _, _, _ := a.homeFrame(width, height)
@@ -2509,7 +2543,9 @@ func homeTierLab(t *testing.T) (*app, *homeLab, string) {
 	}
 	a := lab.app(mine)
 	a.width, a.height = 100, 40
-	a.openHome()
+	// The cursor stands on this window's own conversation, where the first ↓
+	// would put it: home itself opens at rest ([openHomeOn]).
+	openHomeOn(a, mine)
 	return a, lab, mine
 }
 
