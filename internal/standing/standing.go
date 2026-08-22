@@ -116,7 +116,8 @@ const (
 	StatusRetired Status = "retired"
 )
 
-// WhenKind is one of the five ways an item is woken. The list is closed.
+// WhenKind is one of the six shapes of an item — five ways to be woken, and
+// one that never wakes ([WhenHold]). The list is closed.
 type WhenKind string
 
 const (
@@ -133,6 +134,13 @@ const (
 	// WhenProbe fires when a probe's output, judged by the sentinel against
 	// the person's words, says yes. Anything the belt can do is a probe.
 	WhenProbe WhenKind = "probe"
+	// WhenHold never wakes. A rule — "always use tabs here", "never touch the
+	// public API" — has no moment, no rhythm and no probe: its whole work is
+	// done at birth, riding into the world of every conversation and task it
+	// reaches (docs/STANDING-ORDERS.md, the birth seam). The pass walks past
+	// it; it cannot fire, so it cannot spend, so it alone needs no rails and
+	// no action.
+	WhenHold WhenKind = "hold"
 )
 
 // When is what wakes an item. Exactly the fields its Kind names are read; the
@@ -340,10 +348,16 @@ func (it Item) Validate() error {
 		return errors.New("an item needs the person's words")
 	case it.Workspace == "":
 		return errors.New("an item needs a workspace")
-	case it.Rails.PerRunUSD <= 0:
-		return errors.New("an item needs a per-run budget")
-	case it.Rails.MaxPerDay <= 0:
-		return errors.New("an item needs a max per day")
+	}
+	// A HOLD CANNOT SPEND, SO IT ALONE CARRIES NO RAILS AND NO ACTION. Every
+	// waking kind still refuses a zero budget by construction.
+	if it.When.Kind != WhenHold {
+		switch {
+		case it.Rails.PerRunUSD <= 0:
+			return errors.New("an item needs a per-run budget")
+		case it.Rails.MaxPerDay <= 0:
+			return errors.New("an item needs a max per day")
+		}
 	}
 	switch it.Altitude {
 	case "", AltitudeProject, AltitudeMachine:
@@ -380,6 +394,8 @@ func (it Item) Validate() error {
 		if (it.When.Probe.Command == "") == (it.When.Probe.Tool == "") {
 			return errors.New("a probe is exactly one of a command or a tool")
 		}
+	case WhenHold:
+		// Nothing wakes it, so nothing about waking can be wrong.
 	default:
 		return errors.New("unknown when: " + string(it.When.Kind))
 	}
@@ -391,6 +407,10 @@ func (it Item) Validate() error {
 	case ActionTask:
 		if it.Does.Brief == "" {
 			return errors.New("a task item needs a brief")
+		}
+	case "":
+		if it.When.Kind != WhenHold {
+			return errors.New("unknown action: " + string(it.Does.Kind))
 		}
 	default:
 		return errors.New("unknown action: " + string(it.Does.Kind))
