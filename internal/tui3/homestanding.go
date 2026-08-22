@@ -82,6 +82,16 @@ const (
 	// homeItemPaused and homeItemStopped are the receipts for the two keys.
 	homeItemPaused  = "paused"
 	homeItemStopped = "stopped"
+	// standHoldsWord is the whole status of a rule that never wakes: it HOLDS.
+	// Every surface that draws a standing thing's tail says this one word for a
+	// hold — home's item rows, the /standing shelves, the two bands that list
+	// what is keeping an eye on things — because a hold has no cadence to quote,
+	// no appointment to count down to and nothing it last found.
+	//
+	// IT IS A VERB IN THE PERSON'S OWN GRAMMAR AND NEVER A KIND. "hold kind",
+	// "rule item" and "no trigger" are this codebase's words for the shape; what
+	// somebody reads is what the thing is doing, which is holding.
+	standHoldsWord = "holds"
 	// homeStoppedWhy is what a stopped item's document records as the reason,
 	// in the person's own terms ([standing.Item.RetiredWhy] names this exact
 	// spelling as one of its cases).
@@ -397,6 +407,12 @@ func standRollup(view StandingItemView, now time.Time) string {
 	}
 	words := strings.TrimSpace(item.When.Words)
 	switch item.When.Kind {
+	case standing.WhenHold:
+		// A RULE HAS NO TAIL TO REPORT, IT HAS A STATE. Nothing examines it and
+		// nothing fires it, so every clause the other kinds carry — the cadence,
+		// the last look, the last firing — is a fact about it that will never
+		// exist. What is true of it is true of it now: it holds.
+		return standHoldsWord
 	case standing.WhenProbe, standing.WhenFile, standing.WhenIdle:
 		if item.LastChecked.IsZero() {
 			return words
