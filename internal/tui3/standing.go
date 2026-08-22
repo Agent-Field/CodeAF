@@ -781,9 +781,17 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 // THE EMPTINESS LAW REACHES BOTH OF THEM. A notice that carried no words for
 // one of them draws no row for it — a band reading `when ·` and nothing else is
 // a label admitting it has nothing to label.
+//
+// AND A RULE DRAWS NEITHER, whatever the notice carried. A hold has no moment,
+// no rhythm and no condition, so a `when ·` band under one would be the card
+// reading a cadence into the word "always"; and it never wakes, so it never runs
+// a probe, buys a judgment or launches work, and a `costs ·` band would be
+// asking somebody to weigh a figure nothing can ever draw on. What is left is
+// the person's sentence and how far it reaches, which is the whole of what they
+// are agreeing to.
 func (a *app) standBands(card *standingCard, width int) []string {
 	var out []string
-	if card.when != "" {
+	if card.when != "" && card.item.When.Kind != standing.WhenHold {
 		word := standWhenTag + card.when
 		if card.guessed {
 			// THE GUESS IS SAID OUT LOUD, in the card's own sentence from
@@ -807,12 +815,20 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
 		out = append(out, a.pal.dim(line))
 	}
-	cost := card.cost
-	if checked := standChecked(card.item.When.Kind); checked != "" {
-		if cost == "" {
-			cost = checked
-		} else {
-			cost += " · " + checked
+	// AND A RULE HAS NO COST BAND AT ALL. A hold never wakes, so it never runs a
+	// probe, never buys a judgment and never launches work ([standing.Item.Spends]
+	// is where that is decided) — and the emptiness law reaches a whole band: an
+	// allowance quoted on a card for something that can never draw on it is a
+	// figure the person has to weigh and nothing will ever spend.
+	cost := ""
+	if card.item.Spends() {
+		cost = card.cost
+		if checked := standChecked(card.item.When.Kind); checked != "" {
+			if cost == "" {
+				cost = checked
+			} else {
+				cost += " · " + checked
+			}
 		}
 	}
 	if cost != "" {

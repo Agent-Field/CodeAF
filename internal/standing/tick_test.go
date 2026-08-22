@@ -930,3 +930,113 @@ func TestRunCameToNothingIsFalseWithoutAMarker(t *testing.T) {
 		t.Fatal("a run that delivered nothing was not readable as one")
 	}
 }
+
+// ── a rule that never wakes ─────────────────────────────────────────────────
+
+// holding is a rule as the card stands one up: the person's sentence, a
+// workspace, and nothing else at all. No moment, no rhythm, no probe, no action
+// and no rails — a hold cannot fire, so it cannot spend, so there is nothing to
+// bound.
+func holding(words string) Item {
+	return Item{
+		Words:     words,
+		Workspace: "/tmp/project",
+		When:      When{Kind: WhenHold},
+	}
+}
+
+// THE PASS WALKS PAST A HOLD AND LEAVES NO TRACE OF HAVING LOOKED.
+//
+// Its whole work was done at birth — it rides into the world of every
+// conversation and every task it reaches — so a pass has nothing to do to it and
+// says nothing about it. Every assertion here is about something NOT happening,
+// which is the only way to state quiet: no probe, no judgment, no ledger line, no
+// log line, no running marker, and a next moment that stays empty for the rest of
+// its life.
+func TestTickWalksPastAHoldAndWritesNothing(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	runner := &fakeRunner{evidence: "anything at all"}
+	made, err := store.Create(holding("always run the tests before you say you are done"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !made.NextDue.IsZero() {
+		t.Fatalf("a rule was given a next moment: %s", made.NextDue)
+	}
+
+	ticker := newTicker(store, runner, now)
+	ticker.Sentinel = func(context.Context, Judgment) (bool, string, float64, error) {
+		t.Fatal("a rule was put in front of the sentinel")
+		return false, "", 0, nil
+	}
+	// Twice, an hour apart: a hold is walked past on the pass that meets it and on
+	// every pass after it, and neither one may leave a first reading behind the way
+	// a file watch's baseline does.
+	for _, at := range []time.Time{now, now.Add(time.Hour)} {
+		store.clock = held(at)
+		ticker.Now = held(at)
+		pass := mustTick(t, ticker)
+		if pass.Examined != 1 {
+			t.Fatalf("the pass examined %d items, wanted the one rule", pass.Examined)
+		}
+		if pass.Checked != 0 || pass.Fired != 0 || pass.Skipped != 0 || pass.Errors != 0 || len(pass.Notes) != 0 {
+			t.Fatalf("a rule made the pass say something: %+v", pass)
+		}
+	}
+	if runner.probeSeen != 0 || len(runner.said) != 0 || len(runner.runDirs) != 0 {
+		t.Fatalf("a rule reached the runner: %+v", runner)
+	}
+
+	back, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !back.NextDue.IsZero() {
+		t.Fatalf("the rule was given a next moment: %s", back.NextDue)
+	}
+	if !back.LastChecked.IsZero() || back.LastCheckLine != "" {
+		t.Fatalf("the rule claims it was checked: %s %q", back.LastChecked, back.LastCheckLine)
+	}
+	if back.Runs != 0 || back.SpentUSD != 0 || back.Status != StatusActive {
+		t.Fatalf("the rule moved: %+v", back)
+	}
+	if spend, err := store.Today("", now); err != nil || spend.Fired != 0 || spend.USD != 0 {
+		t.Fatalf("a rule wrote a ledger line: %+v (%v)", spend, err)
+	}
+	if _, err := os.Stat(store.LogPath(made.ID)); !os.IsNotExist(err) {
+		t.Fatalf("a rule wrote a log line: %v", err)
+	}
+	if _, err := os.Stat(store.RunningPath(made.ID)); !os.IsNotExist(err) {
+		t.Fatalf("a rule was marked as being worked on: %v", err)
+	}
+}
+
+// AND A RULE THE PERSON GAVE AN END TO STILL REACHES IT. The walk-past is asked
+// after the expiry and not before, because "never touch the public API until the
+// release lands" is a rule with a last day, and a pass that skipped it entirely
+// would hold it forever.
+func TestTickRetiresAHoldThatRanOutOfTime(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	rule := holding("never touch the public API until the release lands")
+	rule.Rails.Expires = now.Add(time.Hour)
+	made, err := store.Create(rule)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	after := now.Add(2 * time.Hour)
+	store.clock = held(after)
+	pass := mustTick(t, newTicker(store, &fakeRunner{}, after))
+	if pass.Skipped != 1 {
+		t.Fatalf("the expired rule was not retired: %+v", pass)
+	}
+	back, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Status != StatusRetired || back.RetiredWhy != "expired" {
+		t.Fatalf("the rule is %q because %q", back.Status, back.RetiredWhy)
+	}
+}

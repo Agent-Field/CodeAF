@@ -189,13 +189,30 @@ func (a *Agent) standingWatch() standing.Watch {
 // RECOGNITION rather than mechanics: the tool is useless unless the model
 // notices that an ordinary sentence was a standing one, and nothing else in
 // this build watches for those words.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). Money is not yours to negotiate: omit rails and cost_words unless the person named a per-run or per-day limit. Omitted rails quietly default to " + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + " per_run_usd and " + strconv.Itoa(standDefaultMaxPerDay) + " max_per_day inside the machine-wide daily allowance. When the person did name money, send their limits and quote them honestly in cost_words. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. altitude is HOW FAR IT REACHES — conversation, project or machine — and THE CARD ALWAYS NAMES IT, so it is never guessed quietly: their own scope words choose it (\"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine), and leaving it out stands it where they said it. title is three or four words for a row too narrow for their sentence; grant is one sentence recording what acting on it may do without asking, and only when they said something like it. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+//
+// AND RECOGNITION IS A TEST, NOT A WORD LIST. This description used to hand the
+// model a bag of trigger words — "whenever", "every", "from now on", "make sure"
+// — and a bag of words is a matcher a model runs instead of thinking: it caught
+// "make sure this website you're building is 3 pages" and proposed a standing
+// order for an acceptance criterion, which is the worst failure this tool has,
+// because a card the person did not want teaches them to distrust every card
+// after it. So what it carries now is the reasoning — the discharge test, what
+// anchors a sentence to today's work, what separates a waking kind from a hold,
+// and what to do when the answer is genuinely unclear — with a handful of
+// canonical examples to calibrate it and nothing to pattern-match on.
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
+	"THE DISCHARGE TEST — the one question that decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\". \"Make sure this website you are building is 3 pages\" is discharged the moment the site has three pages: that is acceptance, and never a card. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing. \"Make sure the tests never break\" can never be discharged, because there is always more work that could break them.\n\n" +
+	"ANCHORING. A sentence about the artifact under construction RIGHT NOW — \"this website you're building\", \"this PR\", \"what you're doing\" — binds the current work, whatever verbs it uses. An \"always\" or a \"never\" inside a sentence anchored to today's artifact is emphasis, not a rule.\n\n" +
+	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names: \"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle. A standing sentence that names NONE of them — a rule, a convention, a preference: \"always run the tests before you say you are done\", \"never touch the public API\", \"we use tabs here\", \"prefer small commits\" — is when.kind hold. A hold never fires and never spends; it rides automatically into the world of every conversation and every task it reaches, and that is how it is kept. It takes no does and no rails.\n\n" +
+	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line of prose at the end of your reply — \"if you want this to hold for future work here too, say so and I'll set it standing\". NEVER a card on a guess: the offer costs one line, and a card they did not want costs their trust in every card after it.\n\n" +
+	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work you do now, \"run the tests whenever I push\" is one of these. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there.\n\n" +
+	"op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words), hold (nothing wakes it). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs); a hold takes neither, and sending one with a hold is refused. Money is not yours to negotiate: omit rails and cost_words unless the person named a per-run or per-day limit. Omitted rails quietly default to " + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + " per_run_usd and " + strconv.Itoa(standDefaultMaxPerDay) + " max_per_day inside the machine-wide daily allowance. When the person did name money, send their limits and quote them honestly in cost_words. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. altitude is HOW FAR IT REACHES — conversation, project or machine — and THE CARD ALWAYS NAMES IT, so it is never guessed quietly: their own scope words choose it (\"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine), and leaving it out stands it where they said it. title is three or four words for a row too narrow for their sentence; grant is one sentence recording what acting on it may do without asking, and only when they said something like it. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"What to do: propose a new one, list what stands here, or pause, resume or stop one that already does."},` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim. Never your paraphrase: every card, row and note leads with it, and they must recognise what they said. On pause, resume and stop this is a way to name an item instead of its id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
-	`"kind":{"type":"string","enum":["at","every","file","idle","probe"],"description":"at fires once at a moment and retires; every is a rhythm; file is a glob changing; idle is the machine having been quiet; probe is a look at the world judged against the person's words."},` +
+	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at fires once at a moment and retires; every is a rhythm; file is a glob changing; idle is the machine having been quiet; probe is a look at the world judged against the person's words. hold NEVER WAKES: it is the kind for a rule, a convention or a preference — a standing sentence with no moment, no rhythm and no condition in it (\"always run the tests first\", \"never touch the public API\", \"we use tabs here\"). A hold does not fire and cannot spend; it rides into the world of every conversation and every task it reaches, automatically, which is how it is kept. Send it with no does and no rails."},` +
 	`"at":{"type":"string","description":"The one moment of an at, as a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). You know the time and the offset already — the Project section of your instructions carries a Now line — so work this out from it and NEVER shell out to read a clock. A moment that has ALREADY PASSED is refused, and the refusal says what time it is now — work it out again from that, never from the Now line you already used. For a relative moment send in instead."},` +
 	`"in":{"type":"string","description":"An at's moment said as a distance from RIGHT NOW instead: a Go duration (\"2m\", \"90s\", \"1h30m\"). aforge resolves it against the clock at the instant you call and answers with the moment it landed on, so \"remind me in two minutes\" needs no arithmetic from you. Send at or in, never both."},` +
 	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
@@ -209,7 +226,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"probe_every":{"type":"string","description":"How often to take that look, as a Go duration. Defaults to how often anything is checked at all."},` +
 	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
-	`"does":{"type":"object","description":"What a firing does.","properties":{` +
+	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE — nothing wakes it, so there is no firing for an action to be the content of, and sending one with a hold is refused.","properties":{` +
 	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person — into this conversation when it is open, into whichever conversation of this project they are in when it is not, and waiting for them on home and in the next one they open when nothing is open at all; task runs a brief in its own session."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained, exactly as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
@@ -217,7 +234,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"model":{"type":"string","description":"Optional model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"number","description":"Optional. How many tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
-	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person named it; otherwise the machine-wide daily allowance is what the card quotes.","properties":{` +
+	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person named it; otherwise the machine-wide daily allowance is what the card quotes. A hold takes NO money rails at all — it never wakes, so it can never spend, and its card says nothing about cost. Only expires means anything on one: a rule the person gave an end to.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when the person named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"number","description":"How many times it may fire in one local day. Send only when the person named a daily count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, for the same reason when.at is."}` +
@@ -394,7 +411,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
 		WhenWords: item.When.Words,
-		CostWords: a.standingCostWords(parsed),
+		CostWords: a.standingCostWords(item, parsed),
 		Guessed:   parsed.Guessed,
 		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
 		// from this one list, so `once, not standing` is absent from a one-off
@@ -474,11 +491,11 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	does, problem := standingDoes(parsed)
+	does, problem := standingDoes(parsed, when.Kind)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	rails, problem := standingRails(parsed, now)
+	rails, problem := standingRails(parsed, when.Kind, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -486,7 +503,12 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	// OUT. when_words is the model's plain-words reading of what they asked
 	// for; the only time it is not the answer is when there is none, and then
 	// whatever [standingWhen] echoed stands (a resolved `in`, or nothing).
-	if words := strings.TrimSpace(parsed.WhenWords); words != "" {
+	//
+	// A HOLD HAS NO CADENCE TO SAY BACK. A rule is not due at any time, so a
+	// `when ·` band under one would be the card reading a rhythm into the word
+	// "always" — and every surface afterwards would quote it as the moment this
+	// thing wakes up.
+	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
 		when.Words = words
 	}
 	return standing.Item{
@@ -532,6 +554,12 @@ func (a *Agent) standingAltitude(raw string) standing.Altitude {
 	return standing.AltitudeProject
 }
 
+// standingKindWords is the closed list of shapes, said once, in the grammar the
+// refusals use. It is ONE STRING because two spellings of a closed list is one
+// of them forgetting the day a shape is added — which is exactly what happened
+// when `hold` arrived and both refusals still offered five.
+const standingKindWords = "at, every, file, idle, probe or hold"
+
 func standingWhen(parsed standArguments, now time.Time) (standing.When, string) {
 	when := standing.When{
 		Kind: standing.WhenKind(strings.ToLower(strings.TrimSpace(parsed.When.Kind))),
@@ -563,6 +591,11 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 			return when, "Invalid arguments: when.idle_for is a duration like \"45m\""
 		}
 		when.IdleFor = idle
+	case standing.WhenHold:
+		// NOTHING WAKES IT, SO THERE IS NOTHING HERE TO GET WRONG. A hold's whole
+		// content is the person's sentence and how far it reaches; the moment, the
+		// rhythm, the glob and the probe are all fields about waking, and a rule
+		// has no waking to describe.
 	case standing.WhenProbe:
 		when.Probe = standing.Probe{
 			Command: strings.TrimSpace(parsed.When.Probe.Command),
@@ -581,14 +614,17 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 			when.ProbeEvery = parsedEvery
 		}
 	case "":
-		return when, "Invalid arguments: when.kind is required — at, every, file, idle or probe"
+		return when, "Invalid arguments: when.kind is required — " + standingKindWords
 	default:
-		return when, "Invalid arguments: no when called " + strconv.Quote(string(when.Kind)) + " — at, every, file, idle or probe"
+		return when, "Invalid arguments: no when called " + strconv.Quote(string(when.Kind)) + " — " + standingKindWords
 	}
 	return when, ""
 }
 
-func standingDoes(parsed standArguments) (standing.Action, string) {
+// standingDoes is what a firing does, and it takes the kind that wakes it
+// because ONE SHAPE HAS NO FIRING. A hold never wakes, so there is no moment for
+// an action to be the content of; every other kind must say what it does.
+func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Action, string) {
 	does := standing.Action{
 		Kind:       standing.ActionKind(strings.ToLower(strings.TrimSpace(parsed.Does.Kind))),
 		Say:        strings.TrimSpace(parsed.Does.Say),
@@ -596,6 +632,16 @@ func standingDoes(parsed standArguments) (standing.Action, string) {
 		Acceptance: strings.TrimSpace(parsed.Does.Acceptance),
 		Model:      strings.TrimSpace(parsed.Does.Model),
 		MaxSteps:   parsed.Does.MaxSteps,
+	}
+	if wakes == standing.WhenHold {
+		// AND AN ACTION SENT WITH A HOLD IS REFUSED RATHER THAN DROPPED. A model
+		// that asked for a rule AND a line to say meant one of the two, and
+		// standing something up with an action nothing will ever run would leave
+		// the person holding a card whose promise cannot be kept.
+		if does.Kind != "" {
+			return standing.Action{}, "Invalid arguments: a hold does nothing — it holds. Leave does out, or give it a when that wakes."
+		}
+		return standing.Action{}, ""
 	}
 	switch does.Kind {
 	case standing.ActionSay, standing.ActionTask:
@@ -613,17 +659,25 @@ func standingDoes(parsed standArguments) (standing.Action, string) {
 // standingRails fills what the model left out. THE DEFAULTS ARE THIS FILE'S
 // CONSTANTS and never a second set of numbers: the schema quotes them and the
 // item is created with them.
-func standingRails(parsed standArguments, now time.Time) (standing.Rails, string) {
+//
+// A HOLD IS THE ONE SHAPE THAT GETS NONE OF THEM. It cannot spend
+// ([standing.Item.Spends]), so a budget written onto it would be a number
+// nothing ever reads and every surface would still have to decide not to print.
+// An END is different and is kept: "never touch the public API until the release
+// lands" is a rule with a last day, and the pass retires it on that day.
+func standingRails(parsed standArguments, wakes standing.WhenKind, now time.Time) (standing.Rails, string) {
 	rails := standing.Rails{}
-	if parsed.Rails.PerRunUSD == nil {
-		rails.PerRunUSD = standDefaultPerRunUSD
-	} else {
-		rails.PerRunUSD = *parsed.Rails.PerRunUSD
-	}
-	if parsed.Rails.MaxPerDay == nil {
-		rails.MaxPerDay = standDefaultMaxPerDay
-	} else {
-		rails.MaxPerDay = *parsed.Rails.MaxPerDay
+	if wakes != standing.WhenHold {
+		if parsed.Rails.PerRunUSD == nil {
+			rails.PerRunUSD = standDefaultPerRunUSD
+		} else {
+			rails.PerRunUSD = *parsed.Rails.PerRunUSD
+		}
+		if parsed.Rails.MaxPerDay == nil {
+			rails.MaxPerDay = standDefaultMaxPerDay
+		} else {
+			rails.MaxPerDay = *parsed.Rails.MaxPerDay
+		}
 	}
 	if expires := strings.TrimSpace(parsed.Rails.Expires); expires != "" {
 		moment, err := standingMoment(expires)
@@ -645,7 +699,15 @@ func standingRails(parsed standArguments, now time.Time) (standing.Rails, string
 
 // standingCostWords keeps person-named money word for word and otherwise says
 // the one allowance that protects every standing item on this machine.
-func (a *Agent) standingCostWords(parsed standArguments) string {
+//
+// A HOLD SAYS NOTHING ABOUT MONEY, which is the emptiness law reaching a whole
+// band of the card: nothing wakes a rule, so nothing about it is ever bought,
+// and quoting the day's allowance under one would be asking a person to weigh a
+// figure that can never be drawn on ([standing.Item.Spends]).
+func (a *Agent) standingCostWords(item standing.Item, parsed standArguments) string {
+	if !item.Spends() {
+		return ""
+	}
 	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
 		return strings.TrimSpace(parsed.CostWords)
 	}

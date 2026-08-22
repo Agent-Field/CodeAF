@@ -41,18 +41,35 @@ func drawNextUpBand(a *app, ctx bandContext) []string {
 
 // standByNextDue is the order both bands that list standing things read them in:
 // SOONEST FIRST, with everything that has no appointment after everything that
-// has one.
+// has one, and the rules that never wake at the very end.
+//
+// A HOLD IS NOT IN THE QUEUE AT ALL, and that is the third tier's whole reason.
+// This band's question is "what happens next", and a rule has no next — it is
+// simply true, and it will still be true after everything above it has gone off.
+// Sorted among the appointments it would take the front of the band on the
+// strength of having no appointment, which is soonest-first saying something
+// that is not merely uninteresting but false. Behind them it reads as what it
+// is: the standing conditions under the schedule. AMONG THEMSELVES THE NEWEST
+// LEADS, because the one made this morning is the one somebody is still thinking
+// about, and none of them has any other fact to sort on.
 //
 // It is one function because two bands say it — this one about a project, the
 // machine's watchlist about everywhere (homeband_watchlist.go) — and two
 // spellings of one order is two things to keep in step.
 func standByNextDue(views []StandingItemView) {
 	sort.SliceStable(views, func(i, j int) bool {
-		a, b := views[i].Item.NextDue, views[j].Item.NextDue
-		if a.IsZero() != b.IsZero() {
-			return !a.IsZero()
+		a, b := views[i].Item, views[j].Item
+		holdA, holdB := a.When.Kind == standing.WhenHold, b.When.Kind == standing.WhenHold
+		if holdA != holdB {
+			return !holdA
 		}
-		return !a.IsZero() && a.Before(b)
+		if holdA {
+			return a.Created.After(b.Created)
+		}
+		if a.NextDue.IsZero() != b.NextDue.IsZero() {
+			return !a.NextDue.IsZero()
+		}
+		return !a.NextDue.IsZero() && a.NextDue.Before(b.NextDue)
 	})
 }
 
@@ -61,11 +78,19 @@ func standByNextDue(views []StandingItemView) {
 //	in 2h          it has an appointment and this is how far off it is
 //	mon 8am        it has a cadence and no appointment anybody could work out
 //	checked 4m ago it is looked at on a clock rather than being due
+//	holds          it never wakes: it is a rule, and it is already true
 //
 // THE APPOINTMENT OUTRANKS THE CADENCE, because "in 2h" is the thing a person
 // is deciding with and "every weekday at 9" is how it got there. It is shared by
 // the project band and the machine's watchlist for [standByNextDue]'s reason.
 func standWhenClause(item standing.Item, now time.Time) string {
+	// AND A RULE IS ASKED BEFORE THE CLOCK IS. A hold has no NextDue and never
+	// will, so every clause below it would fall through to whatever cadence words
+	// it happens to carry — which is nothing, and a row with a blank tail says
+	// less about a standing condition than the one word that is true of it.
+	if item.When.Kind == standing.WhenHold {
+		return standHoldsWord
+	}
 	if !item.NextDue.IsZero() {
 		return "in " + nextUpAge(item.NextDue.Sub(now))
 	}

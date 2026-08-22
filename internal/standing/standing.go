@@ -351,7 +351,7 @@ func (it Item) Validate() error {
 	}
 	// A HOLD CANNOT SPEND, SO IT ALONE CARRIES NO RAILS AND NO ACTION. Every
 	// waking kind still refuses a zero budget by construction.
-	if it.When.Kind != WhenHold {
+	if it.Spends() {
 		switch {
 		case it.Rails.PerRunUSD <= 0:
 			return errors.New("an item needs a per-run budget")
@@ -409,7 +409,7 @@ func (it Item) Validate() error {
 			return errors.New("a task item needs a brief")
 		}
 	case "":
-		if it.When.Kind != WhenHold {
+		if it.Spends() {
 			return errors.New("unknown action: " + string(it.Does.Kind))
 		}
 	default:
@@ -417,6 +417,18 @@ func (it Item) Validate() error {
 	}
 	return nil
 }
+
+// Spends answers whether anything about this item can ever cost money, and it
+// is the ONE PLACE that question is decided.
+//
+// EVERY WAKING KIND CAN. A probe runs, the sentinel judges it, a firing works —
+// all three are billed, which is why [Item.Validate] refuses one of them with a
+// zero budget. A HOLD CANNOT: nothing wakes it, so nothing about it is ever
+// bought. That is why it alone may carry no rails, and it is why the
+// ratification card draws no cost band for a rule — THE EMPTINESS LAW IS THE
+// OTHER HALF OF THE SENTENCE, and a figure nobody can spend is a figure no
+// surface may print.
+func (it Item) Spends() bool { return it.When.Kind != WhenHold }
 
 // Level is the altitude with the zero value resolved to its meaning.
 func (it Item) Level() Altitude {

@@ -273,6 +273,24 @@ One firing's work is bounded at **60 tool calls** unless the card said otherwise
 and by a quiet per-run backstop. Crossing either cuts the turn where it stands;
 whatever it already did stands with it.
 
+## Always, never, we do it this way — a rule with nothing to wake it
+
+The rules above all have a trigger in them: a PR opening, a push, main going red.
+Plenty of rules have none. "Always run the tests before you tell me it works."
+"Never touch the public API here." "We use tabs." "Prefer small commits."
+
+A rule like that is not checked and never fires — it **holds**. It costs nothing
+and it has no cadence, so its card carries no `when ·` line and no `costs ·`
+line: your sentence and how far it reaches is the whole of it. Instead of waking,
+it rides into the work it governs — every new conversation and every task that
+starts where it reaches opens already knowing it.
+
+On any screen that lists what is standing, one of these says `holds` where a
+watch would say what it last found, and on the home screen it sits after
+everything that has an appointment. The standing-orders page has the rest: how to
+say one, and how aforge decides an "always" is a rule rather than an instruction
+for the job in hand.
+
 ## Tonight — overnight and long-horizon work
 
 "Tonight, run the full suite and the benchmark and have a report for me in the

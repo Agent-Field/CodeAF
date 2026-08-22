@@ -739,3 +739,68 @@ func TestASurfaceThatCannotAskNeverDrawsTheDot(t *testing.T) {
 		t.Fatalf("a row wore `●` with nothing behind it:\n%s", strings.Join(homeLines(a), "\n"))
 	}
 }
+
+// ── a rule that never wakes ─────────────────────────────────────────────────
+
+// A RULE SAYS `holds` WHEREVER A WATCH WOULD SAY WHAT IT LAST FOUND.
+//
+// Every clause the other kinds carry is a fact a rule will never have: it is
+// never checked, so there is no last look; it never fires, so there is no last
+// firing; it is never due, so there is no cadence and no countdown. The one word
+// is what IS true of it, and it is the person's own verb — nothing on a screen
+// says "hold kind" or "no trigger".
+func TestARuleSaysItHolds(t *testing.T) {
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	rule := bandItem("h", "never touch the public API", "/w", standing.WhenHold, "")
+	rule.Does, rule.Rails = standing.Action{}, standing.Rails{}
+
+	if got := standRollup(StandingItemView{Item: rule}, now); got != standHoldsWord {
+		t.Fatalf("home's row for a rule reads %q, wanted %q", got, standHoldsWord)
+	}
+	if got := standWhenClause(rule, now); got != standHoldsWord {
+		t.Fatalf("the band's clause for a rule reads %q, wanted %q", got, standHoldsWord)
+	}
+	// AND A CADENCE SOMEBODY WROTE ONTO ONE ANYWAY IS NOT QUOTED AS ITS TIME.
+	// "always" is not a moment, and a row that said it there would read as when
+	// this thing next wakes up.
+	loud := rule
+	loud.When.Words = "always"
+	if got := standWhenClause(loud, now); got != standHoldsWord {
+		t.Fatalf("a rule's clause read %q back as a cadence", got)
+	}
+	// A paused rule still says it is paused: the status of the thing outranks
+	// what the thing is, exactly as it does for every other kind.
+	paused := rule
+	paused.Status = standing.StatusPaused
+	if got := standRollup(StandingItemView{Item: paused}, now); got != homeItemPaused {
+		t.Fatalf("a paused rule reads %q", got)
+	}
+}
+
+// THE RULES COME AFTER THE APPOINTMENTS, NEWEST FIRST.
+//
+// The band answers "what happens next", and a rule has no next — it is simply
+// true, and it will still be true after everything above it has gone off. Sorted
+// among the appointments it would take the front of the band on the strength of
+// having none, which is soonest-first saying something false.
+func TestTheBandsListRulesAfterEverythingWithATime(t *testing.T) {
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	soon := bandItem("a", "remind me at 10", "/w", standing.WhenAt, "at 10")
+	soon.NextDue = now.Add(time.Hour)
+	later := bandItem("b", "draft the weekly update", "/w", standing.WhenEvery, "Mondays 9am")
+	later.NextDue = now.Add(48 * time.Hour)
+	old := bandItem("c", "we use tabs here", "/w", standing.WhenHold, "")
+	old.Created = now.Add(-72 * time.Hour)
+	fresh := bandItem("d", "never touch the public API", "/w", standing.WhenHold, "")
+	fresh.Created = now.Add(-time.Hour)
+
+	views := []StandingItemView{{Item: old}, {Item: fresh}, {Item: later}, {Item: soon}}
+	standByNextDue(views)
+	var order []string
+	for _, view := range views {
+		order = append(order, view.Item.ID)
+	}
+	if strings.Join(order, "") != "abdc" {
+		t.Fatalf("the band reads %v, wanted the appointments soonest first and the rules newest first behind them", order)
+	}
+}
