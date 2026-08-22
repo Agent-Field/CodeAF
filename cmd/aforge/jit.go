@@ -28,8 +28,21 @@ import (
 // planContextTokens is that model's window, read from the catalog by the caller
 // — the surface owns the catalog and hands facts down, the same doctrine the
 // leaf's own context length travels by. Zero is the honest answer for a model
+// jitExpander builds the runner's claim-time division.
+//
+// The planning client is this process's, not the job's. A job's retained client
+// is the one its leaves run on — the work model — and a division is a planning
+// question asked of the planning model, the same one the build asked it of.
+//
+// planContextTokens is that model's window, read from the catalog by the caller
+// — the surface owns the catalog and hands facts down, the same doctrine the
+// leaf's own context length travels by. Zero is the honest answer for a model
 // the catalog cannot place, and every budget sized from it falls back.
-func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, planClient *liveClient, planContextTokens int) resident.JITExpander {
+//
+// slots probes the runner's idle dispatch slots before multiplying nodes: a
+// split that could not dispatch its parts is refused, which is the split-waste
+// the full bench measured. Nil skips the starvation gate.
+func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, planClient *liveClient, planContextTokens int, slots *resident.Runner) resident.JITExpander {
 	planner := func() plan.Completer {
 		if planClient == nil {
 			return nil
@@ -40,7 +53,7 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 		}
 		return structuring
 	}
-	return resident.JITExpander{
+	expander := resident.JITExpander{
 		Graph:          graph,
 		DailyBudgetUSD: settings.DailyBudgetUSD,
 		ContextTokens:  planContextTokens,
@@ -48,6 +61,10 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 			return plans.divisionTarget(graph, node.ID, settings, planner, planContextTokens)
 		},
 	}
+	if slots != nil {
+		expander.FreeSlots = slots.FreeSlots
+	}
+	return expander
 }
 
 // divisionTarget resolves a claimed store node to the plan node it was minted
