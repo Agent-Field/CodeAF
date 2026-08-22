@@ -67,22 +67,17 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
-// The rails a proposal takes when the model names none. They are DEFAULTS AND
-// NOT CEILINGS — the person sees both figures on the card before answering —
-// and they are interpolated into the tool's own description so the model
-// reasons with the numbers this file actually applies.
+// The rails a proposal takes when the model names none. ONE POOL, NOT N KNOBS:
+// the person's real protection is the machine-wide daily allowance plus the
+// audit gate, so these per-item rails are a quiet backstop, not a negotiation.
 const (
-	// standingPerRunUSD is what one firing may spend, probe and judgment
+	// standDefaultPerRunUSD is what one firing may spend, probe and judgment
 	// included. Fifteen cents is a cheap look plus a small model's answer, with
 	// room for one short task turn.
-	standingPerRunUSD = 0.15
-	// standingMaxPerDay is how many times an ordinary item may fire in a local
+	standDefaultPerRunUSD = 0.15
+	// standDefaultMaxPerDay is how many times an item may fire in a local
 	// day.
-	standingMaxPerDay = 10
-	// standingReminderPerDay is the same figure for a REMINDER — one moment,
-	// one line, then it retires — where anything above one is arithmetic about
-	// something that cannot happen twice.
-	standingReminderPerDay = 1
+	standDefaultMaxPerDay = 10
 )
 
 // standingPastGrace is how far behind the clock a named moment may be and still
@@ -194,7 +189,7 @@ func (a *Agent) standingWatch() standing.Watch {
 // RECOGNITION rather than mechanics: the tool is useless unless the model
 // notices that an ordinary sentence was a standing one, and nothing else in
 // this build watches for those words.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). rails bound it: per_run_usd defaults to " + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + " and max_per_day to " + strconv.Itoa(standingMaxPerDay) + ", except a one-off reminder, which is " + strconv.Itoa(standingReminderPerDay) + ". QUOTE THE COST HONESTLY in cost_words: what one run costs and how often it can happen, in a person's words, and never a figure you did not work out from the rails you are sending. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. altitude is HOW FAR IT REACHES — conversation, project or machine — and THE CARD ALWAYS NAMES IT, so it is never guessed quietly: their own scope words choose it (\"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine), and leaving it out stands it where they said it. title is three or four words for a row too narrow for their sentence; grant is one sentence recording what acting on it may do without asking, and only when they said something like it. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from how they speak. Words that mean PROPOSE and never do-once: \"whenever\", \"every\", \"each time\", \"from now on\", \"remind me\", \"tell me when\", \"let me know when\", \"keep … green\", \"keep an eye on\", \"tonight\", \"in the morning\", \"later when it's idle\". \"Run the tests\" is work you do now; \"run the tests whenever I push\" is one of these, and doing it once instead is answering a different request. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there. op=propose builds the card: words is THEIR OWN SENTENCE, verbatim and unedited, because every screen afterwards leads with it. when says what wakes it — at (one moment, given either as a stamp you work out from the Now line in your instructions or as when.in, a duration from right now that aforge resolves and says back to you), every (a rhythm), file (a glob changing), idle (the machine has been quiet), probe (a shell command or a belt tool whose output is judged against their words). does says what a firing does — say (one line to the person: into this conversation when it is still open, otherwise into whichever conversation of this project they are sitting in, and waiting for them on home and in the next one they open when none is) or task (a brief run in its own session, with a worktree and a cost row, the way propose_task's work runs). Money is not yours to negotiate: omit rails and cost_words unless the person named a per-run or per-day limit. Omitted rails quietly default to " + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + " per_run_usd and " + strconv.Itoa(standDefaultMaxPerDay) + " max_per_day inside the machine-wide daily allowance. When the person did name money, send their limits and quote them honestly in cost_words. when_words is the cadence said back plainly (\"Mondays at 9am\") — never cron, which is a spec nobody can check. If they gave no cadence and you invented one, set guessed true so the card ASKS instead of stating. altitude is HOW FAR IT REACHES — conversation, project or machine — and THE CARD ALWAYS NAMES IT, so it is never guessed quietly: their own scope words choose it (\"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine), and leaving it out stands it where they said it. title is three or four words for a row too narrow for their sentence; grant is one sentence recording what acting on it may do without asking, and only when they said something like it. Nothing stands until they say yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. op=list shows what already stands here. op=pause, op=resume and op=stop take an id or the person's own words; stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"What to do: propose a new one, list what stands here, or pause, resume or stop one that already does."},` +
@@ -222,13 +217,13 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"model":{"type":"string","description":"Optional model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"number","description":"Optional. How many tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
-	`"rails":{"type":"object","description":"What bounds it. Both figures are quoted on the card before the person answers.","properties":{` +
-	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included (default ` + strconv.FormatFloat(standingPerRunUSD, 'f', 2, 64) + `)."},` +
-	`"max_per_day":{"type":"number","description":"How many times it may fire in one local day (default ` + strconv.Itoa(standingMaxPerDay) + `, or ` + strconv.Itoa(standingReminderPerDay) + ` for a one-off reminder)."},` +
+	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person named it; otherwise the machine-wide daily allowance is what the card quotes.","properties":{` +
+	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when the person named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
+	`"max_per_day":{"type":"number","description":"How many times it may fire in one local day. Send only when the person named a daily count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, for the same reason when.at is."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back in a person's words — \"Mondays at 9am\", \"every couple of minutes\". The card quotes this and never the spec."},` +
-	`"cost_words":{"type":"string","description":"What it costs, honestly, in a person's words — \"about 2 cents a run, at most once a day\". Work it out from the rails you are sending."},` +
+	`"cost_words":{"type":"string","description":"When the person named money, quote their limit honestly in their words — \"at most a dollar a run\". Omit this when they named no money; aforge quotes the shared daily allowance."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation is this chat alone and it dies with the chat; project is every conversation and every task in this project; machine is everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\", \"only here\" is conversation; \"everywhere\", \"all my projects\", \"on this machine\" is machine. Leave it out when they said nothing about scope and it stands where they said it."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\", \"main stays green\". Their own sentence is still what every screen leads with; this is only what a narrow row falls back to."},` +
@@ -271,9 +266,9 @@ type standArguments struct {
 		MaxSteps   int    `json:"max_steps"`
 	} `json:"does"`
 	Rails struct {
-		PerRunUSD float64 `json:"per_run_usd"`
-		MaxPerDay int     `json:"max_per_day"`
-		Expires   string  `json:"expires"`
+		PerRunUSD *float64 `json:"per_run_usd"`
+		MaxPerDay *int     `json:"max_per_day"`
+		Expires   string   `json:"expires"`
 	} `json:"rails"`
 }
 
@@ -399,7 +394,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// model's own when_words or — when it sent none and the moment was
 		// worked out from a duration — the moment the engine landed on.
 		WhenWords: item.When.Words,
-		CostWords: strings.TrimSpace(parsed.CostWords),
+		CostWords: a.standingCostWords(parsed),
 		Guessed:   parsed.Guessed,
 		// AND THE ENGINE SAYS WHICH ANSWERS THIS CARD HAS. Both surfaces draw
 		// from this one list, so `once, not standing` is absent from a one-off
@@ -483,7 +478,7 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	rails, problem := standingRails(parsed, when, does, now)
+	rails, problem := standingRails(parsed, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -616,23 +611,19 @@ func standingDoes(parsed standArguments) (standing.Action, string) {
 }
 
 // standingRails fills what the model left out. THE DEFAULTS ARE THIS FILE'S
-// CONSTANTS and never a second set of numbers: the schema quotes them, the card
-// shows them, and the item is created with them.
-func standingRails(parsed standArguments, when standing.When, does standing.Action, now time.Time) (standing.Rails, string) {
-	rails := standing.Rails{
-		PerRunUSD: parsed.Rails.PerRunUSD,
-		MaxPerDay: parsed.Rails.MaxPerDay,
+// CONSTANTS and never a second set of numbers: the schema quotes them and the
+// item is created with them.
+func standingRails(parsed standArguments, now time.Time) (standing.Rails, string) {
+	rails := standing.Rails{}
+	if parsed.Rails.PerRunUSD == nil {
+		rails.PerRunUSD = standDefaultPerRunUSD
+	} else {
+		rails.PerRunUSD = *parsed.Rails.PerRunUSD
 	}
-	if rails.PerRunUSD <= 0 {
-		rails.PerRunUSD = standingPerRunUSD
-	}
-	if rails.MaxPerDay <= 0 {
-		rails.MaxPerDay = standingMaxPerDay
-		if when.Kind == standing.WhenAt && does.Kind == standing.ActionSay {
-			// A reminder fires once and retires; a cap of ten would be a figure
-			// about something that cannot happen.
-			rails.MaxPerDay = standingReminderPerDay
-		}
+	if parsed.Rails.MaxPerDay == nil {
+		rails.MaxPerDay = standDefaultMaxPerDay
+	} else {
+		rails.MaxPerDay = *parsed.Rails.MaxPerDay
 	}
 	if expires := strings.TrimSpace(parsed.Rails.Expires); expires != "" {
 		moment, err := standingMoment(expires)
@@ -650,6 +641,18 @@ func standingRails(parsed standArguments, when standing.When, does standing.Acti
 		rails.Expires = moment
 	}
 	return rails, ""
+}
+
+// standingCostWords keeps person-named money word for word and otherwise says
+// the one allowance that protects every standing item on this machine.
+func (a *Agent) standingCostWords(parsed standArguments) string {
+	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
+		return strings.TrimSpace(parsed.CostWords)
+	}
+	if a.config.Standing != nil && a.config.Standing.DailyRailUSD > 0 {
+		return "shares the day's $" + strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64) + " allowance"
+	}
+	return "shares the day's allowance"
 }
 
 // standingAtMoment answers the one moment of an `at`, from either of the two
