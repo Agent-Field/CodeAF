@@ -3122,6 +3122,7 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// says which model does (media_contract.go).
 		Media:      parent.Media,
 		MediaModel: parent.MediaModel,
+		MediaPick:  parent.MediaPick,
 		// A node reads documents on the rung the person chose, like the
 		// conversation does (tools_doc.go): the same worker, working somewhere
 		// quieter, must not silently drop to a different engine — or to a paid

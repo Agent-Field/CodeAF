@@ -167,6 +167,21 @@ func v3MediaModel(models *catalog.Catalog, profileDir string, source roles.Sourc
 	}
 }
 
+// v3MediaPick is session.Config.MediaPick: the just-in-time choice beside the
+// defaults ladder. It answers the model's own word for what it wants — a slug,
+// a fragment, or "best" — from the SAME catalog the defaults ladder reads, so
+// a picked model is capability-checked and modality-scoped exactly as a
+// default is: a word that names a speech model from the image verb is refused
+// by naming what it actually makes, and a word that matches nothing says so.
+func v3MediaPick(models *catalog.Catalog) func(string, string) (string, error) {
+	if models == nil {
+		return nil
+	}
+	return func(modality, word string) (string, error) {
+		return config.ResolveMediaModel(models, modality, word)
+	}
+}
+
 // v3MediaClient is session.Config.Media: the one client that reaches every
 // generation endpoint, or nil when this install cannot build one.
 //

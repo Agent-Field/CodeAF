@@ -607,13 +607,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// which is the same absence at a finer grain.
 	cfg.Media = v3MediaClient(settings)
 	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
+	cfg.MediaPick = v3MediaPick(models)
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
 	// media verb on its whitelist, and the node that reaches for it at run time
 	// must resolve against the belt the designer was offered — one list, three
 	// readers (internal/session's harness_belt.go). It is wired here rather than
 	// in the literal above because the resolver it needs is one line up.
-	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel)
+	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel, cfg.MediaPick)
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
