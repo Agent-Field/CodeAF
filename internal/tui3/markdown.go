@@ -90,24 +90,38 @@ func renderMarkdown(text string, width int) []string {
 	return renderMarkdownWith(markdownStyler(), text, width)
 }
 
+func (a *app) renderMarkdown(text string, width int) []string {
+	return renderMarkdownWithCode(markdownStyler(), text, width, a.plainCodePath)
+}
+
 // renderMarkdownWith is [renderMarkdown] against a stated Styler. It is the
 // whole body, split off because the profile is detected from the environment
 // exactly once per process: a test that wants to see what a truecolor terminal
 // gets cannot ask for one afterwards, and a test that raced the detection to
 // set NO_COLOR would be a test whose result depended on which test ran first.
 func renderMarkdownWith(st *tokens.Styler, text string, width int) []string {
+	return renderMarkdownWithCode(st, text, width, nil)
+}
+
+// renderMarkdownWithCode carries the one piece of workspace knowledge prose
+// needs: whether an inline code span will become a path link after rendering.
+func renderMarkdownWithCode(st *tokens.Styler, text string, width int, plainCodeSpan func(string) bool) []string {
 	if width < 1 {
 		width = 1
 	}
 	if layoutTier(width) == tierPhone {
-		return phoneMarkdown(st, text, width)
+		return phoneMarkdown(st, text, width, plainCodeSpan)
 	}
-	return proseRows(st, text, width)
+	return proseRowsWithCode(st, text, width, plainCodeSpan)
 }
 
 // proseRows is the unconditional path: prose renders the whole document, at the
 // package's one measure. Every tier above the phone reaches it and nothing else.
 func proseRows(st *tokens.Styler, text string, width int) []string {
+	return proseRowsWithCode(st, text, width, nil)
+}
+
+func proseRowsWithCode(st *tokens.Styler, text string, width int, plainCodeSpan func(string) bool) []string {
 	return prose.Render(text, prose.Options{
 		Width: width,
 		// The hard ceiling is the pane; the reading length is prose's own
@@ -115,8 +129,9 @@ func proseRows(st *tokens.Styler, text string, width int) []string {
 		// wide window, not a wide sentence — and naming the constant rather
 		// than a number of our own keeps one definition of a measure in the
 		// tree.
-		Measure: prose.DefaultMeasure,
-		Styler:  st,
+		Measure:       prose.DefaultMeasure,
+		Styler:        st,
+		PlainCodeSpan: plainCodeSpan,
 	})
 }
 
@@ -177,7 +192,7 @@ const (
 // read from the app — which is what makes a resize a re-wrap and a re-wrap
 // idempotent, and what lets a streaming reply call it on a growing prefix every
 // frame without an earlier row ever changing under the reader's eye.
-func phoneMarkdown(st *tokens.Styler, text string, width int) []string {
+func phoneMarkdown(st *tokens.Styler, text string, width int, plainCodeSpan func(string) bool) []string {
 	var out []string
 	for _, seg := range mdSegments(text) {
 		var rows []string
@@ -185,9 +200,9 @@ func phoneMarkdown(st *tokens.Styler, text string, width int) []string {
 		case mdSegFence:
 			rows = phoneCodeRows(st, seg, width)
 		case mdSegTable:
-			rows = phoneTableRows(st, seg, width)
+			rows = phoneTableRows(st, seg, width, plainCodeSpan)
 		default:
-			rows = proseRows(st, seg.text, width)
+			rows = proseRowsWithCode(st, seg.text, width, plainCodeSpan)
 		}
 		if len(rows) == 0 {
 			continue
@@ -409,7 +424,7 @@ func mdCells(line string) []string {
 //
 // Each line goes back through prose, so a cell keeps its bold, its code spans
 // and its links, and wraps at the same measure as the paragraph above it.
-func phoneTableRows(st *tokens.Styler, seg mdSegment, width int) []string {
+func phoneTableRows(st *tokens.Styler, seg mdSegment, width int, plainCodeSpan func(string) bool) []string {
 	if len(seg.table) == 0 {
 		return nil
 	}
@@ -437,7 +452,7 @@ func phoneTableRows(st *tokens.Styler, seg mdSegment, width int) []string {
 			if j < len(head) {
 				key = head[j]
 			}
-			rows = append(rows, proseRows(st, mdKeyed(key, cell), width)...)
+			rows = append(rows, proseRowsWithCode(st, mdKeyed(key, cell), width, plainCodeSpan)...)
 		}
 		if len(rows) == 0 {
 			continue
@@ -654,13 +669,12 @@ func wrapCodeLine(line string, width int) []string {
 // a pure function of (row, task index) — no state, nothing cached — so a resize
 // re-derives it and a re-render produces the same bytes.
 //
-// CODE IS NOT PROSE AND GETS NO LINKS. Two guards, one for each way code
-// reaches a row: a fenced block is drawn behind [tokens.GlyphCodeGutter], and an
-// inline span is drawn on the surface's one raised plane (prose/inline.go's
-// codeSpan). Both are read off the RENDERED row — the gutter as a glyph, the
-// plane as a background — which is the only place the two are the same kind of
-// fact. A row whose profile has no raised plane keeps its backticks, and a
-// reference between them is masked by the same rule that masks the plane.
+// CODE IS NOT PROSE AND GETS NO LINKS. Two guards cover the code that can name
+// a task: a fenced block carries [tokens.GlyphCodeGutter], while a non-path
+// inline span carries prose's raised plane. Path spans deliberately drop that
+// plane under ONE VISIBLE MARK PER TOKEN, but the linker's path grammar cannot
+// recognize their whitespace-bearing task reference anyway. At profiles with
+// no plane, prose restores backticks and [masked] reads those instead.
 
 // taskLink is one drawn reference: the columns it occupies on its row, and the
 // node behind them.
@@ -845,7 +859,8 @@ func masked(flat string, at int) bool {
 }
 
 // grounded reports whether any cell of a reference was drawn on the raised
-// plane — which on this surface means it is code (prose/inline.go).
+// plane, which now means non-path inline code. A linkable path is the one code
+// span that spends its visible mark on an underline instead.
 func grounded(ground []bool, from, to int) bool {
 	for i := from; i < to && i < len(ground); i++ {
 		if ground[i] {

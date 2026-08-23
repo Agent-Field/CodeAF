@@ -697,9 +697,10 @@ aforge's own token layer — there is no HTML renderer involved. What is support
 - **Emphasis** — CommonMark by delimiter count: one `*` is italic, two is bold, three is
   both. Nesting composes, so it cannot leak.
 - **Strikethrough** — GFM `~~x~~`.
-- **Inline code** — drawn on the one raised plane. Where the terminal has no raised
-  plane (16 colours and below), the **backticks come back** rather than the span reading
-  as ordinary prose.
+- **Inline code** — drawn on the one raised plane, except when the span names a real
+  path: a linked path keeps its underline and drops the plane so one token never wears
+  two visible marks. Where the terminal has no raised plane (16 colours and below), the
+  **backticks come back** rather than ordinary code reading as prose.
 - **Fenced and indented code blocks** — syntax-highlighted at 256 colours and above,
   ordinary text below. Drawn at the full width, because a figure is looked at, not read
   along.
@@ -890,6 +891,10 @@ The underline is how you can tell there is something to click. Terminals differ 
 about whether they show a hyperlink at all until you are already holding the modifier
 down, so aforge draws the affordance itself: a path that is a working link is
 underlined, and a path that is not is plain.
+
+When a working path is written as inline code, the underline is its one visible mark;
+it does not also wear inline code's raised plane. Non-path inline code keeps the plane
+and has no underline. Fenced code blocks are unchanged.
 
 It is the same underline a path wears inside a highlighted `bash` command, because they
 mean the same thing — this is a location.
