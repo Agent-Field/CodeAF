@@ -1762,7 +1762,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	streamEvents := make(chan tui.StreamEvent, 256)
 	transcriber, err := voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
-		SiteURL: settings.SiteURL, SiteName: settings.SiteName, SiteCategories: settings.SiteCategories,
 	})
 	if err != nil {
 		return nil, brain.abandon(err)

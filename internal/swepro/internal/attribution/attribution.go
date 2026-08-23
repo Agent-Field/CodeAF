@@ -4,23 +4,30 @@
 // co-author trailers.
 //
 // This is a deliberate Go-side addition with no counterpart in swe-pro
-// 3b25a1a. Environment-variable names, false-value semantics, and the
-// default site/app values mirror the agentfield Python SDK's
-// openrouter_attribution module so every AgentField product reports usage
-// under the same app.
+// 3b25a1a. The commit-attribution half still reads its environment; the
+// OpenRouter half no longer reads anything, because the app a request names is
+// a fact about the product rather than an operator's preference.
 package attribution
 
 import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 const (
-	// DefaultSiteURL is the HTTP-Referer OpenRouter groups usage under.
-	DefaultSiteURL = "https://agentfield.ai"
-	// DefaultAppName is the display title OpenRouter shows for the app.
-	DefaultAppName = "AgentField AI"
+	// DefaultSiteURL, DefaultAppName and DefaultCategories are the OpenRouter
+	// app this engine reports as. They are INTERPOLATED FROM internal/provider
+	// rather than re-spelled here: the engine is a second process spending the
+	// same key against the same app, and two copies of an app's identity is how
+	// one product's usage ends up split across two dashboard pages. The names
+	// keep the "Default" prefix the rest of this package uses, but nothing
+	// overrides them — see [OpenRouterHeaderPairs].
+	DefaultSiteURL    = provider.AppURL
+	DefaultAppName    = provider.AppName
+	DefaultCategories = provider.AppCategories
 
 	// CommitCoAuthorTrailer is the git trailer identifying SWE AF as a
 	// co-author of harness-produced commits.
@@ -65,41 +72,26 @@ func firstNonEmpty(values ...string) string {
 
 // ── OpenRouter app attribution ────────────────────────────────────────────
 
-// OpenRouterEnabled reports whether attribution headers should be sent.
-// Disable with AGENTFIELD_OPENROUTER_ATTRIBUTION=0|false|no|off.
-func OpenRouterEnabled() bool {
-	return enabled("AGENTFIELD_OPENROUTER_ATTRIBUTION")
-}
-
-// SiteURL resolves the attribution site URL from the environment.
-func SiteURL() string {
-	return firstNonEmpty(
-		os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"),
-		os.Getenv("OR_SITE_URL"),
-		DefaultSiteURL,
-	)
-}
-
-// AppName resolves the attribution app name from the environment.
-func AppName() string {
-	return firstNonEmpty(
-		os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"),
-		os.Getenv("OR_APP_NAME"),
-		DefaultAppName,
-	)
-}
-
-// OpenRouterHeaderPairs returns the ordered attribution {name, value} pairs
-// to include on OpenRouter requests, or nil when attribution is disabled.
+// OpenRouterHeaderPairs returns the ordered attribution {name, value} pairs to
+// include on OpenRouter requests.
+//
+// NOTHING CAN CHANGE THEM AND NOTHING CAN SWITCH THEM OFF. The engine used to
+// resolve all three from the environment — AGENTFIELD_OPENROUTER_SITE_URL,
+// OR_APP_NAME, a kill switch — and an engine that runs as a second process
+// inheriting somebody's shell is exactly where an app quietly becomes two apps,
+// or none. The app this binary reports as is a fact about the product.
+//
+// X-OpenRouter-Categories is the fourth pair and it was missing for a release:
+// the engine named the app and its URL, so its tokens landed on the app page,
+// but it named no category — and categories are what the marketplace boards are
+// ranked within. Every other outbound path in this binary sends the whole set
+// (provider.ApplyAttribution), and this one now does too.
 func OpenRouterHeaderPairs() [][2]string {
-	if !OpenRouterEnabled() {
-		return nil
-	}
-	name := AppName()
 	return [][2]string{
-		{"HTTP-Referer", SiteURL()},
-		{"X-OpenRouter-Title", name},
-		{"X-Title", name},
+		{"HTTP-Referer", DefaultSiteURL},
+		{"X-OpenRouter-Title", DefaultAppName},
+		{"X-Title", DefaultAppName},
+		{"X-OpenRouter-Categories", DefaultCategories},
 	}
 }
 

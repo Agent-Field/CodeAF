@@ -75,13 +75,10 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// are a backstop against a wedged endpoint on a non-streamed call, and a
 	// second number here would be the one that drifts.
 	client, err := provider.NewClient(provider.Config{
-		APIKey:         settings.APIKey,
-		BaseURL:        settings.BaseURL,
-		Model:          model,
-		Timeout:        harnessTimeout,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
+		APIKey:  settings.APIKey,
+		BaseURL: settings.BaseURL,
+		Model:   model,
+		Timeout: harnessTimeout,
 	})
 	if err != nil {
 		return off

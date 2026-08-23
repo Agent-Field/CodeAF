@@ -512,9 +512,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Model:          chosen,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
 		// The folder this conversation keeps everything in (Decision 26). It is

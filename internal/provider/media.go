@@ -363,7 +363,7 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 		// Unconditional rather than gated on isOpenRouter: every endpoint this
 		// client speaks to is a router media endpoint, and an attribution header
 		// is inert anywhere it is not read.
-		applyAttribution(request.Header, c.config)
+		ApplyAttribution(request.Header)
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
