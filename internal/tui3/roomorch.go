@@ -246,6 +246,15 @@ func (p *orchPage) put(text string, spots ...orchSpot) {
 	p.spots = append(p.spots, spots)
 }
 
+// putRow puts one already-built row on the page WHOLE — its hit kind and entry
+// index included — for the transcript view, whose rows are the deck renderer's
+// own and answer clicks exactly as they do in a room ([app.orchTranscriptRows]
+// says why they must).
+func (p *orchPage) putRow(r row) {
+	p.rows = append(p.rows, r)
+	p.spots = append(p.spots, nil)
+}
+
 // orchOf is the run the open page is about, or nil when the body is anything
 // else.
 func (a *app) orchOf() *orchRun {
@@ -1008,6 +1017,16 @@ func (a *app) orchReadTranscript() {
 	if run.journalSet && reflect.DeepEqual(run.journal, next) {
 		return
 	}
+	// A LIVE NODE'S JOURNAL IS RE-READ WHOLE as it grows, and the fresh parse
+	// knows nothing about what the reader opened. The expansion state is
+	// carried across by index — the journal is append-only, so an index still
+	// names the call it named — because a person reading a diff they opened
+	// must not have it snap shut every time the node says another line.
+	for i := range next {
+		if i < len(run.journal) {
+			next[i].open, next[i].full = run.journal[i].open, run.journal[i].full
+		}
+	}
 	run.journal, run.journalSet = next, true
 	if a.room != nil {
 		a.room.dirty, a.room.stick = true, true
@@ -1022,20 +1041,30 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 		page.put(a.pal.dim(fit("no transcript yet", width)))
 		return
 	}
-	// showsWork for the reason a room sets it (workfold.go's [app.deckFolds]):
-	// somebody descended from a chip into a node's transcript to read what that
-	// node did, and a page that collapsed it into "▸ worked · 6 tool calls"
-	// would answer that gesture with the one line they already had.
-	rows, _ := a.deckRows(deck{
-		entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true,
-	}, width)
+	rows, _ := a.deckRows(a.orchTranscriptDeck(), width)
 	if omitted := len(rows) - orchTranscriptTail; omitted > 0 {
 		page.put(a.pal.dim(fit("… "+itoa(omitted)+" earlier lines", width)))
 		rows = rows[omitted:]
 	}
+	// THE ROWS GO ON THE PAGE WHOLE, hit information included. They used to be
+	// re-minted as bare text, which is why a tool call on a node's transcript
+	// could be seen and never opened: the click resolved a row that admitted
+	// to being nothing.
 	for _, line := range rows {
-		page.put(line.text)
+		page.putRow(line)
 	}
+}
+
+// orchTranscriptDeck is the node transcript as the deck the renderers and the
+// expansion doors both read — ONE deck, so a click that opens a call and the
+// next paint that draws it are looking at the same entries. showsWork for the
+// reason a room sets it (workfold.go's [app.deckFolds]): somebody descended
+// from a chip into a node's transcript to read what that node did, and a page
+// that collapsed it into "▸ worked · 6 tool calls" would answer that gesture
+// with the one line they already had.
+func (a *app) orchTranscriptDeck() deck {
+	run := a.orchOf()
+	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.
@@ -1166,11 +1195,12 @@ func (a *app) orchHoverAt(x, y int) (string, bool) {
 // roomRowAt resolves a screen row to an index into the room's OWN row list, or
 // false when the pointer is not over one.
 //
-// It is [app.rowAt]'s arithmetic, answered in the room's coordinates: the frame
-// pins rows above the body region, a short page is padded down to sit on the
-// input, and the window starts wherever the reader scrolled to. A page that
-// hit-tested without all three would open the card of the chip two rows from the
-// one under the finger.
+// It is [app.rowAt]'s arithmetic, answered in the room's coordinates: the
+// frame pins rows above the body region, the page HANGS FROM THE TOP with the
+// slack below it — the same law the conversation keeps, and this function once
+// disagreed with, from the era the frame padded above: every hover and press
+// on a short page landed the padding's height away from the row under the
+// finger — and the window starts wherever the reader scrolled to.
 func (a *app) roomRowAt(y int) (int, bool) {
 	top := a.bodyTop()
 	if a.room == nil || top < 0 {
@@ -1180,11 +1210,7 @@ func (a *app) roomRowAt(y int) (int, bool) {
 	rows := a.roomRows(a.bodyWidth())
 	offset := a.roomOffsetFor(len(rows), height)
 	end := min(offset+height, len(rows))
-	pad := 0
-	if shown := end - offset; shown < height {
-		pad = height - shown
-	}
-	at := y - top - pad + offset
+	at := y - top + offset
 	if at < offset || at >= end {
 		return 0, false
 	}
