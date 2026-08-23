@@ -545,20 +545,20 @@ func TestMemoryAccumulatesAcrossVersions(t *testing.T) {
 	}
 	memory := store.Memory("weekly-marketing")
 	// The seed the bundle was minted with is there from the start.
-	notes, err := memory.Recall("")
+	notes, err := memory.Recall(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(notes) != 1 || !strings.Contains(notes[0].Text, "lower case") {
 		t.Fatalf("the seed did not reach the live memory: %v", notes)
 	}
-	if err := memory.Remember("the Q3 launch moved to October"); err != nil {
+	if err := memory.Remember(t.Context(), "the Q3 launch moved to October"); err != nil {
 		t.Fatal(err)
 	}
-	if err := memory.Remember("their newsletter goes out on Thursdays"); err != nil {
+	if err := memory.Remember(t.Context(), "their newsletter goes out on Thursdays"); err != nil {
 		t.Fatal(err)
 	}
-	notes, _ = memory.Recall("")
+	notes, _ = memory.Recall(t.Context(), "")
 	if len(notes) != 3 {
 		t.Fatalf("three notes, got %d: %v", len(notes), notes)
 	}
@@ -569,7 +569,7 @@ func TestMemoryAccumulatesAcrossVersions(t *testing.T) {
 	if notes[0].At == "" {
 		t.Fatalf("a remembered note carries no time: %v", notes[0])
 	}
-	found, _ := memory.Recall("newsletter")
+	found, _ := memory.Recall(t.Context(), "newsletter")
 	if len(found) != 1 || !strings.Contains(found[0].Text, "Thursdays") {
 		t.Fatalf("recall by substring: %v", found)
 	}
@@ -582,7 +582,7 @@ func TestMemoryAccumulatesAcrossVersions(t *testing.T) {
 	if _, err := store.Mint(changed, first.Hash, "second pass"); err != nil {
 		t.Fatal(err)
 	}
-	notes, _ = store.Memory("weekly-marketing").Recall("")
+	notes, _ = store.Memory("weekly-marketing").Recall(t.Context(), "")
 	if len(notes) != 3 {
 		t.Fatalf("minting v2 changed the memory to %d notes: %v", len(notes), notes)
 	}
@@ -605,17 +605,17 @@ func TestMemoryAccumulatesAcrossVersions(t *testing.T) {
 // bundle, and its memory belongs beside everybody else's.
 func TestMemoryWorksForASubharnessWithNoBundleOnDisk(t *testing.T) {
 	store := storeAt(t)
-	notes, err := store.Memory("never-run").Recall("anything")
+	notes, err := store.Memory("never-run").Recall(t.Context(), "anything")
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("got %v: %v", notes, err)
 	}
 	if _, err := os.Stat(store.Dir()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("asking created %s", store.Dir())
 	}
-	if err := store.Memory("swe").Remember("this repository builds with make"); err != nil {
+	if err := store.Memory("swe").Remember(t.Context(), "this repository builds with make"); err != nil {
 		t.Fatalf("a compiled-in subharness could not remember: %v", err)
 	}
-	notes, err = store.Memory("swe").Recall("make")
+	notes, err = store.Memory("swe").Recall(t.Context(), "make")
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("got %v: %v", notes, err)
 	}
@@ -731,6 +731,30 @@ func TestTheProgramIsParsedBeforeItIsWrittenWhenAParserIsWired(t *testing.T) {
 	}
 	if _, err := store.Mint(weekly(), "", ""); err != nil {
 		t.Fatalf("a program that parses was refused: %v", err)
+	}
+}
+
+// runtimeMemory is jsrun.Memory, restated here rather than imported.
+//
+// The store may not import the runtime — that is the direction the [Build] seam
+// exists to keep — so the way this package proves it still fits the door it
+// feeds is by writing the door down and satisfying it. If the runtime's
+// interface moves, this line is what says so, at the merge, instead of a nil
+// Memory field discovered at somebody's first run.
+type runtimeMemory interface {
+	Remember(ctx context.Context, note string) error
+	Recall(ctx context.Context, query string) ([]exec.Note, error)
+}
+
+func TestTheMemoryDoorIsTheOneTheRuntimeAsksFor(t *testing.T) {
+	store := storeAt(t)
+	var door runtimeMemory = store.Memory("weekly-marketing")
+	if err := door.Remember(t.Context(), "it fits"); err != nil {
+		t.Fatal(err)
+	}
+	notes, err := door.Recall(t.Context(), "fits")
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("through the runtime's own door: %v, %v", notes, err)
 	}
 }
 
