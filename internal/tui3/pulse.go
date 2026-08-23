@@ -69,11 +69,18 @@ const (
 // what tells them which program they are looking at, and a top line that clipped
 // the second to fit the first would have got the order of those two backwards.
 func (a *app) pulseLine(width int, pal palette) string {
-	// THE NAME WEARS THE HUE THAT LEADS. [hueAccent] is what this surface paints
-	// the thing a person's eye should land on first, and on a screen whose whole
-	// top line is otherwise dim telemetry, the one word that says which program
-	// this is has earned it.
-	name := " " + pal.bold(pal.accent(pulseName))
+	// THE NAME IS STRUCTURE, SO IT WEARS A QUIET ROLE. THE ACCENT BUDGET IS ONE
+	// THING PER SCREEN and it is always the live one — the row waiting on
+	// somebody, the work in flight, the card under the cursor. A product name is
+	// none of those: it is the same word on every frame home has ever drawn,
+	// which is the definition of a thing the eye learns to skip, and spending the
+	// loudest hue on it left home with two places claiming to be first.
+	//
+	// So it takes [hueMuted] — one rung above the dim telemetry it shares the
+	// line with, so it still reads as the line's head — and keeps the WEIGHT,
+	// which is what says "this is the title" on a sixteen-colour terminal that
+	// has no rungs to spend.
+	name := " " + pal.bold(pal.muted(pulseName))
 	tail := strings.Join(a.pulseSegments(a.now(), pal), pulseGap)
 	if tail == "" {
 		return name

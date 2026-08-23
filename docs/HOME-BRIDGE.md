@@ -74,7 +74,12 @@ nothing else on home may wear it; ● moving glyphs wear the spinner's own
 `hueMuted` so still and animated rows agree; landed/kept clauses wear `hueAdd`;
 a bound nearing its ceiling (the pool at "$4.80 of $5") wears `hueWarn` — a
 bound about to matter is not a failure; `hueBad` only for a genuinely failed
-thing; headings that lead and the `aforge` name wear `hueAccent`; zone labels,
+thing; headings that lead and the `aforge` name wear `hueMuted`, and `hueAccent`
+is spent on the one live or chosen thing on the screen and nothing else
+(amended 2026-08-23: this line read "headings that lead and the `aforge` name
+wear `hueAccent`" — THE ACCENT BUDGET IS ONE ELEMENT PER SCREEN and a heading is
+structure, so the machine card's band headings, home's top-line name and the
+welcome wordmark all stepped down to `hueMuted`); zone labels,
 ages and clauses stay `hueDim` — the surface talking about itself.
 
 THE GLYPH CARRIES THE HUE; THE TEXT STAYS CALM. A whole row in a status color

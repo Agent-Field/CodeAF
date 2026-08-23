@@ -346,6 +346,24 @@ func (a *app) orchLead(picked bool) string {
 	return a.pal.accent(a.linearMark(railMark, railMarkASCII))
 }
 
+// orchDoorInk paints one of the node card's two standing doors — the nested run
+// and the transcript — and it is a function of ONE thing: whether the cursor is
+// on it.
+//
+// THE ACCENT BUDGET IS ONE ELEMENT PER SCREEN AND IT IS ALWAYS THE CHOSEN ONE.
+// Both doors used to be drawn in the accent unconditionally, so a card with a
+// nested run under it lit two rows that no cursor was near, on a page whose
+// header is already the accent line saying where you are. A door that is always
+// there is structure; it wears [hueMuted], the tier this surface gives a name
+// that is neither the live thing nor telemetry, and takes the accent only for as
+// long as enter would open it.
+func (a *app) orchDoorInk(picked bool) func(string) string {
+	if picked {
+		return a.pal.accent
+	}
+	return a.pal.muted
+}
+
 // orchPollEvery is how often an open page re-reads its run. Four times a second
 // is where a graph appearing reads as an appearance rather than as a flicker,
 // and a poll is a struct copy — the redraw behind it is what costs, and it is
@@ -1664,7 +1682,7 @@ func (a *app) orchCardRows(page *orchPage, width int) {
 		picked := len(links) > 0 && links[len(links)-1].run == node.ID && run.link == len(links)-1
 		word := a.orchLead(picked) + orchRunHead + " · enter opens it"
 		spot := orchSpot{span: hudSpan{from: 0, to: width}, run: node.ID}
-		page.put(a.pal.accent(fit(word, width)), spot)
+		page.put(a.orchDoorInk(picked)(fit(word, width)), spot)
 		if layoutTier(width) == tierPhone {
 			page.put("", spot)
 			page.put("", spot)
@@ -1673,7 +1691,7 @@ func (a *app) orchCardRows(page *orchPage, width int) {
 	picked := len(links) > 0 && links[len(links)-1].transcript == node.ID && run.link == len(links)-1
 	word := a.orchLead(picked) + "transcript · enter opens it"
 	spot := orchSpot{span: hudSpan{from: 0, to: width}, transcript: node.ID}
-	page.put(a.pal.accent(fit(word, width)), spot)
+	page.put(a.orchDoorInk(picked)(fit(word, width)), spot)
 	if layoutTier(width) == tierPhone {
 		page.put("", spot)
 		page.put("", spot)
