@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/substore"
 )
 
 // `aforge run subharness <name> --input <file.json|->` is one program, run once,
@@ -106,6 +107,12 @@ func runSubharnessCommand(args []string) error {
 		return err
 	}
 	web := exec.NewWeb()
+	// The toolbox is opened HERE, above the registry, rather than beside the env
+	// below: it is what a bundle's tool guard is checked against, and the guards
+	// belong to runners the registry is about to build. It is the same object
+	// [newHeadlessEnv] arms the whitelist on a moment later, which is what keeps
+	// the guard and the call agreeing about what this build has.
+	tools := exec.NewToolbox(space, name, web)
 	// The turn, token and deadline ceilings are left at zero on purpose, which is
 	// how this file states them without restating them: internal/exec owns every
 	// one of those numbers and applies its own when it is handed nothing. A
@@ -118,18 +125,31 @@ func runSubharnessCommand(args []string) error {
 		settings: settings, client: client, workspace: space, web: web,
 		model: settings.Model, models: modelCatalog,
 	})
-	// A NAMED SEAM FOR THE STORE LANE. The bundles a person wrote and the bundles
-	// a repository carries are found here, and nowhere else in this command:
+	// THE SEAM, FILLED. The bundles a person wrote and the bundles a repository
+	// carries are found here and nowhere else in this command. The lookup ORDER
+	// is decided in the [exec.Layer] constants and not here, which is why this is
+	// two registrations and not an edit to any lookup — including the packed
+	// trailer's, whenever that phase lands.
 	//
-	//	registry.UseBundles(exec.LayerProject, projectStore)
-	//	registry.UseBundles(exec.LayerHome, homeStore)
+	// The look every bundle's guards are checked through is this command's own:
+	// the workspace it was pointed at, and the bare toolbox above, which is the
+	// only belt a run with no session has. It is filled immediately, because
+	// unlike the conversation's belt this one already exists.
 	//
-	// once `.aforge/subharnesses/` and `~/.aforge/subharnesses/` exist. The
-	// lookup ORDER is already decided and lives in the [exec.Layer] constants, so
-	// this is two lines and not an edit to any lookup — including the packed
-	// trailer's, which registers at [exec.LayerPacked] whenever that phase lands.
-	// Until then the only subharnesses this command can reach are the ones
-	// compiled into the binary, which is a smaller menu rather than a broken one.
+	// A store that cannot be read registers a source that lists nothing, so
+	// nothing here fails a launch over a directory.
+	headlessBelt := &beltWatch{}
+	headlessBelt.watch(toolboxBelt(tools))
+	build := subharnessBuild(bundleLook{workspace: space.Root(), belt: headlessBelt.on})
+	store := substore.Home()
+	registry.UseBundles(exec.LayerHome, store.Source(build))
+	// And the repository's own, when the directory this run works in really is
+	// one. [substore.ProjectDir] is a name and nothing else — what is in it is
+	// whatever a `git pull` left there — so whether there is a project at all is
+	// asked with the one answer this binary already gives ([v3GitRoot]).
+	if root, ok := v3GitRoot(space.Root()); ok {
+		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectDir(root)).Source(build))
+	}
 
 	journal := &runJournal{}
 	if path := strings.TrimSpace(*journalPath); path != "" {
@@ -145,7 +165,6 @@ func runSubharnessCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	tools := exec.NewToolbox(space, name, web)
 	// The run's own reasoning economy, layered the way every executing surface
 	// layers it: the planning level is wrong for work, and a model with reasoning
 	// suppressed stops writing anything down.
@@ -156,6 +175,13 @@ func runSubharnessCommand(args []string) error {
 		env: func(manifest exec.Manifest) exec.Env {
 			return newHeadlessEnv(client, tools, *policy, manifest, journal, os.Stderr)
 		},
+		// WHAT HAPPENED HERE IS WRITTEN DOWN WHERE THE CONVERSATION WILL READ IT.
+		// The note goes beside the bundle in the same store the chat surface
+		// records into (chatv3_subharness.go), because "when did this last run"
+		// is a question about the MACHINE and not about which door was used —
+		// and a headless run that left no note would make `/subharness` say a
+		// program has never run when it ran this morning.
+		record: subharnessRunRecorder(store),
 	})
 }
 
@@ -174,6 +200,11 @@ type subharnessRun struct {
 	journal *runJournal
 	stdout  io.Writer
 	stderr  io.Writer
+	// record is told how the run went, once, the moment it lands. Nil is a build
+	// that keeps no history — a test driving the endings, a store that could not
+	// be opened — and a run then simply leaves no note, which is not an error and
+	// draws nothing anywhere.
+	record func(name string, note substore.RunNote)
 }
 
 // runSubharness resolves the name, runs the program, and lands the run on one of
@@ -222,10 +253,45 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 			// There is no fourth worker under the generalist. This is the "could
 			// not be made to happen" ending, and it leaves through main's own
 			// default with the sentence attached.
+			//
+			// A RUN THAT COULD NOT BE MADE TO HAPPEN IS STILL A RUN THAT WAS
+			// TRIED, and it is written down as unfinished with the reason it
+			// carried. A note that stayed silent about it would send somebody
+			// back to try the same broken program again tomorrow.
+			run.note(result, err)
 			return err
 		}
 	}
+	run.note(result, nil)
 	return reportSubharnessRun(run, result)
+}
+
+// note tells the store how this run went, in the facts and never in a sentence:
+// [substore.RunNote] renders nothing, and how a "when", a "cost" and a run that
+// did not finish are drawn belongs to whichever surface is drawing them.
+//
+// WHAT IT COST IS ASKED OF THE ONE THING THAT CAN SAY, and the order is the same
+// one the conversation's side takes: a runner that journals its own host calls
+// sets [exec.RunResult.Spend] to the sum of them, so adding this command's
+// journal to that would be counting one run twice. A runner that reports nothing
+// — the fronted leaf workers, which spend through their own clients — is measured
+// by the journal instead, which for those is honestly empty.
+func (run subharnessRun) note(result exec.RunResult, runErr error) {
+	if run.record == nil {
+		return
+	}
+	spend := result.Spend
+	if !spend.Reported() {
+		spend = run.journal.Ledger()
+	}
+	note := substore.RunNote{
+		At: time.Now(), Finished: result.Finished(),
+		Why: result.Incomplete, CostUSD: spend.CostUSD,
+	}
+	if runErr != nil {
+		note.Finished, note.Why = false, runErr.Error()
+	}
+	run.record(run.name, note)
 }
 
 // reportSubharnessRun writes what happened and decides what the process leaves
