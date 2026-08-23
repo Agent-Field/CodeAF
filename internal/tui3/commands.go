@@ -136,7 +136,28 @@ var commands = []command{
 	// Every one of them opens the same panel bare, and the same picker with a
 	// space after it (harnesspick.go).
 	{name: "harness", desc: "the shapes of work you have saved · a space picks one to run",
-		alias: []string{"harnesses", "subharness", "sub"}},
+		alias: []string{"harnesses"}},
+	// THE PROGRAMS THIS CONVERSATION CAN RUN (subharness.go). It sits directly
+	// under /harness because that is the neighbouring question — one is what this
+	// surface has learned to do from watching you, the other is the typed programs
+	// it can be given — and a person hunting either will read both rows on the way
+	// past.
+	//
+	// `/subharness` AND `/sub` USED TO BE WORDS FOR THE ROW ABOVE and are not any
+	// more, because they now name something else. A subharness is a typed program
+	// with an input schema, a cost shape and a card you settle before it runs
+	// (docs/SUBHARNESS-PRD.md §2 fixes the person-facing name); a harness is the
+	// older saved shape of work that row opens. They are two things, so they are
+	// two rows — a word that reached whichever of them the table happened to list
+	// first is a word nobody could rely on.
+	//
+	// TWO ROWS FOR ONE COMMAND, the way /model and /export have two: the bare form
+	// is the list nearly everybody wants, and a single row carrying <name> would
+	// make it unreachable from this list — [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it.
+	{name: "subharness", desc: "the programs you can run · type to filter · enter opens its card",
+		alias: []string{"sub"}},
+	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU
