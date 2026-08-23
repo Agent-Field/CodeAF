@@ -28,6 +28,12 @@ import (
 // node behind all of them — but chosen. And no node anywhere wears a name out
 // of the machinery.
 func TestTwoUnrelatedRequestsBecomeOnePlannedJobWithNoMachineryTitle(t *testing.T) {
+	// THIS TEST IS ABOUT THE PARTS ROUTE, NOT THE GATE. With the split gate
+	// armed by default it lawfully collapses a two-item plan below its floor,
+	// which would leave nothing here to assert about titles and routing — so
+	// the gate is stood down and its own corpus test holds its law
+	// (internal/splitgate).
+	t.Setenv("AFORGE_SPLITGATE", "0")
 	const haiku = "Write me a haiku about the first cold morning of autumn."
 	const research = "Find out which three vendors ship the parser we are on and what each charges."
 
@@ -144,6 +150,9 @@ func TestTwoUnrelatedRequestsBecomeOnePlannedJobWithNoMachineryTitle(t *testing.
 // lifecycle test); what this pins is that a planner-built subtree arrives at
 // that floor already wired to stand on it.
 func TestAPlannedGatheringRequestCannotBeClaimedWhileAnInputRuns(t *testing.T) {
+	// The gate is stood down for the reason the first test on this file states:
+	// the claim ordering under test needs the planned parts to exist.
+	t.Setenv("AFORGE_SPLITGATE", "0")
 	requests := []string{
 		"How does France measure road distance?",
 		"How does the UK measure road distance?",

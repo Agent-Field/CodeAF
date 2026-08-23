@@ -72,7 +72,7 @@ func TestTheTasksHeadCountsOnlyTwoOrMoreWorking(t *testing.T) {
 			kids[i] = session.WorkNode{ID: itoa(i), Title: "hand", State: session.WorkRunning}
 		}
 		agent.work[0].Children = kids
-		head := plain(a.marginHead(28)[0].text)
+		head := plain(a.marginHead(28, true)[0].text)
 		total := n + 1
 		if total <= 1 && head != marginTasksWord {
 			t.Fatalf("%d working drew a payload: %q", total, head)
