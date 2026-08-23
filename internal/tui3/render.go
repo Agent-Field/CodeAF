@@ -710,7 +710,7 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	e.feet = nil
 	var out []string
 	if e.mdCut > 0 {
-		out = append(out, renderMarkdown(e.text[:e.mdCut], width)...)
+		out = append(out, a.renderMarkdown(e.text[:e.mdCut], width)...)
 	}
 	out = append(out, wrap(e.text[e.mdCut:], width)...)
 	return trimBlanks(out)

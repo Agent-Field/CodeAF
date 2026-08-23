@@ -306,6 +306,21 @@ colour is a row that shouts, and a screen of shouting rows is a screen with no
 priority at all. The grounds in THE GROUND LADDER are the sole exception, and
 they are exactly as quiet as the table above says.
 
+## ONE MARK PER TOKEN
+
+> **One token wears one visible mark.**
+
+A mark must say one thing without borrowing emphasis from another channel. An
+inline code span normally wears the raised plane; when that span is a linkable
+path, it drops the plane and keeps the underline that says it is a location.
+The OSC 8 hyperlink stays because it occupies no cells and is not a visible
+mark. Non-path inline code keeps its plane and never gains an underline, while
+fenced code blocks are unchanged.
+
+Stacking plane, underline and brighter ink made plumbing paths louder than the
+facts around them. The rule keeps both meanings legible while refusing to turn
+their overlap into extra emphasis.
+
 ## PRESENCE OVER LABELS
 
 Also restated, because it is the emptiness law seen from the design side.
