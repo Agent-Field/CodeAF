@@ -770,9 +770,11 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if strings.TrimSpace(lines[draft-1]) != "" {
 		t.Fatalf("the row above the draft is not blank: %q", lines[draft-1])
 	}
-	// The rule above the box is the LEGEND now (render.go): the same one line,
-	// with which conversation this is written into the border of it.
-	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─ ") || !strings.Contains(rule, "───") {
+	// The rule above the box is the LEGEND (render.go). The conversation's name
+	// is not written into it any more — the status line owns identity, and the
+	// border keeps the branch, the host and the keys — so on a local session
+	// with nothing to say it is a bare rule.
+	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─") || !strings.Contains(rule, "───") {
 		t.Fatalf("the row above that is not the input's legend border: %q", rule)
 	}
 	if draft != len(lines)-2 {

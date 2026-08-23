@@ -538,7 +538,9 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	if n := strings.Count(rail, taskSheetKey+" "); n != 1 {
 		t.Fatalf("the column drew %d doors onto the page, want 1:\n%s", n, rail)
 	}
-	painted := strings.Join(railText(a, a.viewHeight()), "\n")
+	// Raw rows, not railText: the reading helper strips ANSI, and paint can
+	// only be asserted where the paint still is.
+	painted := strings.Join(a.railRows(a.viewHeight()), "\n")
 	if !strings.Contains(painted, a.pal.data(taskSheetKey)) ||
 		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
 		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)

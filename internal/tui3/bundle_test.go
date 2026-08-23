@@ -2248,8 +2248,12 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	if !strings.Contains(a.legend(120), a.pal.ask("cleaning the build directory")) {
-		t.Fatalf("the legend's label did not answer the question:\n%q", a.legend(120))
+	// The legend no longer carries the conversation's name at all — the status
+	// line owns identity — so the question hue's second home went with it. The
+	// waiting word above and the card itself are where the hue lives, and the
+	// legend has no title to route it onto.
+	if strings.Contains(plain(a.legend(120)), "cleaning the build directory") {
+		t.Fatalf("the legend still carries the conversation's name:\n%q", a.legend(120))
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner
