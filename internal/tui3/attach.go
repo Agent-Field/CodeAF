@@ -393,8 +393,13 @@ func (a *app) submitImages(text string) tea.Cmd {
 	// The person's line goes in WITHOUT cutting a reply that is still streaming
 	// in two — see [app.said], which is the whole of this wave's render-order fix
 	// and belongs to every door onto the transcript, not just the plain one.
+	// And the block carries the context this turn runs in, for [app.submitting]'s
+	// reason and by the same law: a door onto the transcript that dropped the mark
+	// would be a picture-carrying message the history could not place
+	// (turncontext.go).
 	a.said(entry{
 		kind: entryUser, text: userLine(text, chips, a.pal), turn: a.turn,
+		context: a.turnContext(),
 	})
 	a.state = stateWorking
 	a.lastDelta = time.Now()

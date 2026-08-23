@@ -331,6 +331,53 @@ const (
 	HarnessPhaseAsking    = "awaiting your look"
 )
 
+// ── WHAT A PERSON IS PART OF WHILE THEY STAND IN HERE ───────────────────────
+//
+// A design thread is the one place in this program where somebody's own sentence
+// is not a message to a conversation: it is a line inside a named piece of work,
+// and what they say there can rewrite a page. The transcript that draws it drew
+// it exactly as it draws an ordinary chat turn — a `›` line, a think, an answer —
+// so "use models dynamically in the subharness", typed at a design and acted on
+// by it, was indistinguishable from the same sentence typed at nobody in
+// particular.
+//
+// So the node says what it IS, in the words a person would use, and every surface
+// draws that word where the turn starts ([TaskNode.context]). It is spelled here
+// and nowhere else: one context, one sentence, one file that owns it.
+//
+// THE NOUN IS "SUBHARNESS" AND IT HAS NO SECOND FORM. There is one system and one
+// word for it in everything a person reads; nothing here may say otherwise.
+
+// designContextWord is the design thread as a place, before its page has a name.
+// WHICH design is answered by the room around it; what this word carries is the
+// fact that a sentence typed here is part of one.
+const designContextWord = "designing a subharness"
+
+// namedDesignContext is the same context once the page has been written and has a
+// name of its own. It is the better word and it cannot be said any earlier: for
+// the first minutes of a design there is no name, and a context that guessed one
+// would be naming a subharness that does not exist yet.
+func namedDesignContext(name string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		return designContextWord
+	}
+	return "designing subharness " + name
+}
+
+// contextNow gives this node a working context, or a better name for the one it
+// has, and tells the world — on [TaskNode.doingNow]'s terms and for its reason:
+// nothing about the node's state moved, so this is an update and never a landing,
+// and it is announced only when the word actually changes.
+func (n *TaskNode) contextNow(word string) {
+	n.graph.mu.Lock()
+	changed := n.context != word
+	n.context = word
+	n.graph.mu.Unlock()
+	if changed {
+		n.graph.announce(n)
+	}
+}
+
 // designStoppedWord is the report a design a person ended settles with. It says
 // the one thing somebody who stopped a design needs to know, which is not that
 // it stopped — they pressed the key — but that the registry is exactly as they
@@ -435,6 +482,12 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// page is a window that round takes and gives back.
 	log := taskLog(listed)
 	fmt.Fprintf(log, "task %d · %s\ndesigning with %s\n", node.id, node.title(), model)
+
+	// THE CONTEXT IS NAMED BEFORE ANYTHING CAN BE SAID INTO IT. A person can walk
+	// into this room the instant the row appears, and a turn taken in a room that
+	// had not said what it was would be drawn as an ordinary chat turn — which is
+	// the whole defect [TaskNode.context] exists to close.
+	node.contextNow(designContextWord)
 
 	// THE CHANGES LANE IS OPENED BEFORE THE THREAD IS BUILT, and it has to be:
 	// the thread's one extra hand is wired out of it, and a belt is assembled
@@ -634,6 +687,12 @@ func (r *designRun) round(ctx context.Context, change string) (TaskState, bool, 
 	}
 	r.standing = accepted
 	page := accepted.page
+	// AND THE CONTEXT LEARNS THE PAGE'S NAME. Until this line the room could only
+	// say it was a design; from here it can say WHICH, which is the difference
+	// between a mark that orients somebody and one that merely reassures them. A
+	// rewrite passes through here too and may carry a new name with it, which is
+	// why this is set per round rather than once.
+	node.contextNow(namedDesignContext(page.Id.Name))
 
 	// THE CARD IS WHAT A PERSON READS AND THE PAGE IS WHAT THE MODEL READS, and
 	// they are two messages for exactly that reason ([harnessPageContext]).
