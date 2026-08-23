@@ -6,7 +6,7 @@ Type `/home`. It takes the whole screen and shows **every project on this machin
 every session in them**, not just the folder this window was started in.
 
 The top line reads `aforge` on the left, with the machine's own vital signs dim on the
-right — `on watch · 4 orders · $1.10 today · fri 9:41am` (its own section below). The way out
+right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below). The way out
 is named at the foot, on the hint line: `esc close`. `esc` puts you back in exactly the chat
 you came from, untouched — nothing was closed and nothing was sent while you were looking.
 
@@ -221,14 +221,17 @@ of their own** on the left. Home is then three columns and no borders — the se
 made of alignment and space:
 
 ```
- aforge                                        on watch · 4 orders · $1.10 today · fri 9:41
+ aforge                          on watch · 4 orders · 1 working · $1.10 today · fri 9:41
  ──────────────────────────────────────────────────────────────────────────────────────────
   needs you                    aforge                         keeping an eye on
   ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
-  moving                       ○ rename plan      yesterday   since you left
-  ● port sweep          8m     hax-sdk                        ◆ 2 tasks landed        aforge
-                               ▲ schema migration        2h   today
-                               ─ elsewhere ─                  3 chats · 5 tasks · $1.10
+  moving                       ○ rename plan      yesterday   hands
+  ● port sweep          8m     hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
+                               ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
+                               ─ elsewhere ─                  since you left
+                                                              ◆ 2 tasks landed        aforge
+                                                              today
+                                                              3 chats · 5 tasks · $1.10
  ──────────────────────────────────────────────────────────────────────────────────────────
   type to search or start something new · ↑↓ pick · enter open
   ↑↓ move · enter open · tab next zone · esc close
@@ -371,13 +374,19 @@ The top line of home is the program's name and, right-aligned and dim, what is t
 **whole machine** right now:
 
 ```
- aforge                          on watch · 4 orders · $1.10 today · fri 9:41am
+ aforge              on watch · 4 orders · 3 working · $1.10 today · fri 9:41am
 ```
 
 - `on watch · 4 orders` — the **standing orders** active across every project:
   reminders, routines, watches, the things keeping an eye on something for you. The words
   brighten slightly while a check or a firing is actually in flight, the way the status
   line's own `keeping an eye on 2` does.
+- `3 working` — how many things this machine has **in flight right now**, everywhere at
+  once: task nodes out, conversations mid-turn in another window, an `ask here` errand
+  answering, a standing order firing. It is the same count as the rows in the `moving`
+  strip on the left, and a conversation with three tasks out counts as three. It shows
+  from **one** — one hand working is worth knowing — and disappears entirely at nothing,
+  never `0 working`.
 - `$1.10 today` — what the machine has spent **since midnight**: the tasks that ran and the
   standing things that fired. It turns amber once you are four fifths of the way through
   your daily allowance, and it never prints a fraction — what the day is allowed is on the
@@ -414,12 +423,16 @@ to open, and the right side is **the machine's own card** — the morning glance
 straight back into the first row. The card stays put while you read it — the three-second
 rescan leaves the cursor off the list.
 
-It is three bands, each drawn only if it has anything to say:
+It is four bands, each drawn only if it has anything to say:
 
 ```
 keeping an eye on
 ◦ tests sweep                in 2h
 ◦ weekly review            mon 8am
+
+hands
+⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
+⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
 
 since you left
 ◆ 2 tasks landed             aforge
@@ -435,6 +448,11 @@ today
   rather than a thing being watched, and it belongs with the rest of what needs you. Paused
   and stopped things are not here either. Past four, the rest fold to
   `▸ …3 more keeping an eye`.
+- **`hands`** — a small **chart**, two rows of braille dots, of how many things this
+  machine has had running over the last few minutes, oldest on the left and **newest on
+  the right**. It prints no number: the figure is on the pulse line at the top of the
+  screen (`3 working`) and this is the shape it came from. See below for the whole of how
+  it behaves.
 - **`since you left`** — everything that happened across all your projects while you were
   not looking: news a standing thing left in a conversation or a project, and work that
   landed after you last spoke there. It is the same list the phone-shaped home shows under
@@ -453,6 +471,39 @@ they do on any other card here.
 machine nobody has touched today has no `today` band at all — never `0 chats · 0 tasks ·
 $0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
 side, which is the good news said with space.
+
+## The dotted chart on home — the hands spark, and what the little dots mean
+
+The `hands` band on the machine's own card is the one **chart** anywhere in aforge: two
+rows of braille dots tracing how many things this machine has had running over the last
+few minutes.
+
+```
+hands
+⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
+⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
+```
+
+- **One dot is one reading**, taken every three seconds — the same beat home rescans the
+  disk on. Sixty readings fit, so the chart is about **three minutes** wide. Oldest on the
+  left, **newest at the right**.
+- **The top of the chart is the busiest moment in that window** and the bottom is nothing
+  at all. There is no fixed ceiling on how many things a machine may run, so it scales to
+  its own peak: the chart is about **change**, not about size. The size is the pulse line's
+  `3 working`, said once, at the top of the screen.
+- **It moves because the work moves.** There is no animation in it. While something runs
+  the readings differ and the line slides one dot every three seconds; while the machine is
+  quiet the readings are all the same and the line lies **flat and still**.
+- **It disappears when it has nothing to show.** A machine that has run nothing for the
+  whole window draws no `hands` band at all — not a heading over a flat line on the floor.
+  The first thing that runs brings it back.
+- **The readings live only in this run of aforge.** Nothing is written to disk and no
+  history is kept between runs: quit and start again and the chart is empty until the next
+  few beats fill it in.
+- **It needs the room to be a chart.** On a frame too narrow for a card at all (under 80
+  columns) there is no `hands` band, and the count on the pulse line is what you keep. In
+  plain-text mode and with fancy glyphs turned off it is not drawn either — braille read
+  aloud is a row of noise — and again the count is what stays.
 
 ## The pane on the right of home — the preview of the session under the cursor or pointer
 
