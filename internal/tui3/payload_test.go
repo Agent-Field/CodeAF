@@ -17,10 +17,10 @@ import (
 // hex would be a second author of the palette, which designlanguage_test.go
 // forbids by name.
 
-// inked reports whether row paints text in [palette.ink] — the tier the payload
-// rule lifts a datum into.
-func inked(pal palette, row, text string) bool {
-	return strings.Contains(row, pal.ink(text))
+// lifted reports whether row paints text in [palette.data] — the hue the
+// payload rule lifts a datum into.
+func lifted(pal palette, row, text string) bool {
+	return strings.Contains(row, pal.data(text))
 }
 
 // dimmed is the same question about the quiet tier the prose stays in.
@@ -38,7 +38,7 @@ func noteRows(a *app, text string, facts ...string) []string {
 // it just set, and until this wave the ids and the words around them were one
 // flat dim sentence — so the person who typed the command to find out WHICH
 // MODELS read a line where the answer had exactly the weight of the question.
-func TestACrewLineCarriesItsModelsInInkAndItsProseInDim(t *testing.T) {
+func TestACrewLineCarriesItsModelsInTheDataHueAndItsProseInDim(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width = 200 // one row, so the assertion is about paint and not about wrap
 
@@ -50,15 +50,15 @@ func TestACrewLineCarriesItsModelsInInkAndItsProseInDim(t *testing.T) {
 	row := rows[0]
 
 	for _, model := range []string{"kimi-k3:low", "deepseek-v4-flash", "qwen3.8-27b"} {
-		if !inked(a.pal, row, model) {
-			t.Fatalf("the model %q is not in the ink tier — the answer is as quiet as the question:\n%q",
+		if !lifted(a.pal, row, model) {
+			t.Fatalf("the model %q is not in the data hue — the answer is as quiet as the question:\n%q",
 				model, row)
 		}
 	}
 	// AND THE ROLE WORDS STAY WHERE THEY WERE. They are the question the ids
 	// answer, and a line where everything is bright is a line where nothing is.
 	for _, word := range []string{"brain", "hands", "checks"} {
-		if inked(a.pal, row, word) {
+		if lifted(a.pal, row, word) {
 			t.Fatalf("the role word %q was lifted with its model — the rule lifts the "+
 				"answer and not the label:\n%q", word, row)
 		}
@@ -122,7 +122,7 @@ func TestTheKeySheetLiftsItsChordsAndChipsItsCommands(t *testing.T) {
 	body := strings.Join(rows, "\n")
 
 	for _, chord := range []string{"ctrl+b", "ctrl+o", "alt+enter", "@path"} {
-		if !inked(a.pal, body, chord) {
+		if !lifted(a.pal, body, chord) {
 			t.Fatalf("the key sheet draws %q at the weight of the sentence beside it", chord)
 		}
 	}
@@ -131,7 +131,7 @@ func TestTheKeySheetLiftsItsChordsAndChipsItsCommands(t *testing.T) {
 	}
 	// AND THE EXPLANATIONS STAY QUIET. If the whole sheet stepped up it would be
 	// the flat page it was, one tier louder.
-	if inked(a.pal, body, "copy mode") {
+	if lifted(a.pal, body, "copy mode") {
 		t.Fatalf("the sentence beside a chord was lifted with it")
 	}
 }
@@ -147,10 +147,10 @@ func TestAStatusFigureReadsAboveItsLabel(t *testing.T) {
 	rows := noteRows(a, text, columnFacts(text, false)...)
 	body := strings.Join(rows, "\n")
 
-	if !inked(a.pal, body, "$0.42") || !inked(a.pal, body, "14") {
+	if !lifted(a.pal, body, "$0.42") || !lifted(a.pal, body, "14") {
 		t.Fatalf("a /cost figure is drawn at the weight of its own label:\n%q", body)
 	}
-	if inked(a.pal, body, "spend") || inked(a.pal, body, "model calls") {
+	if lifted(a.pal, body, "spend") || lifted(a.pal, body, "model calls") {
 		t.Fatalf("a label was lifted with its figure:\n%q", body)
 	}
 }
@@ -185,7 +185,7 @@ func TestAFactIsNotFoundInsideAnotherWord(t *testing.T) {
 	if !strings.Contains(rows[0], a.pal.dim("· tokens 148.1k · calls ")) {
 		t.Fatalf("the walk lifted two digits out of the middle of a figure:\n%q", rows[0])
 	}
-	if !inked(a.pal, rows[0], "14") {
+	if !lifted(a.pal, rows[0], "14") {
 		t.Fatalf("the count itself was never lifted:\n%q", rows[0])
 	}
 }
@@ -202,7 +202,7 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 	a.state = stateWorking
 
 	line := a.legend(a.width)
-	if !inked(a.pal, line, "esc") {
+	if !lifted(a.pal, line, "esc") {
 		t.Fatalf("the legend draws its chord at the weight of the rule it sits in:\n%q", line)
 	}
 	if !dimmed(a.pal, line, " interrupt") {

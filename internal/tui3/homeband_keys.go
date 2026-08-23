@@ -38,5 +38,9 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 	default:
 		return nil
 	}
-	return bandClauses(ctx.width, 0, ctx.pal.dim, clauses...)
+	// The legend is written in the hint grammar, so the keys step up into the
+	// data hue and the verbs stay dim — a key–value pair the eye can split,
+	// instead of one flat sentence (payload.go's [paintHint]).
+	keys := func(s string) string { return paintHint(s, ctx.pal, ctx.pal.dim) }
+	return bandClauses(ctx.width, 0, keys, clauses...)
 }

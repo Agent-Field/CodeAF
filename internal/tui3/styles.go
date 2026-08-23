@@ -29,6 +29,8 @@ import (
 //	del     #C67173   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
 //	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
+//	data    #88C0D0   the payload rule's datum — a model id, a figure, a key
+//	                  chord inside a quiet line (see [hueData])
 //
 // The three backgrounds are a ladder of their own and are stated under THE
 // GROUND LADDER below, because a ground is not an ink and the rules that govern
@@ -169,6 +171,22 @@ var (
 	// clear step from the orange-red of [hueBad] on the 256 rung so the two
 	// tiers of the same warning never collapse into one colour.
 	hueWarn = mustHue("#EBCB8B", heavy)
+	// hueData is the SEVENTH colour, and it is the payload rule's own ink
+	// (payload.go): the datum inside a quiet line — a model id, a figure, a key
+	// chord — steps up into it. It exists because the first rung this table
+	// tried was [hueInk], and ink is the BODY's colour: a "lifted" datum two
+	// rows under a paragraph of ink read as ordinary text, which is the exact
+	// defect the payload rule was written against, arriving one rung later. The
+	// eye reads lightness as loudness and HUE as identity, so a datum needs a
+	// hue of its own — the syntax-highlighting contract every calm terminal
+	// theme already keeps: greyscale for prose, colour for identifiers.
+	//
+	// Nord's frost cyan, at L 67.5 inside the fifteen-point signal band, so a
+	// line full of data still reads as one quiet field until somebody looks.
+	// 110 on the 256 rung — one clear step from the accent's 146, which is the
+	// collision that would matter: a datum painted the person's own colour
+	// would spend the budget forty times a minute by rounding.
+	hueData = mustHue("#88C0D0", heavy)
 	// hueViolet is the SHELL OPERATOR's hue (shellx.go), and it is deliberately
 	// NOT the question hue above.
 	//
@@ -345,6 +363,8 @@ var lightTaskRing = []hue{
 //	                            it has to lead on a page too
 //	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
 //	                            wants the same warning as dark amber
+//	data    #88C0D0   #2C8A9E   the datum's cyan, deepened for the page the
+//	                            way the accent was
 //	violet  #8F6FA8   #8F6FA8   the shared one (above)
 //
 // The grounds invert the same way and are stated with the rest of THE GROUND
@@ -365,6 +385,12 @@ var (
 	lightBad    = mustHue("#C57A3C", heavy)
 	lightAsk    = mustHue("#6F3FA8", heavy)
 	lightWarn   = mustHue("#A6791F", heavy)
+	// The data hue inverted for the page, the same way the accent was: deeper
+	// and less saturated rather than pale. L 39.6 sits inside the light signal
+	// band (warn's 38.6 is its floor), and 31 on the 256 rung collides with
+	// nothing — the near miss was #31859C, whose neighbour is 67, one step
+	// from the light accent's own index.
+	lightData = mustHue("#2C8A9E", heavy)
 
 	// The light ladder's own three grounds. THE STEPS ARE THE SAME THREE STEPS
 	// (see THE GROUND LADDER above) and they carry the same names — what changes
@@ -388,6 +414,7 @@ type ramp struct {
 	ink, accent, muted, dim hue
 	add, del, bad, ask      hue
 	warn                    hue
+	data                    hue
 	violet                  hue
 	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
 	// not here and cannot be: it is the absence of a paint, not a colour.
@@ -405,7 +432,7 @@ type ramp struct {
 var darkRamp = ramp{
 	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
-	violet: hueViolet, fade: thoughtFade,
+	data: hueData, violet: hueViolet, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
 	ring: taskRing,
 }
@@ -413,7 +440,7 @@ var darkRamp = ramp{
 var lightRamp = ramp{
 	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
-	violet: hueViolet, fade: lightFade,
+	data: lightData, violet: hueViolet, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
 	ring: lightTaskRing,
 }
@@ -715,6 +742,11 @@ func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
 // (styles.go's [hueWarn]). The only thing that wears it today is a timeout with
 // seconds left on it (toolview.go).
 func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
+
+// data is the payload rule's ink (payload.go): the datum inside a quiet line —
+// a model id, a figure, a key chord — one hue of its own so it reads as a
+// KIND and not merely a loudness. See [hueData] for why ink could not do this.
+func (p palette) data(s string) string { return p.paint(s, p.ramp.data) }
 
 // violet is the shell operator's tier and nothing else on this surface — see
 // [hueViolet] for why it is not the question hue.

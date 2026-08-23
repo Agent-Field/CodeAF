@@ -723,9 +723,11 @@ func (a *app) homeBar(width int, targets []homeBarTarget, pal palette) string {
 	if width < homePhoneBarFloor || len(targets) == 0 {
 		word := a.homeHint()
 		if a.home.msg != "" {
-			word = a.home.msg
+			// A refusal or a report is a sentence, not a hint, and it is not
+			// painted like one.
+			return " " + pal.dim(fit(a.home.msg, width-2))
 		}
-		return " " + pal.dim(fit(word, width-2))
+		return " " + paintHint(fit(word, width-2), pal, pal.dim)
 	}
 	// A REFUSAL OUTRANKS THE BAR. Every refusal on this screen is a fact about
 	// a door somebody just tried, and a row of targets drawn over the top of it

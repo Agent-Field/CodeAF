@@ -3241,7 +3241,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// measured, and a directory that is not there stays plain (pathlink.go).
 		add(" "+pal.dim(a.pathLink(a.home.msgPath, fit(a.home.msg, width-2))), -1)
 	} else {
-		add(" "+pal.dim(fit(a.homeHint(), width-2)), -1)
+		// The foot's hint is written in the hint grammar, so its keys wear the
+		// data hue and its verbs stay dim — the payload rule holding on home
+		// exactly as it holds on the chat's own legend (payload.go).
+		add(" "+paintHint(fit(a.homeHint(), width-2), pal, pal.dim), -1)
 	}
 
 	// A frame too short for the whole thing keeps its head and its last rows:
