@@ -2944,3 +2944,79 @@ func TestHomeCaretStaysInTheDraftWhenItWraps(t *testing.T) {
 		t.Fatalf("caret column %d sits before the text it should follow", caretX)
 	}
 }
+
+// `e` PUTS A CONVERSATION AWAY AND THE ARCHIVE GIVES IT BACK. The row leaves
+// its project's block for one folded line at the foot — junk from any project,
+// gathered in one place a person can still open — and the same key from
+// inside the standing-open archive returns it. A search finds a put-away row
+// regardless, because a filter that hid a match would be lying about the
+// machine.
+func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "keep this one", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "the junk drawer plan", "/tmp/alpha", now.Add(-time.Minute))
+	a := lab.app(mine)
+	a.openHome()
+	a.width, a.height = 100, 30
+
+	// Walk the cursor onto the junk row and press e.
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeSession && strings.Contains(line.row.Title, "junk drawer") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the junk row is not on home:\n%s", homeText(a))
+	}
+	a.home.cursor, a.home.picked = at, true
+	drive(t, a, key("e"))
+
+	text := homeText(a)
+	if !strings.Contains(text, homeArchiveHeadWord+" · 1 put away") {
+		t.Fatalf("no archive fold appeared:\n%s", text)
+	}
+	if strings.Contains(strings.SplitN(text, homeArchiveHeadWord, 2)[0], "Junk Drawer") {
+		t.Fatalf("the put-away row is still in its project's block:\n%s", text)
+	}
+
+	// A search still finds it.
+	a.home.box.setText("junk")
+	a.home.build()
+	if !strings.Contains(homeText(a), "Junk Drawer") {
+		t.Fatalf("a search cannot find the put-away row:\n%s", homeText(a))
+	}
+	a.home.box.reset()
+	a.home.build()
+
+	// Open the archive, walk onto the row, and e brings it back.
+	fold := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeArchiveFold {
+			fold = i
+			break
+		}
+	}
+	if fold < 0 {
+		t.Fatal("the archive fold is not on the resting list")
+	}
+	a.home.cursor, a.home.picked = fold, true
+	drive(t, a, key("enter"))
+	back := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Archived {
+			back = i
+			break
+		}
+	}
+	if back < 0 {
+		t.Fatalf("the open archive shows no rows:\n%s", homeText(a))
+	}
+	a.home.cursor, a.home.picked = back, true
+	drive(t, a, key("e"))
+	if strings.Contains(homeText(a), homeArchiveHeadWord) {
+		t.Fatalf("the archive line survived its last row coming back:\n%s", homeText(a))
+	}
+}

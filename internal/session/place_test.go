@@ -170,3 +170,29 @@ func mustSubmitTo(t *testing.T, agent *Agent, text string) <-chan Event {
 	}
 	return events
 }
+
+// ARCHIVING IS A FACT ABOUT THE META AND NOTHING ELSE: SetArchived flips the
+// one field through the same file every other fact rides, refuses a folder
+// with no conversation in it, and the world's row carries the answer out.
+func TestSetArchivedRoundTripsThroughTheMeta(t *testing.T) {
+	dir := t.TempDir()
+	if err := SetArchived(dir, true); err == nil {
+		t.Fatal("a folder with no conversation accepted an archive mark")
+	}
+	if err := SaveMeta(dir, Meta{ID: "abcd000000000001", Workspace: dir, Created: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetArchived(dir, true); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil || !meta.Archived {
+		t.Fatalf("the mark did not land: %+v (%v)", meta, err)
+	}
+	if err := SetArchived(dir, false); err != nil {
+		t.Fatalf("bring back: %v", err)
+	}
+	if meta, _ := LoadMeta(dir); meta.Archived {
+		t.Fatalf("the mark did not lift: %+v", meta)
+	}
+}

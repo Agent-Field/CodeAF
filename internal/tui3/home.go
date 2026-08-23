@@ -393,6 +393,13 @@ const (
 	// same two marks and the same gestures, because it is the same kind of
 	// thing: a line standing for rows you cannot see.
 	homeMoreProjects
+	// homeArchiveFold is the archive's one line at the very bottom of the
+	// resting screen — `▸ archive · 4 put away` — and it is a door exactly as
+	// [homeQuiet] is, with the same marks and the same gestures. The rows it
+	// hides are conversations the person put away with `e`, from any project
+	// on the machine; open, they draw as ordinary session rows and answer
+	// enter and `e` as any row does.
+	homeArchiveFold
 )
 
 // homeLine is one drawn line of the left column, resolved against the world
@@ -516,6 +523,13 @@ type homeView struct {
 	// folds over two different things, and a person who opened the watches
 	// should not thereby have opened eleven quiet conversations.
 	itemsOpen map[string]bool
+	// archived is every conversation the person put away, gathered across all
+	// projects at the last build; archiveOpen is whether its one fold at the
+	// foot of the resting list is standing open. The rows leave their
+	// project's block only AT REST — a search still finds them, because a
+	// filter that hid a match would be lying about the machine.
+	archived    []session.SessionRow
+	archiveOpen bool
 
 	// seen is when home was last closed — the look stamp, read once when the
 	// screen opens (session's look.go). Work that landed after it is NEWS, and
@@ -1092,9 +1106,18 @@ func (h *homeView) dropUp() bool { return h.searching() }
 func (h *homeView) buildWorld() {
 	query := h.query()
 	var found []homeHit
+	h.archived = h.archived[:0]
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project}
 		for _, row := range project.Sessions {
+			// A PUT-AWAY ROW LEAVES ITS PROJECT ONLY AT REST. It gathers under
+			// the archive's one fold at the foot instead ([homeArchiveFold]);
+			// under a query it competes like any other row, because a filter
+			// that hid a match would be lying about the machine.
+			if row.Archived && query == "" {
+				h.archived = append(h.archived, row)
+				continue
+			}
 			score, ok := homeRank(row, project, query, h.world.Read)
 			if !ok {
 				continue
@@ -1213,6 +1236,29 @@ func (h *homeView) buildWorld() {
 		h.projectBlock(hit, "")
 	}
 	h.buildElsewhere(folded)
+	h.buildArchive()
+}
+
+// buildArchive is the put-away rows' one line at the very foot of the resting
+// list, and the rows themselves while it stands open — newest first, each one
+// an ordinary session row that opens on enter and comes back with `e`.
+func (h *homeView) buildArchive() {
+	if len(h.archived) == 0 {
+		return
+	}
+	sort.SliceStable(h.archived, func(i, j int) bool { return h.archived[i].At.After(h.archived[j].At) })
+	h.blank()
+	h.lines = append(h.lines, homeLine{
+		kind: homeArchiveFold, quiet: len(h.archived), folded: !h.archiveOpen,
+	})
+	if !h.archiveOpen {
+		return
+	}
+	for _, row := range h.archived {
+		h.lines = append(h.lines, homeLine{
+			kind: homeSession, project: row.Project, dir: strings.TrimSpace(row.ProjectDir), row: row,
+		})
+	}
 }
 
 // homeHit is one project and the conversations of it that survived the box.
@@ -1743,7 +1789,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeMoreProjects, homeExchangeRow:
+		homeProject, homeMoreProjects, homeExchangeRow, homeArchiveFold:
 		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
@@ -1913,6 +1959,23 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 				}
 				h.say("copied "+path, path)
 				return tea.Raw(osc52(path, a.tmux))
+			case "e":
+				// `e` PUTS A CONVERSATION AWAY, and on a put-away row it is its
+				// own undoing — the same key from inside the archive brings the
+				// row back to its project. The world is re-read on the spot so
+				// the row moves under the hand rather than on the next sweep.
+				if err := session.SetArchived(line.row.Dir, !line.row.Archived); err != nil {
+					h.say("could not put it away", "")
+					return nil
+				}
+				if line.row.Archived {
+					h.say("brought back", "")
+				} else {
+					h.say("put away · open the archive at the foot to bring it back", "")
+				}
+				a.refreshHome()
+				a.home.build()
+				return nil
 			}
 		}
 	}
@@ -2251,6 +2314,10 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	case homeMoreProjects:
 		h.foldElsewhere(line.folded)
+		return nil
+	case homeArchiveFold:
+		h.archiveOpen = line.folded
+		h.build()
 		return nil
 	case homeAttentionMore:
 		// attention lane: one strip's own tail, keyed by the strip it belongs to
@@ -2764,6 +2831,14 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		a.home.cursor = at
 		a.home.picked = true
 		a.home.foldItems(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.touch()
+		return nil
+	}
+	if a.home.lines[at].kind == homeArchiveFold {
+		a.home.cursor = at
+		a.home.picked = true
+		a.home.archiveOpen = a.home.lines[at].folded
+		a.home.build()
 		a.touch()
 		return nil
 	}
@@ -3374,6 +3449,9 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homeMoreProjects:
 		return overlayRow(homeFoldMark(line.folded, pal)+" "+homeMoreProjectsWord(line), "",
 			at == h.cursor, false, at == h.hover, width, pal)
+	case homeArchiveFold:
+		return overlayRow(homeFoldMark(line.folded, pal)+" "+homeArchiveWord(line), "",
+			at == h.cursor, false, at == h.hover, width, pal)
 	case homeItem:
 		// ONE ITEM, ONE ROW, drawn by the renderer home's errand box shares
 		// (homestanding.go's [StandingItemRow]).
@@ -3604,6 +3682,22 @@ func homeMoreProjectsWord(line homeLine) string {
 	}
 	return "…" + itoa(line.quiet) + " more"
 }
+
+// homeArchiveWord is the archive's own line: how many conversations are put
+// away while it is folded, and the bare word while its rows are standing open
+// under it.
+func homeArchiveWord(line homeLine) string {
+	if !line.folded {
+		return homeArchiveHeadWord
+	}
+	if line.quiet == 1 {
+		return homeArchiveHeadWord + " · 1 put away"
+	}
+	return homeArchiveHeadWord + " · " + itoa(line.quiet) + " put away"
+}
+
+// homeArchiveHeadWord is the fold's one word, quoted by the manual.
+const homeArchiveHeadWord = "archive"
 
 // homeQuietWord is the collapsed tail's one line. The age is the newest of the
 // conversations it stands for, so "quiet since" is a fact about the whole group
@@ -4196,6 +4290,10 @@ func (a *app) homeHintWords() string {
 		return "enter or → show them · esc close"
 	case line.kind == homeMoreProjects:
 		return "enter or ← fold them away · esc close"
+	case line.kind == homeArchiveFold && line.folded:
+		return "enter or → show what is put away · esc close"
+	case line.kind == homeArchiveFold:
+		return "enter or ← fold the archive · esc close"
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
