@@ -1826,6 +1826,17 @@ func (h *homeView) move(delta int) {
 		step, delta = -1, -delta
 	}
 	at := h.cursor
+	// bridge lane: FOCUS WAKES AT THE CENTER OF MASS. The first step down off
+	// rest at the three-column tier is spent entering the middle column — the one
+	// the layout declares primary — rather than walking into the flank the line
+	// list happens to begin with ([homeView.wake] holds the whole law). Every
+	// further step is the ordinary walk from there, so `pgdown` off rest is that
+	// landing and then three more rows, exactly as it is from anywhere else.
+	if at == homeRest && step > 0 {
+		if land := h.wake(); land != homeRest {
+			at, delta = land, delta-1
+		}
+	}
 	for ; delta > 0; delta-- {
 		next := at + step
 		for next >= 0 && next < len(h.lines) && !h.lines[next].stop() {

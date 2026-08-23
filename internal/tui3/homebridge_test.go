@@ -150,17 +150,22 @@ func TestTheThirdColumnIsTheRowsCardAndTheMachinesAtRest(t *testing.T) {
 	}
 }
 
-// HOME OPENS AT REST, and the first key in either shape lands on the top of
-// `needs you` — the one row the person is most likely to have opened this screen
-// for.
-func TestHomeOpensAtRestAndTheFirstKeyReachesNeedsYou(t *testing.T) {
+// HOME OPENS AT REST, AND FOCUS WAKES AT THE CENTER OF MASS. The first `↓` at
+// the three-column tier lands in the MIDDLE column — the one the layout declares
+// primary with its width, its density and its place on the frame — and `tab`,
+// the named triage key, still enters `needs you`.
+func TestHomeOpensAtRestAndTheFirstArrowLandsInTheList(t *testing.T) {
 	a, _ := bridgeLab(t)
+	if len(zoneNames(a, attentionNeedsWord)) == 0 {
+		t.Fatal("this machine has nothing waiting, so the landing proves nothing")
+	}
 	for _, step := range []struct {
 		word string
 		key  func()
+		zone string
 	}{
-		{"↓", func() { a.home.move(1) }},
-		{"tab", func() { a.home.tab() }},
+		{"↓", func() { a.home.move(1) }, ""},
+		{"tab", func() { a.home.tab() }, attentionNeedsWord},
 	} {
 		a.openHome()
 		if !a.home.resting() {
@@ -171,10 +176,74 @@ func TestHomeOpensAtRestAndTheFirstKeyReachesNeedsYou(t *testing.T) {
 		}
 		step.key()
 		line, ok := a.home.focusedLine()
-		if !ok || attentionWordOf(line) != attentionNeedsWord {
-			t.Fatalf("%s from rest landed on %q, want the top of %q:\n%s",
-				step.word, attentionWordOf(line), attentionNeedsWord, homeText(a))
+		if !ok || attentionWordOf(line) != step.zone {
+			t.Fatalf("%s from rest landed in zone %q, want %q:\n%s",
+				step.word, attentionWordOf(line), step.zone, homeText(a))
 		}
+		if step.zone == "" && a.home.cursor != a.home.placesTop() {
+			t.Fatalf("%s from rest landed on line %d, want the top of the list at %d:\n%s",
+				step.word, a.home.cursor, a.home.placesTop(), homeText(a))
+		}
+	}
+}
+
+// AND THE LANDING IS THE SAME LINE WHATEVER THE ZONES HOLD. A landing that moved
+// with what the machine happens to be doing this morning is a landing nobody can
+// build a habit on, so `↓` reaches the top of the list on a busy machine and on
+// a quiet one alike — and `←` is the way across into the flank.
+func TestTheFirstArrowLandsInTheListWhicheverWayTheZonesStand(t *testing.T) {
+	quiet := func(t *testing.T) *app {
+		t.Helper()
+		lab := newHomeLab(t)
+		now := time.Now()
+		mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-time.Hour))
+		lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
+		a := lab.app(mine)
+		a.width, a.height = 140, 26
+		a.openHome()
+		return a
+	}
+	for _, machine := range []struct {
+		word  string
+		build func(t *testing.T) *app
+		zoned bool
+	}{
+		{"busy", func(t *testing.T) *app { a, _ := bridgeLab(t); return a }, true},
+		{"quiet", quiet, false},
+	} {
+		a := machine.build(t)
+		if got := len(zoneNames(a, attentionNeedsWord)) > 0; got != machine.zoned {
+			t.Fatalf("the %s machine has %d rows in %q, which is not the case this covers",
+				machine.word, len(zoneNames(a, attentionNeedsWord)), attentionNeedsWord)
+		}
+		a.home.move(1)
+		line, ok := a.home.focusedLine()
+		if !ok || attentionWordOf(line) != "" || a.home.cursor != a.home.placesTop() {
+			t.Fatalf("↓ on the %s machine landed on line %d in zone %q, want the list's top at %d:\n%s",
+				machine.word, a.home.cursor, attentionWordOf(line), a.home.placesTop(), homeText(a))
+		}
+		// AND THE ROW IT LANDS ON IS A REAL ONE, not a heading the cursor slid off.
+		if !line.stop() {
+			t.Fatalf("↓ on the %s machine landed on a line no cursor may rest on", machine.word)
+		}
+	}
+}
+
+// THE NARROWER TIERS ARE UNTOUCHED. There the zones are strips standing OVER the
+// list, so the first `↓` walking into them is what the geometry promises.
+func TestTheFirstArrowStillWalksIntoTheStripsBelowTheColumnsTier(t *testing.T) {
+	a, _ := bridgeLab(t)
+	a.width = homeMinColumns - 1
+	a.homeFrame(a.width, a.height)
+	a.home.cursor = homeRest
+	if !a.home.resting() || a.home.columns() {
+		t.Fatalf("the two-column tier was not set up (tier %v)", a.home.tier)
+	}
+	a.home.move(1)
+	line, ok := a.home.focusedLine()
+	if !ok || attentionWordOf(line) != attentionNeedsWord {
+		t.Fatalf("↓ from rest at the strips tier landed in %q, want %q:\n%s",
+			attentionWordOf(line), attentionNeedsWord, homeText(a))
 	}
 }
 
@@ -200,9 +269,11 @@ func TestEnterAtRestReturnsToTheConversationYouAreHolding(t *testing.T) {
 	}
 }
 
-// AND ON A MACHINE WITH NOTHING WAITING IT LANDS IN THE LIST, because a zone
-// with no rows is a label and a label is not a place a cursor can stand.
-func TestTheFirstKeyLandsInTheListWhenTheZonesAreEmpty(t *testing.T) {
+// AND TAB ON A MACHINE WITH NOTHING WAITING LANDS IN THE LIST TOO, because a
+// zone with no rows is a label and a label is not a place a cursor can stand —
+// which is the one way the triage key's landing depends on what is there, and
+// the reason `↓` is not allowed to.
+func TestTabLandsInTheListWhenTheZonesAreEmpty(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	alpha := lab.workspace("alpha")

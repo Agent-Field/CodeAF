@@ -156,6 +156,34 @@ func TestTheMovingZoneFoldsPastFiveAndOpensInPlace(t *testing.T) {
 	if !strings.Contains(homeText(a), "…2 more") {
 		t.Fatalf("the door does not say how many it stands for:\n%s", homeText(a))
 	}
+	// AND THE CAP AND ITS DOOR HOLD IN THE ZONES' OWN COLUMN. At the columns tier
+	// the strip is [homeAttentionCol] cells wide instead of the list's whole
+	// width; the rows are the same rows, and a fold that only worked over the
+	// list would leave the widest frame with five rows and no way to the rest.
+	a.width, a.height = 140, 30
+	wide := homeText(a)
+	if !a.home.columns() {
+		t.Fatalf("a %d-column frame is not the columns tier", a.width)
+	}
+	if names := zoneNames(a, attentionMovingWord); len(names) != attentionMovingShown {
+		t.Fatalf("`moving` drew %d rows in its own column, want %d: %v\n%s",
+			len(names), attentionMovingShown, names, wide)
+	}
+	door := false
+	for _, line := range homeLines(a) {
+		if strings.Contains(zoneColumnOf(line), "…2 more") {
+			door = true
+		}
+	}
+	if !door {
+		t.Fatalf("the fold's door is not in the zones' own column:\n%s", wide)
+	}
+	fold = -1
+	for at, line := range a.home.lines {
+		if line.kind == homeAttentionMore {
+			fold = at
+		}
+	}
 	a.home.cursor = fold
 	a.homeEnter()
 	if names := zoneNames(a, attentionMovingWord); len(names) != 7 {
@@ -197,6 +225,174 @@ func TestTheZoneLabelsHoldTheirGroundOverNothingAndVanishWhenNarrow(t *testing.T
 	a.refreshHome()
 	if narrow := homeText(a); !strings.Contains(narrow, attentionNeedsWord) {
 		t.Fatalf("a narrow frame hid a zone that had something in it:\n%s", narrow)
+	}
+}
+
+// zoneColumnOf is the part of a drawn frame row that belongs to the zones' own
+// column at [homeTierColumns], which is what turns "the word is on the screen"
+// into "the word is where the geography says it stands".
+func zoneColumnOf(line string) string {
+	if len(line) < homeAttentionCol {
+		return line
+	}
+	return line[:homeAttentionCol]
+}
+
+// quietWideLab is a machine with two conversations and nothing at all happening
+// to either, on a frame wide enough for three columns — which is the one shape
+// where an empty zone has a column of its own to teach in.
+func quietWideLab(t *testing.T) *app {
+	t.Helper()
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-time.Hour))
+	lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Hour))
+	a := lab.app(mine)
+	a.width, a.height = 140, 26
+	a.openHome()
+	return a
+}
+
+// AN EMPTY ZONE TEACHES INSTEAD OF STANDING MUTE, and only where it has a column
+// to teach in. The line says what ARRIVES in the region — never that nothing has.
+func TestAnEmptyZoneTeachesAtTheColumnsTierAndNowhereElse(t *testing.T) {
+	a := quietWideLab(t)
+	for _, zone := range homeZones {
+		if names := zoneNames(a, zone.word); len(names) != 0 {
+			t.Fatalf("the %q zone has %v in it, so it teaches nothing", zone.word, names)
+		}
+	}
+	text := homeText(a)
+	for _, zone := range homeZones {
+		if !strings.Contains(text, zone.teach) {
+			t.Fatalf("the empty %q zone said nothing about what lands in it:\n%s", zone.word, text)
+		}
+	}
+	// AND IT IS A CAPTION ON THE LABEL: the very next line, with nothing between
+	// them, in the zones' own column.
+	lines := homeLines(a)
+	for _, zone := range homeZones {
+		at := -1
+		for y, line := range lines {
+			if strings.Contains(zoneColumnOf(line), zone.word) {
+				at = y
+				break
+			}
+		}
+		if at < 0 || at+1 >= len(lines) {
+			t.Fatalf("the %q label is not in the zones' column at all:\n%s", zone.word, text)
+		}
+		if head := zoneColumnOf(lines[at+1]); !strings.Contains(head, zone.teach) {
+			t.Fatalf("the %q teaching line is not under its label: %q", zone.word, head)
+		}
+	}
+	// AND THE TWO NARROWER TIERS SAY NOTHING. There the strips stand over the
+	// list at its full width, where a sentence of explanation is prose across the
+	// top of an index rather than a caption in a column.
+	for _, width := range []int{homeMinColumns - 1, homeMinDetail - 1} {
+		a.width = width
+		narrow := homeText(a)
+		for _, zone := range homeZones {
+			if strings.Contains(narrow, zone.teach) {
+				t.Fatalf("a %d-column frame taught under %q anyway:\n%s", width, zone.word, narrow)
+			}
+		}
+	}
+}
+
+// AND A ZONE WITH ROWS IN IT TEACHES NOTHING. The rows are the teaching.
+func TestAZoneWithRowsInItDrawsNoTeachingLine(t *testing.T) {
+	a, _ := bridgeLab(t)
+	for _, zone := range homeZones {
+		if len(zoneNames(a, zone.word)) == 0 {
+			t.Fatalf("the %q zone is empty on this machine, so it proves nothing", zone.word)
+		}
+	}
+	text := homeText(a)
+	for _, zone := range homeZones {
+		if strings.Contains(text, zone.teach) {
+			t.Fatalf("the %q zone drew its teaching line over its own rows:\n%s", zone.word, text)
+		}
+	}
+}
+
+// A TEACHING LINE IS NOT A ROW. It belongs to the label above it, so no key can
+// leave the cursor standing on one and no click can select it.
+func TestATeachingLineIsNotACursorStop(t *testing.T) {
+	if (homeLine{kind: homeAttentionTeach}).stop() {
+		t.Fatal("a teaching line says a cursor may rest on it")
+	}
+	a := quietWideLab(t)
+	a.home.cursor = homeRest
+	for i := 0; i < len(a.home.lines)+4; i++ {
+		a.home.move(1)
+		if at := a.home.cursor; at >= 0 && a.home.lines[at].kind == homeAttentionTeach {
+			t.Fatalf("↓ %d times left the cursor on a teaching line:\n%s", i+1, homeText(a))
+		}
+	}
+	for i := 0; i < len(a.home.lines)+4; i++ {
+		a.home.move(-1)
+		if at := a.home.cursor; at >= 0 && a.home.lines[at].kind == homeAttentionTeach {
+			t.Fatalf("↑ %d times left the cursor on a teaching line:\n%s", i+1, homeText(a))
+		}
+	}
+}
+
+// THE WORDS TEACH AND NEVER ANNOUNCE ABSENCE, and they fit the column they are
+// drawn in — which does not grow, so a sentence that outran it would arrive on
+// the screen with an ellipsis through it.
+func TestTheTeachingLinesFitTheZoneColumnAndNameNoAbsence(t *testing.T) {
+	for _, zone := range homeZones {
+		if zone.teach == "" {
+			t.Fatalf("the %q zone has nothing to say when it is empty", zone.word)
+		}
+		if got := ansi.StringWidth(zone.teach); got > homeAttentionCol-2 {
+			t.Fatalf("the %q teaching line is %d cells wide in a %d-cell column",
+				zone.word, got, homeAttentionCol-2)
+		}
+		// THE EMPTINESS LAW IN WORDS. `no tasks yet` and every sentence like it
+		// were taken off this surface on purpose; what replaces one may not be the
+		// same announcement in a quieter voice.
+		for _, banned := range []string{"nothing", "empty", "yet", "no "} {
+			if strings.Contains(zone.teach, banned) {
+				t.Fatalf("the %q teaching line announces absence with %q: %q",
+					zone.word, banned, zone.teach)
+			}
+		}
+	}
+}
+
+// THE TWO STRIPS ARE TWO BLOCKS, and the spacing ladder gives a block boundary
+// exactly one blank row — never two, and never one above the first strip.
+func TestOneBlankRowSeparatesTheTwoZones(t *testing.T) {
+	for _, machine := range []struct {
+		word  string
+		build func(t *testing.T) *app
+	}{
+		{"busy", func(t *testing.T) *app { a, _ := bridgeLab(t); return a }},
+		{"quiet", quietWideLab},
+	} {
+		a := machine.build(t)
+		gaps := 0
+		for at, line := range a.home.lines[:a.home.zoneSplit()] {
+			if line.kind != homeAttentionGap {
+				continue
+			}
+			gaps++
+			if at == 0 {
+				t.Fatalf("the %s machine opened its first strip with a blank row", machine.word)
+			}
+			if a.home.lines[at-1].kind == homeAttentionGap {
+				t.Fatalf("the %s machine put two blank rows between two strips", machine.word)
+			}
+			if at+1 >= a.home.zoneSplit() || a.home.lines[at+1].kind != homeAttentionZone {
+				t.Fatalf("the %s machine's blank row is not the head of a strip", machine.word)
+			}
+		}
+		if gaps != len(homeZones)-1 {
+			t.Fatalf("the %s machine put %d blank rows between %d strips, want %d",
+				machine.word, gaps, len(homeZones), len(homeZones)-1)
+		}
 	}
 }
 
