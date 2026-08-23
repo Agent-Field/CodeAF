@@ -2013,7 +2013,7 @@ func (a *app) stateWord() (string, string) {
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
 	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
+	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
 	word := a.state.String()

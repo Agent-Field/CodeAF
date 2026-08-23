@@ -282,6 +282,19 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.progressHarnessRoom(ev)
 	case session.EventHarnessDesignDone:
 		a.askHarnessDesign(ev)
+	case session.EventSubharnessProposal:
+		// CHAT OFFERING A SAVED PROGRAM, and it arrives HERE because it is raised
+		// on this lane and no other (session's tools_subharness.go calls
+		// emitHarness): the turn that asked is parked inside its own batch, so
+		// the question cannot ride the turn's stream the way an approval does.
+		// A surface that only read the turn's events would never see it, which
+		// is what left this card undrawn for as long as the lane had no case.
+		a.proposeSubharness(ev)
+	case session.EventSubharnessProposalOff:
+		// AND THE SAME LANE TAKES IT BACK DOWN. The window on the tool call has
+		// closed or the turn was interrupted, and nothing is listening to that
+		// card any more (subharness.go's [app.withdrawSubharnessProposal]).
+		a.withdrawSubharnessProposal(ev.ID, ev.Text)
 	case session.EventHarnessDesignRevising:
 		// THE CARD COMES DOWN because the page on it is about to stop existing:
 		// the person said what was wrong with it and the designer is rewriting it

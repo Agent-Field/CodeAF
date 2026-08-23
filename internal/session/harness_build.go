@@ -266,6 +266,15 @@ func (a *Agent) WatchHarnessDesigns() (<-chan Event, func()) {
 			stream.send(ask.card)
 		}
 	}
+	// AND SO IS A SUBHARNESS PROPOSAL, for exactly the same reason and in the
+	// commonest case of all: the card holds a turn for up to a quarter of an
+	// hour (tools_subharness.go), which is long enough for the person to put the
+	// conversation behind home and come back to it — and coming back is a fresh
+	// subscription. The offers are replayed in the order they were raised, so a
+	// surface handed two of them draws them in the order the person was asked.
+	for _, card := range a.standingSubharnessCardsLocked() {
+		stream.send(card)
+	}
 	a.mu.Unlock()
 	var once sync.Once
 	return stream.out, func() {
