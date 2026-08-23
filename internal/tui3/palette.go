@@ -888,7 +888,10 @@ func (a *app) switchModel(id string, window int) {
 		a.ctxWindow = window
 	}
 	a.rememberModel(a.model)
-	a.note("model · " + a.model)
+	// THE ID IS THE WHOLE OF THIS LINE (payload.go). `model ·` is a label a person
+	// already knows they asked for; the id is the one thing here they cannot see
+	// anywhere else at this moment, so it steps to ink and the label stays dim.
+	a.noteFacts("model · "+a.model, a.model)
 }
 
 // rememberModel writes the choice down, so the NEXT launch opens on the model

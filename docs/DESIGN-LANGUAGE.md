@@ -204,6 +204,63 @@ things does this frame have" is not a question a unit test can ask. It is held b
 review, and by being written down in two places on purpose — here and at the head
 of `styles.go`.
 
+## THE PAYLOAD RULE
+
+> **A line may be quiet; the fact it carries may not be.**
+
+The accent budget above says what a screen may LIGHT. This says what a quiet
+line owes the person reading it, and the two are the same argument from
+opposite ends.
+
+This surface says a great deal on its own account — a note, a hint, a legend, an
+announcement — and every word of it was written in the reading tiers, because
+none of it is the conversation. That is right about the LINE and it was wrong
+about what the line is for. `crew → balanced · brain kimi-k3:low · hands
+deepseek-v4-flash · checks qwen3.8-27b` was one flat dim run from end to end:
+the words a person already knew, and the four model ids they typed the command
+to learn, at exactly the same weight. The sentence was legible and the ANSWER
+inside it was not.
+
+So the prose of an informational line stays where it is, and **each load-bearing
+datum inside it steps up one role.**
+
+| what | role |
+| --- | --- |
+| the prose | `dim`, or whatever quiet tier the surface already used |
+| a datum | `ink` — a model id, a figure, a count, a name, a key chord |
+| something typeable | the chip a slash command already wears |
+| — | **never `accent`** |
+
+**The chip is the slash command's mark and is not lent out.** A key chord is
+typeable too, and the obvious move was to give the chords in the legend and the
+key sheet the same lifted run of cells. They do not get it. A chip has meant
+exactly one thing on this surface since it existed — *this word is a command
+this surface runs* — and a second kind of thing wearing it is a mark that has to
+be read twice to learn which one it is. A chord steps to `ink` instead, which is
+the same one-rung move every other datum makes and costs the budget nothing.
+
+**Never the accent, and the budget is why.** A note appears, is read, and
+scrolls away. The accent marks the one live or chosen thing on a screen; a
+passing line is not it, and a surface that spent the accent on every fact it
+mentioned would have spent the budget forty times a minute.
+
+**Strategy over decoration.** ONE LINE CARRIES ONE OR TWO DATA. If everything in
+a line is bright then nothing in it is, and a rule that lifted every noun would
+have bought back the flat line it started from. So the hint slot lifts the key
+and never the verb beside it; `/status` lifts the figure and never its label;
+the crew line lifts the three ids and leaves `crew →`, the preset word the
+person has just typed, and the three role words where they were — those are the
+question, and the ids are the answer.
+
+**A datum is named, never guessed.** `internal/tui3/payload.go` holds the whole
+mechanism: a note's builder names the words that are the answer, in the order
+they appear, and the painter finds them on word boundaries. Nothing recognizes a
+shape, so a line whose builder says nothing is drawn exactly as it was before
+the rule existed. The one exception is the legend's hint slot, which is written
+in a grammar tight enough to read — `chord verb · chord verb`, spelled the same
+way at twenty-five call sites — and is therefore read rather than made to carry
+a list of its own keys at each of them.
+
 ## DEPTH FADE OVER ZEBRA
 
 Alternating row backgrounds are **banned**. A striped list is a list that has to

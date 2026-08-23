@@ -39,7 +39,12 @@ func (a *app) runCrew(arg string) {
 		// only said "no" would leave a person guessing at a word they were one
 		// letter away from, and the listing is the answer to the question they
 		// were really asking.
-		a.note("/crew " + arg + " · not one of the three\n\n" + a.crewListing())
+		// The listing is a two-column page — a class word, then the model it would
+		// set — so its right-hand column is what THE PAYLOAD RULE lifts, read back
+		// off the text this call just built (payload.go's [columnFacts]).
+		listing := a.crewListing()
+		a.noteFacts("/crew "+arg+" · not one of the three\n\n"+listing,
+			columnFacts(listing, false)...)
 		return
 	}
 	a.applyCrew(arg)
@@ -65,7 +70,15 @@ func (a *app) applyCrew(preset string) {
 	// [config.CrewSummary] because it is an answer to a question this MOMENT
 	// raises: the same summary inside /crew's listing is being read by somebody
 	// who is comparing three rows, not by somebody who just changed one.
-	a.note(config.CrewSummary(a.profileDir) + " · the model you talk to is /model")
+	//
+	// AND THE THREE MODELS ARE THE PART THIS LINE IS FOR (payload.go). The prose
+	// around them — `crew →`, the preset word the person has just typed, the three
+	// role words, the clause about /model — stays in the dim tier every note wears,
+	// and the ids step up to ink, because "which four models am I on now" is the
+	// whole question and it used to be answered at exactly the weight of the
+	// sentence carrying it. /model is a door, so it wears the chip a door wears.
+	a.noteFacts(config.CrewSummary(a.profileDir)+" · the model you talk to is /model",
+		config.CrewClassModels(a.profileDir)...)
 }
 
 // crewWord is the crew as a page states it: the preset word or `custom`, then
