@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -145,8 +146,74 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 	if !on || low != from || high != to {
 		t.Fatalf("the selection spans %d..%d (on=%v), want %d..%d", low, high, on, from, to)
 	}
+	// THE RELEASE DOES NOT SNUFF THE SELECTION. The rows stay lit for as long
+	// as the status line still says "copied", so a person sees exactly what
+	// landed on the clipboard instead of watching their selection vanish the
+	// moment they let go — which read as the copy never having happened.
 	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	low, high, on = a.dragSpan()
+	if !on || low != from || high != to {
+		t.Fatalf("the copied rows are not kept lit: %d..%d (on=%v)", low, high, on)
+	}
+	a.dragUntil = time.Now().Add(-time.Second)
 	if _, _, on := a.dragSpan(); on {
-		t.Fatal("the selection survived its own release")
+		t.Fatal("the selection outlived the copied flash")
+	}
+}
+
+// A STREAMING BODY SCROLLS UNDER THE BUTTON, AND THE GESTURE RIDES THE TEXT. A
+// task's page follows its live edge and repaints four times a second, and the
+// first build of this file kept screen rows: between press and release the
+// content slid up, the parked click fired on whatever had scrolled into the
+// cell, and a sweep copied rows nobody highlighted. Both are anchored to
+// content now — and a row that scrolls clean off the screen resolves to no
+// click at all, which is the honest reading of pressing something that is no
+// longer there.
+func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
+	a := dragApp(t)
+	a.width, a.height = 80, 14
+	a.touch()
+
+	// The click: press the thinking block, let eight more rows land and the
+	// body follow them — the block is still on screen, two rows higher — then
+	// release in place. The block, not the row that slid into the cell, is
+	// what the click must toggle.
+	y := screenRowWith(t, a, "the person wants fmt")
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	for i := 0; i < 8; i++ {
+		a.entries = append(a.entries, entry{kind: entryAssistant, settled: true, text: "a later line"})
+	}
+	a.touch()
+	if a.bodyScroll() == 0 {
+		t.Fatal("the body did not scroll; the test is not testing anything")
+	}
+	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	if a.entries[1].open {
+		t.Fatal("the click fired on the glass instead of the block that scrolled under it")
+	}
+	a.entries[1].open = true
+	a.touch()
+
+	// The sweep: anchor on the thinking block, sweep one row down to the
+	// answer, let three more rows land, release. What was highlighted is what
+	// must be copied, however far the body moved after the sweep.
+	from := screenRowWith(t, a, "the person wants fmt")
+	to := screenRowWith(t, a, "Use fmt.Println.")
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	for i := 0; i < 3; i++ {
+		a.entries = append(a.entries, entry{kind: entryAssistant, settled: true, text: "still later"})
+	}
+	a.touch()
+	model, cmd := a.Update(tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	a = model.(*app)
+	copied := rawPayload(t, runCmd(cmd))
+	for _, want := range []string{"the person wants fmt", "Use fmt.Println."} {
+		if !strings.Contains(copied, want) {
+			t.Fatalf("the anchored sweep missed %q; it copied:\n%s", want, copied)
+		}
+	}
+	if strings.Contains(copied, "still later") {
+		t.Fatalf("the sweep copied rows that landed after it:\n%s", copied)
 	}
 }
