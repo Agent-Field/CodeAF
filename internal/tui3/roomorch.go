@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -512,7 +513,7 @@ func (a *app) orchRead() {
 		// question, one wording.
 		run.gate = &orchGate{text: snap.Fuel.Gauge()}
 		run.card = ""
-		run.pick = orchTarget{answer: orchTopUp}
+		run.pick = orchTarget{answer: run.gateAnswers()[0]}
 		changed = true
 	}
 	if !changed {
@@ -687,18 +688,39 @@ func (a *app) orchPauseEvent(ev session.Event) tea.Cmd {
 	// AND THE CURSOR MOVES TO THE QUESTION. It is the only thing on the page that
 	// somebody has to answer, so it is what enter should mean the moment it is
 	// raised — a person who presses enter on a paused run means the gate.
-	run.pick = orchTarget{answer: orchTopUp}
+	run.pick = orchTarget{answer: run.gateAnswers()[0]}
 	a.room.stick = true
 	a.roomTouched()
 	return a.takeRoomPump()
 }
 
-// The three answers, spelled as [session.Agent.ResolveOrchestrate] takes them.
+// Two of the three answers, spelled as [session.Agent.ResolveOrchestrate]
+// takes them. The third — the top-up — is derived, not a constant: see
+// [orchTopUpAnswer].
 const (
-	orchTopUp  = "topup:1"
 	orchFinish = "finish"
 	orchStop   = "stop"
 )
+
+// orchTopUpAnswer is the gate's first row, derived from the run's own tank
+// rather than a fixed dollar: half the cap it just emptied, in whole dollars,
+// never less than one. A ten-dollar run is offered five more and a two-dollar
+// run one — the offer scales with the decision the person already made, where
+// the old constant dollar made a big run beg again four minutes later.
+func orchTopUpAnswer(cap float64) string {
+	amount := int(cap / 2)
+	if amount < 1 {
+		amount = 1
+	}
+	return fmt.Sprintf("topup:%d", amount)
+}
+
+// gateAnswers is the gate's three rows, in the order they are drawn, walked
+// and answered. One method rather than three call-site lists, so the cursor,
+// the ring and the rows can never disagree about what the answers are.
+func (r *orchRun) gateAnswers() []string {
+	return []string{orchTopUpAnswer(r.snap.Fuel.Cap), orchFinish, orchStop}
+}
 
 // orchAnswer resolves the gate. The run's own answer is what changes the run;
 // this page only says what was asked for, and lets the next poll show what came
@@ -723,11 +745,12 @@ func (a *app) orchAnswer(answer string) {
 	a.roomTouched()
 }
 
-// orchAnswerWord is the answer as the echo says it back.
+// orchAnswerWord is the answer as the row and the echo say it.
 func orchAnswerWord(answer string) string {
+	if figure, isTopUp := strings.CutPrefix(answer, "topup:"); isTopUp {
+		return "add $" + figure
+	}
 	switch answer {
-	case orchTopUp:
-		return "add $1"
 	case orchFinish:
 		return "finish with what we have"
 	case orchStop:
@@ -870,7 +893,7 @@ func (a *app) orchRing() []orchTarget {
 	}
 	var ring []orchTarget
 	if run.gate != nil {
-		for _, answer := range []string{orchTopUp, orchFinish, orchStop} {
+		for _, answer := range run.gateAnswers() {
 			ring = append(ring, orchTarget{answer: answer})
 		}
 	}
@@ -1832,10 +1855,20 @@ func (a *app) orchGateRows(page *orchPage, width int) {
 		question += " · " + spend
 	}
 	page.put(a.pal.askBold(glyphAsk) + a.pal.ask(fit(question[len(glyphAsk):], width-len(glyphAsk))))
-	for _, answer := range []string{orchTopUp, orchFinish, orchStop} {
-		lead := a.orchLead(run.pick == orchTarget{answer: answer})
+	for _, answer := range run.gateAnswers() {
+		picked := run.pick == orchTarget{answer: answer}
+		lead := a.orchLead(picked)
 		spot := orchSpot{span: hudSpan{from: 0, to: width}, answer: answer}
-		page.put(lead+a.pal.ask(fit(orchAnswerWord(answer), width-ansi.StringWidth(lead))), spot)
+		// THE PICKED ROW IS THE BOLD ONE, in the same question hue. Three rows
+		// of one weight read as a sentence with strange line breaks — a person
+		// looked straight at this card and reached for the keyboard to type an
+		// answer out — where one bold row among plain ones reads as a choice
+		// with a finger on it.
+		paint := a.pal.ask
+		if picked {
+			paint = a.pal.askBold
+		}
+		page.put(lead+paint(fit(orchAnswerWord(answer), width-ansi.StringWidth(lead))), spot)
 		if layoutTier(width) == tierPhone {
 			// The phone's three rows again, and here it matters most: this is the one
 			// row on the page that spends money.
@@ -1843,6 +1876,16 @@ func (a *app) orchGateRows(page *orchPage, width int) {
 			page.put("", spot)
 		}
 	}
+	// THE GESTURES ARE WRITTEN UNDER THE QUESTION, dim, in the hint idiom every
+	// box on this surface uses. The card deliberately takes no letter keys and
+	// does not suspend the box (the law above), and the cost of that freedom is
+	// that nothing about three quiet rows says how they are answered — so the
+	// card says it itself, including what typing does instead.
+	hint := "↑ ↓ pick · enter answers · or keep typing to steer the planner"
+	if layoutTier(width) == tierPhone {
+		hint = "tap an answer · typing steers the planner"
+	}
+	page.put(a.orchLead(false) + a.pal.dim(fit(hint, width-2)))
 }
 
 // ── the header ──────────────────────────────────────────────────────────────
