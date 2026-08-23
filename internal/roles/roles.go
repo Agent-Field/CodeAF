@@ -127,6 +127,16 @@ const (
 	// wanted. Registered from internal/session/task_shape.go, which owns the
 	// call.
 	RoleShaper Role = "shaper"
+
+	// RoleIntake fills a subharness's input form from what the conversation has
+	// already said (docs/SUBHARNESS-PRD.md §4: infer, then confirm — never
+	// interrogate). It sits LOW for the title's reason rather than the shaper's:
+	// its answer lands on a card the person is looking at and about to confirm,
+	// so a wrong guess costs one correction rather than a whole run's spend, and
+	// the alternative to a cheap call here is not a better call but an empty form
+	// somebody fills in by hand. Registered from
+	// internal/session/subharness_intake.go, which owns the call.
+	RoleIntake Role = "intake"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -256,6 +266,7 @@ var roleDescriptions = map[Role]string{
 	RoleCompaction: "the summary that survives a compaction",
 	RoleWorker:     "one node of an adaptive run",
 	RoleTitle:      "the name a session gives itself",
+	RoleIntake:     "filling in a program's form from what was already said",
 	RoleGuardian:   "is this one tool call plainly safe",
 	RoleRouter:     "which surface a request belongs to",
 	RoleReflex:     "reads every turn for memory — routing and keeping",

@@ -46,9 +46,12 @@ import (
 //     has to read past — the request is what the run is asked to do, and the
 //     name is not part of it. The tray is where this surface already keeps
 //     "what the next message carries besides its words".
-//   - HARNESS AND SUB-HARNESS ARE ONE LIST. They are the same thing under two
-//     words, so /subharness and /sub open exactly this and the rows carry no
-//     badge saying which kind anything is.
+//   - THE WORDS THAT REACH IT ARE THE /harness ROW'S OWN (commands.go), read off
+//     that row rather than listed again here. `/subharness` and `/sub` used to be
+//     among them and are not any more: a subharness is now a typed program with
+//     an input schema and an intake card (subharness.go), which is a different
+//     thing from a saved shape of work, and one word for two things is a word
+//     nobody could rely on.
 
 // harnessPickRows is how many LINES the picker takes at most, the ceiling every
 // bottom-anchored list on this surface has.

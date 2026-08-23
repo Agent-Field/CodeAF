@@ -1915,13 +1915,17 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		defer listed.settle(0)
 	}
 
-	// WHICH BODY THIS NODE HAS. Everything above and below is the same for both
-	// kinds — the deadline, the job row, the settle — and the middle is what a
-	// node of this spec IS: a worker in a worktree, or a sub-harness being
-	// written in a room (harness_task.go).
+	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
+	// three kinds — the deadline, the job row, the settle — and the middle is
+	// what a node of this spec IS: a worker in a worktree, a sub-harness being
+	// written in a room (harness_task.go), or a subharness being RUN in one
+	// (subharness_run.go).
 	work := a.workTaskNode
-	if node.spec.design != nil {
+	switch {
+	case node.spec.design != nil:
 		work = a.designHarnessNode
+	case node.spec.run != nil:
+		work = a.runSubharnessNode
 	}
 	state := work(ctx, node, listed)
 	if state == "" {

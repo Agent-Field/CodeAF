@@ -2431,6 +2431,12 @@ func (a *app) hintWord() string {
 		// nobody can guess: three of the four are bare letters, and one of them
 		// stops a thing for good (standingpage.go).
 		return standPageVerbs
+	case a.subPage.open:
+		// /subharness names its verbs here PER ROW, because enter means two
+		// things on the intake card — fill this field in, or start the run — and
+		// one line saying "enter" for both would be teaching nobody
+		// (subharness.go).
+		return a.subVerbs()
 	case a.copy.on:
 		return "v select · a block · y yank · esc"
 	case a.rew.on:

@@ -9,8 +9,10 @@ may use, and its own bounds.
 You build one by asking for it in a sentence. You keep it by approving a card. Afterwards
 it lives on disk and shows up in a list.
 
-**Sub-harness and harness are the same word.** `/harness`, `/harnesses`, `/subharness` and
-`/sub` all reach the same list.
+**A harness is not a subharness.** They used to be one word, and they are not any more.
+`/harness` and `/harnesses` open the saved shapes of work this page is about. `/subharness`
+and `/sub` open something else — the typed programs, each with an input schema and an
+intake card you settle before it runs. See the *Subharnesses* page for those.
 
 **There are two ways to run one.** aforge offers one by itself when what you typed matches
 a saved harness closely enough — that is the road for somebody who does not know the
@@ -726,8 +728,8 @@ for a version other than the next one, a version past the cap, and `subharness: 
 
 Type `/harness` **with a space after it** and a filtering list opens under the box, latest
 first — the harness that ran most recently at the top, and one that has never run sorted by
-when its page was written. Keep typing and it narrows. `/subharness ` and `/sub ` open
-exactly the same list.
+when its page was written. Keep typing and it narrows. `/harnesses ` opens exactly the same
+list; `/subharness ` and `/sub ` do not, and open the typed programs instead.
 
 ```
 ◆ triage-flake     chase a flaky test · 2h ago
@@ -769,8 +771,9 @@ Limits worth knowing:
 
 ## /harness — the list of what you have
 
-Type `/harness` or `/harnesses` with nothing after them. Both open the same panel, and so
-do `/subharness` and `/sub`. (A space after the word opens the picker above instead.)
+Type `/harness` or `/harnesses` with nothing after them. Both open the same panel. (A space
+after the word opens the picker above instead.) `/subharness` and `/sub` no longer open
+this panel — they open the typed programs and their intake card.
 
 A short list opens under the message box, at most **10** lines:
 
