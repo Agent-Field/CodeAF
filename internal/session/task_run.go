@@ -388,6 +388,26 @@ type TaskNode struct {
 	// and "designing" is a word about the work — so the surface draws this
 	// INSTEAD, and the state underneath is unchanged.
 	doing string
+	// context is the NAMED WORKING CONTEXT this node's room is, in the words a
+	// person would use for it — "designing a subharness", and then "designing
+	// flake-triage" once the page it is writing has a name (harness_task.go) — and
+	// "" for a node whose room is only work being watched.
+	//
+	// IT IS ABOUT WHERE A PERSON'S OWN WORDS LAND AND NOT ABOUT THE WORK. A phase
+	// ([TaskNode.doing]) answers "what is this node busy with"; this answers "what
+	// am I part of when I say something in here", which is the question a surface
+	// drawing somebody's own line has to be able to answer. An ordinary task node
+	// is briefed and left to it, so there is nothing to be part of and this stays
+	// empty — the emptiness law, and what makes a surface that draws this draw
+	// nothing at all for every ordinary turn.
+	//
+	// IT IS NAMED BY THE NODE'S OWN BODY and by nothing else, which is what keeps
+	// the mechanism generic: a future kind of node that is also a place somebody
+	// talks inside names itself here and every surface already draws it, with no
+	// list of kinds anywhere. Like [TaskNode.doing] it is announced when it
+	// changes ([TaskNode.contextNow]), because a context that has just learned its
+	// name is news that arrives without the state moving.
+	context string
 	// mend is the gap a repair round is closing right now, in plain words, and ""
 	// at every other moment (task_audit.go's repairNode). It is the ONLY thing
 	// the repair loop puts on the wire while it runs: the node is still running,
@@ -1548,6 +1568,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Branch:    n.branch,
 		Merge:     n.merge,
 		Doing:     n.doing,
+		Context:   n.context,
 		Mending:   n.mend,
 		Waiting:   waiting,
 		Stopped:   n.stopped,
@@ -1993,7 +2014,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 
 	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
 	// three kinds — the deadline, the job row, the settle — and the middle is
-	// what a node of this spec IS: a worker in a worktree, a sub-harness being
+	// what a node of this spec IS: a worker in a worktree, a subharness being
 	// written in a room (harness_task.go), or a subharness being RUN in one
 	// (subharness_run.go).
 	work := a.workTaskNode

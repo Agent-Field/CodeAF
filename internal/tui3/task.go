@@ -247,6 +247,23 @@ type taskNode struct {
 	// is the person's. So the phase takes the word, and the state underneath is
 	// untouched.
 	doing string
+	// context is the NAMED WORKING CONTEXT this node's room is, in the engine's
+	// own person-facing words — "designing subharness flake-triage" — and empty for an
+	// ordinary node, whose room is work being watched rather than a place somebody
+	// is inside (session's TaskNotice.Context).
+	//
+	// IT IS THE ONE THING ON THIS NODE THE PERSON'S OWN LINE IS DRAWN FROM
+	// (turncontext.go). Everything else here describes the work; this describes
+	// what a sentence typed in here is part of, which is what a transcript owes
+	// the person reading it back.
+	//
+	// It is KEPT AND NEVER UNSET, the way the kind and the branch are: a node that
+	// named a context is in that context for the rest of its life, and an update
+	// quiet about it has not left the context. A LATER, BETTER NAME REPLACES IT —
+	// a design says "designing a subharness" until its page has a name and
+	// "designing subharness flake-triage" afterwards — which is the same non-monotonic naming
+	// [taskRenames] exists for, and [taskRenamesContext] is its second half.
+	context string
 	// mending is the one plain line naming the gap the node is closing right
 	// now, as the engine published it (session's TaskNotice.Mending), and it is
 	// empty at every other moment of the node's life.
@@ -309,6 +326,20 @@ func (n *taskNode) liveLines() taskLive {
 func taskRenames(notice *session.TaskNotice, node *taskNode) bool {
 	title := strings.TrimSpace(notice.Title)
 	return title != "" && title != node.label
+}
+
+// taskRenamesContext reports whether an update names a WORKING CONTEXT this node
+// does not have. It is [taskRenames]'s law applied to the other name a node
+// carries, and it is a separate question for the same reason that one is: the
+// naming is not monotonic. A design says "designing a subharness" from the
+// moment it is admitted and "designing subharness flake-triage" the moment its page has a
+// name, both while it is running — so a guard that only ever looked at the state
+// would throw away the one update that carries the real name, and every line the
+// person typed afterwards would be marked with the placeholder for the rest of
+// the conversation. An EMPTY context is never a rename, for taskRenames' reason.
+func taskRenamesContext(notice *session.TaskNotice, node *taskNode) bool {
+	word := strings.TrimSpace(notice.Context)
+	return word != "" && word != node.context
 }
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
@@ -4827,7 +4858,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// only chance this surface gets to learn what the work is called.
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
-			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node)) {
+			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
+			!taskRenamesContext(notice, node)) {
 			return nil
 		}
 	}
@@ -4937,6 +4969,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// an update that says nothing about it has not changed it.
 	if notice.Kind != "" {
 		node.kind = notice.Kind
+	}
+	// AND SO IS THE WORKING CONTEXT, on the same rule and for the same reason: a
+	// node that named one is in it for the rest of its life, and an update quiet
+	// about it has not taken the person out of it. A better name replaces the one
+	// that stood, which is the whole of what [taskRenamesContext] lets through.
+	if word := strings.TrimSpace(notice.Context); word != "" {
+		node.context = word
 	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.

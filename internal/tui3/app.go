@@ -227,6 +227,17 @@ type entry struct {
 	// note is drawn exactly as it was drawn before the rule existed.
 	facts []string
 
+	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
+	// engine's own person-facing words (session's TaskNotice.Context) — and empty
+	// for every ordinary turn, which is nearly all of them. It is set on the
+	// person's own block and read by nothing else (turncontext.go states the law).
+	//
+	// IT IS TAKEN AT THE MOMENT THE TURN STARTS AND NEVER DERIVED AFTERWARDS. The
+	// context a sentence went into is a fact about the past, and a transcript that
+	// asked the live session where its old lines had gone would re-label a whole
+	// history every time the person walked into a different room.
+	context string
+
 	// Tool fields.
 	tool   string
 	status toolState
@@ -724,7 +735,7 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
-	// stripHarn is where the running sub-harness's chip was last drawn, or the
+	// stripHarn is where the running subharness's chip was last drawn, or the
 	// zero span when none is running (harnesspanel.go). It is kept apart from
 	// stripSpans because it opens a different door: a node chip opens that
 	// node's room, and this one opens the registry.
@@ -909,7 +920,7 @@ type app struct {
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
-	// THE HARNESS SIDE (harness.go). harnessAsks are the sub-harness offers
+	// THE HARNESS SIDE (harness.go). harnessAsks are the subharness offers
 	// waiting for an answer, oldest first — a question about the TURN rather
 	// than about a call or an account, one row under the connect offer and
 	// owning the keyboard on the same terms. harnessTaps is where that row's two
@@ -922,7 +933,7 @@ type app struct {
 	// drawn on an earlier frame (roomapproval.go). There is no queue beside it —
 	// a room stands in front of one design and no more.
 	roomApprovalTaps []roomApprovalTap
-	// harnessStep is the step a running sub-harness last finished, as one line
+	// harnessStep is the step a running subharness last finished, as one line
 	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
@@ -945,7 +956,7 @@ type app struct {
 	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
-	// harn is the sub-harness registry (Options.Harnesses) and harnPanel the
+	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
 	// it, because that path runs entirely on session events (harness.go).
@@ -3667,7 +3678,12 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	// WALL-CLOCK moment rather than a duration: it is where a sitting starts,
 	// and it is what the gap and day marks above it are measured from
 	// (timestamps.go).
-	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
+	// AND THE BLOCK CARRIES THE CONTEXT THE TURN RUNS IN (turncontext.go), which
+	// out here is nothing: a message typed into the conversation goes to the
+	// conversation. It is asked rather than assumed so that the day the engine
+	// routes a conversation's turn into a named thread, the line that says so is
+	// already being drawn — one mechanism, keyed off what the session exposes.
+	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now(), context: a.turnContext()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
