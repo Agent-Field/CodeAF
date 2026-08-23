@@ -96,7 +96,7 @@ func TestEnterOnAHarnessPrintsItsCard(t *testing.T) {
 		t.Fatal("the panel stayed up over the card it printed")
 	}
 	screen := strings.Join(plainRows(a), "\n")
-	for _, want := range []string{"triage-flake · v1", "look at it", "land it?", "tools  read"} {
+	for _, want := range []string{"triage-flake · v1", "look at it", "land it?", "can use · reads files"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, screen)
 		}

@@ -64,6 +64,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
+		{"the harness I just had built is not in /subharness", "subharnesses"},
+		{"how do I run a harness I had designed", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
 
 		// The second wave, added after probing the corpus the way it is
