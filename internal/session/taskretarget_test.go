@@ -81,6 +81,18 @@ func retargetAgent(t *testing.T) (*Agent, *TaskNode, *Agent, func()) {
 func TestRetargetTaskMovesARunningNodeAndEveryRowThatNamesIt(t *testing.T) {
 	agent, node, child, land := retargetAgent(t)
 	updates := agent.TaskUpdates()
+	// THE LANE OPENS ON THE ROSTER ([Agent.replayTaskRoster]): the running
+	// node's row arrives the moment the lane does, as the node stands now —
+	// before the retarget. It comes off first so the assertion below reads
+	// what the retarget published, not what the subscription replayed.
+	select {
+	case event := <-updates:
+		if event.Kind != EventTaskUpdate || event.Task == nil || event.Task.ID != node.id {
+			t.Fatalf("the lane opened on %v rather than the node's roster row", event.Kind)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the lane opened on nothing")
+	}
 
 	if err := agent.RetargetTask(node.id, "anthropic/claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask on a running node: %v", err)

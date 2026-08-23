@@ -1087,8 +1087,9 @@ stays ink, what merely qualifies it recedes to dim.
 - `bash` — in an `&&` chain, everything before the last command is context and goes dim.
   The last command leads in ordinary ink; flags, operators, numbers and comments recede.
 - `read`, `edit`, `write` — the path is ink, a trailing `120-240` line range is dim.
-- `grep`, `find` — the **pattern is accent**, because it is the one target that is not a
-  thing that exists, it is what the call is looking for; the place it searched is dim.
+- `grep`, `find` — the **pattern is ink** like every other target, and the place it
+  searched is dim. The pattern is never the accent: a tool row is telemetry, and the
+  accent is spent on the one live or chosen thing on the screen.
 - `web_fetch` — the URL, whole, off the call's own arguments.
 
 A target too long for the row is **cut in the middle** when it is a path or a URL, and at

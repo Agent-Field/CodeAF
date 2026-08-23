@@ -187,8 +187,10 @@ var (
 	// collision that would matter: a datum painted the person's own colour
 	// would spend the budget forty times a minute by rounding.
 	hueData = mustHue("#88C0D0", heavy)
-	// hueViolet is the SHELL OPERATOR's hue (shellx.go), and it is deliberately
-	// NOT the question hue above.
+	// hueViolet was the SHELL OPERATOR's hue until the transcript restraint
+	// greyed shell grammar down to the reading tiers (shellx.go) — it is held
+	// in the table, currently unspent, and it is deliberately NOT the question
+	// hue above.
 	//
 	// The fifth colour's law is that seeing #C08FE8 means one thing — a person
 	// is being waited on — so a pipe in a command line may not wear it. This is

@@ -538,9 +538,8 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	if n := strings.Count(rail, taskSheetKey+" "); n != 1 {
 		t.Fatalf("the column drew %d doors onto the page, want 1:\n%s", n, rail)
 	}
-	// The hue question is asked of the ROWS THEMSELVES and not of [railText],
-	// which strips every escape out on its way to what a reader sees
-	// (railaway_test.go says the same thing over the column's own door).
+	// Raw rows, not railText: the reading helper strips ANSI, and paint can
+	// only be asserted where the paint still is.
 	painted := strings.Join(a.railRows(a.viewHeight()), "\n")
 	if !strings.Contains(painted, a.pal.data(taskSheetKey)) ||
 		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
