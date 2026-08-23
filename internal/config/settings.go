@@ -756,6 +756,15 @@ var OperatorEnvPins = []string{
 	// the same lifetime: it disappears when swarm becomes the default, which
 	// is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
+	// AFORGE_SPLITGATE is the claim-time split gate's rollback switch
+	// (cmd/aforge/cooperative.go): set to 0 and a leaf's request to divide is
+	// taken at its word instead of being weighed against the gate's evidence.
+	// It is plumbing for the reason AFORGE_SWARM is — a wave's escape hatch
+	// while the gate proves itself against real runs, not a preference — and
+	// it has the same lifetime: it disappears when the gate has earned the
+	// last word, which is exactly the lifetime a persisted setting must not
+	// have.
+	"AFORGE_SPLITGATE",
 	// AFORGE_QUORUM is the two-verifier gate's arming switch
 	// (config.go's Config.Quorum): on, a passed deliverable is independently
 	// verified by two cheap validators before it commits; off, the judge's
