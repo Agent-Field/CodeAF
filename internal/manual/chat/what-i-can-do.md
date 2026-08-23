@@ -601,6 +601,22 @@ along with `watch`.
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
 
+## Can I run a subharness — one of the typed programs?
+
+`/subharness` (or `/sub`) lists them, `enter` opens that one's intake card, and
+`/subharness <name>` opens the card straight away. The card shows every input
+field, marks the required ones nobody has answered with `▲`, lets you fill them
+in with `enter`, and the last row is `run it`. A run is a task from there on.
+
+What it cannot do yet is stated on the *Subharnesses* page, and it is worth
+knowing before you go looking: aforge does not offer one by itself yet, nothing
+fills the card in from the conversation yet, and on a build with none wired the
+command answers `no subharnesses here yet — a subharness is a saved program for
+work that comes round again.` and opens nothing.
+
+A subharness is not the same thing as a harness. See *Saved shapes of work* for
+those.
+
 ## Can you tell me how you work?
 
 Yes, and it does not answer from memory. aforge has a `manual` tool that reads
