@@ -51,6 +51,17 @@ type TaskKind string
 // the person approves the card at the end of it.
 const TaskKindHarness TaskKind = "harness"
 
+// TaskKindSubharness is a subharness RUNNING (subharness_run.go): a saved
+// program taking one piece of typed work, with a room, a journal of its host
+// calls, and a ✕ — and, like a design, no worktree, no branch and no merge.
+//
+// IT IS THE ASYMMETRY THIS WAVE CAME TO FIX. Designing a harness has been a task
+// since harness_task.go landed; RUNNING one blocked the conversation as a turn
+// (harness.go), which made the one thing a person most wants to walk away from
+// the one thing they could not. A run is a node now, and everything a node has
+// — the row, the room, the id, the stop — it has for free.
+const TaskKindSubharness TaskKind = "subharness"
+
 // TaskState is where one node is in its life.
 type TaskState string
 

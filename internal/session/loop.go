@@ -2112,6 +2112,11 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 const (
 	auxRoleTitle    = "title"
 	auxRoleTaskName = "taskname"
+	// auxRoleIntake is the third for the same reason the first two are: the form
+	// a subharness is launched on is something a person SEES, and a field filled
+	// wrongly is unattributable without the name of the model that filled it
+	// (subharness_intake.go).
+	auxRoleIntake = "intake"
 )
 
 // addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a

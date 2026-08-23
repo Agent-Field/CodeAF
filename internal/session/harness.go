@@ -38,6 +38,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -205,28 +206,20 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 // keeps that same silence for every other errand whose response carried no
 // accounting at all.
 func (a *Agent) foldHarnessUsage(spent subharness.Usage, model string) {
-	if !spent.Reported() {
-		return
-	}
-	if spent.Model != "" {
-		model = spent.Model
-	}
-	if model == "" {
-		model = a.Model()
-	}
-	used := &ai.Usage{
-		PromptTokens:             spent.Input,
-		CompletionTokens:         spent.Output,
-		CacheReadInputTokens:     spent.CacheRead,
-		CacheCreationInputTokens: spent.CacheWrite,
-	}
-	// The cost is attached only when the provider gave one. A pointer to zero
-	// and no pointer at all are the same arithmetic here, but they are not the
-	// same claim, and this struct is read elsewhere as the provider's own words.
-	if spent.CostUSD > 0 {
-		used.Cost = &spent.CostUSD
-	}
-	a.addAuxiliaryUsage(&ai.Response{Usage: used}, model, spent.Calls)
+	// THE BODY IS [Agent.foldSubharnessSpend] AND THERE IS ONLY ONE OF IT. The
+	// two ledgers carry the same figures field for field — that is stated at
+	// length in internal/exec's Spend — and a second copy of this arithmetic
+	// would be the one that drifts the first time either of them grows a column.
+	// What this door adds is the translation, and nothing else.
+	a.foldSubharnessSpend(exec.Spend{
+		Model:      spent.Model,
+		Calls:      spent.Calls,
+		Input:      spent.Input,
+		Output:     spent.Output,
+		CacheRead:  spent.CacheRead,
+		CacheWrite: spent.CacheWrite,
+		CostUSD:    spent.CostUSD,
+	}, model)
 }
 
 // harnessRoute is one turn matched against one registry.

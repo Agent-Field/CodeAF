@@ -374,6 +374,48 @@ const (
 	// was ratified, it fired, it was paused, retired, or it needs the person. It is
 	// a report, never a question.
 	EventStandingUpdate
+	// EventSubharnessAsk is a running subharness putting one question to the
+	// person (subharness_env.go, the Env's ask() door). ID is the run's task
+	// node, Text is the question in the program's own words, and Args carries
+	// the answers it offers as a JSON array when it offers a set.
+	//
+	// It is a QUESTION and it arrives IN THE RUN'S ROOM, which is where the run
+	// lives: its journal, its progress and its ✕ are all there already, and a
+	// question about the work belongs beside the work. A person who is not in the
+	// room learns about it from the ROSTER, because the node moves to the
+	// "awaiting your look" phase for exactly as long as the question stands —
+	// the same phase a design waiting on its card wears, for the same reason.
+	//
+	// It is answered through [Agent.AnswerSubharness], which takes the run's id,
+	// what they said, and whether they are TAKING OVER. A surface that ignores
+	// this kind leaves the run waiting until the node is stopped or the session
+	// closes, which is why the question is only ever put where somebody is
+	// watching (Config.AskConsent) — an unattended run answers from what the gate
+	// declared or stops incomplete, and never guesses.
+	EventSubharnessAsk
+	// EventSubharnessStep is one host call a running subharness just made
+	// (internal/exec's JournalEntry): ID is the run's node and Step carries the
+	// entry whole — which door, what it was about, what it cost.
+	//
+	// It is a REPORT and it is DISPLAY-ONLY, on EventHarnessStep's terms: the
+	// journal is the permanent record, this is how a person watches it being
+	// written. Nothing here is recorded in any transcript.
+	EventSubharnessStep
+	// EventSubharnessProposal asks whether one saved program should take this
+	// piece of work (tools_subharness.go). ID is the token an answer goes back
+	// through, Text is the program's name, Hint is what it is for, and
+	// Subharness carries the INTAKE CARD — every input field, what this
+	// conversation already answers, and which required blanks are left.
+	//
+	// It is a QUESTION and it is the one on this list with NO CLOCK THAT
+	// APPROVES. A task proposal's countdown ends in a yes because it is a window
+	// to redirect ordinary work; this one may not, because a program that ran
+	// because nobody answered would be exactly the silent auto-execution the
+	// whole path is built to prevent (docs/SUBHARNESS-PRD.md §9). It is answered
+	// through [Agent.ResolveSubharness] — true runs it, with the form as the
+	// person left it — and a surface that ignores this kind runs nothing at all,
+	// which is the correct behaviour rather than a degradation.
+	EventSubharnessProposal
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -489,6 +531,14 @@ type Event struct {
 	// from one fact (subharness.StepLine).
 	Step *subharness.Trail
 
+	// Entry is one host call a running SUBHARNESS just made, on
+	// EventSubharnessStep alone and nil on every other kind
+	// (internal/exec's JournalEntry). It is the journal's own entry rather than a
+	// copy of the parts of it a surface might want, for the reason Step above is
+	// the trail's: the row drawn while the run happens and the row read back out
+	// of the journal afterwards are one fact rendered twice.
+	Entry *exec.JournalEntry
+
 	// Task carries one EventTaskProposal or EventTaskUpdate's payload
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
 	// is the token a surface hands back to [Agent.ResolveTask].
@@ -497,6 +547,11 @@ type Event struct {
 	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
 	// (standing_contract.go). It is nil on every other kind.
 	Standing *StandingNotice
+
+	// Subharness carries one EventSubharnessProposal's intake card
+	// (subharness_contract.go). It is nil on every other kind, and the ID beside
+	// it is the token a surface hands back to [Agent.ResolveSubharness].
+	Subharness *SubharnessCard
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
@@ -946,6 +1001,30 @@ type Config struct {
 	// surface built against them draws nothing rather than an error — which is
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
+
+	// SubharnessMemory is where a running subharness keeps what it has learned
+	// about its OWN domain — its file in its own bundle, never this
+	// conversation's memory (subharness_env.go's [SubharnessMemory] says why the
+	// two must not share a page).
+	//
+	// NIL IS A BUILD WITH NO BUNDLE MEMORY, and the remember/recall doors then
+	// answer [exec.NotWired] for their own names, which is the contract's own
+	// answer for a door with nothing behind it. It is a SEAM the store lane
+	// fills, on the terms Subharnesses is one: where a bundle's memory lives is
+	// the surface's decision, and a package that opened
+	// ~/.aforge/subharnesses itself would open it from a test too.
+	SubharnessMemory SubharnessMemory
+
+	// SubharnessLastRun is the dim note under one row of the `/subharness` list:
+	// when that program last ran here and how it went, in a person's words
+	// ([SubharnessRow.LastRun]). It is a closure rather than a table because the
+	// answer is about the moment the list is drawn, and a snapshot taken at
+	// launch would be silent about the run that finished five minutes ago.
+	//
+	// NIL IS NO HISTORY, and every row then draws nothing there — never "0 runs",
+	// never "never run" (the emptiness law). It is the STORE LANE's seam: the run
+	// journals it keeps beside each bundle are the only thing that can answer.
+	SubharnessLastRun func(name string) string
 
 	// WorktreeRoot is where isolated worktrees for a run's write-capable
 	// nodes live. The session-id wave owns what fills it; this is the
@@ -1568,6 +1647,28 @@ type Agent struct {
 	// question by guessing a number.
 	harnessSeq  uint64
 	harnessAsks map[uint64]harnessAsk
+
+	// subharnessAsks is the questions a RUNNING SUBHARNESS owes an answer to,
+	// keyed by the task node the run is (subharness_env.go). It is the same
+	// pending-id machinery consent and the harness offer keep, one lane over,
+	// with one difference worth stating: the key is not a counter of its own.
+	//
+	// A RUN IS A NODE AND A NODE ALREADY HAS AN ID, and a run puts at most one
+	// question at a time — it is one program on one goroutine, and a second
+	// question would mean a second thing to answer about work that has not moved.
+	// So the node's number is the token, which is also the number on the roster
+	// row, the number in the ✕, and the number a person says out loud.
+	subharnessAsks map[uint64]chan subharnessReply
+
+	// subharnessOffers is the intake cards chat has raised and nobody has
+	// answered yet, keyed by the id the EventSubharnessProposal carried, and
+	// subharnessSeq is what names them (tools_subharness.go).
+	//
+	// It is its own counter for [Agent.harnessAsks]' reason: the two lanes are
+	// answered by two methods, and neither may be able to answer the other's
+	// question by guessing a number.
+	subharnessSeq    uint64
+	subharnessOffers map[uint64]chan subharnessConsent
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just
