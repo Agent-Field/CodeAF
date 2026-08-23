@@ -2245,3 +2245,60 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+// A DOOMED DEPENDENCY IS REFUSED AT THE DOOR, NOT FAILED ON THE FRONTIER. A
+// model that saw "run 1" in the conversation and wrote depends_on: [1] used to
+// get a task the person watched appear and die in the same breath — admitted,
+// then failed as a wait that could never resolve. The proposal is refused
+// before anybody is asked anything, in words that name the fix.
+func TestAProposalNamingNoTaskIsRefusedBeforeAnyoneIsAsked(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "t", Summary: "s", Brief: "b", Deliverable: "d", Acceptance: "a",
+		DependsOn: []uint64{99},
+	})
+	// A refusal returns without asking the person, so a direct call must come
+	// straight back; an admission here would hang on the proposal card.
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError {
+		t.Fatalf("a phantom dependency was not refused: %q", result)
+	}
+	for _, want := range []string{"task 99", "propose_task itself returned", "adaptive-run"} {
+		if !strings.Contains(result, want) {
+			t.Fatalf("the refusal does not say %q: %q", want, result)
+		}
+	}
+	graph := agent.graph()
+	graph.mu.Lock()
+	admitted := len(graph.nodes)
+	graph.mu.Unlock()
+	if admitted != 0 {
+		t.Fatalf("the graph admitted %d nodes for a refused proposal", admitted)
+	}
+}
+
+// A dependency on work that already failed is the same refusal with a
+// different reason: the wait can only end in the cascade, so the proposal is
+// turned back with the way out named.
+func TestAProposalWaitingOnFailedWorkIsRefused(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "t", brief: "b", deliverable: "d", acceptance: "a", owner: agent})
+	graph.complete(graph.node(id), TaskFailed)
+
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "t2", Summary: "s", Brief: "b", Deliverable: "d", Acceptance: "a",
+		DependsOn: []uint64{id},
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError || !strings.Contains(result, "already failed") {
+		t.Fatalf("a dependency on failed work was not refused as one: error=%v %q", isError, result)
+	}
+}

@@ -69,11 +69,12 @@ const (
 	// because every lane is a whole child agent with its own context.
 	orchestrateLanes = 4
 
-	// orchestrateDefaultCap is the tank when nobody named one. Small on
-	// purpose: the gate is where more money is asked for, and asking for it
-	// once with the frontier on screen is a better question than asking for it
-	// up front with nothing on screen.
-	orchestrateDefaultCap = 2.00
+	// orchestrateDefaultCap is the tank when nobody named one. It was $2, and
+	// real runs hit that gate mid-work often enough that the question became a
+	// nag rather than a decision — the owner raised it to ten. The gate is
+	// still where more money is asked for; it just fires when a run is
+	// genuinely large rather than merely ordinary.
+	orchestrateDefaultCap = 10.00
 
 	// The planner's own budget. It writes an amendment, not a page, and the
 	// answer to most completions is `{}` — what the tokens are actually for is

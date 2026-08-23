@@ -443,6 +443,15 @@ What happens depends on how the earlier task landed:
 | Not in this session's work at all | It fails, with `it waits on task 3, which is not in this session's work` |
 | **Needs your look** | It **stays queued** — it does not fail |
 
+**A bad id never gets that far on a new proposal.** `depends_on` takes only ids
+`propose_task` itself returned in this session. A number that names no task — a
+background job's id, an adaptive run's, a step count — and a number whose task has
+already failed are both refused on the spot, before you are even asked about the task:
+`depends_on names task 1 — no task in this session has that id`. Nothing is created and
+nothing dies; aforge corrects the proposal and asks again. The failure rows above remain
+for work that goes wrong **after** a task was admitted — a prerequisite that fails while
+its dependent is already queued.
+
 That last row is the point. Work that needs your look does not knock over everything
 behind it. Dependents wait rather than failing, and they wait indefinitely: nothing will
 move them on its own until you decide what to do with the task in front of them.
@@ -860,7 +869,10 @@ new target. If the objective itself was wrong, the answer is a new proposal.
 Four more arguments, all optional. Every bad value is an ordinary result, not an error.
 
 **`depends_on`** — an array of task ids that must finish first. The task waits for them,
-and their reports are put in front of it when it starts. Ids can only point backwards.
+and their reports are put in front of it when it starts. Ids can only point backwards,
+and only ids `propose_task` itself returned count: a job or adaptive-run number is a
+different kind of work, and naming one — or a task that already failed — refuses the
+proposal on the spot instead of queueing work that could never start.
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise

@@ -1326,6 +1326,10 @@ gutter disappears and the dim treatment carries the same distinction.
 
 ## How do I see what aforge did?
 
+This is the answer to "what did aforge just do", "show me the work behind that answer",
+"see the tool calls it ran", and "what happened during that turn" — the finished work is
+folded, and one gesture opens it.
+
 When a successful turn has work and a trailing answer, the finished work collapses to
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's

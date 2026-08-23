@@ -9,6 +9,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
 // THE MODEL'S HANDS ON THE BIG MACHINERY, from the three sides that matter: the
@@ -97,9 +99,11 @@ func TestTheHarnessHandsSayWhatTheyAreFor(t *testing.T) {
 		}
 	}
 	// ONE SOURCE OF TRUTH for the default tank: a schema that spelled its own
-	// figure would be a figure that drifts from the one the run applies.
+	// figure would be a figure that drifts from the one the run applies — and
+	// so would this assertion, which once pinned the dollars as a literal and
+	// broke on the day the default moved.
 	tool, _ := onBelt(agent, "run_adaptive")
-	if !strings.Contains(string(tool.Schema), "$2.00") {
+	if !strings.Contains(string(tool.Schema), orchestrate.Dollars(orchestrateDefaultCap)) {
 		t.Errorf("run_adaptive's schema does not name the default tank: %s", tool.Schema)
 	}
 }

@@ -504,11 +504,21 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	a.home.barRow = len(lines) - 1
 
 	if len(lines) > height {
+		removed := len(lines) - height
 		cut := len(lines) - (height - 1)
 		lines = append(lines[:1], lines[cut:]...)
 		hits = append(hits[:1], hits[cut:]...)
 		panes = append(panes[:1], panes[cut:]...)
 		a.home.barRow = len(lines) - 1
+		// THE CARET RIDES THE CLAMP, as on the wide frame: rows removed above
+		// the box shift it up, and a caret computed before the cut would blink
+		// below it. One whose row was cut away is hidden rather than guessed.
+		switch {
+		case caretY >= 1+removed:
+			caretY -= removed
+		case caretY > 0:
+			a.caret = false
+		}
 	}
 	for len(lines) < height {
 		add("", -1)

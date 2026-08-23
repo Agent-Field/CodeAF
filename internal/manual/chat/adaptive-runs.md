@@ -45,34 +45,38 @@ happened yet. Its write-up arrives later as a line in the conversation.
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
 calls too.
 
-The default tank is **$2.00** when nobody named a figure — deliberately small, because the
-better moment to ask for more money is with the graph on screen rather than before anything
-has run.
+The default tank is **$10.00** when nobody named a figure. Say your own in the goal —
+"with a $5 budget" — and that wins.
 
 - At **80%** the run says so, once.
 - At **100%** it **pauses**: whatever is in flight is allowed to finish, nothing new starts,
   and a question is raised on the run's page.
 
-The question has exactly three answers:
+The question has exactly three answers, and it says how it is answered — walk the rows
+with `↑`/`↓` (the bold row is the one enter takes), press enter, or click a row; typing
+does not answer it, it steers the planner:
 
 ```
-? out of fuel · $2.00 of $2.00
-  add $1
+? out of fuel · $10.04 of $10.00
+▌ add $5
   finish with what we have
   stop
+  ↑ ↓ pick · enter answers · or keep typing to steer the planner
 ```
 
-`add $1` raises the cap by a dollar and the run carries on. `finish with what we have` skips
-to the write-up over the results that exist. `stop` settles the run and keeps what finished.
-Each answers with a line saying what it did: `topped up; the run carries on`, `finishing on
-what is already done`, `stopped; what finished is kept`.
+The top-up offer is **half the tank you already approved**, in whole dollars and never
+less than one — a $10 run is offered $5 more, a $2 run $1 — so a big run is not begged a
+dollar at a time. Taking it raises the cap by that amount and the run carries on. `finish
+with what we have` skips to the write-up over the results that exist. `stop` settles the
+run and keeps what finished. Each answers with a line saying what it did: `topped up; the
+run carries on`, `finishing on what is already done`, `stopped; what finished is kept`.
 
 A run is also bounded in time: **4 hours** covers every node, every planner call, and the
 wait at the gate.
 
 **And the whole session says so, to every other window.** While a run sits at its gate the
 conversation reads `waiting on you` — on home, and on every other aforge open on the
-machine — with `out of fuel · $2.00 of $2.00` beside it, the same line the run's own page
+machine — with `out of fuel · $10.00 of $10.00` beside it, the same line the run's own page
 shows. It is the same word an approval question or a task proposal puts there, and it
 sorts to the top of its project for the same reason: nothing is going to happen until you
 answer. Answer the gate and the word goes away.
@@ -93,7 +97,7 @@ row — or any of its nodes' rows — on the roster; a paused run brings its own
 it asks its question.
 
 The page is the graph: nodes as chips in layers, the planner's notes as thin lines between
-them, and the fuel gauge pinned in the header (`$0.87 / $2.00`), which is never dropped at
+them, and the fuel gauge pinned in the header (`$0.87 / $10.00`), which is never dropped at
 any width. **A planner's note is shown whole**, wrapped across as many lines as it takes
 and hanging under its `· ` bullet — it is the planner's own sentence about what it just
 decided, and half of one says nothing. What gets cut at a narrow width is the picture: a
