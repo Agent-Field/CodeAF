@@ -1903,10 +1903,19 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
+	// A BARE LETTER IS A DOOR ONLY ON A ROW THE PERSON CHOSE. h.picked is the
+	// deliberate gesture — they walked the cursor onto the row or clicked it —
+	// and it is the same fact that decides whether the card's own key hints
+	// are about anything. Before that gesture the letters belong to the box,
+	// whatever row the cursor happens to be resting near: the foot promises
+	// "type to search or start something new", and a person two letters into
+	// "make me a site" who watched the m fold a band instead was given a mode
+	// they never asked for.
+	//
 	// MORE. The right column has no cursor, so `m` acts on the card: it opens
 	// every folded band on the row under the cursor, and folds them again
 	// (homebands.go). Only with nothing typed — in the box an m is an m.
-	if msg.String() == "m" && h.box.empty() {
+	if msg.String() == "m" && h.box.empty() && (h.picked || h.hover >= 0) {
 		if subject, ok := a.homeSubject(); ok {
 			a.toggleAllBandFolds(subject)
 			return nil
@@ -1916,16 +1925,17 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// everything, and taken only when the row is a conversation stopped on a
 	// card that offered that key and there is nothing typed — every other
 	// moment a digit is a character going into the box, exactly as it always
-	// was ("2 hours later" begins with a 2). The chips it answers are drawn by
-	// homeband_answer.go, which is also where the whole rule lives.
+	// was ("2 hours later" begins with a 2). Unlike the letters below, it is
+	// NOT gated on the pick: the numbered chips are drawn on the row itself,
+	// and a key the screen is visibly advertising may take the press.
 	if h.box.empty() {
 		if cmd, took := a.answerKey(msg.String()); took {
 			return cmd
 		}
 	}
-	// THESE LETTERS ARE DOORS ONLY ON AN EMPTY SESSION CARD. Once somebody has
-	// typed, every bare letter belongs to their sentence.
-	if h.box.empty() {
+	// THESE LETTERS ARE DOORS ONLY ON AN EMPTY SESSION CARD THE PERSON CHOSE.
+	// Once somebody has typed, every bare letter belongs to their sentence.
+	if h.box.empty() && h.picked {
 		if line, ok := h.focusedLine(); ok && line.kind == homeSession {
 			switch msg.String() {
 			case "n":

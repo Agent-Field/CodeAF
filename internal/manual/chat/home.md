@@ -305,7 +305,8 @@ home" below.
 
 ## Archiving a conversation — put junk away and clean up home
 
-Press **`e`** with the message box empty and the cursor on a conversation, and that row is
+Walk the cursor onto a conversation (or click it), then press **`e`** with the message box
+empty, and that row is
 **put away**: it leaves its project's block and home gets cleaner by one line. Put-away
 conversations from every project gather under **one folded line at the very foot of the
 resting list**:

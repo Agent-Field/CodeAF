@@ -30,9 +30,17 @@ func TestModelSegmentNamesWhoServedAndHowFast(t *testing.T) {
 		Model: "deepseek/deepseek-v4-flash", Provider: "quicksilver", Rate: 92, At: at.Add(-time.Second),
 	}, true)
 
+	// The rate is a claim about NOW, so it rides only while a turn runs; at
+	// rest the attribution stands alone and the figure is cleared.
+	a.state = stateWorking
 	want := "porting the parser · deepseek-v4-flash · via quicksilver · 92 tok/s"
 	if got := a.identity(); got != want {
 		t.Fatalf("identity() = %q, want %q", got, want)
+	}
+	a.state = stateIdle
+	want = "porting the parser · deepseek-v4-flash · via quicksilver"
+	if got := a.identity(); got != want {
+		t.Fatalf("an idle identity() = %q, want the rate cleared: %q", got, want)
 	}
 }
 
