@@ -177,6 +177,12 @@ type Meta struct {
 	// [TaskIndexEntry.Tokens] already uses for the same fact about a task.
 	SpentUSD float64 `json:"spentUsd,omitempty"`
 	Tokens   int     `json:"tokens,omitempty"`
+	// Archived marks a conversation somebody PUT AWAY from home's resting
+	// list: it leaves its project's block and gathers under home's one folded
+	// archive line, reachable there and still found by search. It is the
+	// person's own act (home's `e`) and its own undoing — nothing automatic
+	// ever sets or clears it, and nothing else about the session changes.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable
@@ -212,6 +218,24 @@ func LoadMeta(dir string) (Meta, error) {
 
 // SaveMeta writes the identity whole, temp-and-rename, never partially: a
 // picker that reads a half-written meta.json would draw a phantom row.
+// SetArchived marks or unmarks one conversation as put away, through the same
+// meta file every other fact about the session rides. A folder with no
+// conversation in it is refused rather than given a meta that claims one.
+func SetArchived(dir string, archived bool) error {
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(meta.ID) == "" {
+		return fmt.Errorf("no conversation at %s", dir)
+	}
+	if meta.Archived == archived {
+		return nil
+	}
+	meta.Archived = archived
+	return SaveMeta(dir, meta)
+}
+
 func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
