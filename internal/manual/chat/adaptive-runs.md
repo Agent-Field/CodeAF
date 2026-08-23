@@ -96,13 +96,18 @@ picture of the run, not tasks: the run's own **page** is where a node is read an
 row — or any of its nodes' rows — on the roster; a paused run brings its own page up when
 it asks its question.
 
-The page is the graph: nodes as chips in layers, the planner's notes as thin lines between
-them, and the fuel gauge pinned in the header (`$0.87 / $10.00`), which is never dropped at
-any width. **A planner's note is shown whole**, wrapped across as many lines as it takes
-and hanging under its `· ` bullet — it is the planner's own sentence about what it just
-decided, and half of one says nothing. What gets cut at a narrow width is the picture: a
-chip, a glyph, the goal in the header. The page re-reads the run four times a second. `esc`
-leaves; the conversation is untouched.
+The page is sectioned, and the graph is a list. Under a dim `work` heading every node has
+**one row of its own**: its state glyph, its id, its goal in words, and a dim tail on the
+right carrying its dependencies (`needs rfcs client`), its spend, and a `new` mark for
+the interval after it appeared. Rows are ordered by depth — a node is always drawn under
+everything it waits on — so the shape of the run reads top to bottom, and rows that wait
+on the same things are the work running in parallel. Under the graph, a dim `planner`
+heading gathers the planner's narration in one place, each note wrapped whole under its
+`· ` bullet — it is the planner's own sentence about what it just decided, and half of
+one says nothing. Your own steers and gate answers follow (`you steered · …`), then the
+`answer` section once there is one. The fuel gauge stays pinned in the header
+(`$0.87 / $10.00`) and is never dropped at any width. The page re-reads the run four
+times a second. `esc` leaves; the conversation is untouched.
 
 **Type a sentence with the page open and it goes to the planner**, which sees it on its next
 call. Steering outranks the plan. It is talk to the planner, not a new goal: what it cannot

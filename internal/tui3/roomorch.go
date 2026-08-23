@@ -292,6 +292,11 @@ const (
 	orchErrHead    = "error"
 	orchRunHead    = "nested run"
 	orchAnswerHead = "answer"
+	// orchWorkHead and orchPlannerHead are the graph page's two sections: the
+	// nodes, and the narration about them (orchGraphRows says why they are
+	// separated).
+	orchWorkHead    = "work"
+	orchPlannerHead = "planner"
 	orchCardBack   = "esc · back to the graph"
 	// orchGateLead opens the gate's question.
 	orchGateLead = "out of fuel"
@@ -329,10 +334,6 @@ const (
 	orchGlyphPausedASCII  = "="
 )
 
-// orchChipGap is what separates two chips on one line. Three cells, because two
-// is the gap inside a chip between its glyph and its name and a separator has to
-// be wider than the thing it separates.
-const orchChipGap = "   "
 
 // orchLead is the cursor's two cells in front of every chip, picked or not. It
 // is constant width so that moving the cursor never reflows the line, and it is
@@ -1270,71 +1271,58 @@ func (a *app) orchHoverPass(page *orchPage, width int) {
 	}
 }
 
-// orchGraphRows draws the layers.
+// orchGraphRows draws the run's work as ONE LIST, a row per node in dependency
+// order, and then the planner's narration as a section of its own.
+//
+// IT WAS A PICTURE ONCE — chips flowed across the line with bare │ strokes
+// under them, and the planner's notes were interleaved at the layer boundaries
+// — and a person looking at it could not say what depended on what: the
+// strokes pointed at columns, a chip said "n8" and never what n8 was, and the
+// notes read as rows of the graph itself. A terminal is a column of text, so
+// the graph is drawn as what a graph is in a column of text: every node on its
+// own row, its goal beside its id, and what it waits on written on the row in
+// words. The layer order is kept — a node is always drawn under everything it
+// needs — so depth still reads top to bottom, and a layer's parallel width
+// reads as consecutive rows that wait on the same things.
 func (a *app) orchGraphRows(page *orchPage, width int) {
 	run := a.orchOf()
-	notes := run.noteLines()
 	if len(run.snap.Nodes) == 0 {
 		word := orchEmptyWord
 		if !run.known {
 			word = orchUnknownWord
 		}
 		page.put(a.pal.dim(fit(word, width)))
-		for _, note := range notes {
-			a.orchNoteRows(page, note, width)
-		}
+		a.orchPlannerSection(page, width)
 		return
 	}
-	layers := orchLayers(run.snap.Nodes)
-	tier := layoutTier(width)
-	for i, layer := range layers {
-		if i > 0 {
-			// THE BOUNDARY BETWEEN TWO LAYERS IS WHERE A NOTE GOES, and the pairing
-			// is by ORDER rather than by claim: the planner speaks at completions
-			// and the graph grows at completions, so the nth note and the nth
-			// boundary are the same moment seen twice. A boundary with no note left
-			// to put on it is a blank row, which is the spacing the layers want
-			// anyway.
-			a.orchNoteBoundary(page, notes, i-1, width)
-		}
-		var next []orchestrate.NodeStatus
-		if i+1 < len(layers) {
-			next = layers[i+1]
-		}
-		if tier >= tierNarrow {
-			a.orchLayerList(page, layer, width, tier == tierPhone)
-		} else {
-			a.orchLayerFlow(page, layer, next, width, tier == tierWide)
-		}
+	page.put(a.pal.dim(fit(orchWorkHead, width)))
+	phone := layoutTier(width) == tierPhone
+	for _, layer := range orchLayers(run.snap.Nodes) {
+		a.orchLayerList(page, layer, width, phone)
 	}
-	// Notes the boundaries had no room for: the planner has said more than the
-	// graph has grown, which is what a run that is nearly done looks like.
-	for i := len(layers) - 1; i < len(notes); i++ {
-		if i < 0 {
-			continue
-		}
-		a.orchNoteRows(page, notes[i], width)
-	}
+	a.orchPlannerSection(page, width)
 	// A CURSOR ON A CANCELLED NODE IS A CURSOR ON NOTHING. The planner cancels
-	// pending nodes (the amendment's own vocabulary), and a chip that went away
+	// pending nodes (the amendment's own vocabulary), and a row that went away
 	// under the cursor would leave enter pointing at a card that cannot be drawn.
 	if run.pick.node != "" && !run.seen[run.pick.node] {
 		run.pick = orchTarget{}
 	}
 }
 
-// orchNoteBoundary is one boundary between two layers: the planner's line, or
-// the blank row a boundary with no note left is worth anyway.
-func (a *app) orchNoteBoundary(page *orchPage, notes []string, at, width int) {
-	note := ""
-	if at >= 0 && at < len(notes) {
-		note = strings.TrimSpace(notes[at])
-	}
-	if note == "" {
-		page.put("")
+// orchPlannerSection is the narration, gathered under its own dim heading
+// instead of interleaved with the graph: the notes are the planner talking
+// ABOUT the work, and rows of talk drawn between rows of work were the main
+// thing that made the old page unreadable.
+func (a *app) orchPlannerSection(page *orchPage, width int) {
+	notes := a.orchOf().noteLines()
+	if len(notes) == 0 {
 		return
 	}
-	a.orchNoteRows(page, note, width)
+	page.put("")
+	page.put(a.pal.dim(fit(orchPlannerHead, width)))
+	for _, note := range notes {
+		a.orchNoteRows(page, note, width)
+	}
 }
 
 // orchNoteRows puts one planner note on the page as however many rows it takes.
@@ -1365,117 +1353,71 @@ func (a *app) orchNoteRows(page *orchPage, note string, width int) {
 // exactly its width — one constant, so the hang cannot drift from the bullet.
 const orchNoteLead = "· "
 
-// orchLayerFlow draws one layer as chips across the line, wrapping when the
-// width runs out, with the connector row under it at the wide tier.
-func (a *app) orchLayerFlow(page *orchPage, layer, next []orchestrate.NodeStatus, width int, connect bool) {
-	run := a.orchOf()
-	line, at := "", 0
-	var spots []orchSpot
-	flush := func() {
-		if line == "" {
-			return
-		}
-		page.put(line, spots...)
-		if connect {
-			if row := orchConnectorRow(spots, next, width); row != "" {
-				page.put(a.pal.dim(row))
-			}
-		}
-		line, at, spots = "", 0, nil
-	}
-	for _, node := range layer {
-		word := a.orchLead(run.pick == orchTarget{node: node.ID}) + a.orchChipWord(node)
-		wide := ansi.StringWidth(word)
-		if at > 0 && at+len(orchChipGap)+wide > width {
-			flush()
-		}
-		if at > 0 {
-			line += orchChipGap
-			at += len(orchChipGap)
-		}
-		spot := orchSpot{span: hudSpan{from: at, to: at + wide}, node: node.ID}
-		spots = append(spots, spot)
-		chip := a.orchPaintChip(node, word, width-at)
-		// THE CHIP LIGHTS ITSELF, because it is narrower than the line it is on:
-		// several nodes share this row, so a band across it would offer every one of
-		// them under a pointer that is on one ([app.orchHoverPass] states the split).
-		// The band goes round exactly the chip's cells, which is what
-		// [palette.hover] does when it is given no width to pad to.
-		if a.hoveringOrch(spot.key()) {
-			chip = a.pal.hover(chip, 0)
-		}
-		line += chip
-		at += wide
-	}
-	flush()
-}
-
-// orchConnectorRow is the thin line between two layers: one stroke under every
-// chip the next layer needs.
+// orchLayerList draws one layer, one node per row: the cursor's lead, the
+// state glyph, the id, the goal, and a dim right tail carrying what the row
+// KNOWS — what it waits on, what it has spent, and the "new" mark for the one
+// interval after it appeared. The tail is measured before the goal is fitted,
+// so a narrow frame cuts the sentence and never the structure; a frame too
+// narrow for both keeps the words and drops the tail.
 //
-// It is drawn at the WIDE tier alone, and that is a width decision rather than a
-// taste one — under a hundred and twenty columns the chips wrap, and a connector
-// under a wrapped layer points at a chip that is no longer above it. The edges
-// are still readable at every tier: the narrow and phone layouts write them out
-// in words, one "↳ needs:" per chip.
-func orchConnectorRow(spots []orchSpot, next []orchestrate.NodeStatus, width int) string {
-	if len(next) == 0 || width <= 0 {
-		return ""
-	}
-	needed := make(map[string]bool, len(next))
-	for _, node := range next {
-		for _, need := range node.Needs {
-			needed[need] = true
-		}
-	}
-	line, any := []rune(strings.Repeat(" ", width)), false
-	for _, spot := range spots {
-		// The stroke lands on the chip's GLYPH, which is two cells into the chip:
-		// the first two are the cursor's lead, and a line under those would be a
-		// line under the cursor rather than under the node.
-		at := spot.span.from + ansi.StringWidth(railMark)
-		if !needed[spot.node] || at < 0 || at >= width {
-			continue
-		}
-		line[at], any = '│', true
-	}
-	if !any {
-		return ""
-	}
-	return strings.TrimRight(string(line), " ")
-}
-
-// orchLayerList draws one layer as a stack of rows: the tiers where a chip
-// cannot be a cell.
-//
-// AT THE PHONE TIER EVERY CHIP IS THREE ROWS, whether or not it has three rows'
-// worth to say. A finger covers about three rows of a terminal, and a target
-// that is one row tall is a target that opens the node above or below the one
-// somebody meant — so the goal takes a row of its own and the needs line is
-// drawn even when it is empty. The width is not what is being spent there; the
-// certainty is.
+// AT THE PHONE TIER EVERY NODE IS THREE ROWS, whether or not it has three
+// rows' worth to say. A finger covers about three rows of a terminal, and a
+// target that is one row tall is a target that opens the node above or below
+// the one somebody meant — so the goal takes a row of its own and the needs
+// line is drawn even when it is empty. The width is not what is being spent
+// there; the certainty is.
 func (a *app) orchLayerList(page *orchPage, layer []orchestrate.NodeStatus, width int, phone bool) {
 	run := a.orchOf()
 	for _, node := range layer {
 		lead := a.orchLead(run.pick == orchTarget{node: node.ID})
-		word := lead + a.orchChipWord(node)
+		left := a.orchGlyph(node) + " " + node.ID
 		if !phone {
-			// The narrow tier keeps the name and the goal on one line: two lines per
-			// node at sixty columns is a page you scroll to see four nodes.
 			if goal := strings.TrimSpace(node.Goal); goal != "" {
-				word += " · " + goal
+				left += " " + goal
 			}
 		}
-		// THE WHOLE ROW IS THE TARGET at these tiers, and so is every row under it:
-		// a chip that is a stack of rows is one object, and a finger that landed on
-		// its goal meant the chip.
+		tail := a.orchNodeTail(node, phone)
+		room := width - ansi.StringWidth(lead)
+		if tail != "" {
+			room -= ansi.StringWidth(tail) + 2
+		}
+		if room < 12 {
+			tail, room = "", width-ansi.StringWidth(lead)
+		}
+		row := lead + a.orchPaintChip(node, left, room)
+		if tail != "" {
+			gap := room - ansi.StringWidth(fit(left, room))
+			row += strings.Repeat(" ", gap+2) + a.pal.dim(tail)
+		}
+		// THE WHOLE ROW IS THE TARGET, and on a phone so is every row under it:
+		// a node that is a stack of rows is one object, and a finger that
+		// landed on its goal meant the node.
 		spot := orchSpot{span: hudSpan{from: 0, to: width}, node: node.ID}
-		page.put(a.orchPaintChip(node, word, width), spot)
+		page.put(row, spot)
 		if phone {
 			page.put(a.pal.dim(fit("    "+strings.TrimSpace(node.Goal), width)), spot)
+			page.put(a.pal.dim(fit("    "+orchNeedsWord(node), width)), spot)
 		}
-		page.put(a.pal.dim(fit("    "+orchNeedsWord(node), width)), spot)
 	}
+}
+
+// orchNodeTail is one node row's dim right end. On a phone the needs have a
+// row of their own, so only the money and the "new" mark ride the tail there;
+// everywhere else the dependencies lead it, because they are the structure the
+// old picture lost.
+func (a *app) orchNodeTail(node orchestrate.NodeStatus, phone bool) string {
+	run := a.orchOf()
+	var parts []string
+	if !phone && len(node.Needs) > 0 {
+		parts = append(parts, orchNeedsHead+" "+strings.Join(node.Needs, " "))
+	}
+	if node.Cost > 0 {
+		parts = append(parts, dollars(node.Cost))
+	}
+	if run != nil && run.fresh[node.ID] {
+		parts = append(parts, orchNewWord)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // orchNeedsWord is a chip's dependency line, in words. An independent node says
@@ -1488,16 +1430,6 @@ func orchNeedsWord(node orchestrate.NodeStatus) string {
 	return orchNeedsLead + strings.Join(node.Needs, ", ")
 }
 
-// orchChipWord is one chip, plain: its state in a cell, its id, and the "new"
-// marker for the one interval after it appeared.
-func (a *app) orchChipWord(node orchestrate.NodeStatus) string {
-	run := a.orchOf()
-	word := a.orchGlyph(node) + " " + node.ID
-	if run != nil && run.fresh[node.ID] {
-		word += " · " + orchNewWord
-	}
-	return word
-}
 
 // orchGlyph is a node's state in one cell.
 //

@@ -356,11 +356,15 @@ func (a *app) frame() (string, int, int) {
 	// these rows are the ones, and on release their text is the copy
 	// (dragselect.go).
 	selFrom, selTo, selOn := a.dragSpan()
-	bodyTop := a.bodyTop()
+	// The selection is CONTENT rows (dragselect.go), so it is compared against
+	// each drawn row's index in the body's own list — which is this screen
+	// row's index plus the scroll — and a body that streams under a sweep keeps
+	// the highlight on the text rather than on the glass.
+	scroll := a.bodyScroll()
 	for i, r := range body {
 		text := r.text
 		if selOn {
-			if at := bodyTop + i; at >= selFrom && at <= selTo {
+			if at := scroll + i; at >= selFrom && at <= selTo {
 				text = a.pal.hover(text, a.bodyWidth())
 			}
 		}
