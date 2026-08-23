@@ -3020,3 +3020,36 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 		t.Fatalf("the archive line survived its last row coming back:\n%s", homeText(a))
 	}
 }
+
+// A BARE LETTER TYPES UNTIL A ROW IS CHOSEN. The foot promises "type to
+// search or start something new", and the letter doors — m, n, o, y, e, the
+// digits — used to fire off whatever row the cursor was resting near, so a
+// person two letters into "make me a site" watched the m act on a card
+// instead. The doors open only after the deliberate gesture: walking the
+// cursor onto a row, or clicking it.
+func TestALetterTypesUntilARowIsChosen(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	a.width, a.height = 100, 30
+
+	// At rest nothing is picked: m goes into the box.
+	drive(t, a, key("m"))
+	if got := a.home.box.String(); got != "m" {
+		t.Fatalf("an at-rest m did not type; the box holds %q", got)
+	}
+	a.home.box.reset()
+	a.home.build()
+
+	// Walk onto a row — the deliberate gesture — and the same letter is the
+	// door the card's hints advertise.
+	drive(t, a, key("down"))
+	if !a.home.picked {
+		t.Fatal("walking onto a row did not pick it")
+	}
+	drive(t, a, key("o"))
+	if got := a.home.box.String(); got != "" {
+		t.Fatalf("a letter on a picked row typed %q instead of acting", got)
+	}
+}

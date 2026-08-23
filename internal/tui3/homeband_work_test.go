@@ -217,6 +217,10 @@ func TestClickingTheWorkFoldLineTogglesIt(t *testing.T) {
 // column has no cursor of its own.
 func TestMOpensEveryFoldOnTheCard(t *testing.T) {
 	a := workLab(t, 6)
+	// AT REST A LETTER TYPES ([app.homeKey]'s letter-door law): the card's
+	// keys are about a row somebody chose, so the walk down is part of the
+	// gesture.
+	drive(t, a, key("down"))
 	a.homeKey(key("m"))
 	if strings.Contains(homeText(a), "…3 more tasks") {
 		t.Fatalf("m did not open the work band:\n%s", homeText(a))

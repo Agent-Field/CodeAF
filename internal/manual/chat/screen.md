@@ -323,8 +323,9 @@ run, not part of its address. The full routing address stays in the picker, in t
 `/model` note, in the session file and on the phone status sheet.
 
 When the endpoint that answered is not already named by the model id, the segment gains
-` · via deepinfra · 92 tok/s`. That goes silent after **10 minutes** rather than quoting
-a stale rate.
+` · via deepinfra`, and **while a turn is running** the measured rate rides beside it —
+` · via deepinfra · 92 tok/s`. The rate clears the moment the turn ends, because a rate
+is a claim about now; the attribution alone goes silent after **10 minutes**.
 
 Pressing the model segment opens the model picker, and it brightens under the pointer to
 say so.
