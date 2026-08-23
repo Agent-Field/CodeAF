@@ -83,5 +83,9 @@ func drawTodayBand(a *app, ctx bandContext) []string {
 		return nil
 	}
 	rows := bandClauses(ctx.width, 2, func(s string) string { return s }, parts...)
-	return append([]string{ctx.pal.accent(fit(machineTodayWord, ctx.width))}, rows...)
+	// THE HEADING IS STRUCTURE (homeband_news.go says the whole of why), and on
+	// this band it matters twice over: the one thing here that may lead is the
+	// spend rising into [hueWarn], and a heading in the loudest hue above it
+	// would have been the label out-shouting the number it labels.
+	return append([]string{ctx.pal.muted(fit(machineTodayWord, ctx.width))}, rows...)
 }

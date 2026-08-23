@@ -55,7 +55,12 @@ func drawNewsBand(a *app, ctx bandContext) []string {
 	// `1 task`); a heading that said `1 things` would be the one place the
 	// screen forgot how to count.
 	heading := "◆ " + itoa(len(cached.notes)) + plural(" thing", len(cached.notes)) + " since you left"
-	return append([]string{ctx.pal.accent(fit(heading, ctx.width))}, rows...)
+	// A HEADING IS STRUCTURE AND STRUCTURE WEARS A QUIET ROLE. The accent budget
+	// on any one screen is a single element and it is always the live one — here
+	// that is a row waiting on somebody, never the label over the list it sits
+	// in. [hueMuted] is the tier this card already gives leading structure (the
+	// work band's task names), one rung above the dim clauses underneath.
+	return append([]string{ctx.pal.muted(fit(heading, ctx.width))}, rows...)
 }
 
 // newsNotes is which inbox this subject's news comes from.

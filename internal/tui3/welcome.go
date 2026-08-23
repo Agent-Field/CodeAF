@@ -419,14 +419,21 @@ func sweepAt(step, span int) int {
 // edge on a terminal that only has three tiers of ink to spend.
 const welcomeHead = 3
 
-// paintWordmark paints one row of the wordmark for this frame: accent where the
+// paintWordmark paints one row of the wordmark for this frame: muted where the
 // sweep has been and where it is going, ink under its head. At rest — and on a
-// terminal that has no hues — the whole word is the accent, which is the state
-// this animation exists to arrive at rather than to decorate.
+// terminal that has no hues — the whole word is the muted tier, which is the
+// state this animation exists to arrive at rather than to decorate.
+//
+// THE WORDMARK IS THE BOX'S HEADING AND HEADINGS ARE STRUCTURE. The accent on
+// this screen belongs to the recent session the cursor is standing on
+// ([welcome.recentRow]) — the one thing here anybody is about to act on — and a
+// three-row wordmark in the same hue was the louder of the two by area alone.
+// [hueMuted] keeps the letterforms a clear rung above the dim place line under
+// them while leaving the eye somewhere to land.
 func (w *welcome) paintWordmark(row string, pal palette) string {
 	head := sweepAt(w.step, ansi.StringWidth(row))
 	if w.step >= welcomeSweep {
-		return pal.accent(row)
+		return pal.muted(row)
 	}
 	out := ""
 	for i, cell := range []rune(row) {
@@ -435,7 +442,7 @@ func (w *welcome) paintWordmark(row string, pal palette) string {
 			out += pal.ink(text)
 			continue
 		}
-		out += pal.accent(text)
+		out += pal.muted(text)
 	}
 	return out
 }

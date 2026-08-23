@@ -283,8 +283,14 @@ func TestTheMachineCardPaintsMeaningAndNotMood(t *testing.T) {
 	band.wire(a)
 	a.openHome()
 	watch := strings.Join(drawWatchlistBand(a, machineBandContext(a, now, 40)), "\n")
-	if !strings.Contains(watch, a.pal.accent(fit(machineWatchWord, 40))) {
-		t.Fatalf("the heading does not lead in the accent:\n%s", plain(watch))
+	// THE HEADING IS STRUCTURE AND WEARS THE QUIET ROLE. The accent budget on a
+	// screen is one element and it is the live one; a label over a list is not
+	// it (homeband_news.go).
+	if !strings.Contains(watch, a.pal.muted(fit(machineWatchWord, 40))) {
+		t.Fatalf("the heading does not lead in the muted tier:\n%s", plain(watch))
+	}
+	if strings.Contains(watch, a.pal.accent(fit(machineWatchWord, 40))) {
+		t.Fatalf("the heading still spends the accent:\n%s", plain(watch))
 	}
 	if !strings.Contains(watch, a.pal.muted(homeLiveGlyph)) {
 		t.Fatalf("the mark on a pass in flight is not the working hue:\n%s", plain(watch))
@@ -372,5 +378,52 @@ func TestWalkingUpOffTheTopRowReachesTheMachineCard(t *testing.T) {
 	}
 	if _, ok := a.home.focusedLine(); !ok {
 		t.Fatal("↓ left the cursor on no row at all")
+	}
+}
+
+// ── THE ACCENT BUDGET ───────────────────────────────────────────────────────
+//
+// ONE SCREEN, ONE ACCENT, AND IT IS ALWAYS THE LIVE THING. Structure — the
+// program's name on the top line, the label over a band — wears the quiet roles,
+// so that when something IS waiting on somebody there is exactly one place on
+// the frame a person's eye goes.
+//
+// The machine's card at rest is the strongest form of that law this surface can
+// assert: nothing on it is waiting, nothing on it is running, and so nothing on
+// it may spend the accent AT ALL. A card that lit its four headings had four
+// claims on the eye and no answer to "which of these is now".
+func TestTheMachineCardAtRestSpendsNoAccent(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
+	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
+	lab.session("-beta", "bbbb000000000001", "Porting", beta, now.Add(-2*time.Hour))
+
+	band := &standBand{}
+	band.items = []standing.Item{
+		bandItem("one", "check the deploy", beta, standing.WhenEvery, "every 20 minutes"),
+		bandItem("two", "draft the weekly update", alpha, standing.WhenEvery, "mon 8am"),
+	}
+	if err := standing.Deliver(filepath.Dir(mine), standing.Note{
+		At: now.Add(-time.Minute), Words: "keep an eye on the cert", Text: "the cert expires in 9 days",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := lab.app(mine)
+	band.wire(a)
+	a.clock = func() time.Time { return now }
+	a.openHome()
+
+	accent := paintPrefix(a.pal.accent("x"))
+	card := strings.Join(a.machineCard(60, 40, a.pal), "\n")
+	if strings.Contains(card, accent) {
+		t.Fatalf("the machine's card at rest lights something in the accent:\n%s", plain(card))
+	}
+	// AND THE TOP LINE IS STRUCTURE TOO. The program's name is the same word on
+	// every frame home has ever drawn, which is the definition of a thing the eye
+	// learns to skip.
+	if line := a.pulseLine(90, a.pal); strings.Contains(line, accent) {
+		t.Fatalf("home's top line spends the accent on the program's name:\n%s", plain(line))
 	}
 }
