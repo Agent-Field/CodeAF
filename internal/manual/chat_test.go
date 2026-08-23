@@ -522,6 +522,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the first down arrow go on home", "home"},
 		{"what is that line under needs you", "home"},
 		{"what goes in the moving column", "home"},
+		// The wave that gave the section holding the cursor a marked heading.
+		// Somebody sees one heading darker than the rest and asks what it means;
+		// somebody else has the opposite problem and cannot tell which of three
+		// columns their arrow keys are in. Both land on the same two sections.
+		{"why is the needs you heading highlighted", "home"},
+		{"how do I know which column I am in", "home"},
+		{"why is one project name darker than the others", "home"},
+		{"which section is my cursor in on home", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

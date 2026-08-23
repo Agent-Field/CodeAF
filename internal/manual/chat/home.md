@@ -333,6 +333,53 @@ The narrower shapes are the same screen folded down:
 | 60–79 | the list alone, full width — no card, no strips over nothing |
 | under 60 | the phone shape: one stacked column and a sheet (*Home on a phone*) |
 
+## Which column am I in — the highlighted heading over the section your cursor is in
+
+Home has several regions on one screen, and the row your cursor is on wears a very quiet
+background — enough to say *which row*, not enough to say *which region*. So the region
+says it too: **the heading over the section holding the cursor is highlighted**, with the
+same faint background the row itself wears.
+
+```
+  needs you                    aforge
+  ▲ approve schema      2h   ██████████████████████████
+                             ›● odysseys wave 4      8m ██
+  moving                       ○ rename plan   yesterday
+  ● port sweep          8m
+```
+
+Move into a project's conversations and that **project's name** lights up its background.
+Move into `needs you` or `moving` and **that word** does instead. It works the same way on
+a narrower frame, where the strips sit above the list rather than beside it.
+
+- **Exactly one heading is marked at a time.** If `needs you` is marked, no project name
+  is, and the other way round — which is the whole point: one heading marked in one
+  column is the answer to "where are my arrow keys".
+- **Nothing is marked when home is at rest.** Home opens on no row at all, so no section
+  is marked either; the first `↓` or `tab` puts the cursor somewhere and a heading lights
+  up with it.
+- **Nothing is marked while you are searching.** With something typed the column is a
+  list of matches and its headings are just grouping.
+- **The mouse never moves it.** Hovering a row previews its card on the right without
+  moving the selection, and it leaves the marked heading where your cursor put it. The
+  marked heading always answers *where the keyboard is*.
+- **The heading's word does not change colour** — it stays the same dim grey it always
+  is. Only the background behind it moves.
+- Some sections have no heading to mark. `▸ archive · 4 put away` is a section of one
+  line and nothing lights up above it.
+
+## Why is the needs you heading highlighted — the section your cursor is standing in
+
+Because your cursor is on a row inside that strip. Press `→` or `tab` to cross into the
+projects list and the highlight moves with you: `needs you` goes back to plain and the
+name of the project you land in takes the background instead. It is not a warning and it
+is not saying anything about the rows underneath — it is the screen telling you which of
+its regions your arrow keys are in.
+
+The same is true when a **project name** on home looks highlighted: your cursor is on one
+of that project's conversations. Press `esc` to close home, or walk out of the block, and
+it goes back to plain.
+
 ## Why are most projects collapsed on home — the elsewhere block
 
 Home opens **three** projects and folds every other one to a single line under a dim rule:
