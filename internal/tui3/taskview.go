@@ -499,6 +499,24 @@ func (a *app) openTaskSheet() bool {
 	return true
 }
 
+// openTaskPage is the whole of what a COMMAND does with this page: open it, or
+// say why there was nothing to open, and arm the read either way.
+//
+// IT IS ONE FUNCTION BECAUSE THERE ARE TWO DOORS. /history is the page's own
+// name, and a bare /task reaches it as well (taskcommand.go says why), and two
+// copies of these four lines are two ways for the same command to differ from
+// itself — the refusal in particular, which is a sentence a person reads.
+func (a *app) openTaskPage() tea.Cmd {
+	if !a.openTaskSheet() {
+		// It REFUSES rather than raising a page with a title and nothing under it —
+		// the emptiness law reaches modals — and it says so, because a command typed
+		// on purpose that answers with silence reads as a command that broke.
+		a.note(taskSheetEmpty)
+		return nil
+	}
+	return a.loadTasks()
+}
+
 func (a *app) closeTaskSheet() {
 	a.taskSheet = taskSheet{}
 	a.touch()

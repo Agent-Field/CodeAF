@@ -9,11 +9,13 @@ sub-harness offer, the steer guard, the follow-up row, any message waiting for t
 answer to finish, another gap, the draft box where you type, any open list (picker,
 menu, completion), and the status line last.
 
-Beside the conversation, on the right, the task roster's column — the right-hand bar,
-sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's very first frame, before any tasks exist. Work fills the column
+Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
+panel, whatever you call it — takes 30 columns (24 on a narrower frame)
+from the session's very first frame, before any tasks exist. It has **two sections under
+two dim lowercase labels**: `tasks`, the roster of work, and `standing`, the orders
+standing over this conversation. Work fills the column
 rather than raising it, and the work it fills with is **this conversation's alone**.
-Empty it says one dim line — `no tasks yet` — whatever the project has behind it; where
+The `tasks` section empty says one dim line — `no tasks yet` — whatever the project has behind it; where
 the project has a record from earlier sessions, one dim line at the foot of the column
 reads `ctrl+. — earlier` and opens the task page. `ctrl+g` closes it and opens it again, remembered between
 sessions, and the column's own last line says so: `❯ ctrl+g — hide`. With it closed the
@@ -1414,7 +1416,8 @@ carries identity alone.
 ## What the task column looks like: quiet rows, its footer lines and its one door
 
 The right-hand task column is read at a glance, so it is drawn as one bright thing and a
-lot of quiet ones.
+lot of quiet ones. (This is its `tasks` section. The same column's other section,
+`standing`, is described under *What is that column on the right*.)
 
 - A **running** task's name is in ink, the body colour. **Idle, parked and finished**
   names are muted — a step quieter — and the room you are standing in is the one name in
@@ -1428,7 +1431,7 @@ lot of quiet ones.
 **Rows that are running never scroll off**, however long the list gets: they are pinned to
 the top of the column and everything under them scrolls.
 
-**The column is this conversation's work and nothing else.** No rows of the project's
+**The roster is this conversation's work and nothing else.** No rows of the project's
 record are drawn under it. It used to carry a dulled footnote of up to six of them — a
 sample of two thousand, standing where the column's own `no tasks yet` goes, with the
 cursor walking out of this conversation into another one without the column saying so.
@@ -1458,6 +1461,44 @@ column has folded. There is never more than one such line.
 indent. `❯ ctrl+g — hide` is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses — the words beside it are the label for the
 hand that types chords.
+
+## What is that column on the right — its two sections, tasks and standing
+
+The column beside the conversation carries the two things that govern a conversation, each
+under its own dim lowercase label, and each closed by one dim `+` row:
+
+```
+tasks
+⠙ ◆ Fix the nil-map                                                     #7
++ /task
+
+standing
+◦ keep the tests green
+◦ never touch the public API                                    everywhere
++ /standing
+
+Σ $1.42 · 312k tok
+ctrl+. — earlier
+❯ ctrl+g — hide
+```
+
+- **`tasks`** is the roster — this conversation's work, one line per task, a click on a row
+  opening that task's room. Nothing about it has changed.
+- **`standing`** is the standing orders reaching this conversation, one line each: a mark,
+  what the order is called, and a dim tail naming its reach **only when that reach is not
+  the ordinary one** — `everywhere` for machine-wide, `just here` for this conversation
+  only, and nothing at all for an order governing this project. A row's mark becomes the
+  spinner while that order is being checked or fired right now. Clicking one opens
+  `/standing` with the cursor already on it.
+- **The two labels are drawn whenever the column is**, empty or not, so the place is on the
+  map before anything is in it. The rows under them are only ever the real ones.
+- **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
+  command and a space at the head of your message box and hands the keyboard back — plain
+  text you can edit or delete, no mode, no form.
+
+Under both sections come the column's dim totals and its door lines. The separation between
+the sections is one blank line: this surface separates with whitespace and never with a
+rule. On a build with no ambient side the `standing` section is absent entirely.
 
 ## The right edge: the chevron that opens and closes the task column
 

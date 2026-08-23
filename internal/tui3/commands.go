@@ -112,6 +112,16 @@ var commands = []command{
 	// remember rather than the adjective this surface chose.
 	{name: "standing", desc: "what stands over this conversation · stop, pause or not here",
 		alias: []string{"orders"}},
+	// TWO ROWS FOR ONE COMMAND, the way /export and /crew have two, and for that
+	// reason: a single row carrying <words> would make the bare form — the page,
+	// which is what nearly everybody wants — unreachable from this list, because
+	// [app.runMenu] puts a row that TAKES something into the draft instead of
+	// running it.
+	//
+	// The words go through the deliberate door (standmark.go's [app.standingSay]),
+	// which is what the tail of this row promises: it is the chord's own sentence
+	// said in the grammar of the list.
+	{name: "standing", args: "<words>", desc: "…or keep this true · a card, never work done once"},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -639,7 +649,7 @@ func helpText(file string) string {
 		// one key here that changes what a sentence MEANS rather than where it
 		// goes, and nothing else on the screen names it until a draft happens to
 		// look like a rule.
-		standMarkKey + "     keep this true · a standing order's card, never work done once",
+		standMarkKey+"     keep this true · a standing order's card, never work done once",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",

@@ -118,8 +118,15 @@ func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
 func (a *app) runTaskCommand(arg string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		a.note("usage: /task <brief> · /task solo <brief> · /task adaptive <brief>")
-		return nil
+		// A BARE /task IS THE ROSTER AND NOT A USAGE LINE. The margin's `+ /task`
+		// row types this command into the draft (margin.go), so the word arrives in
+		// the box in front of somebody who has not said what the work is yet — and
+		// a person who sends it as it stands is asking the only question the command
+		// can answer with no brief behind it: what work is there. That is the page
+		// /history opens ([app.openTaskPage]), and the two forms of the one command
+		// are then the pair of errands a person has about tasks — start one, or go
+		// and look at the ones that already ran.
+		return a.openTaskPage()
 	}
 	door, ok := a.agent.(taskCommandAgent)
 	if !ok {
