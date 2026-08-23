@@ -125,8 +125,23 @@ const (
 	// LayerProject is `.aforge/subharnesses/` inside the repository in hand.
 	LayerProject
 	// LayerHome is `~/.aforge/subharnesses/`, which moves with AFORGE_HOME the
-	// same way today's harness store does.
+	// same way the page store below does.
 	LayerHome
+	// LayerPages is `~/.aforge/harnesses/`, where a subharness written as a PAGE
+	// lives — the shape the design flow saves when somebody asks for a program to
+	// be built for them (internal/subharness's store.go owns the layout).
+	//
+	// ONE CATALOG, SEVERAL PLACES A PROGRAM CAN LIVE. A page is not a second kind
+	// of subharness and nothing downstream of this constant may treat it as one:
+	// it is found here rather than one directory over, it is the person's own
+	// ([Layer.Provenance] answers `yours` for it as it does for the home store),
+	// and every list draws it beside the bundles and the compiled-in workers
+	// without a word about which is which.
+	//
+	// It is LAST because a page declares no schemas of its own, so a name carried
+	// by both stores is better served by the bundle: the lookup order is the whole
+	// of that decision and it lives here.
+	LayerPages
 )
 
 // Provenance is the word a person reads for a layer. The packed trailer answers

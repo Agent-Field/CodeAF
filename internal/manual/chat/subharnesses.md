@@ -12,16 +12,22 @@ Three things follow from that, and they are the whole feature:
 
 - **You settle the input before it runs.** That is the intake card (below): every field of
   the schema, the answered ones stated, the required blanks marked.
-- **Some ship in this binary and some are written as bundles on disk**, and nothing on
-  screen says which is which. The mark on a row reads `built-in`, `yours` or
-  `from this project`, and that is where it was found, not what language it is in.
+- **They come from four places and nothing on screen says which is which.** Some ship in
+  this binary; some are bundles under `~/.aforge/subharnesses`; some are bundles committed
+  into the project you are working in; and some are the pages a design wrote when you asked
+  aforge to build you one, under `~/.aforge/harnesses`. The mark on a row reads `built-in`,
+  `yours` or `from this project`, and that is where it was found, not what language it is
+  in or which door built it.
 - **A run is a task.** It gets a roster row, a room, a journal and a `✕`, like every other
   piece of work you can walk away from.
 
-**A subharness is not a harness.** They used to be one word here and they are not any more.
-A harness is a saved shape of work aforge learned from watching you (`/harness`,
-`/harnesses`, and the *Saved shapes of work* page). A subharness is a typed program with a
-schema and a card. `/subharness` and `/sub` reach this one.
+**A harness is a subharness.** One system, one name for it, several doors onto it. What you
+get by asking aforge to build you one — "make me a harness for the weekly marketing images"
+— is saved as a page and is on this list from the moment it is saved, marked `yours` like
+anything else of yours. `/harness` and `/harnesses` are the other door onto those, with a
+picker and a typed request instead of a card; the *Saved shapes of work* page describes
+designing one. `/subharness` and `/sub` list everything runnable here, whichever door made
+it.
 
 ## /subharness — the list of programs you can run
 
@@ -45,6 +51,10 @@ not.
 words somebody wrote down at design time meaning "this is that kind of work". That is what
 makes it findable when you remember what a program is for and not what it is called: typing
 `flaky` reaches `flake-triage`.
+
+**One kind carries no cues:** a program saved as a page by a design. The words it was
+designed against are not kept on the page, so it is found by its name and by the one line it
+was given — which is why that line is worth writing well when you approve the card.
 
 | Key | What it does |
 | --- | --- |
@@ -72,6 +82,40 @@ search rather than a complaint.
 Names are one lowercase word: letters, digits, `-` and `_`, starting with a letter, at most
 64 characters. That is the same string in the binary, in the store on disk and on this
 command line, which is why this command takes one where `/harness` does not.
+
+## The harness I just had built — how an approved design reaches this list, and how to run it
+
+You asked aforge to build you a harness, you approved the card, and the design settled with
+two lines:
+
+```
+subharness "social-marketing-images" v1 saved
+/subharness runs it, and it offers itself when what you say matches.
+```
+
+That is where it is. Open `/subharness` and it is a row: its name, the one line it was
+designed for, and `yours` as its mark — the same row shape as everything else on the list.
+
+**No refresh and no restart.** The list is read from the disk each time you open it, so a
+page approved a minute ago is on it, and so is one another window saved while you sat here.
+If it is not there, the name is worth checking first: what you type after `/subharness` is
+the same string the design saved it under.
+
+Its card asks for one thing:
+
+```
+social-marketing-images · the weekly marketing pictures for company X · yours
+▲ brief             what this run is about, in your own words
+  run it
+```
+
+**One free-text field, and it is required.** The request goes in in your own words — the
+same sentence you would have typed after picking it with `/harness ` — and there is nothing
+else to fill in, because that is all a page can be handed.
+
+The row draws no time and the card promises no shape: a page states neither, and drawing
+either would be a claim the design never made. From `run it` it is a task like every other
+run — a roster row, a room where its steps land as they happen, a journal, and a `✕`.
 
 ## The intake card — filling in what a subharness needs
 
@@ -165,7 +209,10 @@ Stated plainly, because the surface is finished before everything behind it is.
 - **No subharnesses over `--host`.** The registry lives on the far machine, so the command
   answers `no subharnesses here yet — a subharness is a saved program for work that comes
   round again.` and opens nothing.
-- **You cannot write one from the chat yet.** Building the program is not a command.
+- **Writing a bundle is not a command.** Asking aforge to build you one is: say so in the
+  conversation and a design is started, and the page it saves is on this list. What you
+  cannot do from here is write the *bundle* form — the one with a schema of several fields —
+  which is a file you put on disk yourself.
 
 ## Why /subharness says there are none
 

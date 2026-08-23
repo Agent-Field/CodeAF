@@ -614,8 +614,10 @@ fills the card in from the conversation yet, and on a build with none wired the
 command answers `no subharnesses here yet — a subharness is a saved program for
 work that comes round again.` and opens nothing.
 
-A subharness is not the same thing as a harness. See *Saved shapes of work* for
-those.
+A harness is a subharness. One system, and `/harness` is the other door onto the
+same programs — a picker and a typed request instead of a list and a card. A
+harness you asked aforge to design for you is on `/subharness` from the moment
+you approve its card. See *Saved shapes of work* for designing one.
 
 ## Can you tell me how you work?
 
