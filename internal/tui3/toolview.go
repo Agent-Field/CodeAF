@@ -1210,11 +1210,18 @@ func countUpWord(d time.Duration) string {
 //	                                              looked for, the path is where
 //
 // So each of them is painted in two tiers instead of one: what the call is
-// ABOUT stays primary ink (or, for a search, the accent — a pattern is a
-// question, not a place), and what merely qualifies it recedes to dim. The
+// ABOUT stays primary ink, and what merely qualifies it recedes to dim. The
 // parse is deliberately conservative and shape-based — only the `cd X && `
 // prefix, only a trailing range or flag after a space — because a target this
 // file guessed wrong about is a line that says the wrong thing is important.
+//
+// The two tiers are the WHOLE hierarchy: it is a ladder of reading tiers and
+// never a second hue. A search's pattern used to lead in the accent, on the
+// argument that a pattern is a question rather than a place — but THE ACCENT
+// BUDGET (docs/DESIGN-LANGUAGE.md) is one lit element per screen, marking the
+// one live or chosen thing, and a finished tool row scrolling up the
+// transcript is dim telemetry rather than that thing. A turn with four greps
+// in it spent the budget four times and bought nothing with any of them.
 
 // paintName paints the tool's own name: chrome, so muted — unless the call is
 // waiting on a person, in which case the whole row is the question.
@@ -1249,16 +1256,6 @@ func (a *app) paintTarget(e *entry, target string) string {
 		}
 		return a.pal.shell(target)
 
-	case "grep", "find":
-		// The pattern leads and the place follows it. Accent rather than ink
-		// because a pattern is the one target on this surface that is not a
-		// thing that exists — it is what the call is looking for.
-		pattern, where, found := strings.Cut(target, " ")
-		if !found {
-			return a.pal.accent(target)
-		}
-		return a.pal.accent(pattern) + a.pal.dim(" "+where)
-
 	case "read", "edit", "write":
 		// AND THE TARGET IS THE DOOR ITSELF (pathlink.go). This is the one path
 		// on the row that aforge resolved rather than found — it came out of the
@@ -1271,6 +1268,25 @@ func (a *app) paintTarget(e *entry, target string) string {
 			return a.pathLink(name, a.pal.ink(target))
 		}
 		return a.pathLink(name, a.pal.ink(path)) + a.pal.dim(" "+rest)
+	}
+	// A SEARCH'S PATTERN IS A TARGET LIKE EVERY OTHER TARGET, so it wears the
+	// ink the role table gives them all; only where it looked recedes. It is
+	// deliberately not the payload rule's `data` either: that hue lifts one
+	// datum out of a quiet line the surface says on its OWN account, and a tool
+	// row is not that shape — its target is already the loudest thing on it,
+	// with the tool's name muted in front and the stat dim behind. Giving a
+	// pattern a hue no other tool target wears would be a second way of saying
+	// the same thing, which is what the palette is small to prevent.
+	//
+	// The rule is asked of [targetIsPattern] rather than of a list of tool
+	// names, so every search-shaped hand splits the same way and no sibling can
+	// arrive painted differently from grep and find.
+	if targetIsPattern(e.tool) {
+		pattern, where, found := strings.Cut(target, " ")
+		if !found {
+			return a.pal.ink(target)
+		}
+		return a.pal.ink(pattern) + a.pal.dim(" "+where)
 	}
 	return a.pal.ink(target)
 }
