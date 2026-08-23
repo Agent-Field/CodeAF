@@ -570,9 +570,30 @@ func Mutates(executor Executor) bool {
 // Registry picks an executor by subharness. Nearly every node carries none and
 // resolves to the general loop; the lookup is what makes adding a specialised
 // worker a registration rather than a change to the scheduler.
+//
+// IT IS ALSO THE SUBHARNESS REGISTRY, and there is deliberately only the one.
+// The name→worker lookup with a fallback that this type has always been is
+// exactly the shape a typed subharness needs, so the subharness contract GREW
+// this rather than standing a second registry beside it (docs/SUBHARNESS-PRD.md
+// §3). The two halves answer two different questions about the same names:
+//
+//   - executors/fallback below serve a LEAF that named a worker. [Registry.For]
+//     degrades to the generalist for an unknown name, because a plan that asked
+//     for a worker this build does not have should still get its work done.
+//   - runners/bundles serve a PERSON or a program that named a subharness.
+//     [Registry.Subharness] refuses an unknown name, because typing one that
+//     does not exist and quietly getting a different one is worse than being
+//     told. See runner.go for the lookup order across the layers.
 type Registry struct {
 	executors map[string]Executor
 	fallback  Executor
+	// runners is the compiled-in Go subharnesses, layer zero of the lookup.
+	runners map[string]Runner
+	// bundles is the stores in front of the registry, kept sorted by layer so
+	// the lookup order lives in the [Layer] constants and nowhere else. The
+	// store lane fills it through [Registry.UseBundles]; a build with no store
+	// wired has none, and answers about compiled-in subharnesses only.
+	bundles []bundleLayer
 }
 
 func NewRegistry(fallback Executor) *Registry {
