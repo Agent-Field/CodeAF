@@ -2789,6 +2789,16 @@ type railLine struct {
 	// know whether it was asked to widen the column, to hide it, or to leave it
 	// for a page that holds work this session never ran.
 	more bool
+	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
+	// the `+` row at the foot of each section (margin.go). It is the word itself
+	// rather than a flag because there are two of them and they type two different
+	// things, and the word is also what the pointer lights by.
+	door string
+	// stand is the id of the standing order this line draws, on a row of the
+	// margin's standing section and nowhere else (margin.go). It is a string
+	// because a standing item's id is one ([standing.Item.ID]), and "" is an
+	// honest "this line is not an order" where a zero id could one day exist.
+	stand string
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2841,7 +2851,11 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// built first would be answering it about the frame before this one
 	// ([app.railFootRows]).
 	a.railCramped = false
-	lines := a.railLines(entries, room)
+	// THE COLUMN OPENS WITH ITS OWN LABEL AND CLOSES WITH THE OTHER SECTION, and
+	// both are the margin's (margin.go): this column carries the two things that
+	// govern a conversation — the work it is doing and the orders standing over
+	// it — under a label each, and the labels draw wherever the column does.
+	lines := append(a.marginHead(room), a.railLines(entries, room)...)
 	// AN EMPTY COLUMN SAYS WHAT IT IS FOR. The column stands before any work
 	// exists now ([app.railShowing]), and thirty blank columns beside a paragraph
 	// read as a rendering fault rather than a place. One dim line is the whole of
@@ -2858,6 +2872,7 @@ func (a *app) railView(height int) ([]railLine, int) {
 	if len(entries) == 0 {
 		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
 	}
+	lines = append(lines, a.marginRows(room)...)
 	foot, hint, door, more := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
@@ -3060,6 +3075,12 @@ func (a *app) railRows(height int) []string {
 			// AND THE COLUMN'S OWN DOOR TAKES IT TOO, on the terms every other
 			// pressable line here takes it on: it answers to a click, so the pointer
 			// says so ([app.railDoorLine]).
+			text = a.hoverRow(text, room)
+		case line.door != "" && a.hoveringMarginDoor(line.door):
+			// AND THE MARGIN'S TWO `+` ROWS, on the same terms and for the same
+			// reason: each one is a whole row that answers to a click (margin.go).
+			text = a.hoverRow(text, room)
+		case line.stand != "" && a.hoveringMarginStand(line.stand):
 			text = a.hoverRow(text, room)
 		}
 		out[i] = lead + text

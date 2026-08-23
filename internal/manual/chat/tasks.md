@@ -479,8 +479,12 @@ land between chips a few cells apart, so the phone tier trades the tab row for o
 
 ## The roster: the column of all the work
 
-The roster is a column on the right holding every task **this conversation** has admitted,
-not just the live ones — and nothing else. Tasks *other* sessions ran are not on it; the
+The roster is the **top section of the column on the right**, under a dim lowercase label
+reading `tasks`. (Under it the same column carries a second section labelled `standing` —
+the orders standing over this conversation. The standing orders page has that half.)
+
+The roster holds every task **this conversation** has admitted,
+not just the live ones — and no other work. Tasks *other* sessions ran are not on it; the
 page `/history` opens is the one that has them, and one dim line at the foot of the column,
 `ctrl+. — earlier`, is the door onto it. Work finishing never puts the column away, and
 neither does `/new` — that takes this session's tasks with it and leaves the column
@@ -538,7 +542,11 @@ what is left of it.
 There is no subtitle here. The column is a presence list; the proposal card and the landing
 card both carry the sentence.
 
-At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `1 need you · 3 running`,
+Under the task rows, one dim `+ /task` row closes the section — press it and `/task ` is
+typed into your message box. Then a blank line, then the column's `standing` section.
+
+At the bottom, under both sections, up to three dim lines: `Σ $1.42 · 312k tok`,
+`1 need you · 3 running`,
 `148 parked · 12 done`. The `Σ` is the whole session's spend — it already contains every
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
@@ -560,6 +568,53 @@ colour; idle, parked and finished names are muted, the tree connectors and every
 line are dim, and the room you are standing in is the one row in the accent. Nothing is
 hidden by this — the column is a record and keeps everything — but a glance at it lands on
 what is moving.
+
+## The + /task row at the foot of the column — starting a task from the side
+
+Under this conversation's task rows the column on the right carries one dim row:
+
+```
++ /task
+```
+
+**Pressing it types `/task ` into your message box** — the word and a trailing space — and
+hands the keyboard straight back to the box. It starts nothing, opens nothing and arms
+nothing: what lands is ordinary text you can edit or delete, with no mode and no form
+around it.
+
+- **The word goes at the head of the line and keeps what was already typed there.** A box
+  holding `fix the flaky test` becomes `/task fix the flaky test`, which is the line you
+  were about to type anyway.
+- **Pressing it twice does nothing the second time** — the word is already at the front.
+- It is drawn whether or not this conversation has run anything, under the column's own
+  `tasks` label, and it is the **pointer's** row: the roster's keyboard cursor (`ctrl+t`)
+  walks task rows and skips it. From the keyboard you type the command, which is what the
+  row is teaching.
+
+Finish the sentence and send it and it is `/task <brief>` like any other: aforge sizes the
+work, shapes the brief and starts it. The column's other section, `standing`, ends in a
+`+ /standing` row that works the same way.
+
+## What a bare /task does — /task with nothing after it opens the task page
+
+**`/task` typed on its own opens the full-screen task page** — the same page `/history` and
+`ctrl+.` open, holding every task this project has ever run. It used to print a one-line
+usage instead. It does not any more.
+
+The reason is the `+ /task` row at the foot of the task column: that row puts `/task ` in
+your box before you have said what the work is, so a `/task` sent as it stands is asking
+the only question the word can answer with no brief behind it — *what work is there.*
+
+**On a project that has never run a task it says `no tasks yet — /task <brief> starts one`**
+and opens nothing, which is the same refusal `/history` gives there.
+
+**The forms that start work are completely unchanged.** `/task <brief>`, `/task solo
+<brief>` and `/task adaptive <brief>` still size, shape and start the work directly, with
+no proposal card in between and no extra question.
+
+**There is still no `/tasks` command.** The plural is not a word this surface answers to;
+the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
+about tasks — go and look at the work, or give aforge some.
 
 ## Old tasks from previous sessions are not on the column — the `ctrl+. — earlier` door
 
@@ -716,7 +771,8 @@ nothing else, so a task you ran last week, in a session you have closed, is nowh
 screen until you open this.
 
 **There is no `/tasks` command.** `/task <brief>` starts work; `/history` shows what was
-started. The page is also reached from the one dim door line at the bottom of the task
+started — and so does a **bare `/task`**, which opens this very page rather than printing a
+usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. — earlier`, or `ctrl+. — view more` where the column has merely folded a
 family away.
 
@@ -744,8 +800,8 @@ At the bottom: one dim line counting what is on the page, such as `3 running · 
 — a section with nothing in it is not counted at all — and under it the keys.
 
 **`/history` on a project that has never run one says `no tasks yet — /task <brief> starts
-one`** and opens nothing. `ctrl+.` there does nothing at all rather than raising an empty
-page. A session that has run nothing itself **does** open the page when another window on
+one`** and opens nothing; a bare `/task` says the same line there. `ctrl+.` there does
+nothing at all rather than raising an empty page. A session that has run nothing itself **does** open the page when another window on
 the same directory is running something — that is the one fact it was opened to report.
 
 The list is as long as the project's record is — internal to aforge that record keeps the

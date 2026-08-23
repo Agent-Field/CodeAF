@@ -79,6 +79,14 @@ const (
 	// conversation" on a card reads as where the order was said rather than as
 	// the whole of what it will govern.
 	standJustHereWord = "just this conversation"
+	// standJustHereTag is the conversation reach as a ROW'S TAIL says it, and it
+	// is a third spelling of one fact for the reason [standJustHereWord] is a
+	// second. A shelf heading files rows under a place and a card names how far
+	// something will reach; a tail is two or three cells at the end of a row in a
+	// column twenty-eight wide (margin.go), where `just this conversation` is the
+	// whole row and `in this conversation` is most of it. What is left is the
+	// half that carries the meaning: just here.
+	standJustHereTag = "just here"
 	// standWhereTag is the card's third band label, in the grammar of the two
 	// beside it ([standWhenTag], [standCostTag]): a lower-case noun and not a
 	// heading, because a card in a conversation with a heading on every row is a
@@ -195,6 +203,29 @@ func standLevelWord(level standing.Altitude) string {
 	return standProjectWord
 }
 
+// standScopeTail is one reach as a ROW'S DIM TAIL says it, and NOTHING at the
+// default.
+//
+// THE DEFAULT IS SILENT, which is the emptiness law applied to a fact rather
+// than to a figure. An order said in a conversation governs the project
+// ([standing.AltitudeProject] is the zero value and D6's default), so a tail
+// saying so on every row would be a column printing what is already true of
+// nearly everything on it. The two reaches that are NOT the default earn their
+// word, because those are the ones a person would be surprised by.
+//
+// It lives here, beside the shelf headings and the card's own words, because
+// these three spellings of the three reaches are one vocabulary and a fourth
+// written somewhere else is how a surface ends up calling one thing two things.
+func standScopeTail(level standing.Altitude) string {
+	switch level {
+	case standing.AltitudeMachine:
+		return standEverywhereWord
+	case standing.AltitudeConversation:
+		return standJustHereTag
+	}
+	return ""
+}
+
 // standingRows reads the seam once and lays the page out: three shelves, in
 // order, each one dropped whole when nothing is on it.
 //
@@ -263,6 +294,22 @@ func (p *standPage) close() { *p = standPage{} }
 func (p *standPage) start(rows []standRow) {
 	*p = standPage{open: true, rows: rows}
 	p.cursor = p.settle(0)
+}
+
+// land puts the cursor on one order by id, and leaves it where it was when
+// nothing on the page is that order — the page opened from the margin on a row
+// another window has since stood down is still the page a person asked for.
+func (p *standPage) land(id string) {
+	if id == "" {
+		return
+	}
+	for at, row := range p.rows {
+		if row.kind == standRowItem && row.view.Item.ID == id {
+			p.cursor = at
+			p.follow(standRowsMax - 1)
+			return
+		}
+	}
 }
 
 // adopt takes a re-read of the same page under the cursor, after a verb changed
@@ -454,7 +501,18 @@ func (p *standPage) draw(width, n int, pal palette, hover int, now time.Time) []
 // /connect read their own rows: an order agreed to in another window five
 // minutes ago is one this page has to know about, and asking costs one small
 // read of a directory of documents.
-func (a *app) openStanding() {
+func (a *app) openStanding() { a.openStandingAt("") }
+
+// openStandingAt is /standing opened ON one order: the same page, with the
+// cursor already standing where the person pressed.
+//
+// IT IS THE MARGIN'S DOOR (margin.go). A row in that column is a whole order's
+// worth of thing to do — pause it, stop it, keep it out of here — and every one
+// of those is a key on this page, so the row's press has to land on the row and
+// not merely open a list for the person to find it again in. An id nothing on
+// the page answers to leaves the cursor where [standPage.start] put it, which is
+// the honest answer to an order that has just been stood down in another window.
+func (a *app) openStandingAt(id string) {
 	rows := a.standingRows()
 	if len(rows) == 0 {
 		a.note(standNothingWord)
@@ -463,6 +521,7 @@ func (a *app) openStanding() {
 	a.closeLists()
 	a.dismissWelcome()
 	a.standPage.start(rows)
+	a.standPage.land(id)
 	a.touch()
 }
 
@@ -619,5 +678,10 @@ func (a *app) standPageWrite(verb standVerb) {
 		return
 	}
 	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
+	// AND THE COLUMN BEHIND THE PAGE IS TOLD, because it reads the same engine on
+	// a three-second beat (margin.go's [app.marginStanding]) and a row still
+	// standing there after it was stopped here would be one surface arguing with
+	// the other in front of the person who stopped it.
+	a.standRailAt = time.Time{}
 	p.adopt(a.standingRows())
 }

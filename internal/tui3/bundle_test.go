@@ -3135,9 +3135,14 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		// a session of one node is one family of one (task.go). The slim rail fits
 		// the title to its column, so the assertion reads the prefix both widths
 		// keep.
+		// The column opens with its section label now (margin.go), so the node is
+		// the row under it.
 		top := a.bodyTop()
-		if tc.rail && !strings.Contains(lines[top], "Fix the nil-map") {
-			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top])
+		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
+			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
+		}
+		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
+			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
 		// answer the same question, and the wide frame answers it in the column.
@@ -3348,9 +3353,10 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 		}
 	}
 	// Three hundred families of one, all equally urgent, so the column is in the
-	// order the session admitted them.
-	if !strings.Contains(plain(rows[0]), "node 1") {
-		t.Fatalf("the first row is not the first node the session met:\n%q", rows[0])
+	// order the session admitted them — under the section label the column opens
+	// with (margin.go).
+	if !strings.Contains(plain(rows[1]), "node 1") {
+		t.Fatalf("the first row is not the first node the session met:\n%q", rows[1])
 	}
 
 	// Twenty rows down is past the window, so the window moves.

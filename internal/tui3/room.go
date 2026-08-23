@@ -2025,6 +2025,15 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.railWiden(!a.railWide)
 		return nil, true
 	}
+	// AND THE MARGIN'S OWN LINES ARE ITS OWN: the `+` row at the foot of each
+	// section, which types its slash word into the draft, and a standing order's
+	// row, which opens the page on that order (margin.go). They are asked before
+	// the entries below for the reason the footer's lines are — they belong to no
+	// node, and a question about which node is under the pointer would answer
+	// about the space beside them.
+	if a.marginPress(line) {
+		return nil, true
+	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {
 		return nil, true
