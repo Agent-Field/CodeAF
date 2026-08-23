@@ -430,6 +430,48 @@ func (a *app) homeTab() bool {
 	return true
 }
 
+// crossColumns is `→` off a zone row and `←` off a places row at the columns
+// tier: the arrow follows the geography. The zones stand to the LEFT of the
+// places, so → from `needs you` lands in the list and ← from the list lands
+// back in the zones — tab's circle, unrolled onto the two keys that already
+// point the way. It reports whether it landed, so the caller can let the arrow
+// keep its other meanings on a frame where there is nothing to cross to.
+//
+// THE SAME LIVE OBJECT IS PREFERRED. A conversation standing in `needs you`
+// usually has its own row in the list, and the arrow lands there, so a person
+// stepping across the gutter stays on the thing they were reading
+// ([attentionSame] is the test, exactly as the rescan uses it). When the other
+// column holds no view of it — a folded project, a row of another kind — the
+// arrow lands on the first row a cursor may rest on, which is where tab lands.
+func (h *homeView) crossColumns(rightward bool) bool {
+	here, ok := h.focusedLine()
+	if !ok {
+		return false
+	}
+	from, to := 0, h.zoneSplit()
+	if rightward {
+		from, to = h.placesFrom(), len(h.lines)
+	}
+	land := -1
+	for at := from; at < to; at++ {
+		if !h.lines[at].stop() {
+			continue
+		}
+		if land < 0 {
+			land = at
+		}
+		if attentionSame(h.lines[at], here) {
+			land = at
+			break
+		}
+	}
+	if land < 0 {
+		return false
+	}
+	h.cursor, h.picked = land, true
+	return true
+}
+
 // homeHintWithTab puts `tab next zone` on the line under the foot, and puts it
 // BEFORE THE WAY OUT: every hint this screen draws ends with `esc`, because the
 // way out is the last thing a person needs to be told and the first thing they

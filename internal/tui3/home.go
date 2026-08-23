@@ -2116,6 +2116,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.foldElsewhere(true)
 			return nil
 		}
+		// AT THE COLUMNS TIER THE ARROW FOLLOWS THE GEOGRAPHY. The zones stand
+		// to the left of the list, so → off a row in `needs you` or `moving`
+		// crosses the gutter into the list ([homeView.crossColumns]), the way
+		// tab does but pointed rather than circular. The zone's own `…N more`
+		// line stays a fold, because the cursor is standing on the fold itself.
+		if h.box.empty() && h.threeColumns() && h.cursor < h.zoneSplit() {
+			if line, ok := h.focusedLine(); ok && line.kind == homeAttentionMore && line.folded {
+				h.foldZone(line.dir, true)
+				return nil
+			}
+			if h.crossColumns(true) {
+				a.refreshHomeRepo(time.Now())
+				return nil
+			}
+		}
 		// AND THE SAME ARROW ONE SCALE FURTHER: over a card, → opens every
 		// band the card is folding, and ← below folds them all back
 		// (homebands.go's [app.setAllBandFolds]). It took over from the `m`
@@ -2136,6 +2151,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			if subject, ok := a.homeSubject(); ok && a.anyBandFoldOpen(subject) {
 				a.setAllBandFolds(subject, false)
 				return nil
+			}
+		}
+		// ← CROSSES BACK ACROSS THE GUTTER: off a plain row in the list at the
+		// columns tier, the arrow lands in the zones' column, on the same
+		// conversation when the zones hold one ([homeView.crossColumns]).
+		// Fold lines are exempt because the cursor is standing on the thing
+		// the arrow folds; an opened zone tail closes for the same reason.
+		if h.box.empty() && h.threeColumns() {
+			if line, ok := h.focusedLine(); ok && line.kind == homeAttentionMore && !line.folded {
+				h.foldZone(line.dir, false)
+				return nil
+			}
+			if h.cursor >= h.placesFrom() {
+				if line, ok := h.focusedLine(); ok &&
+					(line.kind == homeSession || line.kind == homeItem || line.kind == homeExchangeRow) &&
+					h.crossColumns(false) {
+					a.refreshHomeRepo(time.Now())
+					return nil
+				}
 			}
 		}
 		if line, ok := h.focusedLine(); ok && (line.kind == homeQuiet || line.kind == homeSession) && h.expanded[line.dir] {
