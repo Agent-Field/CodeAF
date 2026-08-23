@@ -416,6 +416,20 @@ const (
 	// person left it — and a surface that ignores this kind runs nothing at all,
 	// which is the correct behaviour rather than a degradation.
 	EventSubharnessProposal
+	// EventSubharnessProposalOff takes the card named by ID back down. Nothing
+	// ran, and nothing about the person's own intentions is being reported: the
+	// tool call that raised the card has let the turn go, either because its
+	// window expired or because the turn it belonged to was interrupted
+	// (tools_subharness.go).
+	//
+	// IT EXISTS SO THAT A CARD CANNOT OUTLIVE ITS LISTENER. The window is a
+	// bound on the TOOL CALL and not a deadline on a person, so it fires while
+	// the card is still on somebody's screen — and a card left standing after it
+	// would be a `run it` that resolves nothing, silently, which is the one
+	// ending a question is never allowed to have. A surface that ignores this
+	// kind leaves that dead card up; a surface that draws it takes the card down
+	// and says so.
+	EventSubharnessProposalOff
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -798,6 +812,27 @@ type Config struct {
 	// the call with a result the model can act on, instead of blocking the turn
 	// on a question that will never reach a person.
 	AskConsent bool
+
+	// HarnessCards says a surface in THIS PROCESS holds the harness lane — the
+	// standing subscription every card raised on it is drawn from
+	// ([Agent.WatchHarnessDesigns]) — and will answer what arrives there.
+	//
+	// IT IS NOT AskConsent SAID TWICE, and the difference is a road rather than
+	// a mood. AskConsent is about the TURN'S OWN STREAM: an approval, a connect
+	// offer, a task proposal, all of which cross a connection as ordinary events,
+	// which is why `aforge --host` sets it (cmd/aforge's engine.go). The harness
+	// lane does not cross — the surface on the far end of that wire holds a
+	// remote handle with no WatchHarnessDesigns on it — so a card raised there
+	// would be raised into an empty room and expire unseen. engine.go already
+	// says exactly this in prose about the DESIGN card, which it switches off by
+	// nilling HarnessStore; this field is that same fact with a name, for the
+	// lane's other card ([Agent.canProposeSubharness]).
+	//
+	// LEFT FALSE IT TAKES THE VERB AWAY RATHER THAN BREAKING IT, which is this
+	// belt's law (tools.go): a model told it can offer a saved program plans
+	// around that ability for the rest of the conversation, long after the first
+	// offer nobody could answer.
+	HarnessCards bool
 
 	// Guardian turns on the small model that answers a "prompt" decision before
 	// the person is asked at all (guardian.go). FALSE IS THE DEFAULT AND THE
@@ -1701,8 +1736,13 @@ type Agent struct {
 	// It is its own counter for [Agent.harnessAsks]' reason: the two lanes are
 	// answered by two methods, and neither may be able to answer the other's
 	// question by guessing a number.
+	//
+	// EACH ENTRY CARRIES ITS OWN CARD, for the reason [Agent.harnessAsks] keeps
+	// a design's: a surface that subscribes while the question stands — the
+	// ordinary case for a conversation somebody left behind home and came back
+	// to — would otherwise wait forever on a card that is already up.
 	subharnessSeq    uint64
-	subharnessOffers map[uint64]chan subharnessConsent
+	subharnessOffers map[uint64]*subharnessOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just
