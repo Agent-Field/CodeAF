@@ -14,16 +14,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/projectors"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sessioncore"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/storage"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -490,10 +489,10 @@ func (durable *durableSessions) projectionManifest() (projectionManifest, error)
 			record := projectionRecordMark{
 				Key: strings.Join(key, "/"), Size: info.Size(), Modified: info.ModTime().UnixNano(),
 			}
-			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-				record.Device = uint64(stat.Dev)
-				record.Inode = stat.Ino
-				record.Changed = statChangedNanos(stat)
+			if device, inode, changed, ok := projectionFileIdentity(info); ok {
+				record.Device = device
+				record.Inode = inode
+				record.Changed = changed
 			}
 			records = append(records, record)
 		}
@@ -987,10 +986,10 @@ func withAdvisoryFileLock(path string, fn func() error) error {
 		return err
 	}
 	defer file.Close()
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX); err != nil {
+	if err := filelock.Lock(file, true, false); err != nil {
 		return err
 	}
-	defer unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	defer filelock.Unlock(file)
 	return fn()
 }
 

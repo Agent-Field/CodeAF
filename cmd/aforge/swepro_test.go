@@ -32,22 +32,12 @@ func TestSweproSentinelAnswersOnlyToOne(t *testing.T) {
 }
 
 // buildAforge builds the binary under test. The engine is only reachable
-// through a process, so everything below has to go through one.
+// through a process, so everything below has to go through one. The build
+// itself lives in exec_smoke_test.go, where the exec smoke tests need the same
+// thing with a version stamped into it.
 func buildAforge(t *testing.T) string {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("builds the binary")
-	}
-	goTool, err := exec.LookPath("go")
-	if err != nil {
-		t.Skip("no go toolchain on PATH")
-	}
-	binary := filepath.Join(t.TempDir(), "aforge")
-	build := exec.Command(goTool, "build", "-o", binary, ".")
-	if out, buildErr := build.CombinedOutput(); buildErr != nil {
-		t.Fatalf("build aforge: %v\n%s", buildErr, out)
-	}
-	return binary
+	return buildAforgeStamped(t, "")
 }
 
 // runEngine runs the binary as the engine and returns everything it said.

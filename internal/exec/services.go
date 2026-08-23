@@ -7,8 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 const (
@@ -87,7 +88,7 @@ func configureDetachedCommand(cmd *exec.Cmd, dir string, output io.Writer) {
 	cmd.Stderr = output
 	// A new session is also a new process group. It preserves group-wide job
 	// teardown and lets an adopted service survive the chat terminal closing.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(cmd)
 }
 
 // StopServiceProcess terminates the whole detached session, preserving the
@@ -96,7 +97,7 @@ func StopServiceProcess(pid int) error {
 	if pid <= 0 {
 		return nil
 	}
-	if err := signalService(pid, syscall.SIGTERM); err != nil {
+	if err := processgroup.Terminate(pid); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(serviceTerminateGrace)
@@ -104,31 +105,15 @@ func StopServiceProcess(pid int) error {
 		time.Sleep(serviceStopPoll)
 	}
 	if serviceLeaderAlive(pid) {
-		if err := signalService(pid, syscall.SIGKILL); err != nil {
+		if err := processgroup.Kill(pid); err != nil {
 			return err
 		}
 	}
 	// One last sweep of anything the session leader left behind. Best effort:
 	// the group is commonly already gone, and a stop must not fail for saying
 	// so twice.
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = processgroup.Kill(pid)
 	return nil
-}
-
-// signalService prefers the whole process group and falls back to the session
-// leader. Darwin refuses a group signal outright once a member has become a
-// zombie, and a service that cannot be stopped conversationally is exactly the
-// orphan this feature exists to prevent.
-func signalService(pid int, signal syscall.Signal) error {
-	groupErr := syscall.Kill(-pid, signal)
-	if groupErr == nil || errors.Is(groupErr, syscall.ESRCH) {
-		return nil
-	}
-	leaderErr := syscall.Kill(pid, signal)
-	if leaderErr == nil || errors.Is(leaderErr, syscall.ESRCH) {
-		return nil
-	}
-	return leaderErr
 }
 
 // serviceLeaderAlive asks about the leader rather than the group: a group
@@ -137,10 +122,8 @@ func signalService(pid int, signal syscall.Signal) error {
 // answers a liveness signal and would otherwise read as running forever. A
 // re-adopted orphan is not our child, so the signal probe decides it.
 func serviceLeaderAlive(pid int) bool {
-	var status syscall.WaitStatus
-	if waited, err := syscall.Wait4(pid, &status, syscall.WNOHANG, nil); err == nil && waited == pid {
+	if processgroup.ReapExitedChild(pid) {
 		return false
 	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	return processgroup.ProcessAlive(pid)
 }
