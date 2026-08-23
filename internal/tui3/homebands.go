@@ -229,6 +229,7 @@ const (
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
 	bandOrderWatchlist   = 25  // the machine: everything keeping an eye on anything
+	bandOrderHands       = 28  // the machine: what its hands have been doing lately
 	bandOrderNews        = 30  // what happened since you last looked
 	bandOrderSinceLeft   = 35  // the machine: that same question asked of every project
 	bandOrderWork        = 40  // the tasks it ran, with what they came to

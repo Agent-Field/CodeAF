@@ -66,6 +66,17 @@ type machineFacts struct {
 	// instant. It is the ambient side's own `●`, counted once here so the pulse
 	// and the card cannot disagree about whether the machine is working.
 	firing bool
+	// hands is HOW MANY THINGS THIS MACHINE HAS IN FLIGHT RIGHT NOW, across
+	// every project and every kind of thing: a task node out, a conversation
+	// mid-turn, an errand answering, a standing order firing.
+	//
+	// IT IS THE MOVING ZONE'S OWN ARITHMETIC AND NOT A SECOND ACCOUNTING
+	// ([app.machineHands] counts the rows [homeView.attentionMoving] gathers).
+	// Home already knows what is running everywhere — that is the whole subject
+	// of the left column's second strip — and a count derived a second way here
+	// would be a top line saying `3 working` over a strip listing four, which is
+	// the exact failure the one-reader law was written against.
+	hands int
 }
 
 // machineCeilingNear is how much of the day's allowance has to be gone before
@@ -116,8 +127,61 @@ func (a *app) machineFactsAt(now time.Time) machineFacts {
 		}
 	}
 	facts.chats, facts.tasks, facts.spent = a.machineDay(now)
+	facts.hands = a.machineHands()
 	h.machine, h.machineAt = facts, now
+	// AND THIS IS THE BEAT THE SPARK IS SAMPLED ON. A fresh reading happens once
+	// per [homeEvery] whoever asks for it first, which is exactly the clock a
+	// chart of "what has this machine been doing lately" wants — so the sample
+	// is taken HERE, where the reading is taken, rather than on a clock of its
+	// own that could disagree with the figure beside it (spark.go's
+	// [app.sampleHands]).
+	a.sampleHands(facts.hands)
 	return facts
+}
+
+// handsRingSize is how many readings the `hands` spark keeps. Sixty samples on
+// home's three-second beat is THREE MINUTES OF MACHINE, which is about as far
+// back as "lately" reaches for somebody who has just sat down — and it is two
+// samples per braille cell, so a window this long is thirty cells of chart and
+// fits a card at every width one is drawn at.
+const handsRingSize = 60
+
+// sampleHands appends one reading to that ring, keeping the last
+// [handsRingSize].
+//
+// A READING IDENTICAL TO THE ONE BEFORE IT IS STILL KEPT, which is
+// [app.sampleContext]'s own rule and matters more here: a flat run is what a
+// quiet machine LOOKS like, and a ring that collapsed repeats would draw a busy
+// shape over a still afternoon.
+func (a *app) sampleHands(hands int) {
+	a.handsRing = append(a.handsRing, hands)
+	if len(a.handsRing) > handsRingSize {
+		a.handsRing = a.handsRing[len(a.handsRing)-handsRingSize:]
+	}
+}
+
+// machineHands is how many things this machine has in flight, counted off the
+// rows the moving zone gathers ([homeView.attentionMoving]).
+//
+// ONE ROW IS NOT ALWAYS ONE HAND. A conversation with three task nodes out is
+// one row and three things being done, and the zone already carries that figure
+// on the row as [homeAttention.busy] because it sorts by it. A row with no
+// count — a conversation merely mid-turn, an errand answering, an order firing —
+// is one hand: something IS being done there, and the machine has no finer
+// number for it than "this".
+func (a *app) machineHands() int {
+	hands := 0
+	for _, line := range a.home.attentionMoving() {
+		if line.zone == nil {
+			continue
+		}
+		if line.zone.busy > 1 {
+			hands += line.zone.busy
+			continue
+		}
+		hands++
+	}
+	return hands
 }
 
 // machineWatching is every active order on the machine, soonest first.
