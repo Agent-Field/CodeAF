@@ -53,7 +53,7 @@ func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 		t.Fatalf("placePath at the hardest strength = %q", got)
 	}
 	// And the sheet's own place row is where a person now reads it, since the
-	// legend gave that end of itself to the conversation's name.
+	// legend keeps the machine while the status line owns the conversation name.
 	if got := deckValue(a.deckItems(), "place"); got != "devbox:/s/c/app" {
 		t.Fatalf("the sheet's place row = %q", got)
 	}
@@ -66,8 +66,8 @@ func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	a, _ := hostLab(t)
 	a.title = "porting the parser"
 	line := plain(a.legend(a.width))
-	if !strings.Contains(line, "devbox · porting the parser") {
-		t.Fatalf("the legend does not carry the machine and the name: %q", line)
+	if !strings.Contains(line, "devbox") || strings.Contains(line, "porting the parser") {
+		t.Fatalf("the legend does not carry only the machine: %q", line)
 	}
 	if strings.Contains(line, "/s/c/app") {
 		t.Fatalf("the legend is still carrying the path: %q", line)

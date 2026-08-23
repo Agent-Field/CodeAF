@@ -99,6 +99,11 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	if !strings.Contains(strings.Join(rows, "\n"), railGripOpenGlyph+" "+railStowHint) {
 		t.Fatalf("the column's door carries no chevron:\n%s", strings.Join(rows, "\n"))
 	}
+	painted := strings.Join(rows, "\n")
+	if !strings.Contains(painted, a.pal.data(railStowKey)) ||
+		!strings.Contains(painted, a.pal.dim(" hide")) {
+		t.Fatalf("the close door does not use the shared hint palette:\n%q", painted)
+	}
 	// It is the LAST line of the column: the way out of anything is at the bottom
 	// of it, under the aggregate and under the width offer alike.
 	last := ""

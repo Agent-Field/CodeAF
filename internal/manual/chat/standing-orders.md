@@ -222,7 +222,7 @@ standing
   it, so `p`, `s`, `n` and `enter` act on the one you pressed rather than on a list you
   have to find it in again.
 
-**Both labels are drawn whenever the column is**, empty or not — the place exists before
+**A label is drawn only when its section has rows** — the typeable door exists before
 anything is in it. The rows under a label are only the real ones: with nothing standing,
 the `standing` section is its label and its `+ /standing` row and nothing between them.
 
