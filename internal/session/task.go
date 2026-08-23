@@ -204,6 +204,13 @@ type taskSpec struct {
 	parent uint64
 	depth  int
 	owner  *Agent
+	// divide says THIS piece of work may discover that it is wider than one
+	// worker and hand the parts out (task_divide.go). It is settled at
+	// admission by [Agent.armDivision] — the one door every task comes through
+	// — and never afterwards, for the reason every other field of this spec is
+	// frozen: a road that could be opened under a running node would be a node
+	// whose belt changed while it was working.
+	divide bool
 }
 
 // taskTools is the belt's task family — one tool, in the conversation and in

@@ -19,12 +19,23 @@ const (
 	taskJudgeTemp    = 0
 )
 
+// taskJudgePrompt sizes one piece of work. WHAT IT DECIDES IS NARROWER THAN IT
+// LOOKS, and the last paragraph is the whole of the change this wave made to
+// it: the answer no longer settles how the work runs, only whether a planner is
+// offered. A single worker that opens the material and finds six separate jobs
+// in it can now split itself and stay to fold the parts back together
+// (task_divide.go), so a no here is no longer a decision that the work will
+// only ever be one pair of hands. That makes the judge free to be strict — the
+// cost of a wrong no fell to nearly nothing — and being strict is what it was
+// always asked to be ("when unsure, false").
 const taskJudgePrompt = `Decide whether this task is meaningfully parallelizable or nestable for speed or quality. Parallel means independent parts can proceed at the same time and a planner can combine them; a merely long sequence is not parallel.
 
 Answer with exactly one JSON object and no markdown:
 {"parallelizable":bool,"parts":["part in at most 6 words"],"why":"reason in at most 12 words"}
 
-Use at most 6 parts. When unsure, set parallelizable to false.`
+Use at most 6 parts. When unsure, set parallelizable to false.
+
+You are only deciding whether to plan the work up front. Work that starts as one worker can still split itself later, once the worker has opened the material and can see how much of it there is, so a "false" here does not commit the work to one pair of hands. Say true only when the parts are already visible from the request itself.`
 
 type taskJudgeVerdict struct {
 	Parallel bool     `json:"parallelizable"`
@@ -207,6 +218,15 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 		}
 		a.addAuxiliaryUsage(response, call.Model, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
+			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT. The person may
+			// answer this judge's card with `single`, and that is not them
+			// saying the work is narrow — it is them saying they do not want a
+			// planner and a fleet. So the single worker they start is armed to
+			// divide if it turns out to be holding six jobs (task_divide.go's
+			// [Agent.armDivision]).
+			if verdict.Parallel {
+				a.rememberDivisible(brief)
+			}
 			return verdict.Parallel, verdict.Parts, verdict.Why
 		}
 		messages = append(messages, textMessage("assistant", response.Text()),

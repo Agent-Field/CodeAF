@@ -125,6 +125,13 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// divide_work rides beside propose_task and is narrower than it: the one
+	// names parts a worker could see from the start, this one names parts it
+	// only found once it had opened the material. It is absent unless THIS
+	// task was armed for division (task_divide.go), which is what makes a
+	// narrow task's belt byte-identical to what it was before that road
+	// existed.
+	tools = append(tools, a.divideTools()...)
 	// stand (tools_standing.go) is the ambient side's one verb, and it is
 	// CONDITIONAL for the sharpest version of the absence law on this belt: a
 	// model told it can set up a reminder will plan a whole reply around one,
