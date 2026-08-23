@@ -2412,6 +2412,7 @@ type taskFake struct {
 	answered []taskReply
 	updates  chan session.Event
 	pending  []uint64
+	work     []session.WorkNode
 }
 
 type taskReply struct {
@@ -2433,6 +2434,7 @@ func (f *taskFake) ResolveTask(id uint64, answer session.TaskAnswer) {
 
 func (f *taskFake) TaskUpdates() <-chan session.Event { return f.updates }
 func (f *taskFake) PendingTasks() []uint64            { return f.pending }
+func (f *taskFake) WorkingNow() []session.WorkNode    { return f.work }
 
 // taskApp is a surface with a tasker under it and a pinned clock over it: a
 // countdown cannot be tested by waiting four seconds.

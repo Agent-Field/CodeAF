@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -154,7 +155,16 @@ func (a *app) marginStandingShows() bool {
 // marginHead is the label the TASKS section opens with, and it is one line
 // whatever is under it ([app.marginRows] says why a label is not news).
 func (a *app) marginHead(width int) []railLine {
-	return []railLine{{text: a.pal.dim(fit(marginTasksWord, width)), entry: -1}}
+	word := marginTasksWord
+	if agent, ok := a.agent.(workingNowAgent); ok {
+		if count := session.CountWorking(agent.WorkingNow()); count > 1 {
+			plainTail := " · " + itoa(count) + " working"
+			room := max(0, width-ansi.StringWidth(plainTail))
+			word = a.pal.dim(fit(marginTasksWord, room)+" · ") + a.pal.data(itoa(count)) + a.pal.dim(" working")
+			return []railLine{{text: word, entry: -1}}
+		}
+	}
+	return []railLine{{text: a.pal.dim(fit(word, width)), entry: -1}}
 }
 
 // marginRows is everything the column draws UNDER this conversation's work: the
