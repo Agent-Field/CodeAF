@@ -1107,13 +1107,21 @@ the fullscreen roster is up.
 
 ## Selecting text with your mouse — drag to copy
 
-**Just drag.** Sweep the pointer over the conversation (or a task's room) with the
-left button down: the rows under the sweep highlight, and the moment you release,
-their text is **on your clipboard** — stripped of colours and the drawn left rails,
-exactly as copy mode strips a yank. The status line confirms it for a few seconds:
-`copied · 12 lines`. The write goes over OSC 52, so it works over ssh and through
-tmux. The selection is by rows — whole lines, not characters — and what is
-highlighted is exactly what is copied.
+**Just drag.** Sweep the pointer over the conversation (or a task's room, or a run's
+page) with the left button down: the rows under the sweep highlight, and the moment
+you release, their text is **on your clipboard** — stripped of colours and the drawn
+left rails, exactly as copy mode strips a yank. There is nothing further to press:
+no ctrl+c, no key at all — releasing the button IS the copy. The highlight stays lit
+for the few seconds the status line says `copied · 12 lines`, so you can see exactly
+what landed. The write goes over OSC 52, so it works over ssh and through tmux. The
+selection is by rows — whole lines, not characters — and what is highlighted is
+exactly what is copied.
+
+**The selection sticks to the text, not to the screen.** A task's page streams and
+follows its live edge, so rows can scroll while your button is down; the highlight
+rides the rows you swept, the copy is those rows wherever they moved to, and a click
+opens the row you actually pressed even when it has shifted. A row that scrolls
+clean off the screen before you release is no click at all.
 
 A click is unchanged in feel: press and release in place and it lands where it always
 did. (Under the hood the body's click now fires on release, the way every button in

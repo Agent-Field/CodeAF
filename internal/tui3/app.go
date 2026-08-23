@@ -554,6 +554,10 @@ type app struct {
 	drag       dragSelect
 	dragCopied int
 	dragUntil  time.Time
+	// dragFrom and dragTo are the CONTENT rows the last sweep copied, kept so
+	// the selection stays lit while the status line still says "copied"
+	// (dragselect.go's [app.dragSpan]).
+	dragFrom, dragTo int
 
 	state runState
 	model string
@@ -2060,7 +2064,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// lives — unless the pointer sweeps first and the gesture turns out
 			// to be a selection (dragselect.go says why a drag that begins on a
 			// thinking block must not collapse it).
-			a.drag = dragSelect{parked: true, px: msg.Mouse().X, py: msg.Mouse().Y}
+			a.drag = dragSelect{parked: true, px: msg.Mouse().X, py: msg.Mouse().Y,
+				prow: a.bodyContentRow(msg.Mouse().Y)}
+			// A new press retires the lit remnant of the last copy: one
+			// selection on screen at a time.
+			a.dragCopied = 0
 			return a, nil
 		}
 		return a, nil
