@@ -9,6 +9,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
 // THE MODEL'S HANDS ON THE BIG MACHINERY, from the three sides that matter: the
