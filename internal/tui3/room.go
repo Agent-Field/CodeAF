@@ -412,6 +412,13 @@ func (a *app) openRoom(id uint64, title string) {
 	}
 	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal)
 	a.room = room
+	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
+	// The journal records what was said and never where the saying went, so the
+	// mark is put on here — from the node the engine published, the same source
+	// every live line in this room takes it from. It is the room's OWN context
+	// because these lines were said into this node and nowhere else; it is empty
+	// for an ordinary node, and then nothing is marked at all.
+	a.markRoomContext(room)
 	// THE NODE'S CLOCK STOPS BEING REPORTED WHILE YOU ARE IN HERE. The elapsed
 	// number on the rail exists to ask "should you go and look at this", and the
 	// person has just answered it (task.go's [app.taskNow] says the whole of it).
@@ -1388,7 +1395,10 @@ func (a *app) steer() tea.Cmd {
 	// belongs to the conversation.
 	a.roomCollapseThought()
 	room.turn++
-	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn})
+	// AND THE LINE SAYS WHERE IT WENT, when the node it went to is a named place
+	// rather than work being watched (turncontext.go). It is taken here, at the
+	// instant the engine took the words, because that is when it is true.
+	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn, context: a.turnContext()})
 	return a.edited()
 }
 

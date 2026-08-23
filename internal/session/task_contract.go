@@ -46,7 +46,7 @@ import (
 // exist.
 type TaskKind string
 
-// TaskKindHarness is a sub-harness being designed (harness_task.go): no
+// TaskKindHarness is a subharness being designed (harness_task.go): no
 // worktree, no branch, no files, and a page that reaches the registry only if
 // the person approves the card at the end of it.
 const TaskKindHarness TaskKind = "harness"
@@ -262,7 +262,7 @@ type TaskNotice struct {
 	// while running.
 	Merge string
 	// Doing is the PHASE a running node of a named kind is in, in that kind's
-	// own plain words — "designing", "awaiting your look" for a sub-harness
+	// own plain words — "designing", "awaiting your look" for a subharness
 	// being written (harness_task.go) — and "" for an ordinary task, which has
 	// no phases.
 	//
@@ -274,6 +274,26 @@ type TaskNotice struct {
 	// what this package calls it. Like the two below it is ANNOUNCED ON CHANGE:
 	// a phase moving is news that arrives without the state moving.
 	Doing string
+	// Context is the NAMED WORKING CONTEXT this node's room is — what a person's
+	// own words in it are part of, in their own words: "designing a subharness",
+	// and then "designing subharness flake-triage" once the page has a name (harness_task.go).
+	// It is "" for an ordinary node, whose room is work being watched rather than
+	// a thing somebody is inside.
+	//
+	// IT IS FOR THE PERSON'S OWN LINE AND NOT FOR THE NODE'S ROW. Doing above says
+	// what the work is busy with and belongs on a roster; this says what a turn
+	// somebody takes in here RUNS INSIDE, and belongs where that turn starts — a
+	// transcript that draws the person's `›` line identically whether the words
+	// went to a conversation or into a design thread is a transcript that cannot
+	// be read back (internal/tui3's turncontext.go).
+	//
+	// A SURFACE DRAWS IT VERBATIM AND KEEPS NO LIST OF CONTEXTS. The name is the
+	// node's own to write, so a kind of node that is also a place somebody talks
+	// inside becomes visible everywhere by filling this and nowhere else. Empty
+	// draws nothing at all, which is the emptiness law and is what every ordinary
+	// turn on every surface gets. Like Doing it is ANNOUNCED ON CHANGE: a context
+	// that has just learned its name is news that arrives without the state moving.
+	Context string
 	// Mending is the gap being closed while a repair round runs, one plain
 	// line ("adding amp-labs to the report"), and "" at every other moment.
 	// A surface draws it as the task simply still working; the machinery

@@ -602,7 +602,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// one here is not typed at all: an `@task` mention leaves a footnote
 		// block naming the node's transcript, and that block is the fastest way
 		// into what a task actually did.
-		return a.linkPaths(out)
+		//
+		// AND THEN THE TURN SAYS WHAT IT WAS PART OF, when it was part of anything
+		// (turncontext.go). It is added AFTER the paths are linked, and that order
+		// is the point: the mark is this surface talking about the message, not a
+		// word of the message, so nothing in it may become a door. On an ordinary
+		// turn it adds nothing at all — which is nearly every turn, and is why this
+		// line changes no frame most people will ever look at.
+		return a.turnContextRows(a.linkPaths(out), e.context, width)
 
 	case entryAssistant:
 		return a.linkPaths(a.assistantRows(i, e, width))
