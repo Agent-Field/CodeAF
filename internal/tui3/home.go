@@ -1903,90 +1903,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
-	// A BARE LETTER IS A DOOR ONLY ON A ROW THE PERSON CHOSE. h.picked is the
-	// deliberate gesture — they walked the cursor onto the row or clicked it —
-	// and it is the same fact that decides whether the card's own key hints
-	// are about anything. Before that gesture the letters belong to the box,
-	// whatever row the cursor happens to be resting near: the foot promises
-	// "type to search or start something new", and a person two letters into
-	// "make me a site" who watched the m fold a band instead was given a mode
-	// they never asked for.
+	// A BARE LETTER ALWAYS TYPES. The foot promises "type to search or start
+	// something new", and a promise like that has no asterisk: whatever the
+	// cursor or the pointer are resting on, an m is an m and "make me a site"
+	// comes out whole. This screen tried gating letter doors on the chosen row
+	// and it was still a mode — the actions those letters carried ride chords
+	// and arrows now (the cases below), keys that can never begin a word and
+	// so need no gate at all. The one printable exception is the digit block
+	// just under this comment, and it earns it by being drawn on the row.
 	//
-	// MORE. The right column has no cursor, so `m` acts on the card: it opens
-	// every folded band on the row under the cursor, and folds them again
-	// (homebands.go). Only with nothing typed — in the box an m is an m.
-	if msg.String() == "m" && h.box.empty() && (h.picked || h.hover >= 0) {
-		if subject, ok := a.homeSubject(); ok {
-			a.toggleAllBandFolds(subject)
-			return nil
-		}
-	}
 	// A DIGIT ANSWERS THE QUESTION UNDER THE CURSOR. It is read here, ahead of
 	// everything, and taken only when the row is a conversation stopped on a
 	// card that offered that key and there is nothing typed — every other
 	// moment a digit is a character going into the box, exactly as it always
-	// was ("2 hours later" begins with a 2). Unlike the letters below, it is
-	// NOT gated on the pick: the numbered chips are drawn on the row itself,
-	// and a key the screen is visibly advertising may take the press.
+	// was ("2 hours later" begins with a 2). The numbered chips are drawn on
+	// the row itself, and a key the screen is visibly advertising may take the
+	// press.
 	if h.box.empty() {
 		if cmd, took := a.answerKey(msg.String()); took {
 			return cmd
-		}
-	}
-	// THESE LETTERS ARE DOORS ONLY ON AN EMPTY SESSION CARD THE PERSON CHOSE.
-	// Once somebody has typed, every bare letter belongs to their sentence.
-	if h.box.empty() && h.picked {
-		if line, ok := h.focusedLine(); ok && line.kind == homeSession {
-			switch msg.String() {
-			case "n":
-				// `n` LEAVES THIS PROJECT TOO, on enter's own law: the row's own
-				// folder is where the fresh conversation is built, so a row from
-				// somewhere else starts one THERE and puts the conversation in
-				// front into the keeper (keeper.go's [app.startBeside]). It used
-				// to refuse with `elsewhere · <path>`, which is a sentence this
-				// screen no longer has any business saying.
-				if where := homeWhere(line); where != "" && where != a.workspace {
-					if !homeFolderThere(where) {
-						h.say(homeGoneWord+" · "+where, "")
-						return nil
-					}
-					return a.homeStart(where)
-				}
-				return a.homeStart("")
-			case "o":
-				path := strings.TrimSpace(line.row.Workspace)
-				if path == "" || processOpener(path) != nil {
-					h.say("could not open "+path, "")
-					return nil
-				}
-				h.say("opened "+path, path)
-				return nil
-			case "y":
-				path := strings.TrimSpace(line.row.Workspace)
-				if path == "" {
-					h.say("could not copy path", "")
-					return nil
-				}
-				h.say("copied "+path, path)
-				return tea.Raw(osc52(path, a.tmux))
-			case "e":
-				// `e` PUTS A CONVERSATION AWAY, and on a put-away row it is its
-				// own undoing — the same key from inside the archive brings the
-				// row back to its project. The world is re-read on the spot so
-				// the row moves under the hand rather than on the next sweep.
-				if err := session.SetArchived(line.row.Dir, !line.row.Archived); err != nil {
-					h.say("could not put it away", "")
-					return nil
-				}
-				if line.row.Archived {
-					h.say("brought back", "")
-				} else {
-					h.say("put away · open the archive at the foot to bring it back", "")
-				}
-				a.refreshHome()
-				a.home.build()
-				return nil
-			}
 		}
 	}
 	switch msg.String() {
@@ -2051,6 +1986,100 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// reaches for.
 		return a.askHere(strings.TrimSpace(h.box.String()))
 
+	// ── THE CARD'S OWN KEYS ARE CHORDS ─────────────────────────────────────
+	//
+	// Every action a bare letter used to carry lives on a chord now, because a
+	// chord can never be the first letter of somebody's sentence — so none of
+	// them needs a gate: not the pick, not the hover, not an empty box. Each
+	// acts on THE CARD A PERSON IS LOOKING AT ([homeView.previewLine] — the row
+	// under the pointer while there is one, the cursor's row otherwise),
+	// exactly as the card's fold lines and its chips do, and the card's own
+	// legend names them (homeband_keys.go). The mnemonic letters survived the
+	// move: e, o and y kept themselves under ctrl, and `n new chat here`
+	// became ctrl+t because ctrl+n has always been the walk down — ctrl+t is
+	// the key every browser opens a fresh tab with, which is what it does.
+
+	case "ctrl+t":
+		// A FRESH CONVERSATION IN THE ROW'S OWN FOLDER, on enter's law: a row
+		// from somewhere else starts one THERE and puts the conversation in
+		// front into the keeper (keeper.go's [app.startBeside]). A half-typed
+		// message stays a message: [app.homeStart] carries it into the fresh
+		// conversation here, and for a folder the keeper cannot carry it into,
+		// the key refuses rather than quietly throwing the sentence away.
+		if line, ok := h.previewLine(); ok && line.kind == homeSession {
+			if where := homeWhere(line); where != "" && where != a.workspace {
+				if !homeFolderThere(where) {
+					h.say(homeGoneWord+" · "+where, "")
+					return nil
+				}
+				if !h.box.empty() {
+					h.say("clear or send your message first · ctrl+t starts fresh in "+where, "")
+					return nil
+				}
+				return a.homeStart(where)
+			}
+			return a.homeStart(strings.TrimSpace(h.box.String()))
+		}
+		return nil
+
+	case "ctrl+o":
+		if line, ok := h.previewLine(); ok && line.kind == homeSession {
+			path := strings.TrimSpace(line.row.Workspace)
+			if path == "" || processOpener(path) != nil {
+				h.say("could not open "+path, "")
+				return nil
+			}
+			h.say("opened "+path, path)
+		}
+		return nil
+
+	case "ctrl+y":
+		if line, ok := h.previewLine(); ok && line.kind == homeSession {
+			path := strings.TrimSpace(line.row.Workspace)
+			if path == "" {
+				h.say("could not copy path", "")
+				return nil
+			}
+			h.say("copied "+path, path)
+			return tea.Raw(osc52(path, a.tmux))
+		}
+		return nil
+
+	case "ctrl+e":
+		// CTRL+E SETS THE ROW ASIDE, whichever kind of row it is: a
+		// conversation goes into the archive, a standing item is paused. On a
+		// put-away row it is its own undoing — the same key from inside the
+		// archive brings the row back to its project. The world is re-read on
+		// the spot so the row moves under the hand rather than on the next
+		// sweep.
+		if line, ok := h.previewLine(); ok {
+			switch line.kind {
+			case homeSession:
+				if err := session.SetArchived(line.row.Dir, !line.row.Archived); err != nil {
+					h.say("could not put it away", "")
+					return nil
+				}
+				if line.row.Archived {
+					h.say("brought back", "")
+				} else {
+					h.say("put away · open the archive at the foot to bring it back", "")
+				}
+				a.refreshHome()
+				a.home.build()
+			case homeItem:
+				return a.homeItemWrite(line, standing.StatusPaused)
+			}
+		}
+		return nil
+
+	case "ctrl+x":
+		// AND CTRL+X STOPS A STANDING ITEM FOR GOOD, the stronger form of the
+		// key above it on this list and on the item card's own legend.
+		if line, ok := h.previewLine(); ok && line.kind == homeItem {
+			return a.homeItemWrite(line, standing.StatusRetired)
+		}
+		return nil
+
 	case "backspace":
 		h.box.deleteBackward()
 		h.build()
@@ -2087,9 +2116,28 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.foldElsewhere(true)
 			return nil
 		}
+		// AND THE SAME ARROW ONE SCALE FURTHER: over a card, → opens every
+		// band the card is folding, and ← below folds them all back
+		// (homebands.go's [app.setAllBandFolds]). It took over from the `m`
+		// that used to do this, because m belongs to the box now — and only
+		// with nothing typed, since in a draft the arrows are the caret's.
+		if h.box.empty() {
+			if subject, ok := a.homeSubject(); ok && !a.allBandFoldsOpen(subject) {
+				a.setAllBandFolds(subject, true)
+				return nil
+			}
+		}
 		h.box.right()
 		return nil
 	case "left":
+		// A CARD'S OPEN BANDS FOLD FIRST, one layer at a time on esc's own
+		// law: ← folds what → opened before it folds anything on the list.
+		if h.box.empty() {
+			if subject, ok := a.homeSubject(); ok && a.anyBandFoldOpen(subject) {
+				a.setAllBandFolds(subject, false)
+				return nil
+			}
+		}
 		if line, ok := h.focusedLine(); ok && (line.kind == homeQuiet || line.kind == homeSession) && h.expanded[line.dir] {
 			h.fold(line.dir, false)
 			return nil
@@ -2117,21 +2165,6 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	default:
-		// PAUSE AND STOP ARE BARE LETTERS ON AN ITEM ROW, and they are read HERE
-		// — inside the default branch, ahead of typing — because home's box is a
-		// search AND a new conversation at the same moment. A letter is only a
-		// key while there is nothing typed and the cursor is on an item; every
-		// other moment it is a character, and it falls through to the box below
-		// exactly as it always did (homestanding.go's [app.homeItemWrite] does
-		// the write).
-		if key := msg.String(); (key == "p" || key == "s") && !h.searching() {
-			if line, ok := h.focusedLine(); ok && line.kind == homeItem {
-				if key == "p" {
-					return a.homeItemWrite(line, standing.StatusPaused)
-				}
-				return a.homeItemWrite(line, standing.StatusRetired)
-			}
-		}
 		// TYPING IS THE WHOLE CEREMONY, and it does both jobs at once: the
 		// characters are a message being written AND a query over every project
 		// on the machine. Nothing had to be opened, and nothing has to be

@@ -213,26 +213,34 @@ func TestClickingTheWorkFoldLineTogglesIt(t *testing.T) {
 	}
 }
 
-// `m` IS THE KEYBOARD'S WAY IN, and it acts on the whole card because the
-// column has no cursor of its own.
-func TestMOpensEveryFoldOnTheCard(t *testing.T) {
+// `→` IS THE KEYBOARD'S WAY IN, and it acts on the whole card because the
+// column has no cursor of its own. It took over from the bare `m` when every
+// letter went back to the box for good ([app.homeKey]'s always-types law).
+func TestTheRightArrowOpensEveryFoldOnTheCard(t *testing.T) {
 	a := workLab(t, 6)
-	// AT REST A LETTER TYPES ([app.homeKey]'s letter-door law): the card's
-	// keys are about a row somebody chose, so the walk down is part of the
-	// gesture.
 	drive(t, a, key("down"))
-	a.homeKey(key("m"))
+	a.homeKey(key("right"))
 	if strings.Contains(homeText(a), "…3 more tasks") {
-		t.Fatalf("m did not open the work band:\n%s", homeText(a))
+		t.Fatalf("→ did not open the work band:\n%s", homeText(a))
 	}
-	a.homeKey(key("m"))
+	a.homeKey(key("left"))
 	if !strings.Contains(homeText(a), "…3 more tasks") {
-		t.Fatalf("m again did not fold it back:\n%s", homeText(a))
+		t.Fatalf("← did not fold it back:\n%s", homeText(a))
 	}
-	// AND ONLY WITH NOTHING TYPED. In the box an m is an m.
+	// AND ONLY WITH NOTHING TYPED: in a draft the arrows belong to the caret,
+	// so no fold moves while something is in the box.
+	subject, ok := a.homeSubject()
+	if !ok {
+		t.Fatal("the cursor's row has no subject")
+	}
 	a.homeKey(key("x"))
+	a.homeKey(key("right"))
+	if a.anyBandFoldOpen(subject) {
+		t.Fatal("→ opened the card's folds while something was typed")
+	}
+	// And an m, the letter that used to carry this, is just an m in the box.
 	a.homeKey(key("m"))
 	if !strings.Contains(a.home.box.String(), "m") {
-		t.Fatalf("m was eaten as a key while something was typed: box is %q", a.home.box.String())
+		t.Fatalf("m was eaten as a key: box is %q", a.home.box.String())
 	}
 }
