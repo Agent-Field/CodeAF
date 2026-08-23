@@ -746,9 +746,9 @@ func connUnder(text string, selected, hovered bool, width int, pal palette) stri
 	line := strings.Repeat(" ", overlayIndent) + paint(fit(text, width-overlayIndent))
 	switch {
 	case selected:
-		return pal.band(line, width)
+		return pal.selected(line, width)
 	case hovered:
-		return pal.hover(line, width)
+		return pal.cursor(line, width)
 	}
 	return line
 }

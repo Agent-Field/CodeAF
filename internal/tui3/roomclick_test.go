@@ -27,7 +27,7 @@ import (
 
 // bandSeq is the selected row's background as a terminal receives it — the same
 // sequence the strip's chip and the overlay's cursor row are pinned by.
-func bandSeq() string { return "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m" }
+func bandSeq() string { return "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m" }
 
 // clickRailNode presses the roster row of ONE named node — the door into that
 // node's page. [clickRail] counts rows and these tests care which node they

@@ -277,8 +277,8 @@ func listTop(cursor, top, count, height int) int {
 // Hover is the fourth thing a row can be and it is not a tier: it is the
 // background under whichever of the three the row already was, plus a brighter
 // lead — the pointer saying "this one", not the list saying "this matters".
-// The two backgrounds are deliberately different weights ([palette.band] versus
-// [palette.hover]): a pointer crossing a list must never look like the cursor
+// The two backgrounds are deliberately different weights ([palette.selected] versus
+// [palette.cursor]): a pointer crossing a list must never look like the cursor
 // moving, so hover stays one step off the terminal's own black and selection is
 // the stronger band above it.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
@@ -376,9 +376,9 @@ func overlayRowTinted(label, note string, tint noteInk, selected bool, marked ro
 	}
 	switch {
 	case selected:
-		return pal.band(line, width)
+		return pal.selected(line, width)
 	case hovered:
-		return pal.hover(line, width)
+		return pal.cursor(line, width)
 	}
 	return line
 }
@@ -471,9 +471,9 @@ func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hove
 
 	switch {
 	case selected:
-		return []string{pal.band(head, width), pal.band(tail, width)}
+		return []string{pal.selected(head, width), pal.selected(tail, width)}
 	case hovered:
-		return []string{pal.hover(head, width), pal.hover(tail, width)}
+		return []string{pal.cursor(head, width), pal.cursor(tail, width)}
 	}
 	return []string{head, tail}
 }

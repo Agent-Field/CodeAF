@@ -462,7 +462,7 @@ func (a *app) harnessOffer(head harnessAsk, width int) string {
 		}
 	}
 	if a.hoveringHarnessAsk() {
-		return a.pal.hover(out, width)
+		return a.pal.cursor(out, width)
 	}
 	return out
 }

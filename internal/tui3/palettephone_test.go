@@ -53,12 +53,12 @@ func overlayBlock(a *app) []string {
 func banded(pal palette, line string) bool { return strings.HasPrefix(line, bandLead(pal)) }
 
 func bandLead(pal palette) string {
-	lead, _, _ := strings.Cut(pal.band(" ", 1), " ")
+	lead, _, _ := strings.Cut(pal.selected(" ", 1), " ")
 	return lead
 }
 
 func hoverLead(pal palette) string {
-	lead, _, _ := strings.Cut(pal.hover(" ", 1), " ")
+	lead, _, _ := strings.Cut(pal.cursor(" ", 1), " ")
 	return lead
 }
 

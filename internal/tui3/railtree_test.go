@@ -367,7 +367,7 @@ func TestTheDisclosureIsRevealedUnderThePointerAndOnlyOnRoots(t *testing.T) {
 	if strings.Contains(row, glyphOpen) || strings.Contains(row, glyphShut) {
 		t.Fatalf("a leaf offered a fold it does not have:\n%q", row)
 	}
-	background := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	if !strings.Contains(a.railRows(a.viewHeight())[leafY-a.bodyTop()], background) {
 		t.Fatalf("the row under the pointer took no hover step:\n%q", row)
 	}

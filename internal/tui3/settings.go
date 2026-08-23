@@ -1971,7 +1971,7 @@ func sheetTabBar(width, active int, pal palette) string {
 		}
 		chip := tabPad + title + tabPad
 		if i == active {
-			line += pal.band(pal.bold(pal.accent(chip)), len(title)+tabPadCols)
+			line += pal.selected(pal.bold(pal.accent(chip)), len(title)+tabPadCols)
 		} else {
 			line += pal.dim(chip)
 		}

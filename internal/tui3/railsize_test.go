@@ -75,7 +75,7 @@ func TestHoveringRailSeamLightsTheHandle(t *testing.T) {
 	if a.hot.kind != hoverRailSeam {
 		t.Fatalf("seam hover resolved to %+v", a.hot)
 	}
-	want := a.pal.hover(a.pal.accent(railSeam), len([]rune(railSeam)))
+	want := a.pal.cursor(a.pal.accent(railSeam), len([]rune(railSeam)))
 	row := a.railRows(a.viewHeight())[y-a.bodyTop()]
 	if !strings.HasPrefix(row, want) {
 		t.Fatalf("seam did not take the hover style:\n got %q\nwant prefix %q", row, want)

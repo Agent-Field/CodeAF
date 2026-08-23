@@ -439,7 +439,7 @@ func (a *app) stopRows(width int) []string {
 		// is, and two channels stay legible together where two shades of one would
 		// not.
 		if a.hoveringStopAnswer(i) {
-			painted = a.pal.hover(painted, 0)
+			painted = a.pal.cursor(painted, 0)
 		}
 		line += painted
 		card.spans = append(card.spans, hudSpan{from: at, to: at + cols})

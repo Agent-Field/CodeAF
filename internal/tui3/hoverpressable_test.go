@@ -25,7 +25,7 @@ import (
 // promising three doors the hand is not on.
 
 // hoverBg is the hover background exactly as the terminal receives it.
-func hoverBg() string { return "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m" }
+func hoverBg() string { return "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m" }
 
 // motionTo is a pointer moved to one cell, column included: every target below
 // is narrower than its row, or shares the row with one that is.
@@ -229,7 +229,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	if got := strings.Count(strip, hoverBg()); got != 1 {
 		t.Fatalf("hovering one picture lit %d things on the tray:\n%q", got, strip)
 	}
-	if !strings.Contains(strip, a.pal.hover(a.pal.dim(labels[1]), 0)) {
+	if !strings.Contains(strip, a.pal.cursor(a.pal.dim(labels[1]), 0)) {
 		t.Fatalf("the wrong chip lit:\n%q", strip)
 	}
 }
