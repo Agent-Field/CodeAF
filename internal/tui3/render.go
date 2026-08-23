@@ -2482,6 +2482,12 @@ func (a *app) hintWord() string {
 		return parkedHint[1]
 	case a.state == stateWorking:
 		return "esc interrupt"
+	case a.spell.asking:
+		// THE EXPANSION IS OUT. The slot the chord was named in is where the
+		// spinner for it belongs — the person pressed a key at the end of this
+		// line and this is the line answering (spellout.go). It ranks above the two
+		// offers below because it is not an offer: it is something happening.
+		return a.spellWorkingWord()
 	case a.standMarkOffered():
 		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the chord that makes
 		// it one (standmark.go). It ranks HERE — under the running turn, over the
@@ -2494,6 +2500,18 @@ func (a *app) hintWord() string {
 		// the slot it already carries — so a draft that starts looking like a rule
 		// changes one word at the end of a line and moves nothing.
 		return standMarkHint
+	case a.spellOffered():
+		// AND THE DRAFT LOOKS LIKE SOMETHING TO BUILD, with room left to say what
+		// it means, so the slot offers to spell it out (spellout.go). It ranks
+		// directly UNDER the standing hint because these two are the only lines
+		// here that are about the sentence being typed rather than about a state
+		// the surface is in — but the sharing itself is decided in
+		// [app.spellOffered], which answers no while the standing hint is up, so
+		// this ordering is a statement of the same rule and never a second one.
+		//
+		// It costs no rows, for the reason the line above it costs none: this is
+		// the legend, which is on the frame in every state.
+		return spellOutHint
 	case a.railAway && a.railAvail():
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
 		// [app.railStow]). It ranks LAST, under every state above it, because it is

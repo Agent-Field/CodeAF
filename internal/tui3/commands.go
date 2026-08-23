@@ -650,6 +650,11 @@ func helpText(file string) string {
 		// goes, and nothing else on the screen names it until a draft happens to
 		// look like a rule.
 		standMarkKey+"     keep this true · a standing order's card, never work done once",
+		// SPELL IT OUT (spellout.go), on this sheet for the line above's reason:
+		// it is about the sentence in the box rather than about the screen, and
+		// nothing else names it until a draft happens to look like something to
+		// build.
+		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
