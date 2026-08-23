@@ -112,8 +112,9 @@ func TestTheTaskLinkGrammarRecognizesOnlyWhatNamesATask(t *testing.T) {
 	}
 }
 
-// CODE IS NOT PROSE AND GETS NO LINKS — both ways code reaches a row: the fenced
-// block behind its gutter, and the inline span on the raised plane.
+// CODE IS NOT PROSE AND GETS NO LINKS — both ways task-shaped code reaches a
+// row: the fenced block behind its gutter, and the non-path inline span on the
+// raised plane.
 func TestTaskLinksSkipCode(t *testing.T) {
 	look := func(uint64) (string, bool) { return "Fix the nil-map", true }
 	pal := newPalette(tokens.ANSI256, false)

@@ -42,6 +42,10 @@ type Options struct {
 	// Styler paints every cell. Nil renders unpainted text — the honest
 	// headless default, and exactly what a NoColor profile would draw anyway.
 	Styler *tokens.Styler
+	// PlainCodeSpan reports whether an inline code span already has a visible
+	// mark supplied by the caller and must therefore stay off the raised plane.
+	// Nil means every inline code span uses prose's ordinary plane.
+	PlainCodeSpan func(string) bool
 }
 
 func (o Options) normalized() Options {
