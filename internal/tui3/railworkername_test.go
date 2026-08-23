@@ -69,3 +69,39 @@ func TestARunSaysItIsFormingWhileItHasNothingToShowYet(t *testing.T) {
 		t.Fatalf("the worker never reached the rail:\n%s", drawn)
 	}
 }
+
+// AND A WORKER WHOSE NAME HAS NOT LANDED YET IS DRAWN AS THIS SURFACE'S OWN
+// WORD FOR ONE, never as the id the engine filed it under.
+//
+// The screen behind this is the second one: a planner numbered its own nodes
+// `r1` … `r7`, so a run's whole family stood on the rail under the machine's
+// filing. The engine now sends a nameless row rather than the id and names it a
+// moment later from its small namer (internal/session's taskname.go), which is
+// the same two-publish shape an admitted task has always arrived under — the row
+// first, the name when it lands.
+func TestAWorkerWaitingForItsNameIsDrawnAsATaskAndNotAnId(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "competitive intelligence on the three vendors", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "", session.TaskRunning, session.TaskNotice{Parent: 1, Node: "r1"}))
+	railKinship(a, 1, 2)
+
+	drawn := strings.Join(railText(a, a.viewHeight()), "\n")
+	if strings.Contains(drawn, "r1") {
+		t.Fatalf("the engine's own filing reached the rail:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, taskIDWord(2)) {
+		t.Fatalf("a worker with no name yet is drawn as something else:\n%s", drawn)
+	}
+
+	// AND THE NAME LANDING IS THE ROW. Nothing about the work moved — the same
+	// state arrives again with three more words on it — and the column reads the
+	// name from there on.
+	a.taskUpdate(update(2, "vendor pricing", session.TaskRunning, session.TaskNotice{Parent: 1, Node: "r1"}))
+	drawn = strings.Join(railText(a, a.viewHeight()), "\n")
+	if !strings.Contains(drawn, "vendor pricing") {
+		t.Fatalf("the name never reached the rail:\n%s", drawn)
+	}
+	if strings.Contains(drawn, taskIDWord(2)) {
+		t.Fatalf("the row is still drawn as %q with its name in hand:\n%s", taskIDWord(2), drawn)
+	}
+}

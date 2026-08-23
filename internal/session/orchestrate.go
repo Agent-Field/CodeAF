@@ -191,6 +191,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 			})
 		},
 		OnNodes: family.upsert,
+		// AND A NODE THE PLANNER DID NOT NAME IS NAMED BY THE SAME SMALL MODEL
+		// EVERYTHING ELSE IS. The law asks the planner for a title on the call it
+		// adds the node, which is the name arriving on a call somebody is already
+		// paying for; this is what happens when it does not, and it is deliberately
+		// not a second namer (taskname.go's [orchestrateFamily.nameWorker]).
+		Name: family.nameWorker,
 	})
 	planner.orch = run
 
@@ -1372,6 +1378,14 @@ type orchestrateFamily struct {
 	// dropped and never had a goal in its hand, and a snapshot node whose Goal
 	// came back empty. Both now say the name this map remembers.
 	names map[string]string
+	// drew is the title each row was last PUBLISHED under, and it is a second map
+	// rather than a reading of names because the two answer different questions:
+	// names is what this node is called, drew is what a surface has been told it
+	// is called. A run's namer answers a second or two after a node is admitted
+	// (internal/orchestrate's [orchestrate.Options.Name]), and the difference
+	// between those two strings is the whole of how [orchestrateFamily.claim]
+	// knows a row needs redrawing when nothing about the work itself moved.
+	drew map[string]string
 	// born counts the node rows this family has ever minted, and formed says the
 	// first amendment has landed and been published.
 	//
@@ -1409,6 +1423,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		ids:     make(map[string]uint64, 8),
 		said:    make(map[string]TaskState, 8),
 		names:   make(map[string]string, 8),
+		drew:    make(map[string]string, 8),
 	}
 	a.emitTaskUpdate(TaskNotice{
 		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
@@ -1460,8 +1475,15 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 	for _, node := range nodes {
 		live[node.ID] = true
 		state, stopped := orchestrateTaskState(node.State)
-		id, changed := f.claim(node.ID, state)
-		if !changed {
+		// THE NAME IS READ OFF THE NODE AND NOWHERE ELSE. The frontier settles it
+		// once, at the one place it is written (internal/orchestrate's apply), and
+		// a name the run's namer lands afterwards lands on that same field — so a
+		// row rebuilt from the id here would be a second answer that never learns
+		// what the first one did, which is precisely how `r1` stayed on a rail
+		// while the node behind it was called something a person could read.
+		title := f.name(node.ID, node.Title)
+		id, moved, renamed := f.claim(node.ID, state, title)
+		if !moved && !renamed {
 			continue
 		}
 		f.agent.emitTaskUpdate(TaskNotice{
@@ -1469,11 +1491,12 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			Run:    f.run,
 			Node:   node.ID,
 			Parent: f.root,
-			// THE NAME IS NEVER PUBLISHED EMPTY. A snapshot whose node came back
-			// nameless — an amendment mid-flight, a planner that answered without
-			// the key — would otherwise hand a surface a row it can only call
-			// "task 19" ([orchestrateFamily.names] says the rest).
-			Title:   f.name(node.ID, orchestrate.NodeTitle(node.Node)),
+			// THE NAME IS NEVER PUBLISHED EMPTY ONCE THERE IS ONE. A snapshot whose
+			// node came back nameless — an amendment mid-flight, a namer still out —
+			// keeps the name the row was last drawn under, and a surface draws its own
+			// answer for a row nobody has named yet ([orchestrateFamily.names] says
+			// the rest).
+			Title:   title,
 			State:   state,
 			Stopped: stopped,
 			// WHAT THIS NODE IS RUNNING ON. It was missing, and it was missing on
@@ -1486,7 +1509,11 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			Report:  orchestrateNodeReport(node),
 			CostUSD: node.Cost,
 		})
-		if state.settled() {
+		// AND THE PROJECT'S RECORD IS WRITTEN ON THE MOVE AND NEVER ON THE RENAME.
+		// A settled state reaches the append-only index exactly once; a name that
+		// arrived after the work landed is a row already filed, and filing it again
+		// would be two rows for one node in a person's history.
+		if moved && state.settled() {
 			f.recordNode(id, node, state)
 		}
 	}
@@ -1566,7 +1593,17 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 	// under its title (task_index.go). Home's cards draw the Label and fall back
 	// to the Title, so a row built from the goal put a paragraph of second-person
 	// brief where a card wanted two words.
-	title := f.name(node.ID, orchestrate.NodeTitle(node.Node))
+	title := f.name(node.ID, node.Title)
+	if title == "" {
+		// AND THE ID IS THE LAST RESORT HERE AND ONLY HERE. A live row that has no
+		// name yet is drawn as nothing and renamed a second later, because a person
+		// is looking at it and the id would be a lie dressed as an answer; this row
+		// is the project's permanent record, written once, at the moment the work
+		// landed — and a node that failed in the second before its namer answered
+		// would otherwise be dropped from the index entirely (an entry with no title
+		// is not written, task_index.go). The machine's filing beats no record.
+		title = orchestrate.NodeTitle(node.Node)
+	}
 	f.agent.recordTaskIndexEntry(TaskIndexEntry{
 		ID:            strconv.FormatUint(id, 10),
 		Parent:        strconv.FormatUint(f.root, 10),
@@ -1582,16 +1619,19 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 	})
 }
 
-// name is what one node of this run is CALLED: the two or three words the
-// planner named it with ([orchestrate.NodeTitle]), or the last name it was
-// published under when this snapshot has none.
+// name is what one node of this run is CALLED: the node's own title — the one
+// field the frontier settles ([orchestrate.Node.Title]) — or the last name it
+// was published under when this snapshot has none.
 //
 // THE NAME IS NOT CUT OUT OF THE GOAL, and that is the whole of what this
 // function used to get wrong. A planned node's goal is its whole world, written
 // to a worker who can see nothing else, so law 4 has the planner open it by
 // telling that worker what it is — and a title cut from its first line named
 // every worker of a nine-way run "You are a". The planner is asked for a name
-// now, and a node that arrives without one is named from its id.
+// now, a node that arrives without one is named by the same small model every
+// other piece of work in this package is named by (taskname.go), and a node
+// whose namer has not answered yet is published with NO name rather than with
+// the id it was filed under.
 //
 // It remembers as it answers, which is why it is one function and not two: every
 // publish goes through here, so the name a row was last given is always the name
@@ -1610,14 +1650,22 @@ func (f *orchestrateFamily) name(node, title string) string {
 	return title
 }
 
-// claim is the id for one node and whether this state is news. The mint and the
-// de-dup are one critical section because a publish can arrive from any of the
-// run's goroutines, and two of them racing here would be two rows for one node.
+// claim is the id for one node and whether there is anything to say about it:
+// whether it MOVED, and whether it was RENAMED. The mint and the de-dup are one
+// critical section because a publish can arrive from any of the run's
+// goroutines, and two of them racing here would be two rows for one node.
+//
+// THE TWO ANSWERS ARE SEPARATE BECAUSE THEY BUY DIFFERENT THINGS. A move is news
+// a surface draws AND a landing the project's index records; a rename is news a
+// surface draws and nothing else — the run's namer answers a second or two after
+// the node was admitted, and a node sitting on the frontier behind its needs
+// would otherwise wait for its next transition to learn its own name, which for
+// the last node of a wide run is the whole run.
 //
 // IT IS ALSO WHERE A WORKER'S EXISTENCE IS COUNTED, because this is the one
 // place that ever learns it, and it learns it once — under the lock that makes
 // it once ([orchestrateFamily.formingLocked] is what reads the count).
-func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
+func (f *orchestrateFamily) claim(node string, state TaskState, title string) (id uint64, moved, renamed bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	id, known := f.ids[node]
@@ -1626,11 +1674,17 @@ func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
 		f.ids[node] = id
 		f.born++
 	}
+	if f.drew == nil {
+		f.drew = make(map[string]string, 8)
+	}
+	drawn, everDrawn := f.drew[node]
+	renamed = everDrawn && drawn != title
+	f.drew[node] = title
 	if said, seen := f.said[node]; seen && said == state {
-		return id, false
+		return id, false, renamed
 	}
 	f.said[node] = state
-	return id, true
+	return id, true, renamed
 }
 
 // retire settles the rows of nodes that have LEFT THE GRAPH. An amendment that

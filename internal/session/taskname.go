@@ -53,12 +53,22 @@ package session
 //
 // WHAT IS DELIBERATELY NOT NAMED. A sub-harness design node (TaskKindHarness)
 // keeps the title harness_task.go gives it, because its row is read as a design
-// and not as a task. And an adaptive run's INNER nodes are not graph nodes at
-// all — orchestrate.go publishes those rows itself — so they are named the same
-// way the first property above describes: the planner is asked for each node's
-// name on the call it adds the node (internal/orchestrate's [orchestrate.Node]
-// Title), which is again a name arriving on a call somebody was already paying
-// for, and one this package never has to make a second call to replace.
+// and not as a task.
+//
+// AN ADAPTIVE RUN'S INNER NODES ARE NAMED HERE TOO, at the foot of this file,
+// and they are the reason this file is not only about [TaskGraph.admit]. They
+// are not graph nodes — orchestrate.go publishes those rows itself — so the
+// first property above is where they start: the planner is asked for each
+// node's name on the call it adds the node (internal/orchestrate's
+// [orchestrate.Node] Title), which is a name arriving on a call somebody was
+// already paying for. But a planner is a model, and a model asked for a title
+// answers `{"id": "r1", "goal": …}` often enough that a person watched a live
+// run draw `r1` through `r7` down the rail with `synth` at the foot of them.
+// So the same four properties close over that case as well: a node whose title
+// is missing or is nothing but its own id goes through THE SAME CALL, on the
+// same cheap model, on a goroutine, and its row renames when the answer lands
+// ([orchestrateFamily.nameWorker], and internal/orchestrate's NodeNeedsName for
+// the one generic question that decides it).
 
 import (
 	"context"
@@ -296,13 +306,13 @@ func (g *TaskGraph) rename(node *TaskNode, name string) {
 	}
 }
 
-// ── an adaptive run's own row ───────────────────────────────────────────────
+// ── an adaptive run's own row, and the rows under it ────────────────────────
 //
 // A run is not a node in this package's graph (orchestrate.go says why), so it
-// does not come through [TaskGraph.admit] and gets its name here instead. It is
-// the same call, the same cap and the same silence on failure; what differs is
-// where the answer is written, because a run's row is published by the family
-// rather than read off a spec.
+// does not come through [TaskGraph.admit] and gets its name here instead, and
+// neither do the workers under it. Both are the same call, the same cap and the
+// same silence on failure; what differs is where the answer is written, because
+// a run's rows are published by the family rather than read off a spec.
 
 // nameRun gives the run's own row a name, if its goal is a sentence rather than
 // one. The goal itself is what the namer reads: a run has no gloss and no brief
@@ -347,4 +357,37 @@ func (f *orchestrateFamily) rename(name string) {
 	f.agent.emitTaskUpdate(TaskNotice{
 		ID: root, Run: run, Title: name, State: TaskRunning, Model: model,
 	})
+}
+
+// nameWorker names one node of a run whose planner did not name it. It is
+// [orchestrate.Options.Name], wired at the run's door ([Agent.RunOrchestrate]).
+//
+// IT IS THE SAME DOOR AND NOT A SECOND ONE. Everything that decides what a name
+// is lives in [Agent.taskName] and [cleanTaskName] — the role, the cheap model,
+// the deadline, the refusal of an answer that is a path or the instruction
+// handed back — and a run's workers stand in the same rail column as admitted
+// tasks. A second namer here would be two shapes of name in one list, and the
+// one that changed first would make the other look wrong.
+//
+// THE GOAL IS WHAT IT READS, and that is not a contradiction of the law that a
+// goal is never a name: the namer is being asked to WRITE a name from the work,
+// which is exactly the job, where the defect was a surface CUTTING one off the
+// front of a sentence. What comes back is two or three words about the work; the
+// first three words of the brief are how the brief cleared its throat.
+//
+// IT IS SYNCHRONOUS AND THE CALLER IS NOT. internal/orchestrate calls this on a
+// goroutine of its own with nothing waiting on it, so what this owes is the
+// answer and the deadline, both of which [Agent.taskName] already carries.
+func (f *orchestrateFamily) nameWorker(ctx context.Context, node orchestrate.Node) string {
+	if f == nil || f.agent == nil {
+		return ""
+	}
+	// The gloss a task is named from does not exist for a planned node, so the
+	// front of the brief is the whole subject — clipped to the same figure, since
+	// past the first page everything is detail and three words do not need it.
+	subject := clip(strings.TrimSpace(node.Goal), taskNameBriefClip)
+	if subject == "" {
+		return ""
+	}
+	return f.agent.taskName(ctx, subject)
 }

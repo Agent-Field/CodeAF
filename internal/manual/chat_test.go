@@ -204,6 +204,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who names the workers under a run", "adaptive-runs"},
 		{"what does forming the work mean", "adaptive-runs"},
 		{"nothing happens for a minute after a run starts", "adaptive-runs"},
+		// And a person reading a column of ids. These are asked with the ids
+		// themselves in the question, because that is what the screen handed them.
+		{"my run's rows are called r1 r2 r3", "adaptive-runs"},
+		{"why is a subtask called synth", "adaptive-runs"},
+		{"the tasks under my run have ids instead of names", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
 
