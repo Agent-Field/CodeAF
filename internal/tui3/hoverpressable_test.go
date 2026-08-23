@@ -248,40 +248,46 @@ func roomRowY(a *app, at int) int {
 	return y
 }
 
-// A CHIP ON A LAYER LIGHTS ALONE, for the strip's own reason: the wide tier puts
-// a whole layer on one line, and every chip on it is a different node's card.
-func TestARunPagesChipLightsWithoutLightingItsLayer(t *testing.T) {
+// A NODE IS A ROW AND THE ROW LIGHTS ALONE. The old wide tier put a whole
+// layer of chips on one line — ids without goals, strokes without meaning —
+// and this test used to guard that arrangement's hover. The page draws one
+// node per row now, its goal beside its id and its needs on the row's dim
+// tail, so hover is the ordinary full-width band and can never light a
+// neighbour.
+func TestARunPagesNodeRowsCarryGoalsAndLightAlone(t *testing.T) {
 	a, _ := orchApp(t, orchRun4())
 	rows := a.roomRows(a.bodyWidth())
 	run := a.orchOf()
 
-	at, spots := -1, []orchSpot(nil)
 	for i := range rows {
 		if i < len(run.spots) && len(run.spots[i]) > 1 {
-			at, spots = i, run.spots[i]
+			t.Fatalf("row %d carries %d nodes; every node has its own row now", i, len(run.spots[i]))
+		}
+	}
+	page := roomText(a)
+	for _, want := range []string{orchWorkHead, "read the three RFCs", "needs rfcs client"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page never says %q:\n%s", want, page)
+		}
+	}
+
+	at := -1
+	for i := range rows {
+		if i < len(run.spots) && len(run.spots[i]) == 1 && run.spots[i][0].node == "write" {
+			at = i
 			break
 		}
 	}
 	if at < 0 {
-		t.Fatalf("no row of the page carries two chips:\n%s", roomText(a))
+		t.Fatalf("no row carries the write node:\n%s", page)
 	}
 	y := roomRowY(a, at)
-
-	drive(t, a, motionTo(spots[0].span.from+1, y))
-	if !a.hoveringOrch(spots[0].key()) {
-		t.Fatalf("the pointer on the first chip recorded %+v", a.hot)
-	}
-	line := a.roomRows(a.bodyWidth())[at].text
-	if got := strings.Count(line, hoverBg()); got != 1 {
-		t.Fatalf("hovering one chip lit %d things on the layer:\n%q", got, line)
-	}
-
-	drive(t, a, motionTo(spots[1].span.from+1, y))
-	if !a.hoveringOrch(spots[1].key()) {
-		t.Fatalf("the pointer on the second chip recorded %+v", a.hot)
+	drive(t, a, motionTo(4, y))
+	if !a.hoveringOrch(run.spots[at][0].key()) {
+		t.Fatalf("the pointer on the write row recorded %+v", a.hot)
 	}
 	if got := strings.Count(a.roomRows(a.bodyWidth())[at].text, hoverBg()); got != 1 {
-		t.Fatalf("moving to the neighbouring chip lit %d things", got)
+		t.Fatalf("hovering one node lit %d things on its row", got)
 	}
 }
 
