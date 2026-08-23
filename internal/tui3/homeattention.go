@@ -343,12 +343,14 @@ func (h *homeView) attentionNeeds() []homeLine {
 			// [taskStateWord] owns the words) and it is as stopped on a person as
 			// any card: nothing else will happen to that work until somebody reads
 			// it. The row is named by the TASK and its door is the conversation
-			// that ran it, which is where looking happens.
+			// that ran it, ARRIVING ON THAT TASK'S OWN RECORD — which is where
+			// looking happens, and what the bare conversation could not be in a
+			// session with forty-five other pieces of work in it.
 			for _, entry := range row.Tasks.Rows {
 				if entry.Status != string(session.TaskUnverified) {
 					continue
 				}
-				rows = append(rows, attentionChat(project, row, &homeAttention{
+				rows = append(rows, attentionTask(project, row, entry, &homeAttention{
 					word: attentionNeedsWord, name: homeTaskText(entry),
 					at:   entry.EndedAt,
 					lead: homeLandedWord, leadInk: attentionLanded,
@@ -431,6 +433,20 @@ func attentionChat(project session.Project, row session.SessionRow, zone *homeAt
 	return homeLine{
 		kind: homeSession, project: project.Name, dir: project.Dir, row: row, zone: zone,
 	}
+}
+
+// attentionTask is one TASK INSIDE a conversation as a zone row: the line
+// [attentionChat] builds, carrying the record row the zone named it after so
+// that pressing it arrives on that piece of work rather than on the live edge of
+// the conversation that ran it ([app.homeLandOnTask], home.go).
+//
+// THE ENTRY IS TAKEN BY VALUE AND ITS ADDRESS IS THIS ROW'S OWN. The rows are
+// gathered by walking a session's index, and a pointer into that walk would be
+// a row whose door aimed at whichever task the loop finished on.
+func attentionTask(project session.Project, row session.SessionRow, entry session.TaskIndexEntry, zone *homeAttention) homeLine {
+	line := attentionChat(project, row, zone)
+	line.task = &entry
+	return line
 }
 
 // attentionItem is one standing item as a zone row, on the item row's own line

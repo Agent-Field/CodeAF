@@ -1791,6 +1791,13 @@ its row reads `finished — look it over`.
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
+**It also stands on home**, in the `needs you` strip, named after the task and saying
+`landed` and how long it has been waiting — from any project, in any conversation, whether
+or not that conversation is open. Pressing that row opens the conversation that ran the
+work **with the task's own record card in front of it**, so you land on the thing you
+pressed rather than at the live edge of the transcript. It stays on the strip for as long
+as it takes: nothing ages it out, and only your decision moves it.
+
 The landing card then asks, in as many words, and offers the answers under it:
 
 ```

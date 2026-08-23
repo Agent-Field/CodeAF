@@ -495,6 +495,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},
 		{"can I click keeping an eye on 2", "standing-orders"},
+		// The wave that gave home's landed rows an aim. Somebody looking at a
+		// `needs you` row that has sat for four days asks two things — what does
+		// pressing it actually show me, and how do I make it go away — and both
+		// used to be asked in front of a door that opened a conversation with no
+		// trace of the task the row was named after.
+		{"I clicked the needs you row and it just opened the chat", "home"},
+		{"what opens when I press a landed row on home", "home"},
+		{"the needs you row has been there for days", "home"},
+		{"how do I clear a needs your look row", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

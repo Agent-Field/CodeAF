@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -274,6 +276,167 @@ func TestAConversationMidTurnIsMovingWithNoTasksAtAll(t *testing.T) {
 	a.openHome()
 	if names := zoneNames(a, attentionMovingWord); len(names) != 1 || names[0] != "Pricing Research" {
 		t.Fatalf("`moving` reads %v, want the conversation mid-turn:\n%s", names, homeText(a))
+	}
+}
+
+// zoneRowNamed is the index of the `needs you` row a zone gave a given name,
+// which is the only handle a test has on ONE row of a strip.
+func zoneRowNamed(t *testing.T, a *app, name string) int {
+	t.Helper()
+	for at, line := range a.home.lines {
+		if attentionWordOf(line) == attentionNeedsWord && line.zone.name == name {
+			return at
+		}
+	}
+	t.Fatalf("`needs you` has no row named %q:\n%s", name, homeText(a))
+	return -1
+}
+
+// A NEEDS-YOU ROW NAMED AFTER A PIECE OF WORK LANDS ON THAT PIECE OF WORK.
+//
+// This is the defect the door was fixed for. A conversation that has run
+// forty-five tasks grows a `needs you` row per landing nobody has judged, each
+// named after its task — and the door used to open the bare conversation, which
+// put a person on the live edge of a transcript with no trace of the thing the
+// row they pressed was about. The row knew which task it stood for; the line did
+// not carry it, so the door could not aim.
+func TestANeedsYouRowForLandedWorkOpensThatWorksRecord(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	other := lab.session("-tmp-beta", "bbbb000000000001", "anthropic ipo insights",
+		lab.project("-tmp-beta"), now.Add(-5*24*time.Hour))
+	lab.task("-tmp-beta", session.TaskIndexEntry{
+		ID: "7", SessionID: "bbbb000000000001", Title: "illustrate chapter two",
+		Status: string(session.TaskUnverified), EndedAt: now.Add(-4 * 24 * time.Hour),
+		Outcome: "four plates, one per scene", FilesChanged: 4,
+	})
+	// A SECOND LANDING IN THE SAME CONVERSATION, so that arriving on the right
+	// one is a claim with something to be wrong about.
+	lab.task("-tmp-beta", session.TaskIndexEntry{
+		ID: "8", SessionID: "bbbb000000000001", Title: "generate the avengers quiz",
+		Status: string(session.TaskUnverified), EndedAt: now.Add(-3 * 24 * time.Hour),
+	})
+
+	a := lab.app(mine)
+	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.openHome()
+
+	// THE ROW STILL READS HONESTLY AT A GLANCE: the lead says the work landed,
+	// and the age tail says how long it has been standing there.
+	a.home.cursor = zoneRowNamed(t, a, "illustrate chapter two")
+	width, _ := a.size()
+	row := ansi.Strip(a.attentionRow(a.home.lines[a.home.cursor], a.home.cursor, width, a.pal))
+	for _, word := range []string{homeLandedWord, "4d"} {
+		if !strings.Contains(row, word) {
+			t.Fatalf("the landed row lost %q: %q", word, row)
+		}
+	}
+
+	runCmd(a.homeEnter())
+
+	if a.home.open {
+		t.Fatalf("the row left home up saying %q", a.home.msg)
+	}
+	if a.file != other {
+		t.Fatalf("the row opened %q, want the conversation that ran the task %q", a.file, other)
+	}
+	if !a.taskSheet.open || !a.taskSheet.detailOn {
+		t.Fatalf("the row landed on the bare conversation: page open %v, card %v",
+			a.taskSheet.open, a.taskSheet.detailOn)
+	}
+	if got := a.taskSheet.detail; got.ID != "7" || got.SessionID != "bbbb000000000001" {
+		t.Fatalf("the card is standing on task %q of %q, want the row's own", got.ID, got.SessionID)
+	}
+	// AND THE CARD HAS THE WORK IN FRONT OF IT — what it was called, what came of
+	// it, and what it wrote — off the record row the line carried, with no second
+	// reading of anything.
+	card := ansi.Strip(strings.Join(a.taskCardBody(a.taskSheet.detail, width-2), "\n"))
+	for _, word := range []string{"four plates, one per scene", "4" + taskCardFilesMany} {
+		if !strings.Contains(card, word) {
+			t.Fatalf("the card does not say %q:\n%s", word, card)
+		}
+	}
+	if title := ansi.Strip(a.taskCardTitle(width, a.taskSheet.detail)); !strings.Contains(title, "illustrate chapter two") {
+		t.Fatalf("the card is not headed by the task the row named: %q", title)
+	}
+}
+
+// ONE DOOR, BOTH HANDS. A click on the row arrives exactly where enter did,
+// because the pointer's second press is [app.homeEnter] and not a second
+// spelling of it.
+func TestAClickOnALandedNeedsYouRowLandsOnTheSameRecord(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	lab.session("-tmp-beta", "bbbb000000000001", "anthropic ipo insights",
+		lab.project("-tmp-beta"), now.Add(-5*24*time.Hour))
+	lab.task("-tmp-beta", session.TaskIndexEntry{
+		ID: "7", SessionID: "bbbb000000000001", Title: "illustrate chapter two",
+		Status: string(session.TaskUnverified), EndedAt: now.Add(-4 * 24 * time.Hour),
+	})
+
+	a := lab.app(mine)
+	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.openHome()
+
+	at := zoneRowNamed(t, a, "illustrate chapter two")
+	// The first press puts the cursor on the row and the second opens it, which
+	// is this column's two-step for every row it has ([app.homePress]).
+	homeClickAt(t, a, at)
+	homeClickAt(t, a, at)
+
+	if !a.taskSheet.detailOn || a.taskSheet.detail.ID != "7" {
+		t.Fatalf("a click landed on card %q (page open %v), want the row's own task",
+			a.taskSheet.detail.ID, a.taskSheet.open)
+	}
+}
+
+// AND A PLAIN NEEDS-YOU ROW IS THE DOOR IT ALWAYS WAS. A conversation stopped on
+// a question stands for no one piece of work, so it opens the conversation and
+// nothing is raised over it.
+func TestARowThatNamesNoTaskRaisesNoRecordPage(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
+	lab.session("-tmp-beta", "bbbb000000000001", "pricing research",
+		lab.project("-tmp-beta"), now.Add(-time.Hour))
+	lab.asking("-tmp-beta", "bbbb000000000001", consentQuestion(7, "needs your ok to run bash"), now)
+
+	a := lab.app(mine)
+	a.agent = &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.openHome()
+
+	at := zoneRowNamed(t, a, "Pricing Research")
+	if a.home.lines[at].task != nil {
+		t.Fatal("a waiting conversation's row claims to stand for one piece of work")
+	}
+	a.home.cursor = at
+	runCmd(a.homeEnter())
+
+	// A CONVERSATION THAT IS WAITING ON A QUESTION IS A CONVERSATION ANOTHER
+	// WINDOW IS SITTING ON, so the door answers here exactly what it answered
+	// before this lane: the lock is announced and nothing is opened. What matters
+	// for this change is that no record page was raised over a conversation
+	// nobody walked into.
+	if a.home.msg != sessionBusyWord {
+		t.Fatalf("enter on the waiting row said %q, want the lock", a.home.msg)
+	}
+	if a.taskSheet.open {
+		t.Fatal("a refused row raised the record page")
+	}
+	// AND AN ORDINARY ROW IS UNTOUCHED: the conversation opens, and nothing
+	// stands in front of it.
+	quiet := lab.session("-tmp-gamma", "cccc000000000001", "the quiet one",
+		lab.project("-tmp-gamma"), now.Add(-2*time.Hour))
+	a.refreshHome()
+	a.home.point(quiet)
+	runCmd(a.homeEnter())
+	if a.file != quiet {
+		t.Fatalf("an ordinary row opened %q, want %q (%q)", a.file, quiet, a.home.msg)
+	}
+	if a.taskSheet.open {
+		t.Fatal("a row that stands for no one piece of work raised the record page")
 	}
 }
 
