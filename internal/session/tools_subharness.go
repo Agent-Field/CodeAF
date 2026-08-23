@@ -146,7 +146,7 @@ func (a *Agent) proposeSubharnessTool() bare.Tool {
 				return "Nothing was raised: nothing in this conversation matches what " + card.Manifest.Name + " is for, so offering it would be noise. Do the work here, or say in a line that the program exists if you think they would want it.", false, nil
 			}
 			card.Why = "this looks like " + card.Manifest.Name + ": " + reason
-			id, answer, err := a.askSubharnessCard(ctx, card)
+			answer, err := a.askSubharnessCard(ctx, card)
 			if err != nil {
 				return "The card came down before it was answered, so nothing ran.", false, nil
 			}
@@ -157,7 +157,6 @@ func (a *Agent) proposeSubharnessTool() bare.Tool {
 			if err != nil {
 				return card.Manifest.Name + " could not be started: " + err.Error(), true, nil
 			}
-			_ = id
 			return fmt.Sprintf("task %d is running %s: %s", task, card.Manifest.Name, title) +
 				"\nIt runs as that task, beside this conversation: the person can open task " +
 				strconv.FormatUint(task, 10) +
@@ -294,13 +293,13 @@ type subharnessConsent struct {
 // turn's own context, and this one has a window whose expiry is a NO. Both end
 // with nothing having run, which is the only ending this door is allowed to
 // reach without an answer.
-func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (uint64, subharnessConsent, error) {
+func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (subharnessConsent, error) {
 	answers := make(chan subharnessConsent, 1)
 	carried := card
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return 0, subharnessConsent{}, errAgentClosed
+		return subharnessConsent{}, errAgentClosed
 	}
 	a.subharnessSeq++
 	id := a.subharnessSeq
@@ -331,14 +330,14 @@ func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (uin
 			// becomes an input).
 			answer.input = SubharnessInput(card)
 		}
-		return id, answer, nil
+		return answer, nil
 	case <-timer.C:
 		// NOTHING RAN, and that is the whole of what the clock decides. It is not
 		// a decline the person made and it is not recorded as one; it is the tool
 		// call letting the turn go.
-		return id, subharnessConsent{}, nil
+		return subharnessConsent{}, nil
 	case <-ctx.Done():
-		return id, subharnessConsent{}, ctx.Err()
+		return subharnessConsent{}, ctx.Err()
 	}
 }
 

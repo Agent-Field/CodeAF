@@ -106,7 +106,11 @@ func (a *Agent) reserveSubharnessRun() uint64 { return a.graph().reserve() }
 // whose brief said nothing would be a row nobody can place.
 func (a *Agent) admitSubharnessRun(id uint64, spec *subharnessRunSpec, manifest exec.Manifest) {
 	a.graph().admit(id, taskSpec{
-		title:      subharnessNodeTitle(manifest.Name),
+		title: subharnessNodeTitle(manifest.Name),
+		// IT IS ALREADY NAMED, so the naming pass leaves it alone (taskname.go):
+		// the row says the PROGRAM's own name, which is the only name this work
+		// has, and paying a model call to write a prettier one would be the
+		// harness disagreeing with the registry about what it is running.
 		named:      true,
 		summary:    subharnessNodeSummary(manifest, spec.why),
 		brief:      strings.TrimSpace(manifest.Purpose),
@@ -197,7 +201,16 @@ func (a *Agent) runSubharnessNode(ctx context.Context, node *TaskNode, listed *j
 	// the Env return their own spend and journal it, so folding at each of them
 	// as well would bill the person twice for one call — the same double-count
 	// [Agent.foldHarnessUsage] exists to avoid one lane over.
-	a.foldSubharnessSpend(a.runSpend(result, journal), spec.model)
+	spend := a.runSpend(result, journal)
+	a.foldSubharnessSpend(spend, spec.model)
+	// AND THE NOTE THE NEXT LIST DRAWS. It is written for every ending except
+	// the one that has not happened yet: a run the PROCESS died under has not
+	// finished and has not not-finished, and a note saying either would be this
+	// session answering for a run the next one is going to settle
+	// (task_store.go's interrupt).
+	if ctx.Err() == nil || node.stoppedByPerson() {
+		a.recordSubharnessRun(spec.name, result, runErr, spend)
+	}
 
 	switch {
 	case node.stoppedByPerson():
@@ -262,6 +275,26 @@ func (a *Agent) runSpend(result exec.RunResult, journal *subharnessJournal) exec
 		return result.Spend
 	}
 	return journal.total()
+}
+
+// recordSubharnessRun tells the store how this run went, through the seam the
+// store lane fills ([Config.SubharnessRecordRun]). A build that keeps no history
+// records nothing and draws nothing, which is the same picture as a machine that
+// has run nothing — deliberately.
+//
+// A RUN THAT COULD NOT BE MADE TO HAPPEN IS STILL A RUN THAT WAS TRIED, and it
+// is recorded as unfinished with the error as its reason. A row that stayed
+// silent about it would send somebody to try the same broken program again.
+func (a *Agent) recordSubharnessRun(name string, result exec.RunResult, runErr error, spend exec.Spend) {
+	record := a.config.SubharnessRecordRun
+	if record == nil {
+		return
+	}
+	note := SubharnessRunNote{At: time.Now(), Finished: result.Finished(), Why: result.Incomplete, CostUSD: spend.CostUSD}
+	if runErr != nil {
+		note.Finished, note.Why = false, runErr.Error()
+	}
+	record(name, note)
 }
 
 // landSubharnessNode settles the node with the report a person reads.
