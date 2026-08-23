@@ -1,6 +1,7 @@
 package substore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,6 +28,13 @@ import (
 //
 // The file is markdown because a person reads it. It is the same file whether it
 // was written by a run, by an editor, or by a `git pull` over a project store.
+//
+// [Memory.Remember] and [Memory.Recall] TAKE A CONTEXT THEY BARELY USE, and
+// that is deliberate: they are exec.Env.Remember and exec.Env.Recall, spelled
+// the way the contract spells them, so the runtime hands this value straight to
+// a bundle instead of wrapping it in an adapter whose only job is to drop an
+// argument. An interface a store satisfies by having the methods is one nobody
+// has to keep in sync.
 type Memory struct {
 	path string
 	// seed is the head version's memory.md, copied in the first time this file is
@@ -67,7 +75,10 @@ func (m *Memory) Path() string { return m.path }
 // that edits or forgets, because a program that could quietly rewrite its own
 // history is a program whose recall nobody can trust. A person editing the file
 // is a different matter: it is theirs, it is markdown, and nothing here objects.
-func (m *Memory) Remember(note string) error {
+func (m *Memory) Remember(ctx context.Context, note string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	note = strings.TrimSpace(note)
 	if note == "" {
 		return nil
@@ -101,7 +112,10 @@ func (m *Memory) Remember(note string) error {
 // call is perfectly able to read fifteen lines and decide which two matter. An
 // empty query is everything, which is what a program asking "what do I know about
 // this domain" means.
-func (m *Memory) Recall(query string) ([]exec.Note, error) {
+func (m *Memory) Recall(ctx context.Context, query string) ([]exec.Note, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	notes, err := m.Notes()
 	if err != nil {
 		return nil, err
