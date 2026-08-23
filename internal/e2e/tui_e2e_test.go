@@ -243,16 +243,20 @@ func testAskHere(t *testing.T) {
 	waiting = r.capture()
 	seen = append(seen, waiting)
 	t.Logf("the card arrived and the row tail reads `▲ waiting on you`:\n%s", waiting)
-	for _, chip := range []string{"1 yes, set it up", "2 change when"} {
+	for _, chip := range []string{"1 yes, set it up", "2 change when or where"} {
 		if !strings.Contains(waiting, chip) {
 			t.Errorf("the card is missing the chip %q", chip)
 		}
 	}
-	// THE CARD DOES NOT ALWAYS HAVE THREE. A one-off reminder offers no
-	// `once, not standing` — "do it once, now" says the wrong thing at the
+	// THE CARD DOES NOT ALWAYS HAVE THREE NUMBERED ANSWERS. A one-off reminder
+	// offers no `just once` — "do it once, now" says the wrong thing at the
 	// wrong moment — so the third chip is recorded, never demanded
-	// (standing.go's standAnswerWords holds the rule).
-	if strings.Contains(waiting, "3 once, not standing") {
+	// (standing.go's standAnswerWords holds the rule). The way out is not on
+	// that footing: `0 no` is on every card there is.
+	if !strings.Contains(waiting, "0 no") {
+		t.Errorf("the card draws no visible way to say no:\n%s", waiting)
+	}
+	if strings.Contains(waiting, "3 just once") {
 		t.Logf("the card offered all three answers")
 	} else {
 		t.Logf("the card offered two answers — the engine named no `once` option for a one-off reminder: %s",

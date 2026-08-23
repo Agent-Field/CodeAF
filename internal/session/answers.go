@@ -112,17 +112,24 @@ type AnswerOption struct {
 // the chips are drawn.
 //
 // THE KEYS ARE THE CARD'S OWN DIGITS WHERE THE CARD HAS DIGITS. The standing
-// card is answered 1 yes, 2 change when, 3 once in its own window (tui3's
-// standing.go), and 1 and 3 mean the same here — the hand that learned them
-// there is right here. `2 change when` is deliberately NOT on this list: it is a
-// request for a text box, and there is no box on the row this is drawn beside.
+// card is answered 1 yes, 2 change when or where, 3 just once in its own window
+// (tui3's standing.go), and 1 and 3 mean the same here — the hand that learned
+// them there is right here. `2 change when or where` is deliberately NOT on this
+// list: it is a request for a text box, and there is no box on the row this is
+// drawn beside.
+//
+// AND THE WORDS ARE THE CARD'S OWN TOO. A person reading `just once` on the card
+// and `once, not standing` on home would be reading two names for one answer,
+// and the second of them is written in this build's vocabulary rather than
+// theirs — "standing" is a word they never said. One answer, one spelling,
+// wherever it is drawn.
 //
 // AND `0 not set up` IS THE OUTRIGHT NO, ON EVERY SURFACE THAT DRAWS THE CARD.
-// In the conversation the no was `esc`, which home does not have to give — esc
-// there closes home — so a standing card met from home used to offer a yes, a
-// once, and no way at all to say no; the only ways out were opening the window
-// or leaving the question standing. [StandingNoKey] is why the key is a `0` and
-// not a fourth digit.
+// In the conversation the no was `esc` alone, which home does not have to give —
+// esc there closes home — so a standing card met from home used to offer a yes,
+// a once, and no way at all to say no; the only ways out were opening the window
+// or leaving the question open. [StandingNoKey] is why the key is a `0` and not
+// a fourth digit.
 //
 // THIS IS THE ANSWER FOR THE KIND AND NOT FOR AN ITEM. A one-off reminder's
 // card offers no `3` at all, because doing that action "now" is meaningless —
@@ -149,7 +156,7 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 	case QuestionStanding:
 		return []AnswerOption{
 			{Key: "1", Label: "yes"},
-			{Key: StandingOnceKey, Label: "once, not standing"},
+			{Key: StandingOnceKey, Label: "just once"},
 			{Key: StandingNoKey, Label: "not set up"},
 		}
 	}
@@ -175,10 +182,14 @@ const StandingOnceKey = "3"
 // [AnswerOption.Key] is a digit on every kind. `0` is off the end of the chip
 // numbering in both directions, is one keystroke, and is nowhere near `1`.
 //
-// IT IS NOT A CHIP IN THE CONVERSATION'S OWN CARD, where the row is numbered by
-// position and `esc` has always been the no. It is a bare key there, named in
-// the hint beside `esc` (tui3's [standProposalHint]), and a drawn chip on home
-// and in the errand pane, which are the two places that have no esc to spare.
+// AND IT IS A DRAWN CHIP EVERYWHERE, the conversation's own card included. It
+// was a bare key there for a wave — `esc` had always been the no, and the `0`
+// was named only in the hint slot under the message box — and a person meeting
+// their first card said plainly that they could see no way to cancel. A gesture
+// whose only documentation is documentation is the one trade
+// docs/DESIGN-LANGUAGE.md refuses, so the decline is now a chip a person can see
+// and click on all three surfaces, and `esc` goes on doing the same thing beside
+// it in the one place there is an esc to spare.
 const StandingNoKey = "0"
 
 // StandingOnceIsAnAnswer reports whether "once, not standing" MEANS anything
