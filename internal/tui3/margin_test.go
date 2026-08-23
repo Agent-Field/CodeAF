@@ -274,6 +274,26 @@ func TestStandingWithWordsGoesThroughTheMarkedDoor(t *testing.T) {
 	}
 }
 
+// AND THE DOOR'S OWN GESTURE IS THAT ROAD FROM THE FIRST PRESS. The `+` row
+// types `/standing ` and stops, which leaves the half that decides what the
+// command DOES to the person — so the whole of what the door promises is only
+// kept if the sentence typed after it still reaches the marked door. This is the
+// press, the typing and the enter, end to end, because the two halves have been
+// asserted apart from each other and a person only ever does them together.
+func TestTheStandingDoorsSentenceReachesTheMarkedDoor(t *testing.T) {
+	a, agent := marginApp(t)
+	a.stands.Items = func(string) []standing.Item { return nil }
+	_, y := marginLine(t, a, func(l railLine) bool { return l.door == marginStandType })
+	pressMargin(t, a, y)
+	typeLine(t, a, "keep the tests green")
+	if len(agent.marked) != 1 || agent.marked[0] != "keep the tests green" {
+		t.Fatalf("the door's sentence did not reach the marked door: %v", agent.marked)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("the box kept the sentence it sent: %q", a.input.String())
+	}
+}
+
 // AND THE BARE FORM IS UNCHANGED: it is the page, which is what nearly everybody
 // types the word for.
 func TestBareStandingStillOpensThePage(t *testing.T) {

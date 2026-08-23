@@ -1689,6 +1689,21 @@ screen would show you an answer the model never gave and will never read.
 above the message box exactly as before (see *Keys, typing, and the mouse*); the retry has
 no opinion about it.
 
+## aforge's own lines, and why the same answer is not repeated when you ask twice
+
+Some lines in the conversation are not the model's. They lead with a dim `· ` and are
+aforge answering you directly: the tables `/status`, `/cost` and `/help` print, an
+`exported · …` receipt, a refusal, and the one-line answers a command gives when there is
+nothing for it to open — `nothing made yet.` from `/files`, or
+`nothing stands here yet — say what should always be true, and I'll hold it.` from
+`/standing`. None of them is ever sent to the model.
+
+**The same line twice running is one line.** Press a command four times because the first
+press looked like it did nothing, and you get one copy of its answer rather than four
+stacked identical lines; the conversation scrolls back down to the line that is already
+there. If anything at all lands in between — a reply, a tool call, a different line of
+aforge's own — the answer is written again, in its new place.
+
 ## The dim line under a finished turn
 
 Under each finished turn there is a dim right-aligned receipt:

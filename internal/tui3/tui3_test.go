@@ -965,6 +965,45 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 }
 
+// notesSaying counts the lines in the note lane whose words are exactly this.
+// It reads the transcript rather than the screen because the question is how
+// many times the sentence was WRITTEN — a long note wraps to four rows at a test
+// frame's width, and counting rows would answer about the terminal.
+func notesSaying(a *app, text string) int {
+	n := 0
+	for i := range a.entries {
+		if a.entries[i].kind == entryNote && a.entries[i].text == text {
+			n++
+		}
+	}
+	return n
+}
+
+// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE (app.go's [app.note]).
+//
+// A person who presses a command four times because they are not sure it
+// registered used to get four identical lines stacked in the transcript, which
+// is the screen counting how many times it had nothing to report. The repeat is
+// answered by the line that is already there.
+func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	const unknown = "unknown command: /nonsense · try /help"
+	for range 4 {
+		typeLine(t, a, "/nonsense")
+	}
+	if n := notesSaying(a, unknown); n != 1 {
+		t.Fatalf("four presses left %d copies of %q in the transcript", n, unknown)
+	}
+	// AND IT IS SAID AGAIN IN A NEW PLACE. Something else landing in between puts
+	// the repeat under different words, where it is news rather than a stutter —
+	// so this asks about the last entry and never about the whole transcript.
+	typeLine(t, a, "/cost")
+	typeLine(t, a, "/nonsense")
+	if n := notesSaying(a, unknown); n != 2 {
+		t.Fatalf("the answer after a line of its own was swallowed: %d copies of %q", n, unknown)
+	}
+}
+
 func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
@@ -1035,8 +1074,10 @@ func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 func TestScrollSticksToTheBottomUntilTheReaderLeaves(t *testing.T) {
 	agent := &fakeAgent{model: "m"}
 	a := newTestApp(agent)
-	for i := 0; i < 40; i++ {
-		a.note("line")
+	// Numbered, because the note lane will not write the same sentence twice
+	// running ([app.note]) and this transcript has to be taller than its window.
+	for i := range 40 {
+		a.note("line " + itoa(i))
 	}
 	if !a.stick {
 		t.Fatal("a surface that never scrolled has to be stuck to the bottom")
