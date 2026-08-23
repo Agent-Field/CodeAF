@@ -290,18 +290,18 @@ func TestPauseAndStopReachTheStore(t *testing.T) {
 	a.openHome()
 	a.home.pointItemForTest("one")
 
-	drive(t, a, key("p"))
+	drive(t, a, key("ctrl+e"))
 	if len(band.saved) != 1 || band.saved[0].Status != standing.StatusPaused {
-		t.Fatalf("p did not pause through the store: %+v", band.saved)
+		t.Fatalf("ctrl+e did not pause through the store: %+v", band.saved)
 	}
 	if !strings.Contains(strings.Join(homeLines(a), "\n"), homeItemPaused) {
 		t.Fatalf("the paused row does not say so:\n%s", strings.Join(homeLines(a), "\n"))
 	}
 
 	a.home.pointItemForTest("one")
-	drive(t, a, key("s"))
+	drive(t, a, key("ctrl+x"))
 	if len(band.saved) != 2 || band.saved[1].Status != standing.StatusRetired {
-		t.Fatalf("s did not stop through the store: %+v", band.saved)
+		t.Fatalf("ctrl+x did not stop through the store: %+v", band.saved)
 	}
 	if band.saved[1].RetiredWhy != homeStoppedWhy {
 		t.Fatalf("a stopped item recorded %q, want %q", band.saved[1].RetiredWhy, homeStoppedWhy)
@@ -314,7 +314,7 @@ func TestPauseAndStopReachTheStore(t *testing.T) {
 	}}
 	b.openHome()
 	b.home.pointItemForTest("one")
-	drive(t, b, key("p"))
+	drive(t, b, key("ctrl+e"))
 	if b.home.msg != homeItemNoStore {
 		t.Fatalf("a read-only home said %q, want %q", b.home.msg, homeItemNoStore)
 	}
@@ -653,9 +653,9 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 		t.Fatalf("the watch is not a line of the column:\n%s", joined)
 	}
 	a.home.cursor = at
-	drive(t, a, key("p"))
+	drive(t, a, key("ctrl+e"))
 	if len(band.saved) != 1 || band.saved[0].ID != "watch" || band.saved[0].Status != standing.StatusPaused {
-		t.Fatalf("`p` on the row did not pause it, the store saw %+v", band.saved)
+		t.Fatalf("ctrl+e on the row did not pause it, the store saw %+v", band.saved)
 	}
 }
 

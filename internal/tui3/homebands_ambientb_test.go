@@ -58,10 +58,10 @@ func TestKeysBandDrawsBothLegendsAndObeysWidth(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	ctx := ambientBandContextAt(a, 28, time.Now())
 	rows := drawKeysBand(a, ctx)
-	if got := plain(rows[0]); !strings.HasPrefix(got, "enter open · n new") || ansi.StringWidth(got) > 28 {
+	if got := plain(rows[0]); !strings.HasPrefix(got, "enter open") || ansi.StringWidth(got) > 28 {
 		t.Fatalf("session keys = %q", got)
 	}
-	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "m more")
+	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "→ more")
 	ctx.subject.kind = bandKindItem
 	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, "enter open where") {
 		t.Fatalf("item keys = %q", got)
