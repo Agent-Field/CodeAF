@@ -2234,6 +2234,10 @@ func (a *app) railToggle(node *taskNode) { a.railSetOpen(node, a.railShut(node))
 // it hangs.
 type railEntry struct {
 	node *taskNode
+	// work is the live hands the engine reports under this task. It is a preview
+	// rather than a second roster: the task remains the row the cursor reaches,
+	// and its room is where the whole tree can be walked.
+	work []session.WorkNode
 	// stems is the ancestry as the connectors need it: one entry per level, true
 	// where that level's node still has siblings to come. Its length is the
 	// node's depth, so a root's is empty and a root has no connector.
@@ -2250,6 +2254,33 @@ type railEntry struct {
 	folded bool
 	hidden int
 	worst  *taskNode
+}
+
+// workingNowAgent is the one engine door this surface needs for the live-hand
+// preview. Each surface asserts only the slice it reads, so an engine without
+// the door draws the byte-identical roster it drew before the door existed.
+type workingNowAgent interface {
+	WorkingNow() []session.WorkNode
+}
+
+const railWorkShown = 5
+
+func (a *app) railWorkingNow() map[string][]session.WorkNode {
+	agent, ok := a.agent.(workingNowAgent)
+	if !ok {
+		return nil
+	}
+	trees := agent.WorkingNow()
+	if len(trees) == 0 {
+		return nil
+	}
+	out := make(map[string][]session.WorkNode, len(trees))
+	for _, tree := range trees {
+		if len(tree.Children) > 0 {
+			out[tree.ID] = tree.Children
+		}
+	}
+	return out
 }
 
 // railSpot names a row by IDENTITY rather than by index, and it is what the
@@ -2507,7 +2538,31 @@ func (a *app) railEntries() []railEntry {
 	for _, tree := range a.railForest() {
 		out = a.railWalk(out, tree, nil)
 	}
+	working := a.railWorkingNow()
+	if len(working) == 0 {
+		return out
+	}
+	for i := range out {
+		kids := working[itoa(int(out[i].node.id))]
+		if len(kids) == 0 {
+			continue
+		}
+		out[i].work = kids
+		out[i].root = true
+		if open, said := a.railOpen[out[i].node.id]; said && !open {
+			out[i].folded = true
+			out[i].hidden = railWorkCount(kids)
+		}
+	}
 	return out
+}
+
+func railWorkCount(nodes []session.WorkNode) int {
+	n := 0
+	for _, node := range nodes {
+		n += 1 + railWorkCount(node.Children)
+	}
+	return n
 }
 
 // railWalk lays one family out, depth first.
@@ -2789,6 +2844,8 @@ type railLine struct {
 	// know whether it was asked to widen the column, to hide it, or to leave it
 	// for a page that holds work this session never ran.
 	more bool
+	// workMore is the bounded live-hand preview's door onto the task room.
+	workMore bool
 	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
 	// the `+` row at the foot of each section (margin.go). It is the word itself
 	// rather than a flag because there are two of them and they type two different
@@ -2826,8 +2883,62 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 			}
 			out = append(out, line)
 		}
+		if len(entries[i].work) > 0 && !entries[i].folded {
+			out = append(out, a.railWorkLines(i, entries[i].work, width)...)
+		}
 	}
 	return out
+}
+
+func (a *app) railWorkLines(entry int, nodes []session.WorkNode, width int) []railLine {
+	flat := railWorkFlatten(nodes, nil)
+	shown := min(len(flat), railWorkShown)
+	spin := railWorkSpinner(flat[:shown])
+	out := make([]railLine, 0, shown+1)
+	for i := 0; i < shown; i++ {
+		out = append(out, railLine{text: a.railWorkLine(flat[i], i == spin, width), entry: entry})
+	}
+	if hidden := len(flat) - shown; hidden > 0 {
+		word := "view more · +" + itoa(hidden)
+		out = append(out, railLine{text: a.pal.dim(fit(word, width)), entry: entry, workMore: true})
+	}
+	return out
+}
+
+func railWorkFlatten(nodes, out []session.WorkNode) []session.WorkNode {
+	for _, node := range nodes {
+		out = append(out, node)
+		out = railWorkFlatten(node.Children, out)
+	}
+	return out
+}
+
+func railWorkSpinner(nodes []session.WorkNode) int {
+	at := -1
+	var born time.Time
+	for i, node := range nodes {
+		if node.State == session.WorkRunning && (at < 0 || homeSpinNewer(born, node.Born)) {
+			at, born = i, node.Born
+		}
+	}
+	return at
+}
+
+func (a *app) railWorkLine(node session.WorkNode, spins bool, width int) string {
+	mark := a.pal.dim("·")
+	paint := a.pal.dim
+	switch node.State {
+	case session.WorkRunning:
+		glyph := glyphRunASCII
+		if spins && !a.linear && !a.pal.ascii {
+			glyph = tokens.Spinner(a.paints / spinnerStep)
+		}
+		mark, paint = a.pal.muted(glyph), a.pal.ink
+	case session.WorkDone:
+		mark, paint = a.pal.add(glyphDone), a.pal.muted
+	}
+	lead := "  " + mark + " "
+	return lead + paint(fit(strings.TrimSpace(node.Title), max(0, width-ansi.StringWidth("  · "))))
 }
 
 // railView is the whole column at a height: the window over the entries, the
@@ -3410,6 +3521,10 @@ func (a *app) railOut() {
 		return
 	}
 	e := entries[at]
+	if railWorkCount(e.work) > railWorkShown {
+		a.openRoomFor(e.node.id, e.node.title)
+		return
+	}
 	if !e.root {
 		return
 	}
@@ -3933,6 +4048,13 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 // all the way down.
 func (a *app) railLead(e railEntry) (string, string) {
 	glyph := a.railTreeGlyph(e.node)
+	// THE PREVIEW OWNS THIS TASK'S ONE SPINNER WHILE IT IS OPEN. The task row
+	// still says running with a still dot, leaving exactly one moving child to
+	// show which hand was most recently active. Folding returns the spinner to
+	// the task row because the moving child is no longer on the frame.
+	if len(e.work) > 0 && !e.folded && e.node.state == session.TaskRunning && !a.linear {
+		glyph = a.taskStateInk(e.node)(glyphRunASCII)
+	}
 	if e.folded && e.worst != nil {
 		// A FOLDED ROOT WEARS THE WORST THING UNDER IT. The row is standing for a
 		// whole subtree, so the one cell it has says what that subtree's news is
