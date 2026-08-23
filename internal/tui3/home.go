@@ -3296,10 +3296,29 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 		end = len(h.lines)
 	}
 	drawn := make([]homeDrawn, 0, room)
-	for at := top; at < end && len(drawn) < room; at++ {
+	at := top
+	for ; at < end && len(drawn) < room; at++ {
 		drawn = append(drawn, homeDrawn{
 			text: a.homeLine(h.lines[at], at, width, pal), hit: at, pane: -1, zone: -1,
 		})
+	}
+	// A LONG LIST'S TAIL FADES WITH DEPTH — NEVER STRIPES (depthfade.go). This
+	// column is an INDEX — a person reads down it looking for one row and opens
+	// it — so the rows past the fold are context rather than content, and the
+	// last three before it step down toward the background to say the list runs
+	// on. A window with the last line of its list on screen fades nothing, which
+	// is what keeps a short home byte-identical to the one before this law.
+	//
+	// THE CURSOR AND THE POINTER ARE SPARED wherever they land. Both already wear
+	// a background of their own ([overlayRow]), and the row a person is standing
+	// on is the one row a gradient must not take part in.
+	for i := range drawn {
+		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover {
+			continue
+		}
+		if stop := tailStop(i, len(drawn), at < end); stop >= 0 {
+			drawn[i].text = pal.fadeRow(drawn[i].text, stop)
+		}
 	}
 	return drawn
 }
