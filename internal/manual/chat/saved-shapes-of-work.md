@@ -230,7 +230,7 @@ leaving a blank screen. Attempts, draft checking, and truncated-versus-malformed
 are named there too.
 
 ```
-⠿ harness · designing · attempt 1/3
+⠿ subharness · designing · attempt 1/3
 ```
 
 That number is the whole of what a design gained: it is a real task, with a row on the
@@ -523,7 +523,7 @@ see *Seeing the whole conversation inside a task* on the tasks page.
 **While a reasoning model thinks, there may genuinely be nothing to show.** Some models
 answer in one burst at the end rather than streaming, and until that burst arrives the room
 has the brief at the top and one dim line at the bottom saying what is happening —
-`harness · designing · attempt 1/3 · thinking · 52s`. That line replaces itself in place
+`subharness · designing · attempt 1/3 · thinking · 52s`. That line replaces itself in place
 and is never written to the journal. When the burst lands, the whole reply appears at once.
 
 **A call that failed outright does say so in the room**, as `error: <reason>`. A design you
@@ -540,7 +540,7 @@ that need it: the model answering your questions in the design thread, and the r
 written to if you approve it. Both are handed it out of sight, as a message no surface draws.
 
 **The conversation gets one line, which is a different question.** In the chat feed the same
-design is a single live block that replaces itself: `⠿ harness · designing · attempt 1/3`,
+design is a single live block that replaces itself: `⠿ subharness · designing · attempt 1/3`,
 then `naming it: research-helper`, `4 steps so far`, `thinking · 52s`. A feed you are
 holding a conversation in wants one line that stays a line; a room you walked into in order
 to watch wants to be told what is happening.
