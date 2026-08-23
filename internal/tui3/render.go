@@ -252,7 +252,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	wasCluster, wasBlock := false, false
 	gap := func() {
 		if len(out) > 0 {
-			out = append(out, row{entry: -1})
+			for range spacingBlockRows {
+				out = append(out, row{entry: -1})
+			}
 		}
 	}
 	// THE CLOCK'S OWN ROWS (timestamps.go) are laid out from here for the reason
