@@ -502,9 +502,8 @@ keeping an eye on
 ◦ tests sweep                in 2h
 ◦ weekly review            mon 8am
 
-hands
-⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
-⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
+hands · in flight, the last few minutes
+▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 
 since you left
 ◆ 2 tasks landed             aforge
@@ -520,11 +519,12 @@ today
   rather than a thing being watched, and it belongs with the rest of what needs you. Paused
   and stopped things are not here either. Past four, the rest fold to
   `▸ …3 more keeping an eye`.
-- **`hands`** — a small **chart**, two rows of braille dots, of how many things this
-  machine has had running over the last few minutes, oldest on the left and **newest on
-  the right**. It prints no number: the figure is on the pulse line at the top of the
-  screen (`3 working`) and this is the shape it came from. See below for the whole of how
-  it behaves.
+- **`hands`** — a small **chart**, one row of bars, of how many things this machine has
+  had running over the last few minutes, oldest on the left and **newest on the right**.
+  The heading says what it is — `hands · in flight, the last few minutes` — and the chart
+  itself prints no number: the figure is on the pulse line at the top of the screen
+  (`3 working`) and this is the shape it came from. See below for the whole of how it
+  behaves.
 - **`since you left`** — everything that happened across all your projects while you were
   not looking: news a standing thing left in a conversation or a project, and work that
   landed after you last spoke there. It is the same list the phone-shaped home shows under
@@ -544,38 +544,48 @@ machine nobody has touched today has no `today` band at all — never `0 chats �
 $0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
 side, which is the good news said with space.
 
-## The dotted chart on home — the hands spark, and what the little dots mean
+## The little chart on home — the hands band, and what the bars mean
 
-The `hands` band on the machine's own card is the one **chart** anywhere in aforge: two
-rows of braille dots tracing how many things this machine has had running over the last
-few minutes.
+The `hands` band on the machine's own card is the one **chart** anywhere in aforge: one row
+of bars tracing how many things this machine has had running over the last few minutes.
 
 ```
-hands
-⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
-⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
+hands · in flight, the last few minutes
+▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 ```
 
-- **One dot is one reading**, taken every three seconds — the same beat home rescans the
+- **The heading says what the shape is.** `hands · in flight, the last few minutes` — the
+  chart is a mark and the clause beside it is the word that says what the mark is about.
+  There is no figure in that clause, on purpose: this band prints no numbers at all.
+- **One bar is one reading**, taken every three seconds — the same beat home rescans the
   disk on. Sixty readings fit, so the chart is about **three minutes** wide. Oldest on the
   left, **newest at the right**.
-- **The top of the chart is the busiest moment in that window** and the bottom is nothing
-  at all. There is no fixed ceiling on how many things a machine may run, so it scales to
-  its own peak: the chart is about **change**, not about size. The size is the pulse line's
+- **The bars fade backwards in time.** The newest bars, on the right, are drawn in the same
+  quiet colour aforge paints everything that is working right now; older bars step back
+  through fainter shades toward the background. That gradient is the only thing the colour
+  means here — it tells you which end is which. It never changes colour with the count, and
+  on a terminal with no colours to spend the whole row is drawn in one shade.
+- **The tallest bar is the busiest moment in that window** and the shortest is nothing at
+  all. There is no fixed ceiling on how many things a machine may run, so it scales to its
+  own peak: the chart is about **change**, not about size. The size is the pulse line's
   `3 working`, said once, at the top of the screen.
 - **It moves because the work moves.** There is no animation in it. While something runs
-  the readings differ and the line slides one dot every three seconds; while the machine is
-  quiet the readings are all the same and the line lies **flat and still**.
+  the readings differ and the line slides one bar every three seconds; while the machine is
+  quiet the readings are all the same and the line lies **flat and still** along the floor.
 - **It disappears when it has nothing to show.** A machine that has run nothing for the
   whole window draws no `hands` band at all — not a heading over a flat line on the floor.
   The first thing that runs brings it back.
+- **And it does not draw half a chart.** The readings are kept only in memory, so for the
+  first half-minute of a fresh aforge there are two or three of them — which is a smudge
+  rather than a shape. The band stays away until it has enough readings to draw a line you
+  can read, and then it appears.
 - **The readings live only in this run of aforge.** Nothing is written to disk and no
-  history is kept between runs: quit and start again and the chart is empty until the next
+  history is kept between runs: quit and start again and the chart is absent until the next
   few beats fill it in.
 - **It needs the room to be a chart.** On a frame too narrow for a card at all (under 80
   columns) there is no `hands` band, and the count on the pulse line is what you keep. In
-  plain-text mode and with fancy glyphs turned off it is not drawn either — braille read
-  aloud is a row of noise — and again the count is what stays.
+  plain-text mode and with fancy glyphs turned off it is not drawn either — a row of bars
+  read aloud is a row of noise — and again the count is what stays.
 
 ## The pane on the right of home — the preview of the session under the cursor or pointer
 
@@ -1253,7 +1263,7 @@ The chips are the ones the question has:
 - It is **waiting for permission to run something**: `1 allow once · 2 always · 3 deny`.
 - It is **asking whether to start a task**: `1 yes · 2 no`.
 - It is **asking whether to keep an eye on something**:
-  `1 yes · 3 once, not standing · 0 not set up` — or `1 yes · 0 not set up`, when what it
+  `1 yes · 3 just once · 0 not set up` — or `1 yes · 0 not set up`, when what it
   is asking about is a **one-off reminder**, which has no `once` answer at all (the
   reminders page says why). **`0` is how you say no from home**, and it is on every
   standing card there is: nothing is set up, nothing is run, and the card in that window
@@ -1261,9 +1271,9 @@ The chips are the ones the question has:
   conversation are numbered by their position — a `4` would move under your hand the day a
   card drew one chip fewer — and `esc` cannot be borrowed here, because `esc` on home
   closes home.
-  There is no `2 change when` here, on purpose: that answer is a request for a text box,
-  and a card in a column has no box. To say a different when, open the conversation: the
-  card is still standing there, because a standing card never times out.
+  There is no `2 change when or where` here, on purpose: that answer is a request for a
+  text box, and a card in a column has no box. To say a different time or place, open the
+  conversation: the card is still waiting there, because this card never times out.
 
 `2 always` means what it means in the window: **that session stops asking about that
 tool** for the rest of its life. It does not write a permission rule into your settings —
@@ -1507,19 +1517,22 @@ standup note" — a card appears in the conversation and **nothing is set up unt
 you answer it**:
 
 ```
-╭─ ? ◦ every Monday at 9, post the standup ─────────────────
+╭─ ? ◦ every Monday at 9, post the standup ──────────────────────────────────
 │ every Monday at 9, post the standup note from the git log
 │ when · Mondays at 9am
+│ where · for this project
 │ costs · about $0.02 a run, at most once a day
-│ [ 1 yes, set it up ]  [ 2 change when ]  [ 3 once, not standing ]
-╰───────────────────────────────────────────────────────────
+│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
+│ I'll keep doing this Mondays at 9am, for this project, until you stop it
+╰────────────────────────────────────────────────────────────────────────────
 ```
 
-Two bands make it different from the card that proposes a task: **`when ·`**, in
-the words you said or the words it worked out, and **`costs ·`** — what one run
-may spend and how often it may run. A watch that has to *look* at something adds
-`checked every 5 minutes`, because that is when the looking happens; a reminder
-does not, because nothing is examined between now and Monday.
+Three bands make it different from the card that proposes a task: **`when ·`**, in
+the words you said or the words it worked out; **`where ·`**, how far it reaches;
+and **`costs ·`** — what one run may spend and how often it may run. A watch that
+has to *look* at something adds `checked every 5 minutes`, because that is when
+the looking happens; a reminder does not, because nothing is examined between now
+and Monday.
 
 If it made the timing up rather than reading it off what you said, the band asks
 instead of stating: `Mondays at 9am — you didn't say, so that's my guess.
@@ -1527,21 +1540,34 @@ Right?`
 
 **The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
 
-- `1 yes, set it up` — it stands.
-- `2 change when` — the box below becomes a place to say when instead; `enter`
-  sends your words back and nothing is set up until a new card comes.
-- `3 once, not standing` — do it now and leave nothing behind.
-- `0 not set up` — no. Nothing is created and nothing is run, and the row settles
-  as `not set up`. `0` is not a chip: it is a key, named in the hint beside `esc`,
-  and it is the same key on home's answer band and in home's `ask here` pane,
-  which are the two places that have no `esc` to spare.
+- `1 yes, set it up` — it gets set up and starts happening.
+- `2 change when or where` — the box below becomes a place to say the **time or
+  the place** you want instead: "make it 8", "only in this project", "everywhere".
+  `enter` sends your words back and nothing is set up until a new card comes with
+  them in it. This is the one door for **both** — the `where ·` band is changed
+  through it exactly as the `when ·` band is.
+- `3 just once` — do it now and leave nothing behind.
+- `0 no` — nothing is set up, nothing is run, and the row settles as
+  `not set up`. `esc` does exactly the same thing.
 
-A **one-off reminder's card draws only the first two chips**, and `3` does nothing
-on it: "do it now" for a line meant for six o'clock is not a smaller version of
-the reminder, it is the wrong thing at the wrong moment. Watches, rules, routines
-and overnight work keep all three. `0` is on both. The hint under the box says
-which digits are really there — `1 yes · 2 change when · 3 once · 0 or esc, no`,
-or `1 yes · 2 change when · 0 or esc, no`.
+**The line under the answers says what the one you are on will actually do**, and
+it is written out of this card's own facts rather than being a fixed sentence:
+`I'll keep doing this Mondays at 9am, for this project, until you stop it` on the
+yes, `I'll do it now, this once — nothing is kept and nothing happens later` on
+`3`, `nothing is set up yet — type the time or the place you want, then enter` on
+`2`, and `nothing is set up and nothing happens later` on `0`. Walk the row with
+`←`/`→` and the line follows the answer you are on, so you can read what each one
+does before you take it. The answer under the cursor is the one `enter` takes;
+it is lit and lifted, and its digit is the key that takes it outright.
+
+A **one-off reminder's card draws no `3`**: "do it now" for a line meant for six
+o'clock is not a smaller version of the reminder, it is the wrong thing at the
+wrong moment. Watches, rules, routines and overnight work keep it. **The `0` is on
+every one of them** — a way to say no is never missing, and on a narrow card the
+words shorten to `yes`, `change`, `once` and `no` rather than any answer being
+dropped. The hint under the box says which digits are really there —
+`1 yes · 2 change when or where · 3 just once · 0 or esc, no`, or
+`1 yes · 2 change when or where · 0 or esc, no`.
 
 `esc` says no, and so does `0`. **There is no clock on this one**: no bar, no countdown, and no
 moment where it answers on your behalf — it waits while you read it. That is the
@@ -1552,8 +1578,9 @@ it says `ended · nothing was set up`, and nothing was.
 
 **An answered card stays where it is.** It does not vanish: it settles, the frame
 goes grey, and the bottom edge carries the answer and what it came to —
-`yes, set it up · set up`, `once, not standing`, `not set up`,
-`you asked for a different when`, `ended · nothing was set up`. That is true of a card in a conversation and of a
+`yes, set it up · set up`, `just once · done now, nothing kept`, `not set up`,
+`change when or where · you asked for something different`,
+`ended · nothing was set up`. That is true of a card in a conversation and of a
 card in home's `ask here` pane alike; it is one card with one renderer.
 
 **The first time you ever set one up** the machine's own timer goes on, without

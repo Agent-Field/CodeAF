@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // handsLab is a machine with `working` conversations on it, and the app looking
@@ -111,10 +112,45 @@ func TestTheHandsSparkIsAbsentUntilSomethingHasRun(t *testing.T) {
 	}
 }
 
-// ONE THING RUNNING BRINGS THE BAND ONTO THE CARD, heading and two rows of
-// braille, inside its width at every width a card is drawn at.
+// AND A RING TOO SHORT TO BE A SHAPE DRAWS NOTHING EITHER. The ring is in memory
+// and empty at launch, so the first beats of every run hold two or three
+// readings — which is a mark a person cannot tell from punctuation rather than a
+// small chart. The band waits until it has [machineHandsFill] of them.
+func TestTheHandsSparkWaitsUntilItHasALineToDraw(t *testing.T) {
+	a, now := handsLab(t, 2)
+	a.machineFactsAt(now)
+	ctx := machineBandContext(a, now, 36)
+
+	a.handsRing = climbingRing(machineHandsFill - 1)
+	if rows := drawHandsBand(a, ctx); len(rows) != 0 {
+		t.Fatalf("a ring one reading short of a shape drew a chart: %q", rows)
+	}
+	if card := machineCardText(a, 40); strings.Contains(card, machineHandsWord) {
+		t.Fatalf("the machine's card carries a chart with nothing in it:\n%s", card)
+	}
+	// AND ONE MORE READING IS THE SHAPE.
+	a.handsRing = climbingRing(machineHandsFill)
+	if rows := drawHandsBand(a, ctx); len(rows) != machineHandsRows+1 {
+		t.Fatalf("a filled ring drew %d rows, want %d: %q", len(rows), machineHandsRows+1, rows)
+	}
+}
+
+// climbingRing is `n` readings that are not all the same, so a window built for
+// a test has a peak to scale against.
+func climbingRing(n int) []int {
+	ring := make([]int, n)
+	for i := range ring {
+		ring[i] = i%3 + 1
+	}
+	return ring
+}
+
+// ONE THING RUNNING BRINGS THE BAND ONTO THE CARD, heading and its row of bars,
+// inside its width at every width a card is drawn at.
 func TestTheHandsSparkAppearsWhenTheMachineHasHandsOut(t *testing.T) {
 	a, now := handsLab(t, 2)
+	a.machineFactsAt(now)
+	a.handsRing = climbingRing(handsRingSize)
 	for _, width := range []int{machineHandsFloor, 36, 60} {
 		rows := drawHandsBand(a, machineBandContext(a, now, width))
 		if len(rows) != machineHandsRows+1 {
@@ -139,6 +175,20 @@ func TestTheHandsSparkAppearsWhenTheMachineHasHandsOut(t *testing.T) {
 	if card := machineCardText(a, 40); !strings.Contains(card, machineHandsWord) {
 		t.Fatalf("the band is not on the machine's card:\n%s", card)
 	}
+	// EVERY MARK HAS A WORD NEAR IT. The heading says what the shape is, in
+	// prose and with no figure in it, wherever there is room for the whole
+	// clause — and drops it rather than truncating it where there is not.
+	wide := plain(drawHandsBand(a, machineBandContext(a, now, 60))[0])
+	if wide != machineHandsWord+machineHandsClause {
+		t.Fatalf("a wide card's heading is %q, want the word beside the mark", wide)
+	}
+	if strings.ContainsAny(machineHandsClause, "0123456789") {
+		t.Fatalf("the clause beside the chart prints a figure: %q", machineHandsClause)
+	}
+	narrow := plain(drawHandsBand(a, machineBandContext(a, now, machineHandsFloor))[0])
+	if narrow != machineHandsWord {
+		t.Fatalf("a narrow card truncated the clause instead of dropping it: %q", narrow)
+	}
 }
 
 // A QUIET MACHINE'S LINE LIES FLAT ALONG THE FLOOR AND DOES NOT MOVE. Nothing in
@@ -157,8 +207,9 @@ func TestTheHandsSparkIsFlatAndStillWhileTheMachineIsQuiet(t *testing.T) {
 		t.Fatalf("the band drew %q", rows)
 	}
 	floor := plain(rows[len(rows)-1])
-	// THE LAST STRETCH IS THE ZEROS, AND THEY ARE ALL ON THE BOTTOM DOT ROW.
-	if !strings.HasSuffix(floor, strings.Repeat("⣀", 8)) {
+	// THE LAST STRETCH IS THE ZEROS, AND EVERY ONE OF THEM IS THE LOWEST BAR —
+	// a deliberate floor line and not a gap in the trace.
+	if !strings.HasSuffix(floor, strings.Repeat(string([]rune(sparkBars)[0]), 20)) {
 		t.Fatalf("a quiet stretch does not lie flat along the floor: %q", floor)
 	}
 	if again := drawHandsBand(a, ctx); strings.Join(again, "\n") != strings.Join(rows, "\n") {
@@ -173,25 +224,31 @@ func TestTheHandsSparkChangesWhenTheSamplesChange(t *testing.T) {
 	ctx := machineBandContext(a, now, 30)
 	a.machineFactsAt(now)
 
-	a.handsRing = []int{1, 2, 3, 4, 5, 6, 7, 8}
+	climbing := make([]int, machineHandsFill)
+	for i := range climbing {
+		climbing[i] = i + 1
+	}
+	falling := make([]int, len(climbing))
+	for i, reading := range climbing {
+		falling[len(falling)-1-i] = reading
+	}
+
+	a.handsRing = climbing
 	up := strings.Join(drawHandsBand(a, ctx), "\n")
-	a.handsRing = []int{8, 7, 6, 5, 4, 3, 2, 1}
+	a.handsRing = falling
 	down := strings.Join(drawHandsBand(a, ctx), "\n")
 	if up == down {
 		t.Fatalf("a climb and a fall drew the same chart:\n%s", plain(up))
 	}
-	// NEWEST AT THE RIGHT: a climb ends at its peak, so the last cell of its TOP
-	// row carries dots and the last cell of a fall's top row is empty while its
-	// bottom one is not. (Row nought of each band is the heading.)
+	// NEWEST AT THE RIGHT: a climb ends on the tallest bar in the alphabet and a
+	// fall ends on the shortest. (Row nought of each band is the heading.)
+	bars := []rune(sparkBars)
 	climb, fall := strings.Split(up, "\n"), strings.Split(down, "\n")
-	if lastCell(plain(climb[1])) == brailleBase {
+	if got := lastBar(plain(climb[1])); got != bars[len(bars)-1] {
 		t.Fatalf("the newest sample of a climb is not at the top right: %q", plain(climb[1]))
 	}
-	if lastCell(plain(fall[1])) != brailleBase {
-		t.Fatalf("a fall ends high: %q", plain(fall[1]))
-	}
-	if lastCell(plain(fall[2])) == brailleBase {
-		t.Fatalf("the newest sample of a fall is not at the bottom right: %q", plain(fall[2]))
+	if got := lastBar(plain(fall[1])); got != bars[0] {
+		t.Fatalf("the newest sample of a fall is not at the bottom right: %q", plain(fall[1]))
 	}
 }
 
@@ -200,7 +257,7 @@ func TestTheHandsSparkChangesWhenTheSamplesChange(t *testing.T) {
 func TestTheHandsSparkNeverDrawsAtTheListTier(t *testing.T) {
 	a, now := handsLab(t, 3)
 	a.machineFactsAt(now)
-	a.handsRing = []int{1, 2, 3, 2, 1, 2, 3}
+	a.handsRing = climbingRing(handsRingSize)
 
 	a.home.tier = homeTierList
 	if rows := drawHandsBand(a, machineBandContext(a, now, 36)); len(rows) != 0 {
@@ -217,30 +274,54 @@ func TestTheHandsSparkNeverDrawsAtTheListTier(t *testing.T) {
 	// AND A SHAPE IS NOT DRAWN WHERE A SHAPE CANNOT BE READ.
 	a.linear = true
 	if rows := drawHandsBand(a, machineBandContext(a, now, 36)); len(rows) != 0 {
-		t.Fatalf("a surface being read aloud drew braille: %q", rows)
+		t.Fatalf("a surface being read aloud drew a chart: %q", rows)
 	}
 	a.linear = false
 	a.pal.ascii = true
 	if rows := drawHandsBand(a, machineBandContext(a, now, 36)); len(rows) != 0 {
-		t.Fatalf("a terminal without box drawing drew braille: %q", rows)
+		t.Fatalf("a terminal without box drawing drew a chart: %q", rows)
 	}
 }
 
-// THE CHART IS A MOVING THING AND WEARS THE HUE THIS SURFACE PAINTS MOVING
-// THINGS IN — and the card at rest still spends no accent with the chart on it.
-func TestTheHandsSparkWearsTheMutedHueAndNoOther(t *testing.T) {
+// THE TRACE IS A DEPTH FADE ALONG TIME: the newest end wears the hue this
+// surface paints work in flight in, everything older recedes through the
+// thinking window's own ramp, and the card at rest still spends no accent with
+// the chart on it.
+func TestTheHandsSparkFadesFromItsOldestEndToItsNewest(t *testing.T) {
 	a, now := handsLab(t, 2)
 	a.machineFactsAt(now)
-	a.handsRing = []int{1, 2, 3, 2, 1}
+	a.handsRing = climbingRing(handsRingSize)
 	rows := drawHandsBand(a, machineBandContext(a, now, 36))
 	if len(rows) != machineHandsRows+1 {
 		t.Fatalf("the band drew %q", rows)
 	}
-	for _, row := range rows {
-		if !strings.HasPrefix(row, paintPrefix(a.pal.muted("x"))) {
-			t.Fatalf("a band row is not in the muted tier: %q", row)
-		}
+	// THE HEADING IS STRUCTURE and wears the tier every band on this card wears.
+	if !strings.HasPrefix(rows[0], paintPrefix(a.pal.muted("x"))) {
+		t.Fatalf("the heading is not in the muted tier: %q", rows[0])
 	}
+	trace := rows[machineHandsRows]
+	if !strings.HasPrefix(trace, paintPrefix(a.pal.fade("x", 0))) {
+		t.Fatalf("the oldest end of the trace is not the faintest stop: %q", trace)
+	}
+	if !strings.Contains(trace, paintPrefix(a.pal.muted("x"))) {
+		t.Fatalf("the newest end of the trace is not the live tier: %q", trace)
+	}
+	// AND THE TWO ENDS ARE NOT THE SAME MARK: a gradient tells you which end is
+	// which, so the stop the oldest bar wears is not the stop the newest does.
+	if paintPrefix(a.pal.fade("x", 0)) == paintPrefix(a.pal.muted("x")) {
+		t.Fatal("the faintest fade stop and the live tier paint the same, so the ramp says nothing")
+	}
+
+	// WHERE THERE IS NO GRADIENT THERE IS ONE TIER. Below the 256-colour rung
+	// the fade has nothing to spend, and a trace half in one tier and half in
+	// another would be a two-step ramp claiming to be a gradient.
+	flat := a.pal
+	flat.profile = tokens.ANSI16
+	one := handsTrace(flat, "▁▂▃▄▅▆▇")
+	if one != flat.muted("▁▂▃▄▅▆▇") {
+		t.Fatalf("a terminal with no gradient drew a ramp anyway: %q", one)
+	}
+
 	card := strings.Join(a.machineCard(40, 40, a.pal), "\n")
 	for word, paint := range map[string]func(string) string{
 		"accent": a.pal.accent, "the question hue": a.pal.ask,
@@ -300,8 +381,8 @@ func TestTheHandsRingSamplesOnceForEachReadingOfTheMachine(t *testing.T) {
 
 // ── the machinery underneath ────────────────────────────────────────────────
 
-// ONE QUANTIZER, TWO ALPHABETS. The bar spark and the braille chart round the
-// same way, because two roundings would be two answers about one reading.
+// ONE QUANTIZER, ONE ALPHABET. Both sparks on this surface round the same way,
+// because two roundings would be two answers about one reading.
 func TestTheSparkQuantizerFloorsAtNothingAndCapsAtTheTop(t *testing.T) {
 	for _, c := range []struct{ reading, ceiling, steps, want int }{
 		{0, 8, 8, 0}, {1, 8, 8, 1}, {7, 8, 8, 7}, {8, 8, 8, 7}, {80, 8, 8, 7},
@@ -314,55 +395,46 @@ func TestTheSparkQuantizerFloorsAtNothingAndCapsAtTheTop(t *testing.T) {
 	}
 }
 
-// TWO SAMPLES TO A CELL, NEWEST AT THE RIGHT, AND A WINDOW LONGER THAN THE ROOM
-// KEEPS ITS TAIL.
-func TestTheBrailleSparkPacksTwoSamplesToACell(t *testing.T) {
-	if rows := brailleSpark([]int{0, 0, 0, 0}, 2, 10); rows != nil {
-		t.Fatalf("a window with no height in it drew %q", rows)
+// ONE SAMPLE TO A CELL, NEWEST AT THE RIGHT, AND A WINDOW LONGER THAN THE ROOM
+// KEEPS ITS TAIL. A stated ceiling is a scale that holds from one draw to the
+// next; no ceiling at all is the window's own peak, and a window with no height
+// in it then draws nothing rather than a floor line under a heading.
+func TestTheBarSparkDrawsOneCellPerSample(t *testing.T) {
+	bars := []rune(sparkBars)
+	if got := barSpark([]int{0, 0, 0, 0}, 0, 10); got != "" {
+		t.Fatalf("a self-scaling window with no height in it drew %q", got)
 	}
-	if rows := brailleSpark(nil, 2, 10); rows != nil {
-		t.Fatalf("no readings at all drew %q", rows)
+	if got := barSpark(nil, 0, 10); got != "" {
+		t.Fatalf("no readings at all drew %q", got)
 	}
-	rows := brailleSpark([]int{1, 2, 3, 4, 5, 6}, 2, 10)
-	if len(rows) != 2 {
-		t.Fatalf("a two-row chart drew %d rows", len(rows))
+	// A STATED CEILING STILL DRAWS THE QUIET WINDOW: nought is a reading, and
+	// the lowest bar is the mark for it.
+	if got := barSpark([]int{0, 0, 0}, 8, 10); got != strings.Repeat(string(bars[0]), 3) {
+		t.Fatalf("a stated ceiling dropped a quiet window: %q", got)
 	}
-	for _, row := range rows {
-		if ansi.StringWidth(row) != 3 {
-			t.Fatalf("six samples drew %d cells: %q", ansi.StringWidth(row), row)
-		}
+	if got := ansi.StringWidth(barSpark([]int{1, 2, 3, 4, 5, 6}, 0, 10)); got != 6 {
+		t.Fatalf("six samples drew %d cells", got)
 	}
-	// A LONGER WINDOW THAN THE ROOM IS CLIPPED FROM THE OLD END.
+	// A LONGER WINDOW THAN THE ROOM IS CLIPPED FROM THE OLD END, and the newest
+	// reading is the last cell drawn.
 	long := make([]int, 100)
 	for i := range long {
 		long[i] = i + 1
 	}
-	wide := brailleSpark(long, 2, 10)
-	for _, row := range wide {
-		if ansi.StringWidth(row) != 10 {
-			t.Fatalf("a hundred samples in ten cells drew %d: %q", ansi.StringWidth(row), row)
-		}
+	wide := barSpark(long, 0, 10)
+	if ansi.StringWidth(wide) != 10 {
+		t.Fatalf("a hundred samples in ten cells drew %d: %q", ansi.StringWidth(wide), wide)
 	}
-	// AND AN ODD COUNT STILL ENDS AT THE RIGHT EDGE: the blank dot column goes
-	// at the front, so the newest reading is the last dot drawn.
-	odd := brailleSpark([]int{1, 9, 9}, 1, 10)
-	if len(odd) != 1 || ansi.StringWidth(odd[0]) != 2 {
-		t.Fatalf("three samples drew %q", odd)
-	}
-	// `⢀` is the LEFT cell holding one dot in its RIGHT column, which is the
-	// blank dot column standing at the front; `⠉` is the newest two samples both
-	// at the top of the last cell. Drawn without the lead the first cell would
-	// read `⡀` and the newest sample would sit a dot short of the edge.
-	if odd[0] != "⢀⠉" {
-		t.Fatalf("an odd count does not end at the right edge: %q", odd[0])
+	if got := lastBar(wide); got != bars[len(bars)-1] {
+		t.Fatalf("the newest sample of a climb is not the tallest bar: %q", wide)
 	}
 }
 
-// lastCell is the final braille cell of a row.
-func lastCell(row string) rune {
-	cells := []rune(row)
-	if len(cells) == 0 {
+// lastBar is the final bar of a trace.
+func lastBar(row string) rune {
+	bars := []rune(row)
+	if len(bars) == 0 {
 		return 0
 	}
-	return cells[len(cells)-1]
+	return bars[len(bars)-1]
 }

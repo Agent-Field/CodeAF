@@ -463,7 +463,7 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		{QuestionTask, "1", "yes", func(a AnswerAction) bool { return a.Task.Approved }},
 		{QuestionTask, "2", "no", func(a AnswerAction) bool { return !a.Task.Approved }},
 		{QuestionStanding, "1", "yes", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
-		{QuestionStanding, "3", "once, not standing", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
+		{QuestionStanding, "3", "just once", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
 		{QuestionStanding, "0", "not set up", func(a AnswerAction) bool {
 			return a.Standing == (StandingAnswer{})
 		}},

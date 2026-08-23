@@ -327,7 +327,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 
 	frame := homeText(a)
-	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes · 2 change · 3 once"} {
+	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes · 2 change when or where · 3 just once"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, frame)
 		}
