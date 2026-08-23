@@ -21,6 +21,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 // SystemError is the portable PlatformError.SystemError image.
@@ -318,8 +320,8 @@ func (s *Spawner) Spawn(ctx context.Context, command Command) (*Handle, error) {
 		if spec.EnvSet {
 			cmd.Env = spec.Env
 		}
-		if spec.Detached && runtime.GOOS != "windows" {
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if spec.Detached {
+			processgroup.Configure(cmd)
 		}
 		commands[i] = cmd
 	}
@@ -566,7 +568,7 @@ func (h *Handle) Kill() error {
 		signal = syscall.SIGTERM
 	}
 	for _, command := range h.commands {
-		detached := command.SysProcAttr != nil && command.SysProcAttr.Setpgid
+		detached := processgroup.Configured(command)
 		if err := killCommand(command, signal, detached); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return err
 		}
@@ -579,7 +581,7 @@ func (h *Handle) Kill() error {
 			return nil
 		case <-timer.C:
 			for _, command := range h.commands {
-				detached := command.SysProcAttr != nil && command.SysProcAttr.Setpgid
+				detached := processgroup.Configured(command)
 				_ = killCommand(command, syscall.SIGKILL, detached)
 			}
 		}
@@ -591,10 +593,15 @@ func killCommand(command *exec.Cmd, signal os.Signal, detached bool) error {
 	if command.Process == nil {
 		return os.ErrProcessDone
 	}
-	if detached && runtime.GOOS != "windows" {
-		if unixSignal, ok := signal.(syscall.Signal); ok {
-			return syscall.Kill(-command.Process.Pid, unixSignal)
+	force := signal == os.Kill || signal == syscall.SIGKILL
+	if detached {
+		if force {
+			return processgroup.Kill(command.Process.Pid)
 		}
+		return processgroup.Terminate(command.Process.Pid)
+	}
+	if force {
+		return command.Process.Kill()
 	}
 	return command.Process.Signal(signal)
 }

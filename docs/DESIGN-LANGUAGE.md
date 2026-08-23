@@ -306,6 +306,21 @@ colour is a row that shouts, and a screen of shouting rows is a screen with no
 priority at all. The grounds in THE GROUND LADDER are the sole exception, and
 they are exactly as quiet as the table above says.
 
+## ONE MARK PER TOKEN
+
+> **One token wears one visible mark.**
+
+A mark must say one thing without borrowing emphasis from another channel. An
+inline code span normally wears the raised plane; when that span is a linkable
+path, it drops the plane and keeps the underline that says it is a location.
+The OSC 8 hyperlink stays because it occupies no cells and is not a visible
+mark. Non-path inline code keeps its plane and never gains an underline, while
+fenced code blocks are unchanged.
+
+Stacking plane, underline and brighter ink made plumbing paths louder than the
+facts around them. The rule keeps both meanings legible while refusing to turn
+their overlap into extra emphasis.
+
 ## PRESENCE OVER LABELS
 
 Also restated, because it is the emptiness law seen from the design side.
@@ -319,6 +334,42 @@ And when it does appear, it appears as **a shape before a number**. A spinner
 says a call is running; the elapsed seconds are for when you want them. The one
 deliberate exception is the live status line, which keeps `$0.00` so its segments
 do not jump sideways as they update.
+
+## THE SPACING LADDER
+
+Whitespace is this surface's border system. It is not leftover room and it is
+not a kindness each block adds for itself: it says which words belong together,
+where one voice ends, and where a section begins. The best existing screens
+already use a short ladder; this names it so a fifty-first call site cannot
+invent a fifth distance.
+
+| step | value | what it means |
+| --- | --- | --- |
+| **clause** | 0 blank rows | parts of one sentence stay on one line, divided by ` · ` |
+| **block** | 1 blank row | related blocks, bands in one card, or machinery within one speaker |
+| **boundary** | 1 blank row, or a hairline with 1 row of clearance | a person's next turn, a section change, or the seam above a foot |
+| **breath** | 2 blank rows | only the tall-window breathing room above the composer; it steps down to one and then zero as height is taken away |
+
+**A GAP ASKED FOR TWICE IS STILL ONE GAP.** The conversation compositor owns
+its block rows for exactly this reason, and every screen builder joining optional
+blocks owes the same idempotence. Blank rows do not open or close a block. Two
+consecutive blank rows are not emphasis; outside the named breathing rung they
+are drift. On phone pages, two empty rows may belong to a three-row tap target;
+those rows are control geometry rather than separation and must share the
+control's hit target.
+
+The horizontal ladder is just as small. The conversation's machinery and every
+surface note have a **2-cell lead**; the closed work rail also spends **2 cells**,
+one of air and one on its handle. Home's panes and its three-column bridge use a
+**4-cell gutter**, padded on every row so alignment, not a border, makes the
+edge. Sheet rows may use the established **4-cell hanging indent** when a second
+line belongs under a labelled first line. The message box's 1-cell inset is
+input geometry, not a new content margin.
+
+**A NEW DISTANCE NEEDS A NEW RELATIONSHIP.** Reuse the nearest named step when
+the relationship is the same. A new value may be added only here and as a named
+constant beside the shared geometry it governs, with the screen and width where
+the existing ladder fails. A lone call site does not get to mint a rung.
 
 ## WHAT WE REFUSED
 

@@ -100,7 +100,8 @@ func (r *renderer) collect(n ast.Node, b *strings.Builder) {
 	}
 }
 
-// codeSpan draws inline code on the surface's one raised plane.
+// codeSpan draws inline code on the surface's one raised plane unless its
+// caller already gives that token another visible mark.
 //
 // Where there is no raised plane to draw on — [tokens.Profile.SheetGround] is
 // false at 16 colours and below, for the reason stated there — the backticks
@@ -115,6 +116,13 @@ func (r *renderer) codeSpan(n *ast.CodeSpan, w *wrapper, st style) {
 	}
 	next := st
 	next.tok = tokens.TextPrimary
+	// ONE VISIBLE MARK PER TOKEN. The callback carries semantic knowledge prose
+	// does not own; when it says another mark is coming, adding the plane here
+	// would turn one token into the loudest object in its sentence.
+	if r.opts.PlainCodeSpan != nil && r.opts.PlainCodeSpan(text) {
+		w.push(text, next)
+		return
+	}
 	if !r.p.profile.SheetGround() {
 		next.tok = tokens.TextSecondary
 		w.push("`"+text+"`", next)

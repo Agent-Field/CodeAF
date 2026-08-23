@@ -184,7 +184,7 @@ const (
 	// there is genuinely more here than the column is showing (task.go's
 	// [app.railFootRows] weighs it against [app.railFoldedAny] and
 	// [app.railHasRecord]).
-	taskSheetMoreHint = taskSheetKey + " — view more"
+	taskSheetMoreHint = taskSheetKey + " view more"
 	// taskSheetPastHint is that SAME LINE when what is behind it is the project's
 	// own record, and it is the commoner of the two by a long way: any directory
 	// that has been worked in before has one.
@@ -199,7 +199,7 @@ const (
 	//
 	// It is [taskSheetPastHead]'s own word rather than a second one, because it is
 	// the section it lands you in.
-	taskSheetPastHint = taskSheetKey + " — " + taskSheetPastHead
+	taskSheetPastHint = taskSheetKey + " " + taskSheetPastHead
 )
 
 // taskSheetRows is the page's own page size: what pgup and pgdown move by, and
@@ -1722,7 +1722,7 @@ func (a *app) taskSheetAwayRow(away session.ElsewhereTask, width int) string {
 // work into somebody else's without the column ever saying it had.
 //
 // SO THE VISIBILITY IS KEPT AND THE ROWS ARE NOT. The foot of the column carries
-// [taskSheetPastHint] — `ctrl+. — earlier`, dim, one line — whenever the project
+// [taskSheetPastHint] — `ctrl+. earlier`, dim, one line — whenever the project
 // has a record behind it, and that line is the door: it names the page, it says
 // what is on it, and it is pressed as readily as it is typed (task.go's
 // [app.railFootRows] draws it, [app.railPress] answers it). Everything the

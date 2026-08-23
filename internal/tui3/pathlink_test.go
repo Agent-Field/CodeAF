@@ -191,6 +191,49 @@ func TestTheRowPassLinksOnlyTheFile(t *testing.T) {
 	}
 }
 
+// ONE VISIBLE MARK PER TOKEN. A path in inline code spends its mark on the
+// link underline, while ordinary inline code spends the same budget on prose's
+// raised plane.
+func TestInlineCodePathsAndCodeSpendOneMarkEach(t *testing.T) {
+	root, _ := linkFixture(t)
+	pal := newPalette(tokens.TrueColor, false)
+	l := linker{
+		pal:  pal,
+		on:   true,
+		root: root,
+		home: root,
+		seen: map[string]string{},
+	}
+	st := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
+	rows := prose.Render("Open `internal/tui3/pathlink.go`, then call `len(x)`.", prose.Options{
+		Width: 100, Measure: prose.DefaultMeasure, Styler: st,
+		PlainCodeSpan: func(text string) bool {
+			_, _, _, ok := l.path(text)
+			return ok
+		},
+	})
+	rows = l.rows(rows)
+	if len(rows) != 1 {
+		t.Fatalf("want one row, got %d: %q", len(rows), rows)
+	}
+	row := rows[0]
+	sheet := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal)
+	path := pal.underline("internal/tui3/pathlink.go")
+	code := sheet + tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal) + "len(x)"
+	if !strings.Contains(row, path) {
+		t.Fatalf("the path does not wear the palette underline: %q", row)
+	}
+	if strings.Contains(row, sheet+tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal)+"internal/tui3/pathlink.go") {
+		t.Fatalf("the path also wears the raised plane: %q", row)
+	}
+	if !strings.Contains(row, code) {
+		t.Fatalf("ordinary inline code lost the raised plane: %q", row)
+	}
+	if strings.Count(row, sgrUnderOn) != 1 {
+		t.Fatalf("ordinary inline code also wears an underline: %q", row)
+	}
+}
+
 // THE DEFECT THIS FEATURE EXISTS FOR. A path wider than the pane is broken
 // across rows by prose, and every fragment of it has to open the same file.
 func TestALongPathWrappedAcrossRowsIsOneLink(t *testing.T) {

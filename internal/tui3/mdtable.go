@@ -141,7 +141,7 @@ const (
 // is nothing to open, and a foot under it would be an offer to do what has been
 // done.
 func (a *app) settledMarkdown(at int, e *entry, width int) []string {
-	rows := trimBlanks(renderMarkdown(e.text, width))
+	rows := trimBlanks(a.renderMarkdown(e.text, width))
 	e.feet = nil
 	if layoutTier(width) == tierPhone || !strings.Contains(e.text, "|") {
 		return rows
@@ -175,7 +175,7 @@ func (a *app) openableTables(st *tokens.Styler, at int, e *entry, rows []string,
 			continue
 		}
 		ordinal++
-		drawn := proseRows(st, seg.src, width)
+		drawn := proseRowsWithCode(st, seg.src, width, a.plainCodePath)
 		from := mdRunAt(rows, drawn, seek)
 		if from < 0 {
 			continue
@@ -188,12 +188,12 @@ func (a *app) openableTables(st *tokens.Styler, at int, e *entry, rows []string,
 		// nothing can overflow renders the same rows if and only if no column was
 		// squeezed. An OPEN table keeps its foot whatever the width, because the
 		// foot is the only way back from a choice the person made.
-		if !open && mdTableFits(st, seg.src, width, drawn) {
+		if !open && mdTableFits(st, seg.src, width, drawn, a.plainCodePath) {
 			continue
 		}
 		if open {
 			out = append(out, rows[copied:from]...)
-			out = append(out, mdOpenTable(st, seg, width)...)
+			out = append(out, mdOpenTable(st, seg, width, a.plainCodePath)...)
 		} else {
 			out = append(out, rows[copied:end]...)
 		}
@@ -255,8 +255,8 @@ func mdRunAt(rows, want []string, from int) int {
 // alternative is measuring the cells here and re-deriving prose's fitter from
 // the outside, which would be a second answer to "does this table fit" and
 // would disagree with the first the week the fitter was tuned.
-func mdTableFits(st *tokens.Styler, src string, width int, drawn []string) bool {
-	probe := proseRows(st, src, mdProbeWidth(src, width))
+func mdTableFits(st *tokens.Styler, src string, width int, drawn []string, plainCodeSpan func(string) bool) bool {
+	probe := proseRowsWithCode(st, src, mdProbeWidth(src, width), plainCodeSpan)
 	if len(probe) != len(drawn) {
 		return false
 	}
@@ -284,17 +284,17 @@ func mdProbeWidth(src string, width int) int {
 
 // mdOpenTable is an opened table's rows: the same grid with its cells wrapped,
 // or stacked records where a grid can no longer be one.
-func mdOpenTable(st *tokens.Styler, seg mdSegment, width int) []string {
-	cells := mdFlatCells(st, seg.table)
+func mdOpenTable(st *tokens.Styler, seg mdSegment, width int, plainCodeSpan func(string) bool) []string {
+	cells := mdFlatCells(st, seg.table, plainCodeSpan)
 	if len(cells) == 0 {
 		// A table this file could not take apart opens as records, which is the
 		// layout that needs no measurements at all.
-		return phoneTableRows(st, seg, width)
+		return phoneTableRows(st, seg, width, plainCodeSpan)
 	}
 	cols := len(cells[0])
 	avail := width - mdTableGap*(cols-1)
 	if avail < cols {
-		return phoneTableRows(st, seg, width)
+		return phoneTableRows(st, seg, width, plainCodeSpan)
 	}
 
 	natural, need := make([]int, cols), make([]int, cols)
@@ -326,7 +326,7 @@ func mdOpenTable(st *tokens.Styler, seg mdSegment, width int) []string {
 	if total > avail {
 		// Even at its widest word every column would not fit. Records, then: the
 		// grid is over, and pretending otherwise costs the reader the words.
-		return phoneTableRows(st, seg, width)
+		return phoneTableRows(st, seg, width, plainCodeSpan)
 	}
 
 	widths := mdOpenWidths(natural, need, avail)
@@ -544,7 +544,7 @@ func mdAligns(src string, cols int) []mdAlign {
 // It returns nil when the answer does not have the shape it asked for — a table
 // this file split differently than goldmark did — and the caller falls back to
 // the layout that needs no cells measured.
-func mdFlatCells(st *tokens.Styler, table [][]string) [][]string {
+func mdFlatCells(st *tokens.Styler, table [][]string, plainCodeSpan func(string) bool) [][]string {
 	if len(table) == 0 || len(table[0]) == 0 {
 		return nil
 	}
@@ -565,7 +565,7 @@ func mdFlatCells(st *tokens.Styler, table [][]string) [][]string {
 			}
 		}
 		text := src.String()
-		rows := proseRows(st, text, mdProbeWidth(text, 1))
+		rows := proseRowsWithCode(st, text, mdProbeWidth(text, 1), plainCodeSpan)
 		// A header, a hairline, and one row per record. Anything else means the
 		// source this file wrote was not read back as the table it meant.
 		if len(rows) != len(table)+1 {

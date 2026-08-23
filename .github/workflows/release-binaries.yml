@@ -1,0 +1,185 @@
+name: Release binaries
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+    tags:
+      # Semver tags are the named channel. Everything else that lands on master
+      # publishes an edge build instead — see the version job below.
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  # What this build calls itself, decided once and read by both the compiler
+  # and the publisher. Two jobs computing it separately is two chances for the
+  # stamped string and the release tag to drift apart, which is precisely the
+  # confusion a version number exists to prevent.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      title: ${{ steps.resolve.outputs.title }}
+      latest: ${{ steps.resolve.outputs.latest }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+            title="AForge ${tag}"
+            # Only a complete semver release takes the "Latest" badge. A
+            # prerelease tag (v0.2.0-rc.1) is published and left unmarked, so
+            # anything resolving "latest" keeps pointing at the last stable one.
+            # A bash regex rather than a pipe into grep: under pipefail a
+            # `printf | grep -q` pipeline can report the writer's SIGPIPE
+            # instead of grep's verdict and silently take the wrong branch.
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              latest=true
+              prerelease=false
+            else
+              latest=false
+              prerelease=true
+            fi
+          else
+            # The edge channel: every master push publishes, nothing about it
+            # claims to be a release. Callers that want a build off master ask
+            # for build-<sha12> by name.
+            tag="build-${GITHUB_SHA::12}"
+            title="AForge ${GITHUB_SHA::12}"
+            latest=false
+            prerelease=true
+          fi
+          {
+            echo "tag=${tag}"
+            echo "title=${title}"
+            echo "latest=${latest}"
+            echo "prerelease=${prerelease}"
+          } >> "$GITHUB_OUTPUT"
+          echo "version ${tag} (latest=${latest} prerelease=${prerelease})"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test release surface
+        run: >-
+          go test
+          ./cmd/aforge
+          ./internal/config
+          ./internal/exec/...
+          ./internal/filelock
+          ./internal/lease
+
+  build:
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            extension: ""
+          - goos: darwin
+            goarch: arm64
+            extension: ""
+          - goos: linux
+            goarch: amd64
+            extension: ""
+          - goos: linux
+            goarch: arm64
+            extension: ""
+          - goos: windows
+            goarch: amd64
+            extension: .exe
+          - goos: windows
+            goarch: arm64
+            extension: .exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          AFORGE_VERSION: ${{ needs.version.outputs.tag }}
+        run: |
+          mkdir -p dist
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${AFORGE_VERSION}" \
+            -o "dist/aforge-${GOOS}-${GOARCH}${{ matrix.extension }}" \
+            ./cmd/aforge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aforge-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # Pull requests and manual dispatches build and upload artifacts and stop
+    # there. Publishing is a consequence of landing on master or of cutting a
+    # tag, never of somebody pressing a button on a branch.
+    if: github.event_name == 'push'
+    needs: [build, version]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: aforge-*
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        working-directory: dist
+        run: sha256sum aforge-* > checksums.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          TITLE: ${{ needs.version.outputs.title }}
+          LATEST: ${{ needs.version.outputs.latest }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$LATEST" = "true" ]; then
+            marks=(--latest --prerelease=false)
+          else
+            marks=(--latest=false --prerelease)
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              "${marks[@]}"
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --generate-notes \
+              "${marks[@]}"
+          fi
