@@ -155,6 +155,14 @@ func (a *app) conversation() deck {
 // list it was taken from, and the list a person is pointing at is the one on
 // screen.
 func (a *app) bodyDeck() deck {
+	// A NODE'S TRANSCRIPT INSIDE A RUN'S PAGE IS ITS OWN DECK: the rows on
+	// screen are that journal's, so the doors that act on "the entry under the
+	// click" — open a call, toggle a thought — must act on those entries and
+	// not on the room's or the conversation's (roomorch.go's
+	// [app.orchTranscriptDeck]).
+	if run := a.orchOf(); run != nil && run.transcript != "" {
+		return a.orchTranscriptDeck()
+	}
 	if a.room != nil {
 		return a.room.deck()
 	}
