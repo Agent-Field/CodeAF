@@ -457,8 +457,12 @@ func TestACommandChainLetsItsLastActionLead(t *testing.T) {
 	}
 }
 
-// A grep's pattern is what is being looked for and its path is where: accent
-// and dim, not one colour for both.
+// A grep's pattern is what is being looked for and its path is where: ink and
+// dim, not one colour for both — and NOT the accent, which THE ACCENT BUDGET
+// spends on the one live or chosen thing on a screen and never on a tool row.
+//
+// Every assertion here is made against the RAW painted row, because a claim
+// about paint checked on ANSI-stripped text is a claim that cannot fail.
 func TestAGrepPatternLeadsAndItsPathRecedes(t *testing.T) {
 	a := toolApp(t, tokens.TrueColor, []session.Event{
 		{Kind: session.EventToolBegin, Tool: "grep", Hint: "grep argsLimit internal/session"},
@@ -466,11 +470,44 @@ func TestAGrepPatternLeadsAndItsPathRecedes(t *testing.T) {
 	})
 
 	line := toolRowText(t, a)
-	if !strings.Contains(line, a.pal.accent("argsLimit")) {
-		t.Fatalf("the pattern is not the accent: %q", line)
+	if !strings.Contains(line, a.pal.ink("argsLimit")) {
+		t.Fatalf("the pattern is not ink: %q", line)
+	}
+	if strings.Contains(line, a.pal.accent("argsLimit")) {
+		t.Fatalf("the pattern is lit with the accent: %q", line)
 	}
 	if !strings.Contains(line, a.pal.dim(" internal/session")) {
 		t.Fatalf("the path beside a pattern is not dim: %q", line)
+	}
+}
+
+// AND EVERY SEARCH-SHAPED ROW IS PAINTED BY THE SAME RULE. `find` is grep's
+// sibling — [targetIsPattern] is what both of them go through — so a pattern
+// with no place after it is the whole target in ink and the accent appears
+// nowhere on the row at all.
+func TestAFindPatternIsInkAndTheAccentIsNowhereOnTheRow(t *testing.T) {
+	a := toolApp(t, tokens.TrueColor, []session.Event{
+		{Kind: session.EventToolBegin, Tool: "find", Hint: "find **/*.go"},
+		{Kind: session.EventToolEnd, Tool: "find", Output: "internal/session/loop.go"},
+	})
+
+	line := toolRowText(t, a)
+	if !strings.Contains(line, a.pal.ink("**/*.go")) {
+		t.Fatalf("the pattern is not ink: %q", line)
+	}
+	// The accent's own opening escape sequence, sought anywhere in the row: the
+	// claim is the budget itself, not one word's worth of it. The sequence is
+	// taken from the palette rather than written out, because a hex literal in a
+	// test is a second place for the colour to live.
+	lit, _, _ := strings.Cut(a.pal.accent("|"), "|")
+	if lit == "" {
+		t.Fatal("the accent paints nothing on a truecolor terminal")
+	}
+	if strings.Contains(line, lit) {
+		t.Fatalf("a finished tool row spends the accent: %q", line)
+	}
+	if !targetIsPattern("grep") || !targetIsPattern("find") || targetIsPattern("read") {
+		t.Fatal("the pattern rule no longer names the search-shaped tools")
 	}
 }
 

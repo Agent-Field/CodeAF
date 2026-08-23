@@ -111,6 +111,18 @@ var targetField = map[string]string{
 	"web_search": "query",
 }
 
+// targetIsPattern says whether a call's target is a PATTERN — something the
+// call is looking for — rather than a place it is pointed at. It is read off
+// [targetField] rather than off a list of tool names of its own, so a hand
+// added later with a `pattern` argument is drawn like its siblings on the day
+// it is registered and not on the day somebody notices.
+//
+// The distinction is worth naming because a pattern is the one target with a
+// qualifier BEHIND it: `argsLimit internal/session` is what was looked for and
+// then where, so the row splits where a path with a trailing line range splits.
+// It is no longer a distinction in COLOUR — see [app.paintTarget].
+func targetIsPattern(tool string) bool { return targetField[tool] == "pattern" }
+
 // toolTarget is the file, command or pattern a call is about.
 //
 // The payload is asked FIRST and the hint only after: session's hint is a
