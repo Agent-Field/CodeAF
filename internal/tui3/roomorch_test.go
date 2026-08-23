@@ -142,13 +142,13 @@ func TestTheGraphLaysItsNodesOutInTopologicalLayers(t *testing.T) {
 	rfcs := orchLineAt(t, a, "rfcs")
 	client := orchLineAt(t, a, "client")
 	write := orchLineAt(t, a, "write")
-	if rfcs != client {
-		t.Fatalf("two nodes with the same needs are on different rows: %d and %d\n%s",
+	if client != rfcs+1 {
+		t.Fatalf("two nodes of one layer are not consecutive rows: %d and %d\n%s",
 			rfcs, client, strings.Join(orchLines(a), "\n"))
 	}
-	if !(plan < rfcs && rfcs < write) {
-		t.Fatalf("the layers are out of order (plan %d, frontier %d, write %d):\n%s",
-			plan, rfcs, write, strings.Join(orchLines(a), "\n"))
+	if !(plan < rfcs && client < write) {
+		t.Fatalf("the layers are out of order (plan %d, frontier %d/%d, write %d):\n%s",
+			plan, rfcs, client, write, strings.Join(orchLines(a), "\n"))
 	}
 
 	// THE GLYPHS ARE THE STATES, one cell each, and the ramp is readable without
@@ -163,28 +163,28 @@ func TestTheGraphLaysItsNodesOutInTopologicalLayers(t *testing.T) {
 	}
 }
 
-// AT THE WIDE TIER THE EDGES ARE DRAWN. A stroke under a chip says the layer
-// below needs it; a chip nothing needs gets none.
-func TestTheWideTierDrawsAConnectorUnderEveryNeededChip(t *testing.T) {
+// THE EDGES ARE WORDS ON THE ROW. The old wide tier drew bare strokes under
+// chips, which pointed at columns and said nothing; every node row now carries
+// what it waits on in its dim tail, and a node nothing gated carries no tail
+// at all — the emptiness law applied to an edge list.
+func TestEveryNodeRowNamesWhatItWaitsOn(t *testing.T) {
 	a, _ := orchApp(t, orchRun4())
 
 	lines := orchLines(a)
-	at := orchLineAt(t, a, "plan")
-	if at+1 >= len(lines) || !strings.Contains(lines[at+1], "│") {
-		t.Fatalf("no connector under the layer everything needs:\n%s", strings.Join(lines, "\n"))
+	if strings.Contains(strings.Join(lines, "\n"), "│") {
+		t.Fatalf("the page still draws connector strokes:\n%s", strings.Join(lines, "\n"))
 	}
-	// The stroke lands under the chip's GLYPH and not under the cursor's lead.
-	glyph := strings.Index(lines[at], orchGlyphDone)
-	if glyph < 0 || strings.Index(lines[at+1], "│") != glyph {
-		t.Fatalf("the connector is not under the chip it belongs to:\n%q\n%q",
-			lines[at], lines[at+1])
+	for row, want := range map[string]string{
+		"rfcs":   orchNeedsHead + " plan",
+		"client": orchNeedsHead + " plan",
+		"write":  orchNeedsHead + " rfcs client",
+	} {
+		if line := lines[orchLineAt(t, a, row)]; !strings.Contains(line, want) {
+			t.Fatalf("the %s row does not say %q:\n%q", row, want, line)
+		}
 	}
-	// AND THE LAST LAYER HAS NO CONNECTOR: nothing needs the write-up, so there is
-	// nothing under it. A stroke pointing at an empty row would be an edge that
-	// does not exist.
-	last := orchLineAt(t, a, "write")
-	if last+1 < len(lines) && strings.Contains(lines[last+1], "│") {
-		t.Fatalf("a connector hangs off the last layer:\n%q", lines[last+1])
+	if line := lines[orchLineAt(t, a, "plan")]; strings.Contains(line, orchNeedsHead+" ") {
+		t.Fatalf("a node nothing gated carries a needs tail:\n%q", line)
 	}
 }
 
@@ -205,12 +205,12 @@ func TestANewNodeIsMarkedForOneIntervalAndThenIsOrdinary(t *testing.T) {
 	agent.snaps["r1"] = snap
 	orchPollNow(t, a)
 
-	page := roomText(a)
-	if !strings.Contains(page, "compare · "+orchNewWord) {
-		t.Fatalf("the node that just arrived is not marked new:\n%s", page)
+	lines := orchLines(a)
+	if line := lines[orchLineAt(t, a, "compare")]; !strings.Contains(line, orchNewWord) {
+		t.Fatalf("the node that just arrived is not marked new:\n%q", line)
 	}
-	if strings.Contains(page, "plan · "+orchNewWord) {
-		t.Fatalf("a node that was always there is marked new:\n%s", page)
+	if line := lines[orchLineAt(t, a, "plan")]; strings.Contains(line, orchNewWord) {
+		t.Fatalf("a node that was always there is marked new:\n%q", line)
 	}
 
 	// One more read, nothing added: the marker is spent.
@@ -224,16 +224,19 @@ func TestANewNodeIsMarkedForOneIntervalAndThenIsOrdinary(t *testing.T) {
 	}
 }
 
-// THE PLANNER'S NOTES ARE THIN ROWS BETWEEN THE LAYERS: what it said, where the
-// graph grew when it said it.
-func TestPlannerNotesAreDrawnBetweenTheLayers(t *testing.T) {
+// THE PLANNER'S NOTES ARE A SECTION OF THEIR OWN, under the graph and under
+// their own dim heading. They used to be interleaved at the layer boundaries,
+// where rows of talk between rows of work were the main thing that made the
+// page unreadable.
+func TestPlannerNotesAreGatheredUnderTheirOwnHeading(t *testing.T) {
 	snap := orchRun4()
 	snap.Notes = []string{"the client matters more than the RFCs"}
 	a, _ := orchApp(t, snap)
 
+	head := orchLineAt(t, a, orchPlannerHead)
 	note := orchLineAt(t, a, "the client matters more")
-	if note <= orchLineAt(t, a, "plan") || note >= orchLineAt(t, a, "rfcs") {
-		t.Fatalf("the note is not on the boundary it belongs to:\n%s",
+	if head <= orchLineAt(t, a, "write") || note != head+1 {
+		t.Fatalf("the narration is not a section under the graph:\n%s",
 			strings.Join(orchLines(a), "\n"))
 	}
 
@@ -612,14 +615,14 @@ func TestTheNarrowTierWritesEveryEdgeOutInWords(t *testing.T) {
 		t.Fatalf("the narrow tier is still drawing connectors:\n%s", page)
 	}
 	for _, want := range []string{
-		orchNeedsLead + "plan", orchNeedsLead + "rfcs, client", orchNeedsLead + "—",
+		orchNeedsHead + " plan", orchNeedsHead + " rfcs client",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the narrow tier never says %q:\n%s", want, page)
 		}
 	}
-	// One chip per row, so the goal rides the chip's own line.
-	if !strings.Contains(page, "rfcs · read the three RFCs") {
+	// One node per row, so the goal rides the node's own line.
+	if !strings.Contains(page, "rfcs read the three RFCs") {
 		t.Fatalf("the narrow tier lost the goals:\n%s", page)
 	}
 }
@@ -676,21 +679,36 @@ func TestThePhoneTierGivesEveryChipThreeRows(t *testing.T) {
 // grammar — a glyph, a lead, a gap, an order — has to be made on purpose: the
 // diff of one of these is the change, stated.
 
+// squeezeRows collapses the right-alignment padding so the golden states the
+// grammar — glyphs, order, words, tails — without every terminal width baked
+// into it as a run of spaces.
+func squeezeRows(page string) string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimRight(page, "\n"), "\n") {
+		for strings.Contains(line, "   ") {
+			line = strings.ReplaceAll(line, "   ", "  ")
+		}
+		out = append(out, strings.TrimRight(line, " "))
+	}
+	return strings.Join(out, "\n")
+}
+
 func TestTheGraphsGoldenAtTheWideTier(t *testing.T) {
 	snap := orchRun4()
 	snap.Notes = []string{"the client matters more than the RFCs"}
 	a, _ := orchApp(t, snap)
 
 	want := strings.Join([]string{
-		"  ● plan",
-		"  │",
-		"· the client matters more than the RFCs",
-		"  ◐ rfcs     ○ client",
-		"  │          │",
+		"work",
+		"  ● plan decide what to read  $0.02",
+		"  ◐ rfcs read the three RFCs  needs plan · $0.11",
+		"  ○ client read our client  needs plan",
+		"  ○ write write the answer  needs rfcs client",
 		"",
-		"  ○ write",
+		"planner",
+		"· the client matters more than the RFCs",
 	}, "\n")
-	if got := strings.TrimRight(roomText(a), "\n"); got != want {
+	if got := squeezeRows(roomText(a)); got != want {
 		t.Fatalf("the wide graph changed:\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
@@ -701,22 +719,21 @@ func TestTheGraphsGoldenAtThePhoneTier(t *testing.T) {
 	a.touch()
 
 	want := strings.Join([]string{
-		"  ● plan",
-		"    decide what to read",
-		"    ↳ needs: —",
-		"",
-		"  ◐ rfcs",
-		"    read the three RFCs",
-		"    ↳ needs: plan",
+		"work",
+		"  ● plan  $0.02",
+		"  decide what to read",
+		"  ↳ needs: —",
+		"  ◐ rfcs  $0.11",
+		"  read the three RFCs",
+		"  ↳ needs: plan",
 		"  ○ client",
-		"    read our client",
-		"    ↳ needs: plan",
-		"",
+		"  read our client",
+		"  ↳ needs: plan",
 		"  ○ write",
-		"    write the answer",
-		"    ↳ needs: rfcs, client",
+		"  write the answer",
+		"  ↳ needs: rfcs, client",
 	}, "\n")
-	if got := strings.TrimRight(roomText(a), "\n"); got != want {
+	if got := squeezeRows(roomText(a)); got != want {
 		t.Fatalf("the phone graph changed:\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
