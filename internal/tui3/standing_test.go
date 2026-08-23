@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -723,5 +724,176 @@ func TestARulesCardDrawsNoCadenceAndNoCost(t *testing.T) {
 	}
 	if !strings.Contains(text, "never touch the public API") {
 		t.Fatalf("a rule's card lost the person's own sentence:\n%s", text)
+	}
+}
+
+// ── THE CARD A STRANGER CAN ANSWER ──────────────────────────────────────────
+//
+// A person met their first standing card and said, in as many words, that they
+// did not understand the options: they had expected a cancel, and they had
+// expected to be able to change the reach the card was showing them. All three
+// of those are one defect — the card stated facts and offered verbs without
+// saying what any of them would do — and the three tests below are the three
+// halves of the fix.
+
+// THE WAY OUT IS ON THE CARD. It used to be `esc`, and a `0` named in the hint
+// slot under the message box: a gesture whose only documentation is
+// documentation, which docs/DESIGN-LANGUAGE.md refuses by name.
+func TestTheStandingCardDrawsTheWayOutAndTakesItThreeWays(t *testing.T) {
+	a, agent, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	})})
+	card := a.stand
+	if card == nil {
+		t.Fatal("no card")
+	}
+	chip := pickChipText(pickChoice{key: session.StandingNoKey, word: standNoWordChip}, true)
+	if text := standText(a); !strings.Contains(text, chip) {
+		t.Fatalf("the card draws no way to say no:\n%s", text)
+	}
+	// AND IT IS THE LAST PLACE THE CURSOR WALKS TO, reachable with the arrows
+	// exactly as every other answer is.
+	for i := 0; i < len(card.row()); i++ {
+		drive(t, a, key("right"))
+	}
+	if card.choice != card.declineAt() {
+		t.Fatalf("the cursor stopped at %d, want the way out at %d", card.choice, card.declineAt())
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answered) != 1 || agent.answered[0].answer != (session.StandingAnswer{}) {
+		t.Fatalf("walking to the way out and pressing enter sent %+v", agent.answered)
+	}
+	if a.stand.verdict != standNoWord {
+		t.Fatalf("the declined card settled as %q, want %q", a.stand.verdict, standNoWord)
+	}
+
+	// THE THREE DOORS ARE ONE ANSWER. esc, the `0` and a click on the chip all
+	// send the zero answer the engine reads as a decline.
+	for _, door := range []func(*app){
+		func(a *app) { drive(t, a, key("esc")) },
+		func(a *app) { drive(t, a, key2(session.StandingNoKey)) },
+		func(a *app) {
+			for _, span := range a.stand.spans {
+				if span.at == a.stand.declineAt() {
+					a.takeStanding(span.at)
+				}
+			}
+		},
+	} {
+		a, agent, _ := standApp(t)
+		drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+			WhenWords: "Mondays at 9am",
+		})})
+		standText(a)
+		door(a)
+		if len(agent.answered) != 1 || agent.answered[0].answer != (session.StandingAnswer{}) {
+			t.Fatalf("one of the ways out sent %+v, want the decline", agent.answered)
+		}
+	}
+}
+
+// THE ANSWERS SAY WHAT THEY DO, AND THE ONE UNDER THE CURSOR SAYS IT IN FULL.
+//
+// The consequence line is BUILT FROM THE PROPOSAL — the person's cadence and the
+// reach off the item itself — so it cannot say something the card is not about.
+func TestTheStandingCardSaysWhatThePickedAnswerWillDo(t *testing.T) {
+	a, _, _ := standApp(t)
+	item := standItem()
+	item.Altitude = standing.AltitudeMachine
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		Item: item, WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	})})
+	card := a.stand
+
+	// THE YES READS OUT THE CARD'S OWN FACTS: the cadence it was proposed with
+	// and the reach the `where` band names, never a canned sentence.
+	says := a.standSays(card)
+	for _, want := range []string{standSaysKeep, "Mondays at 9am", standEverywhereWord, standSaysUntil} {
+		if !strings.Contains(says, want) {
+			t.Fatalf("the yes says %q, and does not carry %q", says, want)
+		}
+	}
+	if text := standText(a); !strings.Contains(text, says) {
+		t.Fatalf("the line is not under the answers:\n%s", text)
+	}
+	// AND IT FOLLOWS THE CURSOR: each answer says its own consequence.
+	for at, want := range map[int]string{
+		standChange:      standSaysChange,
+		standOnce:        standSaysOnce,
+		card.declineAt(): standSaysNo,
+	} {
+		card.choice = at
+		if got := a.standSays(card); got != want {
+			t.Fatalf("the answer at %d says %q, want %q", at, got, want)
+		}
+	}
+	// A RULE HAS NO CADENCE TO READ OUT, so the clause is left out rather than
+	// filled with a word standing in for one.
+	rule := standItem()
+	rule.When = standing.When{Kind: standing.WhenHold}
+	card.item, card.when, card.choice = rule, "", standYes
+	if got := a.standSays(card); !strings.Contains(got, standProjectWord) || strings.Contains(got, "  ") {
+		t.Fatalf("a rule's yes reads %q", got)
+	}
+}
+
+// THE PICKED ANSWER IS EMPHASIZED BY THE LADDER AND NOTHING ELSE: its ground is
+// raised and its key turns accent. No outline, no new colour, and the row does
+// not reflow when the cursor moves.
+func TestTheStandingCardEmphasizesThePickedAnswerWithoutAnOutline(t *testing.T) {
+	a, _, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am",
+	})})
+	card := a.stand
+	row, _ := a.standChips(card, 0, 200)
+	// THE GROUND IS RAISED under the picked chip and its key turns accent —
+	// the emphasis law's two moves, asserted through the palette rather than
+	// through any escape sequence retyped here.
+	if !strings.Contains(row, paintPrefix(a.pal.background("x", 0, a.pal.ramp.selected))) {
+		t.Fatalf("the picked answer's ground is not raised: %q", row)
+	}
+	if !strings.Contains(row, paintPrefix(a.pal.accent("x"))) {
+		t.Fatalf("the picked answer's key does not turn accent: %q", row)
+	}
+	// THE WIDTH IS THE SAME WHEREVER THE CURSOR IS, so walking the row moves
+	// nothing on the screen but the emphasis.
+	was := ansi.StringWidth(plain(row))
+	for at := 0; at < card.picks(); at++ {
+		card.choice = at
+		moved, _ := a.standChips(card, 0, 200)
+		if got := ansi.StringWidth(plain(moved)); got != was {
+			t.Fatalf("the row is %d cells with the cursor at %d and %d at nought", got, at, was)
+		}
+	}
+}
+
+// A ROW WITH NO ROOM SAYS EVERY ANSWER BRIEFLY RATHER THAN SOME OF THEM FULLY,
+// and the way out is never the answer that is dropped.
+func TestTheStandingAnswersShortenBeforeTheyAreDropped(t *testing.T) {
+	a, _, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am",
+	})})
+	card := a.stand
+	long := pickRowCells(card.row(), true)
+	short := pickRowCells(card.row(), false)
+	if short >= long {
+		t.Fatalf("the short spelling is %d cells and the long one %d", short, long)
+	}
+	row, spans := a.standChips(card, 0, short)
+	if len(spans) != card.picks() {
+		t.Fatalf("a row with room for every short answer drew %d of %d: %q",
+			len(spans), card.picks(), plain(row))
+	}
+	// AND WHEN EVEN THAT IS TOO MUCH, THE WAY OUT IS WHAT SURVIVES.
+	decline := pickChipText(pickChoice{key: session.StandingNoKey, word: standNoWordChip}, false)
+	row, spans = a.standChips(card, 0, ansi.StringWidth(decline))
+	if len(spans) != 1 || spans[0].at != card.declineAt() {
+		t.Fatalf("the narrowest row drew %v, want the way out alone: %q", spans, plain(row))
+	}
+	if !strings.Contains(plain(row), decline) {
+		t.Fatalf("the narrowest row is %q, want %q", plain(row), decline)
 	}
 }
