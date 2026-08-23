@@ -306,7 +306,7 @@ const (
 	// separated).
 	orchWorkHead    = "work"
 	orchPlannerHead = "planner"
-	orchCardBack   = "esc · back to the graph"
+	orchCardBack    = "esc · back to the graph"
 	// orchGateLead opens the gate's question.
 	orchGateLead = "out of fuel"
 	// orchPlannerLead names the model the run is thinking with, beside the
@@ -342,7 +342,6 @@ const (
 	orchGlyphDoneASCII    = "#"
 	orchGlyphPausedASCII  = "="
 )
-
 
 // orchLead is the cursor's two cells in front of every chip, picked or not. It
 // is constant width so that moving the cursor never reflows the line, and it is
@@ -1473,7 +1472,6 @@ func orchNeedsWord(node orchestrate.NodeStatus) string {
 	}
 	return orchNeedsLead + strings.Join(node.Needs, ", ")
 }
-
 
 // orchGlyph is a node's state in one cell.
 //
