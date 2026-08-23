@@ -5,8 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"os"
+	"path/filepath"
 )
 
 // ── THE ADAPTIVE RUN'S PAGE ─────────────────────────────────────────────────
@@ -545,11 +548,9 @@ func TestThePauseGateAnswersAPress(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the gate's answers are not on the page:\n%s", roomText(a))
 	}
-	// The row's screen position, resolved the way the frame resolves it.
+	// The row's screen position, resolved the way the frame resolves it: the
+	// page hangs from the top and the slack falls below it.
 	y := a.bodyTop() + (at - a.roomOffsetFor(len(rows), a.viewHeight()))
-	if pad := a.viewHeight() - len(rows); pad > 0 {
-		y += pad
-	}
 	if !a.orchPress(x, y) {
 		t.Fatal("the press landed on no target at all")
 	}
@@ -662,9 +663,6 @@ func TestThePhoneTierGivesEveryChipThreeRows(t *testing.T) {
 		}
 	}
 	y := a.bodyTop() + at - a.roomOffsetFor(len(rows), a.viewHeight())
-	if pad := a.viewHeight() - len(rows); pad > 0 {
-		y += pad
-	}
 	if !a.orchPress(1, y) {
 		t.Fatal("the last row of a phone chip is not pressable")
 	}
@@ -886,5 +884,59 @@ func TestTheGateOfferScalesAndNamesItsGestures(t *testing.T) {
 	// The cursor opens on the scaled offer, and enter takes it as spelled.
 	if got := run.pick; got.answer != "topup:5" {
 		t.Fatalf("the cursor is on %+v, want the scaled top-up", got)
+	}
+}
+
+// A TOOL CALL ON A NODE'S TRANSCRIPT OPENS ON A CLICK, exactly as it does in a
+// room. The transcript's rows used to be re-minted as bare text — the deck
+// renderer's hit information thrown away — so a person inside a node saw calls
+// they could not open however they pressed. The rows go on the page whole now,
+// and the expansion doors act on the transcript's own deck.
+func TestANodeTranscriptsToolCallsOpenOnAClick(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	path := filepath.Join(t.TempDir(), "write.jsonl")
+	journal := strings.Join([]string{
+		`{"type":"message","role":"user","content":"write the answer"}`,
+		`{"type":"message","role":"assistant","content":"","toolCalls":[{"id":"c1","type":"function","function":{"name":"grep","arguments":"{\"pattern\":\"retry\"}"}}]}`,
+		`{"type":"message","role":"tool","toolCallId":"c1","content":"the grep found three hits"}`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(journal), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	agent.journals = map[string]string{"r1:write": path}
+	a.orchOpenTranscript("write")
+	a.touch()
+
+	rows := a.roomRows(a.bodyWidth())
+	at := -1
+	for i, r := range rows {
+		if r.hit == hitTool {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("no clickable tool row on the transcript:\n%s", roomText(a))
+	}
+	if strings.Contains(roomText(a), "the grep found three hits") {
+		t.Fatalf("the call is already open before anybody clicked:\n%s", roomText(a))
+	}
+	y := roomRowY(a, at)
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	if !strings.Contains(roomText(a), "the grep found three hits") {
+		t.Fatalf("the click did not open the call:\n%s", roomText(a))
+	}
+
+	// And a re-read of a growing journal keeps it open: the fresh parse
+	// carries the expansion across by index.
+	grown := journal + "\n" + `{"type":"message","role":"assistant","content":"done."}`
+	if err := os.WriteFile(path, []byte(grown), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.orchReadTranscript()
+	a.touch()
+	if !strings.Contains(roomText(a), "the grep found three hits") {
+		t.Fatalf("the journal growing snapped the expansion shut:\n%s", roomText(a))
 	}
 }
