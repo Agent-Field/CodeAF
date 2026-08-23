@@ -389,6 +389,34 @@ There is no idle ticker driving this. During a turn the frame clock is already r
 and when a turn settles exactly two one-shot ticks are scheduled so the fresh tier can
 expire on time.
 
+## Why the bottom rows of a long list look dimmer — faded, greyed out or washed out rows
+
+The last three rows of a list that runs on past the bottom of its window are drawn a step
+fainter each, fading toward the background. It happens on the task page (`/history`,
+`ctrl+.`), on the task column, and on home's list of projects and conversations.
+
+It means one thing: **there is more of this list below**. The head of the window is at
+full strength, the tail steps back, so a long list reads as sharp where you are and quiet
+where you are not. It is the same three-step ramp the thinking window uses while a model
+works.
+
+Four things about it:
+
+- **A list that fits does not fade at all.** With the last row of the list already on
+  screen there is nothing below to point at, so a short list is drawn exactly as it would
+  have been with no such rule.
+- **The row you are on is never faded**, wherever it has been scrolled to — including
+  when it is the very last row before the fold. Neither is a row under the mouse.
+- **Nothing you are reading fades.** The conversation and copy mode are untouched: a
+  transcript is read line by line and every line of it is the content, not context.
+- **Rows never alternate light and dark.** aforge draws no striped lists anywhere. Rows
+  are told apart by spacing, and groups inside a list by a blank line — never by a rule,
+  and never by a background that flips row to row.
+
+On a terminal below 256 colours, and with `NO_COLOR` set, there is no ramp to fade along
+and the rows are drawn plainly. Linear mode (`--linear`) drops it too, for the same reason
+it drops the thinking window's gradient.
+
 ## Why the status line says $0.00
 
 A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown context

@@ -796,6 +796,15 @@ It has two sections.
   repeated here. A row that still claims `running` with no window behind it lands here
   reading `incomplete`.
 
+**The two sections are separated by a blank line**, never by a rule or a divider, and
+`earlier` carries that blank line only when `running` is above it — a page holding nothing
+but the record opens on its own word.
+
+**The last rows of the page fade** when the record runs on below the bottom of the window:
+three rows, each a step fainter, saying there is more under them. The row the cursor is on
+never fades wherever it sits, and a record short enough to fit fades nothing at all — see
+*Why the bottom rows of a long list look dimmer* on the screen page.
+
 At the bottom: one dim line counting what is on the page, such as `3 running · 148 earlier`
 — a section with nothing in it is not counted at all — and under it the keys.
 
