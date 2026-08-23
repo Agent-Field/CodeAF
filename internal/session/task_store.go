@@ -796,6 +796,14 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		interrupted: record.Interrupted,
 		offer:       record.Offer,
 	}
+	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
+	// on the record, because it is not a fact about the work — it is a reading
+	// of the work, and it is re-taken here from the same text
+	// ([Agent.armDivision], task_divide.go). What a restart does lose is the
+	// sizing judge's own yes, which lived in the session that has gone; a task
+	// armed only by that comes back as one worker, which is the safe direction
+	// for a reading to fail in.
+	node.spec.divide = graph.home.armDivision(node.spec)
 	// A QUEUED DESIGN IS ONLY EVER A FINISHED PAGE ASKING AGAIN ([interrupt]'s
 	// Offer branch), and the Offer is the one record that can rebuild the design
 	// spec the checkpoint otherwise never carries — without this line the
