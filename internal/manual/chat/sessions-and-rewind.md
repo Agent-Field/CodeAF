@@ -402,20 +402,20 @@ where the wordmark and `recent sessions` still greet you.
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 
-The name is written by a model, once, and it is the first thing on the legend above the
-message box: `porting the parser · chat-v3-task*`.
+The name is written by a model, once, and appears in the status line below the message
+box: `porting the parser · gpt-4.1-mini:high`.
 
 **It arrives one turn in.** As soon as your first exchange finishes, the model on the
 `title` role — small work, so a cheap one — is shown the opening question and answer and
 then asked, at the end of that same message,
 `Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
 **one call per conversation** — it is never retried inside a conversation, so a provider
-having a bad minute costs you a name and nothing else. Until it lands, the legend shows
-only the branch and the status line falls back to the folder's name; nothing says
+having a bad minute costs you a name and nothing else. Until it lands, the status line
+falls back to the folder's name; nothing says
 "untitled".
 
-The name is capped at **80 characters**, and a longer one is cut with an `…` on the
-legend rather than pushing the branch or the key hints off the line.
+The name is capped at **80 characters**, and the status line fits it to the room left by
+the model rather than letting identity push telemetry off the frame.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this

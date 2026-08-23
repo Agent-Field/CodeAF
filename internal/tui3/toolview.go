@@ -689,9 +689,9 @@ func (a *app) phoneGutter(e *entry) (string, int) {
 func phoneTarget(tool, target string) string {
 	switch tool {
 	case "bash":
-		// The budgeted command fragment: the directory it runs in is context,
-		// and the row keeps the work. [fit] does the rest at the call site.
-		if _, command, found := cutCDPrefix(target); found {
+		// The budgeted command fragment: earlier clauses are context, and the row
+		// keeps the final action. [fit] does the rest at the call site.
+		if _, command, found := cutCommandContext(target); found {
 			return command
 		}
 		return target
@@ -1242,12 +1242,9 @@ func (a *app) paintTarget(e *entry, target string) string {
 		// every width in this function has been measured, because a width
 		// measured through an escape sequence is a width measured wrong.
 		//
-		// The cd prefix keeps its own rule ahead of the lexer, and the two do not
-		// disagree: the lexer would paint `cd` as a command and `/tmp` as a path,
-		// which is true, and the parameter hierarchy says that whole clause is
-		// CONTEXT rather than substance. Context recedes; the work is what the
-		// eye should land on.
-		if context, command, found := cutCDPrefix(target); found {
+		// A successful chain keeps its context rule ahead of the lexer. Context
+		// recedes; the final action is what the eye should land on.
+		if context, command, found := cutCommandContext(target); found {
 			return a.pal.dim(context) + a.pal.shell(command)
 		}
 		return a.pal.shell(target)
@@ -1278,15 +1275,11 @@ func (a *app) paintTarget(e *entry, target string) string {
 	return a.pal.ink(target)
 }
 
-// cutCDPrefix splits the one bash shape worth splitting: a command that changes
-// directory before doing the thing it is about. Everything else — a pipeline, a
-// chain of two real commands, a cd with no `&&` — is left whole, because the
-// only prefix that is reliably CONTEXT rather than work is this one.
-func cutCDPrefix(command string) (context, rest string, found bool) {
-	if !strings.HasPrefix(command, "cd ") {
-		return "", command, false
-	}
-	at := strings.Index(command, " && ")
+// cutCommandContext splits a successful chain before its last command. Earlier
+// clauses establish the context for the final action, so stacked rows lead with
+// the changing action and let repeated setup recede.
+func cutCommandContext(command string) (context, rest string, found bool) {
+	at := strings.LastIndex(command, " && ")
 	if at < 0 {
 		return "", command, false
 	}

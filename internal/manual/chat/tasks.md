@@ -486,7 +486,7 @@ the orders standing over this conversation. The standing orders page has that ha
 The roster holds every task **this conversation** has admitted,
 not just the live ones — and no other work. Tasks *other* sessions ran are not on it; the
 page `/history` opens is the one that has them, and one dim line at the foot of the column,
-`ctrl+. — earlier`, is the door onto it. Work finishing never puts the column away, and
+`ctrl+. earlier`, is the door onto it. Work finishing never puts the column away, and
 neither does `/new` — that takes this session's tasks with it and leaves the column
 standing, with the door onto the project's record still at its foot. One thing closes it:
 `ctrl+g`, which takes the column off the frame and leaves the work exactly where it was.
@@ -495,9 +495,9 @@ The bottom line of the column says so.
 The column is permanent: it stands from the session's first frame, before any task exists,
 at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
 from 100 to 119. Work fills it rather than raising it. A conversation that has run nothing
-carries one dim line, `no tasks yet`, **whatever the project has behind it** — the label is
-about this conversation, and in a directory whose earlier sessions ran tasks the door
-`ctrl+. — earlier` sits at the foot of the column under it. Under 100 columns there is no
+draws no empty label or absence sentence, **whatever the project has behind it** — the
+typeable `+ /task` door remains, and in a directory whose earlier sessions ran tasks the door
+`ctrl+. earlier` sits at the foot of the column. Under 100 columns there is no
 column, and `ctrl+t` opens the same roster over the body instead once this session has
 tasks.
 
@@ -551,7 +551,7 @@ At the bottom, under both sections, up to three dim lines: `Σ $1.42 · 312k tok
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
 
-Under those, always, one more line: `❯ ctrl+g — hide`. It is the column's own door, and it
+Under those, always, one more line: `❯ ctrl+g hide`. It is the column's own door, and it
 is a button as well as a key — click that line and the column goes away. The `❯` is in ink
 and the words are dim, because the chevron is what the pointer presses and the words are
 what the keyboard reads.
@@ -616,22 +616,22 @@ no proposal card in between and no extra question.
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give aforge some.
 
-## Old tasks from previous sessions are not on the column — the `ctrl+. — earlier` door
+## Old tasks from previous sessions are not on the column — the `ctrl+. earlier` door
 
 **The column is this conversation's work and nothing else.** No rows of earlier sessions'
 tasks are drawn under it. What sits at the foot of the column instead, whenever the project
 has a record this conversation never ran, is one dim line:
 
 ```
-ctrl+. — earlier
+ctrl+. earlier
 ```
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   task page opens with every task the project has ever run on it — running work at the top,
   a flat `earlier` list under it, newest first. `/history` is the same page.
-- **It says what is behind it.** With a record behind it the line reads `ctrl+. — earlier`;
+- **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
-  `ctrl+. — view more`. There is only ever one such line.
+  `ctrl+. view more`. There is only ever one such line.
 - **It is drawn only when there is something behind it**, and never as `0 earlier` or any
   other count of nothing.
 - **A task of your own is not behind it twice.** A task this conversation ran, running or
@@ -662,7 +662,7 @@ work in it, including anything that started or finished while it was gone — no
 is a snapshot; the column is redrawn from the tasks every frame.
 
 **The pointer can do the whole cycle on its own.** The last line of the column reads
-`❯ ctrl+g — hide` with the chevron in ink: click it and the column closes. What is left
+`❯ ctrl+g hide` with the chevron in ink: click it and the column closes. What is left
 behind is a thin edge carrying `❮`: click that and the column comes back. One control, two
 states — `❯` to close, `❮` to open — so a closed column is never a thing you need to know a
 chord to recover. See *The task bar disappeared* below.
@@ -704,7 +704,7 @@ still works and is still the key.
 - Under the pointer the handle brightens further and the whole two-cell strip takes a
   background, which is how everything pressable on this screen says so.
 - **The chevron points the way the column goes**, and it is the same control in its other
-  state: `❮` while the column is away, `❯` on the `❯ ctrl+g — hide` line while it stands.
+  state: `❮` while the column is away, `❯` on the `❯ ctrl+g hide` line while it stands.
   Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
   that cannot draw them they are `<` and `>`.
 - **One cell above the handle says what the work is doing**, while there is anything worth
@@ -739,13 +739,13 @@ rest state, so a person who starts typing is typing, not navigating.
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
 When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
 `w · click seam — narrow` once it is wide); that hint is clickable as well as available
-from the keyboard, and so is the `❯ ctrl+g — hide` line under it.
+from the keyboard, and so is the `❯ ctrl+g hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
 tasks of **this conversation's** on the column, `ctrl+t` falls through rather than being
 swallowed — including in a directory whose earlier sessions ran plenty. There are no rows
-down there to put a cursor on; the door `ctrl+. — earlier` at the foot of the column is how
+down there to put a cursor on; the door `ctrl+. earlier` at the foot of the column is how
 that work is reached.
 
 **The walk stops at this conversation's last task.** `↓` clamps there rather than carrying
@@ -773,7 +773,7 @@ screen until you open this.
 **There is no `/tasks` command.** `/task <brief>` starts work; `/history` shows what was
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
-column — `ctrl+. — earlier`, or `ctrl+. — view more` where the column has merely folded a
+column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a
 family away.
 
 The page takes the whole frame, the way the settings panel does. `esc` closes it. Three
@@ -1074,7 +1074,7 @@ door — they are the ones above, reshaped:
 
 `enter` on any `earlier` row of the task page (`ctrl+.`, `/history`) **goes inside that
 task**. A click does the same on the first press. The task column carries no rows of old
-work — its `ctrl+. — earlier` line is the door onto this page — so the page is where every
+work — its `ctrl+. earlier` line is the door onto this page — so the page is where every
 old task is opened.
 What opens is a full-screen card over the same page, with the list still underneath:
 
@@ -1127,13 +1127,13 @@ A task **this** session ran opens its room instead, which is the live thing: the
 `enter`, a strip chip and a `task 7` link all land there. Only work from a conversation that
 is closed opens the card.
 
-## The one door line at the bottom of the task column: `ctrl+. — earlier`, `view more`
+## The one door line at the bottom of the task column: `ctrl+. earlier`, `view more`
 
 When there is more work than the column is showing, the roster's footer grows one more dim
-line above `❯ ctrl+g — hide`:
+line above `❯ ctrl+g hide`:
 
 ```
-ctrl+. — earlier
+ctrl+. earlier
 ```
 
 Click it, or press `ctrl+.`, and the full-screen task page opens. The column is left exactly
@@ -1141,10 +1141,10 @@ as it was — the page is somewhere you go and come back from, not a state the c
 
 **There is exactly one such line, never two**, and the words on it say what is behind it:
 
-- `ctrl+. — earlier` when the project's record holds tasks **this session never ran** —
+- `ctrl+. earlier` when the project's record holds tasks **this session never ran** —
   work from an earlier conversation, or from a window still open beside this one. This is
   the common case: any directory you have worked in before has one.
-- `ctrl+. — view more` when the only thing held back is a **folded** family, so the column
+- `ctrl+. view more` when the only thing held back is a **folded** family, so the column
   is standing one row for work it is not drawing, and there is no earlier work to promise.
 
 A landed task of this session's, already drawn on the column, does not earn the line: it
@@ -1200,7 +1200,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top line | none | the focus header, and the family lines under it |
-| legend word | the conversation's name and the branch | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next turn — and does nothing at all once the task has landed |

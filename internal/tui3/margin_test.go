@@ -55,31 +55,27 @@ func pressMargin(t *testing.T, a *app, y int) {
 
 // ── 1. two sections, and the labels that make them a map ────────────────────
 
-// THE LABELS ARE GEOGRAPHY AND THE ROWS ARE NEWS. Both labels draw wherever the
-// column does — a map that redraws itself is not a map — and a conversation
-// nothing stands over still has the standing section, because a person cannot
-// learn that orders live here if the place only exists once one does.
-func TestTheMarginDrawsBothSectionsAndTheirDoors(t *testing.T) {
+// THE EMPTY RAIL EARNS ONLY ITS DOORS. They teach how to put something here;
+// labels and absence reports would spend pixels saying that nothing exists.
+func TestTheEmptyMarginDrawsOnlyItsDoors(t *testing.T) {
 	a, _ := marginApp(t)
 	rail := marginRail(a)
-	for _, want := range []string{
-		marginTasksWord,
-		railEmptyWord,
-		marginDoorWord(marginTaskType),
-		marginStandWord,
-		marginDoorWord(marginStandType),
-	} {
+	for _, want := range []string{marginDoorWord(marginTaskType), marginDoorWord(marginStandType)} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the empty margin is missing %q:\n%s", want, rail)
+		}
+	}
+	for _, row := range strings.Split(rail, "\n") {
+		plainRow := strings.TrimSpace(strings.TrimPrefix(row, "│"))
+		if plainRow == marginTasksWord || plainRow == marginStandWord || plainRow == "no tasks yet" {
+			t.Fatalf("the empty margin announces %q:\n%s", plainRow, rail)
 		}
 	}
 	// THE SECTIONS ARE IN THIS ORDER AND THE DOOR IS AT THE FOOT OF EACH: the
 	// work first, because that is what a person came to the column for, then
 	// what stands over it.
 	order := []string{
-		marginTasksWord,
 		marginDoorWord(marginTaskType),
-		marginStandWord,
 		marginDoorWord(marginStandType),
 	}
 	at := 0

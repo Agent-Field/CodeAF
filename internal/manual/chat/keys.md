@@ -704,7 +704,7 @@ open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab 
 types into it.
 
 **Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
-column — `ctrl+. — earlier`, or `ctrl+. — view more` where the column has only folded a
+column — `ctrl+. earlier`, or `ctrl+. view more` where the column has only folded a
 family away): `esc` closes it — or clears the filter first, if one is being typed —
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
@@ -896,7 +896,7 @@ that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc
 **The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
 project's record. Old tasks from earlier sessions are on the task page, reached from the
-column's own `ctrl+. — earlier` line, from `ctrl+.` or from `/history`; `enter` on an
+column's own `ctrl+. earlier` line, from `ctrl+.` or from `/history`; `enter` on an
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
 nothing on the column to put a cursor on.
@@ -921,13 +921,13 @@ session opens the way you left it, and `ctrl+t` counts as asking for the column 
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
-`❯ ctrl+g — hide` line while the column stands closes it** — one chevron control, two
+`❯ ctrl+g hide` line while the column stands closes it** — one chevron control, two
 states, so the pointer can go both ways. The key is unchanged; the chevron is there so the
 column is not a thing you have to already know a chord to get back.
 The key falls through and does nothing only when there is no roster on the frame to
 close: a frame under 100 columns where nothing has raised the overlay. It works with
-no tasks at all — the column stands there saying `no tasks yet`, with the
-`ctrl+. — earlier` door under it if earlier sessions ran anything, and either way an
+no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
+`ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
 empty column is still a column to close.
 
 **With a room open:** `esc` leaves the room, though a history recall walk is

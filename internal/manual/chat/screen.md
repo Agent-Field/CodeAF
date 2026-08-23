@@ -11,14 +11,14 @@ menu, completion), and the status line last.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's very first frame, before any tasks exist. It has **two sections under
-two dim lowercase labels**: `tasks`, the roster of work, and `standing`, the orders
-standing over this conversation. Work fills the column
+from the session's very first frame, before any tasks exist. It carries `tasks`, the
+roster of work, and `standing`, the orders standing over this conversation. A section's
+dim lowercase label appears only when that section has rows. Work fills the column
 rather than raising it, and the work it fills with is **this conversation's alone**.
-The `tasks` section empty says one dim line — `no tasks yet` — whatever the project has behind it; where
+An empty column keeps only its typeable `+ /task` and `+ /standing` doors; where
 the project has a record from earlier sessions, one dim line at the foot of the column
-reads `ctrl+. — earlier` and opens the task page. `ctrl+g` closes it and opens it again, remembered between
-sessions, and the column's own last line says so: `❯ ctrl+g — hide`. With it closed the
+reads `ctrl+. earlier` and opens the task page. `ctrl+g` closes it and opens it again, remembered between
+sessions, and the column's own last line says so: `❯ ctrl+g hide`. With it closed the
 conversation is laid out at the full width of the terminal, running work still draws
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
@@ -209,23 +209,19 @@ it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
 ## The line above the message box (the legend)
 
-The rule that separates the conversation from your own business has this conversation's
-name written into it, like the legend on a fieldset:
+The rule that separates the conversation from your own business carries the branch and
+the keys that work now, like the legend on a fieldset:
 
 ```
-─ porting the parser · chat-v3-task* ────────── / commands ─
+─ chat-v3-task* ─────────────────────────────── / commands ─
 ```
 
-The left is **the name this conversation gave itself** after your first exchange, then
-the git branch, with a `*` when the tree has uncommitted work. On a session running over
-`--host` the machine leads them both — `devbox · porting the parser` — with `·` between,
-not the colon a path gets.
+The left is the git branch, with a `*` when the tree has uncommitted work. On a session
+running over `--host` it is the machine instead. The conversation name belongs to the
+status line directly below, so the two adjacent lines do not repeat it.
 
-**Before the name exists, that slot is empty.** A session names itself once the first
-exchange finishes, so a brand-new conversation's legend reads just `─ chat-v3-task* ───`.
-It never says "untitled" and never puts anything in the gap. In a directory that is not a
-git repository there is no branch either, and the left end of the line is simply blank
-rule.
+In a directory that is not a git repository there is no branch either, and the left end
+is simply blank rule. It never says "untitled" and never invents a placeholder.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
@@ -274,13 +270,9 @@ at all when nothing has been run.
 
 While a question is waiting, the whole legend goes violet.
 
-As the terminal narrows the legend gives things up in order. A long name is **cut with
-an ellipsis** rather than dropped, so the branch and the hint slot keep their cells; when
-even a cut name would have fewer than 12 cells the hint slot is spent on it first, and
-only then is the name dropped and the branch left standing alone. Below width **70** the
-branch and the hint slot are dropped outright and the name is the last thing on the line
-— it is the one fact you cannot read off the shell prompt behind this pane. With nothing
-true to put at either end the line is the plain rule it always was.
+As the terminal narrows, the hint slot gives way and below width **70** the branch is
+dropped too. The conversation name remains on the status line. With nothing true to put
+at either end the line is the plain rule it always was.
 
 While a task room is open the left says exactly `room · esc/←← main` — and exactly
 `room · esc your line back` while a history walk is on, since for those keystrokes `esc`
@@ -344,8 +336,7 @@ name now, so the workspace path lives in two places, and both say it in full:
 - **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
   with the path abbreviated fish-style (`~/s/aforge-v2`) because a sheet row is one line.
 
-The **branch** is also on the legend, right after the conversation's name —
-`porting the parser · chat-v3-task*` — so a glance at the line above the box tells you
+The **branch** is also on the legend — `chat-v3-task*` — so a glance above the box tells you
 which branch you are working on without opening anything. There is no branch on a
 session running over `--host`: the git probe would read *this* machine's repository at
 the other one's path, so nothing is shown rather than something possibly wrong.
@@ -610,7 +601,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | --- | --- |
 | session delta (`Σ +128 −14`) drawn at all | width 120 |
 | telemetry may wrap to its own row | below width 100 |
-| legend loses branch and hint slot, keeping the conversation's name; no context sparkline | below width 70 |
+| legend loses branch and hint slot; status keeps the conversation's name; no context sparkline | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
@@ -1085,8 +1076,8 @@ The **name** is chrome, so it is muted. The **target** is what you are reading, 
 leads in primary ink — and it is split in two within itself: what the call is about
 stays ink, what merely qualifies it recedes to dim.
 
-- `bash` — a `cd internal/session && ` prefix is context and goes dim; the command
-  itself is substance and is shell-highlighted.
+- `bash` — in an `&&` chain, everything before the last command is context and goes dim.
+  The last command leads in ordinary ink; flags, operators, numbers and comments recede.
 - `read`, `edit`, `write` — the path is ink, a trailing `120-240` line range is dim.
 - `grep`, `find` — the **pattern is accent**, because it is the one target that is not a
   thing that exists, it is what the call is looking for; the place it searched is dim.
@@ -1534,11 +1525,11 @@ the top of the column and everything under them scrolls.
 
 **The roster is this conversation's work and nothing else.** No rows of the project's
 record are drawn under it. It used to carry a dulled footnote of up to six of them — a
-sample of two thousand, standing where the column's own `no tasks yet` goes, with the
+sample of two thousand, standing where this conversation's task rows go, with the
 cursor walking out of this conversation into another one without the column saying so.
-What stands in their place is **one dim door** at the foot of the column: `ctrl+. — earlier`.
+What stands in their place is **one dim door** at the foot of the column: `ctrl+. earlier`.
 
-**Everything earlier lives one press away.** `ctrl+. — earlier` opens the full-screen task
+**Everything earlier lives one press away.** `ctrl+. earlier` opens the full-screen task
 page (`ctrl+.`, `/history`), which holds every task the project has ever run, across every
 session, with the filter, the cards and the mention. Home (`/home`, or space twice on an
 empty box) is the other place old work is listed. Running work belonging to *other*
@@ -1548,25 +1539,26 @@ The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 run
 you` — and then up to three more dim lines, each of which is a button as well as a key:
 
 ```
-ctrl+. — earlier
+ctrl+. earlier
 w · click seam — widen
-❯ ctrl+g — hide
+❯ ctrl+g hide
 ```
 
 **The first of them is one door with two spellings, never two doors.** It is drawn only
 when the full-screen task page (`/history`) has something this column cannot give, and the
-words on it say which: `ctrl+. — earlier` when the project's record holds work this
-session never ran, and `ctrl+. — view more` when the only thing held back is a family the
+words on it say which: `ctrl+. earlier` when the project's record holds work this
+session never ran, and `ctrl+. view more` when the only thing held back is a family the
 column has folded. There is never more than one such line.
 `w · click seam — widen` appears only while a title is actually being cut by its own
-indent. `❯ ctrl+g — hide` is always there, and its `❯` is drawn in ink rather than dim
+indent. `❯ ctrl+g hide` is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses — the words beside it are the label for the
 hand that types chords.
 
-## What is that column on the right — its two sections, tasks and standing
+## What is that column on the right — tasks, standing and an empty rail
 
-The column beside the conversation carries the two things that govern a conversation, each
-under its own dim lowercase label, and each closed by one dim `+` row:
+The column beside the conversation carries the two things that govern a conversation.
+A section with rows earns a dim lowercase label; an empty section keeps only its dim `+`
+door:
 
 ```
 tasks
@@ -1579,8 +1571,8 @@ standing
 + /standing
 
 Σ $1.42 · 312k tok
-ctrl+. — earlier
-❯ ctrl+g — hide
+ctrl+. earlier
+❯ ctrl+g hide
 ```
 
 - **`tasks`** is the roster — this conversation's work, one line per task, a click on a row
@@ -1591,8 +1583,8 @@ ctrl+. — earlier
   only, and nothing at all for an order governing this project. A row's mark becomes the
   spinner while that order is being checked or fired right now. Clicking one opens
   `/standing` with the cursor already on it.
-- **The two labels are drawn whenever the column is**, empty or not, so the place is on the
-  map before anything is in it. The rows under them are only ever the real ones.
+- **An empty section has no label and no absence sentence.** When both are empty, only
+  `+ /task` and `+ /standing` remain as the discoverable doors.
 - **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
   command and a space at the head of your message box and hands the keyboard back — plain
   text you can edit or delete, no mode, no form.
@@ -1605,7 +1597,7 @@ rule. On a build with no ambient side the `standing` section is absent entirely.
 
 **The right edge always carries one chevron, and clicking it goes both ways.**
 
-- While the column **stands**, its last footer line reads `❯ ctrl+g — hide`. The `❯` is
+- While the column **stands**, its last footer line reads `❯ ctrl+g hide`. The `❯` is
   drawn in ordinary ink, not dim, because it is a control and not a reading; the words
   beside it stay dim. Click the line and the column closes.
 - While the column is **away**, what is left is **two columns down the right of the frame**

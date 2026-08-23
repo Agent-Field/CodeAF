@@ -84,10 +84,9 @@ func TestTheShellLexerFindsEveryGroup(t *testing.T) {
 	}
 }
 
-// And the groups reach the SCREEN as the escape sequences they were authored
-// as. This is the assertion that survives a refactor of the lexer: whatever the
-// tokens are called, `echo` is the accent and `"hi"` is the pastel green.
-func TestTheShellHighlightPaintsEachGroup(t *testing.T) {
+// A bash row is quiet telemetry: verbs and their objects remain readable while
+// syntax recedes. No signal hue is spent on filling the command with colour.
+func TestTheShellHighlightUsesOnlyReadingTiers(t *testing.T) {
 	pal := newPalette(tokens.ANSI256, false)
 	painted := pal.shell(`cd /tmp && echo "hi" | grep -n x # note`)
 
@@ -96,12 +95,12 @@ func TestTheShellHighlightPaintsEachGroup(t *testing.T) {
 		token string
 		hue   hue
 	}{
-		{"the command", "cd", hueAccent},
-		{"the second command", "echo", hueAccent},
-		{"the string", `"hi"`, hueAdd},
-		{"the flag", "-n", hueMuted},
-		{"the operator", "&&", hueViolet},
-		{"the pipe", "|", hueViolet},
+		{"the command", "cd", hueInk},
+		{"the second command", "echo", hueInk},
+		{"the string", `"hi"`, hueInk},
+		{"the flag", "-n", hueDim},
+		{"the operator", "&&", hueDim},
+		{"the pipe", "|", hueDim},
 		{"the comment", "# note", hueDim},
 	} {
 		if !strings.Contains(painted, sgr256(want.hue)+want.token) {
@@ -116,10 +115,10 @@ func TestTheShellHighlightPaintsEachGroup(t *testing.T) {
 	if !strings.Contains(pal.shell("sleep 30"), sgr256(hueDim)+"30") {
 		t.Fatalf("a bare number is not dim: %q", pal.shell("sleep 30"))
 	}
-	// THE QUESTION HUE IS NOT SPENT HERE. An operator is violet, and violet on
-	// this surface is two hues apart on purpose (styles.go).
-	if strings.Contains(painted, sgr256(hueAsk)) {
-		t.Fatalf("a command line took the question hue:\n%q", painted)
+	for _, hue := range []hue{hueAccent, hueAdd, hueViolet, hueAsk} {
+		if strings.Contains(painted, sgr256(hue)) {
+			t.Fatalf("a command line took signal hue %v:\n%q", hue, painted)
+		}
 	}
 }
 
@@ -1712,17 +1711,20 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 
 // ── the legend ──────────────────────────────────────────────────────────────
 
-// THE BORDER ABOVE THE INPUT IS A FIELDSET LEGEND: which conversation this is on
-// the left, what the box answers to on the right, and rule between them.
-func TestTheLegendCarriesTheConversationAndTheInputsAffordances(t *testing.T) {
+// THE STATUS LINE OWNS IDENTITY. The adjacent legend keeps the branch and input
+// affordances without repeating the conversation name.
+func TestTheLegendCarriesTheBranchAndTheInputsAffordances(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 
 	line := plain(a.legend(100))
-	for _, want := range []string{"porting the parser", "chat-v3-task*", microcopy} {
+	for _, want := range []string{"chat-v3-task*", microcopy} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the legend is missing %q:\n%q", want, line)
 		}
+	}
+	if strings.Contains(line, "porting the parser") {
+		t.Fatalf("the legend repeats the status line's identity: %q", line)
 	}
 	// THE PATH IS NOT ON IT ANY MORE. It is a fact a person already has — the
 	// shell prompt behind this pane says it — and the slot went to the one fact
@@ -1743,15 +1745,14 @@ func TestTheLegendCarriesTheConversationAndTheInputsAffordances(t *testing.T) {
 		t.Fatalf("a clean tree is still starred: %q", line)
 	}
 
-	// No repository, no branch — and no empty separator where one would have
-	// gone. The name is what is left.
+	// No repository, no branch — and no empty separator where one would have gone.
 	a.branch = ""
 	line = plain(a.legend(100))
 	if label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─"); strings.Contains(label, "·") {
 		t.Fatalf("a workspace outside a repository still draws a separator: %q", line)
 	}
-	if !strings.Contains(line, "porting the parser") {
-		t.Fatalf("the name went with the branch: %q", line)
+	if strings.Contains(line, "porting the parser") {
+		t.Fatalf("the identity moved back onto the legend: %q", line)
 	}
 }
 
@@ -1789,22 +1790,16 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	}
 }
 
-// A NAME IS THE ONE THING ON THIS LINE THAT CAN BE EIGHTY CELLS LONG (session's
-// titleLimit), so it is what gives cells back — cut with an ellipsis, while the
-// branch and the hint slot keep theirs.
-func TestALongNameIsCutBeforeTheBranchOrTheHintsAre(t *testing.T) {
+// A LONG IDENTITY CANNOT TAKE CELLS FROM THE LEGEND because identity belongs to
+// the status line below it.
+func TestALongNameDoesNotChangeTheLegend(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser off the old tokenizer and onto the new one at last"
 
 	line := plain(a.legend(100))
-	if !strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, microcopy) {
-		t.Fatalf("the branch or the hints paid for the name: %q", line)
-	}
-	if !strings.Contains(line, glyphMore) {
-		t.Fatalf("the name was not cut: %q", line)
-	}
-	if !strings.HasPrefix(line, "─ porting the parser") {
-		t.Fatalf("the cut ate the head of the name: %q", line)
+	if !strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, microcopy) ||
+		strings.Contains(line, "porting the parser") {
+		t.Fatalf("the conversation name changed the legend: %q", line)
 	}
 	if ansi.StringWidth(line) != 100 {
 		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
@@ -1829,20 +1824,20 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
 		t.Fatalf("a tight frame kept its furniture: %q", tight)
 	}
-	if !strings.Contains(tight, "porting the parser") {
-		t.Fatalf("the tight legend lost the one fact it is for: %q", tight)
+	if strings.Contains(tight, "porting the parser") {
+		t.Fatalf("the tight legend repeated identity: %q", tight)
 	}
 
-	// Between the two: room for the branch, not for both.
+	// Without a duplicate name, the middle width has room for both facts.
 	middle := plain(a.legend(80))
-	if strings.Contains(middle, microcopy) {
-		t.Fatalf("the microcopy outlived the branch: %q", middle)
+	if !strings.Contains(middle, microcopy) {
+		t.Fatalf("the identity-free legend dropped usable hints: %q", middle)
 	}
 	if !strings.Contains(middle, branch) {
 		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
 	}
-	if !strings.Contains(middle, "porting the parser") {
-		t.Fatalf("the name was dropped while the hints could still have paid: %q", middle)
+	if strings.Contains(middle, "porting the parser") {
+		t.Fatalf("the middle legend repeated identity: %q", middle)
 	}
 
 	// And a frame with no room for a label at all is the rule it always was.
@@ -2311,8 +2306,8 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// telemetry cannot both fit with a barrier between them — and everything
 		// else is still on.
 		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend keeps the conversation's name alone and
-		// the meter keeps the number alone.
+		// Below the tight floor the legend gives up its facts and the meter keeps
+		// the number alone.
 		{width: 60, delta: false, sp: false, branch: false, mic: false, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
@@ -2343,10 +2338,10 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		if has := strings.Contains(legend, microcopy); has != tc.mic {
 			t.Fatalf("at %d columns the microcopy is %v: %q", tc.width, has, legend)
 		}
-		// The name is the fact this line exists for, and it is on it at every
-		// width — the path is not on it at any width any more.
-		if !strings.Contains(legend, "the bottom hud wave") {
-			t.Fatalf("at %d columns the legend lost the conversation: %q", tc.width, legend)
+		// Identity belongs to the status line at every width and is not repeated
+		// on the adjacent legend.
+		if strings.Contains(legend, "the bottom hud wave") {
+			t.Fatalf("at %d columns the legend repeated identity: %q", tc.width, legend)
 		}
 		if strings.Contains(legend, "aforge-v2") {
 			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
@@ -2807,8 +2802,8 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	}
 	// AND IT SAYS WHAT IT IS FOR. Thirty blank columns beside a paragraph read as
 	// a rendering fault, so the empty column carries its one dim label.
-	if rail := plain(strings.Join(a.railRows(10), "\n")); !strings.Contains(rail, railEmptyWord) {
-		t.Fatalf("the empty column does not say %q:\n%s", railEmptyWord, rail)
+	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
+		t.Fatalf("the empty column announces its emptiness:\n%s", rail)
 	}
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})})
@@ -2817,7 +2812,7 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	}
 	// The label leaves with the emptiness: a column with a row in it needs no
 	// explanation of itself.
-	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, railEmptyWord) {
+	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
 		t.Fatalf("the label outlived the emptiness it explains:\n%s", rail)
 	}
 	advance(12 * time.Second)
@@ -2883,8 +2878,8 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	if !a.railShowing() {
 		t.Fatal("/new took the column down with the nodes")
 	}
-	if rail := plain(strings.Join(a.railRows(10), "\n")); !strings.Contains(rail, railEmptyWord) {
-		t.Fatalf("the emptied column does not say %q:\n%s", railEmptyWord, rail)
+	if rail := plain(strings.Join(a.railRows(10), "\n")); strings.Contains(rail, "no tasks yet") {
+		t.Fatalf("the emptied column announces its emptiness:\n%s", rail)
 	}
 }
 

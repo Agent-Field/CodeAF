@@ -118,7 +118,7 @@ const (
 	// answer about a column that is not on the frame.
 	hoverRailGrip
 	// hoverRailDoor is the STANDING column's own door — the footer line carrying
-	// the `❯` and `ctrl+g — hide` (task.go's [railStowHint]). It is the other half
+	// the `❯` and `ctrl+g hide` (task.go's [railStowHint]). It is the other half
 	// of [hoverRailGrip]: one control in two states, so the right edge lights the
 	// same way whether the column is up or away.
 	hoverRailDoor
