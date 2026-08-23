@@ -1584,7 +1584,12 @@ ctrl+. — earlier
 ```
 
 - **`tasks`** is the roster — this conversation's work, one line per task, a click on a row
-  opening that task's room. Nothing about it has changed.
+  opening that task's room. While a task has children working under it, their marks and
+  short names start unfolded beneath it. The preview stops after five children and ends in
+  `view more · +N` when more are working; press that row or → on the task to open its room,
+  where the full work lives. ← folds the children, and that choice is remembered for this
+  session. When more than one worker is running, the label itself says the count, such as
+  `tasks · 4 working`; at zero or one it remains simply `tasks`.
 - **`standing`** is the standing orders reaching this conversation, one line each: a mark,
   what the order is called, and a dim tail naming its reach **only when that reach is not
   the ordinary one** — `everywhere` for machine-wide, `just here` for this conversation
