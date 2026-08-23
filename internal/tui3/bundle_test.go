@@ -2237,6 +2237,12 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	a.width = 200
 	a.tilde, a.workspace = "/home/dev", "/home/dev/src/aforge-v2"
 	a.title = "cleaning the build directory"
+	// THE LABEL THE HUE LANDS ON IS THE PLACE NOW. render.go's [app.legendLeft]
+	// gave the conversation's name to the status line directly below — two
+	// adjacent lines saying the same name is one of them wasted — so what is left
+	// at that end of the border is where the session is running. The routing law
+	// is unchanged and this is the label it routes to.
+	a.branch = "build-cleanup"
 	a.cost = 0.10
 	typeLine(t, a, "clean it")
 	a.cost = 0.20 // a figure that moved THIS INSTANT, and still may not glow
@@ -2248,8 +2254,14 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	if !strings.Contains(a.legend(120), a.pal.ask("cleaning the build directory")) {
+	if !strings.Contains(a.legend(120), a.pal.ask("build-cleanup")) {
 		t.Fatalf("the legend's label did not answer the question:\n%q", a.legend(120))
+	}
+	// AND THE NAME IS NOT ON THAT LINE AT ALL, which is the other half of the same
+	// decision: the status line under it is the one that says which conversation
+	// this is.
+	if strings.Contains(plain(a.legend(120)), "cleaning the build directory") {
+		t.Fatalf("the legend is repeating the status line's name:\n%q", a.legend(120))
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner

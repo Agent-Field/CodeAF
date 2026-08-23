@@ -770,9 +770,15 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if strings.TrimSpace(lines[draft-1]) != "" {
 		t.Fatalf("the row above the draft is not blank: %q", lines[draft-1])
 	}
-	// The rule above the box is the LEGEND now (render.go): the same one line,
-	// with which conversation this is written into the border of it.
-	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─ ") || !strings.Contains(rule, "───") {
+	// The rule above the box is the LEGEND (render.go): the same one line, with
+	// whatever that border has to say written into it.
+	//
+	// IT IS ASKED FOR BY IDENTITY RATHER THAN BY SHAPE. The legend's left end is
+	// the branch and the machine now, not the conversation's name — the status
+	// line below owns that — so in a lab with neither, at a width under
+	// [hudTight], the border is honestly a bare rule and a test that demanded
+	// `─ ` would be demanding a label the emptiness law forbids.
+	if rule := lines[draft-2]; rule != plain(a.legend(a.width)) {
 		t.Fatalf("the row above that is not the input's legend border: %q", rule)
 	}
 	if draft != len(lines)-2 {
