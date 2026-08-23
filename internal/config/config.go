@@ -170,6 +170,12 @@ const (
 	// DefaultBriefAfter keeps ordinary short breaks silent. A longer absence
 	// earns one folded arrival summary when background life actually happened.
 	DefaultBriefAfter = 4 * time.Hour
+
+	// DefaultSwarm is whether cooperative decomposition is armed with nobody
+	// having said anything about it. It is TRUE from the swarm-road wave on;
+	// [Config.Swarm] carries the whole argument, and `AFORGE_SWARM=0` is the
+	// escape hatch.
+	DefaultSwarm = true
 )
 
 // Config is the resolved runtime configuration.
@@ -215,15 +221,29 @@ type Config struct {
 	// it opens. Off is the law's absence, not an instruction to hide.
 	Attribution bool
 
-	// Swarm is the cooperative-decomposition mode. Off (the default) is exactly
-	// today's behaviour: leaves run their brief to settlement, and growth is
-	// failure-driven only (overrun, revision, JIT). On, a leaf gains the
-	// request_split tool and may end its own run early by naming two or more
-	// ownable parts plus the evidence that revealed them; settlement then
-	// routes the request through the same governed growth path an overrun
-	// takes. On also feeds measured capacity statistics (overrun base rates
-	// from the journal) into the sizing and split judgments. Everything gated
-	// by Swarm is inert when it is off.
+	// Swarm is the cooperative-decomposition mode, and it is ON by default
+	// ([DefaultSwarm]). On, a worker gains a verb for handing work back when
+	// its brief turns out to hold more than one worker's share: the resident's
+	// leaves get `request_split` and may end their run early by naming two or
+	// more ownable parts plus the evidence that revealed them, and a v3 task's
+	// worker gets `divide_work`, which splits the task into parts under it and
+	// keeps the coordination (internal/session's task_divide.go). On also feeds
+	// measured capacity statistics (overrun base rates from the journal) into
+	// the sizing and split judgments.
+	//
+	// WHY ON IS THE DEFAULT NOW. It shipped off because nobody had measured
+	// what a division costs when it does not pay. The bench corpus then
+	// measured it (bench/swarm/AB-REPORT.md), and the answer was that the
+	// expense is not division — it is division of work that was never wide. So
+	// the wave that landed the mode also landed the gate that refuses narrow
+	// work (internal/splitgate), and with the gate in front of it the mode
+	// costs nothing below the width floor and is worth 1.15×–1.95× wall clock
+	// above it. A capability that is free when it does not apply belongs on.
+	//
+	// OFF IS STILL EXACTLY TODAY'S BEHAVIOUR, and `AFORGE_SWARM=0` is how
+	// somebody asks for it: workers run their brief to settlement and growth is
+	// failure-driven only (overrun, revision, JIT). Everything gated by Swarm
+	// is inert when it is off.
 	Swarm bool
 
 	// Quorum is the two-verifier gate: when a deliverable passes the judge,
@@ -278,6 +298,7 @@ func Load() (Config, error) {
 		PracticeBudgetUSD: DefaultPracticeBudgetUSD,
 		PracticeIdle:      DefaultPracticeIdle,
 		BriefAfter:        DefaultBriefAfter,
+		Swarm:             DefaultSwarm,
 		ProfileDir:        os.Getenv("AFORGE_PROFILE_DIR"),
 	}
 	if config.APIKey == "" {
@@ -369,10 +390,15 @@ func Load() (Config, error) {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_MECHANISM")); raw == "quorum" {
 		config.Quorum = true
 	}
+	// THE SENSE OF THIS SWITCH TURNED OVER. It was the arming switch for a wave
+	// that was off by default; now the wave is the default and this is the way
+	// out of it — `AFORGE_SWARM=0`. The reading is unchanged, because
+	// [strconv.ParseBool] already answered both directions; what changed is
+	// which direction anybody has a reason to write.
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_SWARM")); raw != "" {
 		swarm, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("AFORGE_SWARM: want mechanism name, got %q", raw)
+			return Config{}, fmt.Errorf("AFORGE_SWARM: want 0 or 1, got %q", raw)
 		}
 		config.Swarm = swarm
 	}
