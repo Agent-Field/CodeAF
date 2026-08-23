@@ -855,6 +855,30 @@ func (g *TaskGraph) armPoll() {
 	})
 }
 
+// doomedDependencies is the proposal-time half of [readinessLocked]: which of
+// these ids could never gate anything. An id no node carries is a dependency
+// that can never resolve — the number usually belongs to something that is not
+// a task at all, a background job or an adaptive run, whose ids look just like
+// task ids in the conversation — and an id whose node already failed is a wait
+// that only ends in the cascade. Both are cheaper refused at the door than
+// admitted and killed on the next frontier turn, which is what used to happen:
+// the person watched a task appear and die in the same breath, over a number
+// the model mistook.
+func (g *TaskGraph) doomedDependencies(ids []uint64) (missing, failed []uint64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range ids {
+		node := g.nodes[id]
+		switch {
+		case node == nil:
+			missing = append(missing, id)
+		case node.state == TaskFailed:
+			failed = append(failed, id)
+		}
+	}
+	return missing, failed
+}
+
 // readinessLocked answers two questions at once: may this node start, and is it
 // waiting on something that will never come. The second is why a dependency on
 // a FAILED node is not simply "not ready yet" — a node whose prerequisite did
