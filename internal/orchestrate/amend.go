@@ -357,6 +357,12 @@ func (o *Orchestrator) apply(amendment Amendment) {
 	}
 	for _, node := range amendment.Add {
 		node.ID = strings.TrimSpace(node.ID)
+		// EVERY NODE ON THE FRONTIER HAS A NAME, settled here, once, at the only
+		// place the frontier is written. A missing title is FILLED and never
+		// refused: the planner's judgement about what work exists is the expensive
+		// part of this call, and throwing a whole amendment away over three words
+		// would lose that to buy a name [NodeTitle] can build from the id anyway.
+		node.Title = NodeTitle(node)
 		status := &NodeStatus{Node: node, State: Queued}
 		status.Needs = append(status.Needs, o.collisionsLocked(node)...)
 		o.nodes = append(o.nodes, status)

@@ -149,6 +149,46 @@ own row above it will be naming something else, and that is the arrangement rath
 disagreement. The id is settled once, when the run starts, so a `/model` half way through
 does not move it. A run whose classes resolved nothing says nothing rather than guessing.
 
+## What the rows under a run are called — sub task names that were just the prompt, and workers all named "You are a"
+
+**Each node is named by the planner, on the same call that adds it.** Every node it hands
+out carries a `title` of its own: two or three lowercase words naming the role or the
+slice — `traffic shapes`, `token bucket`, `pricing sheet` — and that is what the roster
+row, the home card and the task list all draw. It costs nothing extra; it is one more
+field in an answer aforge was already paying for.
+
+It is a separate thing from the node's **goal**, which is the whole brief the worker
+opens on. That brief is written to the worker in the second person and runs to a
+paragraph, so a name cut out of its first words named every worker in a run after the way
+its instructions began — nine rows all reading `You are a`, one reading `You are
+assembling`, and no way to tell which was which. The goal is still read in full on the
+run's own page and on the node's card; it is simply not what the row is called.
+
+If a node ever arrives without a name — an older planner, a reply that lost the field —
+the row is named from the node's **id** instead, which is already a short slug the planner
+minted: `token-bucket` reads as `token bucket`. It is never cut out of the goal again.
+
+## Why nothing seems to happen for the first minute of a run — `forming the work`
+
+A run's row appears on the roster the instant you ask for it, and the workers under it
+cannot exist until the planner has answered — the one call in a run with no work to
+overlap it, and the most consequential thinking it does. That is a real wait, and the row
+says so rather than sitting blank:
+
+```
+ ⠋ audit the pricing code
+   forming the work
+```
+
+The moment the first worker exists the line goes away, because the rows under the run are
+the picture from then on. Nothing is animated and nothing is guessed: the line changes
+when a worker actually exists and at no other moment, so a run whose planner is taking a
+long time keeps saying `forming the work` for exactly as long as that is true.
+
+There is no second thing to dismiss afterwards. The family's ordinary fold is the
+collapsed view — `←` on the run's row folds its workers into one line with a `▸ +N` badge,
+`→` opens them again, and that choice is remembered.
+
 **These rows write nothing into the conversation.** A landing card is how work *you*
 decided on reports back; a run's nodes are cut by its planner and there can be a dozen of
 them, so a card each would bury the answer under the workings of it. The run's own write-up
