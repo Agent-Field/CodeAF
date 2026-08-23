@@ -27,18 +27,47 @@ import (
 // Empty values send nothing. An operator who cleared a field asked not to be
 // attributed by it, and an empty header is a claim about the app rather than
 // the absence of one.
-func applyAttribution(header http.Header, config Config) {
+
+// Attribution is who is calling, in the three values OpenRouter reads.
+//
+// IT IS EXPORTED BECAUSE THIS PACKAGE IS NOT THE ONLY ONE THAT POSTS TO THE
+// ROUTER. internal/voice reaches /audio/transcriptions on its own, and it spent
+// a release writing out its own half of this set by hand — a referer and the
+// old title spelling, with no X-OpenRouter-Title and no categories at all — so
+// every word a person spoke to v1 was attributed as an unclassified app while
+// every word they typed was attributed correctly. That is precisely the drift
+// the paragraph above says a helper exists to prevent, and it happened anyway
+// because the helper could not be reached from outside this package.
+//
+// So: a package that talks to OpenRouter takes one of these and calls Apply. It
+// does not write header names.
+type Attribution struct {
+	SiteURL        string
+	SiteName       string
+	SiteCategories string
+}
+
+// Apply writes the attribution onto a request's headers.
+func (a Attribution) Apply(header http.Header) {
 	if header == nil {
 		return
 	}
-	if site := strings.TrimSpace(config.SiteURL); site != "" {
+	if site := strings.TrimSpace(a.SiteURL); site != "" {
 		header.Set("HTTP-Referer", site)
 	}
-	if name := strings.TrimSpace(config.SiteName); name != "" {
+	if name := strings.TrimSpace(a.SiteName); name != "" {
 		header.Set("X-OpenRouter-Title", name)
 		header.Set("X-Title", name)
 	}
-	if categories := strings.TrimSpace(config.SiteCategories); categories != "" {
+	if categories := strings.TrimSpace(a.SiteCategories); categories != "" {
 		header.Set("X-OpenRouter-Categories", categories)
 	}
+}
+
+func applyAttribution(header http.Header, config Config) {
+	Attribution{
+		SiteURL:        config.SiteURL,
+		SiteName:       config.SiteName,
+		SiteCategories: config.SiteCategories,
+	}.Apply(header)
 }
