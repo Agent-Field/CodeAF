@@ -111,7 +111,7 @@ something, and no step on this ladder means anything by itself.
 ## THE PALETTE
 
 The palette divides in two, and the division is the reason a surface can carry
-seven colours and still read calm.
+eight colours and still read calm.
 
 **The signal hues** answer *what kind of thing is this*. None of them outranks
 the others, so none of them may be lighter than the others — the eye reads
@@ -140,9 +140,10 @@ by name rather than by silence.
 | bad | `#D08770` | *unchanged* | 14° | 51% | **62.7** | signal |
 | ask | `#C08FE8` | *unchanged* | 273° | 66% | **73.5** | signal |
 | warn | `#EBCB8B` | *unchanged* | 40° | 71% | **73.3** | signal |
+| **data** | — | **`#88C0D0`** *(new)* | 193° | 43% | **67.5** | signal — the payload rule's datum hue |
 | violet | `#8F6FA8` | *unchanged* | 274° | 25% | 54.7 | the shell operator's, shared by both ladders |
 
-Signal spread: **19.4 points before, 14.9 after.**
+Signal spread: **19.4 points before, 14.9 after** (unchanged by `data`, which sits mid-band).
 
 ### Light ladder
 
@@ -159,8 +160,9 @@ Byte-identical throughout — it was measured and it was already in band.
 | bad | `#C57A3C` | 27° | 54% | **50.4** | signal |
 | ask | `#6F3FA8` | 267° | 46% | **45.3** | signal |
 | warn | `#A6791F` | 40° | 69% | **38.6** | signal — band floor |
+| **data** | **`#2C8A9E`** *(new)* | 191° | 56% | **39.6** | signal — the datum hue, deepened for the page |
 
-Signal spread: **14.7 points.**
+Signal spread: **14.7 points** (unchanged by `data`).
 
 ### The one hue that moved, and why
 
@@ -227,17 +229,32 @@ datum inside it steps up one role.**
 | what | role |
 | --- | --- |
 | the prose | `dim`, or whatever quiet tier the surface already used |
-| a datum | `ink` — a model id, a figure, a count, a name, a key chord |
+| a datum | `data` (`#88C0D0` dark / `#2C8A9E` light) — a model id, a figure, a count, a name, a key chord |
 | something typeable | the chip a slash command already wears |
 | — | **never `accent`** |
+
+**Why a hue and not a rung.** The rule's first draft lifted a datum to `ink`,
+and it failed in the field the day it shipped: `ink` is the body's colour, so a
+"lifted" model id two rows under a paragraph of body text read as ordinary
+prose — the exact defect the rule was written against, arriving one rung later.
+The eye reads lightness as *loudness* and hue as *identity*, and a datum is a
+different **kind** of thing, not a louder one. So data wear a hue of their own —
+the syntax-highlighting contract every calm terminal theme keeps (greyscale for
+prose, colour for identifiers) — sitting inside the fifteen-point signal band so
+a line full of data still reads as one quiet field until somebody looks.
+`#88C0D0` resolves to xterm-256 **110**, one clear step from the accent's 146;
+`#2C8A9E` to **31**, colliding with nothing on the light ladder. The key–value
+legends (a card's `enter open · ctrl+t new chat here`, the foot hints, the task
+card's keys) are written in the hint grammar and painted by the same mechanism,
+so every key/verb pair splits the same way everywhere.
 
 **The chip is the slash command's mark and is not lent out.** A key chord is
 typeable too, and the obvious move was to give the chords in the legend and the
 key sheet the same lifted run of cells. They do not get it. A chip has meant
 exactly one thing on this surface since it existed — *this word is a command
 this surface runs* — and a second kind of thing wearing it is a mark that has to
-be read twice to learn which one it is. A chord steps to `ink` instead, which is
-the same one-rung move every other datum makes and costs the budget nothing.
+be read twice to learn which one it is. A chord steps to `data` instead, which
+is the same one-step move every other datum makes and costs the budget nothing.
 
 **Never the accent, and the budget is why.** A note appears, is read, and
 scrolls away. The accent marks the one live or chosen thing on a screen; a

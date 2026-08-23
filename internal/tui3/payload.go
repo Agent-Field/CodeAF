@@ -22,8 +22,13 @@ import (
 // LOAD-BEARING DATUM inside it steps up one role.
 //
 //	the prose      dim, or whatever quiet role the surface already used
-//	a datum        [palette.ink] — a model id, a role's model, a figure, a
-//	               count, a name, a key chord
+//	a datum        [palette.data] — a model id, a role's model, a figure, a
+//	               count, a name, a key chord. A hue of its own rather than a
+//	               rung of the reading ladder, because the first draft of this
+//	               rule lifted data to ink and ink is the BODY's colour: a
+//	               "lifted" id two rows under a paragraph read as ordinary
+//	               text. Lightness is loudness; HUE is identity, and a datum
+//	               is a different kind of thing ([hueData] tells the rest)
 //	something
 //	typeable       the chip a slash command already wears everywhere else on
 //	               this surface (slashchip.go)
@@ -37,10 +42,10 @@ import (
 // it. A chip on this surface has meant exactly one thing since slashchip.go
 // landed — "this word is a command this surface runs" — and a second kind of
 // thing wearing it is a mark that has to be read twice to learn which one it
-// is. A chord steps to ink instead, which is the same one-rung move every
-// other datum makes and costs the budget nothing. So `/help` is chipped
-// wherever it is written, `ctrl+b` is inked wherever it is written, and neither
-// rule has an exception.
+// is. A chord steps to the data hue instead, which is the same one-step move
+// every other datum makes and costs the budget nothing. So `/help` is chipped
+// wherever it is written, `ctrl+b` wears the data hue wherever it is written,
+// and neither rule has an exception.
 //
 // ── STRATEGY OVER DECORATION ────────────────────────────────────────────────
 //
@@ -150,12 +155,14 @@ func shifted(spans []segment, n int) []segment {
 
 // paintPayload paints one row of an informational line: the prose in whatever
 // quiet role the caller is already saying this line in, every recognized slash
-// command in its chip, and every datum one rung up in [palette.ink].
+// command in its chip, and every datum in [palette.data], the hue that means
+// "this is the answer inside the sentence".
 //
-// THE CHIP OUTRANKS THE INK WHERE THE TWO OVERLAP, and they do overlap on
+// THE CHIP OUTRANKS THE DATA HUE WHERE THE TWO OVERLAP, and they do overlap on
 // purpose: /help's key column is `/task <brief>`, which is one datum containing
 // one command. The command keeps its chip and the placeholder beside it keeps
-// the ink, which is the row saying "this part is the word, this part is yours".
+// the data hue, which is the row saying "this part is the word, this part is
+// yours".
 //
 // The runs are painted SEPARATELY, for [paintCommands]'s reason: every sequence
 // this palette writes closes with SGR 39, which resets the foreground rather
@@ -195,7 +202,7 @@ func paintPayload(line string, facts []segment, pal palette, prose func(string) 
 		case asChip:
 			return pal.chip(run)
 		case asFact:
-			return pal.ink(run)
+			return pal.data(run)
 		default:
 			return prose(run)
 		}
@@ -359,8 +366,8 @@ func isBareKey(token string, tokens int) bool {
 const chordSegmentWords = 3
 
 // paintHint is the legend's right end and every mode line written in its
-// grammar: the keys in ink, the words around them in the caller's own quiet
-// role.
+// grammar: the keys in the data hue, the words around them in the caller's own
+// quiet role.
 func paintHint(line string, pal palette, prose func(string) string) string {
 	if line == "" {
 		return line

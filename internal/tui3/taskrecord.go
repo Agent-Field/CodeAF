@@ -392,7 +392,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+pal.dim(fit(taskCardKeys, width-2)), taskCardHitFoot)
+		add(" "+paintHint(fit(taskCardKeys, width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
