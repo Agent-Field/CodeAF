@@ -216,6 +216,17 @@ type entry struct {
 	text string
 	turn int
 
+	// facts are the LOAD-BEARING DATA inside a note's own words, named by the
+	// text they are spelled with and in the order they appear in it — the model
+	// ids in a crew line, the figures in /status, the key chords in /help.
+	//
+	// THE PAYLOAD RULE (payload.go) is what reads them: a note's prose stays in
+	// the dim tier this surface says everything about itself in, and each of
+	// these steps up one rung so the answer inside the sentence reads at a
+	// glance. It is empty on every note whose builder named nothing, and such a
+	// note is drawn exactly as it was drawn before the rule existed.
+	facts []string
+
 	// Tool fields.
 	tool   string
 	status toolState
@@ -1354,6 +1365,13 @@ type app struct {
 	resume         func(file string) (Agent, error)
 }
 
+// landingKeysWord is the opening line of every session: the two keys the status
+// line has no room for. It is named because the note that writes it also names
+// the two chords inside it for THE PAYLOAD RULE (payload.go), and a sentence
+// spelled in one place with its keys spelled in another is a sentence that gets
+// reworded while the keys stay where they were.
+const landingKeysWord = "esc interrupts · ctrl+c twice quits"
+
 func newApp(ctx context.Context, opts Options) *app {
 	host := strings.TrimSpace(opts.Host)
 	place := strings.TrimSpace(opts.Workspace)
@@ -1513,7 +1531,14 @@ func newApp(ctx context.Context, opts Options) *app {
 	// running, and at that moment ctrl+c was the door rather than a stop. The
 	// two clauses here are each true whatever is happening — esc stops the turn
 	// when there is one, and two presses of ctrl+c always leave (quitarm.go).
-	a.note("esc interrupts · ctrl+c twice quits")
+	//
+	// AND THE TWO KEYS READ AS KEYS (payload.go). This is the first line of the
+	// session and the only thing in it a person has to remember is the two chords,
+	// so the chords step to ink and the verbs around them stay in the note's own
+	// dim. It is spelled in the hint slot's own grammar — chord, then what it does
+	// — and the facts are named rather than recognized, because a note is prose to
+	// this surface and only the line that wrote it knows otherwise.
+	a.noteFacts(landingKeysWord, "esc", "ctrl+c")
 	a.restoreDraft()
 	// LAST, because it reads the surface it opens over: the picker marks the
 	// session this window is already in, and that is not known until the agent,
@@ -2323,7 +2348,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.note("could not start the task · " + msg.err.Error())
 		} else {
-			a.note(msg.kind + " task " + msg.id + " started · " + msg.title)
+			// WHAT LANDED, AND WHAT IT IS CALLED (payload.go). The id is how a
+			// person names this node to any other command on the surface and the
+			// title is how they recognize it in the roster, so those two step up
+			// while the mode word and `started` stay in the note's own dim.
+			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
 		}
 		return a, nil
 
@@ -3524,14 +3553,28 @@ func (a *app) settleCompaction(text string) {
 // the reply that just talked about standing orders is a different sentence from
 // the one four lines up, and a transcript that swallowed it would be answering a
 // deliberate command with silence.
-func (a *app) note(text string) {
+func (a *app) note(text string) { a.noteFacts(text) }
+
+// noteFacts is [app.note] with THE PAYLOAD RULE's data named: the words inside
+// this line that are the answer rather than the sentence around it, in the order
+// they appear in the text (payload.go states the rule and does the painting).
+//
+// It is the same door and not a second one, because a note is a note — what
+// changes is only that this one knows which of its own words the person came for.
+// A builder that names nothing gets exactly the line it always got.
+func (a *app) noteFacts(text string, facts ...string) {
 	a.closeLive()
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
+		// The repeat is brought back into view rather than written again (above),
+		// and its data are refreshed with it: the same sentence built a second time
+		// may have been built from a different reading, and a stale fact list would
+		// lift the words of the frame before this one.
+		a.entries[n-1].facts = facts
 		a.follow()
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn})
+	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts})
 	a.follow()
 	a.touch()
 }
@@ -4148,7 +4191,13 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.quit()
 
 	case "help":
-		a.note(helpText(a.hostedPath(a.file)))
+		// THE KEY SHEET CARRIES ITS PAYLOAD ON THE LEFT (payload.go): the chord is
+		// the thing a person came here to find and the sentence beside it is the
+		// explanation, so the first column steps to ink while the second stays in
+		// the note's own dim. The rows that name a slash command need nothing from
+		// the list — a command wears its chip wherever it is written.
+		help := helpText(a.hostedPath(a.file))
+		a.noteFacts(help, columnFacts(help, true)...)
 		return nil
 
 	case "copy":
@@ -4318,11 +4367,19 @@ func (a *app) slash(line string) tea.Cmd {
 		// rather than a panel: a person who asked a question about their session
 		// wants it where they can scroll back to it, not on a fullscreen sheet they
 		// have to leave before they can act on it (statusnote.go).
-		a.note(a.statusText())
+		text := a.statusText()
+		a.noteFacts(text, a.statusFacts(text)...)
 		return nil
 
 	case "cost":
-		a.note(a.costText())
+		// THE FIGURE IS THE PAYLOAD AND THE LABEL IS THE FURNITURE (payload.go).
+		// Both of these notes are laid out label-then-fact down a column
+		// ([labelledLines]), which is the same hierarchy this rule states — so the
+		// second column steps to ink and the first stays where it was. Nothing is
+		// brightened into existence: every line here is already one the emptiness
+		// law let through.
+		spent := a.costText()
+		a.noteFacts(spent, columnFacts(spent, false)...)
 		return nil
 
 	case "resume":

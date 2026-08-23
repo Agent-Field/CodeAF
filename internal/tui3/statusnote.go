@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -124,6 +125,42 @@ func (a *app) statusText() string {
 		items = append(items, deckItem{label: "file", value: a.hostedPath(a.file)})
 	}
 	return labelledLines(items)
+}
+
+// statusFacts is what THE PAYLOAD RULE lifts out of /status: the second column
+// of every row, which is the fact the label in front of it is naming
+// (payload.go's [columnFacts]).
+//
+// IT IS WHAT THE PHONE SHEET HAS ALWAYS DRAWN. [app.deckItemRow] puts the label
+// in the dim tier and the fact in the ink one, and has since the sheet existed —
+// so this command, which is the same list asked for in the other medium, was the
+// half of one surface where the hierarchy was missing. The rule did not arrive
+// here; it arrived at the note that had been drawing the sheet's own rows flat.
+//
+// THE CREW ROW IS THE ONE VALUE THAT IS NOT ONE FACT. Every other row on this
+// page answers its label with a single thing — a path, a model id, a figure —
+// and the crew answers with a preset word and three role words with three model
+// ids threaded between them ([app.crewWord]). Lifting that whole run would put
+// ink on `brain`, `hands` and `checks`, which are the question rather than the
+// answer, and a row where everything is bright is a row where nothing is. So the
+// value is recognized by being exactly what [app.crewWord] built — the same
+// function, asked again, so there is nothing here to drift — and the three ids
+// [config.CrewClassModels] names go in its place.
+func (a *app) statusFacts(text string) []string {
+	facts := columnFacts(text, false)
+	crew := a.crewWord()
+	if crew == "" {
+		return facts
+	}
+	out := make([]string, 0, len(facts)+2)
+	for _, fact := range facts {
+		if fact == crew {
+			out = append(out, config.CrewClassModels(a.profileDir)...)
+			continue
+		}
+		out = append(out, fact)
+	}
+	return out
 }
 
 // crewLine is one call to [app.addCrew]: the list it returned, and whether it

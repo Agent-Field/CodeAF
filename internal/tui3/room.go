@@ -187,7 +187,9 @@ func (a *app) retargetTask(id uint64, model string) {
 	// in the conversation where every other model change is written down
 	// (palette.go's [app.switchModel] says `model · <id>`); the person standing in
 	// the room reads the change off the status line under their hand.
-	a.note(taskIDWord(id) + " · model · " + model)
+	// The id and the model are both facts and the two `·` labels between them are
+	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
+	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other

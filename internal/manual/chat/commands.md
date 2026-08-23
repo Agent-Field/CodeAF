@@ -914,6 +914,12 @@ applies the row, and **esc** closes the chooser without changing anything:
 crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b · the model you talk to is /model
 ```
 
+**The three model ids are drawn brighter than the words around them.** `crew →`, the
+preset word and `brain`/`hands`/`checks` stay at the grey every note is written in; the
+ids step up into the body ink, because they are what the command was typed to find out.
+`/model` at the end wears the same tinted chip a slash command wears everywhere else. See
+"Why is one word in a line brighter than the rest" on the screen page.
+
 The last clause is there because nothing else on the frame moves: the model named on the
 status line is the **conversation's** model, and `/crew` never touches it. To read the crew
 back afterwards, use the `crew` line in `/status`, the crew row in `/settings` → Providers,
