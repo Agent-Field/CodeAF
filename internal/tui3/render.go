@@ -1339,7 +1339,12 @@ func (a *app) servedRider() string {
 		return ""
 	}
 	rider := " · via " + served
-	if sighting.Rate > 0 {
+	// THE RATE RIDES ONLY WHILE A TURN IS RUNNING. Who served is attribution
+	// and stays; how fast they were writing is a claim about NOW, and a rate
+	// from the last turn standing on an idle status line read as a live figure
+	// nobody was producing — a person sat looking at "92 tok/s" over a chat
+	// that was doing nothing.
+	if sighting.Rate > 0 && a.state == stateWorking {
 		rider += " · " + tokenWord(int(sighting.Rate)) + " tok/s"
 	}
 	return rider

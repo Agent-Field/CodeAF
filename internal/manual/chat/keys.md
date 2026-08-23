@@ -820,8 +820,9 @@ searches the whole machine and offers to start a new conversation at the same ti
 `→` and `←` are the fold's, the way they are in the task column: on a project's
 `…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
 `←` on a conversation inside an opened project folds that project too. Anywhere else they
-move the caret in the box. With the box empty and the cursor on a conversation, **`e`
-puts it away into the archive** — the folded `archive · N put away` line at the very foot
+move the caret in the box. With the box empty and the cursor on a conversation **you
+walked onto or clicked** — until that deliberate pick, every letter types into the box —
+**`e` puts it away into the archive** — the folded `archive · N put away` line at the very foot
 — and `e` on a row inside the open archive brings it back (the archive page section has
 the whole shape). `n` starts a new conversation in that row's project, `o` opens its
 folder, `y` copies its path.
