@@ -6,7 +6,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -177,36 +176,61 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 		}
 		return out
 	}
-	inner := width - 4
-	if inner < 12 {
-		inner = 12
+	return a.harnessPageRows(c, width, selected)
+}
+
+// harnessCardLead is the column the page is drawn in. Two cells, which is the
+// lead every line this surface says on its own account already wears, and it is
+// the ONLY thing added to the card's own text: the indentation inside it is what
+// says which step belongs to which lane, so nothing here may re-flow it.
+const harnessCardLead = "  "
+
+// harnessPageRows is the finished page in the feed — the plain-speech card, and
+// the row that answers it.
+//
+// ── IT IS THE ONE CARD, NOT A SECOND DRAWING OF THE SAME PAGE ──
+//
+// This block used to hand-roll its own: an ASCII architecture diagram
+// (`[plan]──▶[fetch]`), a bullet per node carrying the raw field off it, and two
+// rows reading `verify: loop` and `tools: bash · grep` — the ladder's own word
+// and the belt's registered ids, printed at somebody who has never seen inside
+// this binary. All of it sat inside a `│ … │` border, which is the one piece of
+// furniture this surface does not own (internal/tui is the north star: no
+// borders, dim telemetry, restrained).
+//
+// So the words are [subharness.CardParts]'s, exactly as they are under
+// `/harness`, in a design's own room and in the tool result the model reads. The
+// question a person answers here is "is this what I meant", and they cannot
+// answer it against a drawing that disagrees with every other rendering of the
+// same page.
+//
+// ── WHAT THIS FILE STILL DECIDES ──
+//
+// The two tiers, and the emphasis. The STEPS are what is being read and take the
+// row's ordinary ink; the head's tail and the bounds under them are the quiet
+// aside and stay dim. THE CARD'S LEADING TEXT IS ITS NAME, and that is what
+// turns accent when the cursor is on it — the emphasis used to be painted along
+// the top RULE of the box, which is the one move the emphasis law forbids
+// outright: a ring drawn round a thing rather than a step up the ladder.
+//
+// EVERY LINE IS FITTED AND NEVER WRAPPED. A card re-flowed to a narrow frame is
+// a card whose lanes have lost their indentation, which is the whole of what the
+// indentation was for.
+func (a *app) harnessPageRows(c *harnessCard, width int, selected bool) []string {
+	part := subharness.CardParts(*c.page)
+	room := width - len(harnessCardLead)
+	rows := []string{a.harnessPageHead(c.page.Id.Name, part.Head, room, selected), ""}
+	for _, line := range part.Steps {
+		if strings.TrimSpace(line) == "" {
+			rows = append(rows, "")
+			continue
+		}
+		rows = append(rows, a.pal.ink(fit(harnessCardLead+line, width)))
 	}
-	name := c.page.Id.Name
-	version := c.page.Id.Version
-	if version == 0 {
-		version = 1
-	}
-	head := "┌─ harness designed " + strings.Repeat("─", max(1, inner-24)) + fmt.Sprintf(" v%d ─┐", version)
-	// THE CARD'S LEADING TEXT IS ITS NAME, and that is what turns accent when the
-	// cursor is on it. The emphasis used to be an accent painted along the top
-	// RULE of the box, which is the one move the emphasis law forbids outright —
-	// a ring drawn round a thing rather than a step up the ladder — and it lit a
-	// run of box-drawing glyphs rather than a word anybody reads. The ground now
-	// arrives from the layout's own pass (render.go's [app.hoverPass]), which is
-	// where every other row on this surface gets it, so this file spends its half
-	// of the law on the lead and nothing else.
-	title := name
-	if selected {
-		title = a.pal.accent(name)
-	}
-	rows := []string{fit(head, width), boxLine(title, inner), boxLine(c.page.Id.Desc, inner), boxLine("", inner)}
-	for _, line := range harnessDiagram(*c.page, inner, layoutTier(width) == tierPhone) {
-		rows = append(rows, boxLine(line, inner))
-	}
-	rows = append(rows, boxLine("", inner))
-	for _, line := range harnessPoints(*c.page) {
-		for _, part := range wrap(line, inner) {
-			rows = append(rows, boxLine(part, inner))
+	if len(part.Foot) > 0 {
+		rows = append(rows, "")
+		for _, line := range part.Foot {
+			rows = append(rows, a.pal.dim(fit(harnessCardLead+line, width)))
 		}
 	}
 	if !c.began.IsZero() {
@@ -214,90 +238,28 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 		if end.IsZero() {
 			end = time.Now()
 		}
-		rows = append(rows, boxLine("thought for "+taskSpanWord(end.Sub(c.began)), inner))
+		rows = append(rows, a.pal.dim(fit(harnessCardLead+"thought for "+taskSpanWord(end.Sub(c.began)), width)))
 	}
 	actions := harnessCardActions
 	if c.state != "" {
 		actions = c.state
 	}
 	c.buttonRow = actions
-	rows = append(rows, boxLine(actions, inner), "└"+strings.Repeat("─", inner+2)+"┘")
-	return rows
+	return append(rows, "", a.pal.dim(fit(harnessCardLead+actions, width)))
 }
 
-func boxLine(s string, width int) string {
-	return "│ " + fit(s, width) + strings.Repeat(" ", max(0, width-ansi.StringWidth(fit(s, width)))) + " │"
-}
-
-func harnessPoints(h subharness.Harness) []string {
-	out := make([]string, 0, len(h.Program.Nodes)+2)
-	for _, n := range h.Program.Nodes {
-		detail := firstNonEmpty(n.Fields.Get("brief"), n.Fields.Get("check"), n.Fields.Get("tool"), n.Kind)
-		out = append(out, "• "+n.Id+": "+firstLineOf(detail))
+// harnessPageHead is the card's first line with the name lifted out of it: the
+// name in the accent while the cursor is here, and the version and the one line
+// after it dim, because those are what the name is rather than what is being
+// chosen.
+func (a *app) harnessPageHead(name, head string, room int, selected bool) string {
+	rest := strings.TrimPrefix(head, name)
+	paint := a.pal.ink
+	if selected {
+		paint = a.pal.accent
 	}
-	if h.Verify.Ladder != "" {
-		out = append(out, "verify: "+h.Verify.Ladder)
-	}
-	if len(h.Whitelist) > 0 {
-		out = append(out, "tools: "+strings.Join(h.Whitelist, " · "))
-	}
-	return out
-}
-
-// harnessDiagram lays nodes by dependency depth. A single path uses the compact
-// horizontal form; branches use stable stacked rows; phones always rotate the
-// same order vertically.
-func harnessDiagram(h subharness.Harness, width int, phone bool) []string {
-	ids := make([]string, 0, len(h.Program.Nodes))
-	for _, n := range h.Program.Nodes {
-		ids = append(ids, n.Id)
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	linear := len(h.Program.Edges) == len(ids)-1
-	if phone {
-		out := []string{}
-		for i, id := range ids {
-			out = append(out, "┌"+strings.Repeat("─", min(14, max(4, len(id))))+"┐", "│ "+fit(id, min(12, max(2, width-4)))+" │", "└"+strings.Repeat("─", min(14, max(4, len(id))))+"┘")
-			if i < len(ids)-1 {
-				out = append(out, "▼")
-			}
-		}
-		return out
-	}
-	if !linear {
-		pred, succ := map[string]int{}, map[string][]string{}
-		for _, edge := range h.Program.Edges {
-			succ[edge.From()] = append(succ[edge.From()], edge.To())
-			pred[edge.To()]++
-		}
-		for _, id := range ids {
-			if len(succ[id]) < 2 {
-				continue
-			}
-			out := []string{"[" + fit(id, 12) + "]"}
-			for i, branch := range succ[id] {
-				arm := "├──▶ "
-				if i == len(succ[id])-1 {
-					arm = "└──▶ "
-				}
-				out = append(out, arm+"["+fit(branch, 12)+"]")
-			}
-			for _, join := range ids {
-				if pred[join] > 1 {
-					out = append(out, "      ▼", "    ["+fit(join, 12)+"]")
-					break
-				}
-			}
-			return out
-		}
-	}
-	boxes := make([]string, len(ids))
-	for i, id := range ids {
-		boxes[i] = "[" + fit(id, 12) + "]"
-	}
-	return []string{strings.Join(boxes, "──▶")}
+	lead, used := fitWidth(harnessCardLead+name, room)
+	return paint(lead) + a.pal.dim(fit(rest, room-used))
 }
 
 func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {

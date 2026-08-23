@@ -505,7 +505,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, models, chosen, workspace)
+	subharnesses := v3Subharnesses(settings, models, chosen, workspace, harnesses)
 
 	cfg := session.Config{
 		Workspace:      workspace,

@@ -36,16 +36,29 @@ message box, at most **12** lines, with the filter box in the box's own place:
 
 ```
 flake-triage      chase a flaky test · up to 15m · built-in
-weekly-update     the Monday note for the team · yours · ran 2d ago
+weekly-update     the Monday note for the team · yours · yesterday · finished · $0.12
 ```
 
 The left is the name. The dim tail is what it is for, then how long that kind of work is
-allowed to take, then where it came from, then when it last ran.
+allowed to take, then where it came from, then the last run.
+
+**The last run reads `when · how it went`**, and a cost after it when one was reported:
+`yesterday · finished · $0.12`, `1h · incomplete`, `10m · finished`. A run that did not
+reach the end it promised is `incomplete` and is never called a failure. `/harness` spells
+the same fact about the same program in the same words — one system, two doors, one
+vocabulary.
 
 **Anything nobody said is simply not drawn.** A subharness that has never run carries no
 last-run note at all — not `never run`, not `0 runs`. One whose manifest declares no
-budget shape draws no time. A gap in a row is readable; a zero that has to be explained is
-not.
+budget shape draws no time. A cost nobody reported is not drawn either, because a provider
+that published no figure left "nobody said" behind and not "free". A gap in a row is
+readable; a zero that has to be explained is not.
+
+**A run started from `/harness` shows up here too.** The two doors read one history: a
+program you had designed keeps a full trace of every run beside its page, a bundle keeps
+a one-line note beside itself, and the row answers with whichever of the two is newer. So
+running `triage-flake` from the `/harness` picker this morning is what this row says about
+it this afternoon.
 
 **Typing narrows it** over three things: the name, the one line, and the **cues** — the
 words somebody wrote down at design time meaning "this is that kind of work". That is what
@@ -201,9 +214,6 @@ Stated plainly, because the surface is finished before everything behind it is.
   field opens marked, which is the honest card for `/subharness <name>` typed cold.
   Reading the conversation and filling the schema from it is chat's job and lands with the
   session side; when it does, the answered fields simply arrive already stated.
-- **No last-run notes yet.** They come from the run journals the store keeps beside each
-  program, so until that lands every row draws nothing there — which is exactly what a
-  subharness nobody has run should draw.
 - **aforge does not offer one by itself yet.** When it does, it will raise this same card
   with a line saying why it matched. Nothing ever runs without the card.
 - **No subharnesses over `--host`.** The registry lives on the far machine, so the command

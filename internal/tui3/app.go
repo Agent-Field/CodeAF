@@ -227,6 +227,12 @@ type entry struct {
 	// note is drawn exactly as it was drawn before the rule existed.
 	facts []string
 
+	// block says this note's OWN LINE STRUCTURE is what it means, so the frame
+	// fits each line to the width rather than re-flowing the paragraph
+	// ([app.noteBlock] says why, and a subharness card is the only shape that
+	// asks for it). It is false on every other note, which is nearly all of them.
+	block bool
+
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
 	// for every ordinary turn, which is nearly all of them. It is set on the
@@ -3608,19 +3614,36 @@ func (a *app) note(text string) { a.noteFacts(text) }
 // It is the same door and not a second one, because a note is a note — what
 // changes is only that this one knows which of its own words the person came for.
 // A builder that names nothing gets exactly the line it always got.
-func (a *app) noteFacts(text string, facts ...string) {
+func (a *app) noteFacts(text string, facts ...string) { a.noteWritten(text, false, facts) }
+
+// noteBlock is a note whose LINE STRUCTURE IS ITS MEANING, and it exists for
+// exactly one shape: a subharness card printed into the conversation
+// (harnesspanel.go). The card says which step belongs to which lane by INDENTING
+// it, so the ordinary note's wrap — which re-flows every paragraph to the frame
+// — took a nested lane and laid it flat against the margin, and a person reading
+// the result could not tell a step of the run from a step of one arm of a
+// choice.
+//
+// A LINE TOO WIDE IS CUT, NEVER RE-FLOWED. Half a step's detail with an ellipsis
+// after it still sits in its own lane; the same detail wrapped is two rows, the
+// second of which claims to be a row of the card.
+func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
+
+// noteWritten is the one body behind both, so the repeat rule, the fact list and
+// the block flag cannot disagree about what a note is.
+func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.closeLive()
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
 		// The repeat is brought back into view rather than written again (above),
 		// and its data are refreshed with it: the same sentence built a second time
 		// may have been built from a different reading, and a stale fact list would
 		// lift the words of the frame before this one.
-		a.entries[n-1].facts = facts
+		a.entries[n-1].facts, a.entries[n-1].block = facts, block
 		a.follow()
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts})
+	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts, block: block})
 	a.follow()
 	a.touch()
 }

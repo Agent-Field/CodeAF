@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/jsrun"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/substore"
 )
 
@@ -118,13 +119,13 @@ func TestAFileGuardLooksInTheWorkspace(t *testing.T) {
 func TestARowSaysNothingWithNoHistoryAndOneLineWithIt(t *testing.T) {
 	store := substore.At(t.TempDir())
 	now := time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC)
-	last := subharnessLastRun(store, func() time.Time { return now })
+	last := subharnessLastRun(store, nil, func() time.Time { return now })
 
 	if line := last("weekly-brief"); line != "" {
 		t.Fatalf("a subharness nobody has run should draw nothing, and it drew %q", line)
 	}
 
-	finished := subharnessRunLine(substore.RunNote{
+	finished := subharness.LastRunLine(subharness.LastRun{
 		At: now.Add(-26 * time.Hour), Finished: true, CostUSD: 0.1234,
 	}, now)
 	if finished != "yesterday · finished · $0.12" {
@@ -133,14 +134,73 @@ func TestARowSaysNothingWithNoHistoryAndOneLineWithIt(t *testing.T) {
 
 	// A run that did not finish is INCOMPLETE and is never called a failure, and
 	// a cost nobody reported is not drawn at all.
-	incomplete := subharnessRunLine(substore.RunNote{
-		At: now.Add(-90 * time.Minute), Why: "it ran out of time before the last section",
+	incomplete := subharness.LastRunLine(subharness.LastRun{
+		At: now.Add(-90 * time.Minute),
 	}, now)
 	if incomplete != "1h · incomplete" {
 		t.Fatalf("an unfinished run reads %q", incomplete)
 	}
 	if strings.Contains(incomplete, "fail") || strings.Contains(incomplete, "$") {
 		t.Fatalf("the line broke the vocabulary or the emptiness law: %q", incomplete)
+	}
+}
+
+// ONE PROGRAM, ONE RECORD, WHICHEVER DOOR RAN IT.
+//
+// A page run started from `/harness` saves a trace beside the page and leaves no
+// home-store note; a run started from `/subharness` leaves the note. The row
+// under a name has to say the same thing either way, so the reading asks both
+// stores and answers with whichever is newer ([subharnessLastRun] states the
+// whole design and why it is a read rather than a second write).
+func TestARunFromEitherDoorReachesTheSameRow(t *testing.T) {
+	home := substore.At(t.TempDir())
+	pages := subharness.At(t.TempDir())
+	now := time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC)
+	last := subharnessLastRun(home, pages, func() time.Time { return now })
+
+	page := subharness.Harness{
+		Id: subharness.Id{Name: "triage-flake", Desc: "chase a flaky test"},
+		Program: subharness.Program{Nodes: []subharness.Node{
+			{Id: "look", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "look"}},
+		}},
+	}
+	if _, err := pages.Save(page); err != nil {
+		t.Fatalf("saving the page: %v", err)
+	}
+	if line := last("triage-flake"); line != "" {
+		t.Fatalf("a page nobody has run should draw nothing, and it drew %q", line)
+	}
+
+	// THE /harness ROAD: a trace beside the page and no note anywhere else. The
+	// row used to stay silent about it.
+	if _, err := pages.SaveRun(subharness.Trace{
+		Id: page.Id, Started: now.Add(-3 * time.Hour), Status: subharness.StatusOK,
+	}); err != nil {
+		t.Fatalf("saving the trace: %v", err)
+	}
+	if line := last("triage-flake"); line != "3h · finished" {
+		t.Fatalf("a run from the /harness road reads %q on the /subharness row", line)
+	}
+
+	// THE /subharness ROAD: the note is newer, and it carries the cost the trace
+	// never had.
+	if err := home.RecordRun("triage-flake", substore.RunNote{
+		At: now.Add(-10 * time.Minute), Finished: true, CostUSD: 0.42,
+	}); err != nil {
+		t.Fatalf("recording the note: %v", err)
+	}
+	if line := last("triage-flake"); line != "10m · finished · $0.42" {
+		t.Fatalf("the newer of the two readings did not win: %q", line)
+	}
+
+	// And an older note does not shout down a newer trace.
+	if _, err := pages.SaveRun(subharness.Trace{
+		Id: page.Id, Started: now.Add(-time.Minute), Status: subharness.StatusCancelled,
+	}); err != nil {
+		t.Fatalf("saving the second trace: %v", err)
+	}
+	if line := last("triage-flake"); line != "1m · incomplete" {
+		t.Fatalf("the newest run is not what the row says: %q", line)
 	}
 }
 
@@ -168,7 +228,7 @@ func TestARecordedRunIsWhatTheNextListReadsBack(t *testing.T) {
 		t.Fatalf("the note should name the version that ran; it names v%d", note.Version)
 	}
 
-	line := subharnessLastRun(store, func() time.Time { return at.Add(5 * time.Second) })(name)
+	line := subharnessLastRun(store, nil, func() time.Time { return at.Add(5 * time.Second) })(name)
 	if line != "now · finished · $0.50" {
 		t.Fatalf("the row under the name reads %q", line)
 	}

@@ -756,13 +756,17 @@ Moving in it: ↑ / ctrl+p, ↓ / ctrl+n, pgup / pgdown by 10. A click on a row 
 click anywhere else closes the panel. esc leaves.
 
 A row reads `◆ name v3` on the left — the version is part of what the thing is — and
-dimly on the right the description, then the history: `never run`, or
-`6 runs · last ok, 2h ago`. A run count with an unreadable newest trace shows just the
-count, because "never run" and "ran, and I cannot read the trace" are different facts.
+dimly on the right the description, then `6 runs`, then the last run in the same two words
+`/subharness` uses for it: `2h · finished`, or `2h · incomplete`. A harness nobody has run
+draws nothing there — not `never run`, not `0 runs`. A run count with an unreadable newest
+trace shows just the count, because "never ran" and "ran, and I cannot read the trace" are
+different facts.
 
 enter **prints the harness's card into the conversation** and closes the panel: numbered
 steps with the bounds under them, plus `last run` and that run's card when there is one.
-It is prose, and prose belongs in the transcript where you can scroll and copy it.
+It is prose, and prose belongs in the transcript where you can scroll and copy it. The
+card keeps the columns it was written in — a line too wide for the frame is cut, never
+wrapped, because the indent under a lane is what says which step belongs to it.
 
 Building a harness is a conversation, not a command. This panel only says which ones exist;
 `/harness ` with a space picks one to run on a typed request, and `/subharness` lists the
