@@ -159,6 +159,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// somebody's behalf. The tool is simply absent (internal/session's
 		// tools.go), which is the same law --once already applies to consent.
 		cfg.Standing = nil
+		// AND THE SUBHARNESS SEAMS ARE LEFT ALONE, which is not an oversight
+		// beside the line above it. Standing has to be taken away here because
+		// nothing else asks whether anybody is watching before it arms a clock. A
+		// subharness cannot start without somebody confirming an intake card, and
+		// internal/session already reads that in one place — its own gate is
+		// `AskConsent && there is something to offer` (tools_subharness.go), and
+		// the line above has already answered the first half. Nilling the registry
+		// too would be a second copy of a decision that is made correctly one
+		// layer down, and it would take the `/subharness` list away from a door
+		// that may yet grow one.
 		return runChatV3Once(cfg, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
@@ -169,6 +179,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if err != nil {
 		return err
 	}
+	// AND NOW THE BELT EXISTS, so a program's tool guard can be answered. Until
+	// this line every such guard answers no and the work takes the long way,
+	// which is the safe direction and not the useful one ([beltWatch] states the
+	// ordering problem this closes).
+	launch.Subharnesses.Belt.watch(agent.ToolOnBelt)
 	if notice != "" {
 		// The session file moved under us, so everything downstream that names
 		// it — /help, /new, the resumed line — has to name the new one.
@@ -435,6 +450,12 @@ type v3Launch struct {
 	// bucket is the list of this project's conversations.
 	Place  session.Place
 	Bucket string
+	// Subharnesses is the assembly the four seams on Config were taken from
+	// (chatv3_subharness.go). It is carried out of the launch for ONE thing the
+	// config cannot hold: the belt watch, which is a question about an agent that
+	// does not exist until after this returns and is filled the moment it does
+	// (see [beltWatch], and the door it is pointed at, session.Agent.ToolOnBelt).
+	Subharnesses v3Subharness
 }
 
 func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
@@ -479,6 +500,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// its conservative default.
 	models := proc.Models
 	harnesses := proc.Harnesses
+
+	// The typed programs this conversation can reach, and the two stores they are
+	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
+	// all four seams below are fields of it, and the zero value is subharnesses
+	// off — so nothing here has to ask whether the wiring worked.
+	subharnesses := v3Subharnesses(settings, models, chosen, workspace)
 
 	cfg := session.Config{
 		Workspace:      workspace,
@@ -565,6 +592,22 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// above were built from, so a page approved on a card is a page the very
 		// next sentence can be matched against.
 		HarnessStore: harnesses,
+		// AND THE SUBHARNESS SIDE, which is the same three-part shape one row up:
+		// what can be reached, where what it learns is kept, and what is known
+		// about the last time each one ran (docs/SUBHARNESS-CONTRACT.md §5). They
+		// are filled together because any one of them alone is a half-wiring — a
+		// registry with no memory teaches a program it learnt something it did
+		// not, and a history nothing writes to is a list of rows that will never
+		// say anything.
+		//
+		// NIL IS SUBHARNESSES OFF and every one of these is allowed to be nil: a
+		// store that cannot be read, a client that cannot be built and a machine
+		// with no bundles on it all arrive here as the zero value, and the doors
+		// in internal/session answer nothing, calmly.
+		Subharnesses:        subharnesses.Registry,
+		SubharnessMemory:    subharnesses.Memory,
+		SubharnessLastRun:   subharnesses.LastRun,
+		SubharnessRecordRun: subharnesses.Record,
 		// The hand that paints, and the model it asks (internal/session's
 		// tools_image.go). The pair is CONDITIONAL on the other side — a nil
 		// client leaves generate_image off the belt entirely — so this is
@@ -626,16 +669,17 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	}
 
 	return &v3Launch{
-		Settings:    settings,
-		Models:      models,
-		Harnesses:   harnesses,
-		Config:      cfg,
-		Model:       chosen,
-		Workspace:   workspace,
-		SessionFile: transcript,
-		Resumed:     resumed,
-		Place:       found.Place,
-		Bucket:      found.Bucket,
+		Settings:     settings,
+		Models:       models,
+		Harnesses:    harnesses,
+		Config:       cfg,
+		Model:        chosen,
+		Workspace:    workspace,
+		SessionFile:  transcript,
+		Resumed:      resumed,
+		Place:        found.Place,
+		Bucket:       found.Bucket,
+		Subharnesses: subharnesses,
 	}, nil
 }
 

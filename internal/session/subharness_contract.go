@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 )
@@ -105,21 +106,28 @@ type SubharnessCard struct {
 //
 // Nil when this build has no registry, which draws as nothing.
 //
-// THE TUI LANE draws it; the LastRun note is the STORE LANE's to fill, from the
-// run journals it keeps beside each bundle. Until it does, every row's note is
-// empty, which is exactly what a subharness nobody has run yet should draw.
+// THE TUI LANE draws it; the LastRun note is read through the STORE LANE's seam
+// ([Config.SubharnessLastRun]), which is filled from the run journals that lane
+// keeps beside each bundle. A build with no seam wired draws no note at all,
+// which is exactly what a subharness nobody has run yet should draw — the
+// emptiness law, and never "0 runs".
 func (a *Agent) SubharnessList() []SubharnessRow {
 	registry := a.config.Subharnesses
 	if registry == nil {
 		return nil
 	}
+	history := a.config.SubharnessLastRun
 	manifests := registry.Manifests()
 	rows := make([]SubharnessRow, 0, len(manifests))
 	for _, manifest := range manifests {
 		if manifest.Name == exec.LinearSubharness {
 			continue
 		}
-		rows = append(rows, SubharnessRow{Manifest: manifest})
+		row := SubharnessRow{Manifest: manifest}
+		if history != nil {
+			row.LastRun = strings.TrimSpace(history(manifest.Name))
+		}
+		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
 		return nil
@@ -127,39 +135,22 @@ func (a *Agent) SubharnessList() []SubharnessRow {
 	return rows
 }
 
-// SubharnessIntake is the card's data for one subharness: every field of its
-// input schema, what is filled, and which required ones are still blank.
+// SubharnessRunNote is what a finished run tells the store about itself, so the
+// next `/subharness` list can draw a note under its row.
 //
-// A NAME NOTHING HAS IS AN ERROR AND NOT AN EMPTY CARD, which is the difference
-// between this door and the list beside it. Somebody typed a name; getting a
-// blank card for a subharness that does not exist would send them looking for
-// the fields rather than for the typo.
-//
-// WHAT IT DOES NOT DO YET is fill anything in. Filling the schema from the
-// conversation is chat's duty (PRD §4) and it is the SESSION LANE's to build:
-// one model call over the turn's material, batched down to as few questions as
-// the missing fields allow. Until that lands, every field comes back blank and
-// every required one comes back in Missing — which is an honest card for a
-// conversation nothing has been read out of, and exactly what `/subharness
-// <name>` typed cold should show.
-func (a *Agent) SubharnessIntake(name string) (SubharnessCard, error) {
-	registry := a.config.Subharnesses
-	if registry == nil {
-		return SubharnessCard{}, errSubharnessUnwired
-	}
-	runner, err := registry.Subharness(strings.TrimSpace(name))
-	if err != nil {
-		return SubharnessCard{}, err
-	}
-	manifest := runner.Manifest()
-	card := SubharnessCard{Manifest: manifest}
-	for _, field := range manifest.Input.Fields() {
-		card.Fields = append(card.Fields, SubharnessField{Field: field})
-		if field.Required {
-			card.Missing = append(card.Missing, field.Name)
-		}
-	}
-	return card, nil
+// IT IS THE FACTS AND NOT THE SENTENCE. When it ran, whether it finished, why
+// not where it did not, and what it cost — and no rendering of any of them,
+// because the emptiness law, the word for an unfinished run and how a cost is
+// drawn are all the SURFACE's to decide. A store that rendered them would be a
+// second place those three decisions are made.
+type SubharnessRunNote struct {
+	At       time.Time
+	Finished bool
+	// Why is [exec.RunResult.Incomplete] carried verbatim — the sentence was
+	// written by whoever knew what ran out, and nothing between there and the row
+	// is entitled to rephrase it.
+	Why     string
+	CostUSD float64
 }
 
 // SubharnessRun launches one subharness on the input the card settled, as a task
@@ -179,20 +170,52 @@ func (a *Agent) SubharnessIntake(name string) (SubharnessCard, error) {
 // system in the process at all, which is why the contract this door sits on
 // ([exec.Runner]) knows nothing about tasks and this door knows everything.
 //
-// THE DOOR LANE FILLS THIS ONE — reserving the node, spinning the run against
-// the registry's runner with the session's Env behind it, wiring the journal to
-// the room and the cancel route to the run's context. It answers
-// errSubharnessUnwired until then, which is what a surface with no registry
-// wired would answer forever.
+// THE BODY IS subharness_run.go's, and this is the door onto it: the name is
+// resolved here so that a typo is refused before a node exists to carry it, the
+// id is minted before the node is admitted (that file states why), and the pair
+// that comes back is the pair a surface already knows how to open a room on.
+//
+// NOTHING IS ASKED HERE, because the question already happened: every path into
+// this door goes through the intake card and somebody confirming it.
 func (a *Agent) SubharnessRun(ctx context.Context, name string, input json.RawMessage) (uint64, string, error) {
+	return a.startSubharnessRun(ctx, name, input, "")
+}
+
+// startSubharnessRun is [Agent.SubharnessRun] with chat's reason carried in. It
+// is the second door rather than a fourth argument on the first because the
+// signature above is the frozen contract every surface codes against, and the
+// reason is filled by exactly one caller — the belt's proposal
+// (tools_subharness.go), where a run is raised BY chat rather than chosen by the
+// person, and the row and the room are owed one line saying why.
+func (a *Agent) startSubharnessRun(ctx context.Context, name string, input json.RawMessage, why string) (uint64, string, error) {
 	registry := a.config.Subharnesses
 	if registry == nil {
 		return 0, "", errSubharnessUnwired
 	}
-	if _, err := registry.Subharness(strings.TrimSpace(name)); err != nil {
+	runner, err := registry.Subharness(strings.TrimSpace(name))
+	if err != nil {
 		return 0, "", err
 	}
-	// The name resolves and the input is in hand; what is missing is the half
-	// that turns a run into a node, and it is not this lane's to write.
-	return 0, "", errSubharnessUnwired
+	// A CALLER WHOSE CONTEXT IS ALREADY GONE STARTS NOTHING. The node itself runs
+	// on the process's own context and outlives this call by design
+	// ([Agent.runTaskNode]) — which is exactly why this has to be checked here
+	// rather than left to be noticed later: an interrupted turn that admitted a
+	// node on its way out would leave real work running for a sentence nobody is
+	// waiting on any more.
+	if err := ctx.Err(); err != nil {
+		return 0, "", err
+	}
+	manifest := runner.Manifest()
+	spec := &subharnessRunSpec{
+		name:  manifest.Name,
+		input: input,
+		why:   strings.TrimSpace(why),
+		// The model is the conversation's own, taken at the moment the run
+		// starts. A run that picked its own would be spending the person's money
+		// on a choice they never made.
+		model: a.Model(),
+	}
+	id := a.reserveSubharnessRun()
+	a.admitSubharnessRun(id, spec, manifest)
+	return id, subharnessNodeTitle(manifest.Name), nil
 }
