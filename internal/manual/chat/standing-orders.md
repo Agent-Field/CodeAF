@@ -345,6 +345,8 @@ because it has no cadence and nothing it last found.
 **A shelf with nothing on it is not drawn at all**, heading included. With nothing
 standing here the page does not open: aforge says one line instead,
 `nothing stands here yet — say what should always be true, and I'll hold it.`
+Asking again straight away does not add a second copy of that line — the one already in
+the conversation is the answer, and the screen scrolls back down to it.
 
 The page is about **this conversation**. For everything standing on the whole machine,
 grouped by project, open `/home`.
