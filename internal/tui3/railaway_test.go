@@ -99,7 +99,10 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	if !strings.Contains(strings.Join(rows, "\n"), railGripOpenGlyph+" "+railStowHint) {
 		t.Fatalf("the column's door carries no chevron:\n%s", strings.Join(rows, "\n"))
 	}
-	painted := strings.Join(rows, "\n")
+	// The paint is asked of the RAW rows: railText strips ANSI for reading, and
+	// an assertion about a palette run on stripped text passes only where the
+	// palette paints nothing.
+	painted := strings.Join(a.railRows(a.viewHeight()), "\n")
 	if !strings.Contains(painted, a.pal.data(railStowKey)) ||
 		!strings.Contains(painted, a.pal.dim(" hide")) {
 		t.Fatalf("the close door does not use the shared hint palette:\n%q", painted)

@@ -290,8 +290,16 @@ func chordsIn(part []rune, base int) []segment {
 	words := splitTokens(part)
 	var out []segment
 	for i, w := range words {
-		token := strings.TrimRight(string(part[w.from:w.to]), ",.")
-		to := w.from + len([]rune(token))
+		// THE WHOLE TOKEN IS TRIED BEFORE THE TRIM. A trailing comma or full
+		// stop is prose punctuation on "0 or esc, no" — but on `ctrl+.` and
+		// `ctrl+,` the mark IS the key, and a trim that ran first would hand
+		// half a chord to the matcher and lift nothing.
+		token := string(part[w.from:w.to])
+		to := w.to
+		if !isChordWord(token) {
+			token = strings.TrimRight(token, ",.")
+			to = w.from + len([]rune(token))
+		}
 		switch {
 		case isChordWord(token):
 		case i == 0 && isBareKey(token, len(words)):

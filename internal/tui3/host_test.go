@@ -107,8 +107,10 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 		t.Fatalf("place = %q", a.place)
 	}
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "porting the parser" {
-		t.Fatalf("a local legend = %q — no machine belongs on it", got)
+	// The legend gave the name to the status line (render.go): a local session
+	// with no machine and no branch has a legend with nothing on its left.
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "" {
+		t.Fatalf("a local legend = %q — neither a machine nor a name belongs on it", got)
 	}
 }
 
@@ -135,8 +137,9 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 		t.Fatal("probeGit produced work over --host")
 	}
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · porting the parser" {
-		t.Fatalf("the legend grew a branch: %q", got)
+	// The machine stays on the legend; the name lives on the status line now.
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
+		t.Fatalf("the legend grew a branch or a name: %q", got)
 	}
 }
 
