@@ -40,13 +40,43 @@ func TestCrewOpensTheThreePresetsOnYours(t *testing.T) {
 			}
 		}
 	}
-	// THE SHIPPED CREW IS MARKED, and it is balanced — the four tier defaults are
-	// that row (internal/config's crew.go).
-	if !strings.Contains(text, "· "+config.CrewBalanced) {
-		t.Errorf("the current preset is not marked:\n%s", text)
+	// THE SHIPPED CREW IS MARKED BY THE GROUND IT WEARS, and it is balanced — the
+	// four tier defaults are that row (internal/config's crew.go).
+	//
+	// The crew in force is the chosen thing, so it takes THE GROUND LADDER's
+	// selected step; the cursor takes the step under it. This list used to say
+	// "in force" with the POINTER's own `·` in the lead, which meant the two
+	// facts fought over one cell — and because the current preset was tested
+	// first, the cursor's own `›` vanished whenever it landed on the preset
+	// already running, which is the row a person arrows onto most.
+	painted := a.overlayRows(a.width, a.overlayHeight())
+	chosen := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
+	cursorStep := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
+	var onChosen, onOthers int
+	for _, line := range painted {
+		switch {
+		case strings.Contains(line, config.CrewBalanced):
+			onChosen++
+			if !strings.Contains(line, chosen) {
+				t.Errorf("the crew in force wears no ground:\n%q", line)
+			}
+		case strings.Contains(line, config.CrewFrugal) || strings.Contains(line, config.CrewMax):
+			onOthers++
+			if strings.Contains(line, chosen) {
+				t.Errorf("a preset nobody is on wears the chosen ground:\n%q", line)
+			}
+		}
 	}
-	if strings.Contains(text, "· "+config.CrewFrugal) {
-		t.Errorf("a preset nobody is on is marked:\n%s", text)
+	if onChosen == 0 || onOthers == 0 {
+		t.Fatalf("the listing did not draw the presets it was asked about:\n%s", text)
+	}
+	// The cursor opened on balanced, which is also the crew in force. The louder
+	// step wins the ground and the `›` still says where enter is aimed.
+	if !strings.Contains(strings.Join(painted, "\n"), a.pal.accent("› ")) {
+		t.Errorf("the cursor lost its mark on the row it opened on:\n%s", text)
+	}
+	if strings.Contains(strings.Join(painted, "\n"), cursorStep) {
+		t.Errorf("a second row took the cursor step with no pointer on the list:\n%s", text)
 	}
 	// The four classes are named in the words their own settings rows use, so
 	// somebody told "mastermind" here can find the row there.

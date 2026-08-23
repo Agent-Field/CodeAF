@@ -440,14 +440,37 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	return out, wasCluster || wasBlock
 }
 
-// hoverPass paints the row under the pointer, and it is the last thing done to
-// any row list on this surface — the conversation's and the room's alike.
+// hoverPass paints the row a person is on — under the pointer or under the
+// keyboard cursor — and it is the last thing done to any row list on this
+// surface, the conversation's and the room's alike.
+//
+// CURSOR AND HOVER ARE ONE STEP, NOT TWO, so they are one pass. The pointer's
+// row has come up onto THE GROUND LADDER's cursor step here since hover was
+// built; the keyboard's row said its position with an accent on the rail glyph
+// and no ground at all, so ↑ and ↓ moved something a pointer crossing the same
+// rows would have lit. That is the ladder's own refusal — the row a person is on
+// does not change appearance depending on which hand they used — and mending it
+// here rather than at the four renderers means the tool row, the phone row, the
+// forming row, the done card, the rollup and the harness card all learn it at
+// once, and none of them has to remember the pass exists.
 func (a *app) hoverPass(out []row, width int) {
 	for i := range out {
-		if a.isHot(out[i]) {
+		if a.isHot(out[i]) || a.onCursorRow(out[i]) {
 			out[i].text = a.hoverRow(out[i].text, width)
 		}
 	}
+}
+
+// onCursorRow reports whether the KEYBOARD cursor is on this row: ↑/↓ walk
+// [app.sel] over the turn's calls and enter opens whichever one it stopped on.
+//
+// It is not folded into [app.isHot] because that predicate answers "is the
+// POINTER here", and the linear tier has no pointer — see the note there. A
+// keyboard cursor is a position in a list and a position is a fact for every
+// reader, so the two questions stay two questions even though today's answer
+// takes them to the same rung.
+func (a *app) onCursorRow(r row) bool {
+	return r.entry >= 0 && a.selected(r.entry)
 }
 
 // isHot reports whether the pointer is on this row. The linear tier has no

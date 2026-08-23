@@ -1011,14 +1011,19 @@ func (a *app) rewindSheetRowText(row rewindSheetRow, at, width int) string {
 		}
 	}
 	text = indent + text
-	// SELECTED OUTRANKS HOVERED, which is the law every list on this surface
-	// states: the two backgrounds cannot nest, and of the two facts "this is where
-	// you are" is the one still true when the pointer moves away.
-	switch {
-	case at == a.rewSheet.cursor:
-		text = pal.selected(text, width)
-	case a.hot.kind == hoverRewindSheet && a.hot.index == at:
-		text = a.hoverRow(text, width)
+	// NOTHING ON THIS PAGE IS CHOSEN UNTIL A CUT IS COMMITTED, so nothing on it
+	// wears THE GROUND LADDER's selected step. [rewindSheet.at] looks like a
+	// chosen point and is not — its own comment says it FOLLOWS the cursor — and
+	// the one genuinely persistent state here, `armed`, is a warning said in
+	// words rather than a rung.
+	//
+	// So the two facts left are the keyboard cursor and the pointer, and the
+	// ladder gives them ONE rung between them. The cursor used to take the
+	// selected step, which said a decision had been made when all that had
+	// happened was that ↑/↓ got there — on the one page where the difference
+	// between "looking at this cut" and "taking this cut" is the whole point.
+	if at == a.rewSheet.cursor || (a.hot.kind == hoverRewindSheet && a.hot.index == at) {
+		text = pal.cursor(text, width)
 	}
 	return text
 }

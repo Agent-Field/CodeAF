@@ -744,10 +744,12 @@ func connUnder(text string, selected, hovered bool, width int, pal palette) stri
 		paint = pal.muted
 	}
 	line := strings.Repeat(" ", overlayIndent) + paint(fit(text, width-overlayIndent))
-	switch {
-	case selected:
-		return pal.selected(line, width)
-	case hovered:
+	// It takes the row's own step, and the row's own step is THE GROUND LADDER's
+	// cursor one: `selected` here is the sheet's keyboard cursor and `hovered` is
+	// the pointer, which the ladder holds to be ONE fact reached by two hands.
+	// Nothing in a settings list is OPEN, so the selected step has no occupant on
+	// this page.
+	if selected || hovered {
 		return pal.cursor(line, width)
 	}
 	return line

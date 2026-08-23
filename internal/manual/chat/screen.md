@@ -617,8 +617,10 @@ conversation. That is the only door if you are on the keyboard with the mouse of
 
 The head is `status` on the left and `esc close` on the right. The foot names the keys:
 `esc close · ↑↓ move`, plus ` · enter model` while the cursor is on the model line.
-Rows carry a `▸` when a press acts on them. The selected row is painted by its label,
-not by a band across the line.
+Rows carry a `▸` when a press acts on them. The row you are on has its label in the
+accent and its ground one step up — the quieter of the two row backgrounds, the one that
+means "the cursor is here". The keyboard and the pointer share it: this sheet has nothing
+open on it, so there is no second, louder background to keep apart from the first.
 
 The items, in order: `session`, `task` (in a room), `model` (the full routing address
 with its `:level` — the one actable row), `task model` (in a room), `served`, then every
@@ -1628,8 +1630,10 @@ The thinking window's gradient collapses to flat dim, because a gradient is an a
 held still.
 
 What the linear tier **keeps**: the colours (a screen reader ignores them, and a sighted
-reader loses nothing) and the **selection band**. The cursor is a position in a list, and
-that list exists whoever is reading it. Only the hover is dropped.
+reader loses nothing), the **chosen row's background** — the model in use, the
+conversation you are in, the room you are standing in — and the **copy span's**. Those
+are facts about the session rather than about a pointer, and they are true whoever is
+reading. What is dropped is the quieter background the pointer and the cursor share.
 
 ## Two other things that move on screen
 
@@ -1801,11 +1805,19 @@ table's foot, the jump-to-latest chip, the `✕` on a room's header and the mode
 the foot of the frame all go one step up in ink. A highlighted rectangle mid-paragraph
 would be the one boxed thing on a surface with no boxes.
 
-**Selected beats hovered.** A row that is already the thing you are looking at — the
-roster row and the strip chip of the room you are standing in, the cursor row of an
-open list — wears the selection band, which is the hover background one step louder,
-and the pointer moving over it changes nothing. The two cannot both be drawn, and "you
-are here" is the one still true when the pointer leaves.
+**The pointer and the cursor share one background; the chosen thing gets the louder
+one.** Whether you reached a row with the mouse or with `↓`, the row you are on looks the
+same — it does not change appearance depending on which hand you used. What tells the two
+apart is the mark in front: `›` where enter would act, `·` where the pointer is.
+
+The step above that is for the thing you have actually **chosen**, and it stays drawn
+when nobody is touching the list: the roster row and the strip chip of the room you are
+standing in, the model in use in `/model`, the conversation you are in on home and in
+`/resume`, the crew in force in `/crew`, the tab you are on in `/settings`. Both can be
+on screen at once — that is what two steps are for — and the roster is where you will
+see it: the room you walked into on the louder ground, the row `↑↓` has reached on the
+quieter one. Where a cursor lands on the chosen row itself, the louder ground wins, so a
+row never gets quieter for being arrived at, and the `›` still says where enter is aimed.
 
 Nothing else lights: empty space, a paragraph, a dim telemetry line, the hint beside a
 picked harness, the body of the task record card, and the phone's tool detail sheet,
