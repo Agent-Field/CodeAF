@@ -232,6 +232,12 @@ its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
 waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
 
+**The key itself is drawn brighter than the word beside it.** In `esc interrupt`, `esc`
+is in the body ink and `interrupt` stays at the border's own dim — the thing you press
+reads at a glance and the explanation of it does not compete. It is the same
+in every hint the slot carries. See "Why is one word in a line brighter than the rest"
+below.
+
 **At rest it carries the two doors out of the conversation.** With an empty box and
 somewhere else on the machine to go, it reads exactly:
 
@@ -283,6 +289,45 @@ a room renames. The pinned header at the top of the frame says the same
 thing in its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
 you are back in the conversation. Clicking the page itself does not leave a room — a
 press on empty space does nothing here as it does everywhere.
+
+## Why is one word in a line brighter than the rest — highlighted model names, keys and figures
+
+Every line aforge writes about itself — a note in the conversation, the hint slot on the
+legend, `/help`, `/status`, `/cost` — is drawn in a quiet grey, because none of it is the
+conversation. **The facts inside those lines are not.** Each load-bearing word steps up
+one tier into the body ink, so the answer reads at a glance while the sentence around it
+stays out of the way.
+
+What steps up, in the lines you will see it in:
+
+| Line | What is drawn brighter |
+| --- | --- |
+| the crew line after `/crew` | the three model ids — `brain`, `hands` and `checks` stay grey |
+| `model · <id>` after `/model` | the model id |
+| `harness · <name>` | the harness's name |
+| `<mode> task <id> started · <title>` | the id and the title |
+| `N standing orders here — /standing` | the count |
+| the legend's hint slot | the key, never the verb beside it |
+| `/help` | the key at the head of each row, never its explanation |
+| `/status` and `/cost` | the figure in the second column, never its label |
+| the opening `esc interrupts · ctrl+c twice quits` | the two keys |
+
+Three rules hold it to one gesture, and they are worth knowing because they tell you what
+a mark means:
+
+- **A tinted background is always a slash command** and never anything else — `/model`,
+  `/standing`, `/help` wherever they are written, in the box, in your sent message and in
+  these lines alike. Nothing else on the screen borrows it, so a tinted run of cells is
+  always a word you can type back.
+- **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
+  tier; they do not get a chip.
+- **Nothing here is ever drawn in the accent.** The accent marks the one live or chosen
+  thing on a screen — your own `›`, the rail — and a line that appears and scrolls away is
+  not that.
+
+Nothing moves when a word is lifted: it is the same characters in the same columns, one
+tier louder. And a line whose facts have not been named stays exactly as grey as it was —
+the ones listed above are the ones that step up.
 
 ## Which folder am I in — where the workspace path and the git branch are shown
 

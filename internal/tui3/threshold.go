@@ -30,5 +30,9 @@ func (a *app) noteStandingHere() {
 	if len(stand) == 1 {
 		noun = "standing order"
 	}
-	a.note(fmt.Sprintf("%d %s here — /standing", len(stand), noun))
+	// THE COUNT IS WHAT THIS LINE IS FOR (payload.go): a person crossing the
+	// threshold is being told how much already stands over this conversation, and
+	// "how much" is the digit. The noun is prose and /standing is a door, so it
+	// wears the chip every door wears.
+	a.noteFacts(fmt.Sprintf("%d %s here — /standing", len(stand), noun), itoa(len(stand)))
 }

@@ -154,7 +154,9 @@ func (a *app) noteHarness(name string) {
 		return
 	}
 	a.harnessStep = ""
-	a.note("harness · " + name)
+	// WHICH HARNESS is the only thing this line says that the person does not
+	// already have, so it is the one that steps up (payload.go).
+	a.noteFacts("harness · "+name, name)
 }
 
 // stepHarness draws one session.EventHarnessStep: the step the run just

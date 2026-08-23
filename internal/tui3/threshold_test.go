@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -55,9 +57,35 @@ func TestTheConversationThresholdNamesStandingOrdersOrDrawsNothing(t *testing.T)
 			if found < 0 {
 				t.Fatalf("the threshold line is absent: %#v", a.entries)
 			}
+			// ONE ROW, IN THE NOTE'S OWN LANE — and THE PAYLOAD RULE inside it
+			// (payload.go). This assertion used to be that the whole row was one dim
+			// run, which was true and was the defect: the count is why the line is
+			// drawn at all, and it read at exactly the weight of the noun after it.
+			// So the count steps to ink, /standing wears the chip every door on this
+			// surface wears, and the words between them keep the dim the lane is
+			// written in.
 			rows := a.renderEntry(found, &a.entries[found], 60)
-			if len(rows) != 1 || rows[0] != a.pal.dim("· "+tt.want) {
-				t.Fatalf("the threshold line is not one dim row: %q", rows)
+			if len(rows) != 1 {
+				t.Fatalf("the threshold line is not one row: %q", rows)
+			}
+			row := rows[0]
+			if !strings.Contains(row, a.pal.ink(itoa(tt.count))) {
+				t.Fatalf("the threshold's own count is not lifted out of its sentence: %q", row)
+			}
+			// Everything between the count and the door, the space in front of the
+			// door included: one unbroken dim run, which is what says the prose did
+			// not move.
+			noun := strings.TrimSuffix(strings.TrimPrefix(tt.want, itoa(tt.count)), "/standing")
+			if !strings.Contains(row, a.pal.dim(noun)) {
+				t.Fatalf("the threshold's prose left the dim lane: %q", row)
+			}
+			if !strings.Contains(row, a.pal.chip("/standing")) {
+				t.Fatalf("the door the threshold names is not chipped: %q", row)
+			}
+			// AND NOTHING ON SCREEN MOVED. The rule repaints runes and never adds one.
+			if got := ansi.Strip(row); got != "· "+tt.want {
+				t.Fatalf("the threshold line's words changed:\n\tgot  %q\n\twant %q",
+					got, "· "+tt.want)
 			}
 		})
 	}
