@@ -1191,8 +1191,11 @@ selection, not the primary one.
 - A click does nothing.
 - A paste is declined, and your clipboard keeps the text.
 - There is no hover.
-- The selection highlight is the hover background, so a terminal below ANSI256 gets
-  no highlight at all. Read the span off the `COPY · N lines` count instead.
+- The selection highlight is a background, and a terminal below ANSI256 gets no
+  highlight at all. Read the span off the `COPY · N lines` count instead. It is the
+  strongest of the three backgrounds this screen draws — a shade above the one under
+  the pointer and the one under a chosen row — because a selection is held open and
+  runs across many lines at once, and you are looking for both of its ends.
 
 **An image drawn in an expansion copies as what it is on screen** — rows of `▀`, with
 the colour stripped, which is no use to anybody. Take the dim line under it instead:
