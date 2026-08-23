@@ -87,9 +87,27 @@ func (s SubharnessInfo) Deadline(budgetTokens int) time.Duration {
 	return floor
 }
 
+// linearManifest is the baseline under the new contract: the same cost shape,
+// wearing the typed front door every subharness now has.
+//
+// ITS PURPOSE STAYS EMPTY, which is the law two lines above linearInfo and not
+// an omission here. Linear is the baseline every node is judged against rather
+// than an entry on a menu — [Subharnesses] leaves it out, [MenuText] never draws
+// it, and the `/subharness` list does not offer it either, because the
+// generalist is what you get when you pick nothing, not something you pick.
+// [Manifest.Validate] knows about this one exemption by name.
+var linearManifest = LeafManifest(linearInfo)
+
 var (
 	subharnessMutex sync.RWMutex
-	subharnessBy    = map[string]SubharnessInfo{LinearSubharness: linearInfo}
+	// subharnessBy is the process's one table of what a name means, and it holds
+	// MANIFESTS now rather than the bare registration it used to. That is the
+	// growth the subharness contract asked for: every existing reader still asks
+	// for the same [SubharnessInfo] fields through the projections below, and the
+	// schemas, cues, whitelist and guards ride along in the same entry instead of
+	// in a second table that could disagree with this one about which
+	// subharnesses exist.
+	subharnessBy    = map[string]Manifest{LinearSubharness: linearManifest}
 	subharnessOrder []string
 	// measured is the hook onto self-knowledge: one line per subharness of what
 	// its leaves have actually cost. It lives here as a function rather than as
@@ -105,27 +123,52 @@ var (
 // registering here is what puts a subharness in front of every model that could
 // choose it, so a new one is never half-installed.
 func RegisterSubharness(info SubharnessInfo) {
-	name := strings.TrimSpace(info.Name)
+	// A registration that says nothing about schemas, cues or guards is a
+	// manifest with none, which is exactly what every one of these callers has
+	// always meant. The error is dropped here and only here: this door has never
+	// had one, and every caller of it is a leaf worker whose name and purpose
+	// were written in Go beside the executor they describe.
+	_ = RegisterManifest(LeafManifest(info))
+}
+
+// RegisterManifest is the same door with the whole contract carried through it,
+// and it is what a Go-native subharness under docs/SUBHARNESS-PRD.md registers
+// with. [RegisterSubharness] above is this function with the six new fields left
+// empty, kept because every existing caller in the tree is describing a leaf
+// worker and has nothing to say about them.
+//
+// IT ANSWERS THE VALIDATION IN PROSE rather than swallowing it, because the
+// callers that will use this one are a bundle being loaded off disk and a model
+// iterating against what it got back — and neither is served by a silent refusal.
+func RegisterManifest(manifest Manifest) error {
+	name := strings.TrimSpace(manifest.Name)
 	if name == "" || name == LinearSubharness {
-		return
+		// The baseline is already in the table and may not be re-registered. It
+		// is not an error to try: a build enumerating its workers should not have
+		// to know which one of them is the one nobody may describe.
+		return nil
 	}
-	info.Name = name
-	remember(info)
+	manifest.Name = name
+	if err := manifest.Validate(); err != nil {
+		return err
+	}
+	remember(manifest)
 	// The sizing pass reads its rulers out of plan, which cannot import this
 	// package. One registration, both readers.
-	plan.UseSubharness(plan.Subharness{Name: name, Purpose: info.Purpose}, info.PriorAnchors)
+	plan.UseSubharness(plan.Subharness{Name: name, Purpose: manifest.Purpose}, manifest.PriorAnchors)
+	return nil
 }
 
 // remember is the guarded half of registration, split out so the lock it takes
 // is released by a defer under the line that took it.
-func remember(info SubharnessInfo) {
+func remember(manifest Manifest) {
 	subharnessMutex.Lock()
 	defer subharnessMutex.Unlock()
-	if _, known := subharnessBy[info.Name]; !known {
-		subharnessOrder = append(subharnessOrder, info.Name)
+	if _, known := subharnessBy[manifest.Name]; !known {
+		subharnessOrder = append(subharnessOrder, manifest.Name)
 		sort.Strings(subharnessOrder)
 	}
-	subharnessBy[info.Name] = info
+	subharnessBy[manifest.Name] = manifest
 }
 
 // Subharnesses returns the registered specialists in a stable order. Linear is
@@ -135,9 +178,36 @@ func Subharnesses() []SubharnessInfo {
 	defer subharnessMutex.RUnlock()
 	list := make([]SubharnessInfo, 0, len(subharnessOrder))
 	for _, name := range subharnessOrder {
+		list = append(list, subharnessBy[name].SubharnessInfo)
+	}
+	return list
+}
+
+// RegisteredManifests is [Subharnesses] with the whole contract carried through
+// instead of only the registration half — the same names, the same order, the
+// same exclusion of the baseline. It is what a surface asks when it wants the
+// schemas and the cues; a surface that only wants a menu keeps asking the
+// projection above, and neither one is a second enumeration.
+func RegisteredManifests() []Manifest {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	list := make([]Manifest, 0, len(subharnessOrder))
+	for _, name := range subharnessOrder {
 		list = append(list, subharnessBy[name])
 	}
 	return list
+}
+
+// ManifestFor resolves a name to the whole manifest, and says whether anything
+// was there. It is the honest half of [SubharnessFor], which degrades an unknown
+// name to the baseline: a caller reading a schema or a whitelist has to know it
+// got the thing it asked for, because linear's front door is not the front door
+// of the subharness somebody named.
+func ManifestFor(name string) (Manifest, bool) {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	manifest, ok := subharnessBy[strings.TrimSpace(name)]
+	return manifest, ok
 }
 
 // SubharnessFor resolves a name to what will actually run it. An unknown or
@@ -146,8 +216,8 @@ func Subharnesses() []SubharnessInfo {
 func SubharnessFor(name string) SubharnessInfo {
 	subharnessMutex.RLock()
 	defer subharnessMutex.RUnlock()
-	if info, ok := subharnessBy[strings.TrimSpace(name)]; ok {
-		return info
+	if manifest, ok := subharnessBy[strings.TrimSpace(name)]; ok {
+		return manifest.SubharnessInfo
 	}
 	return linearInfo
 }
@@ -280,6 +350,6 @@ func forget() {
 	subharnessMutex.Lock()
 	defer subharnessMutex.Unlock()
 	subharnessOrder = nil
-	subharnessBy = map[string]SubharnessInfo{LinearSubharness: linearInfo}
+	subharnessBy = map[string]Manifest{LinearSubharness: linearManifest}
 	measured = nil
 }

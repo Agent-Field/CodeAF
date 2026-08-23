@@ -357,6 +357,47 @@ func registerLeafExecutors(registry *exec.Registry, build leafBuild) {
 		shaped.deadline = info.Deadline(build.maxTokens)
 		registry.Register(construct(shaped))
 	}
+	registerSubharnessRunners(registry, build)
+}
+
+// registerSubharnessRunners is the same table reaching the SUBHARNESS half of
+// the registry: every worker this build can construct, fronted as a typed
+// program under the contract in docs/SUBHARNESS-CONTRACT.md.
+//
+// IT IS THE SAME TABLE AND THE SAME CONSTRUCTORS, deliberately. A worker fronted
+// here and the worker a leaf gets from [executorFor] are built from one line of
+// code, so `linear` reached by name from `/subharness` is the same generalist a
+// node with no worker is handed — which is what makes the deoptimization path
+// honest, because falling back to the long way has to mean falling back to the
+// worker the person would otherwise have had.
+//
+// THE GENERALIST IS REGISTERED TOO, and it is the one entry [exec.Subharnesses]
+// deliberately does not list — a menu with one entry is no menu, and linear is
+// never on one. But it is a NAME the deopt path resolves and the headless runner
+// may be pointed at, so the lookup has to reach it. It stays off every list a
+// person reads, which is the list's business rather than the registry's.
+//
+// A worker that cannot be fronted is skipped in silence, the same way one that
+// cannot be constructed already is: nothing is registered, and the name simply
+// is not a subharness on this surface.
+func registerSubharnessRunners(registry *exec.Registry, build leafBuild) {
+	front := func(info exec.SubharnessInfo) {
+		construct, ok := leafExecutors[info.Name]
+		if !ok {
+			return
+		}
+		shaped := build
+		shaped.deadline = info.Deadline(build.maxTokens)
+		runner, err := exec.FrontExecutor(construct(shaped), exec.LeafManifest(info))
+		if err != nil {
+			return
+		}
+		_ = registry.RegisterRunner(runner)
+	}
+	front(exec.SubharnessFor(exec.LinearSubharness))
+	for _, info := range exec.Subharnesses() {
+		front(info)
+	}
 }
 
 // installMeasuredRulers seats every worker's ruler from that worker's own

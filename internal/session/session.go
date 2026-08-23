@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -931,6 +932,20 @@ type Config struct {
 	// that was not handed a runner never offers an adaptive run, at the cost
 	// of one nil check per turn.
 	OrchestrateRunner func(ctx context.Context, goal, model string, capDollars float64) (string, error)
+
+	// Subharnesses is this surface's subharness registry: the compiled-in Go
+	// programs it built, and the stores it put in front of them
+	// (docs/SUBHARNESS-CONTRACT.md). It is the registry itself rather than a
+	// path for the same reason HarnessStore is a store — where the bundles live
+	// is the surface's decision, and a package that opened
+	// ~/.aforge/subharnesses itself would open it from a test and from a task
+	// node's own agent too.
+	//
+	// NIL IS SUBHARNESSES OFF, on exactly the terms RunHarness is detection off.
+	// The three doors in subharness_contract.go answer nothing, calmly, and a
+	// surface built against them draws nothing rather than an error — which is
+	// the "absent, not broken" law arriving at a door that was never wired.
+	Subharnesses *exec.Registry
 
 	// WorktreeRoot is where isolated worktrees for a run's write-capable
 	// nodes live. The session-id wave owns what fills it; this is the
