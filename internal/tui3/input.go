@@ -353,6 +353,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.standPageKey(msg)
 	}
 
+	// And /subharness, which is those panels' twin in every respect that matters
+	// here: opened by a command, nothing being typed under it, and esc leaving
+	// the conversation exactly as it was (subharness.go). Being modal is what
+	// frees every printable key for the filter box and, on the card, for the
+	// value somebody is typing into a field.
+	if a.subPage.open && msg.String() != "ctrl+c" {
+		return a.subPageKey(msg)
+	}
+
 	if msg.String() == "ctrl+c" {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
@@ -884,6 +893,20 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
+	}
+	// AND /subharness TAKES IT ON THE SAME TERMS, for whichever of its two boxes
+	// is open: the filter over the list, and the box over one field of the intake
+	// card (subharness.go). Neither is a widget of its own — both are this
+	// surface's one-line box, in the position it gives every box that has taken
+	// the keyboard.
+	if a.subPage.open {
+		if card := a.subPage.card; card != nil {
+			if card.edit != nil {
+				return draftBlock(card.edit, a.pal, width, 1, subEditHint, "")
+			}
+		} else {
+			return draftBlock(&a.subPage.filter, a.pal, width, 1, subListHint, "")
+		}
 	}
 	// AND THE DELIVERABLES PICKER TAKES IT ON THE SAME TERMS, for whichever of
 	// its two boxes is open: the filter, and the destination box over a row that

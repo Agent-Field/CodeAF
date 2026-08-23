@@ -308,6 +308,11 @@ func (a *app) closeForSwitch() {
 	// conversation, so one left open across a switch would be three headings
 	// about somewhere else (standingpage.go).
 	a.standPage.close()
+	// AND /subharness, for the reason above and one of its own: a card is an
+	// answer half typed, and carrying one across a switch would leave a person
+	// about to start work in a conversation they are no longer in
+	// (subharness.go).
+	a.subPage.close()
 	a.roster.close()
 	a.shelf.close()
 	a.closeLists()

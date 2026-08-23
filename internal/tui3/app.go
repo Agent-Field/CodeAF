@@ -1255,6 +1255,12 @@ type app struct {
 	// side opens nothing at all; closed, it costs the frame nothing.
 	standPage standPage
 
+	// subPage is /subharness: the list of programs this conversation can run,
+	// and the intake card that starts one (subharness.go). It reads the engine's
+	// own doors, so a surface whose agent has no subharness side opens nothing at
+	// all; closed, it costs the frame nothing.
+	subPage subPage
+
 	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
 	// Closed, it costs the frame nothing.
 	copy copyMode
@@ -1982,6 +1988,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.standPage.open {
 				return a, a.standPagePress(msg.Mouse().Y)
 			}
+			// AND /subharness IS THE FIFTH, on the standing page's terms and for
+			// a sharper version of its reason: one of the card's rows starts work
+			// and spends money, so a press moves the cursor and never acts
+			// (subharness.go).
+			if a.subPage.open {
+				return a, a.subPagePress(msg.Mouse().Y)
+			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
 			}
@@ -2354,6 +2367,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// while the mode word and `started` stay in the note's own dim.
 			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
 		}
+		return a, nil
+
+	case subStartedMsg:
+		// A subharness launched off the card, answered. The run itself is a task
+		// node from here on, so this case says the receipt and the task road draws
+		// everything after it (subharness.go).
+		a.settleSubharnessRun(msg)
 		return a, nil
 
 	case errandMsg:
@@ -4314,6 +4334,19 @@ func (a *app) slash(line string) tea.Cmd {
 		// a conversation, not a command, and happens in the box above this list
 		// (harnesspanel.go).
 		a.openHarness()
+		return nil
+
+	case "subharness":
+		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
+		// intake card behind each of them (subharness.go). Unlike /harness this
+		// one DOES take a name: a subharness's name is its identity across the
+		// binary, the store and the command line — one lowercase word, written
+		// down in the manifest (exec's validSubharnessName says why the rules are
+		// what they are) — so somebody who knows which one they want should not
+		// have to find it in a list first. A name nothing answers to becomes the
+		// list's filter rather than an error, because a near miss on a surface
+		// holding the whole list is a search.
+		a.openSubharness(rest)
 		return nil
 
 	case "memory", "memories":
