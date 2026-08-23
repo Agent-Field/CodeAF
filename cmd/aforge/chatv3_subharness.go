@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/substore"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 )
@@ -149,6 +150,30 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 		Record:  subharnessRecordRun(homeStore),
 		Belt:    belt,
 	}
+}
+
+// UsePages puts the page store in front of this conversation's registry — the
+// third place a program can live, beside the two bundle stores above.
+//
+// IT IS THE SAME LIST AND NOT A SECOND ONE. A program a person had designed sat
+// in that store reachable only by saying something that matched it; from here it
+// is a row on `/subharness` like any other, marked `yours` like anything else of
+// theirs, and run through the door every row is run through.
+//
+// IT IS WIRED LATE, and that is the whole reason it is a method rather than a
+// line inside [v3Subharnesses]: what runs a page is the seam the surface builds
+// after governance and the media pair have landed (chatv3.go), and a registry
+// assembled before that would have to build a second runner for the same store.
+// One store, one runner, one path in.
+//
+// A build with either half missing wires nothing, which is the same silence
+// every other seam on this path keeps: no registry is subharnesses off, and no
+// runner is a store with nothing to run its pages with.
+func (s v3Subharness) UsePages(store *subharness.Store, run subharness.RunPage) {
+	if s.Registry == nil {
+		return
+	}
+	s.Registry.UseBundles(exec.LayerPages, store.Source(run))
 }
 
 // storeMemory is [substore.Store] seen through the door internal/session spells:

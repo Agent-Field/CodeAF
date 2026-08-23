@@ -906,11 +906,17 @@ func (a *Agent) harnessWritingWindow() time.Duration {
 // harnessSavedWord is the settle card's line: the name, the version it landed
 // as, and what to do with it.
 func harnessSavedWord(saved subharness.Harness) string {
-	line := fmt.Sprintf("harness %q v%d saved", saved.Id.Name, saved.Id.Version)
+	line := fmt.Sprintf("subharness %q v%d saved", saved.Id.Name, saved.Id.Version)
 	// The version is spelled even at v1 here, unlike the registry listing, and
 	// it is deliberate: this line is about a thing that has JUST come into
 	// existence, and "v1" is the news that it is the first of them.
-	return line + "\nIt is offered by the turn itself whenever somebody's words match it; there is no command that runs one."
+	//
+	// AND THE SECOND LINE IS WHERE IT IS NOW, which is the whole of what somebody
+	// who has just approved a card needs: it is on the list with everything else
+	// they can run, and it still answers the words it was designed for. The line
+	// this replaced said there was no command that ran one, which was the sentence
+	// sending people to look for a page they had just made and not find it.
+	return line + "\n/subharness runs it, and it offers itself when what you say matches."
 }
 
 // doingNow moves a node to a named phase and tells the world, on
