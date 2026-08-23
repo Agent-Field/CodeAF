@@ -196,6 +196,21 @@ type taskSpec struct {
 	// worktree with the designer's brief as its task — real money spent on work
 	// nobody asked for — because this is the only field that says otherwise.
 	design *harnessDesignSpec
+	// run is set on the other node this session admits that is not a piece of
+	// work handed to a child in a worktree: a SUBHARNESS being run
+	// (subharness_run.go). It is nil on every ordinary task and on every design,
+	// and where it is set [Agent.runTaskNode] hands the node to the run's body —
+	// same graph, same room, same stop, a third middle.
+	//
+	// IT IS NOT IN THE CHECKPOINT EITHER, and for the reason [taskSpec.design]
+	// states about itself, arrived at from the other direction: a run's input is
+	// the material of one conversation, and a node put back on the frontier
+	// without this field would be handed to an ordinary worker in a worktree with
+	// the run's brief as its task. task_store.go's [interrupt] is what makes that
+	// safe — an interrupted run settles before the graph ever holds it, because
+	// nothing about a half-finished program is worth spending money to guess at
+	// twice.
+	run *subharnessRunSpec
 	// parent, depth and owner are THE FAMILY this proposal was made in, and they
 	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work
 	// a conversation grooms, and the proposing node's id, its depth plus one and

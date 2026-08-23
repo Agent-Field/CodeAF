@@ -175,9 +175,15 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		// nothing — and what a person stopping a design wants to know is the other
 		// thing, which is that the registry is untouched.
 		line = "stopping " + name
-		if node.kind == TaskKindHarness {
+		switch node.kind {
+		case TaskKindHarness:
 			line += " — nothing was saved"
-		} else {
+		case TaskKindSubharness:
+			// A RUN HAS NO BRANCH EITHER, and what a person stopping one wants to
+			// know is the other thing: the account of how far it got is on disk
+			// and stays there (subharness_run.go's journal), whatever ended it.
+			line += " — its journal is kept"
+		default:
 			line += " — its branch is kept"
 		}
 	case node.state == TaskQueued:
