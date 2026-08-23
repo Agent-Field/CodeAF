@@ -102,6 +102,9 @@ type Runner struct {
 	// is not allowed to mistake for "nothing to do."
 	passFaults atomic.Int64
 	craft      *CraftRunner
+	// staleAge bounds how long a claim may sit running before the tick
+	// reaper returns it to pending; defaults to staleClaimAge.
+	staleAge  time.Duration
 	// expand is the depth loop, moved out of the plan build and into the
 	// schedule. Nil is the whole rollback: with no hook, a claimed node goes
 	// straight to its worker exactly as it did before claim-time division
@@ -135,6 +138,7 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		activePractice:      make(map[string]context.CancelFunc),
 		serviceConsentGrace: ServiceConsentGrace,
 		governor:            executor.HostGovernor(),
+		staleAge:            staleClaimAge,
 		drain:               make(chan struct{}),
 		wake:                make(chan struct{}, 1),
 	}
@@ -195,6 +199,23 @@ func (r *Runner) WithExpand(expand ExpandFunc) *Runner {
 	return r
 }
 
+// FreeSlots reports how many dispatch slots are unheld right now. The
+// claim-time expander consults it before multiplying nodes: with every slot
+// held, decomposition buys no parallelism and pays pure cost, which is the
+// split-waste this field exists to refuse.
+func (r *Runner) FreeSlots() int {
+	return cap(r.slots) - len(r.slots)
+}
+
+// WithStaleAge sets how long a claim may sit running before the tick reaper
+// returns the node to pending. Callers that know their longest possible leaf
+// deadline set it just above it; the default (staleClaimAge) covers jobs with
+// no deadline to compare against.
+func (r *Runner) WithStaleAge(age time.Duration) *Runner {
+	r.staleAge = age
+	return r
+}
+
 // WithDailyBudgetUSD installs the policy rail checked immediately before each
 // claim. Zero is unlimited and preserves the old scheduling path.
 func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
@@ -230,6 +251,15 @@ const runnerTickFailures = 10
 // lane waits out an idle threshold. This is the standing guarantee for those,
 // so no clock-driven readiness can ever be more than one ceiling late.
 const runnerQuietCeiling = 15 * time.Second
+
+// staleClaimAge is how long a node may sit running before the reaper returns
+// it to pending. It is deliberately far above the leaf executor's own
+// deadline (15 minutes) so a legitimately long leaf is never touched: the
+// reaper's whole job is the claim that outlived every possible worker behind
+// it — a stalled model call, a tool that never returned — and the DAG that
+// gates on it waiting forever. The CAS inside Release means a live worker
+// keeps its claim: the token has moved and the release fails.
+const staleClaimAge = 20 * time.Minute
 
 // runnerQuietGate is the dispatch loop's proof that a timed pass would find
 // nothing. A negative seq means it is disarmed and the next pass runs.
@@ -448,6 +478,20 @@ func (r *Runner) tickGuarded(ctx context.Context) (dispatched int, faulted bool,
 func (r *Runner) Tick(ctx context.Context) (int, error) {
 	if err := r.preemptPracticeForUserWork(); err != nil {
 		return 0, err
+	}
+	// The stale-claim reaper. A worker that hangs mid-run — a stalled model
+	// call, a tool that never returns — leaves its node running forever, and
+	// every downstream node gated on it waits behind a claim nobody holds.
+	// The runner heartbeats the whole time and finds nothing to do: that is
+	// the live-lock a long-horizon run dies of. The threshold is well above
+	// the leaf executor's own deadline (15min), so a legitimately long leaf
+	// is never touched; only a claim that has outlived any possible worker
+	// behind it is returned to pending. The CAS inside Release means a live
+	// worker keeps its claim — the token has moved and the release fails.
+	if released, err := r.graph.ReleaseStale(r.staleAge); err == nil && len(released) > 0 {
+		// A released node reopens the ready set, so the pass that freed it
+		// should look again immediately rather than at the tick.
+		defer r.nudge()
 	}
 	dispatched := 0
 	// The open-children map is a decode of every live node in the graph, and
