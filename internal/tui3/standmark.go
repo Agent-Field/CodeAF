@@ -200,6 +200,35 @@ func (a *app) enterStanding() tea.Cmd {
 	return a.enterLine(true)
 }
 
+// standingSay is `/standing <words>`: the words go through the SAME deliberate
+// door the chord opens (app.go's slash), and the margin's `+ /standing` row is
+// what puts the command in the box for somebody who has never typed it
+// (margin.go).
+//
+// IT IS THE CHORD'S ROAD AND NOT THE ORDINARY SEND, which is the whole of why
+// the argument form exists: a sentence handed over this way is shaped into a
+// card or refused in one line, and it is never carried out as one-off work
+// (internal/session's standing_mark.go). Falling back to [app.submit] here would
+// be the failure the marked door was built to end, arriving through a door that
+// promises the opposite.
+//
+// AND IT WAITS ITS TURN LIKE ANY OTHER SENTENCE. A command is said to this
+// surface at once, but these words are said to the MODEL: typed over a running
+// answer they are parked with the mark on them, exactly as the chord's are
+// (park.go).
+func (a *app) standingSay(text string) tea.Cmd {
+	if !a.standingHere() {
+		// The same absence the chord answers with, said in the same words: there
+		// is nothing here that could hold one.
+		a.note(standMarkNowhere)
+		return nil
+	}
+	if a.parking() {
+		return a.park(text, true)
+	}
+	return a.submitStanding(text)
+}
+
 // submitStanding sends one marked message. It is [app.submit] with the other
 // door on the seam, and it goes through a command for that function's reason:
 // the call talks to a lock and possibly a provider, and the Update loop is not a

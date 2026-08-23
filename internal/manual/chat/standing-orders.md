@@ -25,8 +25,8 @@ word and is never rewritten; a short title may be drawn beside it on narrow rows
 
 ## How do I set one up — you just say it
 
-There is no command for this, no form, no `rules:` block in a config file and no macro
-language. **You say the sentence**: "always run the tests before you tell me it works".
+There is no form to fill in, no `rules:` block in a config file and no macro language.
+**You say the sentence**: "always run the tests before you tell me it works".
 aforge recognises it and puts a card in the conversation; you answer the card, and it
 stands.
 
@@ -40,7 +40,11 @@ You can also ask for one in as many words — "make that a standing order", "rem
 that for this project", "set that as a rule" — and the card still comes. Nothing is
 ever created without one.
 
-`/standing` (or `/orders`) shows what already stands over the conversation you are in;
+Two gestures say the same thing outright, for when you want to be sure it is read as a
+rule rather than as work: **`ctrl+enter`** instead of `enter`, and **`/standing <words>`**
+typed as a command. Both go through the same door, and both still end in a card.
+
+Bare `/standing` (or `/orders`) shows what already stands over the conversation you are in;
 `/home` shows everything standing on the machine, grouped by project.
 
 ## How does it know I mean always — instruction, or standing order
@@ -130,6 +134,9 @@ Two things it refuses rather than sending:
 
 A slash command is unaffected — `ctrl+enter` on `/standing` is just `/standing`.
 
+There is a typed form of the same door: `/standing <words>` — see *Make a rule in one
+line* below.
+
 **One limit, and it is the terminal's.** `ctrl+enter` reaches aforge only on a terminal
 that can tell it apart from a plain `enter` (the kitty protocol, win32-input). `alt+enter`
 cannot be borrowed for it here — in a conversation that chord opens a new line in the
@@ -177,6 +184,106 @@ your eye. The keeping-an-eye page has the marks in full.
 
 With the mouse turned off, `/standing` is the keyboard door and always has been.
 
+## The list on the right — the standing section in the column beside the conversation
+
+The column down the right of the screen has **two sections**, each under its own dim
+lowercase label. `tasks` is at the top — the task roster, one line per task, exactly as it
+always was. `standing` is under it, and it is the orders standing over this conversation.
+
+```
+tasks
+⠙ ◆ Fix the nil-map     #7
++ /task
+
+standing
+◦ keep the tests green
+◦ never touch the API  everywhere
++ /standing
+```
+
+- **One line per order**: its mark, what the order is called, and a dim tail on the right
+  naming how far it reaches — but only when the reach is not the usual one.
+- **The tail says `everywhere`** for an order governing every project on this computer, and
+  **`just here`** for one that stands in this conversation only. **An order that governs
+  this project — the ordinary case — has no tail at all.** No tail means the project.
+  Tasks never carry one: a task is always this conversation's, and reach is a standing
+  order's idea. **The name outranks the tail**: on a narrow terminal, where the column is
+  twenty-four cells rather than thirty, the tail gives way so the order's own name keeps
+  its room. `/standing` says the reach in full whatever the width.
+- **A row breathes while its order is being checked or fired right now** — its mark becomes
+  the spinner, exactly as the `keeping an eye on 2` chip on the status line does. It is
+  still every other moment.
+- **Orders with a next occasion coming are listed first**, and the rules that merely
+  `holds` sit under them: a rule has no "next", so it does not belong in a queue of what
+  happens next.
+- **Clicking a row opens `/standing` on that order**, with the cursor already standing on
+  it, so `p`, `s`, `n` and `enter` act on the one you pressed rather than on a list you
+  have to find it in again.
+
+**Both labels are drawn whenever the column is**, empty or not — the place exists before
+anything is in it. The rows under a label are only the real ones: with nothing standing,
+the `standing` section is its label and its `+ /standing` row and nothing between them.
+
+These rows answer to the **pointer**. The roster's keyboard cursor (`ctrl+t`) walks the
+task rows only. On a build with no ambient side there is no `standing` section at all —
+the column is the roster it always was.
+
+## What is that + at the bottom — + /task and + /standing, adding one from the side
+
+Each section of the column on the right ends in one dim `+` row: `+ /task` under the tasks,
+`+ /standing` under the standing orders. It is how you make a rule without knowing a
+command first.
+
+**Pressing one types that command into your message box** — the word and a trailing space —
+and hands the keyboard straight back to the box. That is the whole of it. What lands is
+ordinary text you can edit or delete; there is no mode, no form, and nothing is created.
+
+- **The word goes at the head of the line and keeps what was already typed there.** A box
+  holding `fix the flaky test` with `+ /standing` pressed becomes
+  `/standing fix the flaky test`, and with `+ /task` pressed, `/task fix the flaky test` —
+  which is the line you were about to type anyway.
+- **Pressing it twice does nothing the second time.** The word is already at the front, and
+  a draft reading `/standing /standing ` is the gesture arguing with itself.
+- **The `+ /standing` row is there when nothing stands**, directly under the `standing`
+  label with no rows between them.
+
+Then you finish the sentence and send it. `/standing <words>` is the form it becomes —
+the words are shaped into a standing order's card, and nothing stands until you answer it.
+
+Both rows are the **pointer's**: the roster's keyboard cursor walks task rows and skips
+these. From the keyboard, type the command — that is what the row was teaching.
+
+## /standing <words> — make a rule in one line, without the chord
+
+`/standing` with words after it is the command's second form: **the words are a new
+standing order.**
+
+```
+/standing always run the tests before you say you are done
+```
+
+They go through the same deliberate door `ctrl+enter` opens, with the same guarantee:
+
+- **It is never read as work to do once.** aforge is *told* to shape your sentence into a
+  standing order's card — when it wakes, what it does, how far it reaches — and it does not
+  carry the sentence out as one-off work as well.
+- **Nothing stands until you answer the card.** What comes back is the ordinary
+  ratification card: `1` sets it up, `2` changes when it wakes, `0` or `esc` says no.
+- **A sentence that cannot stand at all** — "what time is it?", a one-off command with no
+  condition in it — gets one short line saying so, and nothing else happens.
+- **Typed while an answer is still arriving**, it waits above the box like any other
+  message and goes through the marked door when its turn comes.
+- **On a build with no ambient side** it says `nothing here can hold a standing order` and
+  sends nothing.
+
+**A bare `/standing` (or `/orders`) is unchanged** — it opens the page of what already
+stands over this conversation. The command list carries both: `/standing` on its own, and a
+second row spelled `/standing <words>` with the tail
+`…or keep this true · a card, never work done once`.
+
+The `+ /standing` row at the foot of the column on the right types this command into your
+box for you.
+
 ## Where an order reaches — this conversation, this project, everywhere
 
 Three reaches, and the card always names the one it is asking for, on its own band:
@@ -195,6 +302,10 @@ where · everywhere
 
 The reach is decided **on the card, never guessed silently**, and it does not drift
 afterwards. Narrowing one later is free; widening one is a fresh card you answer again.
+
+On the `standing` section of the column on the right there is no room for a band, so the
+same three reaches are a dim tail at the end of the row — `everywhere`, `just here`, and
+**nothing at all for the project**, which is the one nearly every order has.
 
 ## Scope — the words that widen or narrow an order
 
@@ -237,6 +348,14 @@ standing here the page does not open: aforge says one line instead,
 
 The page is about **this conversation**. For everything standing on the whole machine,
 grouped by project, open `/home`.
+
+**With words after it the command means something else entirely**: `/standing <words>`
+makes a new order out of those words, through the same door `ctrl+enter` opens — see *Make
+a rule in one line*. Nothing on this page is ever named at the command line; the way to act
+on one of these is the keys above.
+
+The same page opens with the cursor already on one order when you click its row in the
+`standing` section of the column on the right.
 
 ## The keys on the standing orders page
 

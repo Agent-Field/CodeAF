@@ -993,11 +993,17 @@ type app struct {
 	keepN      int
 	keepFiring bool
 	keepAt     time.Time
-	tasks      map[uint64]*taskNode
-	taskOrder  []uint64
-	taskSeen   map[uint64]session.TaskState
-	taskLane   <-chan session.Event
-	taskGen    int
+	// standRail and standRailAt are the MARGIN's cached reading of what stands
+	// over this conversation, on the same beat and for the same reason
+	// (margin.go's [app.marginStanding]): the column is laid out twice a frame,
+	// and what it is asking about is a directory of documents.
+	standRail   []StandingItemView
+	standRailAt time.Time
+	tasks       map[uint64]*taskNode
+	taskOrder   []uint64
+	taskSeen    map[uint64]session.TaskState
+	taskLane    <-chan session.Event
+	taskGen     int
 	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
 	// person has folded or opened AGAINST their default — nil is the design as
 	// shipped, and an absent key is a family nobody has touched, which is why this
@@ -4189,12 +4195,21 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "standing":
 		// WHAT IS ALREADY TRUE HERE, as a list, with the three keys that take one
-		// back on it (standingpage.go). No argument form, for /permissions' reason
-		// and one more: an order is a sentence somebody said out loud months ago,
-		// and the only way anybody could name one at a command line is by reading
-		// it off this page first.
-		a.openStanding()
-		return nil
+		// back on it (standingpage.go). Nothing on that page is NAMED at the command
+		// line: an order is a sentence somebody said out loud months ago, and the
+		// only way anybody could name one is by reading it off this page first.
+		//
+		// SO THE WORDS AFTER IT ARE A NEW ORDER AND NEVER A QUERY, which is the one
+		// thing an argument here could honestly mean. They go through the deliberate
+		// door — the same road ctrl+enter takes, with the same guarantee that they
+		// are shaped into a card and never carried out as one-off work (standmark.go)
+		// — because a person who typed the word for the thing has said what they
+		// meant at least as plainly as a chord does.
+		if rest == "" {
+			a.openStanding()
+			return nil
+		}
+		return a.standingSay(rest)
 
 	case "harness", "harnesses":
 		// The registry, as a list. No argument form, for /connect's reason: a
@@ -4247,12 +4262,9 @@ func (a *app) slash(line string) tea.Cmd {
 		//
 		// It arms the read as well as opening the page: the record is a file, and a
 		// session whose "@" list has never been opened has never paid for it
-		// (taskmention.go's [app.loadTasks]).
-		if !a.openTaskSheet() {
-			a.note(taskSheetEmpty)
-			return nil
-		}
-		return a.loadTasks()
+		// (taskmention.go's [app.loadTasks]). Both doors onto the page go through
+		// one function, because a bare /task opens it too (taskcommand.go).
+		return a.openTaskPage()
 
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER

@@ -91,6 +91,9 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	railRun(a)
 	spin := tokens.Spinner(0)
 	want := []string{
+		// The column opens with the margin's own section label (margin.go), and the
+		// family is drawn whole under it.
+		"│ " + marginTasksWord,
 		"│ " + spin + " Ship the port           #1",
 		"│ ├─ " + glyphDone + " Read the law         #2",
 		"│ ├─ " + spin + " Write the tree       #3",

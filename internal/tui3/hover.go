@@ -122,6 +122,16 @@ const (
 	// of [hoverRailGrip]: one control in two states, so the right edge lights the
 	// same way whether the column is up or away.
 	hoverRailDoor
+	// hoverMarginDoor is one of the margin's two `+` rows, held by the SLASH WORD
+	// it types (margin.go): there are two of them and they type two different
+	// things, so the word is what tells them apart — and it is what the paint
+	// asks by, which keeps the row that lights and the row that answers one row.
+	hoverMarginDoor
+	// hoverMarginStand is one standing order's row in that same margin, held by
+	// the order's own id for [hoverOrch]'s reason: an order is named by a string
+	// and the column is rebuilt every frame, so a hover stored as a row of it
+	// would follow the scroll instead of following the order.
+	hoverMarginStand
 	// hoverRailMore is the footer's OTHER door — the one line that leaves the
 	// column for the task page (taskview.go's [taskSheetPastHint]). It is a kind
 	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
@@ -349,6 +359,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// space beside it (task.go's [app.railDoorAt]).
 	if a.railDoorAt(x, y) {
 		return hoverAt{kind: hoverRailDoor}
+	}
+	// AND THE MARGIN'S OWN LINES, asked on the same terms as the footer's above
+	// them: a `+` row and a standing order's row belong to no node, and both
+	// answer to a click (margin.go).
+	if word, ok := a.marginDoorAt(x, y); ok {
+		return hoverAt{kind: hoverMarginDoor, key: word}
+	}
+	if id, ok := a.marginStandAt(x, y); ok {
+		return hoverAt{kind: hoverMarginStand, key: id}
 	}
 	if node := a.railHoverNode(x, y); node != nil {
 		return hoverAt{kind: hoverRail, id: node.id}
