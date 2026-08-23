@@ -2980,14 +2980,45 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	add(pal.dim(rule(width)), -1)
 	add("", -1)
 
+	// THE FOOT IS MEASURED BEFORE THE BODY IS GIVEN ITS ROOM. The draft block
+	// is built here, ahead of the list, because its height is part of the foot:
+	// a draft that wraps to a second or third row takes those rows FROM the
+	// list, never from the frame. The old budget was a constant that assumed
+	// one row, so the moment a long question wrapped, the frame ran past the
+	// window, the tail-clamp below slid every row up — and the caret, whose
+	// coordinates were computed before the slide, was left standing on the hint
+	// line under the box. [draftBlock] is pure over the editor and the width,
+	// so building it early costs nothing and the rows are appended verbatim at
+	// the foot.
+	var draftRows []string
+	var draftCX, draftCY int
+	draftEmpty := false
+	if ex := a.paneExchange(); ex != nil && ex.focused {
+		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed
+		// into home's own box would re-filter the list behind the pane, so the
+		// exchange brings its own line and the caret sits in it
+		// (homeexchange.go).
+		draftRows, draftCX, draftCY = draftBlock(&ex.box, pal, width-2, homeDraftRows, "", "")
+	} else if a.home.box.empty() {
+		draftEmpty = true
+	} else {
+		draftRows, draftCX, draftCY = draftBlock(&a.home.box, pal, width-2, homeDraftRows, "", "")
+	}
+	draftHeight := len(draftRows)
+	if draftHeight < 1 {
+		draftHeight = 1
+	}
+
 	// THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX. One blank row always sits
 	// between the last line of the body and the foot, and the region gives it up
 	// rather than the foot: a column of rows butted straight against a rule reads
 	// as one block with a lid on it, and the last conversation on the screen —
 	// which in a drop-up is the row somebody is about to press enter on — is the
 	// one that suffers for it.
+	// The foot: the rule, the box as tall as it actually stands, the answer
+	// strip, and the hint.
 	strip := a.answerStrip(width, time.Now())
-	foot := 3 + len(strip)
+	foot := 2 + draftHeight + len(strip)
 	const pad = 1
 	room := height - len(lines) - foot - pad
 	if room < 1 {
@@ -3010,19 +3041,11 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// type past the frame's edge and the head of the sentence was kept, the tail
 	// was an ellipsis, and the caret pinned to the last column — a person asking
 	// a long question from home was typing into cells they could not see. It is
-	// drawn by the same [draftBlock] the main chat's box is now, wrapped over a
-	// few rows with the window following the caret, because there is exactly one
-	// law for what typing into this program looks like.
-	if ex := a.paneExchange(); ex != nil && ex.focused {
-		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed into
-		// home's own box would re-filter the list behind the pane, so the exchange
-		// brings its own line and the caret sits in it (homeexchange.go).
-		rows, cx, cy := draftBlock(&ex.box, pal, width-2, homeDraftRows, "", "")
-		for _, row := range rows {
-			add(" "+row, -1)
-		}
-		caretX, caretY = 1+cx, len(lines)-len(rows)+cy
-	} else if a.home.box.empty() {
+	// drawn by the same [draftBlock] the main chat's box is now — built above,
+	// where its height set the foot's budget — wrapped over a few rows with the
+	// window following the caret, because there is exactly one law for what
+	// typing into this program looks like.
+	if draftEmpty {
 		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
 		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
 		// than left at the frame's origin blinking over the "home" heading. The
@@ -3030,11 +3053,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// returns, in the box, on the next frame.
 		a.caret = false
 	} else {
-		rows, cx, cy := draftBlock(&a.home.box, pal, width-2, homeDraftRows, "", "")
-		for _, row := range rows {
+		for _, row := range draftRows {
 			add(" "+row, -1)
 		}
-		caretX, caretY = 1+cx, len(lines)-len(rows)+cy
+		caretX, caretY = 1+draftCX, len(lines)-len(draftRows)+draftCY
 	}
 	if caretX > width-1 {
 		caretX = width - 1
@@ -3062,6 +3084,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// the same clamp the settings panel takes, so a tiny terminal shows a
 	// truncated screen rather than a screen scrolled off the top.
 	if len(lines) > height {
+		removed := len(lines) - height
 		keep := lines[:1]
 		keepHits := hits[:1]
 		keepPanes := panes[:1]
@@ -3070,6 +3093,17 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		hits = append(keepHits, hits[len(hits)-(height-1):]...)
 		panes = append(keepPanes, panes[len(panes)-(height-1):]...)
 		zones = append(keepZones, zones[len(zones)-(height-1):]...)
+		// THE CARET RIDES THE CLAMP. Every removed row above it shifts the box
+		// up by one, and coordinates computed before the cut would leave the
+		// terminal's cursor standing under the box, on the hint line — which is
+		// exactly where a wrapped draft once put it. A caret whose row was cut
+		// away entirely is hidden rather than guessed at.
+		switch {
+		case caretY >= 1+removed:
+			caretY -= removed
+		case caretY > 0:
+			a.caret = false
+		}
 	}
 	for len(lines) < height {
 		add("", -1)

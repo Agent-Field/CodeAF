@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -2895,5 +2896,51 @@ func TestTheListIsPaddedOffTheFoot(t *testing.T) {
 					height, typed, pad, got, strings.Join(lines, "\n"))
 			}
 		}
+	}
+}
+
+// THE CARET STANDS IN THE DRAFT, HOWEVER TALL THE DRAFT IS. The foot's budget
+// was once a constant that assumed a one-row box, so a question long enough to
+// wrap pushed the frame past the window, the tail-clamp slid every row up, and
+// the terminal's cursor — computed before the slide — blinked on the hint line
+// under the box. The list must give up the rows a wrapping draft takes, and
+// the caret must sit on the row that holds the end of what was typed.
+func TestHomeCaretStaysInTheDraftWhenItWraps(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", now)
+	// Enough conversations that the list fills every row it is given: the bug
+	// only fired when the body had no slack to absorb the draft's extra rows.
+	for i := 0; i < 30; i++ {
+		lab.session("-tmp-alpha", fmt.Sprintf("aaaa%012d", i+2), fmt.Sprintf("conversation %d", i), "/tmp/alpha", now.Add(-time.Duration(i+1)*time.Minute))
+	}
+	a := lab.app(mine)
+	a.openHome()
+	a.width, a.height = 100, 20
+
+	draft := strings.Repeat("build a highly detailed and aesthetic animated website ", 3) + "ending-word"
+	a.home.box.setText(draft)
+
+	// [app.frame] arms the caret on every render and the surfaces that have
+	// nowhere to type switch it off; calling homeFrame directly starts from
+	// the same armed state.
+	a.caret = true
+	width, height := a.size()
+	lines, _, caretX, caretY := a.homeFrame(width, height)
+	if len(lines) != height {
+		t.Fatalf("home drew %d rows, want exactly %d", len(lines), height)
+	}
+	if !a.caret {
+		t.Fatal("the caret is hidden while a draft is being typed")
+	}
+	if caretY < 0 || caretY >= len(lines) {
+		t.Fatalf("caret row %d is outside the frame of %d rows", caretY, len(lines))
+	}
+	row := ansi.Strip(lines[caretY])
+	if !strings.Contains(row, "ending-word") {
+		t.Fatalf("the caret stands on row %d %q, not on the draft's last line", caretY, row)
+	}
+	if caretX <= ansi.StringWidth("ending-word") {
+		t.Fatalf("caret column %d sits before the text it should follow", caretX)
 	}
 }
