@@ -1907,8 +1907,8 @@ const (
 	// The footer names both answers the handle can give. A bare "w" in a column
 	// of counts is a keystroke nobody would risk pressing, and a handle whose
 	// return trip is not named is only half an affordance.
-	railWideHint   = "w · click seam — widen"
-	railNarrowHint = "w · click seam — narrow"
+	railWideHint   = "w widen · click seam"
+	railNarrowHint = "w narrow · click seam"
 )
 
 // The column's own door, and the two lines that name it.
@@ -1928,7 +1928,7 @@ const (
 	// person cannot discover by hovering, cannot reach from the keyboard they have
 	// not been handed, and will look for at exactly the moment they have decided
 	// they are done with it. One dim row at the bottom is the whole cost.
-	railStowHint = railStowKey + " — hide"
+	railStowHint = railStowKey + " hide"
 	// railBackHint is the other half, and it lives in the legend's hint slot while
 	// the column is away and this session has run anything (render.go's
 	// [app.hintWord]). It is the shape of that slot's other lines: the key, then
@@ -1992,11 +1992,6 @@ const (
 	railGripOpenGlyph      = "❯"
 	railGripOpenGlyphASCII = ">"
 )
-
-// railEmptyWord is the one line a column with no work in it says
-// ([app.railView]). It is a label for the place, not a report about the work —
-// which is why it is allowed where "0 running" never would be.
-const railEmptyWord = "no tasks yet"
 
 // railGroup is what a node is DOING, which is the only thing the roster sorts
 // by. The order of these constants IS the order of the column.
@@ -2863,27 +2858,9 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// built first would be answering it about the frame before this one
 	// ([app.railFootRows]).
 	a.railCramped = false
-	// THE COLUMN OPENS WITH ITS OWN LABEL AND CLOSES WITH THE OTHER SECTION, and
-	// both are the margin's (margin.go): this column carries the two things that
-	// govern a conversation — the work it is doing and the orders standing over
-	// it — under a label each, and the labels draw wherever the column does.
-	lines := append(a.marginHead(room), a.railLines(entries, room)...)
-	// AN EMPTY COLUMN SAYS WHAT IT IS FOR. The column stands before any work
-	// exists now ([app.railShowing]), and thirty blank columns beside a paragraph
-	// read as a rendering fault rather than a place. One dim line is the whole of
-	// it — a label, not a count of nothing, which is what keeps it on the right
-	// side of the emptiness law.
-	//
-	// AND "EMPTY" IS ABOUT THIS CONVERSATION AND NOTHING ELSE, which is what the
-	// whole column is about now. A directory that ran forty tasks last week used to
-	// put six dulled rows of them here instead of the label; that record lives on
-	// the task page, and what stands at the FOOT of this column is the one dim line
-	// that opens it ([taskSheetPastHint], taskview.go). So the label is honest in
-	// both directories: this conversation has run nothing yet, and the door under
-	// it says where the rest is.
-	if len(entries) == 0 {
-		lines = append(lines, railLine{text: a.pal.dim(railEmptyWord), entry: -1})
-	}
+	// A SECTION EARNS ITS LABEL FROM A REAL ROW. The typeable doors remain when
+	// nothing exists, while the emptiness law spends no pixels naming absence.
+	lines := append(a.marginHead(room, len(entries) > 0), a.railLines(entries, room)...)
 	lines = append(lines, a.marginRows(room)...)
 	foot, hint, door, more := a.railFootRows(room, height)
 	body := height - len(foot)
@@ -3659,12 +3636,12 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	more := -1
 	if view && len(out)+1 < height {
 		more = len(out)
-		out = append(out, a.pal.dim(viewText))
+		out = append(out, paintHint(viewText, a.pal, a.pal.dim))
 	}
 	hint := -1
 	if offer && len(out)+1 < height {
 		hint = len(out)
-		out = append(out, a.pal.dim(hintText))
+		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
 	}
 	// The door goes UNDER the width offer, at the very bottom of the column, which
 	// is where a person looks for the way out of anything.
@@ -3680,7 +3657,7 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 // that closes it, and then the chord that does the same thing.
 //
 // THE CHEVRON IS THE CONTROL AND THE WORDS ARE THE LABEL, which is why they are
-// painted at two weights. `ctrl+g — hide` is a sentence telling the hand that
+// painted at two weights. `ctrl+g hide` is a sentence telling the hand that
 // types chords what to press, and it stays dim with the rest of the footer; the
 // `❯` is what the hand that does NOT type chords presses, so it takes the ink —
 // the same split the closed edge makes at the other end of the cycle
@@ -3696,7 +3673,7 @@ func (a *app) railDoorLine() string {
 	if a.hoveringRailDoor() {
 		ink = a.pal.accent
 	}
-	return ink(mark) + " " + a.pal.dim(railStowHint)
+	return ink(mark) + " " + paintHint(railStowHint, a.pal, a.pal.dim)
 }
 
 // railDoorAt reports whether a pointer is on that line. It is the hover's guard,

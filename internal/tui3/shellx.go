@@ -19,14 +19,14 @@ import (
 //	│ cd /tmp && echo "hi" | grep -n x # note
 //	│ ─┬ ──┬─ ─┬ ──┬─ ──┬─ ─┬── ─┬ ┬  └── comment  dim
 //	│  │   │   │   │    │   │    │ └───── plain    ink
-//	│  │   │   │   │    │   │    └─────── flag     muted (dim accent)
-//	│  │   │   │   │    │   └──────────── command  accent
-//	│  │   │   │   │    └──────────────── operator violet (dim)
-//	│  │   │   │   └───────────────────── string   pastel green
-//	│  │   │   └───────────────────────── command  accent
-//	│  │   └───────────────────────────── operator violet
+//	│  │   │   │   │    │   │    └─────── flag     dim
+//	│  │   │   │   │    │   └──────────── command  ink
+//	│  │   │   │   │    └──────────────── operator dim
+//	│  │   │   │   └───────────────────── string   ink
+//	│  │   │   └───────────────────────── command  ink
+//	│  │   └───────────────────────────── operator dim
 //	│  └───────────────────────────────── path     ink, underlined
-//	└──────────────────────────────────── command  accent
+//	└──────────────────────────────────── command  ink
 //
 // It is a LEXER — one left-to-right pass, no grammar, no state beyond "is the
 // next word in command position" — and that is a ceiling, not a shortcut. A
@@ -255,17 +255,16 @@ func looksPath(word string) bool {
 func (p palette) paintShell(tok shellTok) string {
 	switch tok.kind {
 	case shellCommand:
-		return p.accent(tok.text)
+		return p.ink(tok.text)
 	case shellString:
-		return p.add(tok.text)
+		return p.ink(tok.text)
 	case shellFlag:
-		// The dim accent: a flag qualifies the verb, so it takes the verb's hue
-		// one step back — the same relationship the tool NAME has to its target.
-		return p.muted(tok.text)
+		// A flag qualifies the verb, so it recedes with the other shell grammar.
+		return p.dim(tok.text)
 	case shellPath:
 		return p.underline(p.ink(tok.text))
 	case shellOperator:
-		return p.violet(tok.text)
+		return p.dim(tok.text)
 	case shellNumber, shellComment:
 		return p.dim(tok.text)
 	case shellSpace:

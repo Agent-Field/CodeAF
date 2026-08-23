@@ -17,8 +17,8 @@ import (
 // know the name of, behind a count on the status row (standdoor.go). Two things
 // govern a conversation and only one of them was on the frame.
 //
-// So the column carries both, under two dim labels in the words the product
-// already uses:
+// So the column carries both. Real rows earn dim labels in the words the
+// product already uses:
 //
 //	tasks
 //	⠙ ◆ Fix nil-map           #7
@@ -31,12 +31,9 @@ import (
 //
 // ── THE LAWS THIS FILE APPLIES ──
 //
-//   - THE LABELS ARE GEOGRAPHY AND THE ROWS ARE NEWS. A label draws wherever
-//     the column does, empty or not, which is home's own STABLE GEOGRAPHY law
-//     (docs/HOME-BRIDGE.md) applied to the one other place on this surface that
-//     is a map; the ROWS under it obey the emptiness law exactly as they always
-//     have. A map that redraws itself is not a map, and a person cannot learn
-//     that standing orders live here if the place only exists once one does.
+//   - THE DOORS ARE GEOGRAPHY AND THE LABELS DESCRIBE CONTENT. The `+` rows
+//     teach both places before anything exists; an empty label would spend a row
+//     to announce absence, which the emptiness law forbids.
 //
 //   - THE `+` ROW TYPES, IT DOES NOT ARM. Pressing it puts the slash word and a
 //     space in the draft and hands the keyboard back — visible, deletable text,
@@ -44,8 +41,8 @@ import (
 //     learn: the next time they want one they type the word themselves.
 //
 //   - TWO ROWS OF PERMANENT INK AND NO MORE. The `+` rows are the whole of what
-//     this file adds to a column that is otherwise the session's own news, and
-//     the labels are two words. Anything else worth saying about an order is on
+//     this file adds to a column that is otherwise the session's own news.
+//     Anything else worth saying about an order is on
 //     the order's page, one press away.
 //
 //   - THE GLYPH CARRIES THE HUE (docs/HOME-BRIDGE.md's colour law). `▲` wears
@@ -151,9 +148,12 @@ func (a *app) marginStandingShows() bool {
 
 // ── the rows ────────────────────────────────────────────────────────────────
 
-// marginHead is the label the TASKS section opens with, and it is one line
-// whatever is under it ([app.marginRows] says why a label is not news).
-func (a *app) marginHead(width int) []railLine {
+// marginHead is the label the TASKS section opens with when work exists. The
+// door below is enough geography for an empty section.
+func (a *app) marginHead(width int, hasTasks bool) []railLine {
+	if !hasTasks {
+		return nil
+	}
 	return []railLine{{text: a.pal.dim(fit(marginTasksWord, width)), entry: -1}}
 }
 
@@ -173,10 +173,12 @@ func (a *app) marginRows(width int) []railLine {
 	if !a.marginStandingShows() {
 		return out
 	}
-	out = append(out,
-		railLine{entry: -1},
-		railLine{text: a.pal.dim(fit(marginStandWord, width)), entry: -1})
-	for _, view := range a.marginStanding() {
+	standing := a.marginStanding()
+	out = append(out, railLine{entry: -1})
+	if len(standing) > 0 {
+		out = append(out, railLine{text: a.pal.dim(fit(marginStandWord, width)), entry: -1})
+	}
+	for _, view := range standing {
 		out = append(out, railLine{
 			text:  a.marginStandRow(view, width),
 			entry: -1,

@@ -99,7 +99,7 @@ where the branch went:
 The task's own tool rows never enter the chat. They go to its journal and its room only.
 
 **To read a finished task's report again later**, open the task from `/history` — `ctrl+.`,
-or the `ctrl+. — earlier` line at the bottom of the task column, which is the column's one
+or the `ctrl+. earlier` line at the bottom of the task column, which is the column's one
 door onto that page. `enter` on an `earlier` row goes inside it, and the card
 carries the whole of that final message — read back off the task's own journal — under
 `what it said at the end`.
