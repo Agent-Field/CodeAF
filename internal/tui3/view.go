@@ -528,6 +528,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for _, line := range input {
 		add(inputPad+line, chromeRow{})
 	}
+	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
+	// Below, because it is not part of the message and being under the sentence
+	// is how a person reads that at a glance; and above the open list, because a
+	// list is the keyboard's and this is only ever text.
+	for _, line := range a.spellRows(width) {
+		add(line, chromeRow{})
+	}
 	for i, line := range a.overlayRows(width, a.overlayHeight()) {
 		add(line, chromeRow{kind: chromeOverlay, index: i})
 	}
@@ -646,7 +653,7 @@ func (a *app) chromeHeight() int {
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
 		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
-		a.followHeight() + a.parkedHeight() + a.welcomeHeight()
+		a.followHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	if gap := a.breathingRows(); gap > 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}

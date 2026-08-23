@@ -32,6 +32,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
 		{"what does ctrl+b do", "keys"},
+		// The spell-it-out gesture, asked the three ways people meet it: wanting
+		// it, seeing the hint and not knowing what it is, and being unhappy about
+		// what came back.
+		{"can you make my prompt better", "keys"},
+		{"what does spell it out mean", "keys"},
+		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"how do I stop it mid answer", "keys"},
 		{"why did it ask permission before running that", "permissions"},

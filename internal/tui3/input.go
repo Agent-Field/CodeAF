@@ -480,6 +480,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// SPELL IT OUT takes its three keys here, under the typed lists and over the
+	// plain switch (spellout.go): the chord while the hint offers it, and enter
+	// and esc only while its block is up. Which keys and when is decided in that
+	// file so this router has one line of it.
+	if cmd, taken := a.spellKey(msg); taken {
+		return cmd
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc during a recall is the recall's: it puts the person's own draft

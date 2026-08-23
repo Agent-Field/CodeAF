@@ -333,6 +333,83 @@ abandoned, flushed, and the keyboard handed back.
 A paste while copy mode is up is **declined** — nothing happens, and your clipboard
 still holds the text.
 
+## Make my prompt better — spell it out with `ctrl+r`
+
+Type what you want and press **`ctrl+r`**. aforge reads the sentence sitting in the box
+and writes, in dim text under it, what it takes that sentence to mean:
+
+```
+› build me a login page
+
+  taking it to mean —
+  - email and password, and the form says which field is wrong
+  - a session that survives a refresh
+  - I'll pick a cookie session unless you say
+  enter add it to what you're saying · esc leave it
+```
+
+Three kinds of thing go into that block, and each is handled differently. **What you
+said** is your requirement and is never repeated, improved or reworded — it is already in
+your box and it stays there untouched. **What anyone would obviously want** is supplied
+outright, as a concrete line, without asking you about it. **What is genuinely yours to
+decide** gets a sensible default with a flag on it — `I'll pick … unless you say` — and
+only where a wrong guess would waste the work; the rest takes a default in silence.
+
+It is one small model call on your cheap tier, made **only** when you press the chord. It
+never runs on its own, it never sends anything, and nothing about it goes into the
+conversation. It is added to what this session has spent, the way the session's own name
+and other calls aforge makes for itself are, and it does not count as a turn.
+
+If it fails or takes longer than 10 seconds you get **nothing** — no error line, no note.
+The hint under the box simply comes back, and your draft has not been touched.
+
+## It added details I didn't ask for — nothing goes in until you press enter
+
+The `taking it to mean —` block is **not part of your message**. It is drawn below the
+box precisely so it does not look like it is. Two keys:
+
+- **`enter` adds it to what you're saying.** The lines are appended to your draft after a
+  blank line, as plain text. From that moment they are your words like any others — edit
+  them, delete the ones you disagree with, keep typing. Nothing has been sent: the *next*
+  `enter` sends the message, and it goes as one ordinary message.
+- **`esc` leaves it.** The block goes, your draft is byte for byte the characters it was,
+  and nothing is remembered anywhere.
+
+So a line you did not want is a line you press `esc` on, or delete after adding. There is
+no setting to turn off, because there is nothing running until your finger is on the
+chord.
+
+Any key that **changes the draft dismisses the block** as well. It was about the sentence
+you had, not the one you now have, and an expansion of an older sentence must never be
+added to a newer one. Press `ctrl+r` again for the new one.
+
+## The dim `ctrl+r spell it out` line — why it is not always there
+
+The hint appears at the right end of the rule above the message box only while your draft
+**looks like something to build and still has room to grow**: it contains a making word —
+`build`, `create`, `make`, `write`, `design`, `add`, `implement`, `set up`, `generate`,
+`draft`, `put together` — and is under 120 characters with no bullet list in it.
+
+**A detailed draft gets no hint, and that is the point rather than a limit.** If you have
+already spelled out what you want, there is nothing here for you, and a dim line under
+every draft on the screen is a line people learn to stop seeing. The same goes for a draft
+that is empty, one that starts with `/`, and one where you have typed the list yourself.
+
+The word list is a courtesy for teaching you the chord, not a rule about what can be
+spelled out — the chord works wherever the hint is drawn, and nowhere else. Pressed where
+the hint is absent, `ctrl+r` does nothing at all.
+
+It **shares the slot** with the standing-order hint, and `ctrl+enter keeps this true`
+wins whenever both would show. A sentence read as one-off work when you meant a rule is a
+rule that silently never existed; a request sent without its details is still a good
+answer to a slightly vague question.
+
+The hint **never moves the message box**. It rides a line that is on the frame either way,
+so a draft that starts looking like something to build changes one word at the end of a
+rule and nothing else. While the call is out that same slot turns a small spinner in front
+of the words; when the answer lands the block appears under the box, and the box itself
+has still not moved.
+
 ## Your unsent draft is kept
 
 The half-written message survives closing the window, a crash, `/new`, and a session
@@ -1164,7 +1241,7 @@ answer:
 | `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
-| `ctrl+r` | Not bound |
+| `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
 | `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
