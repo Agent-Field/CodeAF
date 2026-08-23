@@ -1084,8 +1084,9 @@ and its ctrl+t effort knob is true here too.
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
-one auxiliary call aforge makes on its own — `title`, `compaction`, `guardian`, `auditor`,
-`planner`, `designer`, `worker`, `router`, `vision`, `reflex` — drawn as
+one call aforge makes outside a turn — `title`, `compaction`, `guardian`, `auditor`,
+`planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
+one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
 The rows are **grouped under their class**, in the same order the four class rows are drawn
