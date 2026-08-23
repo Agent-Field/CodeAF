@@ -1827,7 +1827,11 @@ func (a *app) exchangePress(x, row int) tea.Cmd {
 		// missing costs you something.
 		for _, span := range ex.view.spans {
 			if x >= span.from && x < span.to {
-				return a.answerCard(ex, itoa(span.at+1))
+				// THE CARD SAYS WHICH KEY A POSITION IS, and this pane does not
+				// work it out again: the row draws the numbered chips and then
+				// the way out, whose key is off that numbering by design
+				// ([standingCard.answerKey]).
+				return a.answerCard(ex, ex.view.answerKey(span.at))
 			}
 		}
 		return nil
@@ -1873,7 +1877,7 @@ func exchangeHint(ex *homeExchange) string {
 		// The decline is named because in this pane it is the ONLY way to say
 		// no — esc here goes back to the list rather than answering
 		// ([app.answerCard]).
-		parts = append(parts, "1 yes · 2 change · 3 once · 0 no")
+		parts = append(parts, "1 yes · 2 change when or where · 3 just once · 0 no")
 	}
 	parts = append(parts, "enter sends a follow-up")
 	if ex.offering() {

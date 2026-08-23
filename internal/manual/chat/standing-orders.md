@@ -322,6 +322,11 @@ over every project, and "keep this branch green, just in this conversation" dies
 the chat does. If you say nothing about it, the card still tells you which one it picked
 before anything stands — read the `where ·` band before you press `1 yes, set it up`.
 
+**And if the reach is wrong, change it on the card.** `2 change when or where` turns the box
+below into a place to say either one: "only in this project", "everywhere", "just this
+chat" — the same door that changes the time. `enter` sends your words back, nothing is set
+up yet, and a new card comes with the reach you asked for on its `where ·` band.
+
 ## /standing and /orders — what stands over this conversation
 
 `/standing` (or `/orders`) opens a short page under the message box: the heading

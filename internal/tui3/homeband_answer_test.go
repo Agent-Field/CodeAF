@@ -319,7 +319,7 @@ func TestHomeCanSayNoToAStandingCard(t *testing.T) {
 	}
 	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to keep an eye on: tell me when ci goes red"), time.Now())
 	text := homeText(lab.a)
-	for _, chip := range []string{"1 yes", "3 once, not standing", "0 not set up"} {
+	for _, chip := range []string{"1 yes", "3 just once", "0 not set up"} {
 		if !strings.Contains(text, chip) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
@@ -354,7 +354,7 @@ func TestHomeCanSayNoToAReminderThatOffersNoOnce(t *testing.T) {
 	}
 	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to keep an eye on: remind me at 6 to leave"), time.Now())
 	text := homeText(lab.a)
-	if strings.Contains(text, "3 once, not standing") {
+	if strings.Contains(text, "3 just once") {
 		t.Fatalf("a one-off reminder was offered `once` from home:\n%s", text)
 	}
 	if !strings.Contains(text, "0 not set up") {

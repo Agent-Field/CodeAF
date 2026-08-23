@@ -383,6 +383,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the first one wrongly — it described a countdown that is now gone.
 		{"how long do I have to answer the card", "keeping-an-eye"},
 		{"where is the record of a reminder I made from home", "keeping-an-eye"},
+		// Asked in a person's own words after they met their first card and
+		// could not see a way out of it, could not tell what the options meant,
+		// and expected to be able to change the `where ·` band they were being
+		// shown. Every one of these is now on the card itself; the pages say so.
+		{"how do I cancel this card", "keeping-an-eye"},
+		{"I don't understand these options", "keeping-an-eye"},
+		{"what does just once mean", "keeping-an-eye"},
+		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk
 		// to the terminal it belongs to — which, for the ordinary answers, they

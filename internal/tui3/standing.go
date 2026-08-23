@@ -16,7 +16,7 @@ import (
 // A STANDING ITEM IS A TASK WITH A WHEN (internal/session's standing_contract.go
 // says so first). That sentence is the whole of this file's shape: the block
 // below is [app.taskCardRows]'s block — the same corner, the same question hue,
-// the same stem, the same three-chip answer row, the same draining meter — with
+// the same stem, the same walkable answer row, the same draining meter — with
 // TWO MORE BANDS between the words and the answers:
 //
 //	when   the model's own phrasing of the cadence, and never the spec. A cron
@@ -129,13 +129,37 @@ func (c *standingCard) news() bool { return c.update != "" }
 // The sentences this file says. Every one of them is quoted in
 // internal/manual/chat/home.md exactly as it is spelled here.
 const (
-	// The three answers, and they carry their own keys the way the models row
-	// does: a digit rather than an initial, because "yes, set it up" and "once,
-	// not standing" have nothing to pick an initial out of that a person would
-	// guess ([taskModelChip] made the same trade for the same reason).
+	// The three numbered answers, and they carry their own keys the way the
+	// models row does: a digit rather than an initial, because these answers
+	// have nothing to pick an initial out of that a person would guess
+	// ([taskModelChip] made the same trade for the same reason).
+	//
+	// EVERY ONE OF THEM NAMES ITS OUTCOME IN WORDS A STRANGER READS COLD. They
+	// used to be written in this build's own vocabulary — `once, not standing`
+	// assumes the reader has met the product noun "standing" and knows that a
+	// thing which stands is a thing that keeps happening — and a person meeting
+	// their first card said, in as many words, that they did not understand the
+	// options. So the words say what will HAPPEN: it gets set up, you change
+	// something about it, it happens once, or nothing does.
 	standYesWord    = "yes, set it up"
-	standChangeWord = "change when"
-	standOnceWord   = "once, not standing"
+	standChangeWord = "change when or where"
+	standOnceWord   = "just once"
+	// standNoWordChip is the way out, ON the card. It used to be `esc` and a `0`
+	// named in the hint slot under the message box and nowhere else — a decline
+	// a person had to already know about, which is the one trade
+	// docs/DESIGN-LANGUAGE.md refuses by name: every chord keeps a visible,
+	// clickable door beside it. So the decline is a chip like the others, under
+	// [session.StandingNoKey], and it is the chip that is never dropped for want
+	// of room ([app.pickRow]).
+	standNoWordChip = "no"
+
+	// The short spellings, for a card in a column with no room for the long ones
+	// ([pickChoice]). A narrow pane says every answer briefly rather than some of
+	// them fully, and the line under the row still says what the one under the
+	// cursor would do.
+	standYesShort    = "yes"
+	standChangeShort = "change"
+	standOnceShort   = "once"
 
 	// The two band labels. They are lower-case nouns and not headings: this is
 	// a card in a conversation, and a card with a heading on every row is a form.
@@ -155,30 +179,44 @@ const (
 	// `auto-starts in`: silence declines this card (standing_contract.go).
 	standEndsWord = "ends in "
 	// standChangeLane is the box's placeholder while a correction is being
-	// written.
-	standChangeLane = "say when instead… (enter sends it, esc leaves it alone)"
+	// written. IT NAMES BOTH THINGS THE CORRECTION MAY BE ABOUT, because the one
+	// door covers both ([standChangeWord]): a lane that asked only for a time
+	// would be the card offering to change the reach and then refusing to hear
+	// about it.
+	standChangeLane = "say the time or the place instead… (enter sends it, esc leaves it alone)"
 	// standProposalHint is the hint slot's line while the card is up, and
 	// standTwoHint is the same line for a card with no `once` on it — a one-off
 	// reminder's ([standAnswerWords]). THE HINT NAMES THE KEYS THE CARD DREW and
 	// never one more: a hint offering a digit the chips do not is the same
 	// defect as a chip that does nothing.
 	//
-	// `0` is named beside `esc` and is not a chip, because the chips are
-	// numbered by their position and `0` is off that numbering by design
-	// ([session.StandingNoKey]). Both keys do exactly the same thing here; the
-	// `0` is spelled out because it is the ONE decline that also works from
-	// home and from the errand pane, and a person who only ever meets the card
-	// in a conversation should still learn the key that works everywhere.
-	standProposalHint = "1 yes · 2 change when · 3 once · 0 or esc, no"
-	standTwoHint      = "1 yes · 2 change when · 0 or esc, no"
+	// `0` is named beside `esc` because both do exactly the same thing here and
+	// each is the only one of the two that exists somewhere: `esc` is the
+	// dismiss key everywhere in a conversation, and `0` is the decline that also
+	// works from home and from the errand pane, where esc is spent on something
+	// else ([session.StandingNoKey]). The card itself now draws the `0` as a
+	// chip, so this line is a reminder rather than the only place it is said.
+	standProposalHint = "1 yes · 2 change when or where · 3 just once · 0 or esc, no"
+	standTwoHint      = "1 yes · 2 change when or where · 0 or esc, no"
 	// The verdicts a settled card keeps. They are sentences and not states,
 	// because the row is read once, later, by somebody reconstructing what
 	// happened.
 	standSetWord     = "set up"
-	standChangedWord = "you asked for a different when"
-	standOnceDone    = "once, not standing"
+	standChangedWord = "you asked for something different"
+	standOnceDone    = "done now, nothing kept"
 	standNoWord      = "not set up"
 	standExpiredWord = "ended · nothing was set up"
+
+	// The frames [app.standSays] fills in. THEY ARE FRAMES AND NOT COPY: every
+	// fact in the sentence a person reads comes off the proposal itself, and
+	// what is written here is only the grammar that holds those facts together
+	// and the part no field can supply — that a yes runs until somebody stops
+	// it, that a once leaves nothing, that a change settles nothing yet.
+	standSaysKeep   = "I'll keep doing this"
+	standSaysUntil  = ", until you stop it"
+	standSaysOnce   = "I'll do it now, this once — nothing is kept and nothing happens later"
+	standSaysChange = "nothing is set up yet — type the time or the place you want, then enter"
+	standSaysNo     = "nothing is set up and nothing happens later"
 )
 
 // The glyphs a standing row wears, and their stand-ins on a terminal that
@@ -441,8 +479,9 @@ func standUpdateWord(update, text string) string {
 // awaitingStanding reports whether a standing card owns the answer lane.
 func (a *app) awaitingStanding() bool { return a.stand != nil && !a.stand.settled() }
 
-// The three chips of the proposal. They are indexes into [standChoiceWords],
-// and the digit a person presses is the index plus one.
+// The three numbered chips of the proposal. They are indexes into
+// [standChoiceWords], and the digit a person presses is the index plus one. The
+// way out sits after them and is NOT one of them — see [standingCard.declineAt].
 const (
 	standYes = iota
 	standChange
@@ -486,6 +525,31 @@ func (c *standingCard) chips() []string {
 		return c.answers
 	}
 	return standChoiceWords[:]
+}
+
+// declineAt is where the way out sits on the drawn answer row: after every
+// numbered chip, always last.
+//
+// IT IS A POSITION AND NOT A FOURTH DIGIT. The numbered chips are keyed by
+// their place in the row — 1, 2, 3 — so a decline taking `4` would move the day
+// a card drew one chip fewer, and the hand that learned the keys on a watch
+// would decline a reminder. Its key is `0`, off both ends of that numbering
+// ([session.StandingNoKey]); this is only where the cursor and the pointer find
+// it.
+func (c *standingCard) declineAt() int { return len(c.chips()) }
+
+// picks is how many places the cursor has to stand on: every numbered chip, and
+// the way out after them.
+func (c *standingCard) picks() int { return c.declineAt() + 1 }
+
+// answerKey is the key one drawn position is answered with, which is what lets
+// a click on the errand pane's copy of this row reach the same answer a
+// keystroke would ([app.answerCard]).
+func (c *standingCard) answerKey(at int) string {
+	if at == c.declineAt() {
+		return session.StandingNoKey
+	}
+	return itoa(at + 1)
 }
 
 // offers reports whether one digit has a chip under it on this card. A digit
@@ -569,7 +633,7 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // moveStanding walks the chips and STOPS at their ends rather than wrapping,
 // which is [app.moveChoice]'s law and its reason: a cursor that reappeared at
-// the far end would put "once, not standing" under a key pressed to reach yes.
+// the far end would put the decline under a key pressed to reach yes.
 func (a *app) moveStanding(delta int) {
 	card := a.stand
 	if card == nil || card.settled() {
@@ -579,8 +643,8 @@ func (a *app) moveStanding(delta int) {
 	switch {
 	case at < 0:
 		at = 0
-	case at >= len(card.chips()):
-		at = len(card.chips()) - 1
+	case at >= card.picks():
+		at = card.picks() - 1
 	}
 	card.choice = at
 	// Landing on "change when" is asking for the box, exactly as pressing 2 is.
@@ -599,11 +663,19 @@ func (a *app) moveStanding(delta int) {
 // resolves the card and nothing follows it.
 func (a *app) takeStanding(at int) tea.Cmd {
 	card := a.stand
-	if card == nil || card.settled() || at < 0 || at >= len(card.chips()) {
+	if card == nil || card.settled() || at < 0 || at >= card.picks() {
 		return nil
 	}
 	card.choice = at
 	text := strings.TrimSpace(a.input.String())
+	if at == card.declineAt() {
+		// THE WAY OUT, AND IT IS THE SAME ANSWER `esc` AND `0` ALREADY SENT: a
+		// zero [session.StandingAnswer], which the engine reads as nothing being
+		// set up. A sentence left in the box is not a correction here — the
+		// person pressed the answer that says they want none of this — so it is
+		// cleared with the card exactly as every other answer clears it.
+		return a.answerStanding(session.StandingAnswer{}, standNoWord, "")
+	}
 	switch at {
 	case standOnce:
 		a.answerStanding(session.StandingAnswer{Once: true}, standOnceDone, standOnceWord)
@@ -717,8 +789,10 @@ func (a *app) standingPress(x, y int) (tea.Cmd, bool) {
 //	╭─ ? ◦ every Monday at 9, draft the ───────────────────────────
 //	│ every Monday at 9, draft the weekly update from the git log
 //	│ when · Mondays at 9am
+//	│ where · for this project
 //	│ costs · about $0.02 a run, at most once a day
-//	│ [ 1 yes, set it up ]  [ 2 change when ]  [ 3 once, not standing ]
+//	│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
+//	│ I'll keep doing this Mondays at 9am, for this project, until you stop it
 //	│ ████████████░░░░░░░░  ends in 24s
 //	╰──────────────────────────────────────────────────────────────
 //
@@ -764,6 +838,12 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 	chips, spans := a.standChips(card, ansi.StringWidth(a.blockStem()), room)
 	card.choiceRow, card.spans = len(out), spans
 	out = append(out, stem+chips)
+	// AND WHAT THE ANSWER UNDER THE CURSOR WOULD DO, in one dim line built out
+	// of this very proposal ([app.standSays]). It is what makes walking the row
+	// a way of reading the question rather than a way of guessing at it.
+	for _, line := range wrap(a.standSays(card), room) {
+		out = append(out, stem+a.pal.dim(line))
+	}
 	// A CARD WITH NO CLOCK DRAWS NO ROW WHERE THE CLOCK WOULD BE. The engine
 	// holds a watched session's card open indefinitely, and the emptiness law
 	// reaches a whole row: a bar with nothing to drain toward would be an
@@ -903,32 +983,81 @@ func (a *app) standFoot(card *standingCard, width int) string {
 // standChips draws the row of answers and reports what each occupies, in screen
 // columns, so a click can be resolved to the answer under it.
 //
-// A chip that does not fit is DROPPED rather than truncated, which is the rule
-// [app.taskChoices] and [app.taskModels] both follow for the same reason: half
-// an answer is an answer somebody presses by mistake.
+// THE ROW IS THE SHARED ONE (pickrow.go) and this function is only what belongs
+// to this card: which answers there are, which one the keyboard is on, and which
+// of them is the way out. A chip that does not fit is DROPPED rather than
+// truncated — half an answer is an answer somebody presses by mistake — and the
+// decline is exempt from that, which is why it is named as the row's `keep`.
 func (a *app) standChips(card *standingCard, left, width int) (string, []choiceSpan) {
-	var line string
-	var spans []choiceSpan
-	at, end := left, left+width
-	for i, word := range card.chips() {
-		key := itoa(i + 1)
-		chip := "[ " + key + " " + word + " ]"
-		gap := 0
-		if i > 0 {
-			gap = 2
-		}
-		if at+gap+ansi.StringWidth(chip) > end {
-			break
-		}
-		if gap > 0 {
-			line += strings.Repeat(" ", gap)
-			at += gap
-		}
-		line += a.taskModelChip(key, word, i == card.choice)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
-		at += ansi.StringWidth(chip)
+	return a.pickRow(card.row(), card.choice, card.declineAt(), left, width)
+}
+
+// row is every place on the answer row, in the order it is drawn: the numbered
+// chips the engine named, then the way out.
+func (c *standingCard) row() []pickChoice {
+	words := c.chips()
+	out := make([]pickChoice, 0, len(words)+1)
+	for i, word := range words {
+		out = append(out, pickChoice{key: itoa(i + 1), word: word, short: standShortWord(word)})
 	}
-	return line, spans
+	return append(out, pickChoice{key: session.StandingNoKey, word: standNoWordChip})
+}
+
+// standShortWord is one answer's brief spelling. The decline has none — `no` is
+// as short as a word gets.
+func standShortWord(word string) string {
+	switch word {
+	case standYesWord:
+		return standYesShort
+	case standChangeWord:
+		return standChangeShort
+	case standOnceWord:
+		return standOnceShort
+	}
+	return ""
+}
+
+// standSays is the one line under the answers: what the answer the cursor is on
+// will ACTUALLY DO, said in the person's own terms.
+//
+// ── IT IS BUILT FROM THE PROPOSAL AND NEVER WRITTEN DOWN PER CARD ──
+//
+// The sentence reads out the very fields the engine is about to act on — the
+// person's own words, the cadence in the model's own phrasing, the reach the
+// `where` band names — so it cannot drift from what happens: there is no copy
+// here beyond the frame each answer needs, and a card whose reach changed says
+// the new reach without anybody editing a string. That is the whole reason a
+// line like this is worth a row. A canned "this will be set up" would be a
+// sentence that stayed true while the card underneath it changed.
+//
+// ── AND IT IS THE ANSWER'S CONSEQUENCE, NOT THE CARD'S CONTENTS ──
+//
+// The bands above already state the proposal. This line states what PRESSING
+// THIS does, which is the thing the bands cannot say: that a yes goes on until
+// somebody stops it, that a once leaves nothing behind, that a change settles
+// nothing yet.
+func (a *app) standSays(card *standingCard) string {
+	if card == nil {
+		return ""
+	}
+	if card.choice == card.declineAt() {
+		return standSaysNo
+	}
+	switch card.choice {
+	case standChange:
+		return standSaysChange
+	case standOnce:
+		return standSaysOnce
+	}
+	// THE YES, AND IT IS ASSEMBLED RATHER THAN CHOSEN. A rule has no cadence to
+	// read out — nothing wakes it, it is simply true from now on (standBands
+	// drops its `when` band for the same reason) — so the clause is left out
+	// rather than replaced by a word standing in for one.
+	where := standLevelWord(card.item.Level())
+	if card.item.When.Kind == standing.WhenHold || card.when == "" {
+		return standSaysKeep + ", " + where + standSaysUntil
+	}
+	return standSaysKeep + " " + card.when + ", " + where + standSaysUntil
 }
 
 // standMeter is the countdown, as a countdown — [app.taskMeter]'s bar with the
