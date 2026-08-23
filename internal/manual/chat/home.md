@@ -303,6 +303,37 @@ it lives.
 rule opens with `enter` exactly like every row above it — see "Open another project from
 home" below.
 
+## Archiving a conversation — put junk away and clean up home
+
+Press **`e`** with the message box empty and the cursor on a conversation, and that row is
+**put away**: it leaves its project's block and home gets cleaner by one line. Put-away
+conversations from every project gather under **one folded line at the very foot of the
+resting list**:
+
+```
+▸ archive · 4 put away
+```
+
+Nothing is deleted and nothing moves on disk — the conversation keeps its transcript, its
+tasks and its project, and can still be opened. Archiving is a fact about home's list and
+nothing else.
+
+**Getting one back:** `enter` (or `→`, or a click) on the archive line opens it in place;
+the put-away rows draw as ordinary conversations — newest first, each naming its project —
+and `enter` on one opens it exactly as it would anywhere. Press **`e` on a row inside the
+open archive** and it returns to its project's block. `enter` or `←` on the archive line
+folds it away again.
+
+**Search sees everything.** Typing into home's box matches put-away conversations along
+with everything else — a filter that hid a match would be lying about the machine — so a
+conversation you archived a month ago is still three letters away.
+
+The archive line is drawn only when something is in it: an empty archive is no line at
+all. At phone width the inbox has no archive line — put-away rows stay out of the
+sections, and search or a wider window is where they are found and brought back. There is
+no bulk gesture: rows are put away and brought back one at a time, each with one
+keystroke.
+
 ## How do I open a collapsed project — enter on the ▸ line
 
 **Put the cursor on the project's line and press `enter` or `→`.** It opens **in place**:

@@ -322,6 +322,13 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project, at: project.At()}
 		for _, row := range project.Sessions {
+			// A PUT-AWAY ROW IS NOT IN THE INBOX. The phone tier has no room
+			// for the archive's own fold; searching still finds the row, and
+			// the wide frame is where it is brought back (home.go's
+			// [homeArchiveFold]).
+			if row.Archived {
+				continue
+			}
 			// A ROW APPEARS ONCE (this file's second law). What the sections
 			// lifted out is not drawn again down here.
 			if !lifted.rows[row.Transcript] {
