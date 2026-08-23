@@ -113,6 +113,10 @@ type JITTarget struct {
 type JITExpander struct {
 	Graph          *store.Store
 	DailyBudgetUSD float64
+	// FreeSlots reports the pool's idle dispatch slots right now. Nil means
+	// "no signal" — the starvation gate is skipped and the gate is exactly
+	// as permissive as it was before the field existed.
+	FreeSlots func() int
 	// ContextTokens is the window of the planning model this expander divides
 	// through — the same model the build asked, and not the leaf's. Zero is
 	// unknown and falls back to jitDigestBytes, which is what every expansion
@@ -167,6 +171,34 @@ func (e JITExpander) expand(ctx context.Context, node store.Node) (int, error) {
 	//    atomic nodes costs one predicate per claim and not one call.
 	judged, verdict := judgeAtClaim(target, options)
 	if judged == nil || !verdict.Divide {
+		return 0, nil
+	}
+
+	// EV-lookahead: JudgeSplit only asks "could this divide"; it never asks
+	// "should it"?* — the expected-value half the measured-capacity fold was
+	// built to carry. Once the fold has evidence, refuse a division whose
+	// named parts do not buy back the fixed cost a second worker pays before
+	// it produces. Without evidence the predicate is unchanged: a division
+	// JudgeSplit already accepted proceeds exactly as before, so non-swarm
+	// jobs and cold journals take the old branches byte-for-byte.
+	if !splitPays(judged, options) {
+		underLock(target.Lock, func() {
+			if live := target.Plan.Node(target.PlanNode); live != nil {
+				plan.JournalRefusal(live, RefusalNotPaying)
+			}
+		})
+		return 0, nil
+	}
+
+	// The starvation gate: a division pays only if its parts can occupy idle
+	// dispatch slots. With every slot held, decomposition buys no wall and
+	// pays pure cost — a refusal, journaled like every other.
+	if starvedSlots(e.FreeSlots, options) {
+		underLock(target.Lock, func() {
+			if live := target.Plan.Node(target.PlanNode); live != nil {
+				plan.JournalRefusal(live, RefusalNotStarved)
+			}
+		})
 		return 0, nil
 	}
 
@@ -421,6 +453,61 @@ func growPlan(target JITTarget, sub *plan.Graph) ([]plan.Node, map[int]bool, err
 // cheaply before a costlier part. Without evidence the order the expander was
 // handed is returned untouched, which is every non-swarm job and every cold
 // journal: the fifo invariant a measurement could only have perturbed.
+// RefusalNotPaying is the resident-side name for the EV-lookahead's verdict.
+// It is exported here so the expansion caller can journal the reason without
+// importing the plan package's internal constant set.
+var RefusalNotPaying = plan.RefusalNotPaying
+
+// RefusalNotStarved is the starvation gate's verdict: the node could divide
+// and (with evidence) would pay, but no idle dispatch slot would run its
+// parts, so decomposition buys no wall and pays pure cost.
+var RefusalNotStarved = "no idle slots for its parts"
+
+// splitPays is the expected-value half of the claim-time decision. JudgeSplit
+// only asks "could this divide"; this asks "should it" against the measured
+// ledger. A node's named parts (plan.Node.Parts) are the candidate split; a
+// split pays only if the parts are predicged to buy back the fixed worker cost
+// they add, using the same measured base overrun rate the claim-order uses.
+//
+// Without capacity evidence it returns true — the EV gate is inert exactly as
+// the claim-order is, so a cold journal and every non-swarm job take the old
+// path byte-for-byte.
+func splitPays(node *plan.Node, options plan.Options) bool {
+	if options.CapacitySamples <= 0 {
+		return true
+	}
+	if node == nil || len(node.Parts) < 2 {
+		return true
+	}
+	// The fixed cost of adding a worker is the per-brief overhead the
+	// planner already accounts for (orientation + setup + delivery) plus the
+	// retry whose expectation is the measured overrun rate. A split pays
+	// only when the node's own predicted overrun cost is above that added
+	// threshold — the point at which splitting shifts work off a worker that
+	// is measured to overrun. Below it, the single worker already carries
+	// the node at its measured rate and the split only re-pays orientation.
+	cost, ok := MeasuredCost(*node, options)
+	if !ok {
+		return true
+	}
+	// Threshold: the fold's measured base overrun rate itself. A node whose
+	// predicted cost beats the base rate by division (it is oversized or
+	// borderline, i.e. ≈ that rate) pays; an atomic node at the base rate
+	// does not — the second brief only re-buys the same wait.
+	return cost > options.CapacityOverrunRate
+}
+
+// starvedSlots reports whether the starvation gate refuses. A probe that
+// reports no idle dispatch slots blocks the split, unless measured capacity
+// evidence says the node provably exceeds one worker's envelope — evidence
+// wins over current load. A nil probe is never a refusal.
+func starvedSlots(probe func() int, options plan.Options) bool {
+	if probe == nil {
+		return false
+	}
+	return probe() <= 0 && options.CapacitySamples <= 0
+}
+
 func order(children []plan.Node, options plan.Options) []plan.Node {
 	if options.CapacitySamples <= 0 {
 		return orderByDependency(children)

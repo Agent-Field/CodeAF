@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"log"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
@@ -36,6 +40,14 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	planClient, workClient *liveClient, planContextTokens int,
 	node store.Node, outcome *exec.Outcome, artifacts []string) (int, error) {
 	if graph == nil || plans == nil || !outcome.SplitRequest.Valid() {
+		return 0, nil
+	}
+	// Split gate: refuse divisions that won't pay for their overhead. A
+	// leaf's own division earns its keep under the same rule as the
+	// planner's: the work it found enumerates many independent items.
+	if os.Getenv("AFORGE_SPLITGATE") != "0" && !divisionWorthIt(outcome.SplitRequest.Evidence) {
+		log.Printf("split gate: refused division for %s (evidence enumerates %d items, floor %d)",
+			node.ID, enumeratedItems(outcome.SplitRequest.Evidence), divisionFloor)
 		return 0, nil
 	}
 	// The planning client, not the job's. A division is a planning question
@@ -78,5 +90,191 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	if spliced > 0 && divided != nil {
 		plans.put(namespace, divided, sink, workingModel, workingClient)
 	}
+	// Inhibition: each parallel worker the division minted gets a brief that
+	// names its own scope and the scopes the other workers own, so the parts
+	// do not redo one another's work. The scopes come from the leaf's own
+	// account of the division (SplitRequest.Parts); the nodes are the ones
+	// this splice just created, found by the namespace it minted them under.
+	if spliced > 0 {
+		scopes := make([]string, 0, len(outcome.SplitRequest.Parts))
+		for _, part := range outcome.SplitRequest.Parts {
+			scopes = append(scopes, firstScope(part.Brief))
+		}
+		all := strings.Join(scopes, "; ")
+		committed := 0
+		if ids, err := graph.NodeIDsWithPrefix(namespace); err == nil {
+			for _, id := range ids {
+				if id == sink {
+					continue
+				}
+				nd, ok, err := graph.Node(id)
+				if err != nil || !ok {
+					continue
+				}
+				owned := firstScope(nd.Brief)
+				block := "SCOPE OWNERSHIP:\nYou own: " + owned +
+					"\nOther agents own: " + all +
+					"\nDo NOT redo work outside your scope.\n\n"
+				if graph.AmendPending(id, block+nd.Brief, "") == nil {
+					committed++
+				}
+			}
+		}
+		if committed > 0 {
+			log.Printf("inhibition: %d scopes committed", committed)
+		}
+	}
 	return spliced, err
+}
+
+// firstScope reduces a brief to a one-line scope: the first sentence, or the
+// first 60 characters, whichever is shorter.
+func firstScope(brief string) string {
+	s := strings.TrimSpace(brief)
+	if i := strings.IndexAny(s, ".!\n"); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	return s
+}
+
+// splitEligible decides whether a task is big enough and parallel enough to
+// benefit from division. Refuses small tasks (<3 parts) and tasks without
+
+// splitOverlaps detects when two parts share filenames or paths, meaning
+
+// enumeratedItems returns the largest explicit count of independent items an
+// ask names, counting a number only when it stands next to an item-noun —
+// "twelve image files", "bugs: 3", "note-1 … note-5". Bare numerals are not
+// items: a task that says "limit=100" or "250 words" is naming a parameter,
+// and a gate that reads it as 100 items divides work that never should be.
+func enumeratedItems(text string) int {
+	nouns := []string{"file", "module", "image", "note", "bug", "test",
+		"function", "section", "chapter", "document", "item", "component",
+		"task", "endpoint", "table", "page", "record", "case"}
+	lower := strings.ToLower(text)
+	max := 0
+	// number followed shortly by a noun: "12 image files", "bugs: 3"
+	fields := strings.FieldsFunc(lower, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
+	for i, f := range fields {
+		n := 0
+		for _, c := range f {
+			if c < '0' || c > '9' {
+				n = -1
+				break
+			}
+			n = n*10 + int(c-'0')
+		}
+		if n < 0 {
+			continue
+		}
+		near := false
+		for j := i - 1; j <= i+1 && !near; j++ {
+			if j < 0 || j >= len(fields) || j == i {
+				continue
+			}
+			for _, noun := range nouns {
+				if strings.HasPrefix(fields[j], noun) {
+					near = true
+					break
+				}
+			}
+		}
+		if near && n > max {
+			max = n
+		}
+	}
+	// noun followed by a number-word: "eight files", "twelve images"
+	for word, n := range map[string]int{
+		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+		"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+		"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+		"nineteen": 19, "twenty": 20,
+	} {
+		// whole-word match: "ten" inside "flatten" is not a count
+		idx := -1
+		for off := 0; ; {
+			k := strings.Index(lower[off:], word)
+			if k < 0 {
+				break
+			}
+			k += off
+			leftOK := k == 0 || lower[k-1] < 'a' || lower[k-1] > 'z'
+			rightOK := k+len(word) >= len(lower) || lower[k+len(word)] < 'a' || lower[k+len(word)] > 'z'
+			if leftOK && rightOK {
+				idx = k
+				break
+			}
+			off = k + 1
+		}
+		if idx < 0 {
+			continue
+		}
+		window := lower[idx+len(word):]
+		if len(window) > 40 {
+			window = window[:40]
+		}
+		for _, noun := range nouns {
+			if strings.Contains(window, noun) && n > max {
+				max = n
+			}
+		}
+	}
+	return max
+}
+
+// divisionFloor is the smallest item count at which division has ever paid in
+// the bench corpus: twelve image files won, four modules and three bugs lost.
+const divisionFloor = 6
+
+// divisionWorthIt reports whether the ask itself enumerates enough
+// independent items for a division to beat one agent doing them in sequence.
+func divisionWorthIt(evidence string) bool {
+	return enumeratedItems(evidence) >= divisionFloor
+}
+
+// gatePlanDivision collapses a freshly built plan to a single undivided leaf
+// when the goal does not enumerate enough independent items for division to
+// pay. It is the plan-time half of the split gate: the leaf-time half in
+// splitAsAsked only sees divisions a leaf asks for, but most divisions are
+// born here, in the planner's first reading of the ask.
+//
+// The collapse follows collapseAtomicChain's pattern: one work node, the goal
+// as its brief, the fold recorded in Undivided so later passes can see why
+// the graph is one leaf when the spine drew several. It returns the number of
+// leaves folded, zero when the plan stands as drawn.
+func gatePlanDivision(graph *plan.Graph, goal string) int {
+	if os.Getenv("AFORGE_SPLITGATE") == "0" {
+		return 0
+	}
+	if graph == nil || divisionWorthIt(goal) {
+		return 0
+	}
+	leaves := graph.Leaves()
+	if len(leaves) < 2 {
+		return 0
+	}
+	folded := len(leaves)
+	title := graph.Nodes[0].Title
+	summary := graph.Nodes[0].Summary
+	graph.Nodes = graph.Nodes[:0]
+	if len(graph.Stages) > 1 {
+		graph.Stages = graph.Stages[:1]
+	}
+	graph.Add(plan.Node{
+		Kind:  plan.KindWork,
+		Stage: 1,
+		Title: title,
+		Summary: summary,
+		Brief: graph.Goal,
+		Undivided: fmt.Sprintf("split gate: goal enumerates %d items, under the %d-item floor — one sitting",
+			enumeratedItems(goal), divisionFloor),
+	})
+	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
+		folded, enumeratedItems(goal), divisionFloor)
+	return folded
 }
