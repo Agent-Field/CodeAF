@@ -513,7 +513,7 @@ func screenRowOf(t *testing.T, a *app, want func(row) bool) int {
 // because a click on it does not.
 func TestHoverAnswersOnInteractiveRowsAndNowhereElse(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, call("read", `{"path":"a.go"}`, "one\ntwo"))
-	background := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 
 	toolY := screenRowOf(t, a, func(r row) bool { return r.hit == hitTool })
 	drive(t, a, motionAt(toolY))
@@ -557,7 +557,7 @@ func TestHoverFollowsTheFoldLineAndTheThinkingBlock(t *testing.T) {
 	if a.hot.kind != hoverFold {
 		t.Fatalf("the fold line did not answer the pointer: %v", a.hot)
 	}
-	background := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	var fold string
 	for _, r := range rows(a) {
 		if r.hit == hitFold {
@@ -617,7 +617,7 @@ func TestHoverReachesTheChoicesAndThePickerRows(t *testing.T) {
 	if !a.hoveringChoices() {
 		t.Fatalf("the choices did not answer the pointer: %v", a.hot)
 	}
-	background := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	if !strings.Contains(a.consentOffer(a.width), background) {
 		t.Fatalf("the hovered choices have no hover background: %q", a.consentOffer(a.width))
 	}

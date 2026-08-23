@@ -2190,7 +2190,7 @@ func (a *app) roomHead(width int) string {
 		// different hovers and the pointer can only be on one of them — so the band
 		// is never the surface offering "leave" over cells that end work.
 		if a.hoveringRoomBack() {
-			line = a.pal.hover(line, width)
+			line = a.pal.cursor(line, width)
 		}
 		return line
 	}

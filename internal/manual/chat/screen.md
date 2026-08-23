@@ -1413,9 +1413,14 @@ Four rungs, detected once from what your terminal says it can do:
   tint.
 - **NoColor** — no escape sequences at all, weight included.
 
-Backgrounds — the hover band, the selection band, and the chip behind a recognized slash
-command — are drawn only at ANSI256 and above. There is no weight that means "this row",
-so a slash command falls back to bold and a hovered row to nothing.
+Backgrounds — the hover band, the selection band, the stronger band under a copy-mode
+or drag selection, and the chip behind a recognized slash command — are drawn only at
+ANSI256 and above. There is no weight that means "this row", so a slash command falls
+back to bold and a hovered row to nothing.
+
+There are three background steps and no more, each one a shade above the last: the row
+under the pointer or the cursor, the row that is the chosen one, and the span you have
+selected to copy. A row that is none of those has no background at all.
 
 If a colour on this surface could be described as "bright", it is wrong.
 

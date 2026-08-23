@@ -672,4 +672,4 @@ func (a *app) hoveringOverlay(index int) bool {
 // hoverRow is the background step, applied to a row that is already painted.
 // It is the LAST thing done to a row, in one place (render.go's layout pass),
 // so no renderer has to remember the pointer exists.
-func (a *app) hoverRow(text string, width int) string { return a.pal.hover(text, width) }
+func (a *app) hoverRow(text string, width int) string { return a.pal.cursor(text, width) }

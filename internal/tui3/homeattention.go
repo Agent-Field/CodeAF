@@ -704,7 +704,7 @@ func attentionRoomy(left, name int) bool {
 // Every other row on this column is laid out by [overlayRowTinted], which
 // paints the whole label in ONE hue. These rows paint one cell of their own, and
 // the two cannot be combined: every foreground sequence on this surface closes
-// with SGR 39 (styles.go's [palette.hover] states it), so a glyph painted before
+// with SGR 39 (styles.go's [palette.cursor] states it), so a glyph painted before
 // the label was handed over would end its own colour and leave everything after
 // it in the terminal's default ink. So the arithmetic and the two backgrounds
 // are borrowed — the same two-cell lead, the same right edge, the same band and
@@ -758,9 +758,9 @@ func (a *app) attentionRow(line homeLine, at, width int, pal palette) string {
 	}
 	switch {
 	case selected:
-		return pal.band(text, width)
+		return pal.selected(text, width)
 	case hovered:
-		return pal.hover(text, width)
+		return pal.cursor(text, width)
 	}
 	return text
 }

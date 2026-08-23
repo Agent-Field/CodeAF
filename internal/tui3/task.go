@@ -2697,7 +2697,7 @@ func (a *app) railGripRows(height int) []string {
 	// is the whole strip that must light.
 	mark := " " + a.pal.ink(a.linearMark(railGripGlyph, railGripGlyphASCII))
 	if a.hoveringRailGrip() {
-		mark = a.pal.hover(" "+a.pal.accent(a.linearMark(railGripGlyph, railGripGlyphASCII)), railGripCols)
+		mark = a.pal.cursor(" "+a.pal.accent(a.linearMark(railGripGlyph, railGripGlyphASCII)), railGripCols)
 	}
 	out[height/2] = mark
 	// AND ONE CELL ABOVE IT, WHAT THE WORK IS DOING — while there is anything to
@@ -3052,7 +3052,7 @@ func (a *app) railRows(height int) []string {
 	if a.railFull() {
 		seam = strings.Repeat(" ", ansi.StringWidth(railSeam))
 	} else if a.hoveringRailSeam() {
-		seam = a.pal.hover(a.pal.accent(railSeam), ansi.StringWidth(railSeam))
+		seam = a.pal.cursor(a.pal.accent(railSeam), ansi.StringWidth(railSeam))
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
@@ -3069,7 +3069,7 @@ func (a *app) railRows(height int) []string {
 		// header for its name, and then had to read it, because nothing in the
 		// roster beside it said which of these rows they were behind.
 		//
-		// It is [palette.band] and not a new mark — the same background the strip
+		// It is [palette.selected] and not a new mark — the same background the strip
 		// puts on the chip of the room a person is standing in (taskstrip.go's
 		// [app.stripChip]), and the same one every selected row on this surface
 		// wears (palette.go). It covers EVERY line of the entry, not just its head:
@@ -3092,7 +3092,7 @@ func (a *app) railRows(height int) []string {
 		}
 		switch {
 		case a.roomStandingOn(node):
-			text = a.pal.band(text, room)
+			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
 		case line.more && a.hoveringRailMore():

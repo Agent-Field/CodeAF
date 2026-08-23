@@ -239,7 +239,7 @@ func TestTheEditExpansionIsAPaintedUnifiedDiff(t *testing.T) {
 	if !strings.Contains(green, "\x1b[38;2;163;190;140m") {
 		t.Fatalf("the + line is not pastel green: %q", green)
 	}
-	if !strings.Contains(red, "\x1b[38;2;191;97;106m") {
+	if !strings.Contains(red, "\x1b[38;2;198;113;115m") {
 		t.Fatalf("the − line is not pastel red: %q", red)
 	}
 }

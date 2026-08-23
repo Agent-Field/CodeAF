@@ -102,7 +102,7 @@ func (a *app) taskMark(ident taskIdent) string {
 		// the column, which is the thing the rows around it are aligned to.
 		return " "
 	}
-	return a.pal.markPaint(ident.tint, glyph)
+	return a.pal.ringPaint(ident.tint, glyph)
 }
 
 // taskMarkSel is the same cell on a row the keyboard has picked.

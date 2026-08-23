@@ -90,9 +90,9 @@ func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
 		}
 		head := lead + fit(label, width-2)
 		if i == p.cursor {
-			head = pal.band(pal.ink(head), width)
+			head = pal.selected(pal.ink(head), width)
 		} else if hover == len(out) {
-			head = pal.hover(pal.dim(head), width)
+			head = pal.cursor(pal.dim(head), width)
 		} else {
 			head = pal.dim(head)
 		}
@@ -100,9 +100,9 @@ func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
 		if i == 0 {
 			tail := "    " + fit(sketch, width-4)
 			if p.cursor == 0 {
-				tail = pal.band(pal.dim(tail), width)
+				tail = pal.selected(pal.dim(tail), width)
 			} else if hover == len(out) {
-				tail = pal.hover(pal.dim(tail), width)
+				tail = pal.cursor(pal.dim(tail), width)
 			} else {
 				tail = pal.dim(tail)
 			}
