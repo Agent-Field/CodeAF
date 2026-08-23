@@ -28,8 +28,8 @@ would have opened is loaded and waiting underneath it: `esc` drops straight into
 effect the launch is the launch you always had, with home already open on top of it.
 
 **The cursor starts on no row at all** — home opens at rest, so the first thing you see is
-the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` or
-`tab` walks into the list; `esc` goes on with what you were doing.
+the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` walks
+into the projects list, `tab` into `needs you`; `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -246,12 +246,19 @@ goes to the most recent, and those are two different questions on purpose.
 
 In screen-reader (linear) mode nothing turns at all.
 
-## Are the strips there when nothing is happening
+## Are the strips there when nothing is happening — an empty needs you or moving zone
 
 At **80 columns and wider** the two labels are always drawn, even with nothing under them —
 an empty `needs you` is the good news, and a screen whose shape moves every time a task
 lands is not a screen you can learn. Under 80 columns, where every row is dear, an empty
 strip is not drawn at all.
+
+**At 110 columns and wider a label with nothing under it says what would be there.** One
+dim line under `needs you` reads `questions and landed work`, and one under `moving` reads
+`turns, tasks and watches` — the kinds of thing that arrive in that region, so a label you
+have never seen filled still tells you what it is for. It is a caption, not a row: the
+cursor walks straight past it and it goes the moment the zone has anything real to show.
+Neither line ever announces that something is missing; nothing on this surface does.
 
 **Typing takes both strips away.** A search is the matches rising out of the box with
 `? ask here` and `+ start a new conversation` against it, at every width — no strips, no
@@ -271,9 +278,9 @@ made of alignment and space:
  ──────────────────────────────────────────────────────────────────────────────────────────
   needs you                    aforge                         keeping an eye on
   ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
-  moving                       ○ rename plan      yesterday   hands
-  ● port sweep          8m     hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
-                               ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
+                               ○ rename plan      yesterday   hands
+  moving                       hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
+  ● port sweep          8m     ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
                                ─ elsewhere ─                  since you left
                                                               ◆ 2 tasks landed        aforge
                                                               today
@@ -294,9 +301,10 @@ made of alignment and space:
   the machine's own with the cursor on no row.
 
 **`tab` moves between the zones** — `needs you`, then `moving`, then the list, then round
-again — and lands on the first row of each. A zone with nothing in it is skipped, because
-its label is not a row. The foot names the key at this width: `tab next zone`. `esc` still
-closes home from wherever the cursor is.
+again — and lands on the first row of each. **From rest it enters `needs you`**, which is
+the key's whole job: it is named for the zones, so it is the one that takes you to them. A
+zone with nothing in it is skipped, because its label is not a row. The foot names the key
+at this width: `tab next zone`. `esc` still closes home from wherever the cursor is.
 
 **`→` and `←` cross the columns too, the way the geography reads**: `→` off a row in
 `needs you` or `moving` crosses the gutter into the list, and `←` off a conversation in
@@ -306,8 +314,15 @@ first row otherwise. On a zone's `…N more` line the arrows stay the fold's, op
 closing it, because the cursor is standing on the fold itself. With something typed the
 arrows are the caret's, as everywhere on this screen.
 
-`↑` and `↓` walk **every** row on the page in reading order — down through the zones on the
-left, then into the list — so nothing needs `tab` to be reachable.
+**The first `↓` from rest lands at the top of the projects list**, in the middle — not in
+`needs you`, and not somewhere that depends on what the machine happens to be doing. The
+middle column is the widest thing on the screen and holds everything, so it is where the
+cursor wakes; `←` or `tab` is one key away when what you want is the flank. After that `↑`
+and `↓` walk **every** row on the page in reading order — the zones on the left, then the
+list — so nothing needs `tab` to be reachable.
+
+**One blank row separates `needs you` from `moving`.** They are two blocks, and a block
+boundary on this surface is one empty row.
 
 The narrower shapes are the same screen folded down:
 
@@ -453,11 +468,22 @@ open, and the right side is **the machine's own card** — what is keeping an ey
 what happened since you left, what the day has come to. The morning glance is the default
 view rather than somewhere you navigate to.
 
-The first `↓` — or `tab` — walks into the top of `needs you`, or into the list where
-nothing is waiting. `↑` off the top row of the list comes back out to rest again, and the
-three-second rescan leaves the cursor where you left it either way. On a frame too narrow
-for a card (under 80 columns) home opens on the conversation this window is in, because
-there is no card there to open onto.
+**The first `↓` lands at the top of the projects list** on a frame 110 columns or wider —
+always, whether or not anything is waiting. The middle column is the widest thing on the
+screen and holds everything, so that is where the cursor wakes, and it wakes in the same
+place every morning so the first key can become a habit. The flanks are one key away: `←`
+crosses into `needs you` and `moving`, and `tab` — the key named for them — enters `needs
+you` from rest exactly as it always did.
+
+Below 110 columns the zones are strips standing **over** the list rather than a column
+beside it, so the first `↓` walks down into the top of `needs you` there, which is what
+that shape reads like. Where nothing is waiting the strip has no row to stop on and the
+key carries on into the list.
+
+`↑` off the top row of the list comes back out to rest again, and the three-second rescan
+leaves the cursor where you left it either way. On a frame too narrow for a card (under 80
+columns) home opens on the conversation this window is in, because there is no card there
+to open onto.
 
 `esc` from rest does what `esc` always does here: back to the conversation you came from.
 
