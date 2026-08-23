@@ -81,19 +81,21 @@ func TestARunsNodesPublishTheModelTheyRunOn(t *testing.T) {
 	family.worker = "cheap/worker"
 
 	family.upsert([]orchestrate.NodeStatus{
-		node("n1", "read the tariff table", orchestrate.Running),
-		node("n2", "read the invoice writer", orchestrate.Queued),
+		node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running),
+		node("n2", "invoice writer", "You are reading the invoice writer. Report what it emits.", orchestrate.Queued),
 	})
 
 	notices := familyNotices(t, updates)
-	if len(notices) != 3 {
-		t.Fatalf("%d rows published, want the run and its two nodes: %+v", len(notices), notices)
+	// Four rows: the run, its two nodes, and the run again once its workers exist
+	// and the forming line comes off it ([orchestrateFamily.formingLocked]).
+	if len(notices) != 4 {
+		t.Fatalf("%d rows published, want the run, its two nodes and the run again: %+v", len(notices), notices)
 	}
 	// The root keeps the planner's — the judgement the tank is paying for.
 	if notices[0].Model != "thinking/planner" {
 		t.Fatalf("the run's own row names %q", notices[0].Model)
 	}
-	for _, kid := range notices[1:] {
+	for _, kid := range notices[1:3] {
 		if kid.Model != "cheap/worker" {
 			t.Fatalf("node %q names %q, want the worker's %q", kid.Node, kid.Model, "cheap/worker")
 		}
@@ -106,10 +108,11 @@ func TestARunWithNoWorkerModelSaysNothingAboutOne(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "", "run-pricing")
 
-	family.upsert([]orchestrate.NodeStatus{node("n1", "read the tariff table", orchestrate.Running)})
+	family.upsert([]orchestrate.NodeStatus{node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running)})
 
 	notices := familyNotices(t, updates)
-	if len(notices) != 2 {
+	// The run, its one node, and the run again with the forming line taken off.
+	if len(notices) != 3 {
 		t.Fatalf("%d rows published: %+v", len(notices), notices)
 	}
 	if notices[1].Model != "" {

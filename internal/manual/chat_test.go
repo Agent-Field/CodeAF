@@ -190,6 +190,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		// A person reading a column of workers all called the same thing, and a
+		// person watching a run that has not drawn anything yet. Both are asked
+		// with the screen in front of them, in the words the screen gave them.
+		{"why are all my workers called You are a", "adaptive-runs"},
+		{"the sub task names are just the prompt", "adaptive-runs"},
+		{"who names the workers under a run", "adaptive-runs"},
+		{"what does forming the work mean", "adaptive-runs"},
+		{"nothing happens for a minute after a run starts", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
 

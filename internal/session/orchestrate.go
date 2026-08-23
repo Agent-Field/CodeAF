@@ -1372,6 +1372,21 @@ type orchestrateFamily struct {
 	// dropped and never had a goal in its hand, and a snapshot node whose Goal
 	// came back empty. Both now say the name this map remembers.
 	names map[string]string
+	// born counts the node rows this family has ever minted, and formed says the
+	// first amendment has landed and been published.
+	//
+	// THEY EXIST FOR THE MINUTE BEFORE THERE IS ANYTHING TO DRAW. A run's own row
+	// is minted the instant somebody asks for it, and the workers under it cannot
+	// exist until the opening planner call comes back — the one call in a run that
+	// has no work to overlap it with (internal/orchestrate's [Orchestrator.Run]).
+	// For that whole minute the row sat there saying nothing while the machine was
+	// doing the most consequential thinking of the run, and a person watching it
+	// had no way to tell the difference between that and nothing happening at all.
+	// [orchestrateFamily.formingLocked] is the line that fills the gap, and these
+	// two are the only state behind it: no clock, no animation, nothing that
+	// advances except a worker actually arriving.
+	born   int
+	formed bool
 }
 
 // newOrchestrateFamily takes the run's own row. It is minted before the first
@@ -1397,6 +1412,11 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	}
 	a.emitTaskUpdate(TaskNotice{
 		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
+		// AND IT SAYS SO FROM ITS FIRST BREATH. The row is minted here, before the
+		// opening planner call, so this is the moment the forming line has to start
+		// — a row published bare and only filled in later would leave the gap it
+		// exists to close ([orchestrateFamily.formingLocked]).
+		Doing: orchestrateForming,
 	})
 	a.mu.Lock()
 	session := a.sessionID()
@@ -1449,11 +1469,11 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			Run:    f.run,
 			Node:   node.ID,
 			Parent: f.root,
-			// THE NAME IS NEVER PUBLISHED EMPTY. A snapshot whose Goal came back
-			// blank — an amendment mid-flight, a node the planner minted without one
-			// — would otherwise hand a surface a row it can only call "task 19"
-			// ([orchestrateFamily.names] says the rest).
-			Title:   f.name(node.ID, node.Goal),
+			// THE NAME IS NEVER PUBLISHED EMPTY. A snapshot whose node came back
+			// nameless — an amendment mid-flight, a planner that answered without
+			// the key — would otherwise hand a surface a row it can only call
+			// "task 19" ([orchestrateFamily.names] says the rest).
+			Title:   f.name(node.ID, orchestrate.NodeTitle(node.Node)),
 			State:   state,
 			Stopped: stopped,
 			// WHAT THIS NODE IS RUNNING ON. It was missing, and it was missing on
@@ -1471,6 +1491,68 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 		}
 	}
 	f.retire(live)
+	// AND THE FORMING IS OVER THE MOMENT THE FIRST WORKER EXISTS. Nothing
+	// lingers afterwards: from here the rows themselves are what a person reads,
+	// and the fold they already sit under is the collapsed view of them
+	// (internal/tui3's railShut).
+	f.formingDone()
+}
+
+// sayForming publishes the run's own row wearing the one line it shows while
+// its workers are still being formed. It is the ordinary running row with
+// TaskNotice.Doing filled: a surface draws that instead of a state word, so this
+// needs no field, no event kind and no rendering of its own.
+func (f *orchestrateFamily) sayForming() {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	if f.settled {
+		f.mu.Unlock()
+		return
+	}
+	line, title := f.formingLocked(), f.title
+	f.mu.Unlock()
+	f.agent.emitTaskUpdate(TaskNotice{
+		ID: f.root, Run: f.run, Title: title, State: TaskRunning, Model: f.model, Doing: line,
+	})
+}
+
+// formingDone ends the forming line once there is at least one worker to look
+// at, and says so exactly once.
+func (f *orchestrateFamily) formingDone() {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	over := !f.formed && f.born > 0
+	f.formed = f.formed || over
+	f.mu.Unlock()
+	if over {
+		f.sayForming()
+	}
+}
+
+// orchestrateForming is the line the run's row wears while its workers are being
+// formed. IT IS PLAIN ENGLISH IN THE PRESENT TENSE and not the name of any
+// machinery: what is happening is that the shape of the work is being decided,
+// and "forming the work" is what a person would call that.
+const orchestrateForming = "forming the work"
+
+// formingLocked is the line itself, and there are exactly two answers because
+// there are exactly two states: this run has no workers yet, or it has some.
+//
+//	forming the work        the opening call is out and there is nothing to draw
+//	(nothing)               the workers are the picture from here
+//
+// NOTHING IN IT ADVANCES ON A CLOCK. A spinner that counted seconds would be
+// this surface asserting progress it cannot see; the line changes when a worker
+// actually exists and at no other moment.
+func (f *orchestrateFamily) formingLocked() string {
+	if f.formed || f.born > 0 {
+		return ""
+	}
+	return orchestrateForming
 }
 
 // recordNode is the adaptive scheduler's landing seam. OnNodes can publish a
@@ -1480,7 +1562,11 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 	f.agent.mu.Lock()
 	session := f.agent.sessionID()
 	f.agent.mu.Unlock()
-	title := strings.TrimSpace(node.Goal)
+	// THE ROW IS FILED UNDER THE NODE'S NAME, exactly as a task's row is filed
+	// under its title (task_index.go). Home's cards draw the Label and fall back
+	// to the Title, so a row built from the goal put a paragraph of second-person
+	// brief where a card wanted two words.
+	title := f.name(node.ID, orchestrate.NodeTitle(node.Node))
 	f.agent.recordTaskIndexEntry(TaskIndexEntry{
 		ID:            strconv.FormatUint(id, 10),
 		Parent:        strconv.FormatUint(f.root, 10),
@@ -1496,15 +1582,22 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 	})
 }
 
-// name is what one node of this run is CALLED, clipped to a chip's width: the
-// goal it arrived with, or the last one it was published under when this
-// snapshot has none.
+// name is what one node of this run is CALLED: the two or three words the
+// planner named it with ([orchestrate.NodeTitle]), or the last name it was
+// published under when this snapshot has none.
+//
+// THE NAME IS NOT CUT OUT OF THE GOAL, and that is the whole of what this
+// function used to get wrong. A planned node's goal is its whole world, written
+// to a worker who can see nothing else, so law 4 has the planner open it by
+// telling that worker what it is — and a title cut from its first line named
+// every worker of a nine-way run "You are a". The planner is asked for a name
+// now, and a node that arrives without one is named from its id.
 //
 // It remembers as it answers, which is why it is one function and not two: every
 // publish goes through here, so the name a row was last given is always the name
 // the next nameless publish will use.
-func (f *orchestrateFamily) name(node, goal string) string {
-	title := clip(firstLine(strings.TrimSpace(goal)), hintLimit)
+func (f *orchestrateFamily) name(node, title string) string {
+	title = clip(firstLine(strings.TrimSpace(title)), hintLimit)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if title == "" {
@@ -1520,6 +1613,10 @@ func (f *orchestrateFamily) name(node, goal string) string {
 // claim is the id for one node and whether this state is news. The mint and the
 // de-dup are one critical section because a publish can arrive from any of the
 // run's goroutines, and two of them racing here would be two rows for one node.
+//
+// IT IS ALSO WHERE A WORKER'S EXISTENCE IS COUNTED, because this is the one
+// place that ever learns it, and it learns it once — under the lock that makes
+// it once ([orchestrateFamily.formingLocked] is what reads the count).
 func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1527,6 +1624,7 @@ func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
 	if !known {
 		id = f.agent.graph().reserve()
 		f.ids[node] = id
+		f.born++
 	}
 	if said, seen := f.said[node]; seen && said == state {
 		return id, false

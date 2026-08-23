@@ -9,13 +9,44 @@
 // rig all code against. Behavior lands behind these shapes.
 package orchestrate
 
-import "context"
+import (
+	"context"
+	"strings"
+	"unicode"
+)
+
+// NameWords is how many words a node's [Node.Title] may run to.
+//
+// THREE IS THE LENGTH A PERSON READS AS A LABEL rather than as a sentence, and
+// it is a cap and not a target — a two-word name is left at two. It is the
+// figure the whole product names work by: internal/session's TaskNameWords is
+// this constant, and the rail column that draws these rows cuts to the same
+// number (internal/tui3's taskTitleWords). One figure, because a planner asked
+// for more words than the column can show is a planner being billed for words
+// thrown away on the way to the screen.
+const NameWords = 3
 
 // Node is one small unit of work the planner wants. Small is the law: one
 // question, one artifact, a handful of turns; parallelism comes from node
 // count, never node size.
 type Node struct {
-	ID    string   `json:"id"`
+	ID string `json:"id"`
+	// Title is the TWO OR THREE WORDS THIS NODE IS CALLED, and it is a
+	// first-class field rather than something a surface derives.
+	//
+	// IT EXISTS BECAUSE A PROMPT IS NOT A NAME. Every surface that draws work
+	// draws a short title — the rail's column, home's cards, a roster row — and
+	// until this field existed there was nothing on a node to draw but Goal, so
+	// each of them cut the first few words off a self-contained brief. Law 4
+	// makes those briefs open in the second person, so a run divided nine ways
+	// drew nine rows all reading "You are a": the column named every worker
+	// after how its instructions cleared their throat, and a person tracking one
+	// of them had to read every row.
+	//
+	// THE PLANNER FILLS IT, and a node that arrives without one is named from
+	// its ID — which is already a slug the planner minted as a name — by
+	// [NodeTitle]. Nothing anywhere derives a title by truncating prose.
+	Title string   `json:"title"`
 	Goal  string   `json:"goal"`            // self-contained: no "see above"
 	Needs []string `json:"needs,omitempty"` // ids that must be Done before this may run
 	Kind  string   `json:"kind,omitempty"`  // subharness node kind; empty is agent.loop
@@ -30,6 +61,52 @@ type Node struct {
 	// from the session's WorktreePath seam, not from the planner.
 	Worktree bool   `json:"worktree,omitempty"`
 	Verify   string `json:"verify,omitempty"` // verify rung for this node's output, empty is none
+}
+
+// NodeTitle is the name one node is drawn under, and it is the ONLY place in
+// this package that answers the question — so every surface asking it gets the
+// same answer, and none of them has to invent one.
+//
+// TWO ANSWERS, AND NEITHER OF THEM READS THE GOAL. The planner's own title is
+// taken as written, because a model that was asked to name the slice has done
+// exactly the work a namer would be paid to do again. When there is none — an
+// older planner, a reply that lost the key, a node this package minted itself
+// ([Orchestrator.synthesize]) — the name is built from the ID, which the law
+// already requires to be a slug: `token-bucket` is `token bucket`, and that is
+// a derivation from a structured field rather than a sentence cut short.
+//
+// A GOAL IS NEVER A NAME. That is the whole point of the field, and a fallback
+// that reached for the goal would put the defect back the moment a planner
+// forgot the key.
+func NodeTitle(n Node) string {
+	if title := clipWords(n.Title, NameWords); title != "" {
+		return title
+	}
+	return clipWords(slugWords(n.ID), NameWords)
+}
+
+// slugWords spells a slug out as words: hyphens, underscores and dots are the
+// separators a slug is written with, so they are the spaces it is read with.
+func slugWords(slug string) string {
+	spelt := strings.Map(func(r rune) rune {
+		if r == '-' || r == '_' || r == '.' || r == '/' {
+			return ' '
+		}
+		return r
+	}, slug)
+	return strings.Join(strings.Fields(spelt), " ")
+}
+
+// clipWords holds a name to its cap. It is a cap and not a target: a name that
+// is already short comes back untouched, and there is no ellipsis — a title cut
+// here is cut on a word boundary and reads as a shorter name rather than as a
+// truncation.
+func clipWords(text string, words int) string {
+	fields := strings.FieldsFunc(strings.TrimSpace(text), unicode.IsSpace)
+	if len(fields) > words {
+		fields = fields[:words]
+	}
+	return strings.Join(fields, " ")
 }
 
 // Cancel drops a pending node. Running nodes are never touched (the

@@ -528,7 +528,12 @@ func (o *Orchestrator) synthesize(ctx context.Context) Snapshot {
 		// would have written anyway.
 		brief = "Answer the goal from the work that was done: " + o.goal
 	}
-	answer, cost, err := o.exec.Exec(ctx, Node{ID: SynthesisID, Goal: synthesisGoal(brief)}, results)
+	// THE ONE NODE THIS PACKAGE MINTS ITSELF, and it is named the same way every
+	// other node is: from its id, by [NodeTitle]. No model is in this loop, so
+	// there is nobody to ask for a name and nothing to cut one out of.
+	closing := Node{ID: SynthesisID, Goal: synthesisGoal(brief)}
+	closing.Title = NodeTitle(closing)
+	answer, cost, err := o.exec.Exec(ctx, closing, results)
 	o.Charge(cost)
 	if err != nil {
 		o.note(fmt.Sprintf("the synthesis could not be written: %v", err))

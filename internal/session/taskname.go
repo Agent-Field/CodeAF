@@ -54,14 +54,18 @@ package session
 // WHAT IS DELIBERATELY NOT NAMED. A sub-harness design node (TaskKindHarness)
 // keeps the title harness_task.go gives it, because its row is read as a design
 // and not as a task. And an adaptive run's INNER nodes are not graph nodes at
-// all — orchestrate.go publishes those rows itself — so they keep the planner's
-// own words for them.
+// all — orchestrate.go publishes those rows itself — so they are named the same
+// way the first property above describes: the planner is asked for each node's
+// name on the call it adds the node (internal/orchestrate's [orchestrate.Node]
+// Title), which is again a name arriving on a call somebody was already paying
+// for, and one this package never has to make a second call to replace.
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -81,7 +85,14 @@ func init() { roles.Register(roles.RoleTaskName, roles.TierLow) }
 // because the surface that draws the name cuts to the same figure, and a namer
 // asked for more words than the column can show would be paying for words that
 // are thrown away on the way to the screen (internal/tui3's taskTitleWords).
-const TaskNameWords = 3
+//
+// IT IS ONE FIGURE FOR THE WHOLE PRODUCT and not this package's own. An adaptive
+// run's planner is asked for a name of exactly this length for every node it
+// adds (internal/orchestrate's [orchestrate.NameWords], which its law quotes),
+// and those rows stand in the same column beside these ones — so a second number
+// here would be two lengths of name in one list, and the shorter column would be
+// quietly cutting the longer one.
+const TaskNameWords = orchestrate.NameWords
 
 // taskNameSystem is all the system message says, for the session namer's reason
 // (title.go): the cheap model reads the system message as character and the end

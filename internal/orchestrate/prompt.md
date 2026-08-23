@@ -250,6 +250,7 @@ on the page.
   "add": [
     {
       "id": "slug",
+      "title": "two or three words naming the slice",
       "goal": "self-contained: everything the worker needs, in the goal's own nouns",
       "needs": ["id-that-must-be-done-first"],
       "write_scope": ["path/it/may/write"],
@@ -275,6 +276,14 @@ The rules the shape is held to:
 - `id` is a slug — lowercase letters, digits and hyphens — unique for the WHOLE
   run. Never reuse a finished node's id. Reusing a CANCELLED id in the same
   amendment is the re-aim of the commitment law, and is the one exception.
+- `title` is required on every node, and it is what the node is CALLED — not
+  what it is told. **Name the role or the slice, never the instructions.** It is
+  read in a narrow column beside its siblings, so it is at most {{NAME_WORDS}}
+  words, lowercase, no full stop, no path and no id: `token bucket`, `retry
+  storms`, `pricing sheet`. The goal is written to a worker in the second
+  person and opens with what that worker is; a title cut from it names every
+  node in the run "you are a", which is a column nobody can read. Two nodes in
+  one run never share a title.
 - `needs` names ids that already exist or that you are adding on this same call.
   An id that never existed is refused, and so is a cycle. `needs` IS THE ONLY
   EDGE THERE IS: an id written in a goal or in the note and not in `needs` is a
@@ -315,11 +324,11 @@ needs all three priced.
 ```json
 {
   "add": [
-    {"id": "traffic", "goal": "Enumerate the traffic and abuse shapes a public API rate-limiter must survive: steady load, diurnal peaks, retry storms, a single tenant fanning out, credential-stuffing sweeps. For each, state the shape in numbers a limiter would see (requests per second, burst length, distinct keys) and what a limiter that handled it badly would do to a legitimate caller."},
-    {"id": "token-bucket", "goal": "Price a token-bucket limiter — a per-key bucket refilled at a fixed rate, requests spending one token — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
-    {"id": "sliding-window", "goal": "Price a sliding-window-log limiter — timestamps kept per key, counted over a moving interval — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
-    {"id": "gcra", "goal": "Price a GCRA / virtual-scheduling limiter — one theoretical arrival time held per key — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
-    {"id": "decide", "goal": "Pick one rate-limiter design for a public API from the three priced in your input and defend the pick. State the traffic shape that would make the pick wrong, and what a team would see first when it does.", "needs": ["token-bucket", "sliding-window", "gcra"]}
+    {"id": "traffic", "title": "traffic shapes", "goal": "Enumerate the traffic and abuse shapes a public API rate-limiter must survive: steady load, diurnal peaks, retry storms, a single tenant fanning out, credential-stuffing sweeps. For each, state the shape in numbers a limiter would see (requests per second, burst length, distinct keys) and what a limiter that handled it badly would do to a legitimate caller."},
+    {"id": "token-bucket", "title": "token bucket", "goal": "Price a token-bucket limiter — a per-key bucket refilled at a fixed rate, requests spending one token — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
+    {"id": "sliding-window", "title": "sliding window", "goal": "Price a sliding-window-log limiter — timestamps kept per key, counted over a moving interval — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
+    {"id": "gcra", "title": "gcra", "goal": "Price a GCRA / virtual-scheduling limiter — one theoretical arrival time held per key — against the traffic shapes in your input, on burst tolerance, memory per key, behaviour at the moment of exhaustion, and what it takes to run correctly across several API nodes.", "needs": ["traffic"]},
+    {"id": "decide", "title": "the pick", "goal": "Pick one rate-limiter design for a public API from the three priced in your input and defend the pick. State the traffic shape that would make the pick wrong, and what a team would see first when it does.", "needs": ["token-bucket", "sliding-window", "gcra"]}
   ],
   "note": "three candidates priced in parallel; token-bucket/sliding-window/gcra each need traffic: the shapes they are priced against; decide needs all three: the three pricings it chooses between"
 }
@@ -347,8 +356,8 @@ re-added with the wider `needs` (the commitment law — there is no edit).
 ```json
 {
   "add": [
-    {"id": "rejection", "goal": "For a public API limiter facing a tenant whose client retries on 429 with no backoff: work out what a rejection must carry to stop the retry storm feeding itself — status, Retry-After, jitter, whether the rejected request should cost a token — and which of those a limiter design has to be able to compute cheaply at the moment it rejects.", "needs": ["traffic"]},
-    {"id": "decide", "goal": "Pick one rate-limiter design for a public API from the three priced in your input and defend the pick, weighing what each can afford to compute at the moment it rejects a caller. State the traffic shape that would make the pick wrong, and what a team would see first when it does.", "needs": ["token-bucket", "sliding-window", "gcra", "rejection"]}
+    {"id": "rejection", "title": "rejection behaviour", "goal": "For a public API limiter facing a tenant whose client retries on 429 with no backoff: work out what a rejection must carry to stop the retry storm feeding itself — status, Retry-After, jitter, whether the rejected request should cost a token — and which of those a limiter design has to be able to compute cheaply at the moment it rejects.", "needs": ["traffic"]},
+    {"id": "decide", "title": "the pick", "goal": "Pick one rate-limiter design for a public API from the three priced in your input and defend the pick, weighing what each can afford to compute at the moment it rejects a caller. State the traffic shape that would make the pick wrong, and what a team would see first when it does.", "needs": ["token-bucket", "sliding-window", "gcra", "rejection"]}
   ],
   "cancel": [{"id": "decide", "reason": "re-aimed: the pick now has to weigh rejection behaviour, which nothing asked for at the start"}],
   "note": "traffic surfaced a self-feeding retry storm; rejection needs traffic: the storm's shape, and it runs beside the three pricings because it reads no pricing; decide needs rejection: what a rejection must carry"
