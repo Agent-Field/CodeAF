@@ -98,7 +98,7 @@ func TestTheHarnessPickerOpensLatestFirst(t *testing.T) {
 		t.Fatalf("the list opens on %q rather than on the latest harness", got)
 	}
 	screen := strings.Join(plainOverlay(a), "\n")
-	for _, want := range []string{"triage-flake", "chase a flaky test", "2h ago", "review-diff"} {
+	for _, want := range []string{"triage-flake", "chase a flaky test", "2h · finished", "review-diff"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the list does not say %q:\n%s", want, screen)
 		}
@@ -109,13 +109,18 @@ func TestTheHarnessPickerOpensLatestFirst(t *testing.T) {
 	}
 }
 
-// A HARNESS THAT HAS NEVER RUN SAYS SO, rather than drawing a timing it does
-// not have.
-func TestTheHarnessPickerSaysWhatHasNeverRun(t *testing.T) {
+// A HARNESS NOBODY HAS RUN SAYS NOTHING THERE, which is the emptiness law and
+// what `/subharness` has always drawn: the row is its name and what it is for.
+// `never run` under every fresh row was the screen counting its own silences.
+func TestTheHarnessPickerSaysNothingAboutAHarnessNobodyHasRun(t *testing.T) {
 	a, _, _ := pickApp(t, demoHarness("review-diff", "read a diff"))
 	typeInto(t, a, "/harness ")
-	if screen := strings.Join(plainOverlay(a), "\n"); !strings.Contains(screen, "never run") {
-		t.Fatalf("a harness with no history does not say so:\n%s", screen)
+	screen := strings.Join(plainOverlay(a), "\n")
+	if !strings.Contains(screen, "read a diff") {
+		t.Fatalf("the row lost what the harness is for:\n%s", screen)
+	}
+	if strings.Contains(screen, "never run") || strings.Contains(screen, "0 runs") {
+		t.Fatalf("a harness with no history counted its own silence:\n%s", screen)
 	}
 }
 
