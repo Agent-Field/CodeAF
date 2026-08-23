@@ -2799,6 +2799,18 @@ type railLine struct {
 	// because a standing item's id is one ([standing.Item.ID]), and "" is an
 	// honest "this line is not an order" where a zero id could one day exist.
 	stand string
+	// fade is how deep in a CUT-OFF window this line sits, as one past the stop
+	// of the fade ladder it takes: zero is full ink and the ordinary case, and
+	// one, two or three are the last three lines of a column with more work
+	// under them (depthfade.go). It is one-past rather than the stop itself
+	// because a railLine is built in half a dozen places and the zero value has
+	// to mean "not faded" in every one of them.
+	//
+	// IT IS DECIDED AT LAYOUT AND SPENT AT PAINT, which is the same bargain
+	// [railLine.glyph] makes: whether a line is the third from the bottom of the
+	// window is a fact only [app.railView] holds, and a painter that recomputed
+	// it would be measuring a window the frame has not drawn.
+	fade int
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
@@ -2919,8 +2931,25 @@ func (a *app) railView(height int) ([]railLine, int) {
 
 	out := make([]railLine, 0, height)
 	out = append(out, lines[:pin]...)
-	for i := a.railTop; i < len(tail) && len(out) < body; i++ {
+	i := a.railTop
+	for ; i < len(tail) && len(out) < body; i++ {
 		out = append(out, tail[i])
+	}
+	// A LONG LIST'S TAIL FADES WITH DEPTH — NEVER STRIPES (depthfade.go). The
+	// column is the surface's longest list and the one most often cut off, and
+	// what it is cut off BY is a terminal's height rather than anything a person
+	// chose — so the last lines before the fold step down toward the background
+	// and say there is more of this than fits. A column whose last entry is on
+	// screen fades nothing: there is nothing below it to point at.
+	//
+	// The depth is measured over the whole body and not just the scrolling part,
+	// because the pinned live head is the sharpest head this column has: work
+	// that is still going leads the column by construction, and the fade walking
+	// away from it is exactly the shape the pin was already drawing.
+	for at := range out {
+		if stop := tailStop(at, body, i < len(tail)); stop >= 0 {
+			out[at].fade = stop + 1
+		}
 	}
 	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED IS LEFT BLANK. It used to be
 	// filled with a dulled sample of the project's record; that record is the task
@@ -3082,6 +3111,15 @@ func (a *app) railRows(height int) []string {
 			text = a.hoverRow(text, room)
 		case line.stand != "" && a.hoveringMarginStand(line.stand):
 			text = a.hoverRow(text, room)
+		case line.fade > 0 && !(focus >= 0 && line.entry == focus):
+			// THE TAIL FADES AND THE CURSOR NEVER DOES (depthfade.go). It is the
+			// last arm of this switch for the reason the first one is first: a row
+			// wearing a background has already been told how loud to be, and the
+			// row the keyboard is standing on is the one fact the fade exists to
+			// keep legible. Every line of the focused entry is spared, not just its
+			// head, for the band's own reason — half a row dimmed reads as a row cut
+			// in two.
+			text = a.pal.fadeRow(text, line.fade-1)
 		}
 		out[i] = lead + text
 	}

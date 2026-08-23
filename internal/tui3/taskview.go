@@ -259,6 +259,13 @@ type taskSheet struct {
 type taskSheetItem struct {
 	// head is the section's word, and it is what makes this row a heading.
 	head string
+	// gap says this heading opens a section with another one above it, and so
+	// draws a blank line before its word. GROUPS ARE SEPARATED BY WHITESPACE AND
+	// NEVER BY A DIVIDER on this surface, and the flag lives on the item rather
+	// than being read off the index so that the page's line counting and the
+	// page's drawing cannot disagree about how tall a heading is
+	// ([app.taskSheetItemLines]).
+	gap bool
 	// node and stems are the tree half: the node, and its ancestry as the
 	// connectors need it ([railEntry.stems]).
 	node  *taskNode
@@ -608,7 +615,10 @@ func (a *app) taskSheetItems() []taskSheetItem {
 		}
 	}
 	if len(past) > 0 {
-		out = append(out, taskSheetItem{head: taskSheetPastHead})
+		// The blank line is asked for only when there is a section above to be
+		// separated FROM, which is the emptiness law wearing its layout hat: a page
+		// holding nothing but the record opens on its word, not on a gap.
+		out = append(out, taskSheetItem{head: taskSheetPastHead, gap: len(out) > 0})
 		for _, entry := range past {
 			out = append(out, taskSheetItem{entry: entry})
 		}
@@ -1187,17 +1197,44 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	}
 
 	a.taskSheet.top = a.taskSheetTop(items, a.taskSheet.cursor, a.taskSheet.top, room, width)
-	for at := a.taskSheet.top; at < len(items) && len(lines)-head < room; at++ {
+	// plain records, per line of the list region, whether that line is wearing
+	// neither the selection band nor the hover step — which is the one thing the
+	// depth fade needs to know and the one thing it cannot ask a finished string
+	// (depthfade.go). It is reported by the row builder rather than recomputed
+	// here, because a second answer to "is this row the cursor's" is how a list
+	// ends up fading the row a person is standing on.
+	var plain []bool
+	more := false
+	for at := a.taskSheet.top; at < len(items); at++ {
+		if len(lines)-head >= room {
+			more = true
+			break
+		}
 		item := items[at]
 		hit := taskSheetHit{}
 		if item.pick() {
 			hit = taskSheetHit{kind: taskSheetHitRow, index: at}
 		}
-		for _, text := range a.taskSheetItemRows(item, at, width) {
+		rows, bare := a.taskSheetItemRows(item, at, width)
+		for _, text := range rows {
 			if len(lines)-head >= room {
+				more = true
 				break
 			}
 			add(text, hit)
+			plain = append(plain, bare)
+		}
+	}
+	// THE TAIL OF A CUT-OFF LIST FADES WITH DEPTH — NEVER STRIPES (depthfade.go).
+	// It is applied to the drawn rows and not to the blank padding under them: a
+	// list that stopped short of the window has nothing below it to point at, and
+	// `more` is false there anyway.
+	for i := range plain {
+		if !plain[i] {
+			continue
+		}
+		if stop := tailStop(i, len(plain), more); stop >= 0 {
+			lines[head+i] = pal.fadeRow(lines[head+i], stop)
 		}
 	}
 	for len(lines)-head < room {
@@ -1244,6 +1281,18 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 // being clipped at the fold.
 func (a *app) taskSheetTop(items []taskSheetItem, cursor, top, room, width int) int {
 	if layoutTier(width) != tierPhone {
+		// THE ONE HEADING THAT OPENS A SECTION UNDER ANOTHER ONE IS TWO LINES —
+		// its word, and the blank line separating it from the section above
+		// ([app.taskSheetItemRows]). Counting items as lines is exact for every
+		// other row on this page and one short whenever that heading is inside the
+		// window, and a window that believes it is a line taller than it is clips
+		// the row the cursor is standing on. So the window is asked for one line
+		// less while the list is long enough to scroll at all: a spare blank line
+		// at the foot on the frames where the heading is elsewhere costs nothing,
+		// and a clipped cursor costs the page its whole point.
+		if taskSheetHasGap(items) && len(items) > room {
+			room--
+		}
 		top = listTop(cursor, top, len(items), room)
 		if cursor > 0 && cursor == top && items[cursor-1].heading() {
 			return cursor - 1
@@ -1283,12 +1332,24 @@ func (a *app) taskSheetTop(items []taskSheetItem, cursor, top, room, width int) 
 	return top
 }
 
+// taskSheetHasGap reports whether the page is drawing a second section, which is
+// the only thing on it that costs a line the item count does not know about.
+func taskSheetHasGap(items []taskSheetItem) bool {
+	for _, item := range items {
+		if item.gap {
+			return true
+		}
+	}
+	return false
+}
+
 // taskSheetItemLines is how many screen lines one item draws, which is what the
 // phone window sums to keep the cursor's card whole. It asks the row builder with
 // a cursor no row can match, so the count is the content's and not the
 // selection's — the band never changes how many lines a row takes.
 func (a *app) taskSheetItemLines(item taskSheetItem, width int) int {
-	return len(a.taskSheetItemRows(item, -1, width))
+	rows, _ := a.taskSheetItemRows(item, -1, width)
+	return len(rows)
 }
 
 // taskSheetTitle is the head: what this is on the left, and how to leave on the
@@ -1365,13 +1426,26 @@ func (a *app) taskSheetKeysLine() string {
 	return taskSheetInsideKeys
 }
 
-// taskSheetItemRows draws one row of the page, selection and hover included.
-func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) []string {
+// taskSheetItemRows draws one row of the page, selection and hover included. It
+// reports alongside them whether the row came back BARE — wearing neither the
+// band nor the hover step — which is what the frame's depth fade asks before it
+// touches a line (depthfade.go).
+func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) ([]string, bool) {
 	if item.heading() {
 		// A SECTION'S WORD IS A RULE AND NOT A ROW. It answers to nothing, so it
 		// takes neither the band nor the hover step, and it is drawn in the same
 		// dim the completion's own section rules are (taskmention.go).
-		return []string{" " + a.pal.dim(item.head)}
+		//
+		// AND THE SECTIONS ARE SEPARATED BY A BLANK LINE, never by a divider —
+		// the same whitespace rhythm the column puts between its two sections
+		// (margin.go's [app.marginRows]). The first heading on the page does not
+		// carry one: a blank line under the page's own rule would be the head of
+		// the page drifting away from it.
+		row := " " + a.pal.dim(item.head)
+		if item.gap {
+			return []string{"", row}, true
+		}
+		return []string{row}, true
 	}
 	room := width - 2
 	if room < 1 {
@@ -1415,7 +1489,7 @@ func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) []string {
 		}
 		out = append(out, text)
 	}
-	return out
+	return out, !selected && !hovered
 }
 
 // taskSheetNodeRows is one node of the tree, in FULL: its connectors, its state,
