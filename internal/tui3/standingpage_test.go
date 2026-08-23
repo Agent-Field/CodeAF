@@ -277,6 +277,27 @@ func TestStandingOnNothingSaysOneLineAndOpensNothing(t *testing.T) {
 	}
 }
 
+// AND IT SAYS IT ONCE, HOWEVER OFTEN IT IS ASKED. This is the command a person
+// presses again when the first press looked like it did nothing — the page does
+// not open, so there is nothing on screen to say the command was taken except
+// the line itself — and four presses left four identical lines stacked in the
+// transcript. The emptiness law reaches repetition: a screen counting how many
+// times it had nothing to report is the same fault as a screen printing `0`.
+func TestStandingOnNothingSaysItOnceHoweverOftenItIsAsked(t *testing.T) {
+	a, _ := standPageApp(t, nil, nil)
+	for range 4 {
+		typeLine(t, a, "/standing")
+	}
+	if n := notesSaying(a, standNothingWord); n != 1 {
+		t.Fatalf("asking four times said it %d times:\n%s", n, strings.Join(plainRows(a), "\n"))
+	}
+	// The line is still THERE — the fix is that the repeat is not written again,
+	// not that the repeat goes unanswered.
+	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
+		t.Fatalf("nothing was said at all:\n%s", text)
+	}
+}
+
 // A SURFACE WHOSE SESSION HAS NO AMBIENT SIDE SAYS THE SAME THING. The seam is
 // absent rather than broken, which is what the whole codebase does with a
 // capability that cannot work.

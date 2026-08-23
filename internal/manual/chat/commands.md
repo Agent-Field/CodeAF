@@ -785,6 +785,8 @@ conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n
 this place and `enter` to open the conversation that asked for it. With nothing standing it
 opens nothing and says
 `nothing stands here yet — say what should always be true, and I'll hold it.`
+Pressing it again straight away says it once, not twice: a line aforge has just written is
+not written a second time under itself.
 
 **With words after it, those words become a new standing order.**
 

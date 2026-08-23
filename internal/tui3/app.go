@@ -3498,8 +3498,31 @@ func (a *app) settleCompaction(text string) {
 
 // note appends a surface-side line — a slash command's answer, an error, the
 // opening hint. It is never sent anywhere.
+//
+// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE. Half the lines in this lane
+// are the surface answering an act a person repeats while they work out what to
+// do next: /standing on a conversation nothing stands over answers
+// [standNothingWord] every single time, /files on a machine that has made
+// nothing answers [filesNothingWord], and a refusal answers whatever it refused.
+// Four presses used to leave four identical lines stacked in the transcript,
+// which is the emptiness law's own complaint said about repetition — the screen
+// counting how many times it had nothing to report. So a note whose words are
+// already the last thing in the transcript is not written again; it is brought
+// back into view, which is the whole of what the person was going to read.
+//
+// IT ASKS ABOUT THE LAST ENTRY AND NEVER ABOUT THE WHOLE TRANSCRIPT. Anything at
+// all landing in between — an answer, a tool call, another note — puts the
+// repeat in a new place, where it is news again: "nothing stands here yet" under
+// the reply that just talked about standing orders is a different sentence from
+// the one four lines up, and a transcript that swallowed it would be answering a
+// deliberate command with silence.
 func (a *app) note(text string) {
 	a.closeLive()
+	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
+		a.follow()
+		a.touch()
+		return
+	}
 	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn})
 	a.follow()
 	a.touch()
