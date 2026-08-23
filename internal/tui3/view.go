@@ -365,7 +365,7 @@ func (a *app) frame() (string, int, int) {
 		text := r.text
 		if selOn {
 			if at := scroll + i; at >= selFrom && at <= selTo {
-				text = a.pal.hover(text, a.bodyWidth())
+				text = a.pal.cursor(text, a.bodyWidth())
 			}
 		}
 		rows = append(rows, a.railJoin(text, railAt(i)))

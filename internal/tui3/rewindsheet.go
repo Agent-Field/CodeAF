@@ -1016,7 +1016,7 @@ func (a *app) rewindSheetRowText(row rewindSheetRow, at, width int) string {
 	// you are" is the one still true when the pointer moves away.
 	switch {
 	case at == a.rewSheet.cursor:
-		text = pal.band(text, width)
+		text = pal.selected(text, width)
 	case a.hot.kind == hoverRewindSheet && a.hot.index == at:
 		text = a.hoverRow(text, width)
 	}

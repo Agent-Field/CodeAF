@@ -902,7 +902,7 @@ func (a *app) paintOffer(parts []string, clock string, width int) string {
 	}
 	out += a.pal.dim(clock)
 	if a.hoveringChoices() {
-		return a.pal.hover(out, width)
+		return a.pal.cursor(out, width)
 	}
 	return out
 }
@@ -1208,7 +1208,7 @@ func plainText(text string) string {
 func (a *app) consentBand(row int, key, word string, width int) string {
 	text := a.pal.ask(consentBandPad) + a.pal.askBold("["+key+"]") + a.pal.ask(" "+word)
 	if a.hoveringChoice(row) {
-		return a.pal.hover(text, width)
+		return a.pal.cursor(text, width)
 	}
 	return text
 }

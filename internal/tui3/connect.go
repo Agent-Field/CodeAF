@@ -440,7 +440,7 @@ func (a *app) connectOffer(width int) string {
 		out += a.pal.ask(part)
 	}
 	if a.hoveringConnectAsk() {
-		return a.pal.hover(out, width)
+		return a.pal.cursor(out, width)
 	}
 	return out
 }

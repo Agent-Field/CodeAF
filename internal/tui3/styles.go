@@ -18,15 +18,21 @@ import (
 //
 //	role    hex       what it paints
 //	ink     #D8DEE9   the body — what was said, and every tool's TARGET
-//	accent  #9DC3E6   the person's › glyph, the rail, this surface's own headings
-//	muted   #7FA6C9   the same hue one step back: tool names, the spinner
+//	accent  #9DC3E6   THE ONE LIVE OR CHOSEN THING ON THE SCREEN — the person's
+//	                  › glyph, the rail, and whatever is currently moving or
+//	                  currently picked. NOT headings (see the accent budget)
+//	muted   #7FA6C9   the same hue one step back: tool names, the spinner, and
+//	                  every heading, band label and wordmark this surface writes
 //	dim     #6B7280   everything the surface says about itself — stats, notes,
 //	                  hunk markers, the status line
 //	add     #A3BE8C   a diff's + lines, and a write's line count
-//	del     #BF616A   a diff's − lines
+//	del     #C67173   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
 //	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
-//	hover   #2E3440   a background, not an ink: the row the pointer is over
+//
+// The three backgrounds are a ladder of their own and are stated under THE
+// GROUND LADDER below, because a ground is not an ink and the rules that govern
+// one do not govern the other.
 //
 // Why hex rather than internal/tui2/tokens (which this file used to delegate
 // to): tokens is the v2 identity ramp, tuned for a rail of coloured cards, and
@@ -77,12 +83,54 @@ import (
 // colour alone: the glyph is a "?", the status line says "waiting · your call"
 // in words, and the choices name their keys.
 //
-// The hover background is the other addition, and it is a BACKGROUND — the
-// first this file has ever drawn. #2E3440 is one step up from a dark
-// terminal's own black: enough to say "the pointer is here", short of a band.
-// A sixteen-colour or NO_COLOR terminal gets no hover at all, which is honest:
-// there is no weight that means "under the pointer", and a bold row that moved
-// with the mouse would be noise.
+// ── THE SIGNAL BAND, AND THE TWO TIERS THAT ARE NOT IN IT ───────────────────
+//
+// The table divides in two, and the division is the reason a surface can carry
+// seven colours and still read calm.
+//
+// The SIGNAL hues — accent, add, del, bad, ask, warn — answer "what KIND of
+// thing is this". None of them outranks the others, so none of them may be
+// LIGHTER than the others: the eye reads lightness as figure and ground and
+// hue as identity, so a palette whose signals sit at one lightness reads as a
+// single grey field at a glance and only resolves into colours when a person
+// actually looks. THE SIGNAL HUES SIT INSIDE A FIFTEEN-POINT HSL LIGHTNESS
+// BAND, on both ladders, and TestTheSignalHuesAreIsoluminant holds them to it.
+// Dark: L 61–76. Light: L 39–53. Anything authored into this table from here
+// on owes that check as well as the 256-neighbour one.
+//
+// The READING tiers — ink, muted, dim — answer "how loudly is this being said",
+// and they are a LADDER by construction: the body, the surface's second voice,
+// and the surface talking about itself. Lightness is the whole of their
+// meaning, so the band deliberately does not govern them and the test excludes
+// them by name rather than by silence.
+//
+// #C67173 rather than nord's own #BF616A, which this table carried for four
+// waves, is the one move that band cost. At L 56.5 the minus lines of a diff
+// sat a clear five points under everything else in the signal set and read as a
+// dimmer class of fact than the plus lines beside them, which is not what a
+// diff means. The hue and the saturation are held (H 354→359, S 42); only the
+// lightness rose, to L 61, and the 256 neighbour was re-checked: 167, a brick
+// red, one clear step from [hueBad]'s 173. The obvious alternative, L 62, lands
+// on 168 — a pink — and a diff whose minus lines went pink on every
+// 256-colour terminal is the fallback nobody looked at, again.
+//
+// ── THE ACCENT BUDGET ───────────────────────────────────────────────────────
+//
+// ONE LIT ELEMENT PER SCREEN. The accent is the loudest thing this palette can
+// say, and its whole worth is that a person's eye goes to it without being
+// asked — which is a budget, not a colour. Spend it twice and it buys nothing.
+//
+// So the accent marks THE ONE LIVE OR CHOSEN THING and nothing else. HEADINGS
+// ARE NOT THAT: a heading is furniture, it is in the same place every time, and
+// a column of lit headings is a screen with no answer to "where am I". They
+// wear [hueMuted] — the same hue one step back, which reads as structure rather
+// than as a summons. The person's own › glyph and the rail keep the accent
+// because they are where the eye starts and where the work is.
+//
+// docs/DESIGN-LANGUAGE.md states the budget in prose. No test can hold it: a
+// screen is composed at fifty call sites and "how many lit things does this
+// frame have" is not a question a unit test can ask. It is held by review, and
+// by the fact that it is written down in two places on purpose.
 
 // tier16 is what a sixteen-colour terminal draws instead of a hue.
 type tier16 uint8
@@ -110,7 +158,7 @@ var (
 	hueMuted  = mustHue("#7FA6C9", flat)
 	hueDim    = mustHue("#6B7280", quiet)
 	hueAdd    = mustHue("#A3BE8C", heavy)
-	hueDel    = mustHue("#BF616A", quiet)
+	hueDel    = mustHue("#C67173", quiet)
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
 	// hueWarn is the SIXTH colour, and it exists for one shape: a bound that is
@@ -120,13 +168,7 @@ var (
 	// thing on the row that is about to change what happens. Nord's yellow, one
 	// clear step from the orange-red of [hueBad] on the 256 rung so the two
 	// tiers of the same warning never collapse into one colour.
-	hueWarn  = mustHue("#EBCB8B", heavy)
-	hueHover = mustHue("#2E3440", flat)
-	// hueBand is the SELECTED row's background, and it is the hover background's
-	// louder sibling: one more step off black, so the two read as two states of
-	// the same row rather than as one. The pointer is a guess about what you
-	// might do; the cursor is where you are, and it may say so more loudly.
-	hueBand = mustHue("#3B4252", flat)
+	hueWarn = mustHue("#EBCB8B", heavy)
 	// hueViolet is the SHELL OPERATOR's hue (shellx.go), and it is deliberately
 	// NOT the question hue above.
 	//
@@ -138,6 +180,100 @@ var (
 	// mid-tone by construction and reads on a dark terminal and a white page
 	// alike.
 	hueViolet = mustHue("#8F6FA8", quiet)
+)
+
+// ── THE GROUND LADDER ───────────────────────────────────────────────────────
+//
+// Everything above this line is an INK. What follows is the other kind of
+// colour this surface draws: the GROUND under a row. There are four steps,
+// they are the only four there will ever be, and they are named here once.
+//
+//	rest      NO GROUND AT ALL — the row is the terminal's own background
+//	cursor    the row the pointer is over, or the row the cursor is on
+//	selected  the chosen thing: the current row, the current chip
+//	mark      a marked span: copy mode's selection, and the text a yank takes
+//
+// REST IS NOT A COLOUR, AND THAT IS THE LAW. It has no entry in the tables
+// below because there is nothing to author: an unremarkable row is painted by
+// not painting it. This is the emptiness law wearing its background clothes —
+// a surface that tinted every row would be a surface where a tint said
+// nothing, and the three steps that DO say something are only legible because
+// the fourth state is empty.
+//
+// ── THE EMPHASIS LAW ────────────────────────────────────────────────────────
+//
+// A ROW IS EMPHASIZED BY RAISING ITS GROUND AND TURNING ITS LEADING TEXT
+// ACCENT. NOTHING ELSE EVER CHANGES.
+//
+// No new colour arrives for the emphasized state, no run of bolding spreads
+// across the row, and above all NO OUTLINE IS ADDED — emphasis is a step UP
+// this ladder, never a ring drawn around a thing. The ground says which band
+// of pixels is being spoken about; the accent on the leading glyph or word
+// says what it is. Two moves, both already in this file, and a lane that finds
+// itself reaching for a third has found a state this ladder does not have
+// rather than a colour this table is missing.
+//
+// ── WHY THE STEPS ARE AUTHORED AND NOT DERIVED ──────────────────────────────
+//
+// The honest way to build this ladder is the way a compositor builds it: take
+// the foreground colour, composite it over the background at a stated alpha,
+// and let every step inherit the theme's own hue for free. We cannot. THE
+// TERMINAL'S OWN BACKGROUND IS UNKNOWN TO US — there is no variable that says
+// it and no query this constructor may block on (see [detectTheme] for the same
+// wall, met from the other side) — so there is nothing to composite over. The
+// steps are therefore AUTHORED per ladder, dark and light, as fixed colours.
+//
+// What is authored is aimed rather than guessed. The assumed ground is the
+// range real dark terminals actually sit in, #101014 through #1e1e2e, and the
+// aim is the band a wide reading of calm terminal palettes converges on: the
+// cursor step at ≈1.1–1.2:1 against that ground, the selected step at
+// ≈1.35–1.5:1, and the marked span louder again because it is transient and
+// spans many rows at once. Measured, at the middle of the assumed range:
+//
+//	step      dark      #101014  #1a1b26  #1e1e2e   256
+//	cursor    #242932    1.30     1.17     1.09     235
+//	selected  #2E3440    1.52     1.37     1.31     237
+//	mark      #434C5E    2.20     1.98     1.90     239
+//
+//	step      light     #FFFFFF  #ECEFF4            256
+//	cursor    #E5E9F0    1.22     1.06              255
+//	selected  #D8DEE9    1.35     1.17              254
+//	mark      #B7C0D1    1.83     1.59              251
+//
+// The cost of authoring is stated rather than hidden: a fixed ground reads one
+// notch louder on a blacker terminal and one notch quieter on a lighter one,
+// and on a tinted page like nord's own #ECEFF4 the whole light ladder drops
+// close to invisible. That is the price of not knowing, and it is cheaper than
+// a query that hangs.
+//
+// Two things survived this retune unchanged and both were deliberate. #2E3440
+// is the value this file has drawn under the pointer since the day it first
+// drew a background — it moves DOWN one rung to become the selected step, and
+// the row a person has been looking at for four waves keeps its exact weight
+// while the pointer's own step gets quieter. And the light ladder's first two
+// steps are byte-identical to what they were, because they were already inside
+// the band; a value in band is not touched.
+//
+// The last COLUMN of each table is what keeps the ladder honest below
+// truecolor: all six steps resolve into the 256 palette's GREY RAMP — 235, 237,
+// 239 climbing away from black and 255, 254, 251 descending off the page —
+// rather than into its colour cube. A ground that rounded into a hue would be a
+// tint that looked like it meant something, and no step on this ladder means
+// anything by itself.
+var (
+	// hueCursor is the cursor step: the row the pointer is over, and the row a
+	// keyboard cursor sits on. Nord's own polar night pulled toward the void —
+	// the same H 220 / S 16 as [hueSelected], four points of lightness under it.
+	hueCursor = mustHue("#242932", flat)
+	// hueSelected is the selected step, and it is the value the pointer used to
+	// wear. Two states of one row have to read as two states of one row, so the
+	// three steps are one hue at three lightnesses and never three colours.
+	hueSelected = mustHue("#2E3440", flat)
+	// hueMark is the marked span: copy mode's selection. It is the loudest step
+	// because it is the only one that is TRANSIENT and the only one that covers
+	// many rows at once — a person holding a selection open is looking for its
+	// two ends, and an end that has to be hunted for is not an end.
+	hueMark = mustHue("#434C5E", flat)
 )
 
 // ── THE IDENTITY RING ───────────────────────────────────────────────────────
@@ -203,15 +339,17 @@ var lightTaskRing = []hue{
 //	dim     #6B7280   #9AA3B2   the meta tier goes LIGHTER, not darker: it
 //	                            recedes toward the page
 //	add     #A3BE8C   #7BA23F   nord's green has no contrast on white
-//	del     #BF616A   #B55B64   already dark enough; barely moves
+//	del     #C67173   #B55B64   already dark enough; barely moves
 //	bad     #D08770   #C57A3C   soft orange-red, one step down
 //	ask     #C08FE8   #6F3FA8   THE QUESTION HUE, inverted rather than dimmed:
 //	                            it has to lead on a page too
 //	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
 //	                            wants the same warning as dark amber
-//	hover   #2E3440   #E5E9F0   one step off the #ECEFF4 page, the way the dark
-//	                            hover is one step off black
 //	violet  #8F6FA8   #8F6FA8   the shared one (above)
+//
+// The grounds invert the same way and are stated with the rest of THE GROUND
+// LADDER above, not here: they are one ladder read from both ends, and a
+// ladder split across two comments is a ladder that drifts.
 //
 // Every light index was checked against its neighbours the way #C08FE8 was:
 // no two roles in this ladder resolve to the same xterm-256 index, because the
@@ -227,41 +365,57 @@ var (
 	lightBad    = mustHue("#C57A3C", heavy)
 	lightAsk    = mustHue("#6F3FA8", heavy)
 	lightWarn   = mustHue("#A6791F", heavy)
-	lightHover  = mustHue("#E5E9F0", flat)
-	// The band is one step further off the page than the hover is, which is the
-	// same move the dark ladder makes in the other direction.
-	lightBand = mustHue("#D8DEE9", flat)
+
+	// The light ladder's own three grounds. THE STEPS ARE THE SAME THREE STEPS
+	// (see THE GROUND LADDER above) and they carry the same names — what changes
+	// is only the direction of travel: a step up on a dark terminal is a step
+	// DOWN off the page here, and the two ladders meet nowhere.
+	lightCursor   = mustHue("#E5E9F0", flat)
+	lightSelected = mustHue("#D8DEE9", flat)
+	// The marked span goes one further off the page than the selected step, and
+	// it is the only light ground this wave had to author: the first two were
+	// already inside the band they were aimed at.
+	lightMark = mustHue("#B7C0D1", flat)
 )
 
 // ramp is one whole ladder: every role this surface paints, resolved once.
 //
 // The palette holds a ramp rather than reading the package vars directly, which
 // is the entire mechanism of the light theme — every p.ink(), p.dim() and
-// p.hover() call site in the package was already going through the palette, so
+// p.cursor() call site in the package was already going through the palette, so
 // the second ladder cost the call sites nothing.
 type ramp struct {
 	ink, accent, muted, dim hue
 	add, del, bad, ask      hue
 	warn                    hue
-	hover, band, violet     hue
-	fade                    [3]hue
-	// mark is the identity ring (above): not a role, and the only thing on the
-	// ladder that is a list rather than a colour.
-	mark []hue
+	violet                  hue
+	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
+	// not here and cannot be: it is the absence of a paint, not a colour.
+	cursor, selected, mark hue
+	fade                   [3]hue
+	// ring is the identity ring (above): not a role, and the only thing on the
+	// ladder that is a list rather than a colour. It is named apart from the
+	// ladder's `mark` step deliberately — a ring hue says WHICH work a row
+	// belongs to and a marked ground says a person has selected a span, and the
+	// day those two words meant the same thing on this surface is the day one of
+	// them stopped meaning anything.
+	ring []hue
 }
 
 var darkRamp = ramp{
 	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
-	hover: hueHover, band: hueBand, violet: hueViolet, fade: thoughtFade,
-	mark: taskRing,
+	violet: hueViolet, fade: thoughtFade,
+	cursor: hueCursor, selected: hueSelected, mark: hueMark,
+	ring: taskRing,
 }
 
 var lightRamp = ramp{
 	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
-	hover: lightHover, band: lightBand, violet: hueViolet, fade: lightFade,
-	mark: lightTaskRing,
+	violet: hueViolet, fade: lightFade,
+	cursor: lightCursor, selected: lightSelected, mark: lightMark,
+	ring: lightTaskRing,
 }
 
 // lightFade is the thinking window's gradient on a page. It fades toward WHITE
@@ -566,11 +720,11 @@ func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
 // [hueViolet] for why it is not the question hue.
 func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }
 
-// markPaint paints one task's glyph in that task's own hue ([taskRing]). The
+// ringPaint paints one task's glyph in that task's own hue ([taskRing]). The
 // tint is an index off the id's hash and is wrapped here rather than at the
 // call sites, so a ring that grows or shrinks is one line in this file.
-func (p palette) markPaint(tint int, s string) string {
-	ring := p.ramp.mark
+func (p palette) ringPaint(tint int, s string) string {
+	ring := p.ramp.ring
 	if len(ring) == 0 || s == "" {
 		return s
 	}
@@ -632,7 +786,8 @@ func (p palette) ask(s string) string { return p.paint(s, p.ramp.ask) }
 // on a sixteen-colour one alike.
 func (p palette) askBold(s string) string { return p.bold(p.ask(s)) }
 
-// hover paints one row's background: the pointer is on this row.
+// cursor paints THE GROUND LADDER's cursor step under one row: the pointer is
+// here, or the cursor is.
 //
 // The text arrives already painted, and that is fine — every foreground
 // sequence in this file closes with SGR 39, which resets the ink and leaves the
@@ -641,23 +796,40 @@ func (p palette) askBold(s string) string { return p.bold(p.ask(s)) }
 //
 // A terminal below ANSI256 gets the row back untouched: see the note at the top
 // of this file for why there is no weight-tier fallback here.
-func (p palette) hover(s string, width int) string {
+//
+// THE LINEAR GATE IS THE POINTER'S, NOT THE STEP'S, AND IT IS IN THE WRONG
+// PLACE. A pointer's shadow means nothing to somebody who is not looking at the
+// screen, so linear mode drops it — but a KEYBOARD cursor on this same step is
+// a position in a list, and a position is a fact for every reader. Today every
+// caller of this method is a pointer, so the gate sitting here is correct by
+// accident; the day the first keyboard cursor arrives on this step the gate
+// moves out to the pointer's own call sites, and the two states merge onto one
+// ground exactly as the ladder says they should.
+func (p palette) cursor(s string, width int) string {
 	if p.linear {
 		return s
 	}
-	return p.background(s, width, p.ramp.hover)
+	return p.background(s, width, p.ramp.cursor)
 }
 
-// band paints the SELECTED row's background: the same mechanism as the hover
-// one step louder ([hueBand]).
+// selected paints the ladder's selected step: this is the chosen thing.
 //
-// It is NOT gated on the linear tier the way the hover is, and the difference
-// is the whole reason those two are separate methods: a hover is a pointer's
-// shadow and there is no pointer to have one, while the cursor is a position in
-// a list that exists whoever is reading it. What linear mode drops is motion
-// and pointers, not the answer to "which row am I on".
-func (p palette) band(s string, width int) string {
-	return p.background(s, width, p.ramp.band)
+// It is NOT gated on the linear tier the way the cursor step is, and the reason
+// is the note above: what linear mode drops is motion and pointers, not the
+// answer to "which row am I on".
+func (p palette) selected(s string, width int) string {
+	return p.background(s, width, p.ramp.selected)
+}
+
+// mark paints the ladder's loudest step under a MARKED SPAN: the rows copy mode
+// is holding, and the text a yank would take (copymode.go).
+//
+// Like the selected step it is ungated: a span a person is building is not a
+// pointer's shadow, and a reader who cannot see it still has the status line's
+// count. Below ANSI256 the span is unpainted and the count is all there is,
+// which is the same trade every other ground on this ladder makes.
+func (p palette) mark(s string, width int) string {
+	return p.background(s, width, p.ramp.mark)
 }
 
 // chip paints an INLINE chip: a background behind exactly the cells the text
@@ -670,11 +842,12 @@ func (p palette) band(s string, width int) string {
 // the draft's own runes, so a chip that added so much as a space would put the
 // caret in the wrong column on every row that held one.
 //
-// The tint is the SELECTED ROW's ([hueBand]) and not a seventh colour. A
-// background on this surface is not a role — the two there are say "the pointer
-// is here" and "you are here", neither of which is a kind of thing — so a run of
-// cells lifted off the page reads as "this is not prose" wherever it appears,
-// and a slash command is exactly that.
+// The tint is THE GROUND LADDER's selected step ([hueSelected]) and not a
+// seventh colour. A background on this surface is not a role — the ladder's
+// steps say "the pointer is here", "this is the chosen one" and "you have this
+// marked", none of which is a kind of thing — so a run of cells lifted off the
+// page reads as "this is not prose" wherever it appears, and a slash command is
+// exactly that.
 //
 // Below the 256 rung there is no background to draw and what is left is the
 // accent's own weight: a command reads as bold where it cannot read as a tinted
@@ -695,7 +868,7 @@ func (p palette) tint(s string, ink func(string) string) string {
 		return s
 	}
 	// Width zero, so [palette.background] pads nothing.
-	return p.background(ink(s), 0, p.ramp.band)
+	return p.background(ink(s), 0, p.ramp.selected)
 }
 
 // background is the one place this file draws a background: the row padded to

@@ -191,7 +191,7 @@ func (a *app) roomApprovalRows(width int) []string {
 		out += a.pal.ask(part)
 	}
 	if a.hoveringRoomApproval() {
-		out = a.pal.hover(out, width)
+		out = a.pal.cursor(out, width)
 	}
 	return []string{head, out}
 }

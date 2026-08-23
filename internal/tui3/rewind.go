@@ -601,7 +601,7 @@ func (a *app) rewindPass(out []row, width int) []row {
 		// the true statement is "all of this goes".
 		r.text = a.pal.dim(ansi.Strip(r.text))
 		if r.entry >= 0 && (r.entry == anchor || r.entry == hot) {
-			r.text = a.pal.hover(r.text, width)
+			r.text = a.pal.cursor(r.text, width)
 		}
 		rows = append(rows, r)
 	}

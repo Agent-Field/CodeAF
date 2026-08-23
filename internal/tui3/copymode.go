@@ -388,11 +388,14 @@ func copyClean(line string) string {
 // copyRows is what the frame draws while the viewport is frozen: the visible
 // slice of the snapshot, with the selection highlighted.
 //
-// The selection wears the HOVER background — the same one step up the pointer
-// draws — because it is the same statement: this row is the one. The cursor is
-// the moving end of it, which is visible in the moving, and a terminal below
-// ANSI256 gets no highlight at all and reads the span off the status line's
-// count instead.
+// The selection wears THE GROUND LADDER's MARK step (styles.go), which is the
+// loudest of the three and exists for exactly this: a span, held open, running
+// across many rows at once. It used to wear the pointer's own step, and that
+// was one statement doing two jobs — "the pointer is here" and "these forty
+// rows are what a yank would take" are not the same claim and may not be the
+// same tint. The cursor is the moving end of the span, which is visible in the
+// moving, and a terminal below ANSI256 gets no highlight at all and reads the
+// span off the status line's count instead.
 func (a *app) copyRows(width, height int) ([]row, int) {
 	if height <= 0 || len(a.copy.rows) == 0 {
 		return nil, 0
@@ -408,7 +411,7 @@ func (a *app) copyRows(width, height int) ([]row, int) {
 	for i := top; i < end; i++ {
 		text := a.copy.rows[i]
 		if i >= from && i <= to {
-			text = a.pal.hover(text, width)
+			text = a.pal.mark(text, width)
 		}
 		out = append(out, row{text: text, entry: -1})
 	}

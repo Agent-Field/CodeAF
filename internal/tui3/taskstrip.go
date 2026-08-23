@@ -55,7 +55,7 @@ import (
 //
 // TWO MARKS, BECAUSE THERE ARE TWO QUESTIONS. The OPEN chip — the room the body
 // is drawing — takes the band and the accent, which is the emphasis this
-// surface already spends on "the row you picked" (styles.go's [palette.band],
+// surface already spends on "the row you picked" (styles.go's [palette.selected],
 // one step above the pointer's own hover). The FOCUSED chip — wherever the
 // roster's cursor is standing while it holds the keyboard (task.go's
 // [app.railWhere]) — takes an underline instead, so that moving the cursor
@@ -301,10 +301,10 @@ func (a *app) stripRowText(width int, nodes []*taskNode) string {
 		a.stripHarn = hudSpan{from: 0, to: leadCols}
 		// THE POINTER LIGHTS THE CHIP AND NOT THE ROW, here and on every chip
 		// beside it ([app.stripChip] says why). The band is drawn round exactly the
-		// cells the chip occupies, which is what [palette.hover] does when it is
+		// cells the chip occupies, which is what [palette.cursor] does when it is
 		// given no width to pad to.
 		if a.hoveringStripHarness() {
-			lead = a.pal.hover(lead, 0)
+			lead = a.pal.cursor(lead, 0)
 		}
 	}
 	if len(nodes) == 0 {
@@ -391,7 +391,7 @@ func stripMoreWord(n int) string { return "+" + itoa(n) }
 // every other measurement on this surface goes through (task.go's [app.railJoin]).
 //
 // The band goes on LAST, over an already-painted chip, which is the same bargain
-// [palette.hover] makes with the rows it lights: every foreground sequence on
+// [palette.cursor] makes with the rows it lights: every foreground sequence on
 // this surface closes with SGR 39, so a background wrapped round one leaves the
 // ink underneath alone.
 func (a *app) stripLabel(node *taskNode, width int) (string, int) {
@@ -417,7 +417,7 @@ func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
 	// band and a tab bar that disagreed with the column beside it would be two
 	// answers to a question with one.
 	if a.roomStandingOn(node) {
-		chip = a.pal.band(chip, cols)
+		chip = a.pal.selected(chip, cols)
 		return chip, cols
 	}
 	// AND THE POINTER LIGHTS ONE CHIP, NEVER THE ROW. Three doors share this line
@@ -425,16 +425,16 @@ func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
 	// press here" about two rooms nobody is aiming at (hover.go's law, and
 	// tasksettle.go's answers row before it). The band is drawn round exactly the
 	// chip's own cells — padding included, because the padding is inside
-	// [stripSpan] and a person may press it — which is what [palette.hover] does
+	// [stripSpan] and a person may press it — which is what [palette.cursor] does
 	// when it is given no width to pad to.
 	//
 	// THE OPEN CHIP IS LEFT ALONE, and that is the two marks not fighting rather
-	// than the hover being forgotten: [palette.band] is [palette.hover] one step
+	// than the hover being forgotten: [palette.selected] is [palette.cursor] one step
 	// louder, the two are backgrounds and backgrounds cannot nest, and of the two
 	// facts "this is the page you are on" is the one still true when the pointer
 	// moves away.
 	if a.hoveringStrip(node) {
-		chip = a.pal.hover(chip, 0)
+		chip = a.pal.cursor(chip, 0)
 	}
 	return chip, cols
 }

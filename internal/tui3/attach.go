@@ -216,10 +216,10 @@ func (a *app) chipStrip(width int) string {
 			// here takes something off the message being written and each takes off a
 			// different thing, so a band across the tray would offer to drop the
 			// picture beside the one a person is aiming at (hover.go's law). The band
-			// goes round exactly the cell's own cells, which is what [palette.hover]
+			// goes round exactly the cell's own cells, which is what [palette.cursor]
 			// does when it is given no width to pad to.
 			if a.hoveringChip(trayHarnessChip) {
-				painted = append(painted, a.pal.hover(a.pal.ink(cell), 0))
+				painted = append(painted, a.pal.cursor(a.pal.ink(cell), 0))
 				continue
 			}
 			painted = append(painted, a.pal.ink(cell))
@@ -231,7 +231,7 @@ func (a *app) chipStrip(width int) string {
 	}
 	for i, label := range labels {
 		if a.hoveringChip(i) {
-			painted = append(painted, a.pal.hover(a.pal.dim(label), 0))
+			painted = append(painted, a.pal.cursor(a.pal.dim(label), 0))
 			continue
 		}
 		painted = append(painted, a.pal.dim(label))
