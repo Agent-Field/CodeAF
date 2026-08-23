@@ -332,10 +332,13 @@ func TestAHarnessChipOnASurfaceThatCannotRunOne(t *testing.T) {
 
 // ── the doors ───────────────────────────────────────────────────────────────
 
-// /subharness AND /sub REACH THE SAME LIST, because a sub-harness and a harness
-// are the same thing under two words.
-func TestTheSubharnessWordsOpenTheSamePicker(t *testing.T) {
-	for _, word := range []string{"/subharness ", "/sub ", "/harnesses "} {
+// EVERY WORD FOR /harness OPENS THE SAME PICKER, and the list of those words is
+// the command table's own row rather than a second list beside it
+// ([harnessPickWords]). `/subharness` and `/sub` are deliberately NOT among them
+// any more: they name the typed programs and their intake card (subharness.go),
+// which is a different thing from a saved shape of work.
+func TestEveryHarnessWordOpensTheSamePicker(t *testing.T) {
+	for _, word := range []string{"/harness ", "/harnesses "} {
 		a, _, _ := pickApp(t, demoHarness("triage-flake", "chase a flaky test"))
 		typeInto(t, a, word)
 		if !a.harnPick.open {

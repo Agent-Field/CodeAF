@@ -154,6 +154,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
+| `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
+| `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
@@ -776,6 +778,30 @@ The first is what you get with no registry wired — a headless frame, and **eve
 session**, because the registry lives on the far machine. The second is drawn as the
 panel's only row, and it is also what a registry that cannot be read at all shows, rather
 than an error.
+
+## /subharness — the command's two forms, bare and with a name after it
+
+`/subharness` (or `/sub`) opens a filtering list of the programs this conversation can
+run. Typing narrows it over the name, the one line and the cues. `enter` opens that one's
+intake card. `esc` closes.
+
+`/subharness <name>` skips the list and opens that one's card. A name nothing answers to
+is **not** an error: it becomes the list's filter, so a typo turns into a search.
+
+It takes a name where `/harness` deliberately does not, and the reason is that a
+subharness's name is one lowercase word written down in its own manifest — the same string
+in the binary, in the store and on the command line — so somebody who knows which one they
+want does not have to find it in a list first.
+
+What it says when there are none, exactly as written:
+
+```
+no subharnesses here yet — a subharness is a saved program for work that comes round again.
+```
+
+That one sentence covers every way of having none — no registry wired, a registry with
+nothing in it, and **every `--host` session**, because the registry lives on the far
+machine. No list opens behind it. See the *Subharnesses* page for the card and its keys.
 
 ## /standing — the command's two forms, bare and with words after it
 
