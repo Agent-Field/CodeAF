@@ -581,6 +581,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// something that spends forever. A task node and a firing's own session
 		// never see it: neither copies this config.
 		Standing: v3Standing(settings.ProfileDir),
+		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
+		// task that turns out to hold more than one worker's share may split
+		// itself into parts and stay to fold them back together
+		// (internal/session's task_divide.go). It is free when it does not
+		// apply — the road is armed one task at a time, and a division still
+		// has to name enough separate items and find a free hand before
+		// anything is born — which is what makes on the right default and
+		// `AFORGE_SWARM=0` the whole of the way out.
+		Divide: settings.Swarm,
 	}
 
 	// What this session may do without asking, which model answers its
