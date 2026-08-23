@@ -395,7 +395,7 @@ func TestThePauseGateRendersAndRoutesEachAnswer(t *testing.T) {
 		steps int
 		want  string
 	}{
-		{0, orchTopUp},
+		{0, orchTopUpAnswer(2)},
 		{1, orchFinish},
 		{2, orchStop},
 	} {
@@ -410,7 +410,7 @@ func TestThePauseGateRendersAndRoutesEachAnswer(t *testing.T) {
 		page := roomText(a)
 		for _, want := range []string{
 			glyphAsk, orchGateLead, "$2.00 of $2.00",
-			orchAnswerWord(orchTopUp), orchAnswerWord(orchFinish), orchAnswerWord(orchStop),
+			orchAnswerWord(orchTopUpAnswer(2)), orchAnswerWord(orchFinish), orchAnswerWord(orchStop),
 		} {
 			if !strings.Contains(page, want) {
 				t.Fatalf("[%s] the gate never says %q:\n%s", one.want, want, page)
@@ -423,7 +423,7 @@ func TestThePauseGateRendersAndRoutesEachAnswer(t *testing.T) {
 		}
 		// THE CURSOR IS ON THE QUESTION the moment it is raised: it is the one
 		// thing on the page somebody has to answer.
-		if got := a.orchOf().pick; got.answer != orchTopUp {
+		if got := a.orchOf().pick; got.answer != orchTopUpAnswer(2) {
 			t.Fatalf("[%s] the cursor is on %+v, want the gate's first answer", one.want, got)
 		}
 		for i := 0; i < one.steps; i++ {
@@ -469,18 +469,18 @@ func TestReopeningAPausedRunRaisesTheGateFromTheSnapshot(t *testing.T) {
 	page := roomText(a)
 	// The spend sentence is the run's own, so the re-raised question reads exactly
 	// as the lane's did rather than in the header's "/" form.
-	for _, want := range []string{orchGateLead, "$2.00 of $2.00", orchAnswerWord(orchTopUp),
+	for _, want := range []string{orchGateLead, "$2.00 of $2.00", orchAnswerWord(orchTopUpAnswer(2)),
 		orchAnswerWord(orchFinish), orchAnswerWord(orchStop)} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the re-raised gate never says %q:\n%s", want, page)
 		}
 	}
 	// It is the SAME question and not a picture of one: the answers route.
-	if got := run.pick; got.answer != orchTopUp {
+	if got := run.pick; got.answer != orchTopUpAnswer(2) {
 		t.Fatalf("the cursor is on %+v, want the gate's first answer", got)
 	}
 	drive(t, a, key("enter"))
-	if len(agent.answers) != 1 || agent.answers[0] != "r1: "+orchTopUp {
+	if len(agent.answers) != 1 || agent.answers[0] != "r1: "+orchTopUpAnswer(2) {
 		t.Fatalf("the re-raised gate answered %v", agent.answers)
 	}
 
@@ -836,5 +836,38 @@ func TestThePhoneDrawsThePlannerOnThePageInstead(t *testing.T) {
 	lines := orchLines(a)
 	if len(lines) == 0 || !strings.Contains(lines[0], "planner: moonshot/kimi-k3") {
 		t.Fatalf("the planner is not the first row of the phone's page:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// THE OFFER SCALES WITH THE TANK, AND THE CARD SAYS HOW IT IS ANSWERED. A
+// ten-dollar run that hit its cap is offered five more — half the decision the
+// person already made, never a fixed dollar — and under the three rows sits the
+// hint that names the gestures, because a card that takes no letter keys and
+// suspends nothing has to say so itself: a person once read the quiet rows as
+// prose and started typing an answer.
+func TestTheGateOfferScalesAndNamesItsGestures(t *testing.T) {
+	snap := orchRun4()
+	snap.Paused = true
+	snap.Fuel = orchestrate.Fuel{Cap: 10, Spent: 10.04}
+	a, _ := orchApp(t, snap)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventOrchestratePause, ID: 1, Text: "$10.04 of $10.00"}})
+
+	run := a.orchOf()
+	if run == nil || run.gate == nil {
+		t.Fatal("the pause raised no gate")
+	}
+	if got := run.gateAnswers()[0]; got != "topup:5" {
+		t.Fatalf("a $10 tank offers %q, want topup:5 — half the cap", got)
+	}
+	page := roomText(a)
+	for _, want := range []string{"add $5", "enter answers", "steer the planner"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the gate never says %q:\n%s", want, page)
+		}
+	}
+	// The cursor opens on the scaled offer, and enter takes it as spelled.
+	if got := run.pick; got.answer != "topup:5" {
+		t.Fatalf("the cursor is on %+v, want the scaled top-up", got)
 	}
 }
