@@ -538,11 +538,16 @@ presentation derivation is surface business):
 
 **The palette is pastel, dark-terminal first, designer-curated** — soft, low
 saturation, never loud: body ink soft white (#D8DEE9), accent pastel blue
-(#9DC3E6) for headings and the user's glyph, dim #6B7280 for meta, diff and
-match accents in nord pastels (+#A3BE8C, −#BF616A), failure soft orange-red
-(#D08770), and the code fence theme a pastel chroma style (catppuccin-mocha
-where available, else the tokens ramp with pastel overrides). One rule
-above every choice: if a colour could be described as "bright", it is wrong.
+(#9DC3E6) for the one live or chosen thing, dim #6B7280 for meta, diff and
+match accents in nord pastels, failure soft orange-red (#D08770), and the code
+fence theme a pastel chroma style (catppuccin-mocha where available, else the
+tokens ramp with pastel overrides). One rule above every choice: if a colour
+could be described as "bright", it is wrong.
+
+The exact values, the four-step ground ladder and the laws that govern which
+role paints what all live in **docs/DESIGN-LANGUAGE.md** and in
+`internal/tui3/styles.go`, and they have moved since this decision was written —
+read them there rather than from this paragraph.
 
 **Spacing law.** One layout pass owns all spacing: one blank row before a
 cluster that follows text, zero between cluster lines, one after a cluster
