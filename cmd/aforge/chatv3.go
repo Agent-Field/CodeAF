@@ -664,6 +664,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// readers (internal/session's harness_belt.go). It is wired here rather than
 	// in the literal above because the resolver it needs is one line up.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel, cfg.MediaPick)
+	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
+	// a program this conversation can run, so it belongs on `/subharness` beside
+	// the bundles and the compiled-in workers rather than in a catalog of its own
+	// (chatv3_subharness.go's UsePages). It is wired here because the runner it
+	// needs is the line above.
+	subharnesses.UsePages(harnesses, cfg.RunHarness)
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"

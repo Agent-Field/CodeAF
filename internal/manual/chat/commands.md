@@ -764,8 +764,10 @@ enter **prints the harness's card into the conversation** and closes the panel: 
 steps with the bounds under them, plus `last run` and that run's card when there is one.
 It is prose, and prose belongs in the transcript where you can scroll and copy it.
 
-Building a harness is a conversation, not a command. This list only says which ones
-exist. While one is running, a chip with a spinner and its name leads the task strip.
+Building a harness is a conversation, not a command. This panel only says which ones exist;
+`/harness ` with a space picks one to run on a typed request, and `/subharness` lists the
+same programs beside everything else runnable here and starts one from its card. While one
+is running, a chip with a spinner and its name leads the task strip.
 
 Refusals, exactly as written:
 
@@ -782,8 +784,9 @@ than an error.
 ## /subharness — the command's two forms, bare and with a name after it
 
 `/subharness` (or `/sub`) opens a filtering list of the programs this conversation can
-run. Typing narrows it over the name, the one line and the cues. `enter` opens that one's
-intake card. `esc` closes.
+run — the ones built in, the bundles on disk, and the harnesses you have had designed, in
+one list. Typing narrows it over the name, the one line and the cues. `enter` opens that
+one's intake card. `esc` closes.
 
 `/subharness <name>` skips the list and opens that one's card. A name nothing answers to
 is **not** an error: it becomes the list's filter, so a typo turns into a search.

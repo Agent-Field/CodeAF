@@ -252,6 +252,16 @@ func (s designSeat) broke(err error) {
 // as markdown (internal/tui3's renderMarkdown), and markdown folds single
 // newlines into running prose — which is all a card is made of. Unfenced, a card
 // whose columns line up at a glance arrived as one run-on paragraph.
+//
+// THE FENCE SAYS `text` FOR THE SAME REASON. An untagged block is handed to
+// chroma's language GUESS (internal/tui2/prose's highlight), and a card is plain
+// English with a shell command or two in it — so the guess landed wherever the
+// step details happened to look like code that day, and lit a person's approval
+// page up in four colours that meant nothing. Naming the plainest lexer there is
+// makes the block one calm colour every time, which is what a card is supposed
+// to be.
+const harnessCardFence = "text"
+
 func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "The draft is written — %s · %d steps.", page.Id.Name, len(page.Program.Nodes))
@@ -263,7 +273,7 @@ func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	if len(draft.Cues) > 0 {
 		out.WriteString("\n\nIt answers to: " + strings.Join(draft.Cues, " · "))
 	}
-	out.WriteString("\n\n```\n" + subharness.Card(page) + "\n```")
+	out.WriteString("\n\n```" + harnessCardFence + "\n" + subharness.Card(page) + "\n```")
 	return out.String()
 }
 
@@ -906,11 +916,17 @@ func (a *Agent) harnessWritingWindow() time.Duration {
 // harnessSavedWord is the settle card's line: the name, the version it landed
 // as, and what to do with it.
 func harnessSavedWord(saved subharness.Harness) string {
-	line := fmt.Sprintf("harness %q v%d saved", saved.Id.Name, saved.Id.Version)
+	line := fmt.Sprintf("subharness %q v%d saved", saved.Id.Name, saved.Id.Version)
 	// The version is spelled even at v1 here, unlike the registry listing, and
 	// it is deliberate: this line is about a thing that has JUST come into
 	// existence, and "v1" is the news that it is the first of them.
-	return line + "\nIt is offered by the turn itself whenever somebody's words match it; there is no command that runs one."
+	//
+	// AND THE SECOND LINE IS WHERE IT IS NOW, which is the whole of what somebody
+	// who has just approved a card needs: it is on the list with everything else
+	// they can run, and it still answers the words it was designed for. The line
+	// this replaced said there was no command that ran one, which was the sentence
+	// sending people to look for a page they had just made and not find it.
+	return line + "\n/subharness runs it, and it offers itself when what you say matches."
 }
 
 // doingNow moves a node to a named phase and tells the world, on
@@ -1140,7 +1156,7 @@ func harnessPageSuperseded(encoded []byte) string {
 // it, one message along and out of sight ([harnessPageContext]).
 func harnessPageThread(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written.\n\n```\n")
+	out.WriteString("The page is written.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nNothing is saved yet — the card is up, and it is saved only if it is approved.")
@@ -1157,7 +1173,7 @@ func harnessPageThread(page subharness.Harness) string {
 // over by itself.
 func harnessPageRewritten(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written again, with your change in it.\n\n```\n")
+	out.WriteString("The page is written again, with your change in it.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nStill nothing is saved — the card is up again, and it is saved only if it is approved.")

@@ -137,8 +137,9 @@ about a dollar") so the person can stop you before it spends.
 
 A **sub-harness** is a reusable recipe: a named, versioned procedure — steps,
 the tools those steps may use, its own bounds — saved on this machine. Once
-saved it is offered by the turn itself whenever somebody's words match it, and
-they answer that card; there is no command that runs one. `list_harnesses`
+saved it is a subharness like any other: it is on `/subharness` and runs from
+there, and it is also offered by the turn itself whenever somebody's words match
+it, and they answer that card. `list_harnesses`
 shows what exists. `build_harness` designs a new one from a goal you write: it
 answers with a task number, the design runs as that task — the person can open
 it, watch, talk to it and stop it — and the page it produces is shown to them as
