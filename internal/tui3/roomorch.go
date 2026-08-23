@@ -1400,9 +1400,9 @@ func (a *app) orchLayerFlow(page *orchPage, layer, next []orchestrate.NodeStatus
 		// several nodes share this row, so a band across it would offer every one of
 		// them under a pointer that is on one ([app.orchHoverPass] states the split).
 		// The band goes round exactly the chip's cells, which is what
-		// [palette.hover] does when it is given no width to pad to.
+		// [palette.cursor] does when it is given no width to pad to.
 		if a.hoveringOrch(spot.key()) {
-			chip = a.pal.hover(chip, 0)
+			chip = a.pal.cursor(chip, 0)
 		}
 		line += chip
 		at += wide

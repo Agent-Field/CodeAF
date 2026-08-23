@@ -84,7 +84,7 @@ func TestTheOpenChipIsBandedAndTheStripCarriesNoCursor(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Write the auth tests",
 		session.TaskRunning, session.TaskNotice{})})
 
-	band := "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m"
+	band := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
 	const underline = "\x1b[4m"
 
 	// Nothing open: a row of dim chips and no marks.
@@ -169,7 +169,7 @@ func TestTheSettingsTabsAreChipsAndTheirPaddingIsClickable(t *testing.T) {
 		}
 	}
 	// The open tab is banded, exactly as the open room's chip is.
-	if band := "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m"; !strings.Contains(bar, band) {
+	if band := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"; !strings.Contains(bar, band) {
 		t.Fatalf("the open tab is not banded: %q", bar)
 	}
 

@@ -172,9 +172,9 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		tail = pal.dim(tail)
 		switch {
 		case selected:
-			head, tail = pal.band(head, width), pal.band(tail, width)
+			head, tail = pal.selected(head, width), pal.selected(tail, width)
 		case hovered:
-			head, tail = pal.hover(head, width), pal.hover(tail, width)
+			head, tail = pal.cursor(head, width), pal.cursor(tail, width)
 		}
 		out = append(out, head, tail)
 	}

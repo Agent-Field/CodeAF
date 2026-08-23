@@ -1409,7 +1409,7 @@ func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) []string {
 		// where you are" is the one still true when the pointer moves away.
 		switch {
 		case selected:
-			text = a.pal.band(text, width)
+			text = a.pal.selected(text, width)
 		case hovered:
 			text = a.hoverRow(text, width)
 		}

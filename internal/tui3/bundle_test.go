@@ -748,7 +748,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 		{"add", lightAdd, "#7BA23F"},
 		{"del", lightDel, "#B55B64"},
 		{"violet", hueViolet, "#8F6FA8"},
-		{"hover", lightHover, "#E5E9F0"},
+		{"hover", lightCursor, "#E5E9F0"},
 	} {
 		r, g, b, ok := parseHex(want.hex)
 		if !ok {
@@ -764,7 +764,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 	for name, h := range map[string]hue{
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
 		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
-		"warn": lightWarn, "hover": lightHover, "violet": hueViolet,
+		"warn": lightWarn, "hover": lightCursor, "violet": hueViolet,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d", name, other, h.idx)
@@ -868,7 +868,7 @@ func TestLinearModeRendersPlain(t *testing.T) {
 	// NO POINTER. The hover paint is refused at both ends: the palette draws no
 	// background, and the layout pass asks for none.
 	a.hot = hoverAt{kind: hoverEntry, entry: 0}
-	if got := a.pal.hover("x", 10); got != "x" {
+	if got := a.pal.cursor("x", 10); got != "x" {
 		t.Fatalf("the linear palette painted a hover: %q", got)
 	}
 	if a.isHot(row{entry: 0}) {
@@ -1070,7 +1070,7 @@ func TestTheSelectedOverlayRowIsOneBandAcrossTheLine(t *testing.T) {
 	pal := newPalette(tokens.ANSI256, false)
 	const width = 48
 	const note = "128k · elo 1200"
-	band := "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m"
+	band := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
 
 	line := overlayRow("openai/gpt-4.1-mini", note, true, false, false, width, pal)
 	if !strings.HasPrefix(line, band) || !strings.HasSuffix(line, "\x1b[49m") {
@@ -1095,11 +1095,11 @@ func TestTheSelectedOverlayRowIsOneBandAcrossTheLine(t *testing.T) {
 	// HOVER IS THE SUBTLER ONE, and it is a different colour: a pointer crossing
 	// a list must never read as the cursor moving.
 	hovered := overlayRow("openai/gpt-4.1-mini", note, false, false, true, width, pal)
-	hover := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	hover := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	if !strings.HasPrefix(hovered, hover) || strings.Contains(hovered, band) {
 		t.Fatalf("the hovered row wears the selection band:\n%q", hovered)
 	}
-	if hueHover.idx == hueBand.idx {
+	if hueCursor.idx == hueSelected.idx {
 		t.Fatal("the hover and the selection resolve to one colour")
 	}
 	// A row that is both takes the selection: the cursor outranks the pointer.
