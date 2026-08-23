@@ -187,10 +187,17 @@ func TestGovernorSamplesAtMostOncePerTTL(t *testing.T) {
 	load, ok := 0.2, true
 	now := time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)
 	samples := 0
+	// The cap is pinned rather than taken from this machine's core count. The
+	// subject here is the sample TTL, and the CPU-derived cap is checked
+	// BEFORE the host is ever read: on a host with three cores or fewer
+	// LocalLeafCap() is the floor itself, every AdmitLocal below is refused by
+	// the cap, and the reading this test is about never happens — so it failed
+	// on a two-core CI runner and passed on every developer's machine. Every
+	// other governor test already pins the cap for the same reason.
 	governor := newGovernor(
 		func() (float64, bool) { samples++; return load, ok },
 		func() time.Time { return now },
-	)
+	).WithLocalCap(64)
 	for range 20 {
 		governor.AdmitLocal(GovernorLocalFloor, GovernorLocalFloor)
 	}

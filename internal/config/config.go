@@ -41,6 +41,10 @@ const (
 	DefaultSiteURL        = "https://agentfield.ai"
 	DefaultSiteName       = "AgentField AI"
 	DefaultSiteCategories = "cli-agent,programming-app"
+	// Preserve the names master exposed before the chat-v2 rollout, for any
+	// caller still reaching them by the old spelling.
+	OpenRouterAppURL  = DefaultSiteURL
+	OpenRouterAppName = DefaultSiteName
 
 	// DefaultDocumentEngine walks the deliberate local -> free -> rail-gated
 	// OCR ladder. The other accepted values pin one rung and never fall through.

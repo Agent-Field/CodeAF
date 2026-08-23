@@ -3183,7 +3183,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// strip, and the hint.
 	strip := a.answerStrip(width, time.Now())
 	foot := 2 + draftHeight + len(strip)
-	const pad = 1
+	const pad = spacingRuleClearance
 	room := height - len(lines) - foot - pad
 	if room < 1 {
 		room = 1

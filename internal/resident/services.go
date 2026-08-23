@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
@@ -69,9 +69,7 @@ func newPlatformServiceRuntime() *platformServiceRuntime {
 
 func (runtime *platformServiceRuntime) IdentityMatches(pid int, startedAt time.Time) (bool, error) {
 	if runtime.reap[pid] {
-		var status syscall.WaitStatus
-		waited, waitErr := syscall.Wait4(pid, &status, syscall.WNOHANG, nil)
-		if waitErr == nil && waited == pid {
+		if processgroup.ReapExitedChild(pid) {
 			delete(runtime.reap, pid)
 			return false, nil
 		}
@@ -82,8 +80,7 @@ func (runtime *platformServiceRuntime) IdentityMatches(pid int, startedAt time.T
 	}
 	// Graceful degradation for Unix targets whose ps lacks lstart: preserve a
 	// demonstrably live process, but do not silently start a replacement.
-	liveErr := syscall.Kill(pid, 0)
-	if liveErr == nil || errors.Is(liveErr, syscall.EPERM) {
+	if processgroup.ProcessAlive(pid) {
 		return true, nil
 	}
 	return false, nil
@@ -139,8 +136,7 @@ func (runtime *platformServiceRuntime) Stop(pid int) error {
 		return err
 	}
 	if runtime.reap[pid] {
-		var status syscall.WaitStatus
-		_, _ = syscall.Wait4(pid, &status, 0, nil)
+		_ = processgroup.ReapExitedChild(pid)
 		delete(runtime.reap, pid)
 	}
 	return nil

@@ -535,8 +535,13 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	}
 	// AND THERE IS EXACTLY ONE OF IT. Two lines onto one page is two doors out of
 	// a room with one.
-	if n := strings.Count(rail, taskSheetKey+" — "); n != 1 {
+	if n := strings.Count(rail, taskSheetKey+" "); n != 1 {
 		t.Fatalf("the column drew %d doors onto the page, want 1:\n%s", n, rail)
+	}
+	painted := strings.Join(railText(a, a.viewHeight()), "\n")
+	if !strings.Contains(painted, a.pal.data(taskSheetKey)) ||
+		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
+		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)
 	}
 	// IT SITS ABOVE THE COLUMN'S OWN DOOR. The way out of anything is the last
 	// line of it, and this one is a way further in.
@@ -847,8 +852,8 @@ func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 		t.Fatal("the permanent column did not stand on an empty session")
 	}
 	bare := rosterText(a, a.viewHeight())
-	if !strings.Contains(bare, railEmptyWord) {
-		t.Fatalf("an empty column did not say what it is for:\n%s", bare)
+	if strings.Contains(bare, "no tasks yet") {
+		t.Fatalf("an empty column announced its emptiness:\n%s", bare)
 	}
 	for _, gone := range []string{taskSheetPastHint, taskSheetMoreHint} {
 		if strings.Contains(bare, gone) {
@@ -862,8 +867,8 @@ func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
 	rail := rosterText(a, a.viewHeight())
-	if !strings.Contains(rail, railEmptyWord) {
-		t.Fatalf("a conversation that has run nothing stopped saying so:\n%s", rail)
+	if strings.Contains(rail, "no tasks yet") {
+		t.Fatalf("a record-only column announced this session's emptiness:\n%s", rail)
 	}
 	if !strings.Contains(rail, taskSheetPastHint) {
 		t.Fatalf("the record-only column offered no door onto the record:\n%s", rail)
@@ -871,15 +876,10 @@ func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 	if strings.Contains(rail, "Port the parser") {
 		t.Fatalf("the column drew a row of the record:\n%s", rail)
 	}
-	// The section label opens the column and the empty label sits directly under
-	// it: there is nothing above either of them for a blank row to separate them
-	// from (margin.go's [app.marginHead]).
-	rows := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	if !strings.Contains(rows[0], marginTasksWord) {
-		t.Fatalf("the section label does not open the column: %q", rows[0])
-	}
-	if !strings.Contains(rows[1], railEmptyWord) {
-		t.Fatalf("the label does not follow its section's heading: %q", rows[1])
+	for _, absent := range []string{marginTasksWord, marginStandWord} {
+		if strings.Contains(rail, absent) {
+			t.Fatalf("the empty column draws the empty section label %q:\n%s", absent, rail)
+		}
 	}
 
 	// ctrl+g still closes a column standing on the label alone — it is thirty

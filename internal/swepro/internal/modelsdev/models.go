@@ -16,9 +16,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
 )
 
@@ -410,11 +410,11 @@ func (client *Client) withFileLock(ctx context.Context, fn func() error) error {
 	timer := time.NewTimer(client.options.LockTimeout)
 	defer timer.Stop()
 	for {
-		err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err := filelock.Lock(lock, true, true)
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+		if !filelock.IsBusy(err) {
 			return err
 		}
 		select {
@@ -425,7 +425,7 @@ func (client *Client) withFileLock(ctx context.Context, fn func() error) error {
 		case <-time.After(client.options.LockPoll):
 		}
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	defer filelock.Unlock(lock) //nolint:errcheck
 	return fn()
 }
 
