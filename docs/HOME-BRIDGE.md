@@ -60,7 +60,11 @@ aforge                                        on watch · 4 orders · $1.10 toda
   something destructive, which pins to the top for as long as it waits.
 - **HOME OPENS AT REST.** The cursor starts on no row, so the first thing a
   person sees is the machine's card — the morning glance is the default view,
-  not a state you navigate to. The first key lands in `needs you`.
+  not a state you navigate to. **The first `↓` lands at the top of the center
+  list** — FOCUS WAKES AT THE CENTER OF MASS (docs/DESIGN-LANGUAGE.md): the
+  cursor wakes in the column the layout declares primary, in the same place
+  every time, whatever the zones happen to hold. `tab` — the named triage key —
+  enters `needs you` from rest, and `←` crosses into the zones from the list.
 - **THE DOOR LAW HOLDS.** Typing anywhere is still a new conversation. Steering
   a row means entering it; the strip answers cards, it does not compose.
 
