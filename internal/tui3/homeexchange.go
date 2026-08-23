@@ -1379,7 +1379,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 				// where the card started plus where the renderer put them.
 				ex.cardAt = at + row.card.choiceRow
 			}
-			out = append(out, "")
+			out = separated(out)
 			continue
 		}
 		out = append(out, a.exchangeRowLines(row, width, pal)...)
@@ -1391,7 +1391,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 		out = append(out, a.exchangeLive(ex, width, pal)...)
 	}
 	if ex.offering() {
-		out = append(out, "")
+		out = separated(out)
 		ex.offerAt = len(out)
 		out = append(out, overlayRow(homeStartGlyph+" "+homeContinueWord, "",
 			ex.focused && ex.onOffer, false, ex.hover, width, pal))

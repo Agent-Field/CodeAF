@@ -138,7 +138,7 @@ func findWord(value []rune, at int, word string) (from, to int, ok bool) {
 // entryNote). It is a constant because both forms are two cells by construction:
 // the continuation row is the lead's width in spaces, so a fact's column inside
 // the sentence is the same on every row of the note.
-const noteLead = 2
+const noteLead = spacingConversationLead
 
 // shifted moves a set of spans right by n cells, for a caller that found them in
 // a line and is about to paint that line with something in front of it.
