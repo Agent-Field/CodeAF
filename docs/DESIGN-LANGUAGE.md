@@ -41,6 +41,37 @@ said nothing.
 with the mouse or with `↓`, the row they are on is the row they are on, and it
 does not change appearance depending on which hand they used.
 
+### THE SECTION HOLDING THE CURSOR MARKS ITS OWN HEADING
+
+> **The heading of the section the cursor is standing in wears a ground, and one
+> heading per frame wears it.**
+
+The ladder's steps mark a ROW, and a screen made of several regions — home's
+three columns are the case that provoked this — needs the same fact one scale
+up. The cursor step is deliberately faint, so a frame where every region is at
+rest and one row somewhere in it is faintly lifted answers *which row* and never
+*which region*. Saying it twice, at two scales, in the channel the ladder already
+has, costs no new colour and no fifth step: the block and the row inside it.
+
+**The heading takes the cursor step, not a rung of its own.** What a marked
+heading says is "the cursor is in here", which is the cursor step's own sentence
+read at the scale of a section. It is senior to the row it stands over by being
+NEW — a heading has never worn a ground at all — rather than by being louder.
+Where the selected step is unspent on a screen it is the better candidate, being
+the container of the chosen thing; on home it is not, because the conversation
+this terminal holds already wears it in the same column, and one step carrying
+two meanings is what the refusal of a fifth step exists to prevent.
+
+**One heading, or none.** Two marked headings would be two answers to a question
+that has one. None at rest, and none while a list is being filtered — a heading
+over a search result groups rows rather than naming a place a person is standing.
+And it follows the KEYBOARD only: the pointer previews without selecting, so a
+hover moves the card and never the mark.
+
+**The heading's text does not move.** Headings are furniture and stay `muted` or
+`dim` — THE ACCENT BUDGET below forbids lighting them, and a lit heading is the
+same defect arriving from the other side. The ground alone carries the fact.
+
 ### THE EMPHASIS LAW
 
 > **A row is emphasized by raising its ground and turning its leading text

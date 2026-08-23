@@ -3542,9 +3542,11 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 	//
 	// THE CURSOR AND THE POINTER ARE SPARED wherever they land. Both already wear
 	// a background of their own ([overlayRow]), and the row a person is standing
-	// on is the one row a gradient must not take part in.
+	// on is the one row a gradient must not take part in. THE MARKED HEADING IS
+	// SPARED FOR THE SAME REASON — it wears the cursor step too, and a ground with
+	// a gradient run over it is a ground that reads as a smudge (homesection.go).
 	for i := range drawn {
-		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover {
+		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover || h.marksSection(drawn[i].hit) {
 			continue
 		}
 		if stop := tailStop(i, len(drawn), at < end); stop >= 0 {
@@ -3572,7 +3574,12 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// of them now, so there is nothing to mark. The word survives one floor
 		// down, on the rule over the folded block, where it is about the SHAPE of
 		// the list and not about a door ([homeElsewhereRuleWord]).
-		return "  " + pal.dim(fit(line.project, width-2))
+		//
+		// AND IT WEARS A GROUND WHILE THE CURSOR IS SOMEWHERE INSIDE THIS PROJECT
+		// — the one heading a frame marks, saying which block the keyboard is
+		// standing in (homesection.go holds the whole law). The word itself does
+		// not change tier: a heading stays dim, and the ground alone moves.
+		return h.sectionGround("  "+pal.dim(fit(line.project, width-2)), at, width, pal)
 	case homeQuiet:
 		// THE SAME FOLD MARK THE TASK COLUMN USES (task.go's [glyphShut] and
 		// [glyphOpen]), because it is the same gesture over the same kind of
@@ -3595,7 +3602,11 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// tried and could not say that: the folded lines simply read as a fourth
 		// project with very short rows. The word rides the rule rather than
 		// sitting on a heading of its own, so the section costs one row.
-		return pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))
+		//
+		// IT IS A HEADING FOR THE PURPOSE OF THE ONE MARKED SECTION, because it is
+		// the only thing naming the block under it: a cursor down among the folded
+		// projects marks this rule (homesection.go).
+		return h.sectionGround(pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width)), at, width, pal)
 	case homeProject:
 		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
 		// a whole project: `▸` while it is one line, `▾` once it is a block.
