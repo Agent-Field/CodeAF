@@ -668,7 +668,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// once for the whole note and spent across its wrapped rows, because the
 		// data are in the order of the sentence and not of the rows the frame
 		// happened to break it into.
+		//
+		// A NOTE WHOSE INDENTATION IS ITS MEANING IS CUT RATHER THAN RE-FLOWED
+		// ([app.noteBlock]). The one shape that asks for it is a subharness card,
+		// where the indent under a lane is what says the step belongs to that lane
+		// — and [wrap] laid every one of those flat against the margin.
 		body := wrap(e.text, width-2)
+		if e.block {
+			body = noteBlockLines(e.text, width-2)
+		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
 		for i, line := range body {
@@ -2005,7 +2013,7 @@ func (a *app) stateWord() (string, string) {
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
 	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
+	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
 	word := a.state.String()
@@ -2651,6 +2659,25 @@ func wrap(text string, width int) []string {
 			continue
 		}
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
+	}
+	return out
+}
+
+// noteBlockLines is [wrap]'s opposite number for a block whose own line
+// structure is the meaning: the text's own lines, each one FITTED to the width
+// and none of them re-flowed.
+//
+// It is the same shape a fenced block already gets (markdown.go says why in the
+// same words: indentation is content, and a paragraph filler does not know it).
+// The difference is only which door the text came through — a card printed into
+// the conversation by a slash command arrives as a note rather than as prose
+// from the model.
+func noteBlockLines(text string, width int) []string {
+	text = strings.ReplaceAll(text, "\t", "    ")
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, fit(line, width))
 	}
 	return out
 }

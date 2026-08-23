@@ -223,16 +223,44 @@ func verifySentence(v Verify) string {
 // Card is the harness as a person reads it, as one block of text.
 func Card(h Harness) string { return strings.Join(CardLines(h), "\n") }
 
+// CardBlock is the card in the three parts a surface may want to paint
+// differently: what this thing is, what it does, and what it is allowed to do.
+//
+// It exists because the feed's design card is a QUESTION — somebody is about to
+// keep this or drop it — and on that block the steps are the thing being read
+// while the bounds are the quiet aside under them. A surface that wanted those
+// two tiers had only one way to get them before, which was to re-spell the card
+// itself; that second rendering is the drift [Card] is written against.
+//
+// THE PARTS ARE THE WORDS AND THE JOINING IS NOT. Where the blank lines go is
+// [CardLines]'s, said once, so a surface that lays the parts out its own way and
+// a surface that prints the block get the same sentences either way.
+type CardBlock struct {
+	// Head is the identity line: what it is called, which version, what it is for.
+	Head string
+	// Steps is the run in the order it runs, nested lanes and all.
+	Steps []string
+	// Foot is the bounds, one quiet sentence at a time. It is empty for a recipe
+	// that decides nothing, checks nothing and was tried on nothing.
+	Foot []string
+}
+
+// CardParts is that reading of one harness.
+func CardParts(h Harness) CardBlock {
+	h = h.Normalize()
+	return CardBlock{Head: cardHead(h), Steps: stepLines(h.Program), Foot: cardFoot(h)}
+}
+
 // CardLines is the card, one string per line, unstyled. Nothing here is padded
 // to a width: the surfaces that care about width own their own fitting, and a
 // renderer that guessed at one would be guessing for the narrowest reader.
 func CardLines(h Harness) []string {
-	h = h.Normalize()
-	lines := []string{cardHead(h), ""}
-	lines = append(lines, stepLines(h.Program)...)
-	if foot := cardFoot(h); len(foot) > 0 {
+	part := CardParts(h)
+	lines := []string{part.Head, ""}
+	lines = append(lines, part.Steps...)
+	if len(part.Foot) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, foot...)
+		lines = append(lines, part.Foot...)
 	}
 	return lines
 }

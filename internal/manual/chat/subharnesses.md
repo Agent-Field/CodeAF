@@ -36,16 +36,29 @@ message box, at most **12** lines, with the filter box in the box's own place:
 
 ```
 flake-triage      chase a flaky test · up to 15m · built-in
-weekly-update     the Monday note for the team · yours · ran 2d ago
+weekly-update     the Monday note for the team · yours · yesterday · finished · $0.12
 ```
 
 The left is the name. The dim tail is what it is for, then how long that kind of work is
-allowed to take, then where it came from, then when it last ran.
+allowed to take, then where it came from, then the last run.
+
+**The last run reads `when · how it went`**, and a cost after it when one was reported:
+`yesterday · finished · $0.12`, `1h · incomplete`, `10m · finished`. A run that did not
+reach the end it promised is `incomplete` and is never called a failure. `/harness` spells
+the same fact about the same program in the same words — one system, two doors, one
+vocabulary.
 
 **Anything nobody said is simply not drawn.** A subharness that has never run carries no
 last-run note at all — not `never run`, not `0 runs`. One whose manifest declares no
-budget shape draws no time. A gap in a row is readable; a zero that has to be explained is
-not.
+budget shape draws no time. A cost nobody reported is not drawn either, because a provider
+that published no figure left "nobody said" behind and not "free". A gap in a row is
+readable; a zero that has to be explained is not.
+
+**A run started from `/harness` shows up here too.** The two doors read one history: a
+program you had designed keeps a full trace of every run beside its page, a bundle keeps
+a one-line note beside itself, and the row answers with whichever of the two is newer. So
+running `triage-flake` from the `/harness` picker this morning is what this row says about
+it this afternoon.
 
 **Typing narrows it** over three things: the name, the one line, and the **cues** — the
 words somebody wrote down at design time meaning "this is that kind of work". That is what
@@ -116,6 +129,81 @@ else to fill in, because that is all a page can be handed.
 The row draws no time and the card promises no shape: a page states neither, and drawing
 either would be a claim the design never made. From `run it` it is a task like every other
 run — a roster row, a room where its steps land as they happen, a journal, and a `✕`.
+
+## When aforge offers one — the card it raises by itself
+
+You do not have to go looking. When what you are asking for is the shape of work a saved
+program already does, aforge offers it — and the offer is **this same intake card**, raised
+in front of you with a line saying why:
+
+```
+flake-triage · chase a flaky test · up to 15m · built-in
+this looks like flake-triage: the brief and a failing test name are both here
+▲ test              the failing test's name
+  branch            main
+  [ 1 run it ]  [ 0 no ]
+  it runs as a task beside this conversation — you can watch it, answer it, stop it
+```
+
+**The reason line is aforge's own**, in your terms and about what matched — not a
+description of the program, which you can read on the line above it.
+
+**The fields arrive already filled in** from what has been said. What was read out of the
+conversation is drawn brighter, the schema's defaults stay dim, and `▲` still marks
+anything required that nobody has answered. You change what is wrong and fill what is
+missing exactly as on any other intake card.
+
+**The last row is the answers**, and that is the only difference from the card you open
+yourself. `run it` starts it; `no` ends it and nothing happens. Under the row is one line
+saying what the answer under the cursor will actually do:
+
+- on `run it`: `it runs as a task beside this conversation — you can watch it, answer it, stop it`
+- on `no`: `nothing runs, and we carry on here`
+
+**Nothing runs because aforge suggested it.** There is no countdown that says yes for you,
+no default and no "you did not object": the only thing that starts a run is you answering
+`run it`.
+
+While the card is up, the status line reads `waiting · your call`. Every other window on
+this machine, and `/home`, sees this conversation as `waiting on you`, with the line
+`wants to run <name>` under it.
+
+## Keys on the card aforge raised
+
+| Key | What it does |
+| --- | --- |
+| `←` / `→` | walk the answers |
+| `enter` | take the answer under the cursor |
+| `1` | run it, from anywhere on the card |
+| `0` or `esc` | no — nothing runs |
+| `↑` / `↓` | move between the fields and the answers |
+| `enter` on a field | open the box and type its value |
+
+The hint under the answers reads `←→ · enter takes it · 0 or esc, no`.
+
+**`esc` here is a no and not a way out.** A turn is waiting on this question, so the key
+that dismisses every other overlay answers this one instead — nothing runs, and the
+conversation carries on immediately.
+
+**If you never answer it, nothing runs.** The offer holds the turn for at most **15
+minutes**; when that runs out the card comes down by itself, the line under the
+conversation reads `<name> · the offer ended, nothing ran`, and the conversation carries
+on. Interrupting the turn with `ctrl+c` ends it the same way. That window is a bound on the
+turn, not a deadline on you: it can only ever end in nothing having run.
+
+**Switching to another conversation does not answer it.** The card is put away with the
+conversation and is there again when you come back to it, filled in as it was raised; a
+conversation waiting on one shows `waiting on you` on `/home` and in every other window
+meanwhile.
+
+**aforge offers at most one at a time, and stays quiet when it is unsure.** An offer is
+only raised when the program's own name or one of its cues actually appears in what has
+been said; a weak match raises nothing at all, because a suggestion you have to swat away
+costs more than one you never got.
+
+**There are no offers where the card cannot be drawn.** Over `--host`, in a headless
+`--once` run, and inside a task, aforge is not given the ability at all rather than
+offering something nobody could answer.
 
 ## The intake card — filling in what a subharness needs
 
@@ -197,15 +285,14 @@ Stated plainly, because the surface is finished before everything behind it is.
 - **Running one needs the launching door wired.** On a build where it is not, `run it`
   answers with the door's own sentence: `did not start · there is nothing here to run`.
   Nothing is half-done and nothing is spent.
-- **Nothing fills the card in for you yet.** Every field opens blank and every required
-  field opens marked, which is the honest card for `/subharness <name>` typed cold.
-  Reading the conversation and filling the schema from it is chat's job and lands with the
-  session side; when it does, the answered fields simply arrive already stated.
-- **No last-run notes yet.** They come from the run journals the store keeps beside each
-  program, so until that lands every row draws nothing there — which is exactly what a
-  subharness nobody has run should draw.
-- **aforge does not offer one by itself yet.** When it does, it will raise this same card
-  with a line saying why it matched. Nothing ever runs without the card.
+- **A card opened cold can still be blank.** The fields are filled from what has been said
+  in this conversation, so a card opened before anything relevant has been said — or one
+  whose required fields nothing answers — opens with those fields marked `▲` and waiting
+  for you. That is the honest card, not a fault.
+- **An offer cannot reach you everywhere.** aforge offering one by itself is the card
+  described above, and it is raised only where a window can draw it: not over `--host`,
+  not in a headless `--once` run, not inside a task. In those places the ability is absent
+  rather than present and failing.
 - **No subharnesses over `--host`.** The registry lives on the far machine, so the command
   answers `no subharnesses here yet — a subharness is a saved program for work that comes
   round again.` and opens nothing.

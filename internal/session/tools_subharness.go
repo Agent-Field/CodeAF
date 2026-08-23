@@ -49,6 +49,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -108,8 +109,18 @@ func (a *Agent) subharnessTools() []bare.Tool {
 // with nothing to offer — `linear` is what you get when you pick nothing, never
 // something anybody proposes — and a model handed a propose verb over an empty
 // list would offer programs it invented.
+//
+// AND NOBODY HOLDING THE HARNESS LANE IS NO VERB EITHER, which is the half this
+// gate was missing for as long as the card had no door. AskConsent says a
+// surface answers the TURN'S questions; this card is not one of them — it goes
+// out on the standing harness lane ([Agent.emitHarness]) — so a build where
+// that lane reaches nobody would raise a card into an empty room, hold the turn
+// for a quarter of an hour, and end with nothing having run. [Config.HarnessCards]
+// is the door's own statement that somebody is on the other end of it, and it is
+// exactly how the design card is switched off over a connection (cmd/aforge's
+// engine.go).
 func (a *Agent) canProposeSubharness() bool {
-	return a.config.AskConsent && len(a.SubharnessList()) > 0
+	return a.config.AskConsent && a.config.HarnessCards && len(a.SubharnessList()) > 0
 }
 
 // proposeSubharnessTool raises one card and waits for its answer.
@@ -286,6 +297,43 @@ type subharnessConsent struct {
 	input json.RawMessage
 }
 
+// subharnessOffer is one standing proposal: the channel its answer arrives on,
+// the program's name for the line another window reads
+// ([Agent.waitingOnPerson]), and THE CARD EVENT ITSELF.
+//
+// The card is kept for the reason a design card is kept beside it
+// ([Agent.WatchHarnessDesigns]): it is emitted once, and a surface that
+// subscribes after that moment — a conversation somebody put behind home and
+// came back to, a window that opened while the turn was already blocked — would
+// otherwise be waiting on a question that is already up.
+type subharnessOffer struct {
+	answers chan subharnessConsent
+	name    string
+	card    Event
+}
+
+// standingSubharnessCardsLocked is every proposal still waiting on somebody, as
+// the events that raised them, oldest first. a.mu is held.
+//
+// THE ORDER IS THE ORDER THEY WERE ASKED IN, which a map does not have: two
+// cards replayed to a returning surface in whatever order the runtime felt like
+// would put the older question second on a screen that answers them in turn.
+func (a *Agent) standingSubharnessCardsLocked() []Event {
+	if len(a.subharnessOffers) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(a.subharnessOffers))
+	for id := range a.subharnessOffers {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	cards := make([]Event, 0, len(ids))
+	for _, id := range ids {
+		cards = append(cards, a.subharnessOffers[id].card)
+	}
+	return cards
+}
+
 // askSubharnessCard raises one intake card and waits for the person.
 //
 // It is [Agent.askHarness] with the payload changed and the clock's meaning
@@ -296,6 +344,12 @@ type subharnessConsent struct {
 func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (subharnessConsent, error) {
 	answers := make(chan subharnessConsent, 1)
 	carried := card
+	raised := Event{
+		Kind:       EventSubharnessProposal,
+		Text:       card.Manifest.Name,
+		Hint:       strings.TrimSpace(card.Manifest.Purpose),
+		Subharness: &carried,
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -303,20 +357,20 @@ func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (sub
 	}
 	a.subharnessSeq++
 	id := a.subharnessSeq
+	raised.ID = id
 	if a.subharnessOffers == nil {
-		a.subharnessOffers = make(map[uint64]chan subharnessConsent, 1)
+		a.subharnessOffers = make(map[uint64]*subharnessOffer, 1)
 	}
-	a.subharnessOffers[id] = answers
+	a.subharnessOffers[id] = &subharnessOffer{answers: answers, name: card.Manifest.Name, card: raised}
 	a.mu.Unlock()
+	// THE CARD COMES DOWN WITH THE TOOL CALL. Every road out of this function
+	// but an answer — the window, an interrupted turn — leaves a question on
+	// somebody's screen that nothing is listening to any more, so the withdrawal
+	// is emitted from the same defer that forgets the offer and by nothing else
+	// ([Agent.forgetSubharnessOffer]).
 	defer a.forgetSubharnessOffer(id)
 
-	a.emitHarness(Event{
-		Kind:       EventSubharnessProposal,
-		ID:         id,
-		Text:       card.Manifest.Name,
-		Hint:       strings.TrimSpace(card.Manifest.Purpose),
-		Subharness: &carried,
-	})
+	a.emitHarness(raised)
 
 	timer := time.NewTimer(subharnessCardWindow)
 	defer timer.Stop()
@@ -359,17 +413,29 @@ func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (sub
 // late answer.
 func (a *Agent) ResolveSubharness(id uint64, run bool, input json.RawMessage) {
 	a.mu.Lock()
-	answers := a.subharnessOffers[id]
+	offer := a.subharnessOffers[id]
 	delete(a.subharnessOffers, id)
 	a.mu.Unlock()
-	if answers == nil {
+	if offer == nil {
 		return
 	}
-	answers <- subharnessConsent{run: run, input: input}
+	offer.answers <- subharnessConsent{run: run, input: input}
 }
 
+// forgetSubharnessOffer drops one standing offer and, WHERE IT WAS STILL
+// STANDING, tells whoever is drawing it to take the card down.
+//
+// An offer that was answered is already out of the map by the time this runs
+// ([Agent.ResolveSubharness] deletes it), so the withdrawal is emitted on
+// exactly the endings where nobody answered — the window, an interrupted turn —
+// and never as an echo of somebody's own decision.
 func (a *Agent) forgetSubharnessOffer(id uint64) {
 	a.mu.Lock()
+	offer := a.subharnessOffers[id]
 	delete(a.subharnessOffers, id)
 	a.mu.Unlock()
+	if offer == nil {
+		return
+	}
+	a.emitHarness(Event{Kind: EventSubharnessProposalOff, ID: id, Text: offer.name})
 }

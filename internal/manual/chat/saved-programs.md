@@ -59,6 +59,11 @@ Every saved program declares what it takes. The card shows each field with what 
 You change what is wrong, fill what is missing, and confirm. Confirming is what launches
 it. The same card opens whether the chat proposed the program or you picked it yourself.
 
+On a card the chat raised, the last row is its two answers — `run it` and `no` — walked
+with `←` / `→` and taken with `enter`, with `1` and `0` as the direct keys and `esc` as
+another way of saying no. Under them is a line saying what the answer you are on will do.
+*Subharnesses* is the page with the whole card and every key on it.
+
 ## What running one looks like — it is a task with a number
 
 A run is a **task**, exactly like any other piece of work aforge hands out: a row on the

@@ -679,10 +679,11 @@ type personAsk struct {
 // been stopped on a question for ten minutes.
 //
 // EVERY LANE A PERSON CAN BE ASKED ON COUNTS, not only the approval gate: a
-// session stopped on a connect question, a sub-harness offer, a task proposal
-// or a standing card is just as stuck, and a surface that only knew about
-// consent would leave those windows looking idle while they waited (consent.go,
-// connect.go, harness.go, task.go, tools_standing.go each hold one of these).
+// session stopped on a connect question, a sub-harness offer, a task proposal,
+// a standing card or an intake card chat raised for a saved program is just as
+// stuck, and a surface that only knew about consent would leave those windows
+// looking idle while they waited (consent.go, connect.go, harness.go, task.go,
+// tools_standing.go, tools_subharness.go each hold one of these).
 //
 // THE STANDING CARD IS THE ONE LANE THAT WAITS FOREVER — it carries no clock at
 // all, by law (standing_contract.go) — so a window left on one said "idle" for
@@ -704,6 +705,16 @@ func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
 		len(a.taskAnswers) > 0 || len(a.standingAnswers) > 0
+	// THE SUBHARNESS PROPOSAL IS READ SEPARATELY BECAUSE IT BRINGS ITS OWN
+	// WORDS. It banks no card at the desk — no other window can answer it, so
+	// offering it there would be a chip that does nothing — and a lane counted
+	// among the others above would leave home saying `waiting on you` with
+	// nothing after it, which is the exact defect the fuel gate below was fixed
+	// for. Oldest first, because that is the one being answered next.
+	offered := ""
+	if cards := a.standingSubharnessCardsLocked(); len(cards) > 0 {
+		offered = cards[0].Text
+	}
 	runs := make([]*orchestration, 0, len(a.orchestrations))
 	for _, live := range a.orchestrations {
 		runs = append(runs, live)
@@ -712,6 +723,11 @@ func (a *Agent) waitingOnPerson() personAsk {
 
 	if asked {
 		return personAsk{waiting: true, reason: a.presenceAsk().Text}
+	}
+	if offered != "" {
+		// The card's own line, in the vocabulary every other lane uses for the
+		// same shape of question (task.go's `wants to start a task: …`).
+		return personAsk{waiting: true, reason: subharnessOfferLine + offered}
 	}
 	for _, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {
@@ -731,9 +747,16 @@ func (a *Agent) waitingOnPerson() personAsk {
 // the wording changes there is one place here to change with it.
 const fuelGateLine = "out of fuel"
 
+// subharnessOfferLine opens the sentence a session says while an intake card
+// chat raised is waiting to be answered, and the program's name closes it. It is
+// a constant for [fuelGateLine]'s reason, and it is the words a person would use
+// — nothing here says "proposal", "card" or "offer".
+const subharnessOfferLine = "wants to run "
+
 // NeedsPerson reports whether this conversation is stopped on a question only a
 // person can answer — an approval, a connect offer, a sub-harness offer, a task
-// proposal, a standing card, or an adaptive run waiting at its fuel gate.
+// proposal, a standing card, an intake card chat raised for a saved program, or
+// an adaptive run waiting at its fuel gate.
 //
 // IT IS THE PRESENCE FILE'S OWN TEST, ASKED DIRECTLY. A surface in this process
 // must never answer it by reading its own presence file back: that file is

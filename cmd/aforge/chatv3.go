@@ -174,6 +174,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
+	// AND THAT SURFACE HOLDS THE HARNESS LANE, which is a second fact and not the
+	// same one: the lane is a standing subscription opened on the agent itself
+	// (internal/tui3's watchDesigns), so it exists only where the surface and the
+	// session are in one process. It is what lets chat offer a saved program with
+	// an intake card (internal/session's canProposeSubharness); a conversation
+	// held over a connection sets AskConsent and NOT this, because the card has no
+	// road to the far end (engine.go says the same about the design card).
+	cfg.HarnessCards = true
 
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
@@ -505,7 +513,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, models, chosen, workspace)
+	subharnesses := v3Subharnesses(settings, models, chosen, workspace, harnesses)
 
 	cfg := session.Config{
 		Workspace:      workspace,
