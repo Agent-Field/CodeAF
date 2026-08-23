@@ -552,6 +552,14 @@ type taskRecovery struct {
 	// ([interrupt]'s Offer branch). Counted apart from designs because the two
 	// sentences are opposites — one kept everything, the other kept nothing.
 	asking int
+	// runs is a SUBHARNESS that was running when the process ended. It is
+	// counted apart from interrupted for the reason designs are, and its answer
+	// is the design's: a run does not resume, because the input it was given is
+	// not in the checkpoint and nothing may guess at it ([interrupt]). It is not
+	// counted with designs either — "a design did not finish" and "a run did not
+	// finish" are two different pieces of news, and one sentence for both would
+	// send somebody looking at the wrong thing.
+	runs int
 	// branches are the interrupted nodes' branches that are still on disk. They
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
@@ -564,7 +572,7 @@ type taskRecovery struct {
 // any reports whether the recovery restored anything at all. A checkpoint that
 // held an empty graph — a session that proposed nothing — is not news.
 func (r taskRecovery) any() bool {
-	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.asking+r.waiting > 0
+	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.asking+r.runs+r.waiting > 0
 }
 
 // note is the ONE line the person and the model read about a resumed graph,
@@ -609,6 +617,13 @@ func (r taskRecovery) note() string {
 			word = " designs ask again"
 		}
 		parts = append(parts, strconv.Itoa(r.asking)+word)
+	}
+	if r.runs > 0 {
+		word := " run did not finish"
+		if r.runs > 1 {
+			word = " runs did not finish"
+		}
+		parts = append(parts, strconv.Itoa(r.runs)+word)
 	}
 	if r.waiting > 0 {
 		parts = append(parts, strconv.Itoa(r.waiting)+" waiting")
@@ -687,6 +702,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 		if record.State == TaskRunning {
 			var kept string
 			harness := record.Kind == TaskKindHarness
+			running := record.Kind == TaskKindSubharness
 			record, kept = interrupt(record, workspace)
 			// A DESIGN IS COUNTED APART, and which way it went is read off what
 			// the interrupt made of it: back on the frontier with its page (it
@@ -698,6 +714,8 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 				recovery.asking++
 			case harness:
 				recovery.designs++
+			case running:
+				recovery.runs++
 			default:
 				recovery.interrupted++
 			}
@@ -880,6 +898,25 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// was still being written and nothing was kept.
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
+		return record, ""
+	}
+
+	if record.Kind == TaskKindSubharness {
+		// A RUN IS NEVER RE-RUN, and this is the line that makes it true.
+		//
+		// The argument is the design's one above, arrived at from the other side.
+		// What tells [Agent.runTaskNode] to hand a node to a program rather than
+		// to a worker is [taskSpec.run], and that field is not in the checkpoint:
+		// a run's input is the material of one conversation, and there is no
+		// finished-page record here that could rebuild it. So a run put back on
+		// the frontier is a node the next session would run as an ORDINARY WORKER
+		// in a worktree against a brief nobody wrote, spending real money on work
+		// nobody asked for.
+		//
+		// It settles instead, saying the one thing that is true of it: it did not
+		// finish, and what it got through is in its journal.
+		record.State = TaskFailed
+		record.Report = subharnessInterruptedReport
 		return record, ""
 	}
 

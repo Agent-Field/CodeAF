@@ -27,6 +27,14 @@ import (
 )
 
 func runExecute(args []string) error {
+	// `aforge run subharness <name>` is a different program from `aforge run
+	// <graph.json>` and is handed over before a single flag is read, because the
+	// two share no flag at all: one executes a graph written to a file, the other
+	// runs one typed program once (subharness_run.go). Everything below this line
+	// is byte for byte what it was.
+	if len(args) > 0 && args[0] == "subharness" {
+		return runSubharnessCommand(args[1:])
+	}
 	flags := flag.NewFlagSet("run", flag.ContinueOnError)
 	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
 	output := flags.String("o", "", "write the completed graph as JSON to this file")
