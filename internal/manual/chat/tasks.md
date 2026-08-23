@@ -515,6 +515,18 @@ open. Settled families and families containing only parked work start folded to 
 root; the root then carries the family's aggregate state glyph and a `▸ +N` badge for the
 hidden descendants.
 
+Live children working inside a task are a smaller preview under that task's row, unfolded
+by default so the hands at work are visible. Each child is one mark and a short title:
+running work moves on the rail's one spinner, waiting work uses a dim `·`, and work that
+just finished uses `✓`. The preview draws at most five child rows; if more exist, one dim
+`view more · +N` row follows them. Press that row, or press → on the task, to enter the
+task's room and see the full work. Press ← to fold the preview. A fold is remembered for
+the rest of the session.
+
+When two or more workers are running anywhere in the live work, the section label carries
+the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
+zero or one running worker there is no tail at all, so the label remains `tasks`.
+
 A task's row opens with two glyphs answering two questions: its state, which changes, and
 its own identity mark, which never does. Then the name, then its id as `#7`, dim, at the far
 end — and the id stands down when the name would be left under 12 cells.
