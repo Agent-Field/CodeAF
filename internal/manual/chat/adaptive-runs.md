@@ -165,8 +165,27 @@ assembling`, and no way to tell which was which. The goal is still read in full 
 run's own page and on the node's card; it is simply not what the row is called.
 
 If a node ever arrives without a name — an older planner, a reply that lost the field —
-the row is named from the node's **id** instead, which is already a short slug the planner
-minted: `token-bucket` reads as `token bucket`. It is never cut out of the goal again.
+the row is named from the node's **id** instead, when that id has words in it: a slug like
+`token-bucket` reads as `token bucket`. It is never cut out of the goal again.
+
+## Why a run's rows read `r1`, `r2`, `synth` — ids where names should be, and what happens now
+
+**They do not any more, and an id is never what a row is called.** Half the ids a planner
+mints are its own filing rather than language — `r1` through `r7` with `synth` at the foot
+of them — and spelling one of those out leaves you with `r1`. So a node whose title is
+missing, or is nothing but its own id over again, is sent to the same small naming model
+every other piece of work in aforge is named by: two or three lowercase words, read off
+what the node was actually asked to do.
+
+That call is made the moment the node joins the run and **nothing waits for it** — the
+work is already launchable, and the answer lands a second or two later. In that gap the
+row is drawn as `task 19` — aforge's own word for work nobody has named yet — and renames
+itself when the name arrives. You may see one flicker past on a fast node. What you will
+not see is `r1`: a raw id on a row looks like an answer and is not one.
+
+If the naming call cannot answer at all — the provider is having a bad minute, the reply
+comes back as a path — the row falls back to the id, because a row with a poor name is
+still better than a row missing from your project's history.
 
 ## Why nothing seems to happen for the first minute of a run — `forming the work`
 

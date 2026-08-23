@@ -91,6 +91,26 @@ type Options struct {
 	// The slice is the SNAPSHOT'S OWN and is read-only to the callback: writing
 	// through it would edit what the next [Orchestrator.Snapshot] hands back.
 	OnNodes func(nodes []NodeStatus)
+
+	// Name is asked for the two or three words a node is called when the planner
+	// did not write them ([NodeNeedsName] asks the question). It is the BACKSTOP
+	// on the law that every row a person reads carries a name: the law asks the
+	// planner for one on the call it adds the node, and a planner that answers
+	// `{"id": "r1", "goal": …}` anyway is a fact about models rather than a fault
+	// this package can refuse — dropping the amendment would throw away the
+	// planner's judgement about what work exists to buy three words.
+	//
+	// THIS PACKAGE DOES NOT KNOW WHAT A MODEL IS, which is why it is a seam. The
+	// session wires it to the one small namer everything else in the product is
+	// named by (internal/session's taskname.go), so a run's rows and an admitted
+	// task's row are named by the same call and read as one column.
+	//
+	// IT IS CALLED ON A GOROUTINE OF ITS OWN, off the loop, never under the lock,
+	// and it may take seconds: NOTHING WAITS FOR IT. The node is on the frontier
+	// and launchable before it is asked, the row is already drawn, and the answer
+	// arrives as a rename ([Orchestrator.nameNode]). A seam that is nil, or one
+	// that answers nothing, leaves the node named the way [NodeTitle] names it.
+	Name func(ctx context.Context, n Node) string
 }
 
 // New builds a run. Nothing starts until Run is called.
@@ -111,6 +131,7 @@ func New(goal string, planner Planner, exec Executor, opts Options) *Orchestrato
 		onFuel:       opts.OnFuel,
 		onPause:      opts.OnPause,
 		onNodes:      opts.OnNodes,
+		namer:        opts.Name,
 		index:        map[string]*NodeStatus{},
 		fuel:         Fuel{Cap: opts.Cap},
 		gate:         make(chan string, 1),
@@ -708,6 +729,9 @@ type Orchestrator struct {
 	onFuel       func(Fuel)
 	onPause      func(Fuel)
 	onNodes      func([]NodeStatus)
+	// namer is [Options.Name]: what a nameless node is named by. Nil is a run
+	// with nobody to ask, and every node keeps the name [NodeTitle] built it.
+	namer func(context.Context, Node) string
 
 	// gate carries the one answer a paused run is waiting for. It is buffered
 	// to one so [Orchestrator.Resolve] never blocks a surface's goroutine, and

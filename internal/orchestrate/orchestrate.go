@@ -46,6 +46,13 @@ type Node struct {
 	// THE PLANNER FILLS IT, and a node that arrives without one is named from
 	// its ID — which is already a slug the planner minted as a name — by
 	// [NodeTitle]. Nothing anywhere derives a title by truncating prose.
+	//
+	// AND IT IS THE ONE FIELD EVERY SURFACE READS. [Orchestrator.apply] settles
+	// it once, at the only place the frontier is written, so a row is drawn from
+	// this field rather than re-derived from the ID somewhere downstream: two
+	// derivations of one name are two names the moment one of them learns
+	// something the other did not — which is exactly what a run's rows did while
+	// the namer ([Options.Name]) was filling them in.
 	Title string   `json:"title"`
 	Goal  string   `json:"goal"`            // self-contained: no "see above"
 	Needs []string `json:"needs,omitempty"` // ids that must be Done before this may run
@@ -78,11 +85,33 @@ type Node struct {
 // A GOAL IS NEVER A NAME. That is the whole point of the field, and a fallback
 // that reached for the goal would put the defect back the moment a planner
 // forgot the key.
+//
+// THE SECOND ANSWER IS THE LAST RESORT AND NOT THE PLAN. An id only reads as a
+// name when the planner spelt one into it, and half the ids models mint are
+// `r1`, `n3`, `synth` — filing, not language. Those are the ones
+// [NodeNeedsName] picks out and [Options.Name] replaces before anybody reads
+// the row; what is left down here is the answer for a run with no namer behind
+// it at all, which is every headless caller and every scripted test.
 func NodeTitle(n Node) string {
 	if title := clipWords(n.Title, NameWords); title != "" {
 		return title
 	}
 	return clipWords(slugWords(n.ID), NameWords)
+}
+
+// NodeNeedsName reports whether a node has arrived with nothing but the
+// machine's own filing where its name should be.
+//
+// THE TEST IS GENERIC AND IT IS THE WHOLE TEST: the name is missing, or it is
+// the id over again. `token-bucket` spells out as `token bucket` and is a name;
+// `r1` spells out as `r1` and is the id a planner numbered its own list with.
+// There is no list of id shapes here and there must never be one — a blacklist
+// of `r%d`, `n%d`, `step%d` is a rule that is out of date the first time a
+// planner counts differently, and this question is the same question at every
+// door: is there anything here a person could read as the name of the work.
+func NodeNeedsName(n Node) bool {
+	title := NodeTitle(n)
+	return title == "" || title == strings.TrimSpace(n.ID)
 }
 
 // slugWords spells a slug out as words: hyphens, underscores and dots are the

@@ -246,6 +246,13 @@ func (r *truncationReplier) CompleteWithMessages(_ context.Context, messages []a
 	if strings.HasPrefix(asked, "First message:") {
 		return textResponse(`{"work":false,"why":"the node was already work"}`), nil
 	}
+	// THE NAMER IS NOT THE WRITER. This planner adds a node called `n1`, which is
+	// filing rather than a name, so the run buys three words for its row from the
+	// small namer (taskname.go) — a call that is nobody's turn and must not be
+	// counted as one of the writer's.
+	if isNameCall(messages) {
+		return textResponse("final report"), nil
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

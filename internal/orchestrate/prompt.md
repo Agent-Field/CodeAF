@@ -283,7 +283,10 @@ The rules the shape is held to:
   storms`, `pricing sheet`. The goal is written to a worker in the second
   person and opens with what that worker is; a title cut from it names every
   node in the run "you are a", which is a column nobody can read. Two nodes in
-  one run never share a title.
+  one run never share a title. THE ID IS NOT A TITLE: `r1`, `n3` and `synth`
+  are how you filed the work, not what it is called, and a node that arrives
+  with nothing else is sent to a small naming model before anybody sees it —
+  a call the run pays for and you could have saved by writing the two words.
 - `needs` names ids that already exist or that you are adding on this same call.
   An id that never existed is refused, and so is a cycle. `needs` IS THE ONLY
   EDGE THERE IS: an id written in a goal or in the note and not in `needs` is a
