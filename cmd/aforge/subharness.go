@@ -263,6 +263,12 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	// prompt, no aforge contract or cache key. The model is resolved through
 	// the same engineModelID path so the name a second process would look up
 	// is the one the provider actually serves.
+	//
+	// It carries no attribution wiring, and needs none: the client it opens
+	// stamps the app onto every OpenRouter request from the constants in
+	// internal/provider, so a worker that builds its own client cannot spend
+	// tokens under no app — which is exactly what this one did while the
+	// attribution travelled as three copied config fields.
 	barepkg.BareSubharness: func(build leafBuild) exec.Executor {
 		return barepkg.New(build.workspace, engineModelID(build.models, build.model),
 			build.settings.APIKey, build.settings.BaseURL, build.deadline)

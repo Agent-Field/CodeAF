@@ -96,13 +96,10 @@ var newDocClient = func(config Config) (DocumentParser, error) {
 		return nil, errors.New("this session has no API key")
 	}
 	client, err := provider.NewClient(provider.Config{
-		APIKey:         config.APIKey,
-		BaseURL:        config.BaseURL,
-		Model:          config.Model,
-		Timeout:        providerTimeout,
-		SiteURL:        config.SiteURL,
-		SiteName:       config.SiteName,
-		SiteCategories: config.SiteCategories,
+		APIKey:  config.APIKey,
+		BaseURL: config.BaseURL,
+		Model:   config.Model,
+		Timeout: providerTimeout,
 	})
 	if err != nil {
 		return nil, err

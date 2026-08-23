@@ -705,12 +705,12 @@ type Config struct {
 	APIKey    string
 	BaseURL   string
 
-	// SiteURL, SiteName and SiteCategories are the OpenRouter app-attribution
-	// values forwarded to the provider client (HTTP-Referer,
-	// X-OpenRouter-Title, X-OpenRouter-Categories). Empty disables them.
-	SiteURL        string
-	SiteName       string
-	SiteCategories string
+	// There is no app-attribution field here any more. The three that used to
+	// be forwarded to the provider client — a referer, a title, a category
+	// list — were three fields every new construction site had to remember to
+	// copy, and the ones that forgot spent their tokens under no app at all.
+	// The values are constants the provider stamps for itself
+	// (provider.ApplyAttribution), so nothing above it carries them.
 
 	// System is the rendered system prompt. Empty renders the package's
 	// embedded default (prompts/system.md + the project footer) for

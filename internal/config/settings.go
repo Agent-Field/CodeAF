@@ -683,14 +683,12 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"AFORGE_HOME",
-	"AFORGE_SITE_URL",
-	"AFORGE_SITE_NAME",
-	// AFORGE_SITE_CATEGORIES is the third of the attribution triple beside the
-	// two above: the categories this client reports to OpenRouter's app rankings
-	// (internal/provider). It is plumbing for the reason its two siblings are —
-	// it is who the binary says it is to somebody else's directory, not a
-	// preference the product has an opinion about.
-	"AFORGE_SITE_CATEGORIES",
+	// The three site-attribution pins — a URL, an app name, a category list —
+	// used to sit here, and they are gone rather than moved: the OpenRouter app
+	// this binary reports as is a constant in internal/provider that nothing
+	// reads from the environment any more. A footer that still listed them
+	// would be promising an override that does nothing, which is worse than
+	// saying nothing at all.
 	"AFORGE_PROFILE_DIR",
 	"AFORGE_MODELS",
 	"AFORGE_REASONING",

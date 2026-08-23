@@ -12,7 +12,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// Proves the headers the chat stack puts on the wire.
+// Proves the headers the chat stack puts on the wire — from a Config that says
+// nothing at all about attribution, because there is nothing it can say. The
+// values are constants and a caller has no way to supply, vary or omit them.
 func TestAttributionOnTheWire(t *testing.T) {
 	seen := http.Header{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -23,12 +25,9 @@ func TestAttributionOnTheWire(t *testing.T) {
 	defer srv.Close()
 
 	c, err := NewClient(Config{
-		APIKey:         "test-key",
-		BaseURL:        srv.URL + "/v1",
-		Model:          "openrouter/probe",
-		SiteURL:        "https://agentfield.ai",
-		SiteName:       "AgentField AI",
-		SiteCategories: "cli-agent,programming-app",
+		APIKey:  "test-key",
+		BaseURL: srv.URL + "/v1",
+		Model:   "openrouter/probe",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,16 +79,14 @@ func assertAttributed(t *testing.T, header http.Header, where string) {
 }
 
 // attributedConfig is an OpenRouter-shaped adapter configured exactly as the
-// chat stack configures one.
+// chat stack configures one — which is to say with no attribution in it, since
+// the app is a constant of this package rather than a setting.
 func attributedConfig(handler http.Handler) Config {
 	return Config{
-		APIKey:         "test-key",
-		BaseURL:        "https://openrouter.ai/api/v1",
-		Model:          "sim/model",
-		HTTPClient:     handlerClient(handler),
-		SiteURL:        "https://agentfield.ai",
-		SiteName:       "AgentField AI",
-		SiteCategories: "cli-agent,programming-app",
+		APIKey:     "test-key",
+		BaseURL:    "https://openrouter.ai/api/v1",
+		Model:      "sim/model",
+		HTTPClient: handlerClient(handler),
 	}
 }
 
