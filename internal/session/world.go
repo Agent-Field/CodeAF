@@ -210,6 +210,9 @@ type SessionRow struct {
 	Tokens int
 	// Tasks is what the project's index says this session ran.
 	Tasks TaskRollup
+	// Archived says the person put this conversation away from home's resting
+	// list ([Meta.Archived]); home gathers such rows under one folded line.
+	Archived bool
 }
 
 // NeedsPerson reports that this conversation is stopped waiting on somebody. It
@@ -434,6 +437,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Open:       InUse(transcript),
 		Presence:   presence,
 		Live:       live,
+		Archived:   meta.Archived,
 	}, true
 }
 
