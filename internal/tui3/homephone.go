@@ -611,7 +611,17 @@ func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
 		return []string{pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))}
 	}
 	label, note, tint := a.homePhoneWords(line, pal)
-	return overlayLinesTinted(label, note, tint, at == h.cursor, false, false, width, pal)
+	// THE CONVERSATION THIS TERMINAL IS IN KEEPS ITS MARK ON A PHONE TOO. It is
+	// the chosen thing, it wears THE GROUND LADDER's selected step at both wider
+	// tiers (home.go's [app.homeLine]), and a tier that dropped it would be the
+	// one screen where "which of these am I in" had no answer at all. The flag
+	// was hard `false` here from the day this tier was written, back when the
+	// mark was an accent label rather than a rung.
+	//
+	// The pointer's flag stays `false` and that is the tier's own law rather than
+	// an oversight: a phone has no pointer to shadow a row with.
+	marked := line.kind == homeSession && a.homeMark(line.row) == markFront
+	return overlayLinesTinted(label, note, tint, at == h.cursor, marked, false, width, pal)
 }
 
 // homePhoneWords is what one row SAYS: its label, its dim tail, and how that

@@ -3095,6 +3095,23 @@ func (a *app) railRows(height int) []string {
 			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
+		case focus >= 0 && line.entry == focus:
+			// AND THE KEYBOARD'S OWN ROW TAKES THE CURSOR STEP, on the same terms
+			// the pointer's does. This column used to say the keyboard's position
+			// with the marker in the lead and nothing else, on the argument that a
+			// filled row two cells from the conversation would be a block of colour
+			// beside a paragraph somebody is reading. That argument was written
+			// against the ONE background this surface then had — the one that is now
+			// the selected step, and that the row above still wears. The cursor step
+			// is a rung quieter than it on purpose, and it is the rung the ladder
+			// names for "the row a keyboard cursor sits on".
+			//
+			// So the two facts this column carries are now two STEPS rather than a
+			// step and a glyph: the room you walked into is the louder ground, the
+			// row ↑/↓ has reached is the quieter one, and a person can see both at
+			// once and tell them apart. The marker stays in the lead, because the
+			// ground is the secondary cue and the accent in the lead is the first.
+			text = a.pal.cursor(text, room)
 		case line.more && a.hoveringRailMore():
 			// THE DOOR ONTO THE TASK PAGE TAKES IT TOO, on the terms every other
 			// pressable line here takes it on: it answers to a click, so the pointer

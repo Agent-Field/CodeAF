@@ -1064,53 +1064,80 @@ func TestTheModelOverlayAsksTheChatQuestion(t *testing.T) {
 
 // ── 10. THE WHOLE-ROW HIGHLIGHT ─────────────────────────────────────────────
 
-// THE SELECTED ROW IS ONE BAND, LEAD TO NOTE, ACROSS THE WHOLE LINE — and the
-// note is inside it rather than dim underneath it.
-func TestTheSelectedOverlayRowIsOneBandAcrossTheLine(t *testing.T) {
+// THE EMPHASIZED ROW IS ONE GROUND, LEAD TO NOTE, ACROSS THE WHOLE LINE — and
+// the note is inside it rather than dim underneath it.
+//
+// It also pins WHICH STEP each of a list's three states takes, which is the
+// question this whole surface was getting backwards: the keyboard cursor and the
+// pointer are one fact reached by two hands and share the cursor step, and the
+// row this terminal is actually IN — the chosen thing, still chosen when nobody
+// is touching the list — takes the step above them.
+func TestTheEmphasizedOverlayRowIsOneGroundAcrossTheLine(t *testing.T) {
 	pal := newPalette(tokens.ANSI256, false)
 	const width = 48
 	const note = "128k · elo 1200"
-	band := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
+	cursor := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
+	chosen := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
 
 	line := overlayRow("openai/gpt-4.1-mini", note, true, false, false, width, pal)
-	if !strings.HasPrefix(line, band) || !strings.HasSuffix(line, "\x1b[49m") {
-		t.Fatalf("the selected row is not one band:\n%q", line)
+	if !strings.HasPrefix(line, cursor) || !strings.HasSuffix(line, "\x1b[49m") {
+		t.Fatalf("the cursor's row is not one ground:\n%q", line)
 	}
-	// The whole line: the band is opened once, closed once, and everything the
+	// The whole line: the ground is opened once, closed once, and everything the
 	// row says is between them.
-	inside := strings.TrimSuffix(strings.TrimPrefix(line, band), "\x1b[49m")
+	inside := strings.TrimSuffix(strings.TrimPrefix(line, cursor), "\x1b[49m")
 	if strings.Contains(inside, "\x1b[49m") {
-		t.Fatalf("the band is broken up mid-row:\n%q", line)
+		t.Fatalf("the ground is broken up mid-row:\n%q", line)
 	}
 	if !strings.Contains(inside, pal.ink(note)) {
-		t.Fatalf("the note is not painted inside the band:\n%q", line)
+		t.Fatalf("the note is not painted inside the ground:\n%q", line)
 	}
 	if strings.Contains(line, pal.dim(note)) {
-		t.Fatalf("the note stayed dim inside the band:\n%q", line)
+		t.Fatalf("the note stayed dim inside the ground:\n%q", line)
 	}
 	if got := ansi.StringWidth(plain(line)); got != width {
-		t.Fatalf("the band is %d cells wide, want the whole %d", got, width)
+		t.Fatalf("the ground is %d cells wide, want the whole %d", got, width)
 	}
 
-	// HOVER IS THE SUBTLER ONE, and it is a different colour: a pointer crossing
-	// a list must never read as the cursor moving.
+	// CURSOR AND HOVER ARE ONE STEP, NOT TWO. The row a person is on does not
+	// change appearance depending on which hand they used to get there; what
+	// tells the two apart is the lead, `›` against `·`, and not the rung.
 	hovered := overlayRow("openai/gpt-4.1-mini", note, false, false, true, width, pal)
-	hover := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
-	if !strings.HasPrefix(hovered, hover) || strings.Contains(hovered, band) {
-		t.Fatalf("the hovered row wears the selection band:\n%q", hovered)
+	if !strings.HasPrefix(hovered, cursor) {
+		t.Fatalf("the pointer's row is not on the cursor step:\n%q", hovered)
+	}
+	if strings.Contains(hovered, chosen) {
+		t.Fatalf("the pointer's row reached the chosen step:\n%q", hovered)
+	}
+	if !strings.Contains(line, pal.accent("› ")) {
+		t.Fatalf("the cursor's row does not lead with its mark in the accent:\n%q", line)
+	}
+	if !strings.Contains(hovered, pal.accent("· ")) {
+		t.Fatalf("the pointer's row does not lead with its mark in the accent:\n%q", hovered)
+	}
+
+	// THE CHOSEN ROW TAKES THE STEP ABOVE BOTH OF THEM, and keeps its accent
+	// label inside it. This is the row the ladder's selected step exists for, and
+	// it wore no ground at all until the language was adopted.
+	marked := overlayRow("openai/gpt-4.1-mini", note, false, true, false, width, pal)
+	if !strings.HasPrefix(marked, chosen) {
+		t.Fatalf("the row this terminal is in wears no ground:\n%q", marked)
+	}
+	if !strings.Contains(marked, pal.accent("openai/gpt-4.1-mini")) {
+		t.Fatalf("the marked row lost its accent to the ground:\n%q", marked)
 	}
 	if hueCursor.idx == hueSelected.idx {
-		t.Fatal("the hover and the selection resolve to one colour")
+		t.Fatal("the cursor step and the chosen step resolve to one colour")
 	}
-	// A row that is both takes the selection: the cursor outranks the pointer.
-	both := overlayRow("openai/gpt-4.1-mini", note, true, false, true, width, pal)
-	if !strings.HasPrefix(both, band) {
-		t.Fatalf("the pointer painted over the cursor:\n%q", both)
+	// A row that is both is the cursor standing on the conversation you are in.
+	// The LOUDER step wins, so that row never gets quieter for being arrived at,
+	// and the cursor is still said — on the lead.
+	both := overlayRow("openai/gpt-4.1-mini", note, true, true, false, width, pal)
+	if !strings.HasPrefix(both, chosen) {
+		t.Fatalf("the cursor painted over the row you are in:\n%q", both)
 	}
-	// The model in use keeps its accent inside the band.
-	marked := overlayRow("openai/gpt-4.1-mini", note, true, true, false, width, pal)
-	if !strings.Contains(marked, pal.accent("openai/gpt-4.1-mini")) {
-		t.Fatalf("the marked row lost its accent to the band:\n%q", marked)
+	if !strings.Contains(both, pal.accent("› ")) {
+		t.Fatalf("the cursor lost its mark on the row you are in:\n%q", both)
 	}
 }
 
