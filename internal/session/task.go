@@ -104,7 +104,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation and cannot ask you anything, so decide here everything it would otherwise stop and ask about — which file, which format, how long, which of two readings, what to do when the obvious route is blocked. Constrain THIS kind of work rather than work in general: ask what a lazy but plausible-looking answer to this particular job would look like and write the condition that forbids it. For output a person will read, say what would make it read as machine-written and what to do instead; for code, what \"working\" means here and that saying so requires having run it; for research, what counts as a source. \"Be accurate\" and \"follow best practice\" constrain nothing — every line must be one the worker could disobey. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST when this is over, and where: the file and its path, the branch, the answer and the shape it takes. Name the thing, not the activity — \"docs/pricing.md, one page, table of the four tiers\" rather than \"look into pricing\""},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking the task's word for it: the command that must pass, the behaviour that must hold, the output that must appear. \"It is finished\" and \"it is good\" are not checkable and are not this"},` +
-	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
+	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts — only ids propose_task itself returned in this session, never a job, adaptive-run or step number, which look alike but are different kinds of work. Its brief is given their reports when it begins. Naming an unknown or already-failed id refuses the proposal rather than queueing it"},` +
 	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
 	`"max_steps":{"type":"number","description":"Optional. How many finished tool calls make one progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `). Work that is still advancing may receive four more equal allowances; circling work gets one landing turn and stops. Raise it for a sweep across many files; lower it for something small that should be checked sooner"},` +
 	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may teach the work nothing new AND leave no new file before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Reading, looking at a picture, searching and generating all count as progress the first time they aim somewhere new, so this only fires on the same call repeated. Raise it when the work genuinely needs a lot of reading before its first edit"}` +
@@ -262,6 +262,16 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if problem != "" {
 		return problem, true, nil
 	}
+	// THE DEPENDENCIES ARE CHECKED AT THE DOOR, not on the frontier. A number
+	// that names no task — a job id, an adaptive run, a step count the model
+	// mistook for one — used to sail through here, be shown to the person,
+	// admitted, and then failed on the very next frontier turn as a wait that
+	// could never resolve. A refusal now costs nothing and names the fix; the
+	// frontier's own check stays, as the backstop for a prerequisite that
+	// fails after admission.
+	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
+		return dependencyRefusal(missing, failed), true, nil
+	}
 	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
 	// (taskmodel.go). A word that names no model this install has is a refusal
 	// the model can act on — it names the nearest ids — and one that names
@@ -363,6 +373,37 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, on, spec.title), elsewhere), false, nil
 	}
 	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, on, spec.title), elsewhere), false, nil
+}
+
+// dependencyRefusal is the sentence a doomed depends_on gets back: which ids
+// are wrong, what they probably were instead, and what to do — in the model's
+// own terms, so the next call is the corrected one rather than a guess.
+func dependencyRefusal(missing, failed []uint64) string {
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"depends_on names %s — no task in this session has that id. depends_on takes only ids propose_task itself returned; a job, adaptive-run or step number is a different kind of work and cannot gate a task",
+			numberedTasks(missing)))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"depends_on names %s, which already failed and will never finish — re-run that work first, or drop the dependency",
+			numberedTasks(failed)))
+	}
+	return "Invalid arguments: " + strings.Join(parts, "; ") +
+		". Propose it again with depends_on corrected, or left out if nothing must finish first."
+}
+
+// numberedTasks says one or several ids the way a sentence would.
+func numberedTasks(ids []uint64) string {
+	words := make([]string, len(ids))
+	for i, id := range ids {
+		words[i] = strconv.FormatUint(id, 10)
+	}
+	if len(words) == 1 {
+		return "task " + words[0]
+	}
+	return "tasks " + strings.Join(words, ", ")
 }
 
 // parseTaskArguments reads one call and says, in plain words, what is missing.
