@@ -14,9 +14,44 @@ import (
 // ── THE DESIGN LANGUAGE, HELD TO ITS OWN NUMBERS ────────────────────────────
 //
 // docs/DESIGN-LANGUAGE.md is the prose; this file is the part of it a build can
-// fail on. Three laws are pinned here: the palette is CLOSED (nothing outside
+// fail on. Four laws are pinned here: the palette is CLOSED (nothing outside
 // styles.go authors a colour), the signal hues are ISOLUMINANT, and THE GROUND
-// LADDER's three drawable steps land in the band they were aimed at.
+// LADDER's three drawable steps land in the band they were aimed at, and THE
+// SPACING LADDER's shared steps keep their measured values.
+
+// ── 0. THE SPACING LADDER ───────────────────────────────────────────────────
+
+// THE SHARED STEPS KEEP THE VALUES THE DOCUMENT NAMES. These constants exist
+// only where independent builders must agree; pinning them here keeps a local
+// padding decision from quietly becoming a new rung.
+func TestTheSpacingLadderKeepsItsSharedSteps(t *testing.T) {
+	if spacingBlockRows != 1 {
+		t.Fatalf("the block step is %d rows, want one", spacingBlockRows)
+	}
+	if spacingRuleClearance != 1 {
+		t.Fatalf("the hairline clearance is %d rows, want one", spacingRuleClearance)
+	}
+	if spacingConversationLead != 2 || noteLead != spacingConversationLead || railGripCols != spacingConversationLead {
+		t.Fatalf("the two-cell leads drifted: conversation=%d note=%d rail=%d",
+			spacingConversationLead, noteLead, railGripCols)
+	}
+	if homeGutter != 4 {
+		t.Fatalf("home's gutter is %d cells, want four", homeGutter)
+	}
+}
+
+// TWO OPTIONAL BLOCKS MAY ASK FOR THE SAME BOUNDARY, BUT THE BOUNDARY REMAINS
+// ONE ROW. This is the mechanically checkable half of the ladder; paragraphs
+// may contain blank rows of their own, so a package-wide source scan would
+// mistake content and phone-sized hit targets for layout.
+func TestARepeatedBlockBoundaryDoesNotGrowASecondBlankRow(t *testing.T) {
+	rows := separated([]string{"first"})
+	rows = separated(rows)
+	rows = append(rows, "second")
+	if got := strings.Join(rows, "|"); got != "first||second" {
+		t.Fatalf("repeated block boundary = %q, want one blank row", got)
+	}
+}
 
 // ── 1. CONSISTENCY BY REFUSAL ───────────────────────────────────────────────
 

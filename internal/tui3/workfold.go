@@ -116,7 +116,7 @@ func workIndent(width int) string {
 	if layoutTier(width) == tierPhone {
 		return ""
 	}
-	return "  "
+	return strings.Repeat(" ", spacingConversationLead)
 }
 
 // workIndentCols is what the indent law costs, in columns. It is asked at

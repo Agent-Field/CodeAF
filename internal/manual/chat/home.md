@@ -1549,6 +1549,10 @@ you land on draws its own preview again. `enter` or `tab` on the row hands the k
 the pane; `esc` or `tab` hands it back. On a window too narrow for two columns the pane is
 **stacked** over the list instead of drawn beside it, and `esc` brings the list back.
 
+Inside that pane, the heading, exchange rows, any question card and the `continue as a
+conversation` offer are separate blocks. Exactly one blank line divides adjacent blocks;
+optional blocks never leave a second blank line when they meet.
+
 **An exchange outlives home.** Closing this screen does not end it, and neither does opening
 another conversation; the row is still here, still waiting, when home opens again. It is
 filed only once it is over, you have seen what it came to, and you have moved off its row —

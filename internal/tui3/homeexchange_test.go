@@ -890,6 +890,15 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 	if !ex.offering() {
 		t.Fatal("the exchange is not offering to become a conversation")
 	}
+	// THE CARD AND THE OFFER EACH ASK FOR A BOUNDARY, BUT THE LADDER GIVES
+	// THEM ONE. Optional neighbours must not turn two requests into two rows.
+	rows := a.exchangePane(ex, 50, 40, a.pal)
+	for i := 1; i < len(rows); i++ {
+		if strings.TrimSpace(ansi.Strip(rows[i-1])) == "" && strings.TrimSpace(ansi.Strip(rows[i])) == "" {
+			t.Fatalf("the exchange pane drew two blank rows at %d:\n%s",
+				i, ansi.Strip(strings.Join(rows, "\n")))
+		}
+	}
 	// Draw once so the pane records where it put the row.
 	homeText(a)
 	x, y, ok := paneRowAt(a, ex.offerAt)
