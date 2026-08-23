@@ -78,7 +78,7 @@ func TestTheDesignLaneNamesTheTaskItStarted(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing triaging flaky tests — task 4") {
+	if !strings.Contains(got, "subharness · designing triaging flaky tests — task 4") {
 		t.Fatalf("the announce does not name the task:\n%s", got)
 	}
 }
@@ -92,7 +92,7 @@ func TestTheDesignAnnounceWithNoTaskDrawsNoTail(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing triaging flaky tests") {
+	if !strings.Contains(got, "subharness · designing triaging flaky tests") {
 		t.Fatalf("the announce was never drawn:\n%s", got)
 	}
 	if strings.Contains(got, "— task") {
@@ -113,7 +113,7 @@ func TestTheDesignNoteNamesTheModelDesigning(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing with moonshot/kimi-k3 · triaging flaky tests") {
+	if !strings.Contains(got, "subharness · designing with moonshot/kimi-k3 · triaging flaky tests") {
 		t.Fatalf("the design note does not name the model designing:\n%s", got)
 	}
 }
@@ -133,7 +133,7 @@ func designingNode(t *testing.T, phase string) *app {
 	a.width, a.height = 120, 30
 	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
 		ID:    4,
-		Title: "harness · " + designedGoal,
+		Title: "subharness · " + designedGoal,
 		Kind:  session.TaskKindHarness,
 		State: session.TaskRunning,
 		Doing: phase,

@@ -70,7 +70,7 @@ func (a *app) progressHarnessRoom(ev session.Event) {
 	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.room.id != c.task {
 		return
 	}
-	parts := []string{"harness · " + firstNonEmpty(ev.Phase, "designing")}
+	parts := []string{"subharness · " + firstNonEmpty(ev.Phase, "designing")}
 	if ev.Attempts > 1 {
 		parts = append(parts, fmt.Sprintf("attempt %d/%d", ev.Attempt, ev.Attempts))
 	}
@@ -101,7 +101,7 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	c.page, c.phase, c.hint, c.thought = &page, "", "", ""
 	c.ended = time.Now()
 	// The room's one-line ticker is stale news the moment the page lands: left
-	// alone it kept saying "harness · reviewing · …" under a design that was
+	// alone it kept saying "subharness · reviewing · …" under a design that was
 	// already awaiting the person's look, because no further progress event was
 	// ever coming to replace it.
 	if a.room != nil && c.task != 0 && a.room.id == c.task {
@@ -144,7 +144,7 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 		return nil
 	}
 	if c.page == nil {
-		head := "⠿ harness · " + c.phase
+		head := "⠿ subharness · " + c.phase
 		switch {
 		case c.model != "" && c.goal != "":
 			head += " with " + c.model + " · " + c.goal
