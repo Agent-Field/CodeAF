@@ -315,8 +315,13 @@ If you type `/copy` and the screen does not change, one of those two is why.
 
 ## /select — drag to select with your mouse
 
-`/select` hands the pointer back to the terminal so you can drag-select text with the
-mouse. It is the same thing ctrl+s does.
+You usually do not need this any more: **dragging over the conversation already
+selects and copies** — sweep with the left button down, the rows highlight, and on
+release their text is on your clipboard, with `copied · N lines` on the status line
+(see the keys page's *Selecting text with your mouse*).
+
+`/select` is for when you want your **terminal's own** selection instead: it hands the
+pointer back so a drag selects text natively. It is the same thing ctrl+s does.
 
 It toggles. Pressing it again takes the pointer back, and so does the next ordinary
 keystroke.
@@ -1124,16 +1129,21 @@ the names at the head of each list — what an `automatic` row actually gets:
 
 | kind | default |
 | --- | --- |
-| draws | `krea/krea-2-medium-turbo` |
-| speaks | `fish-audio/s1` |
-| composes | `google/lyria-3-pro-preview` |
-| films | `bytedance/seedance-2.0-mini` |
-| looks at an image | `qwen/qwen3.5-vl-32b-instruct` |
+| draws | `bytedance-seed/seedream-5-0-pro` |
+| speaks | `fish-audio/s2.1-pro` |
+| composes | `google/lyria-3-clip-preview` |
+| films | `bytedance/seedance-2.5` |
+| looks at an image | `google/gemini-3.7-flash` |
 
-Each list has older names under its leader — `hexgrad/kokoro-82m` and
-`openai/gpt-4o-mini-tts` under speech, `google/lyria-3-clip-preview` under music,
-`bytedance/seedance-1-5-pro` under video — used when your catalog does not advertise the
-leader. **These are defaults, not choices made for you**: a row you set, or the matching
+Each list has older names under its leader — `krea/krea-2-medium-turbo` under drawing,
+`fish-audio/s1`, `openai/gpt-4o-mini-tts` and `hexgrad/kokoro-82m` under speech,
+`google/lyria-3-pro-preview` under music, `bytedance/seedance-2.0-mini` under video,
+`qwen/qwen3.8-27b` under looking — used when
+your catalog does not advertise the leader. When the whole list misses, the catalog's own
+rows are used — settled ones first: a row whose name marks it experimental (`-exp`,
+`-preview`, `:free`, alpha, beta, a stealth vendor) is passed over while any ordinary row
+can do the job, because those rows often sit behind a data-policy opt-in your provider
+account may not have made. **These are defaults, not choices made for you**: a row you set, or the matching
 environment variable, wins over every one of them and is never overwritten.
 
 **Every step is checked against what the catalog says the model can do.** A row or a pin

@@ -60,6 +60,12 @@ func endpointRefusalStatus(status int) bool {
 var endpointRefusalPhrases = []string{
 	"no endpoints found",
 	"no endpoints that support",
+	// The router's spelling for an `ignore` list that removed every endpoint —
+	// which this process's own velocity ledger can produce on a model with one
+	// provider. The first rung of the ladder drops that list, which is exactly
+	// the recovery; this phrase missing from the list is how a whole task wave
+	// once died on instant 404s the ladder was built to absorb.
+	"all providers have been ignored",
 	"can handle the requested parameters",
 	"handle requested parameters",
 	"no allowed providers",

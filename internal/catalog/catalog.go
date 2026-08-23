@@ -1040,12 +1040,15 @@ func writeCache(path string, cached cache) error {
 // row here vouches for exactly that id's capabilities.
 func hardcodedFallbacks() []Model {
 	return []Model{
+		{ID: "bytedance-seed/seedream-5-0-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
 		{ID: "krea/krea-2-medium-turbo", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "fish-audio/s2.1-pro", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "fish-audio/s1", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "hexgrad/kokoro-82m", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "openai/gpt-4o-mini-tts", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
-		{ID: "google/lyria-3-pro-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}},
 		{ID: "google/lyria-3-clip-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}, RequestPrice: 0.04},
+		{ID: "google/lyria-3-pro-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}},
+		{ID: "bytedance/seedance-2.5", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 		{ID: "bytedance/seedance-2.0-mini", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 		{ID: "bytedance/seedance-1-5-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 	}

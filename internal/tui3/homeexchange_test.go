@@ -827,6 +827,7 @@ func homeClickAt(t *testing.T, a *app, at int) {
 	for y, hit := range hits {
 		if hit == at {
 			drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: 2, Y: y})
+			drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: 2, Y: y})
 			return
 		}
 	}
@@ -905,6 +906,7 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 	made := lab.dirs[0]
 	id := filepath.Base(made)
 	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+	drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 	moved := filepath.Join(lab.project("-tmp-alpha"), id)
 	if _, err := os.Stat(filepath.Join(moved, "transcript.jsonl")); err != nil {
 		t.Fatalf("a click on the offer row did not promote the exchange: %v", err)
@@ -943,6 +945,7 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 	// A PRESS ON THE PANE'S BODY IS THE ZONE CHANGE AND NOTHING ELSE.
 	if bx, by, ok := paneRowAt(a, 0); ok {
 		drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: bx, Y: by})
+		drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: bx, Y: by})
 	}
 	if !ex.focused {
 		t.Fatal("a click in the pane did not take the keyboard")
@@ -957,6 +960,7 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 	// the authority on where the answers actually are ([app.standChips]).
 	span := ex.view.spans[0]
 	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x - 1 + span.from, Y: y})
+	drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x - 1 + span.from, Y: y})
 	// The yes hands the keyboard straight back to the list, which is the whole
 	// of [app.answerCard]'s last line — so what a click on a chip proves about
 	// the zones is proved above, on a press that landed on the body.

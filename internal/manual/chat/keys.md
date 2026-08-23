@@ -1019,11 +1019,25 @@ accent-coloured under the pointer. Clicking it, or pressing `ctrl+l`, rejoins th
 edge — the room's edge if a room is open. It is not shown while copy mode, a room, or
 the fullscreen roster is up.
 
-## Selecting text with your mouse
+## Selecting text with your mouse — drag to copy
 
-aforge owns the pointer by default, and owning it kills your terminal's own
-drag-to-select. There is no scrollback to fall back on, because aforge runs in the
-alternate screen.
+**Just drag.** Sweep the pointer over the conversation (or a task's room) with the
+left button down: the rows under the sweep highlight, and the moment you release,
+their text is **on your clipboard** — stripped of colours and the drawn left rails,
+exactly as copy mode strips a yank. The status line confirms it for a few seconds:
+`copied · 12 lines`. The write goes over OSC 52, so it works over ssh and through
+tmux. The selection is by rows — whole lines, not characters — and what is
+highlighted is exactly what is copied.
+
+A click is unchanged in feel: press and release in place and it lands where it always
+did. (Under the hood the body's click now fires on release, the way every button in
+every GUI does, which is what lets a drag never trigger the thing it started on — a
+sweep that begins on a thinking block does not collapse it.)
+
+aforge still owns the pointer by default — that is what makes wheel scrolling,
+clickable paths and pressable rows work — and there is no scrollback to fall back on,
+because aforge runs in the alternate screen. Two further doors remain for when you
+want your terminal's own selection:
 
 **`ctrl+s` hands the pointer back** so a drag selects text the way it does everywhere
 else. The `/select` command does the same thing. Your **next keystroke takes the

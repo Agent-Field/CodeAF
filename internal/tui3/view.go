@@ -351,8 +351,20 @@ func (a *app) frame() (string, int, int) {
 	// Once the conversation is longer than the region there is no slack at all —
 	// pad is zero, [app.offsetFor] has already chosen the window that ends at
 	// the newest row, and the frame is exactly what it always was.
+	// A sweep in flight paints its rows with the hover background — the same
+	// statement copy mode's selection makes, because it is the same selection:
+	// these rows are the ones, and on release their text is the copy
+	// (dragselect.go).
+	selFrom, selTo, selOn := a.dragSpan()
+	bodyTop := a.bodyTop()
 	for i, r := range body {
-		rows = append(rows, a.railJoin(r.text, railAt(i)))
+		text := r.text
+		if selOn {
+			if at := bodyTop + i; at >= selFrom && at <= selTo {
+				text = a.pal.hover(text, a.bodyWidth())
+			}
+		}
+		rows = append(rows, a.railJoin(text, railAt(i)))
 	}
 	// The welcome box, directly under the conversation and above the slack.
 	rows = append(rows, lifted...)

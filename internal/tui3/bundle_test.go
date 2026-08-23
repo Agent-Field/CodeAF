@@ -2665,6 +2665,7 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 4*time.Second)})
 	x, y := choiceAt(t, a, choiceNo)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	last := agent.answered[len(agent.answered)-1]
 	if last.id != 8 || last.answer.Approved {
 		t.Fatalf("a click on [ no ] reached the engine as %+v", last)
@@ -3293,6 +3294,7 @@ func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
 	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
 		if node := a.railNodeAt(y); node != nil && node.id == 1 {
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
 			break
 		}
 	}
@@ -3631,6 +3633,7 @@ func clickRail(t *testing.T, a *app, node int) {
 	// The press lands on the row's first TEXT cell: the two cells before it are
 	// the seam, which is the column's resize handle now (room.go's railPress).
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 }
 
 // openRoomCall clicks the page's row carrying this text, the way a person opens
@@ -3645,6 +3648,7 @@ func openRoomCall(t *testing.T, a *app, want string) bool {
 			continue
 		}
 		drive(t, a, tea.MouseClickMsg{X: 0, Y: top + i - offset, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: 0, Y: top + i - offset, Button: tea.MouseLeft})
 		return true
 	}
 	return false

@@ -169,6 +169,109 @@ func TestVelocityOmitsOrderWhenNoLaneIsHealthy(t *testing.T) {
 	}
 }
 
+// THE LEDGER MAY NEVER REFUSE EVERYTHING IT KNOWS. On a single-provider model
+// three slow answers used to put the only name in `ignore`, and every request
+// for five minutes died on an instant "All providers have been ignored" 404 —
+// an outage this process built for itself. When nothing is left to prefer, the
+// verdict is no verdict at all.
+func TestVelocityNeverRefusesEveryLaneItKnows(t *testing.T) {
+	ledger, _ := testLedger()
+	const model = "vendor/one-provider-model"
+	for i := 0; i < ignoreAfter; i++ {
+		ledger.laggy(model, "molasses")
+	}
+	order, ignore := ledger.preferences(model)
+	if len(order) != 0 || len(ignore) != 0 {
+		t.Fatalf("order = %v ignore = %v, want no verdict — refusing the only lane is an outage", order, ignore)
+	}
+
+	// A second lane that is also struck out must not turn the guard back off.
+	for i := 0; i < ignoreAfter; i++ {
+		ledger.laggy(model, "treacle")
+	}
+	order, ignore = ledger.preferences(model)
+	if len(order) != 0 || len(ignore) != 0 {
+		t.Fatalf("with every lane refused order = %v ignore = %v, want no verdict at all", order, ignore)
+	}
+
+	// The moment one lane recovers, the refusals stand again: the guard is
+	// about condemning the whole set, never about forgiving a slow lane.
+	ledger.brisk(model, "zephyr")
+	_, ignore = ledger.preferences(model)
+	if !equalStrings(ignore, []string{"molasses", "treacle"}) {
+		t.Fatalf("with a healthy lane back ignore = %v, want both slow lanes refused again", ignore)
+	}
+}
+
+// A 429 that names its endpoint is that endpoint saying "not now" — better
+// evidence than any timed answer, acted on at once and recovered from the same
+// way a laggy refusal is.
+func TestAPacedProviderIsRefusedAtOnceAndWalksBackOut(t *testing.T) {
+	ledger, clock := testLedger()
+	const model = "vendor/fast-model"
+	ledger.brisk(model, "quicksilver")
+
+	ledger.pace(model, "molasses", 30*time.Second)
+	if _, ignore := ledger.preferences(model); !equalStrings(ignore, []string{"molasses"}) {
+		t.Fatalf("after a named 429 ignore = %v, want the lane refused at once", ignore)
+	}
+
+	// The named wait is honoured, and expiry lands the lane on probation —
+	// demoted, one strike short — exactly as a laggy refusal expires.
+	clock.advance(31 * time.Second)
+	order, ignore := ledger.preferences(model)
+	if len(ignore) != 0 {
+		t.Fatalf("past the named wait ignore = %v, want the lane tried again", ignore)
+	}
+	if want := []string{"quicksilver", "molasses"}; !equalStrings(order, want) {
+		t.Fatalf("past the named wait order = %v, want it back but demoted (%v)", order, want)
+	}
+
+	// One fast answer starts walking it out, the same ledger law as ever.
+	ledger.brisk(model, "molasses")
+	ledger.brisk(model, "molasses")
+	if order, _ := ledger.preferences(model); !equalStrings(order, []string{"quicksilver", "molasses"}) {
+		t.Fatalf("after fast answers order = %v, want the lane healthy again", order)
+	}
+}
+
+// A wait the provider did not name, or named absurdly, is clamped to the same
+// cooldown a laggy lane serves: pacing is a claim about the next minutes.
+func TestAPacedProviderWaitIsClampedToTheCooldown(t *testing.T) {
+	ledger, clock := testLedger()
+	const model = "vendor/fast-model"
+	ledger.pace(model, "molasses", 24*time.Hour)
+	ledger.brisk(model, "quicksilver")
+	clock.advance(ignoreCooldown - time.Second)
+	if _, ignore := ledger.preferences(model); !equalStrings(ignore, []string{"molasses"}) {
+		t.Fatalf("inside the cooldown ignore = %v, want the lane still refused", ignore)
+	}
+	clock.advance(2 * time.Second)
+	if _, ignore := ledger.preferences(model); len(ignore) != 0 {
+		t.Fatalf("a day-long wait was honoured: ignore = %v, want the clamp at the cooldown", ignore)
+	}
+}
+
+// pacedProviderName reads the router's own 429 body, and only that: a refusal
+// shaped any other way answers "" and keeps the pacing behaviour it always had.
+func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
+	routed := `{"error":{"message":"Provider returned error","code":429,` +
+		`"metadata":{"raw":"model is temporarily rate-limited upstream","provider_name":"Sundial"}}}`
+	if got := pacedProviderName([]byte(routed)); got != "Sundial" {
+		t.Fatalf("named provider = %q, want Sundial", got)
+	}
+	for _, body := range []string{
+		`{"error":{"message":"too many requests","code":429}}`,
+		`{"message":"slow down"}`,
+		`not json at all`,
+		``,
+	} {
+		if got := pacedProviderName([]byte(body)); got != "" {
+			t.Fatalf("body %q named %q, want nothing", body, got)
+		}
+	}
+}
+
 // A rate computed over a twelve-token answer measures the handshake, so short
 // answers are judged on their first token only.
 func TestVelocityDoesNotRateAnswersBelowTheFloor(t *testing.T) {

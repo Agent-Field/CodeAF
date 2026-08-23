@@ -63,6 +63,11 @@ type HarnessBeltSeams struct {
 	Media      MediaGenerator
 	MediaModel func(modality string) string
 
+	// MediaPick is [Config.MediaPick]: the just-in-time model choice on the
+	// four making verbs. Nil keeps the `model` argument off their schemas,
+	// exactly as it does on the conversation's belt.
+	MediaPick func(modality, word string) (string, error)
+
 	// Seer is the completer view_image asks to look. It is separate from Media
 	// because looking is a CHAT call to a vision model and not a media-endpoint
 	// call, which is the same split the conversation's belt makes
@@ -96,7 +101,7 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 	// "fixes" it: a harness run accounts its own spend through the trail, and a
 	// picture billed twice would be worse than one billed in one place.
 	agent := &Agent{
-		config: Config{Workspace: workspace, Media: seams.Media, MediaModel: seams.MediaModel},
+		config: Config{Workspace: workspace, Media: seams.Media, MediaModel: seams.MediaModel, MediaPick: seams.MediaPick},
 		client: seams.Seer,
 	}
 	tools = append(tools, agent.imageTools()...)
@@ -128,6 +133,7 @@ func (a *Agent) harnessSeams() HarnessBeltSeams {
 	return HarnessBeltSeams{
 		Media:      a.config.Media,
 		MediaModel: a.config.MediaModel,
+		MediaPick:  a.config.MediaPick,
 		Seer:       a.client,
 	}
 }

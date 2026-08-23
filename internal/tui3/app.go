@@ -548,6 +548,12 @@ type app struct {
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
 	hot hoverAt
+	// drag is the left button's gesture in flight — a parked body click, or a
+	// sweep whose rows wear the selection — and the flash pair under it is what
+	// the status line says the last sweep copied (dragselect.go).
+	drag       dragSelect
+	dragCopied int
+	dragUntil  time.Time
 
 	state runState
 	model string
@@ -2039,15 +2045,26 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
-			opened := a.press(msg.Mouse().X, msg.Mouse().Y)
-			// A press can open a room — a spawn card is a door now (room.go's
-			// [app.openRoomAt]) — and a room that opened without its lane being
-			// pumped is a page that never fills. The take is nil in every other
-			// case, which is most of them. A press can also open a whole
-			// CONVERSATION, from the welcome box's list, and that one arrives
-			// carrying its own two lanes (welcome.go).
-			return a, tea.Batch(opened, a.takeRoomPump())
+			// THE BODY'S CLICK IS PARKED, NOT SPENT. It fires on release — from
+			// [app.dragRelease], where the batch this line used to build now
+			// lives — unless the pointer sweeps first and the gesture turns out
+			// to be a selection (dragselect.go says why a drag that begins on a
+			// thinking block must not collapse it).
+			a.drag = dragSelect{parked: true, px: msg.Mouse().X, py: msg.Mouse().Y}
+			return a, nil
 		}
+		return a, nil
+
+	case tea.MouseReleaseMsg:
+		if msg.Mouse().Button != tea.MouseLeft {
+			return a, nil
+		}
+		return a, a.dragRelease()
+
+	case dragFlashMsg:
+		// The "copied · N lines" word expiring on an idle status line: one
+		// repaint, so it comes down (dragselect.go).
+		a.touch()
 		return a, nil
 
 	case tea.MouseMotionMsg:
@@ -2059,6 +2076,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// for a hit-test per cell: the frozen viewport (nothing under the pointer
 		// is actionable) and the linear tier (there is no pointer).
 		if a.copy.on || a.linear {
+			return a, nil
+		}
+		// A MOVE WITH THE LEFT BUTTON DOWN IS THE SWEEP, read before every hover:
+		// the rows under it wear the selection and the hover stays where the
+		// press left it (dragselect.go).
+		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.sheet.open {

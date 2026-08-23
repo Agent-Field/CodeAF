@@ -109,7 +109,7 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // Both may be nil, which is a machine with no media models and a harness belt of
 // seven wire tools, exactly as before.
 func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string,
-	media session.MediaGenerator, mediaModel func(string) string,
+	media session.MediaGenerator, mediaModel func(string) string, mediaPick func(string, string) (string, error),
 ) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 	if store == nil {
 		return nil
@@ -130,7 +130,7 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	// check the picture it just made needs somewhere to send it, and this is the
 	// completer the run already holds.
 	tools := v3HarnessToolBridges(workspace, session.HarnessBeltSeams{
-		Media: media, MediaModel: mediaModel, Seer: client,
+		Media: media, MediaModel: mediaModel, MediaPick: mediaPick, Seer: client,
 	})
 	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 		h, err := store.Load(name, 0)

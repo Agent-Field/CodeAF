@@ -9,6 +9,7 @@ package session
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -335,5 +336,117 @@ func TestNoMediaClientLeavesTheComposingVerbOff(t *testing.T) {
 	})
 	if hasTool(agent, "generate_music") {
 		t.Fatal("generate_music is on the belt with no media client behind it")
+	}
+}
+
+// ── the just-in-time choice ─────────────────────────────────────────────────
+
+// pickTable is a scripted MediaPick: a word either resolves, refuses with the
+// resolver's own sentence, or — when absent from the table — refuses as an
+// unknown word, which is the shape config.ResolveMediaModel answers in.
+func pickTable(pairs map[string]string) func(string, string) (string, error) {
+	return func(modality, word string) (string, error) {
+		if resolved, ok := pairs[modality+"/"+word]; ok {
+			return resolved, nil
+		}
+		return "", fmt.Errorf("no %s model matches %q", modality, word)
+	}
+}
+
+// The model argument exists exactly when a picker is wired, on all four making
+// verbs: an argument with nothing behind it is not advertised, by the same law
+// that keeps a verb with nothing behind it off the belt.
+func TestTheModelArgumentIsAdvertisedOnlyWithAPicker(t *testing.T) {
+	build := func(withPick bool) *Agent {
+		painter := &scriptedMedia{base64: "aGk=", audio: []byte("x"), music: []byte("x"), video: []byte("x")}
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Media = painter
+			config.MediaModel = mediaModels(map[string]string{
+				modalityImage: "paint/model", modalitySpeech: "talk/model",
+				modalityMusic: "compose/model", modalityVideo: "film/model",
+			})
+			if withPick {
+				config.MediaPick = pickTable(nil)
+			}
+		})
+		return agent
+	}
+
+	for _, verb := range []string{"generate_image", "speak", "generate_music", "generate_video"} {
+		for _, withPick := range []bool{true, false} {
+			agent := build(withPick)
+			var schema map[string]any
+			for _, definition := range agent.definitions {
+				if definition.Function.Name == verb {
+					schema = definition.Function.Parameters
+				}
+			}
+			if schema == nil {
+				t.Fatalf("%s is not on the belt at all", verb)
+			}
+			// The wire form carries the schema as a decoded object, so the
+			// splice has already survived a parse to be visible here at all.
+			properties, _ := schema["properties"].(map[string]any)
+			if properties == nil {
+				t.Fatalf("%s schema lost its properties after the splice: %#v", verb, schema)
+			}
+			_, advertised := properties["model"]
+			if advertised != withPick {
+				t.Fatalf("%s advertises model=%v with picker=%v", verb, advertised, withPick)
+			}
+		}
+	}
+}
+
+// A call's own word out-ranks the default for that one call: the request, the
+// attribution in the result and the accounting all name the picked model, and
+// the next call without a word rides the default again.
+func TestAMakingVerbHonoursItsOwnModelWord(t *testing.T) {
+	picture := &scriptedMedia{base64: "aGk="}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = picture
+		config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/default"})
+		config.MediaPick = pickTable(map[string]string{"image/crayon": "paint/crayon-2"})
+	})
+
+	result, isError := runTool(t, agent, "generate_image", `{"prompt":"a lighthouse","model":"crayon"}`)
+	if isError {
+		t.Fatalf("the picked render failed: %s", result)
+	}
+	if got := picture.request(0).Model; got != "paint/crayon-2" {
+		t.Fatalf("the request rode %q, want the picked paint/crayon-2", got)
+	}
+	if !strings.Contains(result, "paint/crayon-2") {
+		t.Fatalf("the result does not attribute the picked model: %q", result)
+	}
+
+	result, isError = runTool(t, agent, "generate_image", `{"prompt":"a lighthouse"}`)
+	if isError {
+		t.Fatalf("the default render failed: %s", result)
+	}
+	if got := picture.request(1).Model; got != "paint/default" {
+		t.Fatalf("the wordless call rode %q, want the default back", got)
+	}
+}
+
+// A word that matches nothing costs nothing: the refusal is the resolver's own
+// sentence, and no request reaches the provider.
+func TestAModelWordThatMatchesNothingCostsNothing(t *testing.T) {
+	picture := &scriptedMedia{base64: "aGk="}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = picture
+		config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/default"})
+		config.MediaPick = pickTable(nil)
+	})
+
+	result, isError := runTool(t, agent, "generate_image", `{"prompt":"a lighthouse","model":"nonsense"}`)
+	if !isError {
+		t.Fatalf("an unmatchable word landed: %s", result)
+	}
+	if !strings.Contains(result, `no image model matches "nonsense"`) {
+		t.Fatalf("the refusal does not carry the resolver's sentence: %q", result)
+	}
+	if len(picture.seen) != 0 {
+		t.Fatalf("%d requests reached the provider, want none", len(picture.seen))
 	}
 }

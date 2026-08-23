@@ -202,6 +202,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		response.Body.Close()
 		cancelAttempt()
+		if rateLimited {
+			// A 429 that names its upstream is one provider's pool, not this
+			// account: the ledger refuses that lane so every request encoded
+			// from here on routes around it. This call's own retries keep the
+			// body they were built with and wait as they always did.
+			if served := pacedProviderName(peek); served != "" {
+				c.notePacedProvider(c.modelFor(request), served, named)
+			}
+		}
 		lastErr = apiError(response.StatusCode, peek)
 		// Non-rate-limit faults keep the original, shorter patience.
 		if !rateLimited && attempt >= maxAttempts-1 {

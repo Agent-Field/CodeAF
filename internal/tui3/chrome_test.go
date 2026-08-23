@@ -471,6 +471,7 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 		t.Fatal("the panel drew no tab bar")
 	}
 	drive(t, a, clickAt(spans[3].from, bar))
+	drive(t, a, releaseAt(spans[3].from, bar))
 	if got := settingTabs[a.sheet.tab]; got != tabDisplay {
 		t.Fatalf("a click on the Display tab landed on %q", got)
 	}
@@ -492,6 +493,7 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 		t.Fatal("the toggle row was not drawn")
 	}
 	drive(t, a, clickAt(2, row))
+	drive(t, a, releaseAt(2, row))
 	if a.sheet.cursor != want {
 		t.Fatal("a click did not move the cursor to the row it landed on")
 	}
@@ -500,6 +502,7 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 		t.Fatal("the pointer over a row is not recorded as hover")
 	}
 	drive(t, a, clickAt(2, row))
+	drive(t, a, releaseAt(2, row))
 	if config.HistoryEnabledAt(dir) {
 		t.Fatal("the second click did not answer the row")
 	}
@@ -696,6 +699,7 @@ func TestAClickOnARecentSessionResumesIt(t *testing.T) {
 		t.Fatalf("the pointer over a recent row recorded hover %d", a.hoveredSlot())
 	}
 	drive(t, a, clickAt(2, row))
+	drive(t, a, releaseAt(2, row))
 	if len(*resumed) != 1 || (*resumed)[0] != "/s/three.jsonl" {
 		t.Fatalf("the click resumed %v, want the third session", *resumed)
 	}
@@ -743,6 +747,12 @@ func TestTheWelcomeAnimationRunsOnce(t *testing.T) {
 // clickAt and motionAt are the pointer messages the program loop delivers.
 func clickAt(x, y int) tea.MouseClickMsg {
 	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+// releaseAt is clickAt's other half: the body acts on release now
+// (dragselect.go), so a simulated click is a press and a release in place.
+func releaseAt(x, y int) tea.MouseReleaseMsg {
+	return tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft}
 }
 
 // ── the numbers: the meter, the warm share, the savings note ────────────────

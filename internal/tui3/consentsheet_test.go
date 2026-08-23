@@ -215,9 +215,12 @@ func TestATapOnABandAnswersTheQuestion(t *testing.T) {
 			// The middle of the band, which is where a thumb lands and where the
 			// word itself is not — a target that only answered under its own
 			// letters would be the three-cell target this sheet exists to replace.
-			drive(t, a, tea.MouseClickMsg{
-				X: a.width / 2, Y: chromeRowY(t, a, at), Button: tea.MouseLeft,
-			})
+			// The spot is measured ONCE: the press answers and takes the sheet
+			// down, so a second measure for the release would be of a block that
+			// is no longer there.
+			x, y := a.width/2, chromeRowY(t, a, at)
+			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 			if len(agent.answers) != 1 || agent.answers[0] != tc.want {
 				t.Fatalf("a tap on %q resolved %+v, want %+v", tc.word, agent.answers, tc.want)
 			}
@@ -245,6 +248,7 @@ func TestAPressOnTheSheetNeverFallsThrough(t *testing.T) {
 		}
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: title, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: title, Button: tea.MouseLeft})
 	if len(agent.answers) != 0 {
 		t.Fatalf("a press on the title answered the question: %+v", agent.answers)
 	}
@@ -391,9 +395,10 @@ func TestTheOfferLineAnswersToThePointerAtTheWiderWidths(t *testing.T) {
 			t.Fatalf("an offer target is %d cells wide: %+v", w, tap)
 		}
 	}
-	drive(t, a, tea.MouseClickMsg{
-		X: at + 4, Y: chromeRowY(t, a, consentOfferRow), Button: tea.MouseLeft,
-	})
+	// Measured once: the press answers, and the offer row is gone by the release.
+	x, y := at+4, chromeRowY(t, a, consentOfferRow)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	want := answered{id: 7, allow: true, scope: session.ConsentToolSession}
 	if len(agent.answers) != 1 || agent.answers[0] != want {
 		t.Fatalf("a press on the widening yes resolved %+v, want %+v", agent.answers, want)

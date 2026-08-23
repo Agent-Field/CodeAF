@@ -20,7 +20,8 @@ in this conversation — see "Can a task or a harness make media?" below.
 
 Yes, with `generate_image`, when a drawing model is available.
 
-Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`.
+Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
+`model`.
 
 The picture is written to a file, and the result aforge reads is one line naming
 it — **the whole path, absolute, from the root** — like:
@@ -88,11 +89,36 @@ The useful part: **the path `generate_image` just returned is itself a valid
 reference**, so aforge can pass its own last render back in and iterate — a
 diagram redrawn until it is right, a character kept the same across pictures.
 
+## Can you use a different model for one picture, sound or video?
+
+Yes. All four making tools — `generate_image`, `speak`, `generate_music`,
+`generate_video` — take an optional `model` argument: which model to use **for
+that one call**, when the default is wrong for it. A photoreal render on one
+model, a diagram on another, a different voice vendor for one line — without
+touching any setting.
+
+The word is matched against the catalog **within that kind of media**: a full
+slug works, and so does a fragment like a vendor or family name — `seedream`,
+`gemini`, `grok`. The word `best` picks the strongest advertised model of that
+kind. A word that matches nothing is refused before any money is spent — `no
+image model matches "xyz"` — and a word that names a model of the wrong kind is
+refused by naming what it actually makes, e.g. `fish-audio/s1 makes speech, not
+image`.
+
+**Leaving `model` out uses the session's default**, resolved from your settings
+as ever, and the next call without the argument rides the default again — a
+one-call choice never changes any setting. The result line always names the
+model that actually generated the file, so you can tell which one made what.
+
+This is the same freedom you have yourself in `/settings` → Providers, handed
+to aforge per call: ask it to "draw this one with gemini" or "try the best
+image model" and it can, just in time.
+
 ## Can you read this out loud, or make a voiceover?
 
 Yes, with `speak`, when a speech model is available.
 
-Arguments: `text` (required), `voice`, `path`. It writes an **mp3** and answers
+Arguments: `text` (required), `voice`, `path`, `model`. It writes an **mp3** and answers
 with the path, the file size and the model, e.g.
 
 ```
@@ -104,9 +130,9 @@ you asked for a particular voice, because a voice the model does not have is a
 failed generation rather than a near miss.
 
 With no speech model set in `/settings` → Providers, the default is
-`fish-audio/s1`, falling back to `hexgrad/kokoro-82m` and then
-`openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A model you
-set yourself wins over all three.
+`fish-audio/s2.1-pro`, falling back to `fish-audio/s1`, then `hexgrad/kokoro-82m`
+and then `openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A
+model you set yourself wins over all of them.
 
 There is no duration in the result: nothing here opens the mp3 to measure it, and
 a guessed length would be worse than none. Play the file to hear it — aforge
@@ -118,7 +144,7 @@ Yes, with `generate_music`, when a music model is available. It is a **different
 model and a different tool from `speak`** — one composes, the other reads text
 aloud — so a machine can easily have one and not the other.
 
-Arguments: `prompt` (required) and `path`. The prompt describes the **music** —
+Arguments: `prompt` (required), `path` and `model`. The prompt describes the **music** —
 genre, instruments, tempo, key or mood, how it should develop — and is not lyrics
 to sing and not text to be read out. It writes an audio file, usually mp3, and
 answers with the path, the size and the model, e.g.
@@ -181,10 +207,10 @@ A render that fails says so the same way: `job 3 failed: video generation timed
 out (<model>); no video was saved`. Nothing waits for it and nothing polls it.
 
 With no video model set in `/settings` → Providers, the default is
-`bytedance/seedance-2.0-mini`, falling back to `bytedance/seedance-1-5-pro` on a
+`bytedance/seedance-2.5`, falling back to `bytedance/seedance-2.0-mini` on a
 catalog that does not advertise it. A model you set yourself wins over both.
 
-Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
+Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`, `model`,
 `frame_paths`, `reference_paths`, `path`.
 
 - `frame_paths` pins the motion: the first picture is the opening frame, a second

@@ -116,6 +116,7 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
 		if line, ok := a.railLineAt(y); ok && line.stow {
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
 			pressed = true
 			break
 		}
@@ -386,6 +387,7 @@ func TestTheChevronClosesAndOpensTheColumnByPointerAlone(t *testing.T) {
 		t.Fatalf("the lit door lost its chevron: %q", lit)
 	}
 	drive(t, a, tea.MouseClickMsg{X: at, Y: door, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: at, Y: door, Button: tea.MouseLeft})
 	if !a.railAway || a.railShowing() {
 		t.Fatal("pressing the chevron did not close the column")
 	}
@@ -402,6 +404,7 @@ func TestTheChevronClosesAndOpensTheColumnByPointerAlone(t *testing.T) {
 		t.Fatalf("the edge carries the chevron of the other state:\n%q", edge)
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: a.bodyTop(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth(), Y: a.bodyTop(), Button: tea.MouseLeft})
 	if a.railAway || !a.railShowing() {
 		t.Fatal("pressing the edge did not bring the column back")
 	}
