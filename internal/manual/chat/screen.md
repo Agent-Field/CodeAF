@@ -1396,11 +1396,19 @@ If a colour on this surface could be described as "bright", it is wrong.
 Every colour aforge draws is a role, and each role has one job.
 
 The roles: ink for the body and every tool's target; accent for your own `› ` glyph and
-your whole message, the tool rail, and aforge's own headings; muted for tool names and
-the spinner; dim for everything the surface says about itself — stats, notes, hunk
-markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
-and an overdue context meter; warn for a bound about to be reached and only that; and
-violet for **the question hue and nothing else**.
+your whole message, the tool rail, and the one live or chosen thing on the screen; muted
+for tool names, the spinner, and headings; dim for everything the surface says about
+itself — stats, notes, hunk markers, the status line; add and del for a diff's `+` and
+`−`; bad for `✗`, `exit N` and an overdue context meter; warn for a bound about to be
+reached and only that; and violet for **the question hue and nothing else**.
+
+**The accent budget is one thing per screen, and it is always the live one.** Whatever is
+running, selected, hovered, or waiting on you takes the accent — the row under the
+cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
+Headings and section labels do not: the `openaf` wordmark in the welcome box, the name on
+home's top line, and every band heading on the machine's card are **structure**, and
+structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
+at all, and the moment something does want you there is exactly one place your eye goes.
 
 Violet is spent on the moment aforge is waiting for you and on nothing else: the consent
 question, its glyph, its choices, the status word, and the legend while one is up. Its

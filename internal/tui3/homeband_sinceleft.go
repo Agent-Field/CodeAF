@@ -84,5 +84,8 @@ func drawSinceLeftBand(a *app, ctx bandContext) []string {
 		return nil
 	}
 	rows := a.bandFoldPacked(ctx, "sinceleft", groups, machineNewsShown, "things")
-	return append([]string{ctx.pal.accent(fit(machineNewsWord, ctx.width))}, rows...)
+	// THE HEADING IS STRUCTURE (homeband_news.go says the whole of why): the
+	// accent belongs to the one live thing on the screen, and a band's label is
+	// not it.
+	return append([]string{ctx.pal.muted(fit(machineNewsWord, ctx.width))}, rows...)
 }
