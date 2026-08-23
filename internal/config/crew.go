@@ -195,9 +195,27 @@ func CrewSummary(profileDir string) string {
 // person reads after /crew and the line they read in /status cannot drift into
 // naming the same four models differently.
 func CrewClasses(profileDir string) string {
-	return "brain " + shortModel(TierModelAt(profileDir, ModelTierMastermind)) +
-		" · hands " + shortModel(TierModelAt(profileDir, ModelTierLow)) +
-		" · checks " + shortModel(TierModelAt(profileDir, ModelTierHigh))
+	ids := CrewClassModels(profileDir)
+	return "brain " + ids[0] + " · hands " + ids[1] + " · checks " + ids[2]
+}
+
+// CrewClassModels is the three ids [CrewClasses] names, in that order and
+// without the role words in front of them:
+//
+//	kimi-k3:low, deepseek-v4-flash, qwen3.8-27b
+//
+// It exists because a surface drawing the crew line has to be able to say which
+// runs of it are the ANSWER — the ids a person typed /crew to change — and which
+// are the labels around them (internal/tui3's payload.go). Reading them back out
+// of the sentence would be a second parser for a string this file just built, so
+// the sentence is built from this list instead and the two cannot disagree about
+// how many models there are or which order they come in.
+func CrewClassModels(profileDir string) []string {
+	return []string{
+		shortModel(TierModelAt(profileDir, ModelTierMastermind)),
+		shortModel(TierModelAt(profileDir, ModelTierLow)),
+		shortModel(TierModelAt(profileDir, ModelTierHigh)),
+	}
 }
 
 // shortModel is a model id without its vendor prefix, and the level kept. THE

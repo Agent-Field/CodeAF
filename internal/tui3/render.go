@@ -651,14 +651,29 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		if a.waiting(e) {
 			return a.preflightRows(e, width)
 		}
+		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
+		// lane keeps its dim prose and its dim lead — a note is still the surface
+		// talking about itself — while the words the person typed the command to
+		// READ step up to ink, and any door the sentence names wears the chip it
+		// wears in the box and in the message (slashchip.go). The walk is built
+		// once for the whole note and spent across its wrapped rows, because the
+		// data are in the order of the sentence and not of the rows the frame
+		// happened to break it into.
 		body := wrap(e.text, width-2)
 		out := make([]string, 0, len(body))
+		walk := factWalk{words: e.facts}
 		for i, line := range body {
 			lead := "· "
 			if i > 0 {
 				lead = "  "
 			}
-			out = append(out, a.pal.dim(lead+line))
+			// The lead is painted WITH the line rather than beside it, so a note
+			// with nothing to lift comes back as the one dim run it has always been
+			// — [paintPayload] hands an unmarked line straight back to the prose
+			// role. The spans are shifted by the lead's own two cells, which is what
+			// [noteLead] is for.
+			out = append(out, paintPayload(lead+line,
+				shifted(walk.take([]rune(line)), noteLead), a.pal, a.pal.dim))
 		}
 		// A NOTE IS WHERE THIS SURFACE NAMES ITS OWN FILES, and it names them in
 		// full on purpose (statusnote.go): /status's `file`, /help's `session ·`,
@@ -2169,7 +2184,14 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	}
 	line += a.pal.dim(strings.Repeat("─", fill))
 	if tail != "" {
-		line += a.pal.dim(" ") + a.pal.dim(right) + a.pal.dim(" ─")
+		// THE KEY IS THE PAYLOAD AND THE VERB IS THE PROSE (payload.go). This slot
+		// is written in one grammar at every call site that fills it — `esc
+		// interrupt`, `y allow · n deny · a always` — and until this wave both
+		// halves were drawn at the dim value the border itself wears, so the chord
+		// a person had to press was exactly as loud as the word explaining it. The
+		// chord steps to ink; nothing else on the line moves, and the line is the
+		// same number of cells it was.
+		line += a.pal.dim(" ") + paintHint(right, a.pal, a.pal.dim) + a.pal.dim(" ─")
 	}
 	return line, true
 }

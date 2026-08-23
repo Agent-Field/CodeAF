@@ -320,6 +320,13 @@ different from ordinary text and a typo like `/tsak` does not. The highlight is 
 your sent message too. It adds no characters and no cells; see "Slash commands are drawn
 as chips" in the commands page for the whole of it.
 
+**A key chord is never given that background.** Where aforge names a key — the hint slot
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits` — the
+chord is drawn one tier brighter than the words around it and nothing else changes. A
+tinted background always means a slash command and only ever that, so the two marks
+never have to be told apart. See "Why is one word in a line brighter than the rest" on
+the screen page.
+
 **Pasted text lands as one edit** with its newlines intact — it never submits line by
 line. Bracketed paste is on. CRLF and bare CR become LF at the door.
 
