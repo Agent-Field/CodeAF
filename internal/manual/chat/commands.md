@@ -67,7 +67,8 @@ never holds itself open.
 
 A command aforge recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
 and the rest get a **chip**: a tinted background behind exactly the letters of the
-command — the same tint the selected row of a list wears — with the accent ink on top.
+command — the same tint the *chosen* row of a list wears, the one that marks the model in
+use or the conversation you are in — with the accent ink on top.
 No brackets, no border, and nothing added to the line.
 
 It happens in two places: **live in the message box as you type**, and in your message

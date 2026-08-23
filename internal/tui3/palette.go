@@ -266,21 +266,38 @@ func listTop(cursor, top, count, height int) int {
 // and the label gives way before it does: a truncated name is still
 // recognizable, and "164k" cut in half is a wrong number.
 //
-// THE SELECTED ROW IS A BAND, AND THE WHOLE LINE IS IN IT. Selection used to be
-// a bold label and nothing else, which left the cursor row reading as half a
+// THE EMPHASIZED ROW IS A GROUND, AND THE WHOLE LINE IS IN IT. Emphasis used to
+// be a bold label and nothing else, which left the cursor row reading as half a
 // row: the lead was accent, the name was bright, and the tail that carries the
 // window, the price and the arena score stayed dim grey — the three facts a
 // person is actually comparing, greyed out on the one row they were comparing
 // them ON. So the emphasis now spans the line, lead to note, padded to the full
 // width, and the note joins it in ink rather than staying behind in dim.
 //
-// Hover is the fourth thing a row can be and it is not a tier: it is the
-// background under whichever of the three the row already was, plus a brighter
-// lead — the pointer saying "this one", not the list saying "this matters".
-// The two backgrounds are deliberately different weights ([palette.selected] versus
-// [palette.cursor]): a pointer crossing a list must never look like the cursor
-// moving, so hover stays one step off the terminal's own black and selection is
-// the stronger band above it.
+// WHICH STEP EACH ROW DRAWS IS THE GROUND LADDER'S ANSWER AND NOT THIS FILE'S.
+// A list has up to three things going on at once and they are three different
+// facts, so they take three different rungs:
+//
+//	the keyboard cursor   THE CURSOR STEP — where ↑/↓ has got to
+//	the pointer's row     THE CURSOR STEP — the same rung, deliberately
+//	the marked row        THE SELECTED STEP — the one this terminal is IN
+//
+// CURSOR AND HOVER ARE ONE STEP, NOT TWO. This surface used to draw them at two
+// different weights, on the argument that a pointer crossing a list must not
+// look like the cursor moving. The ladder refuses that argument: whether a
+// person arrived at a row with the mouse or with `↓`, the row they are on is the
+// row they are on, and it does not change appearance depending on which hand
+// they used. What still tells the two apart is the LEAD — `›` where enter would
+// act, `·` where the pointer is — which is a mark and not a rung.
+//
+// AND THE MARKED ROW IS THE ONE THAT WAS MISSING ITS GROUND. The conversation
+// this terminal is actually in is the definition of the ladder's selected step —
+// the chosen thing, persistent, still true when nobody is touching the list —
+// and it used to be an accent label on the bare terminal background while the
+// row a person was merely scrolling PAST wore the louder ground. That is the
+// ladder upside down, and a roster where the session you are sitting in looks
+// less chosen than the one under the cursor is a roster that answers "where am
+// I" with the wrong row.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
 	// The two-valued form every list but home draws: marked or not, which is
 	// [markFront] or [markNone].
@@ -338,13 +355,17 @@ const (
 	markFront
 )
 
-func overlayRowTinted(label, note string, tint noteInk, selected bool, marked rowMark, hovered bool, width int, pal palette) string {
-	lead := overlayLead(selected, hovered, pal)
+func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
+	lead := overlayLead(oncursor, hovered, pal)
 	room := width - 2
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
 	}
 	label = fit(label, room)
+
+	// lifted is whether this row wears a ground at all, which is the one thing
+	// the note's ink turns on: dim grey on a raised ground is grey on grey.
+	lifted := oncursor || hovered || marked == markFront
 
 	var painted string
 	switch {
@@ -355,12 +376,12 @@ func overlayRowTinted(label, note string, tint noteInk, selected bool, marked ro
 		// strength, so a person's eye reads "this terminal has these" as one
 		// group rather than as two unrelated paints.
 		painted = pal.muted(label)
-	case selected:
+	case oncursor:
 		painted = pal.ink(label)
 	default:
 		painted = pal.dim(label)
 	}
-	if selected {
+	if oncursor {
 		painted = pal.bold(painted)
 	}
 	line := lead + painted
@@ -369,15 +390,19 @@ func overlayRowTinted(label, note string, tint noteInk, selected bool, marked ro
 		if gap < 1 {
 			gap = 1
 		}
-		// THE NOTE IS INSIDE THE BAND, so it is painted as part of it: dim ink
-		// on the selection background is grey on grey, and the tail is the half
-		// of the row a person is reading when they stop on it.
-		line += strings.Repeat(" ", gap) + paintNote(tint, pal, note, selected)
+		// THE NOTE IS INSIDE THE GROUND, so it is painted as part of it: dim ink
+		// on a raised ground is grey on grey, and the tail is the half of the row
+		// a person is reading when they stop on it.
+		line += strings.Repeat(" ", gap) + paintNote(tint, pal, note, lifted)
 	}
+	// THE MARKED ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT. Both can
+	// be true of one row — the cursor lands on the conversation you are in — and
+	// the louder step wins, so that row never gets QUIETER for being arrived at.
+	// The cursor is still said, on the lead.
 	switch {
-	case selected:
+	case marked == markFront:
 		return pal.selected(line, width)
-	case hovered:
+	case oncursor, hovered:
 		return pal.cursor(line, width)
 	}
 	return line

@@ -351,10 +351,13 @@ func (a *app) frame() (string, int, int) {
 	// Once the conversation is longer than the region there is no slack at all —
 	// pad is zero, [app.offsetFor] has already chosen the window that ends at
 	// the newest row, and the frame is exactly what it always was.
-	// A sweep in flight paints its rows with the hover background — the same
-	// statement copy mode's selection makes, because it is the same selection:
-	// these rows are the ones, and on release their text is the copy
-	// (dragselect.go).
+	// A sweep in flight paints its rows with THE GROUND LADDER'S MARK STEP — the
+	// same statement copy mode's selection makes, because it is the same
+	// selection: these rows are the ones, and on release their text is the copy
+	// (dragselect.go). The two used to be painted two rungs apart, a sweep on
+	// the pointer's step and copy mode's span on the mark's, which said one of
+	// them was a shadow and the other a selection. NEITHER IS A SHADOW: a span a
+	// person is building is a span whichever way they built it.
 	selFrom, selTo, selOn := a.dragSpan()
 	// The selection is CONTENT rows (dragselect.go), so it is compared against
 	// each drawn row's index in the body's own list — which is this screen
@@ -365,7 +368,7 @@ func (a *app) frame() (string, int, int) {
 		text := r.text
 		if selOn {
 			if at := scroll + i; at >= selFrom && at <= selTo {
-				text = a.pal.cursor(text, a.bodyWidth())
+				text = a.pal.mark(text, a.bodyWidth())
 			}
 		}
 		rows = append(rows, a.railJoin(text, railAt(i)))

@@ -573,10 +573,17 @@ func deckLabelWidth(items []deckItem) int {
 // deckItemRow draws one line: the label dim, the fact in ink, and the ▸ on the
 // end of the ones a tap can act on.
 //
-// THE ROW UNDER THE KEYBOARD IS THE ONLY PAINTED ONE, and it is painted by its
-// LABEL rather than by a bar across the whole line: a sheet where the selection
-// is a block of colour is a sheet where the selection outshouts the facts it
-// was opened to show.
+// THE ROW A PERSON IS ON WEARS BOTH HALVES OF THE EMPHASIS LAW: its label turns
+// accent and its ground comes up one step. It used to be the label alone, on the
+// argument that a sheet whose cursor is a block of colour is a sheet where the
+// cursor outshouts the facts it was opened to show. That argument was aimed at
+// the ONE background this surface had at the time, which is now the SELECTED
+// step; THE GROUND LADDER's cursor step is a rung under it and was authored at
+// ≈1.17:1 precisely so it could sit behind facts without competing with them.
+//
+// The keyboard and the pointer share the boolean deliberately. They are one rung
+// of the ladder, and this sheet has no third state to keep apart from them —
+// nothing on it is open.
 func (a *app) deckItemRow(item deckItem, at, label, width int) string {
 	selected := at == a.deck.cursor || at == a.deck.hot
 	pad := label - ansi.StringWidth(item.label)
@@ -594,9 +601,20 @@ func (a *app) deckItemRow(item deckItem, at, label, width int) string {
 	}
 	room := width - len(deckPad) - ansi.StringWidth(item.label) - pad - ansi.StringWidth(plainMark)
 	if room < 1 {
-		return fit(deckPad+name, width)
+		return a.deckGround(fit(deckPad+name, width), selected, width)
 	}
-	return deckPad + name + strings.Repeat(" ", pad) + a.pal.ink(fit(item.value, room)) + mark
+	line := deckPad + name + strings.Repeat(" ", pad) + a.pal.ink(fit(item.value, room)) + mark
+	return a.deckGround(line, selected, width)
+}
+
+// deckGround raises the row a person is on onto THE GROUND LADDER's cursor step,
+// and leaves every other row at rest. It is a method of its own only so the two
+// returns above cannot drift apart — a narrow frame's row is the same row.
+func (a *app) deckGround(line string, on bool, width int) string {
+	if !on {
+		return line
+	}
+	return a.pal.cursor(line, width)
 }
 
 // deckKeysLine names the keys that work on this sheet, and it names the one

@@ -187,7 +187,19 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 		version = 1
 	}
 	head := "┌─ harness designed " + strings.Repeat("─", max(1, inner-24)) + fmt.Sprintf(" v%d ─┐", version)
-	rows := []string{fit(head, width), boxLine(name, inner), boxLine(c.page.Id.Desc, inner), boxLine("", inner)}
+	// THE CARD'S LEADING TEXT IS ITS NAME, and that is what turns accent when the
+	// cursor is on it. The emphasis used to be an accent painted along the top
+	// RULE of the box, which is the one move the emphasis law forbids outright —
+	// a ring drawn round a thing rather than a step up the ladder — and it lit a
+	// run of box-drawing glyphs rather than a word anybody reads. The ground now
+	// arrives from the layout's own pass (render.go's [app.hoverPass]), which is
+	// where every other row on this surface gets it, so this file spends its half
+	// of the law on the lead and nothing else.
+	title := name
+	if selected {
+		title = a.pal.accent(name)
+	}
+	rows := []string{fit(head, width), boxLine(title, inner), boxLine(c.page.Id.Desc, inner), boxLine("", inner)}
 	for _, line := range harnessDiagram(*c.page, inner, layoutTier(width) == tierPhone) {
 		rows = append(rows, boxLine(line, inner))
 	}
@@ -210,9 +222,6 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 	}
 	c.buttonRow = actions
 	rows = append(rows, boxLine(actions, inner), "└"+strings.Repeat("─", inner+2)+"┘")
-	if selected {
-		rows[0] = a.pal.accent(rows[0])
-	}
 	return rows
 }
 

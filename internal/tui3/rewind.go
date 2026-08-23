@@ -600,7 +600,18 @@ func (a *app) rewindPass(out []row, width int) []row {
 		// showing would say "this row is different from the ones beside it" when
 		// the true statement is "all of this goes".
 		r.text = a.pal.dim(ansi.Strip(r.text))
-		if r.entry >= 0 && (r.entry == anchor || r.entry == hot) {
+		// THE CUT AND THE POINTER ARE TWO DIFFERENT FACTS AND TAKE TWO STEPS.
+		// The anchor is the entry the cut is SET to — chosen, persistent, still
+		// true when the mouse has gone elsewhere — so it takes THE GROUND
+		// LADDER's selected step. The row under the pointer is a shadow and takes
+		// the cursor step. Both used to be the cursor step, which meant a person
+		// deciding how far back to go could not tell the cut they had chosen from
+		// the row their mouse happened to be resting on — on the one screen where
+		// that difference is the whole question.
+		switch {
+		case r.entry >= 0 && r.entry == anchor:
+			r.text = a.pal.selected(r.text, width)
+		case r.entry >= 0 && r.entry == hot:
 			r.text = a.pal.cursor(r.text, width)
 		}
 		rows = append(rows, r)

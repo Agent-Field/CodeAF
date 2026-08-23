@@ -68,8 +68,22 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	}
 	// The conversation is not drawn under it, and neither is the box a person
 	// types into: the page took the frame whole.
-	if strings.Contains(plain(frame), "› ") {
-		t.Fatalf("the message box is still on the frame under the page:\n%s", plain(frame))
+	//
+	// The probe is the page's own FOOT rather than the box's `› ` glyph. Those
+	// two cells stopped being the box's alone the day this page's cursor row
+	// started leading with the mark every list on this surface leads with
+	// ([overlayLead]) — so a frame with a cursor on it contains `› ` whether or
+	// not a box was drawn, and the question "did anything come after the page"
+	// is the one actually being asked.
+	lines := strings.Split(plain(frame), "\n")
+	last := ""
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			last = strings.TrimSpace(line)
+		}
+	}
+	if last != taskSheetRoomKeys {
+		t.Fatalf("something is drawn under the page — it ends on %q, want its own foot:\n%s", last, plain(frame))
 	}
 
 	drive(t, a, key("esc"))

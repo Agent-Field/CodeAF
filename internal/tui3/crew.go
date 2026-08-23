@@ -151,29 +151,48 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		for _, tier := range roles.Tiers {
 			parts = append(parts, strings.TrimSpace(a.crewClassWord(tier))+" "+models[string(tier)])
 		}
-		selected := i == p.cursor
+		// THE CREW IN FORCE AND THE CURSOR ARE TWO FACTS, AND A ROW CAN BE BOTH.
+		// The crew a person is actually running is chosen and persistent, so it
+		// takes THE GROUND LADDER's selected step; the cursor is where ↑/↓ has got
+		// to, so it takes the cursor step, the same step the pointer takes.
+		//
+		// This list used to say both with the LEAD and lose one of them: the
+		// current preset borrowed the pointer's own `·`, and because it was tested
+		// first, the cursor's `›` disappeared the moment the cursor landed on the
+		// preset already in force — which is the one row a person is most likely
+		// to arrow onto, and the one moment they most need to know enter is aimed.
+		oncursor, current := i == p.cursor, preset == p.current
 		hovered := hover == len(out) || hover == len(out)+1
 		lead := "  "
-		if preset == p.current {
-			lead = "· "
-		} else if selected {
-			lead = "› "
+		switch {
+		case oncursor:
+			lead = pal.accent("› ")
+		case hovered:
+			lead = pal.accent("· ")
 		}
 		label := preset + " — " + config.CrewLine(preset)
-		if preset == p.current {
+		switch {
+		case current:
 			label = pal.accent(label)
-		} else if selected {
+		case oncursor:
 			label = pal.ink(label)
-		} else {
+		default:
 			label = pal.dim(label)
 		}
 		head := lead + fit(label, width-2)
+		// The models are the half of the row a person stopped on it to compare, so
+		// they come up to ink wherever the row wears a ground: dim on a raised
+		// ground is grey on grey.
 		tail := "    " + fit(strings.Join(parts, " · "), width-4)
-		tail = pal.dim(tail)
+		if oncursor || hovered || current {
+			tail = pal.ink(tail)
+		} else {
+			tail = pal.dim(tail)
+		}
 		switch {
-		case selected:
+		case current:
 			head, tail = pal.selected(head, width), pal.selected(tail, width)
-		case hovered:
+		case oncursor, hovered:
 			head, tail = pal.cursor(head, width), pal.cursor(tail, width)
 		}
 		out = append(out, head, tail)

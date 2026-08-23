@@ -321,6 +321,87 @@ func TestTheRosterMarksTheRoomAPersonIsStandingIn(t *testing.T) {
 	}
 }
 
+// THE ROSTER'S TWO MARKS ARE TWO STEPS OF THE LADDER, AND BOTH ARE READABLE AT
+// ONCE. This column is the one surface on this screen that carries a persistent
+// fact and a transient one side by side — the room you walked into, and the row
+// ↑/↓ has reached — and that pair is the whole reason THE GROUND LADDER has a
+// cursor step AND a selected step rather than one highlight.
+//
+// The column used to draw the room on a ground and the keyboard's row with a
+// marker and no ground at all, so the two facts were said in two different
+// vocabularies and only one of them was a rung. Now the room takes the louder
+// step, the cursor takes the quieter one under it, and neither can be mistaken
+// for the other.
+func TestTheRosterTellsItsCursorRowFromTheRoomYouAreIn(t *testing.T) {
+	a, _, _ := roomApp(t)
+	railRun(a)
+	height := a.viewHeight()
+
+	clickRailNode(t, a, 1)
+	if !a.roomOpen() || a.room.id != 1 {
+		t.Fatalf("the rail did not open node 1: open=%v id=%d", a.roomOpen(), roomID(a))
+	}
+	a.railTake(true)
+	if !a.railHold {
+		t.Fatal("the roster did not take the keyboard it was handed")
+	}
+	// Walk the cursor off the room's own row. A cursor resting on the room you
+	// are in is a real state and it is checked at the foot of this test, but the
+	// pair only becomes two rows once they part.
+	for i := 0; i < len(a.railEntries()) && sameRailRow(a); i++ {
+		drive(t, a, key("down"))
+	}
+	if sameRailRow(a) {
+		t.Fatal("the cursor never left the row of the room it opened in")
+	}
+
+	var onChosen, onCursor int
+	for _, row := range a.railRows(height) {
+		chosen, cursor := strings.Contains(row, bandSeq()), strings.Contains(row, hoverBg())
+		if chosen && cursor {
+			t.Fatalf("one row wears both steps at once:\n%q", row)
+		}
+		if chosen {
+			onChosen++
+			if !strings.Contains(plain(row), "Ship the port") {
+				t.Fatalf("a row that is not the open room wears the chosen step:\n%q", row)
+			}
+		}
+		if cursor {
+			onCursor++
+			if strings.Contains(plain(row), "Ship the port") {
+				t.Fatalf("the open room's row wears the cursor step:\n%q", row)
+			}
+		}
+	}
+	if onChosen == 0 {
+		t.Fatalf("the room a person is in wears no ground:\n%s", strings.Join(railText(a, height), "\n"))
+	}
+	if onCursor == 0 {
+		t.Fatalf("the row the keyboard is on wears no ground:\n%s", strings.Join(railText(a, height), "\n"))
+	}
+	if hueCursor.idx == hueSelected.idx {
+		t.Fatal("the two steps resolve to one colour, so the pair says nothing")
+	}
+	// AND THE MARKER STAYS IN THE LEAD. The ground is the secondary cue; the
+	// accent on the leading glyph is the one a person reads first, so the cursor
+	// keeps saying where enter is aimed as well as where it is.
+	if !strings.Contains(rosterText(a, height), railMark) {
+		t.Fatalf("the cursor's row lost its marker to its ground:\n%s", rosterText(a, height))
+	}
+}
+
+// sameRailRow reports whether the roster's keyboard cursor is standing on the
+// row of the room that is open.
+func sameRailRow(a *app) bool {
+	entries := a.railEntries()
+	at := a.railFocusIndex(entries)
+	if at < 0 || at >= len(entries) {
+		return false
+	}
+	return a.roomStandingOn(entries[at].node)
+}
+
 // THE MARK SURVIVES BOTH COLUMN WIDTHS AND THE OVERLAY. The roster is drawn at
 // three sizes on this surface — the narrow column, the wide one, and the whole
 // body on a frame with no columns to lend — and a "you are here" that only one of
