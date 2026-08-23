@@ -424,6 +424,47 @@ Once you answer, the row reads `saved as <name> v1` or `dropped` for the moment 
 task's settle card arrives. While a rewrite is being written there is nothing to approve, so
 the row is gone.
 
+## How do I know a message went into a subharness design — the dim words after my own line
+
+**Your own line says what it was part of.** A sentence typed into a design's room is not a
+remark to the conversation — it can rewrite the page — so the transcript marks it, dim, on
+the line you typed:
+
+```
+› use models dynamically in it · designing subharness flake-triage
+```
+
+The words after the `·` are the design you are inside. They are quiet on purpose: the mark
+is a fact about where the sentence went, not a summons, so it never takes the bright colour
+this surface saves for the one live thing on a screen.
+
+| What you see | What it means |
+| --- | --- |
+| nothing after your line | an ordinary message, to the conversation — this is nearly every message |
+| `· designing a subharness` | it went into a design whose page has not been written yet, so it has no name to give you |
+| `· designing subharness <name>` | it went into that design, and the page it has written is called `<name>` |
+
+**The name is the real one, and it arrives when it exists.** For the first minute of a
+design there is no page and no name, so the mark says `designing a subharness` and nothing
+more — aforge does not guess a name for something that has not been written. The moment the
+page is written the mark reads `designing subharness <name>`, on new lines and on the ones
+already above them, because the room is read back from one place.
+
+**Where it appears:** every line you type into a design's room, and the design's opening
+brief at the top of that room, so the history reads back with the mark on it. Walking into
+the room again later shows the same marks — they are not a live decoration.
+
+**Where it does not appear:** an ordinary task's room. A task is work you handed over and
+walked away from, not a place you are inside, so there is nothing to name and nothing is
+drawn — the same rule that keeps `$0.00` and `0 tok` off this surface.
+
+**How the flow begins and ends is already said, and is not said twice.** When a design
+starts, the conversation writes one dim line naming it and the task it is running as; when
+it lands, the task's settle card says what became of it. The room's own header carries the
+task the whole time you are standing in it. This mark is the part that lives in the
+transcript itself, so the exchange still says what it was when you scroll back to it or
+export it.
+
 ## Why does a harness design say "needs you" instead of "running"
 
 Because it is not running. A design at `awaiting your look` has finished everything a
