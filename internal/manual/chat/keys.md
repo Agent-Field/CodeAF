@@ -829,8 +829,11 @@ searches the whole machine and offers to start a new conversation at the same ti
 `←` on a conversation inside an opened project folds that project too. On a conversation
 or watch row with the box empty, `→` opens **every folded band on the card** you are
 looking at and `←` folds them all back — one layer at a time, so `←` folds the card's
-bands before it folds anything on the list. While something is typed the two arrows move
-the caret in the box instead.
+bands before it folds anything on the list. **On the three-column frame (110 columns and
+up) the same arrows also cross the columns**: `→` off a row in `needs you` or `moving`
+crosses into the list and `←` off a conversation in the list crosses back, each landing
+on the same conversation when the far column holds it. While something is typed the two
+arrows move the caret in the box instead.
 
 **A letter always types. Every letter, always** — there is no row, cursor, hover or pick
 that turns one into a shortcut, so "make me a site" comes out whole wherever the cursor

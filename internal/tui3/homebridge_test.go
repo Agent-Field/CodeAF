@@ -352,6 +352,48 @@ func TestTabCyclesTheZonesAndComesBackRound(t *testing.T) {
 	}
 }
 
+// THE ARROWS FOLLOW THE GEOGRAPHY AT THE COLUMNS TIER: the zones stand to the
+// left of the list, so → off a zone row crosses into the list and ← crosses
+// back — and both land on the SAME conversation when the far column holds it,
+// so stepping across the gutter never loses the thing being read.
+func TestTheArrowsCrossBetweenTheZonesAndTheList(t *testing.T) {
+	a, _ := bridgeLab(t)
+	// tab lands in `needs you`, on the conversation stopped on a question.
+	a.homeKey(key("tab"))
+	line, ok := a.home.focusedLine()
+	if !ok || attentionWordOf(line) != attentionNeedsWord {
+		t.Fatalf("tab did not reach the needs-you row:\n%s", homeText(a))
+	}
+	held := line.row.Transcript
+
+	a.homeKey(key("right"))
+	after, ok := a.home.focusedLine()
+	if !ok || attentionWordOf(after) != "" {
+		t.Fatalf("→ did not leave the zones' column (zone %q):\n%s", attentionWordOf(after), homeText(a))
+	}
+	if after.row.Transcript != held {
+		t.Fatalf("→ landed on %q, want the same conversation %q:\n%s", after.row.Transcript, held, homeText(a))
+	}
+
+	a.homeKey(key("left"))
+	back, ok := a.home.focusedLine()
+	if !ok || attentionWordOf(back) == "" {
+		t.Fatalf("← did not cross back into the zones:\n%s", homeText(a))
+	}
+	if back.row.Transcript != held {
+		t.Fatalf("← landed on %q, want the same conversation %q:\n%s", back.row.Transcript, held, homeText(a))
+	}
+
+	// AND A DRAFT KEEPS THE ARROWS. With something typed they are the caret's,
+	// so the cursor stays where it is standing.
+	a.homeKey(key("x"))
+	was := a.home.cursor
+	a.homeKey(key("right"))
+	if a.home.cursor != was {
+		t.Fatal("→ moved the cursor while something was typed")
+	}
+}
+
 // AND THE KEYS ARE THE ROW'S OWN KEYS IN WHICHEVER COLUMN IT IS DRAWN. A digit
 // over a conversation stopped on a question answers it from the zones' column
 // exactly as it does from a strip over the list — the row is the same row, and
