@@ -1510,6 +1510,15 @@ func (n *TaskNode) notice() TaskNotice {
 	cost := n.spend()
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	return n.noticeLocked(cost)
+}
+
+// noticeLocked is [TaskNode.notice] for a caller already holding the graph
+// lock, with the spend read before that lock was taken (notice says why that
+// order is the only one). It exists for [Agent.replayTaskRoster], which builds
+// every row of the roster inside ONE hold of the lock so the batch is a single
+// instant of the graph rather than a smear across a node landing mid-walk.
+func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	// A landed node's age is frozen, and a rehydrated one has only the age its
 	// checkpoint recorded; only a node that is still running is measured.
 	elapsed := n.elapsed
@@ -1828,6 +1837,12 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // stream is unbounded, so handing it over is an append and never a wait. It is
 // handed over ONCE — a second lane on the same session is a second view of the
 // same conversation, not a second person arriving.
+//
+// EVERY subscriber is handed the task ROSTER, by contrast, not only the first:
+// the rows are facts about the graph rather than news, and a lane opened by a
+// surface with nothing drawn yet — a conversation resumed from its checkpoint,
+// one switched back to behind home — needs all of them to rebuild its column
+// ([Agent.replayTaskRoster]).
 func (a *Agent) TaskUpdates() <-chan Event {
 	lane, _ := a.WatchTaskUpdates()
 	return lane
@@ -1857,6 +1872,15 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	news := a.standingNews
 	a.standingNews = nil
 	a.mu.Unlock()
+	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
+	// a surface that has no rows yet — a conversation resumed from its
+	// checkpoint, or one switched back to behind home — and every row it is
+	// missing already exists in the graph, announced once on lanes that closed
+	// with the surface that held them. Replaying the graph's own notices here
+	// is what makes the column rebuildable from the engine's record; a surface
+	// that watched all along re-hears what it already drew, and drawing a row
+	// twice is drawing it once (tui3's taskUpdate keys rows by id).
+	a.replayTaskRoster(stream)
 	// THE BACKLOG GOES OUT BEFORE THE STREAM DOES: news the standing side raised
 	// while nobody was watching is replayed onto this stream, so a surface that
 	// attached a moment late still sees the card rather than a lane that looks
@@ -1872,6 +1896,58 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 			a.mu.Unlock()
 			stream.leave()
 		})
+	}
+}
+
+// replayTaskRoster sends one [EventTaskUpdate] per node this conversation's
+// graph holds, in admission order, onto the lane that has just opened.
+//
+// It exists because the graph outlives every lane that reported it: a node's
+// events go out when they happen, to whoever is subscribed at that moment, and
+// a surface that attaches later — a conversation resumed from its checkpoint,
+// or one switched back to behind home — holds an empty column with no way to
+// ask for the rows again. This is the asking: the same notices a live emit
+// would have carried, rebuilt from the nodes themselves, so a replayed row and
+// a live row cannot disagree about what a node looks like.
+//
+// THE SPENDS ARE READ FIRST AND THE ROWS ARE BUILT UNDER ONE HOLD OF THE GRAPH
+// LOCK. The spends first because notice's lock order demands it — each is a
+// room and a child agent with locks of their own. The single hold because a
+// node that lands mid-replay would otherwise race its own fresher event onto
+// the stream ahead of a staler snapshot row, and a terminal node never speaks
+// again, so the stale row would stand for the rest of the session. Under the
+// lock no node can move, and [eventStream.send] is an append that never waits,
+// so holding it across the walk costs nobody anything. A node admitted between
+// the two holds is not in the walk and needs no row here: its lane is already
+// registered, so its own events reach it live.
+//
+// A node's own agent replays nothing: its graph is the conversation's
+// (Config.tasker), and the conversation's lanes are where the roster belongs.
+func (a *Agent) replayTaskRoster(stream *eventStream) {
+	if a.config.InTask {
+		return
+	}
+	graph := a.graph()
+	graph.mu.Lock()
+	nodes := make([]*TaskNode, 0, len(graph.order))
+	for _, id := range graph.order {
+		if node := graph.nodes[id]; node != nil {
+			nodes = append(nodes, node)
+		}
+	}
+	graph.mu.Unlock()
+	if len(nodes) == 0 {
+		return
+	}
+	costs := make([]float64, len(nodes))
+	for i, node := range nodes {
+		costs[i] = node.spend()
+	}
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	for i, node := range nodes {
+		notice := node.noticeLocked(costs[i])
+		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 }
 
