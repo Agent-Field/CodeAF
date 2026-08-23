@@ -41,8 +41,11 @@ func scrolledApp(t *testing.T, height int) *app {
 	t.Helper()
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.height = height
-	for i := 0; i < 60; i++ {
-		a.note("a line of transcript")
+	// The lines are NUMBERED because the note lane refuses to write the same
+	// sentence twice running (app.go's [app.note]): sixty copies of one string
+	// is one row, and this fixture exists to be taller than the window.
+	for i := range 60 {
+		a.note("a line of transcript " + itoa(i))
 	}
 	a.touch()
 	return a
@@ -67,8 +70,8 @@ func TestTheBreathingGapStepsDownWithTheWindow(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
 			a.height = c.height
-			for i := 0; i < 40; i++ {
-				a.note("a line of transcript")
+			for i := range 40 {
+				a.note("a line of transcript " + itoa(i))
 			}
 			a.touch()
 
