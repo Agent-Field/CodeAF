@@ -305,8 +305,8 @@ home" below.
 
 ## Archiving a conversation — put junk away and clean up home
 
-Walk the cursor onto a conversation (or click it), then press **`e`** with the message box
-empty, and that row is
+Walk the cursor onto a conversation (or point at it, or click it), then press **`ctrl+e`**,
+and that row is
 **put away**: it leaves its project's block and home gets cleaner by one line. Put-away
 conversations from every project gather under **one folded line at the very foot of the
 resting list**:
@@ -321,8 +321,9 @@ nothing else.
 
 **Getting one back:** `enter` (or `→`, or a click) on the archive line opens it in place;
 the put-away rows draw as ordinary conversations — newest first, each naming its project —
-and `enter` on one opens it exactly as it would anywhere. Press **`e` on a row inside the
-open archive** and it returns to its project's block. `enter` or `←` on the archive line
+and `enter` on one opens it exactly as it would anywhere. Press **`ctrl+e` on a row inside
+the open archive** and it returns to its project's block — the same key is its own undoing,
+and the card's legend reads `ctrl+e bring back` there. `enter` or `←` on the archive line
 folds it away again.
 
 **Search sees everything.** Typing into home's box matches put-away conversations along
@@ -437,8 +438,8 @@ today
   that work cost. `of $5.00` is your **daily allowance** — the same budget everything
   standing is held to — and this is the only place on the screen it appears.
 
-`m` on the machine's card opens every fold on it, and again closes them, exactly as it does
-on any other card here.
+`→` on the machine's card opens every fold on it, and `←` closes them again, exactly as
+they do on any other card here.
 
 **Nothing that is zero is drawn.** A day with no work in it says `2 chats` and stops; a
 machine nobody has touched today has no `today` band at all — never `0 chats · 0 tasks ·
@@ -509,8 +510,9 @@ stop on, like a project's dim heading, preview nothing and leave the card where 
 
 The card is the real card and not a sketch. Hovering a conversation in another project
 shows **that project's** branch and dirty files, its work, its last exchange and its
-figures; `m` opens every fold on the card you are looking at, so while you are pointing at
-a row it acts on **that** row.
+figures; `→` opens every fold on the card you are looking at (and the chords — `ctrl+e`,
+`ctrl+o`, `ctrl+y`, `ctrl+t` — act on the same card), so while you are pointing at a row
+they act on **that** row.
 
 Two cases where the right side does not move under the pointer, both of them by design:
 under 80 columns there is no right column at all, and while your terminal owns the pointer
@@ -585,9 +587,10 @@ leads the second line instead, with the glyph it wears everywhere else here:
 Three ways to open it, and all three fold it again:
 
 - **click the line** — it opens that band alone;
-- **press `m`** with nothing typed — `m` opens **every** folded band on the card at once,
-  and `m` again folds them all. The right column has no cursor of its own, so the key acts
-  on the card rather than on a line. While something *is* typed, `m` is just an `m` going
+- **press `→`** with nothing typed — it opens **every** folded band on the card at once,
+  and `←` folds them all back. The right column has no cursor of its own, so the arrows
+  act on the card rather than on a line. While something *is* typed, the arrows move the
+  caret in the box instead — and `m`, which once did this, is always just an `m` going
   into the box;
 - the opened band says `▾ …5 fewer`, which is the way back.
 
@@ -751,20 +754,20 @@ pane, one dim line reads `that folder is gone`. The last line of the card — it
 loses the three keys that need a folder and reads:
 
 ```
-that folder is gone · y copy path · m more
+that folder is gone · ctrl+y copy path · → more
 ```
 
-`enter open`, `n new chat here` and `o open folder` are not offered, because all three want
-that directory: `enter` opens a conversation rooted in it, `n` starts a fresh one there, and
-`o` hands it to your file manager. Pressing them anyway refuses.
+`enter open`, `ctrl+t new chat here` and `ctrl+o open folder` are not offered, because all
+three want that directory: `enter` opens a conversation rooted in it, `ctrl+t` starts a
+fresh one there, and `ctrl+o` hands it to your file manager. Pressing them anyway refuses.
 
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
 
 **The conversation itself is not lost.** Everything aforge recorded about it lives under
-`~/.aforge/v3/projects`, not in the workspace: `m` still opens the card's folded bands —
-what it did, what it cost, where it left off — and `y` still copies the workspace path. What
-cannot happen is *continuing* it, because there is nowhere to continue it.
+`~/.aforge/v3/projects`, not in the workspace: `→` still opens the card's folded bands —
+what it did, what it cost, where it left off — and `ctrl+y` still copies the workspace
+path. What cannot happen is *continuing* it, because there is nowhere to continue it.
 
 **What to do:** recreate the folder at that exact path and the row opens again on the next
 refresh (home re-checks every three seconds); or type a message at the foot of home and
@@ -1250,7 +1253,7 @@ The tail says where it stands, and it says **only what is true**:
 - `needs your look · <what it is stopped on>` — the one line on the band that is
   not dim.
 - `running · 4m` — it is doing something right now.
-- `paused` — you pressed `p` on it.
+- `paused` — you pressed `ctrl+e` on it.
 
 **Where the rows sit is triage, not grouping.** An item that needs you or is
 running sits *above* the conversations, with the other rows that want you; one
@@ -1270,25 +1273,25 @@ in — or a machine-wide one, which belongs to `~` — home draws that workspace
 heading of its own, named the way every other heading is named (the folder's last
 part, `~` for your home directory), with its items under it. It sits in the
 recency order by the newest thing those items have done. A heading is never
-marked at all — it is the project's name and nothing else — and `p` and `s` on
-its rows work exactly as they do anywhere else: they go through the store, not
-through a door.
+marked at all — it is the project's name and nothing else — and `ctrl+e` and
+`ctrl+x` on its rows work exactly as they do anywhere else: they go through the
+store, not through a door.
 
 **Typing hides the band.** The box at the foot searches conversations — by name,
 by project, by what their tasks came to — and rows the query never considered
 would be rows drawn as though it had.
 
-## How do I pause a reminder from home — p and s on an item row
+## How do I pause a reminder from home — ctrl+e and ctrl+x on an item row
 
-Put the cursor on the row and press **`p` to pause it** or **`s` to stop it for
-good**. Home says `paused · <your words>` or `stopped · <your words>` at the foot
-and redraws the row from the store, so what you see is what is on disk rather
-than what the keypress hoped for.
+Put the cursor on the row (or point at it) and press **`ctrl+e` to pause it** or
+**`ctrl+x` to stop it for good**. Home says `paused · <your words>` or
+`stopped · <your words>` at the foot and redraws the row from the store, so what
+you see is what is on disk rather than what the keypress hoped for.
 
-They are bare letters, and they are only keys **while nothing is typed and the
-cursor is on one of these rows**. With anything in the box a `p` is a `p` — the
-box is a search and a new conversation at the same moment, and the rows are not
-on screen then anyway.
+They are chords rather than bare letters on purpose: home's box takes every
+letter, always, so a `p` is a `p` in your sentence wherever the cursor rests.
+The chords need no such care — they can never begin a word — and they act
+whether or not something is typed.
 
 A window whose build cannot write to the store says `this window cannot change
 it` rather than pretending.
@@ -1313,7 +1316,7 @@ the other kind of thing, read downward:
 5. a dim line of **how much, ever**: `4 runs · spent $0.08`;
 6. a dim line of **how much lately**: `ran 3 times this week · $0.04`, counted
    over the last seven days of the standing ledger;
-7. the keys, dim: `enter open where it was asked · p pause · s stop`.
+7. the keys, dim: `enter open where it was asked · ctrl+e pause · ctrl+x stop`.
 
 Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
 place and a cadence, and nothing else — no `0 runs`, no `$0.00`, no weekly line.
@@ -1504,16 +1507,16 @@ one chat — what a reminder you set up with `ask here` left waiting when no win
 project was open. Opening any conversation there folds it in and the line goes.
 Each item underneath reads `<age> · <words> · <text>`, for example
 `4m · keep main green · the tests passed`. Home shows three items, then a
-`▸ …N more things` door; `m` opens or closes the preview's folds. An absent or empty inbox
-draws no news band at all. Looking at the band does not consume the news.
+`▸ …N more things` door; `→` opens the preview's folds and `←` closes them. An absent or
+empty inbox draws no news band at all. Looking at the band does not consume the news.
 
 ## Where are the files it produced — deliverables on a conversation
 
 The home preview lists files produced by that conversation, newest first, as
 `<basename> · <age>`, for example `report.md · 2h`. The basename is a clickable path in
 terminals that support file links, and opens the full recorded path. Home shows three
-files, then a `▸ …N more files` door; `m` opens or closes the preview's folds. A
-conversation with no indexed files draws no deliverables band.
+files, then a `▸ …N more files` door; `→` opens the preview's folds and `←` closes them.
+A conversation with no indexed files draws no deliverables band.
 
 ## Where did we leave off — the last exchange on a conversation
 
@@ -1532,29 +1535,33 @@ nothing.
 
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
-The last dim line of a conversation card reads `enter open · n new chat here · o open
-folder · y copy path · m more`. These bare letters are keys only while the box is empty
-and the cursor is on a conversation. `n` starts a fresh conversation **in that row's own
-project**, whichever one it is — the conversation you were in steps aside and keeps
-running, exactly as it does for `enter`. A row whose folder is no longer on this disk says
-`that folder is gone · <path>` and starts nothing.
-`o` asks the machine to open that conversation's workspace folder, `y` copies
-the workspace path, and `m` opens or closes the card's folded bands. A failed folder open
-says `could not open <path>` on home's message line.
+The last dim line of a conversation card reads `enter open · ctrl+t new chat here · ctrl+o
+open folder · ctrl+y copy path · ctrl+e put away · → more`. They are chords and arrows
+rather than letters so that typing always types — every bare letter goes into the box,
+whatever the cursor is doing — and each acts on the card you are looking at: the row
+under your pointer when there is one, the cursor's row otherwise. `ctrl+t` starts a fresh
+conversation **in that row's own project**, whichever one it is — the conversation you
+were in steps aside and keeps running, exactly as it does for `enter` (the mnemonic is
+the browser's new-tab key; ctrl+n is the walk down the list). A row whose folder is no
+longer on this disk says `that folder is gone · <path>` and starts nothing.
+`ctrl+o` asks the machine to open that conversation's workspace folder, `ctrl+y` copies
+the workspace path, `ctrl+e` puts the conversation away into the archive (`ctrl+e bring
+back` on a put-away row), and `→` opens the card's folded bands while `←` closes them. A
+failed folder open says `could not open <path>` on home's message line.
 
-**A card whose project folder is gone carries a shorter legend** — `that folder is gone · y
-copy path · m more` — because `enter`, `n` and `o` all need that directory. See *Enter does
-nothing on a row — the folder is gone*.
+**A card whose project folder is gone carries a shorter legend** — `that folder is gone ·
+ctrl+y copy path · → more` — because `enter`, `ctrl+t` and `ctrl+o` all need that
+directory. See *Enter does nothing on a row — the folder is gone*.
 
-An item's card carries the exact legend `enter open where it was asked · p pause · s stop
-· m more`.
+An item's card carries the exact legend `enter open where it was asked · ctrl+e pause ·
+ctrl+x stop · → more`.
 
 ## What is next up on home — scheduled items coming soon
 
 The `next up` band lists active items belonging to the card's project, soonest first and
 two at a time. Rows look like `◦ leave for the train · in 4m`, `◦ draft the update ·
 Mondays 9am`, or `◦ check CI · checked 6m ago`. When more than two are present, the card
-adds a dim `▸ …N more items` door; `m` opens it. Paused, stopped, and absent items draw
+adds a dim `▸ …N more items` door; `→` opens it. Paused, stopped, and absent items draw
 nothing.
 
 ## What has this conversation cost — the spend band on home
@@ -1637,7 +1644,7 @@ the card draws on a wide screen.
 The order is what you can act on first: the answers, then the state, then
 `since you left`, then the work, then what is next, then where it left off, then the
 files it produced. The repository, the keys and the spend are behind one `▸ more` at the
-foot; `m`, or a tap on that line, opens it.
+foot; `→` or `m`, or a tap on that line, opens it.
 
 Keys on the sheet:
 
@@ -1647,8 +1654,8 @@ Keys on the sheet:
 | `enter`, or a tap on the title | open the conversation this card is about |
 | `↑` `↓` `PgUp` `PgDn` `g` `G` | scroll the card |
 | a digit | answer the question the card is showing |
-| `m` | open everything behind `▸ more` |
-| `p` / `s` | on a standing item: pause it, stop it |
+| `→` or `m` | open everything behind `▸ more` |
+| `ctrl+e` / `ctrl+x` (or `p` / `s`) | on a standing item: pause it, stop it |
 
 A frame too short for all the bands **drops them from the bottom** — never the title and
 never the answers.

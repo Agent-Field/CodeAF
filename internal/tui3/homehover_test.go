@@ -147,7 +147,7 @@ func TestHoveringAFoldedProjectPreviewsTheProjectCard(t *testing.T) {
 	}
 }
 
-// `m` ACTS ON THE CARD A PERSON IS LOOKING AT. The right column has no cursor
+// `→` ACTS ON THE CARD A PERSON IS LOOKING AT. The right column has no cursor
 // of its own, so the key that opens every fold on the card has to mean the card
 // that is drawn — the previewed row — or the screen would answer one row and
 // the keyboard another.
@@ -174,12 +174,12 @@ func TestMoreOpensTheFoldsOfThePreviewedCard(t *testing.T) {
 	}
 	a.home.hover = at
 
-	a.homeKey(key("m"))
+	a.homeKey(key("right"))
 	if a.bandFolded(band, hovered) {
-		t.Fatalf("m left the %s band of the previewed card folded", band)
+		t.Fatalf("→ left the %s band of the previewed card folded", band)
 	}
 	if !a.bandFolded(band, pointed) {
-		t.Fatalf("m acted on the cursor's card instead of the one on the screen")
+		t.Fatalf("→ acted on the cursor's card instead of the one on the screen")
 	}
 }
 

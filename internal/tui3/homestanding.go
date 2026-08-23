@@ -692,7 +692,8 @@ func standWhere(line homeLine) string {
 	return line.project
 }
 
-// homeItemWrite is `p` and `s` on an item row: pause it, or stop it for good.
+// homeItemWrite is `ctrl+e` and `ctrl+x` on an item row: pause it, or stop it
+// for good.
 //
 // IT GOES THROUGH THE STORE AND THEN REDRAWS FROM THE STORE. The row is not
 // repainted from what this function wishes were true — the write is attempted,

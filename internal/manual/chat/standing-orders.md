@@ -98,7 +98,9 @@ On the home screen's `keeping an eye on` list, the ones that hold sit **after**
 everything with an appointment, newest first — a rule has no "next", so it does not
 belong in a queue of what happens next.
 
-`p` pauses one, which stops it reaching new work; `s` stops it for good.
+On home, `ctrl+e` pauses one, which stops it reaching new work; `ctrl+x` stops it for
+good. (On the standing orders page inside a conversation, which has no message box
+competing for letters, the keys are `p` and `s`.)
 
 ## Nothing stands until you say yes
 

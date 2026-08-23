@@ -327,24 +327,43 @@ func (a *app) toggleBandFold(band string, subject bandSubject) {
 	a.home.bandOpen[key] = !a.home.bandOpen[key]
 }
 
-// toggleAllBandFolds is the keyboard's way in: `m` on a card opens every fold
-// on it, and `m` again closes them. The column has no cursor of its own, so the
-// key acts on the card rather than on a line; a click on a fold line acts on
-// that line alone ([app.bandFoldAt]).
-func (a *app) toggleAllBandFolds(subject bandSubject) {
-	open := true
-	for _, band := range homeBandsFor(subject.kind) {
-		if !a.bandFolded(band.name, subject) {
-			open = false
-			break
-		}
-	}
+// setAllBandFolds is the keyboard's way in: `→` on a card opens every fold on
+// it, and `←` folds them all back (home.go's [app.homeKey]), the same pair of
+// arrows the left column folds with — one gesture at every scale this screen
+// has. The column has no cursor of its own, so the keys act on the card rather
+// than on a line; a click on a fold line acts on that line alone
+// ([app.bandFoldAt]).
+func (a *app) setAllBandFolds(subject bandSubject, open bool) {
 	if a.home.bandOpen == nil {
 		a.home.bandOpen = map[string]bool{}
 	}
 	for _, band := range homeBandsFor(subject.kind) {
 		a.home.bandOpen[bandFoldKey(band.name, subject)] = open
 	}
+}
+
+// anyBandFoldOpen answers whether the card holds at least one opened band —
+// which is exactly the question `←` asks before folding them, so a card with
+// everything already folded lets the key fall through to whatever the arrow
+// means on the list.
+func (a *app) anyBandFoldOpen(subject bandSubject) bool {
+	for _, band := range homeBandsFor(subject.kind) {
+		if !a.bandFolded(band.name, subject) {
+			return true
+		}
+	}
+	return false
+}
+
+// allBandFoldsOpen is [app.anyBandFoldOpen]'s other end: `→` acts only while
+// something on the card is still folded.
+func (a *app) allBandFoldsOpen(subject bandSubject) bool {
+	for _, band := range homeBandsFor(subject.kind) {
+		if a.bandFolded(band.name, subject) {
+			return false
+		}
+	}
+	return true
 }
 
 // bandFold draws a list-shaped band: the first `show` rows when folded, all of

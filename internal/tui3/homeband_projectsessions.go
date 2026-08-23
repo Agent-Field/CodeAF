@@ -97,7 +97,7 @@ func bandProjectOf(subject bandSubject) (session.Project, bool) {
 //
 // It is deliberately NOT [overlayRow]: that draws the two-cell cursor lead every
 // row of the LIST column carries, and this column has no cursor of its own
-// (homebands.go's [app.toggleAllBandFolds] states the same fact about the keys).
+// (homebands.go's [app.setAllBandFolds] states the same fact about the keys).
 func projectCardRows(label, note string, width int, pal palette) []string {
 	return bandSides(width, 2, standWordsFloor, label, note, pal.muted, pal.dim)
 }

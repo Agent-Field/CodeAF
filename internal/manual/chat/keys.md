@@ -819,13 +819,24 @@ searches the whole machine and offers to start a new conversation at the same ti
 
 `→` and `←` are the fold's, the way they are in the task column: on a project's
 `…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
-`←` on a conversation inside an opened project folds that project too. Anywhere else they
-move the caret in the box. With the box empty and the cursor on a conversation **you
-walked onto or clicked** — until that deliberate pick, every letter types into the box —
-**`e` puts it away into the archive** — the folded `archive · N put away` line at the very foot
-— and `e` on a row inside the open archive brings it back (the archive page section has
-the whole shape). `n` starts a new conversation in that row's project, `o` opens its
-folder, `y` copies its path.
+`←` on a conversation inside an opened project folds that project too. On a conversation
+or watch row with the box empty, `→` opens **every folded band on the card** you are
+looking at and `←` folds them all back — one layer at a time, so `←` folds the card's
+bands before it folds anything on the list. While something is typed the two arrows move
+the caret in the box instead.
+
+**A letter always types. Every letter, always** — there is no row, cursor, hover or pick
+that turns one into a shortcut, so "make me a site" comes out whole wherever the cursor
+is resting. The card's actions ride chords, which can never begin a word: **`ctrl+e` puts
+the conversation away into the archive** — the folded `archive · N put away` line at the
+very foot — and `ctrl+e` on a row inside the open archive brings it back (the archive
+page section has the whole shape). **`ctrl+t`** starts a new conversation in that row's
+project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
+folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
+**`ctrl+e` pauses** it and **`ctrl+x` stops it for good**. Each chord acts on the card you are looking at — the row
+under your pointer when there is one, the cursor's row otherwise — and the card's own
+dim legend names exactly the keys that work. The one printable exception is the digits
+on a waiting row's answer chips, which are drawn on the row itself.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
 a click on a `…13 more` line toggles it in one press.
