@@ -171,6 +171,11 @@ const usageText = `aforge — build and revise task graphs
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
                          plan and run are the static pipeline: a graph written to a file, then executed
                          exactly as written. Kept for reading, editing, and inspecting a plan by hand.
+  aforge run subharness <name> --input <file.json|-> [-w dir] [--model slug] [--journal path]
+                         run one subharness as a program, with nobody watching: typed input in,
+                         its account and its typed output on stdout, everything else on stderr
+                         a question it was not told how to answer stops it rather than being guessed
+                         exit 0 it finished · 1 it could not be run at all · 2 it ran and did not finish
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]

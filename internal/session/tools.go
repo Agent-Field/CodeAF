@@ -134,6 +134,12 @@ func (a *Agent) belt() []bare.Tool {
 	// something that spends forever.
 	tools = append(tools, a.standingTools()...)
 	tools = append(tools, a.harnessTools()...)
+	// The saved PROGRAMS, and the list that says which ones there are
+	// (tools_subharness.go). They are conditional on the same terms the three
+	// machines above are — a registry with something on it, and somebody
+	// watching who can answer the card — because a model told it can run a saved
+	// program plans around that ability for the rest of the conversation.
+	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
 	// search_conversations (tools_conversations.go) is the other half of memory
 	// and is conditional for the same reason `remember` is: what it reads is the

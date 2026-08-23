@@ -353,8 +353,11 @@ func (n *TaskNode) takesSlot() bool { return n.kind != TaskKindHarness }
 // kind is what sort of node this spec makes, in the word the wire carries
 // ([TaskNotice.Kind]).
 func (s taskSpec) kind() TaskKind {
-	if s.design != nil {
+	switch {
+	case s.design != nil:
 		return TaskKindHarness
+	case s.run != nil:
+		return TaskKindSubharness
 	}
 	return ""
 }
