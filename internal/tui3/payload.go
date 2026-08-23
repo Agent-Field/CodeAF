@@ -256,6 +256,12 @@ func paintPayload(line string, facts []segment, pal palette, prose func(string) 
 // A trailing comma or full stop is not part of a key, so it is trimmed off the
 // span before the lift rather than painted with it: "0 or esc, no" lifts `esc`
 // and leaves the comma in the prose where it belongs.
+//
+// UNLESS THE STOP IS THE KEY. `ctrl+.` opens the task page (taskview.go's
+// [taskSheetKey]) and its last character is a full stop, so a trim taken
+// unconditionally left `ctrl+` — a modifier with nothing after it, which is not
+// a chord — and the whole line went out at one flat weight. The trim is
+// therefore taken only when what it leaves still reads as a key.
 
 // chordWords are the keys this surface writes out in full. It is a closed list
 // on purpose — a hint that named a key by a word not on it would be a hint
@@ -290,17 +296,33 @@ func chordsIn(part []rune, base int) []segment {
 	words := splitTokens(part)
 	var out []segment
 	for i, w := range words {
-		token := strings.TrimRight(string(part[w.from:w.to]), ",.")
-		to := w.from + len([]rune(token))
-		switch {
-		case isChordWord(token):
-		case i == 0 && isBareKey(token, len(words)):
-		default:
+		whole := string(part[w.from:w.to])
+		token := strings.TrimRight(whole, ",.")
+		// THE PUNCTUATION IS THE SENTENCE'S UNTIL IT IS THE KEY'S. Prefer the
+		// trimmed spelling, and fall back to the whole word only where the trim
+		// destroyed a key that was there before it — `ctrl+.` and nothing else so
+		// far, but the rule is written about the shape rather than about the one
+		// chord that has it.
+		if !isKeyWord(token, i, len(words)) && isKeyWord(whole, i, len(words)) {
+			token = whole
+		}
+		if !isKeyWord(token, i, len(words)) {
 			continue
 		}
-		out = append(out, segment{from: base + w.from, to: base + to})
+		out = append(out, segment{from: base + w.from, to: base + w.from + len([]rune(token))})
 	}
 	return out
+}
+
+// isKeyWord folds the two ways one word can be a key: the four spellings
+// [isChordWord] answers for, and the bare letter or digit [isBareKey] allows at
+// the head of a segment. at is the word's place in the segment and tokens is how
+// many words the segment has, because the bare form is fenced by both.
+func isKeyWord(token string, at, tokens int) bool {
+	if isChordWord(token) {
+		return true
+	}
+	return at == 0 && isBareKey(token, tokens)
 }
 
 // splitTokens is one segment's space-separated words, as rune ranges.
