@@ -9,16 +9,20 @@ may use, and its own bounds.
 You build one by asking for it in a sentence. You keep it by approving a card. Afterwards
 it lives on disk and shows up in a list.
 
-**A harness is not a subharness.** They used to be one word, and they are not any more.
-`/harness` and `/harnesses` open the saved shapes of work this page is about. `/subharness`
-and `/sub` open something else — the typed programs, each with an input schema and an
-intake card you settle before it runs. See the *Subharnesses* page for those.
+**A harness is a subharness.** One system, one name for it — *subharness* — and several
+doors onto it. `/harness` and `/harnesses` open the saved shapes of work this page is
+about. `/subharness` and `/sub` open the whole list: these, the ones built into aforge, and
+the ones written as bundles on disk, all in one list with nothing marking which is which
+except where it was found. See the *Subharnesses* page for that list and the card you
+settle before one runs.
 
-**There are two ways to run one.** aforge offers one by itself when what you typed matches
+**There are three ways to run one.** aforge offers one by itself when what you typed matches
 a saved harness closely enough — that is the road for somebody who does not know the
-registry has the thing they are describing. And you can pick one yourself: type `/harness `
-with a space, choose it from the list that opens, and then type the request. See *Picking a
-harness yourself* below. `/harness` with nothing after it lists what you have.
+registry has the thing they are describing. You can pick one yourself: type `/harness `
+with a space, choose it from the list that opens, and then type the request. Or open
+`/subharness`, put the cursor on its row, say what the run is about in the one field its
+card asks for, and press `enter` on `run it`. See *Picking a harness yourself* below.
+`/harness` with nothing after it lists what you have.
 
 Three rules govern that offer:
 
@@ -317,7 +321,8 @@ real retry phase; it never invents completion.
 The settle card is the ordinary one a task lands with, and its outcome line is one of:
 
 ```
-harness "triage-flake" v1 saved
+subharness "triage-flake" v1 saved
+/subharness runs it, and it offers itself when what you say matches.
 harness "triage-flake" was designed and not saved
 harness "triage-flake" was designed; the card went unanswered, so nothing was saved
 harness "triage-flake" could not be saved: <err>
@@ -326,8 +331,11 @@ the design ran out of time before it finished; nothing was saved
 harness design stopped; nothing was saved
 ```
 
-A saved design's card reads `v1` even for a first version, because "v1" is the news that it
-is the first of them. A design that failed settles as a failed task; one you declined settles
+A saved design's card is **two lines** — the name and the version it landed as, then where it
+is now. It reads `v1` even for a first version, because "v1" is the news that it is the first
+of them. What it saved is a subharness like any other: it is on `/subharness` from that
+moment, it runs from there, and it is still offered by the turn itself when what you say
+matches. A design that failed settles as a failed task; one you declined settles
 as **done**, because you were asked and you answered — nothing went wrong. So does one whose
 card you never got to: the page was written, and not keeping it is not a fault.
 
@@ -678,7 +686,7 @@ the goal is worth trying again, or worth saying in fewer parts.
 
 **A design card waits as long as you do.** There is no timeout on it, no expiry, and nothing
 sweeps it. Go to lunch, come back an hour later, press `enter`: the harness is saved as `v1`
-and the design's task settles `harness "triage-flake" v1 saved`, exactly as it would have a
+and the design's task settles `subharness "triage-flake" v1 saved`, exactly as it would have a
 second after the page landed. The only clock in a design is the 30-minute one on **writing**
 the page, and it stops the moment the page exists.
 
@@ -733,6 +741,12 @@ because nobody is standing there for it.
 
 ## Where harnesses are stored
 
+A subharness can live in one of several places, and this is one of them: the pages a design
+writes. (The others are the ones built into aforge, `~/.aforge/subharnesses`, and the
+project's own `.aforge/subharnesses` — the *Subharnesses* page lists all four.) They are one
+list wherever they came from; where a program lives decides only the mark on its row, and a
+page written here is marked `yours`.
+
 Under the state root, one directory per harness, with immutable version pages and the runs
 beside them:
 
@@ -770,7 +784,8 @@ for a version other than the next one, a version past the cap, and `subharness: 
 Type `/harness` **with a space after it** and a filtering list opens under the box, latest
 first — the harness that ran most recently at the top, and one that has never run sorted by
 when its page was written. Keep typing and it narrows. `/harnesses ` opens exactly the same
-list; `/subharness ` and `/sub ` do not, and open the typed programs instead.
+list. `/subharness ` and `/sub ` open the other door onto the same programs: one list of
+everything runnable here, and an intake card instead of a chip and a typed request.
 
 ```
 ◆ triage-flake     chase a flaky test · 2h ago
@@ -813,8 +828,9 @@ Limits worth knowing:
 ## /harness — the list of what you have
 
 Type `/harness` or `/harnesses` with nothing after them. Both open the same panel. (A space
-after the word opens the picker above instead.) `/subharness` and `/sub` no longer open
-this panel — they open the typed programs and their intake card.
+after the word opens the picker above instead.) `/subharness` and `/sub` do not open this
+panel — they open the other door onto the same programs: everything this conversation can
+run, in one list, with an intake card behind each row.
 
 A short list opens under the message box, at most **10** lines:
 
@@ -870,7 +886,8 @@ What follows from that:
 
 So if a harness used to be offered when you described the work, and now it is not, nothing
 is broken and nothing was lost. Name it, and it will be offered. Or type `/harness ` with a
-space, pick it out of the list, and run it on purpose.
+space, pick it out of the list, and run it on purpose — or open `/subharness`, which lists
+it beside everything else you can run here, and start it from its card.
 
 ## Things that are not available in this build
 
