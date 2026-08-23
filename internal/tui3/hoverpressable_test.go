@@ -241,11 +241,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 // pointer a person could actually have.
 func roomRowY(a *app, at int) int {
 	rows := a.roomRows(a.bodyWidth())
-	y := a.bodyTop() + at - a.roomOffsetFor(len(rows), a.viewHeight())
-	if pad := a.viewHeight() - len(rows); pad > 0 {
-		y += pad
-	}
-	return y
+	return a.bodyTop() + at - a.roomOffsetFor(len(rows), a.viewHeight())
 }
 
 // A NODE IS A ROW AND THE ROW LIGHTS ALONE. The old wide tier put a whole
