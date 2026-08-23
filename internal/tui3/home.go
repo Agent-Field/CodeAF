@@ -2323,6 +2323,18 @@ func (a *app) homeEnter() tea.Cmd {
 	}
 	line, ok := h.focusedLine()
 	if !ok {
+		// ENTER AT REST STILL MEANS "TAKE ME IN". Home opens with the cursor on
+		// no row at all ([homeRest]) so the card can speak for the machine — but
+		// a person who opens the screen and presses enter is not asking about
+		// the machine, they are going back to work, and the nearest work is the
+		// conversation this terminal is already holding: the same door esc is,
+		// said with the key a hand reaches for first. A rest that turned enter
+		// into a dead key would be the screen charging a keystroke for its own
+		// furniture. The first list row is NOT the target — it can be another
+		// window's conversation, and enter at rest must never open a refusal.
+		if h.resting() && strings.TrimSpace(h.box.String()) == "" {
+			a.closeHome()
+		}
 		return nil
 	}
 	switch line.kind {
