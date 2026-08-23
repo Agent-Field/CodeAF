@@ -466,8 +466,9 @@ JSON envelope, and an envelope arriving a character at a time is not something a
 read or act on. What you get instead is the reasoning while it writes, and then — **the
 moment each stage finishes, while you are still standing there** — a plain account of what
 it did: any attempt that was refused, in the validator's own sentence; the accepted draft
-with its name, its step count, why it is shaped that way, and **the card itself, drawn as
-the boxes-and-arrows diagram**; and what the review pass changed or left alone. The same
+with its name, its step count, why it is shaped that way, and **the card itself** — the
+numbered steps in plain words, in a fenced block, exactly as *How to read a harness card*
+below describes it; and what the review pass changed or left alone. The same
 accounts are what the journal keeps, so watching live and reopening the design tomorrow
 read as the same story — see *What a design writes into its thread* below.
 
@@ -555,6 +556,54 @@ Nothing is saved yet — the card is up, and it is saved only if it is approved.
 That line is the truth about the clock as well: the 30-minute window was on the *writing*,
 and it stopped when the page landed. The card below it waits with no clock at all — see
 *Why a design timed out even though the page was there* below.
+
+## How to read a harness card — what the steps, the indented lanes and the last lines mean
+
+The same block is drawn everywhere: after `The page is written.`, under `/harness` and
+`enter`, and in a design's own room. It is written to be read without knowing anything
+about how aforge works, so no step ever names the machinery behind it.
+
+```
+triage-flake · v2 · chase a flaky test to a fix
+
+1  start    starts when you run it  · takes since, label
+
+2  name-it  name the test that failed and why  · reads files, searches inside files · up to 8 turns
+
+3  pick
+   if contains flaky → rerun
+     ·  rerun    runs a command — go test -run TestFoo -count 20
+     ·  tries    repeat until ok (up to 3 times)
+     ·  check    check — go test ./...
+     ·  land     asks you — land the fix?
+   otherwise → explain
+     ·  explain  say why it is not flaky
+
+can use · reads files · searches inside files · runs commands
+may pick its own way as it runs, up to 4 times
+checks its own work and fixes what it finds
+```
+
+- **The head** is the name, the version — or `draft` while nothing has saved it — and the
+  one-line description.
+- **The numbers are the run's own order**, top to bottom, so reading them is reading the
+  run. Each step is its name and what it does; the quiet tail after `·` is what that step
+  may reach and how many turns it has.
+- **`side by side, one lane each:`** heads work that happens at the same time. Each lane is
+  indented under it with a `·` and appears exactly once. Where the lanes come back together
+  there is no row at all — the indent simply ends.
+- **`if … → name`** and **`otherwise → name`** are a choice. Steps that only one arm reaches
+  are indented under that arm rather than numbered as steps of the whole run.
+- **`repeat until … (up to N times)`** is a bounded loop, **`asks you — …`** is a stop that
+  waits for your answer, and **`check — …`** is the harness testing its own output.
+- **The last lines are the bounds**: what it can use, what it may decide for itself while it
+  runs, how hard it checks itself, and what it was tried on. A bound that is not in force
+  prints nothing, so a short foot means a narrow harness. `can use · nothing` means it
+  reaches no tools at all.
+
+Nothing on the card is a name from inside aforge. The tool names on a page — `bash`,
+`generate_image` — are shown as what they do (`runs commands`, `makes images`); a tool this
+build has never heard of is printed as its own name instead.
 
 ## What happens to a design when aforge closes or restarts — does a design survive closing the chat
 
