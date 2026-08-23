@@ -155,8 +155,54 @@ chat that asked for a reminder, exactly as it does on the row further down the s
 card on the right is that thing's card, and where the question can be answered from home,
 `1`, `2` and `3` answer it from this row too (see *Answer a question from home*).
 
+**A row named after a task opens on that task**, not on the bare conversation — see *What
+happens when I press a landed row* below.
+
 **A row appears in the strip and under its project both.** They are two views of one live
 thing, not two things — pressing `enter` on either goes to the same place.
+
+## What happens when I press a landed row — clicking a needs you task opens its record
+
+A `needs you` row that says `landed` is named after **one piece of work**, not after the
+conversation it ran in. Pressing `enter` on it, or clicking it twice, does two things at
+once:
+
+- the **conversation that ran the task opens**, exactly as any other row on home opens it —
+  whatever project it belongs to, with the conversation you were in left running behind it;
+- and **that task's own record card is raised in front of it**: what the work was called,
+  what it came to, what it cost, how many files it changed, the branch or worktree it left
+  them on, and the last thing it said.
+
+`esc` backs out of the card to the project's list of work, and `esc` again leaves the
+conversation on the screen. `ctrl+.` closes the whole page from inside the card.
+
+This matters in a conversation that has run a lot of tasks: the row names one of forty, and
+landing on the conversation alone would drop you at the live edge of a transcript with no
+trace of the thing you pressed.
+
+**A row that is not a task opens the plain door.** A conversation stopped on a question, a
+reminder, an `ask here` errand — those stand for no single piece of work, so nothing is
+raised over them. And a row this window cannot open still refuses first: a conversation
+another window is sitting on says `open in another window — go there, or start a new
+conversation here`, and no card is raised over a conversation you never walked into.
+
+## How do I clear a needs your look row — settling work from the conversation
+
+Work that landed needing a look **stays on the strip until you decide about it**, however
+many days that is. It is not stale and it does not age out: nothing more will happen to
+that work until somebody accepts it or sends it back.
+
+Two ways to settle it, and they are the same door:
+
+- **the landing card in the conversation** — `[a] accept`, `[l] look again`, `[n] not
+  right`, `[d] decide these for me`;
+- **just say so.** "accept task 7", "that one isn't finished", "have another look at task
+  7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
+  says `already answered`.
+
+Accepting merges the task's branch and unblocks everything queued behind it. The moment it
+is settled the row leaves `needs you`. The tasks page has the whole of it under *Why is the
+task waiting for me*.
 
 ## What is running everywhere — the moving strip
 
