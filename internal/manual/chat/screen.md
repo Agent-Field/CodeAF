@@ -268,7 +268,10 @@ when you have closed the task column and this session has run something. It is t
 whole of what the frame says about a roster that is not on screen, and it says nothing
 at all when nothing has been run.
 
-While a question is waiting, the whole legend goes violet.
+While a question is waiting, the legend's left label — the branch, or the machine over
+`--host` — goes violet along with the status word below it, so the question is pointed at
+from both sides. On a session with neither there is no label to turn, and the rule stays
+the grey it always is.
 
 As the terminal narrows, the hint slot gives way and below width **70** the branch is
 dropped too. The conversation name remains on the status line. With nothing true to put
