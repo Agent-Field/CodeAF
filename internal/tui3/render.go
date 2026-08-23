@@ -992,8 +992,8 @@ const (
 	// gap between the clusters is what separates them, and a gap of one cell is
 	// not a gap.
 	hudWrap = 100
-	// hudTight is the narrow floor: the legend keeps the conversation's name and
-	// loses its branch, the hints go, and the sparkline goes with them.
+	// hudTight is the narrow floor: the legend loses its branch and hints while
+	// the status line keeps the conversation identity.
 	hudTight = 70
 )
 
@@ -2216,9 +2216,9 @@ func (a *app) branchWord() string {
 	return a.branch
 }
 
-// legendLeft is which conversation this is, cut to the cells it was given: the
-// session's own name, the branch it is being written on, and — on a session
-// running elsewhere — the machine in front of both.
+// legendLeft is where this conversation is running: its branch and, on a remote
+// session, its machine. The status line owns session identity, so the adjacent
+// legend does not repeat the conversation name.
 //
 // THE MACHINE KEEPS ITS PLACE NOW THAT THE PATH HAS LOST ITS OWN. host.go's law
 // is that a connection is shown as the place and nowhere else, and this end of
@@ -2228,16 +2228,8 @@ func (a *app) branchWord() string {
 // never cut, for the reason the path never cut it either — which machine is the
 // half of the answer a person cannot reconstruct from anything else on screen.
 //
-// THE TIGHT FRAME KEEPS ONE FACT, and it is the name: the branch is on the shell
-// prompt behind this pane and the name is nowhere else on a frame this narrow.
-// A session with no name yet is the exception that proves it — the branch stands
-// alone at every width rather than leave the border with nothing in it.
-//
-// The second answer is whether THE NAME SURVIVED the cut, which is what lets
-// [app.legend] spend the hint slot on it before giving it up: a label that had
-// to drop the name is a label worth re-asking for with more room. A label with
-// no name to lose — a session that has not spoken yet, a room — answers true,
-// because there is nothing more room could buy it.
+// THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
+// branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
@@ -2254,31 +2246,14 @@ func (a *app) legendLeft(width, room int) (string, bool) {
 		}
 		return roomLegendWord, true
 	}
-	name := a.sessionName()
 	if room < 1 {
-		return "", name == ""
+		return "", true
 	}
 	branch := a.branchWord()
-	if width < hudTight && name != "" {
+	if width < hudTight {
 		branch = ""
 	}
-	// The fixed half is everything the frame may not cut. Only the name gives
-	// cells back, so it is measured against what the rest has already spent.
-	fixed := a.host
-	if branch != "" {
-		fixed = dotted(fixed, branch)
-	}
-	if name == "" {
-		return fit(fixed, room), true
-	}
-	spare := room - ansi.StringWidth(fixed)
-	if fixed != "" {
-		spare -= ansi.StringWidth(legendJoin)
-	}
-	if spare < legendNameFloor {
-		return fit(fixed, room), false
-	}
-	return dotted(a.host, fit(name, spare), branch), true
+	return fit(dotted(a.host, branch), room), true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any
@@ -2301,8 +2276,7 @@ func dotted(parts ...string) string {
 // a session that is running on another machine, the machine's name in front of
 // it: `devbox:~/code/app`.
 //
-// IT IS NO LONGER ON THE LEGEND. The border under the conversation now says
-// which conversation it is, and the path it used to say is on the status sheet's
+// IT IS NO LONGER ON THE LEGEND. The path is on the status sheet's
 // "place" row and in /status (statusdeck.go, statusnote.go), which is where a
 // path a person copies belongs. The three strengths are kept because the sheet
 // is a forty-four-column page.

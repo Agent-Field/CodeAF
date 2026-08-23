@@ -423,9 +423,9 @@ func TestAToolWithNothingToPreviewShowsNoPreview(t *testing.T) {
 
 // ── 4. the parameter hierarchy ──────────────────────────────────────────────
 
-// A `cd X && ` prefix is CONTEXT and the command after it is the substance, so
-// they are not the same colour. Anything else stays exactly as it was.
-func TestTheCDPrefixIsDimAndTheCommandIsInk(t *testing.T) {
+// In a successful chain, the prefix is CONTEXT and the last command is the
+// substance, so repeated setup recedes without a builtin-specific rule.
+func TestACommandChainLetsItsLastActionLead(t *testing.T) {
 	a := toolApp(t, tokens.TrueColor,
 		call("bash", `{"command":"cd internal/session && go test ./..."}`, "ok"))
 
@@ -439,20 +439,20 @@ func TestTheCDPrefixIsDimAndTheCommandIsInk(t *testing.T) {
 	if !strings.Contains(line, a.pal.shell("go test ./...")) {
 		t.Fatalf("the command is not highlighted: %q", line)
 	}
-	if !strings.Contains(line, a.pal.accent("go")) {
-		t.Fatalf("the command's verb is not the accent: %q", line)
+	if !strings.Contains(line, a.pal.ink("go")) {
+		t.Fatalf("the command's verb is not ink: %q", line)
 	}
 
-	// Conservative: only that shape. A cd with no `&&`, and a chain that does
-	// not start with one, are one command each.
-	for _, command := range []string{"cd internal/session", "go test ./... && go vet ./..."} {
-		context, rest, found := cutCDPrefix(command)
+	// A single command stays whole. Any successful chain applies the same rule,
+	// so repeated setup is not special-cased to one shell builtin.
+	for _, command := range []string{"cd internal/session", "go test ./..."} {
+		context, rest, found := cutCommandContext(command)
 		if found {
 			t.Fatalf("%q was split into %q + %q", command, context, rest)
 		}
 	}
-	if context, rest, found := cutCDPrefix("cd a/b && make check"); !found ||
-		context != "cd a/b && " || rest != "make check" {
+	if context, rest, found := cutCommandContext("prepare && cd a/b && make check"); !found ||
+		context != "prepare && cd a/b && " || rest != "make check" {
 		t.Fatalf("the prefix split is %q + %q (found=%v)", context, rest, found)
 	}
 }
