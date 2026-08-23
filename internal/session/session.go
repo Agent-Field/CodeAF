@@ -1026,6 +1026,17 @@ type Config struct {
 	// journals it keeps beside each bundle are the only thing that can answer.
 	SubharnessLastRun func(name string) string
 
+	// SubharnessRecordRun is told how one run went, the moment it lands
+	// (subharness_run.go). It is the write half of [Config.SubharnessLastRun] and
+	// it is the STORE LANE's seam too — the note goes beside the bundle, which is
+	// the only place a later session can read it back from.
+	//
+	// NIL IS A BUILD THAT KEEPS NO HISTORY, and a run then simply leaves none. It
+	// is not an error and nothing is drawn about it: a list with no notes is what
+	// a machine that has run nothing looks like, and the two are the same picture
+	// on purpose.
+	SubharnessRecordRun func(name string, note SubharnessRunNote)
+
 	// WorktreeRoot is where isolated worktrees for a run's write-capable
 	// nodes live. The session-id wave owns what fills it; this is the
 	// ABSTRACT SEAM — a path per job id, nothing more. EMPTY means worktree

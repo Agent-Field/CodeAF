@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 )
@@ -132,6 +133,24 @@ func (a *Agent) SubharnessList() []SubharnessRow {
 		return nil
 	}
 	return rows
+}
+
+// SubharnessRunNote is what a finished run tells the store about itself, so the
+// next `/subharness` list can draw a note under its row.
+//
+// IT IS THE FACTS AND NOT THE SENTENCE. When it ran, whether it finished, why
+// not where it did not, and what it cost — and no rendering of any of them,
+// because the emptiness law, the word for an unfinished run and how a cost is
+// drawn are all the SURFACE's to decide. A store that rendered them would be a
+// second place those three decisions are made.
+type SubharnessRunNote struct {
+	At       time.Time
+	Finished bool
+	// Why is [exec.RunResult.Incomplete] carried verbatim — the sentence was
+	// written by whoever knew what ran out, and nothing between there and the row
+	// is entitled to rephrase it.
+	Why     string
+	CostUSD float64
 }
 
 // SubharnessRun launches one subharness on the input the card settled, as a task

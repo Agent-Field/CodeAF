@@ -67,21 +67,24 @@ type SubharnessMemory interface {
 	Recall(ctx context.Context, subharness, query string) ([]exec.Note, error)
 }
 
-// promptSource is the optional half of a runner that carries prompt assets.
+// promptCarrier is a runner that can hand over its bundle's prompt assets.
 //
-// [exec.Env.AI] takes a promptRef because a prompt is a FILE in a bundle — so it
-// can be diffed, reviewed and revised — and never an inline string. But the
-// bundle belongs to the RUNNER and this Env is built by the surface, so the only
-// honest way for this door to resolve a ref is to ask the runner that is about to
-// use it. A runner that implements this is asked; one that does not carries no
-// prompt assets, and a ref against it is an error naming the ref rather than a
-// prompt invented here.
+// [exec.Env.AI] takes a promptRef by design — the ref is what gets journaled and
+// what a later revision is argued about — but the Env that makes the model call
+// has no bundle to resolve it against. The runtime lane closed that gap from
+// both ends, and this door is asked from both:
 //
-// THE RUNTIME LANE IMPLEMENTS IT on the bundle-parameterized runner. Nothing in
-// this build does yet: the runners registered today are fronted leaf workers,
-// which take no Env at all ([exec.ExecutorRunner] says so about itself).
-type promptSource interface {
-	Prompt(ref string) (string, bool)
+//   - [subharnessEnv.UsePrompts] is the PUSH, and it is internal/jsrun's
+//     `Prompted` interface satisfied by having the method. A run hands its
+//     prompts over once, before the first call.
+//   - This interface is the PULL, asked at construction, for a runner that
+//     carries prompts and does not push them.
+//
+// The two are named here rather than imported so that internal/session does not
+// depend on the runtime lane's package to build an Env for it — a surface's Env
+// is not entitled to know which kind of program it is serving.
+type promptCarrier interface {
+	Prompts() map[string]string
 }
 
 // subharnessEnv is one run's capability surface.
@@ -94,9 +97,11 @@ type subharnessEnv struct {
 	// model is what this run's own model calls ride, resolved once: what the run
 	// was asked for, or the conversation's.
 	model string
-	// prompts resolves a prompt asset out of the runner's bundle, and is nil for
-	// a runner that carries none (see [promptSource]).
-	prompts func(string) (string, bool)
+	// prompts is the bundle's prompt assets by the name an ai() call site refers
+	// to them by, and is nil for a program that carries none (see
+	// [promptCarrier]). It is written once, before the first call, and read from
+	// the one goroutine a run has.
+	prompts map[string]string
 	// ep and hub are the tool plane and the lane a tool call's own events go out
 	// on. THEY ARE THE TURN'S MACHINERY BORROWED FOR A RUN, which is exactly what
 	// makes "through the same consent doors" true rather than claimed: the gate,
@@ -123,8 +128,8 @@ func (a *Agent) subharnessEnv(node *TaskNode, room *taskRoom, journal *subharnes
 		manifest: manifest, model: model,
 		ep: a.newEpisode(), hub: newEventHub(),
 	}
-	if source, ok := runner.(promptSource); ok {
-		env.prompts = source.Prompt
+	if carrier, ok := runner.(promptCarrier); ok {
+		env.prompts = carrier.Prompts()
 	}
 	// THE LANE IS TAKEN BEFORE ANYTHING CAN BE ON IT, and only the draining is
 	// handed to a goroutine — [Agent.designHarnessNode] states the same law about
@@ -226,12 +231,31 @@ func (e *subharnessEnv) AI(ctx context.Context, promptRef string, input any, opt
 	return answer, nil
 }
 
-// prompt resolves one prompt asset out of the runner's bundle.
-func (e *subharnessEnv) prompt(ref string) (string, bool) {
-	if e.prompts == nil {
-		return "", false
+// UsePrompts takes this run's prompt assets, and is what makes this Env
+// internal/jsrun's `Prompted`. It is called once, before the first ai(), by the
+// run that is about to use them.
+//
+// IT REPLACES RATHER THAN MERGES. A run is one bundle's, and an Env that had
+// accumulated two bundles' prompts would resolve a ref against whichever one
+// wrote it last.
+func (e *subharnessEnv) UsePrompts(prompts map[string]string) { e.prompts = prompts }
+
+// Write makes this Env its own run's journal, which is internal/jsrun's second
+// way of finding one: a room is one object that both spends and displays, so a
+// runtime that looks for a journal on the Env finds the same journal this file
+// writes every host call through. It is the fallback and not the primary — a
+// caller that put a journal on the context is answered from there first — and
+// both roads reach this one writer.
+func (e *subharnessEnv) Write(entry exec.JournalEntry) error {
+	if e == nil || e.journal == nil {
+		return nil
 	}
-	text, ok := e.prompts(ref)
+	return e.journal.Write(entry)
+}
+
+// prompt resolves one prompt asset out of the bundle's own prompts.
+func (e *subharnessEnv) prompt(ref string) (string, bool) {
+	text, ok := e.prompts[strings.TrimSpace(ref)]
 	if !ok || strings.TrimSpace(text) == "" {
 		return "", false
 	}
@@ -339,7 +363,7 @@ func (e *subharnessEnv) Tool(ctx context.Context, name string, args map[string]a
 		answer.JSON = json.RawMessage(trimmed)
 	}
 	e.record(exec.JournalEntry{
-		Call: exec.CallTool, Ref: name, Input: body, Output: toolOutput(answer),
+		Call: exec.CallTool, Ref: name, Input: body, Output: subharnessToolOutput(answer),
 		Elapsed: time.Since(started),
 	})
 	return answer, nil
@@ -353,7 +377,7 @@ func looksStructured(text string) bool {
 	return strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[")
 }
 
-func toolOutput(result exec.ToolResult) json.RawMessage {
+func subharnessToolOutput(result exec.ToolResult) json.RawMessage {
 	if len(result.JSON) > 0 {
 		return result.JSON
 	}
