@@ -59,5 +59,8 @@ func drawWatchlistBand(a *app, ctx bandContext) []string {
 			lead, ctx.pal.dim))
 	}
 	rows := a.bandFoldPacked(ctx, "watchlist", groups, machineWatchShown, "keeping an eye")
-	return append([]string{ctx.pal.accent(fit(machineWatchWord, ctx.width))}, rows...)
+	// THE HEADING IS STRUCTURE (homeband_news.go says the whole of why). The
+	// coloured cells on this band are the marks — the state of each watch — and
+	// the label over them says nothing about right now.
+	return append([]string{ctx.pal.muted(fit(machineWatchWord, ctx.width))}, rows...)
 }
