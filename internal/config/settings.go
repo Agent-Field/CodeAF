@@ -765,6 +765,13 @@ var OperatorEnvPins = []string{
 	// last word, which is exactly the lifetime a persisted setting must not
 	// have.
 	"AFORGE_SPLITGATE",
+	// AFORGE_MECHANISM names which coordination mechanism the binary arms —
+	// today its one recognized word is `quorum`, which sets Config.Quorum the
+	// same way AFORGE_QUORUM does (config.go). It is plumbing for the reason
+	// its siblings are — it picks a doctrine under benchmark, not a
+	// preference — and it shares their lifetime: it disappears when one
+	// mechanism has won.
+	"AFORGE_MECHANISM",
 	// AFORGE_QUORUM is the two-verifier gate's arming switch
 	// (config.go's Config.Quorum): on, a passed deliverable is independently
 	// verified by two cheap validators before it commits; off, the judge's
