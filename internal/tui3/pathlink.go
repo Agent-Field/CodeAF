@@ -158,6 +158,18 @@ func (a *app) linker() linker {
 // linkPaths is the pass every block of rows a person reads goes through.
 func (a *app) linkPaths(rows []string) []string { return a.linker().rows(rows) }
 
+// plainCodePath is the inline-code half of ONE VISIBLE MARK PER TOKEN. It asks
+// the exact linker that will later add the underline whether this span names a
+// real door, so prose never grows a second, merely path-shaped detector.
+func (a *app) plainCodePath(text string) bool {
+	l := a.linker()
+	if !l.on {
+		return false
+	}
+	_, _, _, ok := l.path(text)
+	return ok
+}
+
 // pathLink draws one path whose SHOWN text is not the path — a name fitted to a
 // column, shortened against the home directory, cut down to a basename. The
 // whole file opens either way, which is the point: what a row has room for and
