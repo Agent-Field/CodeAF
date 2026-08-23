@@ -403,11 +403,30 @@ func (e *subharnessEnv) whitelisted(name string) bool {
 	return false
 }
 
-// onBelt says whether this session actually carries the tool. It asks the belt
-// itself rather than a list, so a tool armed for an account this conversation
-// connected mid-run is found (connect.go's armFamily).
-func (e *subharnessEnv) onBelt(name string) bool {
-	for _, tool := range e.agent.beltTools() {
+// onBelt says whether this session actually carries the tool.
+func (e *subharnessEnv) onBelt(name string) bool { return e.agent.ToolOnBelt(name) }
+
+// ToolOnBelt reports whether this conversation actually carries one tool, by its
+// registered name.
+//
+// IT IS EXPORTED FOR THE GUARD THAT ASKS IT FROM OUTSIDE. A subharness may
+// declare a cheap precondition — "there is no point running me here unless this
+// tool exists" — and the runtime checks it before spending anything
+// (internal/jsrun's `Look`). The runtime is handed that question by the surface
+// at load time, before this agent exists, so the surface holds one indirection
+// and fills it with this method the moment it does (cmd/aforge's beltWatch).
+//
+// IT ASKS THE BELT ITSELF RATHER THAN A LIST, so a tool armed for an account
+// this conversation connected five minutes ago is found (connect.go's
+// armFamily). The whitelist is a different question and is asked elsewhere: the
+// whitelist is a ceiling the program declared, and this is what the machine
+// really has.
+func (a *Agent) ToolOnBelt(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, tool := range a.beltTools() {
 		if tool.Name == name {
 			return true
 		}
