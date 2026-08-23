@@ -274,8 +274,10 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 	}
 	// The keys are the column's keys, and the pointer's half works the same: a
 	// press on a node row is that node's door, wherever on the row it lands.
-	if _, ok := a.railEntryAt(a.bodyTop()); !ok {
-		t.Fatal("the overlay's first row answers to no entry")
+	// Its first row is the margin's section label, which answers to no entry
+	// (margin.go), and the node's own row is the one under it.
+	if _, ok := a.railEntryAt(a.bodyTop() + 1); !ok {
+		t.Fatal("the overlay's first node row answers to no entry")
 	}
 
 	drive(t, a, key("esc"))

@@ -790,13 +790,19 @@ seconds quits aforge.
 back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
 that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
 
-**The walk stops at this conversation's last task.** The column holds this conversation's
+**The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
 project's record. Old tasks from earlier sessions are on the task page, reached from the
 column's own `ctrl+. — earlier` line, from `ctrl+.` or from `/history`; `enter` on an
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
 nothing on the column to put a cursor on.
+
+**The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
+that close each section (`+ /task`, `+ /standing`), are the pointer's — the walk skips
+them. Their keyboard equivalents are the commands themselves: `/standing` opens the
+standing orders page, and typing `/task ` is exactly what pressing `+ /task` puts in the
+box. **No new key is added to the column by either of them.**
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
@@ -950,6 +956,9 @@ Only the left button acts. A press is resolved in this order:
    pressing it asks to stop that work instead of opening its room. **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
    a press anywhere on it opens the column again, which is exactly what `ctrl+g` does.
+   Within the column, its own lines are asked before its task rows: a `+ /task` or
+   `+ /standing` row types that command into your message box, and a row in the
+   `standing` section opens `/standing` with the cursor already on that order.
 9. Two segments of the status row: `◦ keeping an eye on N`, which opens the standing
    orders page, and the model name, which opens the model picker. A press elsewhere on
    the status row falls through — the rest of it is figures, not controls. On a narrow

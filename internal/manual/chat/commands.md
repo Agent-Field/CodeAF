@@ -151,6 +151,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
+| `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
@@ -159,6 +160,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/forget` | — | `<query>` | forgets the best matching memory |
 | `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
+| `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
@@ -774,12 +776,51 @@ session**, because the registry lives on the far machine. The second is drawn as
 panel's only row, and it is also what a registry that cannot be read at all shows, rather
 than an error.
 
+## /standing — the command's two forms, bare and with words after it
+
+`/standing` (or `/orders`) has two forms, and they do different things.
+
+**Bare, it opens a page.** A short list under the message box of what stands over this
+conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
+this place and `enter` to open the conversation that asked for it. With nothing standing it
+opens nothing and says
+`nothing stands here yet — say what should always be true, and I'll hold it.`
+
+**With words after it, those words become a new standing order.**
+
+```
+/standing always run the tests before you say you are done
+```
+
+They go through the same deliberate door `ctrl+enter` opens: aforge is told to shape the
+sentence into a standing order's card — when it wakes, what it does, how far it reaches —
+and it never carries the sentence out as one-off work as well. Nothing stands until you
+answer the card. A sentence that cannot stand at all gets one short line saying so and
+nothing else. Typed while an answer is still arriving it waits above the box and goes
+through the marked door when its turn comes. On a build with no ambient side it says
+`nothing here can hold a standing order` and sends nothing.
+
+Nothing on the page is ever named at the command line — the words are always a new order,
+never a query, because the only way to name one is to read it off the page first.
+
+**The command list carries both rows**: `/standing` on its own, and a second row spelled
+`/standing <words>` whose tail reads `…or keep this true · a card, never work done once`.
+Pressing the second row puts the command in your box rather than running it. The
+`+ /standing` row at the foot of the column on the right does the same thing.
+
 ## /task — start work you can walk away from
 
 `/task <brief>` starts work directly from the words after the command; the brief does not
 pass through the conversation model. aforge briefly shows `sizing it up…`. If the work is
 meaningfully parallel, a two-choice list opens with adaptive recommended. Otherwise one
-task starts silently. A bare `/task` prints its one-line usage.
+task starts silently.
+
+**A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
+open, holding every task this project has ever run. It does *not* print a usage line, and
+it starts nothing. On a project that has never run one it says
+`no tasks yet — /task <brief> starts one` and opens nothing. The `+ /task` row at the foot
+of the task column types `/task ` into your box, which is why the word on its own has an
+answer worth giving.
 
 Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
 into the fuller brief the worker is given — your sentence kept word for word, with the

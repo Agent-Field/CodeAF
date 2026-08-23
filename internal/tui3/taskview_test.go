@@ -804,7 +804,12 @@ func TestAColumnFullOfRunningWorkKeepsAllOfItAndStillOffersTheDoor(t *testing.T)
 	if strings.Contains(rail, "Port the parser") {
 		t.Fatalf("the record took a row from running work:\n%s", rail)
 	}
-	for i := 1; i <= 5; i++ {
+	// FOUR AND NOT FIVE, because the column opens with its section label now
+	// (margin.go): the label is geography and it is pinned above the work like
+	// every other line of the moving head, so a nine-row column spends one of its
+	// rows saying where it is. What it must never spend a row on is the RECORD,
+	// which is what this test is about and is still true above.
+	for i := 1; i <= 4; i++ {
 		if !strings.Contains(rail, "running "+itoa(i)) {
 			t.Fatalf("running %d was evicted from the column:\n%s", i, rail)
 		}
@@ -852,11 +857,15 @@ func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 	if strings.Contains(rail, "Port the parser") {
 		t.Fatalf("the column drew a row of the record:\n%s", rail)
 	}
-	// The label opens the column: there is nothing above it for a blank row to
-	// separate it from.
+	// The section label opens the column and the empty label sits directly under
+	// it: there is nothing above either of them for a blank row to separate them
+	// from (margin.go's [app.marginHead]).
 	rows := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	if !strings.Contains(rows[0], railEmptyWord) {
-		t.Fatalf("the label does not open the column: %q", rows[0])
+	if !strings.Contains(rows[0], marginTasksWord) {
+		t.Fatalf("the section label does not open the column: %q", rows[0])
+	}
+	if !strings.Contains(rows[1], railEmptyWord) {
+		t.Fatalf("the label does not follow its section's heading: %q", rows[1])
 	}
 
 	// ctrl+g still closes a column standing on the label alone — it is thirty
