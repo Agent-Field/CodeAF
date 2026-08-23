@@ -764,7 +764,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 	for name, h := range map[string]hue{
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
 		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
-		"warn": lightWarn, "hover": lightCursor, "violet": hueViolet,
+		"warn": lightWarn, "data": lightData, "hover": lightCursor, "violet": hueViolet,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d", name, other, h.idx)

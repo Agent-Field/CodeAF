@@ -69,7 +69,7 @@ func TestTheConversationThresholdNamesStandingOrdersOrDrawsNothing(t *testing.T)
 				t.Fatalf("the threshold line is not one row: %q", rows)
 			}
 			row := rows[0]
-			if !strings.Contains(row, a.pal.ink(itoa(tt.count))) {
+			if !strings.Contains(row, a.pal.data(itoa(tt.count))) {
 				t.Fatalf("the threshold's own count is not lifted out of its sentence: %q", row)
 			}
 			// Everything between the count and the door, the space in front of the

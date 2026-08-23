@@ -232,10 +232,11 @@ its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
 waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
 
-**The key itself is drawn brighter than the word beside it.** In `esc interrupt`, `esc`
-is in the body ink and `interrupt` stays at the border's own dim — the thing you press
-reads at a glance and the explanation of it does not compete. It is the same
-in every hint the slot carries. See "Why is one word in a line brighter than the rest"
+**The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
+wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
+own dim — the thing you press reads at a glance and the explanation of it does not
+compete. It is the same in every hint the slot carries, in home's foot hint, in the keys
+legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
 **At rest it carries the two doors out of the conversation.** With an empty box and
@@ -295,8 +296,11 @@ press on empty space does nothing here as it does everywhere.
 Every line aforge writes about itself — a note in the conversation, the hint slot on the
 legend, `/help`, `/status`, `/cost` — is drawn in a quiet grey, because none of it is the
 conversation. **The facts inside those lines are not.** Each load-bearing word steps up
-one tier into the body ink, so the answer reads at a glance while the sentence around it
-stays out of the way.
+into a soft cyan of its own — a hue no other kind of thing on the screen wears — so the
+answer reads at a glance while the sentence around it stays out of the way. It is a hue
+rather than a brighter grey on purpose: brightness says how loud a thing is, hue says
+what kind of thing it is, and a fact inside a quiet sentence is a different kind of
+thing, not a louder one.
 
 What steps up, in the lines you will see it in:
 
