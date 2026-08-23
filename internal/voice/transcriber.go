@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // TranscriptionOptions are the OpenRouter audio fields the TUI may choose.
@@ -38,12 +40,18 @@ type Transcriber interface {
 }
 
 type ClientConfig struct {
-	APIKey     string
-	BaseURL    string
-	SiteURL    string
-	SiteName   string
-	Timeout    time.Duration
-	HTTPClient *http.Client
+	APIKey   string
+	BaseURL  string
+	SiteURL  string
+	SiteName string
+	// SiteCategories is the OpenRouter app category, and it was missing here
+	// while every other endpoint aforge posts to carried it. Spoken input goes
+	// to the same router under the same key as typed input, so a transcription
+	// that arrived without it was the same app reporting itself two different
+	// ways on one dashboard.
+	SiteCategories string
+	Timeout        time.Duration
+	HTTPClient     *http.Client
 }
 
 type Client struct {
@@ -106,12 +114,14 @@ func (c *Client) Transcribe(ctx context.Context, wav []byte, options Transcripti
 	request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
-	if c.config.SiteURL != "" {
-		request.Header.Set("HTTP-Referer", c.config.SiteURL)
-	}
-	if c.config.SiteName != "" {
-		request.Header.Set("X-Title", c.config.SiteName)
-	}
+	// The whole attribution set, through the one helper that owns it. This used
+	// to be two hand-written headers here and it drifted from the rest of the
+	// binary the moment a third was added; see [provider.Attribution].
+	provider.Attribution{
+		SiteURL:        c.config.SiteURL,
+		SiteName:       c.config.SiteName,
+		SiteCategories: c.config.SiteCategories,
+	}.Apply(request.Header)
 	response, err := c.http.Do(request)
 	if err != nil {
 		return Transcript{}, fmt.Errorf("voice transcription: %w", err)
