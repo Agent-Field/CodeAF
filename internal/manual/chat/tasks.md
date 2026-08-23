@@ -666,6 +666,18 @@ record for you with its `tasks` tool — just ask.
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
+## The column comes back after a restart — tasks reappear on resume or a switch back
+
+**Reopening a conversation re-draws its own tasks.** `/resume`, `aforge resume`, and
+switching back behind home all rebuild the column from the record: every task admitted
+here comes back as a row in its family — finished work included, and work that was
+interrupted comes back saying so on its card. Tasks are not lost when the terminal
+closes; the column is rebuilt, not carried.
+
+**Only this window's own work comes back.** Everything else stays behind the
+`ctrl+. earlier` door, exactly as the section above says, and a task is never drawn
+twice — a row on the column is not also an `earlier` row.
+
 ## Hiding the task column: closing the right sidebar, panel or task bar
 
 `ctrl+g` closes the column of tasks on the right and gives its columns back to the
