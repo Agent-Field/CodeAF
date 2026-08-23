@@ -178,7 +178,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			name: "dark",
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
-				"bad": hueBad, "ask": hueAsk, "warn": hueWarn,
+				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
 			},
 			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "dim": hueDim},
 		},
@@ -186,7 +186,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			name: "light",
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
-				"bad": lightBad, "ask": lightAsk, "warn": lightWarn,
+				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
 			},
 			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "dim": lightDim},
 		},
