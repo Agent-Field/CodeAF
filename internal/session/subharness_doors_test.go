@@ -111,6 +111,10 @@ func agentWithPrograms(t *testing.T, registry *exec.Registry, mutate func(*Confi
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Subharnesses = registry
 		config.AskConsent = true
+		// A surface holding the harness lane, which is the second half of the
+		// propose gate: the intake card goes out there and nowhere else
+		// ([Agent.canProposeSubharness]).
+		config.HarnessCards = true
 		if mutate != nil {
 			mutate(config)
 		}
@@ -584,6 +588,126 @@ func TestAProposalRunsNothingUntilSomebodySaysYes(t *testing.T) {
 	}
 }
 
+// A YES ON THE CARD IS THE ONLY ROAD TO A RUN, and what comes back names the
+// task it started — the number the person can open, watch and stop.
+func TestAnAnsweredProposalStartsTheProgramAsATask(t *testing.T) {
+	program := &fakeRunner{manifest: theProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+		return exec.RunResult{Output: json.RawMessage(`{"finding":"a clock"}`)}, nil
+	}}
+	agent := agentWithPrograms(t, registryWith(t, &fakeGeneralist{}, program), nil)
+	agent.record(textMessage("user", "TestFoo is a flaky test and I want to know why"))
+
+	cards, _ := agent.WatchHarnessDesigns()
+	said := make(chan string, 1)
+	go func() {
+		text, _ := runTool(t, agent, "propose_subharness",
+			`{"name":"flake-triage","reason":"the test name is here"}`)
+		said <- text
+	}()
+
+	card := waitForCard(t, cards)
+	// The form as the person left it, which on a card nobody edited is the card
+	// as it was raised — nil, and the engine builds the input from its own copy.
+	agent.ResolveSubharness(card.ID, true, nil)
+
+	text := <-said
+	if !strings.Contains(text, "is running flake-triage") {
+		t.Fatalf("an answered proposal said %q", text)
+	}
+	if agent.taskNode(1) == nil {
+		t.Fatal("a yes on the card started no task")
+	}
+	// The run is let finish before the test's directory goes: it is a task on
+	// its own goroutine, and a temp dir pulled out from under one is a failure
+	// about housekeeping rather than about this door.
+	if node := waitForSettled(t, agent, 1); node.State != TaskDone {
+		t.Fatalf("the run the card started settled %s: %q", node.State, node.Report)
+	}
+}
+
+// THE SESSION SAYS IT IS WAITING WHILE A CARD STANDS, in the words home and
+// every other window read: a conversation stopped on this question is not
+// working, whatever the parked tool call inside it looks like.
+func TestASessionWithACardUpIsWaitingOnItsPerson(t *testing.T) {
+	program := &fakeRunner{manifest: theProgram()}
+	agent := agentWithPrograms(t, registryWith(t, &fakeGeneralist{}, program), nil)
+	agent.record(textMessage("user", "TestFoo is a flaky test and I want to know why"))
+	if agent.NeedsPerson() {
+		t.Fatal("a session with nothing asked was already waiting on somebody")
+	}
+
+	cards, _ := agent.WatchHarnessDesigns()
+	// The tool is taken off the belt HERE and executed there: a goroutine that
+	// reached for it would be reaching for the test's own t.
+	raise := beltTool(t, agent, "propose_subharness")
+	go raise.Execute(context.Background(), json.RawMessage(`{"name":"flake-triage","reason":"the test name is here"}`))
+	card := waitForCard(t, cards)
+
+	waitFor(t, "the session to say it is waiting", agent.NeedsPerson)
+	if line := agent.WaitingOn(); line != "wants to run flake-triage" {
+		t.Fatalf("the waiting line read %q", line)
+	}
+
+	agent.ResolveSubharness(card.ID, false, nil)
+	waitFor(t, "the session to stop waiting", func() bool { return !agent.NeedsPerson() })
+}
+
+// A CARD STILL STANDING IS HANDED TO WHOEVER SUBSCRIBES NEXT. A person who put
+// the conversation behind home and came back to it is a new subscription, and a
+// question that was already up would otherwise be a question they never see.
+func TestACardStillStandingIsReplayedToALateWatcher(t *testing.T) {
+	program := &fakeRunner{manifest: theProgram()}
+	agent := agentWithPrograms(t, registryWith(t, &fakeGeneralist{}, program), nil)
+	agent.record(textMessage("user", "TestFoo is a flaky test and I want to know why"))
+
+	first, stopFirst := agent.WatchHarnessDesigns()
+	raise := beltTool(t, agent, "propose_subharness")
+	go raise.Execute(context.Background(), json.RawMessage(`{"name":"flake-triage","reason":"the test name is here"}`))
+	raised := waitForCard(t, first)
+	stopFirst()
+
+	second, stopSecond := agent.WatchHarnessDesigns()
+	defer stopSecond()
+	replayed := waitForCard(t, second)
+	if replayed.ID != raised.ID || replayed.Subharness == nil {
+		t.Fatalf("the standing card was not handed over whole: %+v", replayed)
+	}
+	agent.ResolveSubharness(replayed.ID, false, nil)
+}
+
+// A CARD NOBODY IS LISTENING TO IS TAKEN DOWN. The window bounds the tool call
+// and not the person, so it fires while the card is still on screen — and a card
+// left standing after it would be a `run it` that resolves nothing in silence.
+func TestAnInterruptedProposalTakesItsCardBackDown(t *testing.T) {
+	program := &fakeRunner{manifest: theProgram()}
+	agent := agentWithPrograms(t, registryWith(t, &fakeGeneralist{}, program), nil)
+	agent.record(textMessage("user", "TestFoo is a flaky test and I want to know why"))
+
+	cards, _ := agent.WatchHarnessDesigns()
+	ctx, cancel := context.WithCancel(context.Background())
+	tool := beltTool(t, agent, "propose_subharness")
+	said := make(chan string, 1)
+	go func() {
+		text, _, err := tool.Execute(ctx, json.RawMessage(`{"name":"flake-triage","reason":"the test name is here"}`))
+		if err != nil {
+			said <- err.Error()
+			return
+		}
+		said <- text
+	}()
+
+	card := waitForCard(t, cards)
+	cancel()
+
+	off := waitForKind(t, cards, EventSubharnessProposalOff)
+	if off.ID != card.ID || off.Text != "flake-triage" {
+		t.Fatalf("the withdrawal did not name the card it takes down: %+v", off)
+	}
+	if text := <-said; !strings.Contains(text, "nothing ran") && !strings.Contains(text, "context canceled") {
+		t.Fatalf("an interrupted proposal said %q", text)
+	}
+}
+
 // A WEAK MATCH RAISES NOTHING. Phase 1's confidence rule is lexical and dull,
 // and its whole job is to make silence the answer to a guess — a conversation
 // that has to swat away a suggestion is worse off than one that never got it.
@@ -622,6 +746,25 @@ func TestTheProposeVerbIsAbsentWithNobodyToAnswerTheCard(t *testing.T) {
 		t.Fatal("a session with nobody watching was given a verb whose card nobody can answer")
 	}
 
+	// AND A SURFACE THAT ANSWERS THE TURN'S QUESTIONS IS STILL NOT A SURFACE
+	// THAT DRAWS THIS CARD. A conversation held over a connection sets
+	// AskConsent — an approval crosses that wire — and holds no harness lane,
+	// which is the road the intake card travels (cmd/aforge's engine.go).
+	remote, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Subharnesses = registry
+		config.AskConsent = true
+		config.HarnessCards = false
+	})
+	if hasTool(remote, "propose_subharness") {
+		t.Fatal("a session with nobody holding the harness lane was given a verb whose card nobody can draw")
+	}
+	if hasTool(remote, "list_subharnesses") {
+		// The pair travels together, by [Agent.subharnessTools]' own law: a
+		// list with no verb beside it is a model reading out names it cannot do
+		// anything with.
+		t.Fatal("the list stayed behind after the verb it pairs with went")
+	}
+
 	empty, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Subharnesses = exec.NewRegistry(&fakeGeneralist{})
 		config.AskConsent = true
@@ -656,18 +799,25 @@ func waitForSettled(t *testing.T, agent *Agent, id uint64) TaskNotice {
 // card, failing rather than hanging.
 func waitForCard(t *testing.T, lane <-chan Event) Event {
 	t.Helper()
+	return waitForKind(t, lane, EventSubharnessProposal)
+}
+
+// waitForKind is that wait for any one kind on the lane, which the withdrawal
+// needs and the card's own wait is written in terms of.
+func waitForKind(t *testing.T, lane <-chan Event, kind EventKind) Event {
+	t.Helper()
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case event, open := <-lane:
 			if !open {
-				t.Fatal("the standing lane closed before a card arrived")
+				t.Fatal("the standing lane closed before the event arrived")
 			}
-			if event.Kind == EventSubharnessProposal {
+			if event.Kind == kind {
 				return event
 			}
 		case <-deadline:
-			t.Fatal("no intake card was ever raised")
+			t.Fatal("nothing of that kind ever arrived on the lane")
 			return Event{}
 		}
 	}

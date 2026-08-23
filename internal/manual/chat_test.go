@@ -66,6 +66,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is a harness", "saved-shapes-of-work"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
+		// The card aforge raises by itself, asked the three ways somebody meets
+		// it: a card they did not open, the answer they want to give it, and
+		// the one that arrived while they were away from the keyboard.
+		{"a card popped up offering to run a program", "subharnesses"},
+		{"how do I say no to the offer to run something", "subharnesses"},
+		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
 
 		// The second wave, added after probing the corpus the way it is

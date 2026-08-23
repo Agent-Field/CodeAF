@@ -608,9 +608,17 @@ and it stopped when the page landed. The card below it waits with no clock at al
 
 ## How to read a harness card — what the steps, the indented lanes and the last lines mean
 
-The same block is drawn everywhere: after `The page is written.`, under `/harness` and
-`enter`, and in a design's own room. It is written to be read without knowing anything
-about how aforge works, so no step ever names the machinery behind it.
+The same block is drawn everywhere: on the card in the conversation that asks you to keep
+a design, after `The page is written.`, under `/harness` and `enter`, and in a design's own
+room. It is written to be read without knowing anything about how aforge works, so no step
+ever names the machinery behind it.
+
+**There is no box around it and no diagram above it.** The card in the conversation used to
+draw its own picture — `[plan]──▶[fetch]──▶[verify]`, a bullet per step, and two rows
+reading `verify: report` and `tools: read · grep` — inside a bordered frame. All of that is
+gone: those were names from inside aforge, shown to somebody who has never seen inside it,
+and what stands there now is exactly the block below with `[enter] save   [e] change it
+[esc] drop` under it.
 
 ```
 triage-flake · v2 · chase a flaky test to a fix
@@ -837,8 +845,8 @@ list. `/subharness ` and `/sub ` open the other door onto the same programs: one
 everything runnable here, and an intake card instead of a chip and a typed request.
 
 ```
-◆ triage-flake     chase a flaky test · 2h ago
-◆ review-diff      read a diff · never run
+◆ triage-flake     chase a flaky test · 2h · finished
+◆ review-diff      read a diff
   Browse the registry →
 ```
 
@@ -884,8 +892,8 @@ run, in one list, with an intake card behind each row.
 A short list opens under the message box, at most **10** lines:
 
 ```
-◆ triage-flake       v3 · 6 runs · last ok, 2h ago
-◆ review-diff        v1 · never run
+◆ triage-flake       v3 · chase a flaky test · 6 runs · 2h · finished
+◆ review-diff        v1 · read a diff
 ```
 
 (`#` instead of `◆` on the linear palette.)
@@ -898,16 +906,28 @@ A short list opens under the message box, at most **10** lines:
 | `esc` | close the panel |
 
 The name and version sit together on the left, because "triage-flake v3" is the sentence
-people say. The description and the history are the dim tail. Ages are coarse: `just now`,
-`12m ago`, `3h ago`, `5d ago`. `1 run` is spelled singular. A harness that has never run
-says so. A row whose trace could not be read shows the count alone rather than a shrug.
+people say. The description, the run count and the last run are the dim tail. `1 run` is
+spelled singular.
+
+**The last run is spelled the way `/subharness` spells it**, because it is the same fact
+about the same program: `2h · finished`, or `2h · incomplete` when it did not reach the end
+it promised. There is no third word — declined at a gate, stopped, or ended by an error are
+all `incomplete`, and none of them is called a failure. Ages come off the one clock the
+whole product reads with: `now`, `12s`, `5m`, `2h`, `yesterday`, `mon`, `aug 3`.
+
+Nothing is drawn there for a harness with no history — not `never run`, not `0 runs`. An
+unreadable newest trace still shows the count, because "ran, and I cannot read the trace"
+is a different fact from "never ran".
 
 The registry is read on the keystroke, not held from boot, so a harness registered in
 another window shows up. Each row reads the **head** version.
 
 `enter`, or a click on a row, closes the panel and prints the harness's card **into the
 conversation** — its steps and its bounds, with the last run's card under it when there is
-one. The transcript is where prose lives and can be scrolled and copied.
+one. The transcript is where prose lives and can be scrolled and copied. **The card keeps
+its own indentation there**: every line lands in the column the card put it in, and one too
+wide for the frame is cut with a `…` rather than folded onto a second row, because the
+indent under a lane is what says the step belongs to that lane.
 
 Limits:
 

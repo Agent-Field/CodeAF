@@ -44,6 +44,20 @@ type subFake struct {
 	runs     int
 	// refuse is what the launching door answers with instead of a node.
 	refuse error
+	// answers is what the PROPOSAL door was told, in order — the third card's
+	// half of this seam ([subharnessOfferAgent]).
+	answers []subAnswer
+}
+
+// subAnswer is one answer to a card chat raised, as the engine receives it.
+type subAnswer struct {
+	id    uint64
+	run   bool
+	input json.RawMessage
+}
+
+func (f *subFake) ResolveSubharness(id uint64, run bool, input json.RawMessage) {
+	f.answers = append(f.answers, subAnswer{id: id, run: run, input: input})
 }
 
 func (f *subFake) SubharnessList() []session.SubharnessRow { return f.rows }
@@ -575,5 +589,221 @@ func TestARunThatStartedIsHandedToTheTaskRoad(t *testing.T) {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the receipt never says %q:\n%s", want, screen)
 		}
+	}
+}
+
+// ── the third door: the card chat itself raised ─────────────────────────────
+//
+// The proposal arrives on the harness lane while the turn that asked is parked
+// inside its own batch (internal/session's tools_subharness.go). What these
+// assert is what a person meets: the same card, with a reason on it and two
+// answers under it, and a turn that is told what they said whichever key they
+// press.
+
+// flakeProposal is one raised card as the engine sends it, built through the
+// same door the surface would have used — so a test cannot pass against a
+// hand-written card the real intake would never produce.
+func flakeProposal(t *testing.T, agent *subFake, id uint64, why string) session.Event {
+	t.Helper()
+	agent.why = why
+	card, err := agent.SubharnessIntake("flake-triage")
+	if err != nil {
+		t.Fatalf("the fixture has no flake-triage: %v", err)
+	}
+	return session.Event{
+		Kind:       session.EventSubharnessProposal,
+		ID:         id,
+		Text:       card.Manifest.Name,
+		Hint:       card.Manifest.Purpose,
+		Subharness: &card,
+	}
+}
+
+// answeredApp is a surface holding a card chat raised, with every required field
+// already answered — which is the ordinary proposal, since the engine fills the
+// form from the conversation before it raises anything.
+func answeredApp(t *testing.T) (*app, *subFake) {
+	t.Helper()
+	a, agent := subApp(t, twoSubharnesses()...)
+	agent.filled = map[string]json.RawMessage{"test": json.RawMessage(`"TestReconcilerRace"`)}
+	a.designEvent(flakeProposal(t, agent, 7, "the brief and a failing test name are both here"))
+	return a, agent
+}
+
+// CHAT'S OWN OFFER IS THE SAME CARD, with its reason above the fields and the
+// answers under them. A second card shape would be two things to learn and two
+// places for the required fields to be marked differently (subharness.go).
+func TestChatsOwnOfferOpensTheIntakeCardWithItsReason(t *testing.T) {
+	a, _ := answeredApp(t)
+	card := a.subPage.card
+	if card == nil || !card.asked() || card.offer != 7 {
+		t.Fatalf("the proposal did not open a card that can be answered: %+v", card)
+	}
+	screen := subScreen(a)
+	for _, want := range []string{
+		"flake-triage",
+		"the brief and a failing test name are both here",
+		"TestReconcilerRace",
+		subRunWord,
+		subNoChipWord,
+		subSaysRun,
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the card never says %q:\n%s", want, screen)
+		}
+	}
+	if got, want := len(plainOverlay(a)), a.overlayHeight(); got != want {
+		t.Fatalf("the card drew %d lines into a block of %d", got, want)
+	}
+}
+
+// AND THE PERSON CAN SEE THEY ARE BEING WAITED ON. The turn is technically
+// working — the call that raised this is parked inside its batch — and what is
+// true about it that a person can act on is that it is waiting for them.
+func TestTheStatusLineSaysYourCallWhileTheOfferStands(t *testing.T) {
+	a, _ := answeredApp(t)
+	if !a.awaitingSubharness() {
+		t.Fatal("a standing offer is not being waited on")
+	}
+	if word, _ := a.stateWord(); word != waitingWord {
+		t.Fatalf("the status line read %q while a card was up", word)
+	}
+	drive(t, a, key("esc"))
+	if a.awaitingSubharness() {
+		t.Fatal("an answered offer is still being waited on")
+	}
+}
+
+// ENTER ON THE ANSWERS RUNS IT, and the untouched card answers with NOTHING —
+// nil is "as it was raised", and the engine builds the input from the card it
+// sent rather than from this surface's second reading of it.
+func TestEnterOnTheAnswersRunsWhatChatOffered(t *testing.T) {
+	a, agent := answeredApp(t)
+	if !a.subPage.card.running() {
+		t.Fatal("a card with nothing left to fill in did not open on its answers")
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 {
+		t.Fatalf("the offer was answered %d times", len(agent.answers))
+	}
+	answer := agent.answers[0]
+	if answer.id != 7 || !answer.run {
+		t.Fatalf("enter on `run it` answered %+v", answer)
+	}
+	if answer.input != nil {
+		t.Fatalf("an untouched card sent its own reading of itself: %s", answer.input)
+	}
+	if agent.runs != 0 {
+		t.Fatal("the surface launched the program itself instead of answering the card")
+	}
+	if a.subPage.open {
+		t.Fatal("the card stayed up after it was answered")
+	}
+}
+
+// ESC IS A NO AND NOT A WAY OUT. There is a turn waiting on this question, so
+// the key that dismisses every other overlay answers this one.
+func TestEscOnAnOfferAnswersNoRatherThanWalkingAway(t *testing.T) {
+	a, agent := answeredApp(t)
+	drive(t, a, key("esc"))
+	if len(agent.answers) != 1 || agent.answers[0].run {
+		t.Fatalf("esc on the card answered %+v", agent.answers)
+	}
+	if a.subPage.open {
+		t.Fatal("the card stayed up after it was declined")
+	}
+}
+
+// THE TWO DIGITS THE ROW DRAWS ANSWER FROM ANYWHERE ON THE CARD: a question
+// somebody has read is one they may answer without first walking to the row.
+func TestTheAnswerRowsDigitsAnswerFromAnywhereOnTheCard(t *testing.T) {
+	for _, one := range []struct {
+		key string
+		run bool
+	}{{"1", true}, {"0", false}} {
+		a, agent := subApp(t, twoSubharnesses()...)
+		a.designEvent(flakeProposal(t, agent, 3, "the test name is here"))
+		if a.subPage.card.running() {
+			t.Fatal("a card with a required blank opened on its answers")
+		}
+		drive(t, a, key(one.key))
+		if len(agent.answers) != 1 || agent.answers[0].run != one.run {
+			t.Fatalf("%q answered %+v", one.key, agent.answers)
+		}
+	}
+}
+
+// THE ANSWERS ARE WALKED SIDEWAYS, and the line under them says what the one
+// under the cursor will do — which is how walking the row is a way of READING
+// the question rather than guessing at it (pickrow.go).
+func TestWalkingTheAnswersSaysWhatEachOneWillDo(t *testing.T) {
+	a, agent := answeredApp(t)
+	if got := subScreen(a); !strings.Contains(got, subSaysRun) {
+		t.Fatalf("the card did not open on what running it does:\n%s", got)
+	}
+	drive(t, a, key("right"))
+	screen := subScreen(a)
+	if !strings.Contains(screen, subSaysNo) {
+		t.Fatalf("walking to the no did not say what it does:\n%s", screen)
+	}
+	if strings.Contains(screen, subSaysRun) {
+		t.Fatalf("both consequence lines were on screen at once:\n%s", screen)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || agent.answers[0].run {
+		t.Fatalf("enter on the walked-to `no` answered %+v", agent.answers)
+	}
+}
+
+// A FIELD SOMEBODY CHANGED TRAVELS WITH THE YES. What launches has to be what
+// they confirmed rather than what was inferred for them.
+func TestAFieldChangedOnTheOfferTravelsWithTheAnswer(t *testing.T) {
+	a, agent := answeredApp(t)
+	// Up one row from the answers is `branch`, which carries only its schema's
+	// default — so what is typed here is the first thing on this card anybody
+	// said, and the answer has to carry it.
+	drive(t, a, key("up"))
+	drive(t, a, key("enter"))
+	for _, r := range "topic" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, key("enter"))
+	if !a.subPage.card.running() {
+		t.Fatal("keeping the last blank did not move the cursor to the answers")
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || !agent.answers[0].run {
+		t.Fatalf("the edited card answered %+v", agent.answers)
+	}
+	if got := string(agent.answers[0].input); got != `{"test":"TestReconcilerRace","branch":"topic"}` {
+		t.Fatalf("the answer carried %s", got)
+	}
+}
+
+// A CARD NOBODY IS LISTENING TO COMES DOWN AND SAYS SO. The window bounds the
+// tool call rather than the person, so it can fire while the card is still on
+// screen — and a card left standing after it would be a `run it` that resolves
+// nothing in silence.
+func TestAWithdrawnOfferComesDownAndSaysNothingRan(t *testing.T) {
+	a, agent := answeredApp(t)
+	a.designEvent(session.Event{Kind: session.EventSubharnessProposalOff, ID: 7, Text: "flake-triage"})
+	if a.subPage.open {
+		t.Fatal("a withdrawn card stayed up")
+	}
+	if len(agent.answers) != 0 {
+		t.Fatalf("a withdrawn card was answered on the person's behalf: %+v", agent.answers)
+	}
+	screen := strings.Join(plainRows(a), "\n")
+	if !strings.Contains(screen, "flake-triage"+subOfferEndedWord) {
+		t.Fatalf("nothing said the offer ended:\n%s", screen)
+	}
+}
+
+// AND A WITHDRAWAL FOR SOMETHING ELSE LEAVES THE CARD ALONE.
+func TestAWithdrawalForAnotherOfferLeavesTheCardUp(t *testing.T) {
+	a, _ := answeredApp(t)
+	a.designEvent(session.Event{Kind: session.EventSubharnessProposalOff, ID: 8, Text: "weekly-update"})
+	if !a.subPage.open || a.subPage.card == nil {
+		t.Fatal("a withdrawal about another card took this one down")
 	}
 }

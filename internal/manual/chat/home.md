@@ -161,7 +161,7 @@ happens when I press a landed row* below.
 **A row appears in the strip and under its project both.** They are two views of one live
 thing, not two things — pressing `enter` on either goes to the same place.
 
-## What happens when I press a landed row — clicking a needs you task opens its record
+## What happens when I press a landed row — I clicked a needs you row and it opened the chat, and the task's own record with it
 
 A `needs you` row that says `landed` is named after **one piece of work**, not after the
 conversation it ran in. Pressing `enter` on it, or clicking it twice, does two things at

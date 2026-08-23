@@ -283,6 +283,32 @@ func (s *Store) LoadRun(path string) (Trace, error) {
 	return decodeTrace(data)
 }
 
+// LastTrace is the newest saved trace for one name, and false for a page nobody
+// has run.
+//
+// IT IS THE PAGE STORE'S ANSWER TO "WHEN DID THIS LAST RUN", and it is the whole
+// answer for a page: every run of one goes through the surface's single run door
+// (cmd/aforge's v3RunHarness), whichever list started it, and that door saves a
+// trace here. So a page run from `/harness` and a page run from `/subharness`
+// both land in this directory, which is what lets the two doors agree.
+//
+// A TRACE THAT CANNOT BE READ IS NO TRACE. A row asking when something last ran
+// is not the place somebody learns their disk is broken, and the emptiness law
+// says a row with nothing to report reports nothing.
+func (s *Store) LastTrace(name string) (Trace, bool) {
+	paths, err := s.Runs(name)
+	if err != nil || len(paths) == 0 {
+		return Trace{}, false
+	}
+	// Runs come back oldest first — the stamp is the filename — so the newest is
+	// the last one.
+	trace, err := s.LoadRun(paths[len(paths)-1])
+	if err != nil {
+		return Trace{}, false
+	}
+	return trace, true
+}
+
 func (s *Store) now() time.Time {
 	if s.Now == nil {
 		return time.Now()
