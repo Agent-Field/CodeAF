@@ -107,8 +107,19 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 		t.Fatalf("place = %q", a.place)
 	}
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "porting the parser" {
+	// THE LEGEND SAYS WHERE, NEVER WHICH. render.go's [app.legendLeft] leaves the
+	// conversation's name to the status line one row below, so a local session's
+	// left end is its branch and nothing else — no machine segment in front of it,
+	// and no name repeated from the line under it.
+	a.branch = "main"
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "main" {
 		t.Fatalf("a local legend = %q — no machine belongs on it", got)
+	}
+	// And with no repository under it there is nothing true to put there at all,
+	// which the emptiness law draws as nothing rather than as a placeholder.
+	a.branch = ""
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "" {
+		t.Fatalf("a local legend with no branch = %q, want nothing", got)
 	}
 }
 
@@ -135,7 +146,10 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 		t.Fatal("probeGit produced work over --host")
 	}
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · porting the parser" {
+	// The machine is the whole of the left end over a connection: the branch probe
+	// is off, and the name is the status line's ([app.legendLeft], render.go). So a
+	// branch appearing here would be a branch nothing probed for.
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
 		t.Fatalf("the legend grew a branch: %q", got)
 	}
 }
