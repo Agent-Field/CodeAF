@@ -495,6 +495,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},
 		{"can I click keeping an eye on 2", "standing-orders"},
+		// The wave that fixed where the cursor wakes on a wide home, and gave a
+		// zone with nothing under it something to say. Both are asked by somebody
+		// looking at the screen: the arrow went somewhere they did not expect, and
+		// a dim word is sitting over what looks like nothing.
+		{"why does the cursor start in the middle of home", "home"},
+		{"where does the first down arrow go on home", "home"},
+		{"what is that line under needs you", "home"},
+		{"what goes in the moving column", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
