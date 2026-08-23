@@ -561,6 +561,20 @@ func (f *overlayFill) room() bool { return len(f.out) < f.n }
 // at is what the row belongs to — the index a pointer resolves back to — or -1
 // for a line that answers to nothing.
 func (f *overlayFill) add(at int, label, note string, selected, marked bool) bool {
+	return f.addTinted(at, label, note, nil, selected, marked)
+}
+
+// addTinted is [overlayFill.add] with the note's own ink named ([noteInk]), for
+// the lists whose tail is not a fact but an ANSWER — the capability rows, and
+// the intake card's filled fields, where the value a person put in is the datum
+// the row is about and steps to ink while the schema's prose beside it stays
+// dim (docs/DESIGN-LANGUAGE.md's payload rule).
+//
+// It is the same function and not a second one, because the lead, the ground,
+// the pointer's row and the two-line law at [tierPhone] are decided here for
+// every list on this surface, and a list that drew its own would be a second
+// grammar to keep in step.
+func (f *overlayFill) addTinted(at int, label, note string, tint noteInk, selected, marked bool) bool {
 	take, flat := overlayItemLines(f.width, note), false
 	if len(f.out)+take > f.n {
 		// EXCEPT ON A FRAME WITH ONE ROW TO GIVE. A list that answered a one-row
@@ -575,9 +589,9 @@ func (f *overlayFill) add(at int, label, note string, selected, marked bool) boo
 		take, flat = 1, true
 	}
 	hovered := f.hover >= len(f.out) && f.hover < len(f.out)+take
-	lines := overlayLines(label, note, selected, marked, hovered, f.width, f.pal)
+	lines := overlayLinesTinted(label, note, tint, selected, marked, hovered, f.width, f.pal)
 	if flat {
-		lines = []string{overlayRow(label, note, selected, marked, hovered, f.width, f.pal)}
+		lines = []string{overlayRowTinted(label, note, tint, selected, markIf(marked), hovered, f.width, f.pal)}
 	}
 	for _, line := range lines {
 		f.out = append(f.out, line)
@@ -1084,6 +1098,8 @@ func (a *app) overlayHeight() int {
 		want = a.permPanel.height(width)
 	case a.standPage.open:
 		want = a.standPage.height(width, a.now())
+	case a.subPage.open:
+		want = a.subPage.height(width)
 	case a.menu.open:
 		want = a.menu.height(width)
 	case a.comp.open:
@@ -1139,6 +1155,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.permPanel.draw(width, n, a.pal, hover)
 	case a.standPage.open:
 		return a.standPage.draw(width, n, a.pal, hover, a.now())
+	case a.subPage.open:
+		return a.subPage.draw(width, n, a.pal, hover)
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:
