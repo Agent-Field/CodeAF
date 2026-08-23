@@ -2033,12 +2033,6 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.openTaskSheet()
 		return nil, true
 	}
-	if line.workMore {
-		if e, ok := a.railEntryAt(y); ok && e.node != nil {
-			a.openRoomFor(e.node.id, e.node.title)
-			return a.takeRoomPump(), true
-		}
-	}
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true
