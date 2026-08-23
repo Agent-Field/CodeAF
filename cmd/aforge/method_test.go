@@ -102,6 +102,9 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 // one node with no statement of what done means. It now carries a method like
 // any other leaf, and the gate is handed the same one the worker was held to.
 func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
+	// The split gate is stood down so the planned owner under test exists at
+	// all — partsroute_test.go states the reason once.
+	t.Setenv("AFORGE_SPLITGATE", "0")
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model", MaxDepth: 0, NodeBudget: 6}
 	capture := &planScriptClient{
