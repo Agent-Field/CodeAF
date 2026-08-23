@@ -644,11 +644,12 @@ func (a *app) homeErrandBar(ex *homeExchange) []homeBarTarget {
 	return bar
 }
 
-// toggleSheetMore is `m` and the fold line together: it opens the bookkeeping
-// fold AND every list-shaped band on the card, and closes the lot again.
+// toggleSheetMore is `→` (and `m`, the sheet's modal synonym) and the fold
+// line together: it opens the bookkeeping fold AND every list-shaped band on
+// the card, and closes the lot again.
 //
-// ONE GESTURE FOR ONE INTENT. `m` on a wide card means "show me everything this
-// row has" ([app.toggleAllBandFolds]); a phone that made it mean "show me the
+// ONE GESTURE FOR ONE INTENT. `→` on a wide card means "show me everything this
+// row has" ([app.setAllBandFolds]); a phone that made it mean "show me the
 // three bands I moved behind a fold" would be the same key meaning two things at
 // two widths.
 func (a *app) toggleSheetMore(subject bandSubject) {
@@ -751,17 +752,22 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "end", "G":
 		a.home.sheet.top = 1 << 20
 		return nil, true
-	case "m":
+	case "m", "right":
+		// THE SHEET MAY KEEP ITS BARE LETTERS. It is modal and has no box, so
+		// a letter here cannot be the start of anybody's sentence — but the
+		// wide card's legend teaches `→` now (homeband_keys.go), and a key a
+		// legend teaches works at every width. Both spellings, one meaning.
 		if subject, ok := a.homeSheetSubject(); ok {
 			a.toggleSheetMore(subject)
 		}
 		return nil, true
-	case "p", "s":
-		// THE ITEM'S OWN TWO KEYS, working here exactly as they do on the row
-		// (homestanding.go's [app.homeItemWrite]). The sheet is the card, and the
-		// card has always named them.
+	case "p", "s", "ctrl+e", "ctrl+x":
+		// THE ITEM'S OWN KEYS, working here exactly as they do on the row
+		// (homestanding.go's [app.homeItemWrite]). The sheet is the card, and
+		// the card names `ctrl+e pause` and `ctrl+x stop`; the bare pair stays
+		// as a synonym for the same modal reason as `m` above.
 		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
-			if msg.String() == "p" {
+			if msg.String() == "p" || msg.String() == "ctrl+e" {
 				return a.homeItemWrite(line, standing.StatusPaused), true
 			}
 			return a.homeItemWrite(line, standing.StatusRetired), true

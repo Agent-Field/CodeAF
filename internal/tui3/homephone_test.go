@@ -273,11 +273,11 @@ func TestThePhoneSheetHoldsRepoKeysAndSpendBehindMore(t *testing.T) {
 	if !strings.Contains(phoneText(a), homeSheetMoreWord) {
 		t.Fatalf("the sheet drew no fold:\n%s", phoneText(a))
 	}
-	if strings.Contains(phoneText(a), "n new chat here") {
+	if strings.Contains(phoneText(a), "ctrl+t new chat here") {
 		t.Fatalf("the keys band is not behind the fold:\n%s", phoneText(a))
 	}
 	a.homeKey(key("m"))
-	if !strings.Contains(phoneText(a), "n new chat here") {
+	if !strings.Contains(phoneText(a), "ctrl+t new chat here") {
 		t.Fatalf("m did not open the fold:\n%s", phoneText(a))
 	}
 }

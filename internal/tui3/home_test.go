@@ -1593,12 +1593,12 @@ func TestHomeMarksARowWhoseFolderIsGoneOnTheRowAndOnTheCard(t *testing.T) {
 		t.Fatalf("the sentence was on line %d, not directly under the place line:\n%s", at, card)
 	}
 	// AND THE LEGEND NAMES ONLY KEYS THAT WORK.
-	for _, dead := range []string{"enter open", "n new chat here", "o open folder"} {
+	for _, dead := range []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder"} {
 		if strings.Contains(card, dead) {
 			t.Fatalf("the card still offered %q for a folder that is gone:\n%s", dead, card)
 		}
 	}
-	for _, alive := range []string{"y copy path", "m more"} {
+	for _, alive := range []string{"ctrl+y copy path", "→ more"} {
 		if !strings.Contains(card, alive) {
 			t.Fatalf("the card lost %q, which needs no folder:\n%s", alive, card)
 		}
@@ -1622,8 +1622,10 @@ func TestHomeLeavesARowWhoseFolderIsThereAlone(t *testing.T) {
 	if strings.Contains(card, WorkspaceGoneWord) {
 		t.Fatalf("a folder that is there was called gone:\n%s", card)
 	}
-	if !strings.Contains(card, "enter open · n new chat here · o open folder") {
-		t.Fatalf("the ordinary legend went missing:\n%s", card)
+	for _, clause := range []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder"} {
+		if !strings.Contains(card, clause) {
+			t.Fatalf("the ordinary legend lost %q:\n%s", clause, card)
+		}
 	}
 }
 
@@ -2960,7 +2962,7 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 	a.openHome()
 	a.width, a.height = 100, 30
 
-	// Walk the cursor onto the junk row and press e.
+	// Walk the cursor onto the junk row and press ctrl+e.
 	at := -1
 	for i, line := range a.home.lines {
 		if line.kind == homeSession && strings.Contains(line.row.Title, "junk drawer") {
@@ -2972,7 +2974,7 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 		t.Fatalf("the junk row is not on home:\n%s", homeText(a))
 	}
 	a.home.cursor, a.home.picked = at, true
-	drive(t, a, key("e"))
+	drive(t, a, key("ctrl+e"))
 
 	text := homeText(a)
 	if !strings.Contains(text, homeArchiveHeadWord+" · 1 put away") {
@@ -2991,7 +2993,7 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 	a.home.box.reset()
 	a.home.build()
 
-	// Open the archive, walk onto the row, and e brings it back.
+	// Open the archive, walk onto the row, and ctrl+e brings it back.
 	fold := -1
 	for i, line := range a.home.lines {
 		if line.kind == homeArchiveFold {
@@ -3015,26 +3017,29 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 		t.Fatalf("the open archive shows no rows:\n%s", homeText(a))
 	}
 	a.home.cursor, a.home.picked = back, true
-	drive(t, a, key("e"))
+	drive(t, a, key("ctrl+e"))
 	if strings.Contains(homeText(a), homeArchiveHeadWord) {
 		t.Fatalf("the archive line survived its last row coming back:\n%s", homeText(a))
 	}
 }
 
-// A BARE LETTER TYPES UNTIL A ROW IS CHOSEN. The foot promises "type to
-// search or start something new", and the letter doors — m, n, o, y, e, the
-// digits — used to fire off whatever row the cursor was resting near, so a
-// person two letters into "make me a site" watched the m act on a card
-// instead. The doors open only after the deliberate gesture: walking the
-// cursor onto a row, or clicking it.
-func TestALetterTypesUntilARowIsChosen(t *testing.T) {
+// A BARE LETTER ALWAYS TYPES. The foot promises "type to search or start
+// something new", and this screen learned twice that any gate on that promise
+// is a mode: first the letter doors fired off whatever row the cursor was
+// resting near, then they fired off a row somebody had merely walked onto or
+// pointed at — and either way a person into "make me a site" or "one more
+// thing" watched a letter act on a card instead of landing in their sentence.
+// So the doors ride chords now (ctrl+e, ctrl+o, ctrl+y, ctrl+t) and the
+// arrows, which can never begin a word, and a letter is a letter under every
+// cursor, hover and pick this screen can be in.
+func TestALetterAlwaysTypesWhateverIsChosen(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
 	a.openHome()
 	a.width, a.height = 100, 30
 
-	// At rest nothing is picked: m goes into the box.
+	// At rest a letter types.
 	drive(t, a, key("m"))
 	if got := a.home.box.String(); got != "m" {
 		t.Fatalf("an at-rest m did not type; the box holds %q", got)
@@ -3042,14 +3047,23 @@ func TestALetterTypesUntilARowIsChosen(t *testing.T) {
 	a.home.box.reset()
 	a.home.build()
 
-	// Walk onto a row — the deliberate gesture — and the same letter is the
-	// door the card's hints advertise.
+	// Walked onto a row — picked, the strongest gesture there is — the chord
+	// the card's legend names acts on it...
 	drive(t, a, key("down"))
 	if !a.home.picked {
 		t.Fatal("walking onto a row did not pick it")
 	}
-	drive(t, a, key("o"))
-	if got := a.home.box.String(); got != "" {
-		t.Fatalf("a letter on a picked row typed %q instead of acting", got)
+	drive(t, a, key("ctrl+y"))
+	if !strings.Contains(homeText(a), "copied") {
+		t.Fatalf("ctrl+y on a picked row did not copy the path:\n%s", homeText(a))
+	}
+
+	// ...and the same letters that used to be doors still type: m, o, y, e
+	// and n land in the box as the word "moyen".
+	for _, letter := range []string{"m", "o", "y", "e", "n"} {
+		drive(t, a, key(letter))
+	}
+	if got := a.home.box.String(); got != "moyen" {
+		t.Fatalf("letters on a picked row did not all type; the box holds %q", got)
 	}
 }
