@@ -747,23 +747,27 @@ var OperatorEnvPins = []string{
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
-	// AFORGE_SWARM is the cooperative-decomposition wave's arming switch
-	// (config.go's Settings.Swarm): on, leaves gain request_split and the
-	// sizing judgments read measured overrun base rates; off, the tree is
-	// byte-identical to before the wave. It is plumbing for the reason
-	// AFORGE_CHAT_V2 is — it decides which decomposition doctrine the binary
-	// runs, not a preference the product has an opinion about — and it has
-	// the same lifetime: it disappears when swarm becomes the default, which
-	// is exactly the lifetime a persisted setting must not have.
+	// AFORGE_SWARM is cooperative decomposition's ESCAPE HATCH, and it used to
+	// be its arming switch (config.go's Config.Swarm). ON IS NOW THE DEFAULT
+	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
+	// task's worker carries divide_work, and the sizing judgments read measured
+	// overrun base rates. Set it to 0 and the tree is byte-identical to before
+	// the wave. It is plumbing for the reason AFORGE_CHAT_V2 is — it decides
+	// which decomposition doctrine the binary runs, not a preference the
+	// product has an opinion about — and it has the same lifetime: it
+	// disappears when nobody has a reason to turn the default off any more,
+	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
-	// AFORGE_SPLITGATE is the claim-time split gate's rollback switch
-	// (cmd/aforge/cooperative.go): set to 0 and a leaf's request to divide is
-	// taken at its word instead of being weighed against the gate's evidence.
-	// It is plumbing for the reason AFORGE_SWARM is — a wave's escape hatch
-	// while the gate proves itself against real runs, not a preference — and
-	// it has the same lifetime: it disappears when the gate has earned the
-	// last word, which is exactly the lifetime a persisted setting must not
-	// have.
+	// AFORGE_SPLITGATE is the split gate's rollback switch
+	// (internal/splitgate, read by cmd/aforge/cooperative.go and by
+	// internal/session's task_divide.go): set to 0 and a request to divide is
+	// taken at its word instead of being weighed against the evidence it names.
+	// It matters more now that swarm is the default, because the gate is what
+	// makes that default free: it is the thing that refuses narrow work. It is
+	// plumbing for the reason AFORGE_SWARM is — a wave's escape hatch while the
+	// gate proves itself against real runs, not a preference — and it has the
+	// same lifetime: it disappears when the gate has earned the last word,
+	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SPLITGATE",
 	// AFORGE_MECHANISM names which coordination mechanism the binary arms —
 	// today its one recognized word is `quorum`, which sets Config.Quorum the

@@ -194,7 +194,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	})
 	planner.orch = run
 
-	live := &orchestration{run: run, cancel: cancel}
+	live := &orchestration{run: run, cancel: cancel, born: time.Now()}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -257,6 +257,12 @@ func orchestrateRoleCall(source func(key string) (string, bool), role roles.Role
 type orchestration struct {
 	run    *orchestrate.Orchestrator
 	cancel context.CancelFunc
+	// born is when this run was registered, and it is the ONE thing here that is
+	// not a second copy of something on the snapshot: a run's shape, fuel and
+	// write-up are all the orchestrator's own, and its age is not on any of them.
+	// [Agent.WorkingNow] draws it, and a run scripted by a test that never set it
+	// answers zero, which renders as nothing.
+	born time.Time
 }
 
 // ResolveOrchestrate answers one EventOrchestratePause: "topup:<dollars>"

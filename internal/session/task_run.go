@@ -587,6 +587,14 @@ func (g *TaskGraph) reserve() uint64 {
 // state it reports is what the node is doing by the time the tool answers:
 // running, or queued behind its dependencies or the cap.
 func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
+	// WHETHER THIS WORK MAY DISCOVER THAT IT IS WIDE, decided here because this
+	// is the one door every task in this package comes through whoever opened
+	// it — a proposal the chat model groomed, a person's own `/task`, the route
+	// judge's card. It is asked of the CONVERSATION rather than of the proposer,
+	// because the conversation is where the road is wired and where the sizing
+	// judge's answer was banked; a scripted graph in a test has no conversation
+	// and gets the honest false ([Agent.armDivision] is nil-safe).
+	spec.divide = g.home.armDivision(spec)
 	node := &TaskNode{
 		graph:     g,
 		id:        id,

@@ -45,6 +45,16 @@ var taskPrompt string
 //go:embed prompts/shape.md
 var shapePrompt string
 
+// dividePrompt is the extra page a worker gets when THIS piece of work was
+// armed to discover that it is wide (task_divide.go). It is separate from
+// task.md rather than a paragraph inside it for the reason the whole belt is
+// conditional: the verb it describes is absent from most workers, and a page
+// telling a model about a tool it does not have is the prompt lying — the
+// defect CLAUDE.md records `note`/`forget` having caused.
+//
+//go:embed prompts/divide.md
+var dividePrompt string
+
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
@@ -103,6 +113,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	if config.mayFanOut() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.ReplaceAll(strings.TrimRight(taskPrompt, "\n"), fanLimitToken, strconv.Itoa(taskFanLimit)))
+	}
+	// AND THE PAGE ABOUT DISCOVERING WIDTH, on exactly the predicate the belt
+	// is built from, so the prompt and the toolbelt can never disagree about
+	// whether this worker may divide (task_divide.go).
+	if config.mayDivide() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
 	}
 
 	out.WriteString("\n\n# Project\n")

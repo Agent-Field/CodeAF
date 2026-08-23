@@ -303,6 +303,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// deciding about your own work, so a person meets it having never been
 		// told the feature exists — and the words they reach for are about the
 		// warning, not about the machinery behind it.
+		// Division: the wave that let a single worker discover its work is wider
+		// than one pair of hands. People ask about it in the words they watched
+		// happen — "it split itself", "why are there suddenly three of them".
+		{"my task split itself into parts", "tasks"},
+		{"why did one task turn into several workers", "tasks"},
+		{"can a task divide its own work when it turns out to be too big", "tasks"},
+		{"what decides whether work gets split", "tasks"},
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
 

@@ -360,8 +360,11 @@ did get done is still readable.
 ## When a run is the wrong tool
 
 - Work that can be done in the conversation is done in the conversation.
-- One self-contained piece of work is a **task** (`propose_task`) — one worker, one brief,
-  one branch.
+- One self-contained piece of work is a **task** (`propose_task`) — one brief, one branch.
+  It usually runs as one worker, but it is not fixed to one: a task that opens the material
+  and finds many separate items in it can split into parts and stay to fold them back
+  together. See *Work that runs on its own*, under *When a task turns out to be too wide for
+  one worker*.
 - A shape of work that will recur is a **sub-harness**: built once, saved, and offered
   again. See *Saved shapes of work*.
 
