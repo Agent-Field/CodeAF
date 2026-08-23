@@ -249,6 +249,14 @@ again — and lands on the first row of each. A zone with nothing in it is skipp
 its label is not a row. The foot names the key at this width: `tab next zone`. `esc` still
 closes home from wherever the cursor is.
 
+**`→` and `←` cross the columns too, the way the geography reads**: `→` off a row in
+`needs you` or `moving` crosses the gutter into the list, and `←` off a conversation in
+the list crosses back into the zones. Both land on the **same conversation** when the far
+column holds it — stepping across never loses the thing you were reading — and on the
+first row otherwise. On a zone's `…N more` line the arrows stay the fold's, opening and
+closing it, because the cursor is standing on the fold itself. With something typed the
+arrows are the caret's, as everywhere on this screen.
+
 `↑` and `↓` walk **every** row on the page in reading order — down through the zones on the
 left, then into the list — so nothing needs `tab` to be reachable.
 
