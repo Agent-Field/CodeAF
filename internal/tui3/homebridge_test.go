@@ -178,6 +178,28 @@ func TestHomeOpensAtRestAndTheFirstKeyReachesNeedsYou(t *testing.T) {
 	}
 }
 
+// ENTER AT REST STILL TAKES YOU IN. Rest is the screen's own furniture, and a
+// person who opens home and presses enter is going back to work, not asking
+// about the machine — so enter returns to the conversation this terminal is
+// holding, instead of dying on a cursor that is on no row. It does not open
+// the first list row: that can be another window's conversation, and enter at
+// rest must never land on a refusal.
+func TestEnterAtRestReturnsToTheConversationYouAreHolding(t *testing.T) {
+	a, _ := bridgeLab(t)
+	was := a.file
+	a.openHome()
+	if !a.home.resting() {
+		t.Fatal("home did not open at rest")
+	}
+	a.homeEnter()
+	if a.home.open {
+		t.Fatalf("enter at rest left home up saying %q", a.home.msg)
+	}
+	if a.file != was {
+		t.Fatalf("enter at rest landed in %q, want the held conversation %q", a.file, was)
+	}
+}
+
 // AND ON A MACHINE WITH NOTHING WAITING IT LANDS IN THE LIST, because a zone
 // with no rows is a label and a label is not a place a cursor can stand.
 func TestTheFirstKeyLandsInTheListWhenTheZonesAreEmpty(t *testing.T) {
