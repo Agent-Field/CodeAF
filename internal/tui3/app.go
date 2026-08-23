@@ -645,6 +645,21 @@ type app struct {
 	// ringTurn is the turn the last reading was taken for — see
 	// [app.sampleContext] for why a turn can end more than once.
 	ringTurn int
+	// handsRing is the last [handsRingSize] readings of HOW MANY HANDS THIS
+	// MACHINE HAD OUT, oldest first: the data behind the machine card's `hands`
+	// spark (homeband_spark.go).
+	//
+	// IT IS SAMPLED ON HOME'S OWN BEAT AND NOWHERE ELSE — one reading per fresh
+	// [app.machineFactsAt], which is once per [homeEvery] while home is open. A
+	// ring fed by the paint clock would be a chart of how often the terminal
+	// redrew, which is a fact about the terminal.
+	//
+	// AND IT SURVIVES NOTHING. It lives in this process and dies with it: no
+	// file, no state directory, nothing carried across runs. A chart that opens
+	// empty and fills in over the next few minutes is the honest shape of a
+	// reading nobody kept — and the alternative, a spark restored from disk,
+	// would be this surface drawing yesterday's machine as though it were now.
+	handsRing []int
 
 	// branch is the git branch the workspace is on and branchDirty whether it
 	// has uncommitted work — what follows the conversation's name at the left
