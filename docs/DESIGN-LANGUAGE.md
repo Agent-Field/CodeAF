@@ -141,7 +141,7 @@ by name rather than by silence.
 | ask | `#C08FE8` | *unchanged* | 273° | 66% | **73.5** | signal |
 | warn | `#EBCB8B` | *unchanged* | 40° | 71% | **73.3** | signal |
 | **data** | — | **`#88C0D0`** *(new)* | 193° | 43% | **67.5** | signal — the payload rule's datum hue |
-| violet | `#8F6FA8` | *unchanged* | 274° | 25% | 54.7 | the shell operator's, shared by both ladders |
+| violet | `#8F6FA8` | *unchanged* | 274° | 25% | 54.7 | shared by both ladders; was the shell operator's until the transcript restraint greyed shell grammar — held in the table, currently unspent |
 
 Signal spread: **19.4 points before, 14.9 after** (unchanged by `data`, which sits mid-band).
 

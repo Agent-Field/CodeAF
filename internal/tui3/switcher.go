@@ -356,8 +356,11 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.replay()
 	a.noteStandingHere()
 	a.measureContext()
-	// The rail is rebuilt from the engine's own index rather than carried, which
-	// is the same door the "@" completion reads (taskmention.go).
+	// The rail is rebuilt from the engine's own record rather than carried: the
+	// task lane opens on a replay of the graph's roster (session's
+	// [Agent.WatchTaskUpdates]), so watchTasks re-grows the column row by row
+	// through the same taskUpdate door every live event uses. loadTasks
+	// refreshes only the "@" completion's snapshot (taskmention.go).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks()}
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))

@@ -550,7 +550,7 @@ This matters more generally: aforge leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a
 capability is missing, it is missing — you will not get a tool that pretends.
 
-## Can you remember what we worked out earlier in this conversation?
+## Can you remember what we worked out earlier in this conversation — do you remember me between conversations?
 
 Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
