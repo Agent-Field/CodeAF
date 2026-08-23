@@ -1674,9 +1674,6 @@ func (a *app) deltaSegment() string {
 	return "Σ " + glyphAdd + itoa(stats.adds) + " " + glyphDel + itoa(stats.dels)
 }
 
-// sparkBars is the sparkline's alphabet, lowest first.
-const sparkBars = "▁▂▃▄▅▆▇"
-
 // ctxSpark is the last few turn-end context readings, as one glyph each:
 //
 //	12.4k/128k · 10% ▁▂▂▃▅▆
@@ -1701,17 +1698,14 @@ func (a *app) ctxSpark() string {
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
+	// THE HEIGHT IS THE SPARK MACHINERY'S ARITHMETIC AND NOT THIS FUNCTION'S
+	// (spark.go). The machine card's `hands` chart quantizes the same way into a
+	// different alphabet, and one rounding rule is what keeps two sparks on one
+	// screen from disagreeing about the same reading.
 	bars := []rune(sparkBars)
 	var out strings.Builder
 	for _, reading := range a.ctxRing {
-		at := reading * len(bars) / threshold
-		if at >= len(bars) {
-			at = len(bars) - 1
-		}
-		if at < 0 {
-			at = 0
-		}
-		out.WriteRune(bars[at])
+		out.WriteRune(bars[sparkLevel(reading, threshold, len(bars))])
 	}
 	return out.String()
 }

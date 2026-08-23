@@ -56,6 +56,12 @@ const (
 	// `4 orders` — which is the standing-orders vocabulary (docs/STANDING-ORDERS.md)
 	// and never a word for a row in a store.
 	pulseOrderWord = " order"
+	// pulseWorkingWord follows the count of what the machine has in flight —
+	// `3 working`. It is the word the presence file already writes for the same
+	// state ([session.PresenceWorking]) and the word the moving zone's own law
+	// uses; the banned vocabulary is `auditor`, `verdict`, `verified` — machinery
+	// nouns — and this is what a person calls it.
+	pulseWorkingWord = " working"
 	// pulseTodayWord follows the day's spend.
 	pulseTodayWord = " today"
 	// pulseGap is the separator every list of clauses on this surface uses.
@@ -119,6 +125,25 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 			ink = pal.muted
 		}
 		out = append(out, ink(pulseWatchWord), ink(itoa(orders)+plural(pulseOrderWord, orders)))
+	}
+	if facts.hands > 0 {
+		// THE MACHINE'S HANDS, AND IT COMES AFTER THE WATCH RATHER THAN BEFORE
+		// IT. The line reads standing, then moving, then arithmetic, then the
+		// clock — and the two watch clauses are ONE fact said in two words
+		// ([pulseWatchWord] and its count), so nothing may be pushed between
+		// them.
+		//
+		// AND IT DRAWS AT ONE. The emptiness law asks for the absence of a zero
+		// and nothing more: a single hand out is worth knowing from across a room,
+		// and `1 working` is a fact where `0 working` would be a permanent
+		// reminder that nothing is happening.
+		//
+		// THE FIGURE IS THE ANSWER AND THE WORD IS THE QUESTION, which is the
+		// payload rule exactly (docs/DESIGN-LANGUAGE.md): the count steps up into
+		// the datum hue and the word beside it stays in the dim tier the rest of
+		// this line is written in. Never the accent — a top line is a glance and
+		// not the one live or chosen thing on the screen.
+		out = append(out, pal.data(itoa(facts.hands))+pal.dim(pulseWorkingWord))
 	}
 	if facts.spent > 0 {
 		// THE SPEND RISES OUT OF THE DIM ONLY WHEN THE BOUND IS CLOSE, on the one
