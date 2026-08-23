@@ -252,6 +252,16 @@ func (s designSeat) broke(err error) {
 // as markdown (internal/tui3's renderMarkdown), and markdown folds single
 // newlines into running prose — which is all a card is made of. Unfenced, a card
 // whose columns line up at a glance arrived as one run-on paragraph.
+//
+// THE FENCE SAYS `text` FOR THE SAME REASON. An untagged block is handed to
+// chroma's language GUESS (internal/tui2/prose's highlight), and a card is plain
+// English with a shell command or two in it — so the guess landed wherever the
+// step details happened to look like code that day, and lit a person's approval
+// page up in four colours that meant nothing. Naming the plainest lexer there is
+// makes the block one calm colour every time, which is what a card is supposed
+// to be.
+const harnessCardFence = "text"
+
 func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "The draft is written — %s · %d steps.", page.Id.Name, len(page.Program.Nodes))
@@ -263,7 +273,7 @@ func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	if len(draft.Cues) > 0 {
 		out.WriteString("\n\nIt answers to: " + strings.Join(draft.Cues, " · "))
 	}
-	out.WriteString("\n\n```\n" + subharness.Card(page) + "\n```")
+	out.WriteString("\n\n```" + harnessCardFence + "\n" + subharness.Card(page) + "\n```")
 	return out.String()
 }
 
@@ -1146,7 +1156,7 @@ func harnessPageSuperseded(encoded []byte) string {
 // it, one message along and out of sight ([harnessPageContext]).
 func harnessPageThread(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written.\n\n```\n")
+	out.WriteString("The page is written.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nNothing is saved yet — the card is up, and it is saved only if it is approved.")
@@ -1163,7 +1173,7 @@ func harnessPageThread(page subharness.Harness) string {
 // over by itself.
 func harnessPageRewritten(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written again, with your change in it.\n\n```\n")
+	out.WriteString("The page is written again, with your change in it.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nStill nothing is saved — the card is up again, and it is saved only if it is approved.")
