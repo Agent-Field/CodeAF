@@ -958,6 +958,23 @@ type Config struct {
 	Media      MediaGenerator
 	MediaModel func(modality string) string
 
+	// MediaPick is the just-in-time half of the pair above: where MediaModel
+	// answers "the default for this modality", MediaPick answers "the model
+	// asked for THIS name, for this one call". It takes the same modality word
+	// and the model's own word for what it wants — a slug, a fragment like
+	// "seedream", or "best" — and answers the resolved slug, or an error in
+	// words the model can act on ("no image model matches", "X makes speech,
+	// not image"). An empty word answers ("", nil), which the belt reads as
+	// "keep the default".
+	//
+	// NIL MEANS THE CHOICE DOES NOT EXIST: the making verbs advertise no
+	// `model` argument at all, by the same absence law as the verbs themselves
+	// — a knob with nothing behind it is left off the schema rather than
+	// present and refused. The surface that wires it (cmd/aforge's
+	// chatv3_media.go) answers from the same catalog the defaults ladder
+	// reads, so a picked model is capability-checked exactly as a default is.
+	MediaPick func(modality, word string) (string, error)
+
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
 	// (config.DocumentEngines), resolved by the surface exactly as the search

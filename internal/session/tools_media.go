@@ -24,6 +24,7 @@ package session
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,6 +68,51 @@ func (a *Agent) mediaHand(modality string) (MediaGenerator, string, bool) {
 		return nil, "", false
 	}
 	return client, model, true
+}
+
+// mediaModelProperty is the schema fragment for the just-in-time choice: one
+// optional `model` argument, worded per verb. It exists as a function rather
+// than four inline strings so the four verbs cannot drift on what the argument
+// means or how a word is matched.
+func mediaModelProperty(noun string) string {
+	return `"model":{"type":"string","description":"Which ` + noun + ` model to use for this one call, when the default is wrong for it — a model name from the catalog (a fragment like a vendor or family name is matched), or 'best' for the strongest advertised. Leave it out to use the session's default."},`
+}
+
+// mediaSchema is a verb's schema with the model argument spliced in when the
+// surface wired a picker, and the base schema untouched when it did not — the
+// absence law applied to an argument: a knob with nothing behind it is not
+// advertised.
+func (a *Agent) mediaSchema(base, noun string) json.RawMessage {
+	if a.config.MediaPick == nil {
+		return json.RawMessage(base)
+	}
+	const anchor = `"properties":{`
+	return json.RawMessage(strings.Replace(base, anchor, anchor+mediaModelProperty(noun), 1))
+}
+
+// mediaPick resolves a call's own model word against the picker, falling back
+// to the modality's default. The second string is a REFUSAL in the model's own
+// terms, empty on success — the same contract every argument check on this
+// belt answers with.
+func (a *Agent) mediaPick(modality, word, fallback string) (string, string) {
+	word = strings.TrimSpace(word)
+	if word == "" {
+		return fallback, ""
+	}
+	if a.config.MediaPick == nil {
+		// Unreachable through the advertised schema — the argument is only
+		// spliced in when a picker exists — but a model that invents the
+		// argument anyway is told the truth rather than silently ignored.
+		return "", "this session cannot choose a " + modality + " model per call; leave model out to use " + fallback
+	}
+	picked, err := a.config.MediaPick(modality, word)
+	if err != nil {
+		return "", err.Error()
+	}
+	if strings.TrimSpace(picked) == "" {
+		return fallback, ""
+	}
+	return picked, ""
 }
 
 // mediaReference reads one picture the model pointed at and encodes it as the

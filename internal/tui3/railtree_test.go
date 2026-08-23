@@ -292,6 +292,7 @@ func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) 
 
 	// The glyph cell folds the family and opens no room.
 	drive(t, a, tea.MouseClickMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
 	if a.roomOpen() {
 		t.Fatal("a press on the disclosure cell walked into the room behind it")
 	}
@@ -306,6 +307,8 @@ func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) 
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + line.badge.from,
 		Y: rootY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + line.badge.from,
+		Y: rootY, Button: tea.MouseLeft})
 	if _, ok := railRowFor(a, a.viewHeight(), "Read the law"); !ok {
 		t.Fatalf("a press on the count did not expand the family:\n%s",
 			strings.Join(railText(a, a.viewHeight()), "\n"))
@@ -316,6 +319,7 @@ func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) 
 
 	// And anywhere else on the row is that node's door.
 	drive(t, a, tea.MouseClickMsg{X: glyph + 6, Y: rootY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: glyph + 6, Y: rootY, Button: tea.MouseLeft})
 	if !a.roomOpen() || a.room.id != 1 {
 		t.Fatalf("a press on the title did not open the room: open=%v", a.roomOpen())
 	}
@@ -458,6 +462,7 @@ func TestTheWidenHintIsEarnedByTheIndentAndTogglesTheWideTier(t *testing.T) {
 	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
 		if line, ok := a.railLineAt(y); ok && line.hint {
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
 			break
 		}
 	}

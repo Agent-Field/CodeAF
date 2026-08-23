@@ -103,13 +103,14 @@ func (a *Agent) musicTools() []bare.Tool {
 type generateMusicArguments struct {
 	Prompt string `json:"prompt"`
 	Path   string `json:"path"`
+	Model  string `json:"model"`
 }
 
-func (a *Agent) generateMusicTool(client MediaGenerator, model string) bare.Tool {
+func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) bare.Tool {
 	return bare.Tool{
 		Name:        "generate_music",
 		Description: generateMusicDescription,
-		Schema:      json.RawMessage(generateMusicSchemaJSON),
+		Schema:      a.mediaSchema(generateMusicSchemaJSON, "music"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateMusicArguments
 			if err := json.Unmarshal(args, &parsed); err != nil {
@@ -118,6 +119,12 @@ func (a *Agent) generateMusicTool(client MediaGenerator, model string) bare.Tool
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
 				return "Invalid arguments: prompt is required", true, nil
+			}
+			// The call's own choice, resolved before anything is paid for
+			// (tools_image.go states the shape).
+			model, refusal := a.mediaPick(modalityMusic, parsed.Model, defaultModel)
+			if refusal != "" {
+				return "Invalid arguments: " + refusal, true, nil
 			}
 
 			// Every failure is a TOOL ERROR and never a Go error, exactly as

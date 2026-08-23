@@ -93,13 +93,14 @@ type generateVideoArguments struct {
 	FramePaths     []string `json:"frame_paths"`
 	ReferencePaths []string `json:"reference_paths"`
 	Path           string   `json:"path"`
+	Model          string   `json:"model"`
 }
 
-func (a *Agent) generateVideoTool(client MediaGenerator, model string) bare.Tool {
+func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) bare.Tool {
 	return bare.Tool{
 		Name:        "generate_video",
 		Description: generateVideoDescription,
-		Schema:      json.RawMessage(generateVideoSchemaJSON),
+		Schema:      a.mediaSchema(generateVideoSchemaJSON, "video"),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateVideoArguments
 			if err := json.Unmarshal(args, &parsed); err != nil {
@@ -108,6 +109,13 @@ func (a *Agent) generateVideoTool(client MediaGenerator, model string) bare.Tool
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
 				return "Invalid arguments: prompt is required", true, nil
+			}
+			// The call's own choice, resolved before the job starts, so a word
+			// that matches nothing costs neither money nor a job row
+			// (tools_image.go states the shape).
+			model, refusal := a.mediaPick(modalityVideo, parsed.Model, defaultModel)
+			if refusal != "" {
+				return "Invalid arguments: " + refusal, true, nil
 			}
 			if parsed.Duration < 0 {
 				return "Invalid arguments: duration is a number of seconds and cannot be negative", true, nil

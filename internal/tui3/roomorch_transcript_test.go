@@ -53,6 +53,9 @@ func clickRailDoor(t *testing.T, a *app, node int) {
 	drive(t, a, tea.MouseClickMsg{
 		X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6, Y: at, Button: tea.MouseLeft,
 	})
+	drive(t, a, tea.MouseReleaseMsg{
+		X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6, Y: at, Button: tea.MouseLeft,
+	})
 }
 
 func TestRunRailNodeDoorsOpenItsFocusedCard(t *testing.T) {

@@ -62,8 +62,12 @@ func TestAClickIntoADesignsRoomKeepsTheFrameClockTurning(t *testing.T) {
 
 	// Update rather than drive: the harness swallows the paint clock's own
 	// message so that its queue can end, and the whole of this test is whether
-	// that message was ever asked for.
-	model, cmd := a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	// that message was ever asked for. The body acts on RELEASE now
+	// (dragselect.go), so the release is the call whose command carries the
+	// room's pump and the frame.
+	model, _ := a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	a = model.(*app)
+	model, cmd := a.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	a = model.(*app)
 	if !a.roomOpen() {
 		t.Fatal("the click did not walk into the design's room")

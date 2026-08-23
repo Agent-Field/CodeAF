@@ -167,6 +167,7 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 		t.Fatalf("the span %+v does not cover the task's model on the row:\n%q", a.modelSpan, line)
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("pressing a running task's model opened nothing")
 	}
@@ -214,6 +215,7 @@ func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) 
 		t.Fatal("closing the room did not give the model segment its columns back")
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("the conversation's model stopped opening the picker after a room closed")
 	}
@@ -249,6 +251,7 @@ func TestASettledTasksModelIsNotPressable(t *testing.T) {
 			t.Fatalf("a %s node stopped naming its model at all:\n%q", state, line)
 		}
 		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
 		if a.pick.open {
 			t.Fatalf("pressing a %s node's model opened the picker", state)
 		}

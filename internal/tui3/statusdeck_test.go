@@ -139,6 +139,7 @@ func TestTappingTheDeckOpensTheFullscreenStatusSheet(t *testing.T) {
 	_ = frame(a)
 
 	drive(t, a, clickAt(6, a.height-deckHeight))
+	drive(t, a, releaseAt(6, a.height-deckHeight))
 	if !a.deck.open {
 		t.Fatal("a press on the deck's first row did not open the status sheet")
 	}
@@ -190,6 +191,7 @@ func TestTappingOutsideTheSheetsListClosesIt(t *testing.T) {
 	_ = frame(a)
 
 	drive(t, a, clickAt(2, 0))
+	drive(t, a, releaseAt(2, 0))
 	if a.deck.open {
 		t.Fatal("a press on the sheet's head did not close it")
 	}
@@ -209,6 +211,7 @@ func TestTheModelIsPressableOnTheDeckAndInTheSheet(t *testing.T) {
 			a.modelSpan.to-a.modelSpan.from, deckTouch)
 	}
 	drive(t, a, clickAt(a.modelSpan.from+1, a.height-1))
+	drive(t, a, releaseAt(a.modelSpan.from+1, a.height-1))
 	if !a.pick.open {
 		t.Fatal("pressing the model chip on the deck did not open the picker")
 	}

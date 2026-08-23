@@ -67,13 +67,14 @@ type speakArguments struct {
 	Text  string `json:"text"`
 	Voice string `json:"voice"`
 	Path  string `json:"path"`
+	Model string `json:"model"`
 }
 
-func (a *Agent) speakTool(client MediaGenerator, model string) bare.Tool {
+func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool {
 	return bare.Tool{
 		Name:        "speak",
 		Description: speakDescription,
-		Schema:      json.RawMessage(speakSchemaJSON),
+		Schema:      a.mediaSchema(speakSchemaJSON, "speech"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed speakArguments
 			if err := json.Unmarshal(args, &parsed); err != nil {
@@ -82,6 +83,12 @@ func (a *Agent) speakTool(client MediaGenerator, model string) bare.Tool {
 			text := strings.TrimSpace(parsed.Text)
 			if text == "" {
 				return "Invalid arguments: text is required", true, nil
+			}
+			// The call's own choice, resolved before anything is paid for
+			// (tools_image.go states the shape).
+			model, refusal := a.mediaPick(modalitySpeech, parsed.Model, defaultModel)
+			if refusal != "" {
+				return "Invalid arguments: " + refusal, true, nil
 			}
 
 			// Every failure is a TOOL ERROR and never a Go error, exactly as

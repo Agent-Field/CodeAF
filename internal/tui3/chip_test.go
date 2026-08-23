@@ -66,6 +66,7 @@ func TestAStripChipIsPaddedAndItsPaddingOpensTheRoom(t *testing.T) {
 	}
 	// THE LAST CELL OF THE CHIP IS PADDING, and pressing it is pressing the chip.
 	drive(t, a, tea.MouseClickMsg{X: chip.span.to - 1, Y: a.headHeight(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: chip.span.to - 1, Y: a.headHeight(), Button: tea.MouseLeft})
 	if !a.roomOpen() || a.room.id != 9 {
 		t.Fatalf("a press on the chip's padding did not open its room: open=%v", a.roomOpen())
 	}

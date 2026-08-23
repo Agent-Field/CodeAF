@@ -103,13 +103,14 @@ type generateImageArguments struct {
 	AspectRatio    string   `json:"aspect_ratio"`
 	Size           string   `json:"size"`
 	Path           string   `json:"path"`
+	Model          string   `json:"model"`
 }
 
-func (a *Agent) generateImageTool(client MediaGenerator, model string) bare.Tool {
+func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) bare.Tool {
 	return bare.Tool{
 		Name:        "generate_image",
 		Description: generateImageDescription,
-		Schema:      json.RawMessage(generateImageSchemaJSON),
+		Schema:      a.mediaSchema(generateImageSchemaJSON, "image"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateImageArguments
 			if err := json.Unmarshal(args, &parsed); err != nil {
@@ -118,6 +119,14 @@ func (a *Agent) generateImageTool(client MediaGenerator, model string) bare.Tool
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
 				return "Invalid arguments: prompt is required", true, nil
+			}
+			// The call's own choice, resolved before anything is paid for, so a
+			// word that matches nothing costs nothing. From here down `model`
+			// is the model that actually draws, wherever it is named — the
+			// request, the failure strings, the accounting, the result line.
+			model, refusal := a.mediaPick(modalityImage, parsed.Model, defaultModel)
+			if refusal != "" {
+				return "Invalid arguments: " + refusal, true, nil
 			}
 			// The references are read BEFORE the request is sent, so a picture
 			// that cannot be read costs nothing: a refusal here is a typo the
