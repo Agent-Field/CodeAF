@@ -40,14 +40,22 @@ const BareSubharness = "bare"
 // it fits. Both are prompt text, and both are priors — measurement replaces the
 // anchors through the profile store, and the measured history is rendered
 // beside the purpose through the knowledge hook below.
+// THE TAGS ARE THE ON-DISK SPELLING OF HALF A MANIFEST. [Manifest] embeds this
+// struct and is the document a bundle's manifest.json actually is (PRD §6) — a
+// file a person writes by hand, a model iterates on, and a pull request reviews.
+// Untagged, this half of it would come out spelled in Go field names next to the
+// tagged half's lowercase ones, and the format would be two conventions in one
+// object. They are named the way the fields beside them are, and everything but
+// the name is omitempty, so a manifest that says nothing about its budget shape
+// carries nothing about it.
 type SubharnessInfo struct {
-	Name    string
-	Purpose string
+	Name    string `json:"name"`
+	Purpose string `json:"purpose,omitempty"`
 	// PriorAnchors is the initial capacity ruler in the style of plan/size.go's
 	// three worked examples: comfortably atomic, borderline, oversized. It is
 	// the initial setting of this subharness's hardness and nothing more; the
 	// first eight measured leaves start replacing it.
-	PriorAnchors string
+	PriorAnchors string `json:"prior_anchors,omitempty"`
 
 	// DeadlineFloor and the scaling pair are the budget shape. A leaf's hang
 	// backstop is not a policy about patience, it is a claim about how long
@@ -55,9 +63,9 @@ type SubharnessInfo struct {
 	// linear leaf's fifteen minutes would kill a coding pipeline in its first
 	// merge. Zero values fall back to linear's shape, so a registration that
 	// says nothing about time is served rather than refused.
-	DeadlineFloor     time.Duration
-	DeadlineStep      time.Duration
-	DeadlinePerTokens int
+	DeadlineFloor     time.Duration `json:"deadline_floor,omitempty"`
+	DeadlineStep      time.Duration `json:"deadline_step,omitempty"`
+	DeadlinePerTokens int           `json:"deadline_per_tokens,omitempty"`
 }
 
 // linearInfo is the shape the whole system ran on before there was a second
