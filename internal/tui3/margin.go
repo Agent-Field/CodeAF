@@ -166,7 +166,7 @@ func (a *app) marginHead(width int) []railLine {
 // count is a row the conversation pays for twice (task.go's [app.railView]).
 func (a *app) marginRows(width int) []railLine {
 	out := []railLine{{
-		text:  a.pal.dim(fit(marginDoorWord(marginTaskType), width)),
+		text:  a.marginDoorLine(marginTaskType, width),
 		entry: -1,
 		door:  marginTaskType,
 	}}
@@ -184,10 +184,34 @@ func (a *app) marginRows(width int) []railLine {
 		})
 	}
 	return append(out, railLine{
-		text:  a.pal.dim(fit(marginDoorWord(marginStandType), width)),
+		text:  a.marginDoorLine(marginStandType, width),
 		entry: -1,
 		door:  marginStandType,
 	})
+}
+
+// marginDoorLine is one of the column's two doors — `+ /task` and `+ /standing`
+// — as it is drawn.
+//
+// THE `+` IS THE CONTROL AND THE WORDS ARE THE LABEL, which is the same split
+// the standing column's own door already makes ([app.railDoorLine]): the chord
+// is a sentence for the hand that types, and the mark is what the hand that
+// points presses. So the mark takes the accent for exactly as long as the
+// pointer is on the row, and the words stay dim throughout.
+//
+// This is the second half of the emphasis law, which these two rows had been
+// drawing only the first half of: the pointer raised the whole row's ground
+// (task.go's [app.railRows]) and nothing in the row's own lead answered, so the
+// louder cue was the quieter one and the mark said the same thing on every
+// frame. It is the accent BUDGET that makes it safe — the mark is lit only while
+// the pointer is on it, so the column never carries two.
+func (a *app) marginDoorLine(typed string, width int) string {
+	mark := a.pal.dim(marginDoorMark)
+	if a.hoveringMarginDoor(typed) {
+		mark = a.pal.accent(marginDoorMark)
+	}
+	word := strings.TrimSpace(typed)
+	return mark + a.pal.dim(fit(word, max(0, width-ansi.StringWidth(marginDoorMark))))
 }
 
 // marginStandRow is one order as one line: the glyph every aforge surface agrees

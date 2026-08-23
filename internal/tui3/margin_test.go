@@ -360,3 +360,47 @@ func TestTheTaskBriefFormsStillStartWork(t *testing.T) {
 		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
 	}
 }
+
+// ── the emphasis law, on the column's two doors ─────────────────────────────
+
+// A DOOR ANSWERS THE POINTER WITH BOTH HALVES OF THE EMPHASIS LAW: its ground
+// comes up a step AND its `+` turns accent. It used to answer with the ground
+// alone, so the louder of the two cues was the quieter one — the mark said the
+// same thing on every frame and only the background moved.
+//
+// The words beside the mark stay dim throughout. `+ /task` is a sentence for the
+// hand that types chords and the `+` is what the hand that points presses, which
+// is the same split the standing column's own door already makes.
+func TestAMarginDoorLightsItsMarkUnderThePointer(t *testing.T) {
+	a, _ := marginApp(t)
+	line, y := marginLine(t, a, func(l railLine) bool { return l.door == marginTaskType })
+
+	if strings.Contains(line.text, a.pal.accent(marginDoorMark)) {
+		t.Fatalf("a door nobody is pointing at already lights its mark:\n%q", line.text)
+	}
+
+	drive(t, a, tea.MouseMotionMsg{X: a.railLeft() + 3, Y: y})
+	if !a.hoveringMarginDoor(marginTaskType) {
+		t.Fatalf("the pointer did not land on the door at row %d:\n%s", y, marginRail(a))
+	}
+
+	lit, _ := marginLine(t, a, func(l railLine) bool { return l.door == marginTaskType })
+	if !strings.Contains(lit.text, a.pal.accent(marginDoorMark)) {
+		t.Fatalf("the door under the pointer does not light its mark:\n%q", lit.text)
+	}
+	// The label is not swept up with it: the accent is one cell, not a run.
+	if strings.Contains(lit.text, a.pal.accent(strings.TrimSpace(marginTaskType))) {
+		t.Fatalf("the accent spread from the mark onto the words:\n%q", lit.text)
+	}
+	// AND THE ROW'S GROUND CAME UP WITH IT — the other half of the law, which the
+	// column applies in its layout pass (task.go's [app.railRows]).
+	var grounded bool
+	for _, row := range a.railRows(a.viewHeight()) {
+		if strings.Contains(plain(row), strings.TrimSpace(marginTaskType)) && strings.Contains(row, hoverBg()) {
+			grounded = true
+		}
+	}
+	if !grounded {
+		t.Fatalf("the door under the pointer wears no ground:\n%s", strings.Join(a.railRows(a.viewHeight()), "\n"))
+	}
+}

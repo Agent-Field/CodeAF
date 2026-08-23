@@ -83,14 +83,19 @@ func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
 	}
 	labels := []string{adaptive, "single · one worker, no planner"}
 	out := []string{pal.dim("this parallelizes — how should it run?")}
+	// NOTHING ON THIS CARD IS CHOSEN YET, so nothing on it wears the selected
+	// step. Both rows are offers and the cursor is a cursor: it takes THE GROUND
+	// LADDER's cursor step, the same step the pointer takes, and the `›` in the
+	// accent is what says which of the two enter would run. The row used to wear
+	// the selected step, which promised a decision this card has not been given.
 	for i, label := range labels {
 		lead := "  "
 		if i == p.cursor {
-			lead = "› "
+			lead = pal.accent("› ")
 		}
 		head := lead + fit(label, width-2)
 		if i == p.cursor {
-			head = pal.selected(pal.ink(head), width)
+			head = pal.cursor(pal.ink(head), width)
 		} else if hover == len(out) {
 			head = pal.cursor(pal.dim(head), width)
 		} else {
@@ -100,7 +105,7 @@ func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
 		if i == 0 {
 			tail := "    " + fit(sketch, width-4)
 			if p.cursor == 0 {
-				tail = pal.selected(pal.dim(tail), width)
+				tail = pal.cursor(pal.ink(tail), width)
 			} else if hover == len(out) {
 				tail = pal.cursor(pal.dim(tail), width)
 			} else {

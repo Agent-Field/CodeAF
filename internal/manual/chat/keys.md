@@ -1122,6 +1122,12 @@ what landed. The write goes over OSC 52, so it works over ssh and through tmux. 
 selection is by rows — whole lines, not characters — and what is highlighted is
 exactly what is copied.
 
+The sweep is drawn in **the same background copy mode's selection wears** — the strongest
+of the three this screen draws, a shade above the one under the pointer. It is the same
+claim ("these rows are what a copy would take"), so it is the same paint; it used to be
+drawn at the pointer's own quieter step, which said a sweep in progress was a shadow
+rather than a selection.
+
 **The selection sticks to the text, not to the screen.** A task's page streams and
 follows its live edge, so rows can scroll while your button is down; the highlight
 rides the rows you swept, the copy is those rows wherever they moved to, and a click

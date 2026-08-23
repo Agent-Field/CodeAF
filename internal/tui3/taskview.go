@@ -1473,23 +1473,41 @@ func (a *app) taskSheetItemRows(item taskSheetItem, at, width int) ([]string, bo
 			rows = []string{a.taskSheetPastRow(item.entry, room)}
 		}
 	}
-	selected := at == a.taskSheet.cursor
+	oncursor := at == a.taskSheet.cursor
 	hovered := a.hot.kind == hoverTaskSheet && a.hot.index == at
 	out := make([]string, 0, len(rows))
-	for _, text := range rows {
-		text = "  " + text
-		// SELECTED OUTRANKS HOVERED, which is the law every list on this surface
-		// states: the two backgrounds cannot nest, and of the two facts "this is
-		// where you are" is the one still true when the pointer moves away.
-		switch {
-		case selected:
-			text = a.pal.selected(text, width)
-		case hovered:
-			text = a.hoverRow(text, width)
+	for i, text := range rows {
+		// THE TWO CELLS IN FRONT OF EVERY ROW ARE THE LEAD, and on the row a
+		// person is on they carry the mark in the accent — `›` where the keyboard
+		// is and `·` where the pointer is, the same two marks every other list on
+		// this surface leads with ([overlayLead]). The gutter was two blank cells
+		// on every row of the page, so the ground was the only thing saying where
+		// anybody was, and a ground is the QUIETER half of the emphasis law.
+		//
+		// Only the first line of a multi-line item takes it. The lines under it
+		// are the same row continued, and a second mark would read as a second
+		// row.
+		lead := "  "
+		if i == 0 {
+			switch {
+			case oncursor:
+				lead = a.pal.accent("› ")
+			case hovered:
+				lead = a.pal.accent("· ")
+			}
+		}
+		text = lead + text
+		// NOTHING ON THIS PAGE IS OPEN, so nothing on it wears the selected step.
+		// The keyboard cursor and the pointer are the same fact arrived at by two
+		// hands and THE GROUND LADDER gives them ONE rung; the cursor row used to
+		// take the selected step, which said a row had been chosen when all that
+		// had happened was that ↑/↓ got there.
+		if oncursor || hovered {
+			text = a.pal.cursor(text, width)
 		}
 		out = append(out, text)
 	}
-	return out, !selected && !hovered
+	return out, !oncursor && !hovered
 }
 
 // taskSheetNodeRows is one node of the tree, in FULL: its connectors, its state,

@@ -756,10 +756,12 @@ func (a *app) attentionRow(line homeLine, at, width int, pal palette) string {
 		}
 		text += strings.Repeat(" ", gap) + painted
 	}
-	switch {
-	case selected:
-		return pal.selected(text, width)
-	case hovered:
+	// NOTHING IN A ZONE STRIP IS OPEN, so nothing in one wears the selected step.
+	// A zone row is a conversation somebody has not walked into yet, and both the
+	// keyboard cursor and the pointer are the same fact reached by two hands —
+	// THE GROUND LADDER gives that fact ONE rung. What still tells the two apart
+	// is the lead, `›` against `·`, which [overlayLead] draws above.
+	if selected || hovered {
 		return pal.cursor(text, width)
 	}
 	return text
