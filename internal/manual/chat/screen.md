@@ -250,6 +250,14 @@ otherwise. The left end of that legend is the room too: `room · esc/←← main
 `room · esc your line back` for as long as a walk is on, because that is the key's real
 meaning until the walk ends.
 
+**Two lines in that slot are about the draft you are typing**, rather than about a state
+the surface is in. `ctrl+enter keeps this true` appears while your sentence looks like a
+rule (see the standing orders page), and `ctrl+r spell it out` while it looks like
+something to build and still has room to grow (see the keys page). They share the one
+slot and the standing line wins whenever both would show. While the spelling-out call is
+out, the slot turns a small spinner in front of the same words. Neither ever moves the
+message box: this line is on the frame in every state.
+
 One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
 when you have closed the task column and this session has run something. It is the
 whole of what the frame says about a roster that is not on screen, and it says nothing

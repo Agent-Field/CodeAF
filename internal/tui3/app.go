@@ -987,6 +987,10 @@ type app struct {
 	// capability that cannot work is absent, not broken.
 	stand  *standingCard
 	stands StandingSeam
+	// spell is the spell-it-out block under the draft, and the call that made it
+	// while one is out (spellout.go). Its resting state is the zero value, which
+	// is every frame of a conversation nobody has pressed the chord in.
+	spell spellState
 	// keepN, keepFiring and keepAt are the status segment's cached reading of
 	// the store, and keepAt is when it was taken ([app.keepingCount] says why a
 	// segment asked on every frame may not walk a directory).
@@ -2271,6 +2275,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case spelledMsg:
+		// The expansion, or nothing at all — a failure, a timeout and a model that
+		// ignored the format all arrive here as an empty block and are answered by
+		// putting the hint back (spellout.go).
+		a.spelled(msg)
+		return a, nil
+
 	case taskSizedMsg:
 		a.settleSizing()
 		door, ok := a.agent.(taskCommandAgent)
@@ -2420,7 +2431,12 @@ func (a *app) paint() tea.Cmd {
 		// event arrived, which is exactly the complaint the liveness was built
 		// for (homeexchange.go). Only while home is up: the whole of what turns
 		// is drawn on that screen.
-		a.exchangeAnimating() {
+		a.exchangeAnimating() ||
+		// AND A DRAFT BEING SPELLED OUT IS THE ELEVENTH, and the fourth that can
+		// be the whole of what is happening: no turn runs while the expansion call
+		// is out, so without this the spinner in the hint slot would be a still
+		// photograph for the ten seconds the call is allowed (spellout.go).
+		a.spell.asking {
 		return a.frameTick()
 	}
 	a.painting = false
