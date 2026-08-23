@@ -1230,6 +1230,19 @@ type Config struct {
 	// propose_task at all (tools.go) — absent, not refusing.
 	taskDepth int
 
+	// Divide arms the division road for the tasks this session admits
+	// (task_divide.go). ON is what the v3 door wires (cmd/aforge's chatv3.go,
+	// from internal/config's Swarm, default true); the zero value is off, which
+	// is what keeps every scripted agent in this package's tests exactly as it
+	// was.
+	//
+	// IT IS THE ROAD AND NOT THE DECISION. A task is armed one at a time and
+	// only when something says its work might be wide ([Agent.armDivision]), and
+	// a worker that IS armed still has to get a division past the evidence and
+	// the free hands before anything is born. This row only says the road
+	// exists.
+	Divide bool
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
@@ -1428,6 +1441,16 @@ type Agent struct {
 	// words (task_brief.go), and it is deliberately the WHOLE message rather than
 	// a summary of it.
 	personAsk string
+	// divisibleAsk is the text the sizing judge last answered YES about
+	// (task_person.go's [Agent.judgeDecomposable]) — the one signal that arms
+	// the division road for a task somebody then starts as a single worker
+	// ([Agent.armDivision]).
+	//
+	// It is ONE entry rather than a map because the judge is asked immediately
+	// before the work is started, by one command, and a bank that grew for the
+	// life of the session would be remembering answers about work that was
+	// never begun.
+	divisibleAsk string
 	// lastTurnTruncated is the honest handoff from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off

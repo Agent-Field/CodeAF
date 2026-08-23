@@ -162,7 +162,13 @@ is set to.
 
 **Choosing `single` closes nothing off.** A single worker can still break its own brief into
 smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
-own work* — so the setting decides who plans, not whether work can ever run in pieces.
+own work* — and it can split itself once it has opened the material and found the work is
+wider than one worker's share, which is *When a task turns out to be too wide for one
+worker*. The setting decides who plans, not whether work can ever run in pieces.
+
+That is also why answering the chooser with `single` is a safe answer: saying "no planner"
+is not saying "one worker forever". Whichever way you answer, work that turns out to be wide
+can still divide once somebody is actually looking at it.
 
 ## The card that asks whether to run the work
 
@@ -1454,7 +1460,13 @@ You can read it yourself too. The card behind `enter` on any `earlier` row of th
 
 ## When a task splits its own work — sub-tasks, nested tasks, children
 
-A task can hand pieces of its own work further out. If its brief turns out to hold two or
+A task can hand pieces of its own work further out, and there are two moments it does it.
+This section is the first: parts the task can see **from its brief**. The second is parts it
+only finds **after opening the material**, which is *When a task turns out to be too wide for
+one worker*, below. Both land in the same place — pieces under the parent, in the column and
+in the room — and both count against the same five.
+
+If its brief turns out to hold two or
 three parts that do not need each other — different files, different subsystems, nothing
 half-finished passing between them — it proposes each part as a task of its own and keeps
 the coordination for itself. The parts run at the same time instead of one after another.
@@ -1484,6 +1496,50 @@ before; the task stays open, each report is put in front of it as it arrives, an
 is the parent's work checked and merged. If you stop a parent, its unfinished pieces are
 stopped with it and their branches are kept.
 
+## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task
+
+A task is usually one worker. It is not fixed to one.
+
+The section above is about parts a task can see from its brief. This is the other moment:
+the worker has **opened the material** and there is more of it than anybody knew when the
+work was written. The directory holds eleven adapters. The search matched forty call sites.
+The report needs a section per region and there are nine regions. Nobody could have known
+that from the sentence you typed.
+
+So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
+what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
+own copy of the repository, with its own branch coming home into the parent's. Your
+transcript says it in plain words — `split into 3 parts:` and then each part by number and
+name.
+
+**The worker does not go away.** It keeps whatever part it decided to keep, every part's
+report reaches it as that part lands, and the one thing it owes you at the end is a single
+deliverable made out of all of it. A task never finishes while a part of it is still running.
+
+**Two things have to be true, and neither is the worker's confidence.**
+
+- **There must be enough separate items.** Below six, one worker doing them in order beats
+  paying for a copy of the repository, a check and a wait for each part. This was measured,
+  not guessed: twelve image files won, four modules and three bugs lost.
+- **Somebody has to be free to pick the parts up.** Parts that could only queue behind work
+  that is already running would cost a copy of the repository each and save nothing.
+
+If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
+the worker carries straight on as one worker. That is why this costs nothing on ordinary
+work: a task that is not wide is never split, and finding that out is free.
+
+**Where you see it:** the parts appear in the task column under their parent, joined by tree
+connectors and carrying their own id and state, exactly as pieces handed out from the brief
+do. Walk into the parent's room and its header lists each part by name with the state it is
+in; walk into a part and its header says `part of: <the parent's title>`.
+
+**Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
+
+It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the environment
+turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and lets a
+worker's request to split be taken at its word — both are for somebody rolling something
+back, not preferences, which is why neither is in the settings panel.
+
 ## How deep tasks nest, and how many pieces one task may hand out
 
 Two hard bounds, and they behave differently on purpose.
@@ -1492,8 +1548,9 @@ Two hard bounds, and they behave differently on purpose.
 piece may not. The tool is simply not on a second-level task's belt — it does not have the
 verb, so it cannot try and be told no.
 
-**Fan-out: five pieces per task.** A task that asks for a sixth gets its call answered
-with:
+**Fan-out: five pieces per task**, counting both ways a task hands work out — parts it saw in
+its brief and parts it found once it opened the material. A task that asks for a sixth gets
+its call answered with:
 
 > no: you have already handed out 5 pieces of this work, which is as many as one task may.
 > Do the rest in your own hands, or finish these and report what is left undone.
