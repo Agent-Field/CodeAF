@@ -238,7 +238,7 @@ own white — the override travels on the Styler and never touches the table.
 | bad | `#D08770` | *unchanged* | 14° | 51% | **62.7** | signal |
 | ask | `#C08FE8` | *unchanged* | 273° | 66% | **73.5** | signal |
 | warn | `#EBCB8B` | *unchanged* | 40° | 71% | **73.3** | signal |
-| **data** | — | **`#88C0D0`** *(new)* | 193° | 43% | **67.5** | signal — the payload rule's datum hue |
+| **data** | — | **`#91C5D4`** *(new)* | 193° | 43% | **70.0** | signal — the payload rule's datum hue |
 | violet | `#8F6FA8` | *unchanged* | 274° | 25% | 54.7 | shared by both ladders; was the shell operator's until the transcript restraint greyed shell grammar — held in the table, currently unspent |
 
 Signal spread: **19.4 points before, 14.9 after** (unchanged by `data`, which sits mid-band).
@@ -327,7 +327,7 @@ datum inside it steps up one role.**
 | what | role |
 | --- | --- |
 | the prose | `dim`, or whatever quiet tier the surface already used |
-| a datum | `data` (`#88C0D0` dark / `#2C8A9E` light) — a model id, a figure, a count, a name, a key chord |
+| a datum | `data` (`#91C5D4` dark / `#2C8A9E` light) — a model id, a figure, a count, a name, a key chord |
 | something typeable | the chip a slash command already wears |
 | — | **never `accent`** |
 
@@ -340,11 +340,18 @@ different **kind** of thing, not a louder one. So data wear a hue of their own �
 the syntax-highlighting contract every calm terminal theme keeps (greyscale for
 prose, colour for identifiers) — sitting inside the fifteen-point signal band so
 a line full of data still reads as one quiet field until somebody looks.
-`#88C0D0` resolves to xterm-256 **110**, one clear step from the accent's 146;
-`#2C8A9E` to **31**, colliding with nothing on the light ladder. The key–value
-legends (a card's `enter open · ctrl+t new chat here`, the foot hints, the task
-card's keys) are written in the hint grammar and painted by the same mechanism,
-so every key/verb pair splits the same way everywhere.
+`#91C5D4` resolves to xterm-256 **116**, one clear step from the accent's 146;
+`#2C8A9E` to **31**, colliding with nothing on the light ladder. The dark value
+was nord's own `#88C0D0` for four waves and it **did** collide: `#88C0D0` rounds
+to **110**, which is `muted`'s index and a steel blue rather than a cyan, so on
+every 256-colour terminal the datum wore the second voice's own colour. Only the
+lightness moved (L 67.5 → 70.0, hue and saturation held), and
+`TestNoTwoRolesShareA256Index` now walks the whole table on both ladders so the
+next one fails instead of shipping.
+
+The key–value legends (a card's `enter open · ctrl+t new chat here`, the foot
+hints, the task card's keys) are written in the hint grammar and painted by the
+same mechanism, so every key/verb pair splits the same way everywhere.
 
 **The chip is the slash command's mark and is not lent out.** A key chord is
 typeable too, and the obvious move was to give the chords in the legend and the
