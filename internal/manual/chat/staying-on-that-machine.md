@@ -92,7 +92,22 @@ there to say yes. It is sitting where it stopped.
 
 Four kinds of question wait this way: a permission question about a tool call, a reminder
 or watch asking to stand, an offer to run a saved harness, and a request to connect an
-account. Answer it exactly as you would have answered it live.
+account. Answer it exactly as you would have answered it live — it is not a different kind
+of card, it is the card you would have seen, with the same keys and the same offer.
+
+**It tells you how long it sat there**, on a line of its own just above the card:
+
+```
+this question has been waiting 4 hours
+```
+
+Minutes, hours or days, in words. A question raised in the last minute says nothing at all
+about having waited, because "you were only just away" is not news.
+
+One thing this cannot do: if the machine over there is a **newer build** holding a kind of
+question this one has never drawn, that question is skipped rather than guessed at, and it
+goes on waiting for a build that knows it. A card you could see and could not answer would
+be worse than one you were never shown.
 
 Two things are worth knowing. A question that was **on your screen** when you walked away
 is kept too, and comes back the next time you attach. And a question waiting for you keeps

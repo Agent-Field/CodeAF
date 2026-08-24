@@ -29,6 +29,11 @@ import (
 // say. A badge, an icon or a "connected" word would all be a second place to
 // look for a fact that belongs in the first one.
 //
+// THE ONE SEGMENT A CONNECTION EVER GROWS IS ABOUT IT NOT WORKING, and it
+// passes the same test: `reconnecting to devbox — trying for up to 5 minutes`
+// is drawn while the link is being redialled and nothing is drawn at any other
+// moment (hostlink.go). A healthy link still says nothing.
+//
 // THE MACHINE NAME IS PART OF THE PATH, not a decoration on it, which is why it
 // takes the path's own paint (the legend dims both halves together) and why it
 // is written with a colon: `devbox:code/app` is what a person would type into
@@ -134,6 +139,28 @@ import (
 //	                  process holds the tick lock, nothing on disk says so, and
 //	                  no frame could carry an answer the far end does not have.
 //	                  Running is nil here exactly as it is at home.
+//	a dropped link    SAID, and said in the one place a condition belongs: the
+//	                  status line grows a segment reading `reconnecting to
+//	                  devbox — trying for up to 5 minutes` while the connection
+//	                  is being redialled, and nothing at all the rest of the
+//	                  time. That is not an exception to this file's header — it
+//	                  is the same rule, because a working link says nothing and
+//	                  the segment exists only in the seconds where that stops
+//	                  being true. There is still no badge, no icon and no
+//	                  "connected" word (hostlink.go).
+//	news from a redial
+//	                  an ordinary note in the transcript, once: the engine did
+//	                  not keep the turn, or it came back with a different
+//	                  conversation open. It DRAINS on the far side, so exactly
+//	                  one place reads it ([app.takeLinkNotice]).
+//	a question raised while nobody was here
+//	                  DRAWN, as the card it would have been live: the far
+//	                  machine holds it and the surface replays its event through
+//	                  [app.event], so the key that answers it is the key that
+//	                  always answered it. How long it waited is a line above the
+//	                  card, and a question raised moments ago gets none. A KIND
+//	                  THIS BUILD DOES NOT DRAW IS SKIPPED and left waiting for a
+//	                  build that does, which is the wire's own contract.
 //	/export           writes HERE, and the note says so ([exportHereWord]). The
 //	                  transcript is assembled from what this surface is holding,
 //	                  so it can be written without asking anybody; the wire has no

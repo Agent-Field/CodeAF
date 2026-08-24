@@ -407,7 +407,7 @@ survives, the identity is not drawn, and nothing on the row is pressable.
 
 ## What each part of the status line means
 
-Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
+Eleven segments, right to left of the identity, joined by ` · ` in a fixed order:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
@@ -420,7 +420,8 @@ Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
 | 6 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
 | 7 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 8 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
-| 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
+| 9 | connection | `reconnecting to devbox — trying for up to 5 minutes` | the link to the machine a `--host` conversation runs on has dropped and is being redialled | empty on every local session, and on a remote one whenever the link is working — which is almost always |
+| 10 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
@@ -533,8 +534,9 @@ delta → open → cache → eta → burn → ambient → cost → context
 `open` goes early because it is the one segment that is not about the conversation in
 front: at forty columns what you need is what **this** conversation is doing.
 
-The **state word and the `YOLO` badge are not in that list at all**. One is why you are
-looking at the line; the other is why you should be.
+The **state word, the `YOLO` badge and the connection are not in that list at all**. One
+is why you are looking at the line, the second is why you should be, and the third is the
+reason none of the numbers beside it are moving.
 
 The burn rate is damped on purpose. It is recomputed every frame, but the string is
 held: the rate is rounded (steps of 5 under 100, two significant figures above) and the
@@ -689,7 +691,7 @@ open on it, so there is no second, louder background to keep apart from the firs
 The items, in order: `session`, `task` (in a room), `model` (the full routing address
 with its `:level` — the one actable row), `task model` (in a room), `served`, then every
 telemetry segment under its own word — `background`, `changes`, `spend`, `context`,
-`cache`, `rate`, `compaction`, `approvals`, `state` — then `tasks`, `place` (full path,
+`cache`, `rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `place` (full path,
 branch and dirty star) and `keys`.
 
 A press selects a row; a second press on the already-selected row answers it. A press
