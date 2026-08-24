@@ -77,6 +77,13 @@ var colourAuthors = map[string]string{
 	"designlanguage_test.go": "names the assumed terminal grounds the ladder is aimed at",
 	"bundle_test.go":         "pins the light ladder's authored values",
 	"thinking_test.go":       "pins the three stops [fadeOf] derives from hueDim",
+	// [hueLive] is the one hue in the table whose whole meaning is a RELATION —
+	// it is the value [hueInk] carried before the body was calmed, and it says
+	// "this reply is still arriving" only for as long as it stands a step above
+	// the ink. A silent edit to either end would leave the surface compiling, the
+	// palette closed, and the effect gone with nothing failing, so the pair is
+	// written down a second time where the relation can be asserted.
+	"settle_test.go": "pins the live tier against the body ink it is defined against",
 }
 
 // THE PALETTE IS CLOSED. A colour with no role is a colour nobody can change,

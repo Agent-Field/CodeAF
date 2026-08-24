@@ -757,6 +757,25 @@ The offer to open a wide table is only drawn on the settled render. A half-arriv
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
 
+## The reply dims when it finishes — brighter while streaming, calmer when done
+
+That is deliberate, and it is the only thing that says the turn is over. There is no
+spinner at the end of an answer and no tick mark.
+
+While a reply is arriving, its plain tail — the part below the last promoted line, which
+is the part still growing — is painted **one step brighter** than the body. The moment
+the turn finishes the whole block is re-rendered as markdown at the ordinary body ink,
+and the brightness drains away. Nothing is added to the screen and nothing is taken off
+it; the ink dries.
+
+Only the growing tail is brighter. The prefix already promoted to markdown carries its
+own styling and is left as it is, so the calm part of an answer is the part this screen
+has already decided is final.
+
+The whole effect needs 256 colours. On a terminal with sixteen, and with `NO_COLOR` set,
+a streaming reply is drawn exactly like a settled one — bolding it instead would make it
+look like a reply that opened in bold, which is a different thing.
+
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
 It cannot any more. A message of yours is never drawn inside a streaming answer, never
