@@ -172,6 +172,55 @@ spend the context window on bytes nothing has asked for yet.
 the far machine's boundaries, so a client-side check on `Fetch.File` would be a
 permission decision taken on the wrong machine.
 
+## Decision 8 — The pairing crypto is borrowed, and the one piece nobody maintains is owned
+
+**Decision.** Pairing runs CPace over the six-digit code; the pairing channel and every
+later connection run Noise (`NNpsk0` then `IK`) between pinned device keys; the relay
+proves possession of its registered key with stdlib ECDH and HMAC. None of it is written
+here — except `filippo.io/cpace`, which is **vendored into `internal/pair/cpace`** with
+its BSD licence and its own tests.
+
+**Why vendor exactly that one.** It was the only dependency in the set that has never
+been tagged: a 2021 snapshot with no release behind it and nobody promising to fix it.
+Two hundred lines is small enough that one person can read all of it — which is more
+assurance than an unowned dependency was giving — so the copy is a deliberate trade:
+**the bug is ours now**, chosen rather than arrived at by drift. `flynn/noise` and
+`gtank/ristretto255` stay as ordinary dependencies, because both are tagged releases in
+wide use. The vendored file carries a header naming its exact upstream version, the
+command to diff against it, and what reading it turned up.
+
+**Why not write the PAKE.** For the same reason nothing else here is hand-rolled: a
+plausible-looking PAKE that is subtly wrong is indistinguishable from a correct one until
+somebody attacks it. The house rule for this lane was that a hand-rolled primitive which
+*looks* like it works is the worst available outcome — worse than the capability being
+absent.
+
+**The property this buys, stated precisely.** The relay brokers an introduction it cannot
+listen to. CPace means a wrong code yields a different key rather than an error, so there
+is no oracle to guess against and no offline dictionary attack; the guess is spent before
+the exchange runs. Noise `IK` then means every later connection authenticates the machine
+before the surface sends anything, and the initiator's identity is encrypted — the relay
+cannot even tell which of your devices connected.
+
+## Decision 9 — The device key is a file, and the page says so
+
+**Decision.** A machine's long-term key lives at `~/.aforge/v3/remote/device.key`, mode
+0600. The OS keychain — and with it a Mac's fingerprint prompt — is a seam (`pair.Keeper`)
+with no implementation.
+
+**Why ship without it.** The file is exactly the exposure of an ssh key with no
+passphrase, which is the credential this same person already trusts to reach the same
+machine over `--host`. That is a true and familiar bargain. A keychain implementation is
+Mac-only platform work needing cgo and a Mac to test on, with Linux and Windows each
+wanting their own — a project, not a finishing touch.
+
+**Why it is written down rather than left quiet.** Somebody who assumes a keychain will
+protect a stolen laptop is worse off than somebody who knows it is a file. So
+`aforge devices` names the path on screen, the manual has a section saying the keychain is
+**not built** and what that means in practice, and a test fails the build if that page
+ever starts promising otherwise. When the seam is filled, `Keeper.Where()` is the one
+sentence that changes.
+
 ---
 
 ## What runs where

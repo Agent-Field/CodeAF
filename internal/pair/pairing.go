@@ -32,7 +32,7 @@ import (
 	"io"
 	"time"
 
-	"filippo.io/cpace"
+	"github.com/Agent-Field/aforge-v2/internal/pair/cpace"
 	"github.com/Agent-Field/aforge-v2/internal/relay"
 	"github.com/flynn/noise"
 )
