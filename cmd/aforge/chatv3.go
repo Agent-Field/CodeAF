@@ -56,11 +56,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
+	at := flags.String("at", "", "reach a machine that has no ssh, by the name `aforge serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
 	oneModel := flags.Bool("one-model", false,
 		"every text call this session makes runs on the session model: the tier rows, the role pins, "+
 			"the fallback chain and the task model all stand down")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"model": true, "once": true, "session": true, "reasoning": true, "host": true,
+		"model": true, "once": true, "session": true, "reasoning": true, "host": true, "at": true,
 	})); err != nil {
 		return err
 	}
@@ -69,9 +70,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo] [--one-model]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-compact] [--yolo] [--one-model]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -79,6 +80,19 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// there, so the combination is refused rather than quietly dropped.
 	if *oneModel && strings.TrimSpace(*host) != "" {
 		return fmt.Errorf("--one-model settles this machine's model rows; over --host the far machine answers them, so the two cannot be combined")
+	}
+	// --at is the same fork as --host and differs only in what carries it, so
+	// it inherits --host's refusal word for word: the rows that answer are
+	// still the other machine's.
+	if *oneModel && strings.TrimSpace(*at) != "" {
+		return fmt.Errorf("--one-model settles this machine's model rows; over --at the far machine answers them, so the two cannot be combined")
+	}
+	// TWO WAYS TO REACH ONE MACHINE IS NOT TWO MACHINES. Naming both is a
+	// person saying two different things about where the work is, and guessing
+	// which they meant would open a conversation on a machine they did not
+	// name.
+	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
+		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through a relay: name one or the other, not both")
 	}
 	// A picker with nobody watching is not a picker. --once is the headless
 	// door, and the two are a contradiction rather than a combination, so it is
@@ -102,6 +116,24 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if dest := strings.TrimSpace(*host); dest != "" {
 		return openChatV3Host(hostLaunch{
 			target:    dest,
+			session:   strings.TrimSpace(*file),
+			model:     strings.TrimSpace(*model),
+			level:     level,
+			once:      strings.TrimSpace(*once),
+			pick:      pickSession,
+			noCompact: *noCompact,
+			yolo:      *yolo,
+		})
+	}
+
+	// THE THIRD DOOR, and it forks here for the reason --host does: a machine
+	// reached by its paired name owns exactly what a machine reached over ssh
+	// owns. The two differ only in what carries the frames — an ssh child there,
+	// a relay tunnel here — which is the whole point of the transport being an
+	// io.ReadWriteCloser and nothing more (chatv3_at.go, docs/REMOTE.md).
+	if name := strings.TrimSpace(*at); name != "" {
+		return openChatV3At(atLaunch{
+			target:    name,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
 			level:     level,
