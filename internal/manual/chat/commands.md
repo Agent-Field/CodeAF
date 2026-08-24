@@ -686,7 +686,10 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
 conversation — drops into it. Home stays out of the way when you named a conversation
 (`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
-conversation is the one already open. There is no welcome box when home greets you.
+conversation is the one already open. There is no welcome box when home greets you. Not
+greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
+box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
+refuses.
 
 There is no argument form and no key chord — `/home` is the only way in. Projects are dim
 headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
@@ -728,8 +731,10 @@ that folder is gone · <path>
 
 The first is `--host`: the projects are under *this* machine's `~/.aforge/v3` and the
 session is on the other end, so home refuses over a connection and there is one
-conversation. `/new is unavailable here` is what the typing-to-start box says where no
-fresh-session seam exists. The last two are `enter` on a project whose folder has been
+conversation. The second is not a refusal: it is what an empty home says where its rows
+will be, with the box and the keys at the foot still live — typing there offers
+`start a new conversation: "…"` as it does anywhere. `/new is unavailable here` is what
+the typing-to-start box says where no fresh-session seam exists. The last two are `enter` on a project whose folder has been
 deleted or moved since its last conversation, and `enter` when this terminal is already
 holding eight — in both cases home stays up and nothing is opened.
 

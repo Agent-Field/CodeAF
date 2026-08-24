@@ -1204,12 +1204,6 @@ type app struct {
 	// which is why they are read off the options and never off the profile.
 	landing     bool
 	pickSession bool
-	// homeWorth says the machine holds a conversation other than this one, so
-	// home has something to show. It is a CACHED answer to a question about the
-	// disk, refreshed whenever the world is read anyway (home.go), because the
-	// advertisement that reads it is asked on every frame and a directory walk
-	// per frame is not a thing this surface will do.
-	homeWorth bool
 	// homeDoor is where that advertisement was drawn on the last frame, for the
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
