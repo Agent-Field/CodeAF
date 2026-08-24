@@ -1150,6 +1150,14 @@ const (
 	segBurn
 	segETA
 	segYolo
+	// segLink is the connection under a --host session when it has stopped
+	// working: `reconnecting to devbox — trying for up to 5 minutes`, and
+	// nothing at all the rest of the time (hostlink.go). It sits immediately
+	// before the state word because the two are the only segments on the line
+	// that are true of the WHOLE of it — one says what the conversation is
+	// doing, and this one says whether the machine it is doing it on can still
+	// be reached.
+	segLink
 	segState
 	segCount
 )
@@ -1535,6 +1543,11 @@ func (a *app) telemetry(width int) []hudPart {
 	add(segBurn, a.burnSegment())
 	add(segETA, a.etaSegment())
 	add(segYolo, a.yoloSegment())
+	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
+	// says so by never being dropped: it is not in [dropOrder], so a narrow
+	// frame gives up the telemetry around it rather than the one segment that
+	// explains why none of those numbers are moving (hostlink.go).
+	add(segLink, a.linkSegment())
 	word, _ := a.stateSegment()
 	add(segState, word)
 	return parts
@@ -1581,8 +1594,9 @@ func (a *app) openSegment() string {
 //	cost     the bill
 //	ctx      what the conversation is carrying, which is the decision it forces
 //
-// The state word and the safety posture are not in this list at all: one is why
-// a person is looking at the line, and the other is why they should be.
+// The state word, the safety posture and the link are not in this list at all:
+// one is why a person is looking at the line, one is why they should be, and
+// the third is the reason nothing else on the line is moving.
 //
 //	open     how many other conversations this terminal holds — true, and about
 //	         somewhere else; at forty columns what a person needs is what THIS
@@ -1658,6 +1672,18 @@ func (a *app) paintPart(part hudPart) string {
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.
 		return a.pal.bad(part.text)
+	case segLink:
+		// THE SECOND SEGMENT THE AGE RAMP HAS NOTHING TO SAY ABOUT. It is true
+		// for as long as it is drawn and false the instant it is not, so "this
+		// changed four seconds ago" is not a fact about it — and the ramp would
+		// paint it dim forever anyway, because a segment's FIRST appearance
+		// never stamps a clock ([app.freshen] says why).
+		//
+		// ACCENT AND NOT [palette.bad]: the redialling is expected, bounded and
+		// usually resolves itself, so it belongs with the things a person may
+		// have to act on rather than with the gate left open. It steps up one
+		// from the cluster's dim and no further (hostlink.go).
+		return a.pal.accent(part.text)
 	case segCtx:
 		// The meter's three-rung ramp outranks its age: a conversation about to
 		// compact is a decision a person can still act on, and "this number is

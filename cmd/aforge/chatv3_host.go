@@ -453,6 +453,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
 	})
 	stands := newHostStanding(client)
+	seams := newHostSeams(client)
 
 	options := tui3.Options{
 		Agent:     agent,
@@ -535,6 +536,19 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			// and better than a line read off THIS laptop's launchd — a status
 			// about the wrong machine.
 		},
+		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
+		//
+		// The three facts only a connection has: the sentence to draw while a
+		// dropped link is being redialled, the one-off news a redial discovered,
+		// and the questions this conversation raised while nobody was attached.
+		// Each lands somewhere different on the screen and internal/tui3's
+		// hostlink.go says where; what this door owes is the answer, and the
+		// client has answered all three since the wire grew them.
+		Link: tui3.LinkSeam{
+			Note:   seams.Link,
+			Notice: seams.Notice,
+			Held:   hostHeld(seams),
+		},
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
 		// Connections: the accounts panel signs in through a browser HERE and
@@ -612,17 +626,15 @@ func hostAttachedNote(attached int) string {
 	}
 }
 
-// hostSeams is what a remote connection can tell the surface that the surface
-// has nowhere to put yet. Each field is a closure the door can hand over the
-// moment internal/tui3 grows the option that reads it, and each is written here
-// rather than left as a note in a review, so the wiring is one line and not one
-// rediscovery.
+// hostSeams is what a remote connection can tell the surface, in the wire's own
+// shapes. Each field is a closure over [remote.Client], and each is named here
+// rather than passed inline so that the door has ONE list of what a connection
+// knows about itself and the option assembly has one line per fact.
 //
-// WHAT IS MISSING IS THE SURFACE'S HALF AND NOTHING ELSE. The client answers all
-// three today (internal/remote's [remote.Client]); tui3.Options has no field for
-// a live link note, no field for a held question, and no way to draw a card that
-// arrived any way other than on a stream. Until it does, the honest wiring is
-// none: a person is told nothing rather than told something they cannot act on.
+// ALL THREE ARE WIRED NOW. They were written before internal/tui3 had anywhere
+// to put them and sat unwired for a wave, which is why this type reads as a list
+// of facts rather than as an argument: the surface has grown
+// [tui3.LinkSeam] and hostOptions hands these three straight into it.
 type hostSeams struct {
 	// Link is the quiet sentence about the connection right now — empty
 	// whenever there is nothing to say, which is what a status-line segment
@@ -634,13 +646,53 @@ type hostSeams struct {
 	// came back with a different conversation open.
 	Notice func() string
 	// Held is the questions this session raised while nobody was attached. The
-	// surface would replay each one's event through the door it already draws
-	// live cards with.
+	// surface replays each one's event through the door it already draws live
+	// cards with.
 	Held func() ([]remote.HeldQuestion, error)
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
 	return hostSeams{Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions}
+}
+
+// hostHeld is the waiting room in the SURFACE's shape.
+//
+// It exists because internal/tui3 does not import internal/remote and must not:
+// the package that draws a screen has no business compiling against a protocol,
+// which is why every other thing that crosses this door crosses as a closure or
+// as one of internal/session's own types. So the one translation there is —
+// unwrapping the event, which is the field JSON could not carry
+// ([remote.EventWire]) — happens HERE, at the door, where both halves are
+// already in scope.
+//
+// THE ERROR TRAVELS rather than becoming an empty list, on the terms
+// [remote.Client.HeldQuestions] states: "nothing is waiting" and "the far end
+// did not answer" are different facts, and a surface handed the second as the
+// first would quietly tell a person there is nothing to answer.
+func hostHeld(seams hostSeams) func() ([]tui3.HeldQuestion, error) {
+	if seams.Held == nil {
+		return nil
+	}
+	return func() ([]tui3.HeldQuestion, error) {
+		held, err := seams.Held()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]tui3.HeldQuestion, 0, len(held))
+		for _, q := range held {
+			// THE KIND IS CARRIED ACROSS UNREAD. Deciding here which kinds this
+			// build can draw would put the skip rule in two places, and the
+			// surface is where the cards are — see internal/tui3's
+			// [app.replayHeld], which leaves an unrecognised one waiting.
+			//
+			// [remote.HeldQuestion.Stream] is dropped, and dropped rather than
+			// carried unread: the surface has one conversation and one place a
+			// card goes, so there is nothing for it to name (tui3's
+			// [HeldQuestion] states the same thing from the other side).
+			out = append(out, tui3.HeldQuestion{Kind: q.Kind, Event: q.Event.Unwire(), Since: q.Since})
+		}
+		return out, nil
+	}
 }
 
 // ── the ambient side over a connection ──────────────────────────────────────

@@ -122,8 +122,14 @@ on the far machine.
 
 ## How you can tell you are on another machine
 
-**The machine is shown as part of the place, and nowhere else.** There is no badge, no
-icon, no "connected" word and no extra segment in the status line.
+**While the connection is healthy, the machine is shown as part of the place and nowhere
+else.** There is no badge, no icon and no "connected" word — a working connection says
+nothing about itself.
+
+The one exception is a connection that is **not** healthy: while a dropped link is being
+redialled, a `connection` segment appears in the status line reading
+`reconnecting to devbox — trying for up to 5 minutes`, and it goes away again when the link
+is back. Nothing is drawn at any other time.
 
 The workspace is written with the machine in front of it and a colon between, the way you
 would type it into `scp`:

@@ -474,7 +474,12 @@ var deckSegWords = [segCount]string{
 	segBurn:    "rate",
 	segETA:     "compaction",
 	segYolo:    "approvals",
-	segState:   "state",
+	// phone lane: the link's sentence is fifty cells and the deck's rows are
+	// forty-four, so a dropped connection reaches a phone through the SHEET
+	// rather than through the row — which is the same road nine of the eleven
+	// facts on this line already take (hostlink.go, and this file's header).
+	segLink:  "connection",
+	segState: "state",
 }
 
 // deckTaskWord is the roster in one line: what is running, what is waiting, and

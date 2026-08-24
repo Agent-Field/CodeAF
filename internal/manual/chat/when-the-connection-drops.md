@@ -65,12 +65,9 @@ reconnecting to devbox — try that again in a moment
 ```
 
 It is not a failure. The surface is dialling the machine again and your message was not
-sent, so press enter again once it is back — usually a second or two later.
-
-While the redialling is happening the screen otherwise says nothing at all: there is no
-reconnecting segment on the status line yet, so a dropped link looks like a brief pause
-and then the reply carrying on. The one sentence you can see during it is the one above,
-and it appears only if you asked for something in that gap.
+sent, so press enter again once it is back — usually a second or two later. The status
+line is saying the same thing at its other end while this is going on; see *how do I know
+it is reconnecting*.
 
 The redialling lasts 5 minutes. After that the connection is declared gone, in the one
 sentence aforge has always used for that:
@@ -78,6 +75,31 @@ sentence aforge has always used for that:
 ```
 the connection to devbox is gone — run the same command to pick the conversation back up
 ```
+
+## How do I know it is reconnecting — the segment on the status line
+
+The status line says so, in one segment at its right-hand end, beside what the session is
+doing:
+
+```
+reconnecting to devbox — trying for up to 5 minutes
+```
+
+It names the machine, because somebody with three windows open needs to know which one
+lost its link, and it names how long it will keep trying, because that is the difference
+between waiting and running the command again. **A narrow terminal never drops it**:
+everything else on that end of the line is a number, and this is the reason none of those
+numbers are moving.
+
+**A working connection draws nothing at all.** There is no badge, no icon and no
+"connected" word — this segment exists only in the seconds where the link has stopped
+working, and it is gone the moment it comes back. On a window with nothing running and
+nobody typing, nothing on the screen is being redrawn at all, so the segment turns up the
+moment anything redraws it; a keystroke is enough.
+
+On a narrow phone-width terminal the row has no room for a sentence that long, and it
+moves into the status sheet with the rest of the numbers. `/status` prints it there too,
+under `connection`.
 
 ## Why did the reply not finish when it reconnected
 
@@ -87,6 +109,13 @@ itself:
 
 ```
 the connection came back, but devbox does not keep a turn running while nothing is attached — that answer stopped when the link dropped, and asking again is the way back to it
+```
+
+A line lands in the conversation beside it saying the same thing about the window rather
+than about that one turn, and it is said once and not again:
+
+```
+devbox does not keep a turn running while nothing is attached, so the turn that was in flight did not survive the drop
 ```
 
 That is the honest half of roaming. A machine running a persistent aforge holds your
@@ -105,6 +134,13 @@ running ends with:
 
 ```
 devbox opened a different conversation, so this turn is not coming back
+```
+
+and a line lands in the conversation, once, saying which half of the screen belongs to
+which:
+
+```
+devbox came back with a different conversation open than the one this window left — what is above is the old one, and anything from here on belongs to the new one
 ```
 
 This is rare, and it means the machine's idea of "the session for this workspace" moved
