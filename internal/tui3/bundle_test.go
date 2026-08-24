@@ -2304,7 +2304,12 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		rows        int
 	}{
 		{width: 200, delta: true, sp: true, branch: true, mic: true, rows: 1},
-		{width: 120, delta: true, sp: true, branch: true, mic: true, rows: 1},
+		// At 120 the delta is the segment that yields: "cached" joined the warm
+		// share (the owner's word for which percentage this is), the row grew by
+		// its width, and the Σ figure is the lowest-ranked fact on the line. A
+		// person at 120 columns keeps the word that stops a misreading over a
+		// second spelling of money the meter already carries.
+		{width: 120, delta: false, sp: true, branch: true, mic: true, rows: 1},
 		{width: 100, delta: false, sp: true, branch: true, mic: true, rows: 1},
 		// At seventy the clusters stop sharing a row — the identity and the
 		// telemetry cannot both fit with a barrier between them — and everything

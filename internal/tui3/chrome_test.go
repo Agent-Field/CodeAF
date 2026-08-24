@@ -948,7 +948,7 @@ func TestTheSavingsNoteSaysNoMoneyWhenOnlyThePromptPriceIsPublished(t *testing.T
 		t.Fatalf("the session banked %.4f from a model with no cache-read price", a.cacheSaved)
 	}
 	a.inputTokens, a.cacheRead = 12_000, 9_800
-	if got := a.warmSegment(); got != "⟲ 81%" {
+	if got := a.warmSegment(); got != "⟲ 81% cached" {
 		t.Fatalf("the warm share reads %q, want the rate alone", got)
 	}
 }
