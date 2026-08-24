@@ -355,23 +355,36 @@ func (c *Client) forgetStreams(sentence string) bool {
 // IT CLOSES WITHOUT A SENTENCE. Nothing failed — the turn finished, on the far
 // machine, and its whole text is in the journal — so an error event here would
 // be the screen reporting a fault that did not happen.
+//
+// AND IT WAITS OUT THE REPLAY RATHER THAN RACING IT. An engine that still holds
+// a finished turn replays its tail the instant the welcome is out, so the quiet
+// is measured from the LAST thing said and not from the moment of reattaching:
+// anything arriving buys another [resumeTail], and the stream closes when the
+// far end has stopped speaking about it. Only a stream [Welcome.Live] does not
+// name is watched this way, which is what makes the rule safe — the turn that is
+// actually running is the one the engine names, and a running turn is allowed to
+// be quiet for as long as the tool it is waiting on takes.
 func (c *Client) watchTail(id uint64, s *stream) {
-	before := s.delivered()
 	guard.Go("remote/resume-tail", func() {
-		select {
-		case <-time.After(resumeTail):
-		case <-c.stop:
+		before := s.delivered()
+		for {
+			select {
+			case <-time.After(resumeTail):
+			case <-c.stop:
+				return
+			}
+			if _, alive := s.cursor(); !alive {
+				return
+			}
+			if said := s.delivered(); said != before {
+				before = said
+				continue
+			}
+			c.mu.Lock()
+			delete(c.streams, id)
+			c.mu.Unlock()
+			s.finish()
 			return
 		}
-		if _, alive := s.cursor(); !alive {
-			return
-		}
-		if s.delivered() != before {
-			return
-		}
-		c.mu.Lock()
-		delete(c.streams, id)
-		c.mu.Unlock()
-		s.finish()
 	})
 }
