@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -4104,18 +4105,26 @@ func TestARoomDrawsAndCollapsesTheNodesThinking(t *testing.T) {
 
 // A PAGE FOLDS ITS OWN CLUSTERS, from its own map and its own turns: ctrl+o in a
 // room is about the rows in the room.
+//
+// A room keeps a screenful of calls rather than the conversation's three
+// (roomscroll_test.go), so the page is fed one call more than its view is tall:
+// exactly the first one folds.
 func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	for _, path := range []string{"a.go", "b.go", "c.go", "d.go"} {
+	paths := []string{"a.go"}
+	for i := 0; i < a.viewHeight(); i++ {
+		paths = append(paths, "more"+strconv.Itoa(i)+".go")
+	}
+	for _, path := range paths {
 		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
 			Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"` + path + `"}`,
 		}})
 	}
 	page := roomText(a)
 	if !strings.Contains(page, "earlier tool call") {
-		t.Fatalf("four calls on a page did not fold:\n%s", page)
+		t.Fatalf("a screenful and one more of calls on a page did not fold:\n%s", page)
 	}
 	if strings.Contains(page, "read a.go") {
 		t.Fatalf("the folded call is still drawn:\n%s", page)

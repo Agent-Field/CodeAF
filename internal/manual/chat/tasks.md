@@ -1429,8 +1429,11 @@ Two bounded things do still hold something back, and both name themselves and op
 
 - a **thinking block** shows three lines until you press `ctrl+e` or click it —
   `⠿ thought for 6s · 148 tok · ctrl+e`;
-- a run of **more than three tool calls in a row** shows the last three above a line reading
-  `9 earlier tool calls · ctrl+o`; `ctrl+o`, or a click on that line, unfolds the run.
+- a run of **more tool calls in a row than fit your window** shows a screenful of the
+  newest ones above a line reading `9 earlier tool calls · scroll up or ctrl+o`; scrolling
+  up at the top of the page, `ctrl+o`, or a click on that line unfolds the run. (The
+  conversation keeps three and its line reads `· ctrl+o`; a task's page keeps as many as
+  the window is tall — see "Reading a task's page".)
 
 Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
 there is no work chip for it to mean instead.

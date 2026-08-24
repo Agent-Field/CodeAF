@@ -1269,6 +1269,10 @@ Two chords carry unrelated meanings. Which one you get depends on where you are.
 | Phone tool detail sheet | Lift the line cap |
 | Nothing selected | Fold or unfold this turn's tool cluster |
 
+Inside a task's page `ctrl+o` folds and unfolds the task's own turn, and scrolling up at
+the top of the page opens the fold as well; the fold line there reads `N earlier tool
+calls · scroll up or ctrl+o`.
+
 Two more chords surprise people:
 
 - **`ctrl+b` is copy mode, not emacs "left".** The alternate screen took your

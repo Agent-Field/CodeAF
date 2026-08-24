@@ -1076,6 +1076,11 @@ At most **3** calls of a turn stay on screen. The rest fold into one line readin
 or click the line to unfold. Three is the number you can hold without reading: the call
 that is running and the two it followed.
 
+A **task's page** keeps more — as many calls as the window is tall — and its fold line
+reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there scrolling up at the
+top of the page opens it too. The conversation's fold only ever opens with `ctrl+o` or a
+click.
+
 ## What a tool row says, part by part
 
 A row is a **sentence** — rail, name, target — that starts at the rail, and a **right

@@ -717,7 +717,7 @@ func helpText(file string) string {
 		// nothing else names it until a draft happens to look like something to
 		// build.
 		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
-		"ctrl+o         expand this turn's tool calls · click one to open it",
+		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: waits above the box · esc stops and sends · ↑ edits",

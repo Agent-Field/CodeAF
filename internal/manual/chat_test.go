@@ -73,6 +73,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// A task's page with heavy tool use, asked the ways the screenshot
+		// provoked: the wheel doing nothing, the calls that are not there, and
+		// a frame that is mostly blank.
+		{"can't scroll in a task", "reading-a-task-page"},
+		{"how do I see earlier tool calls in a task", "reading-a-task-page"},
+		{"task page is empty", "reading-a-task-page"},
+		{"the task page is stuck at the top", "reading-a-task-page"},
+		{"what does scroll up or ctrl+o mean", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
