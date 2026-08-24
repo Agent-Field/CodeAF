@@ -502,7 +502,7 @@ Other honest silences: the context percentage is dropped below 1% rather than sh
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
 fraction of a cent is not rounded away to nothing.
 
-## The state word: idle, working, waiting
+## The state word: idle, working, stopping, waiting
 
 The last segment of the status line is the one thing true of the whole row. The exact
 words:
@@ -512,14 +512,36 @@ words:
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
-| `interrupted` | the last turn was stopped by hand | the bad hue |
+| `stopping` | you pressed `esc` and the turn has not finished letting go yet | dim |
+| `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
-`waiting · your call` outranks `working`. Copy mode outranks everything, because it is
-the only state about the keyboard rather than about the turn.
+`stopping` outranks `waiting · your call`, and `waiting · your call` outranks `working`.
+Copy mode outranks everything, because it is the only state about the keyboard rather
+than about the turn.
 
 The spinner turns on the same 4-tick grid the tool rows use, so nothing on screen beats
 against anything else. In the screen-reader tier the spinner is a still `*`.
+
+## What the word stopping means in the status line, and why it is not interrupted yet
+
+Because it has not finished stopping. `esc` cancels the turn instantly, but the turn does
+not close instantly: a `bash` call whose command left something holding its output waits
+up to three seconds before the pipes are forced shut, and a `jobs` kill spends two seconds
+on a polite signal and two more on the one that is not polite. For those few seconds the
+turn is being let go rather than gone, and the word says so.
+
+Nothing moves during that window. The spinner is gone from the status line and from every
+tool row, every running call already carries the time it ran until you stopped it, and
+nothing new is drawn — a reply the model was still speaking and a call it was half-way
+through asking for both stop where they were rather than landing under the `interrupted`
+line. The word becomes `interrupted` the moment the turn is actually over.
+
+**There is no second, harder stop, and there is no key to press.** `esc` again is the
+rewind's door (see the sessions and rewind page) and `ctrl+c` is the quit arm, so neither
+is free — and there would be nothing behind a third key anyway: the waits that make this
+window long are inside a tool that has already been told to stop. What you have if it
+will not let go is the program's own door, `ctrl+c` twice.
 
 ## What the status line drops when it is narrow
 
