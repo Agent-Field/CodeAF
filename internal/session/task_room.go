@@ -84,17 +84,40 @@ import (
 // needs no frame, because from the child's side it is what it looks like — the
 // person talking. Wrapping it would teach the node to read the person's words
 // as a system event, which is the one thing they are not.
-func (a *Agent) SteerTask(id uint64, text string) error {
+//
+// ── AND A NODE THAT IS WAITING ON ITS OWN PIECES STILL HEARS IT ──
+//
+// The first answer is whether the node was WAITING when the line was taken: it
+// has handed part of its work out, said everything it had to say, and parked on
+// the reports (task_run.go's [TaskGraph.park]). Nothing about it looks different
+// from outside — a parked node is a RUNNING node — but for the person it is the
+// difference between an answer in a few seconds and one that reads as silence,
+// so the surfaces say which it was in their own words rather than promising the
+// same thing about two different waits.
+//
+// It is a fact and not a refusal, because the line does arrive: the parked
+// runner is released by the enqueue below, wakes with the sentence on its queue
+// and re-enters the model with it ([Agent.enqueueSteeredLine], [runTaskChild]).
+// Before that it went onto a queue with nothing to drain it — held for as long
+// as the slowest piece ran and dropped outright if the last report arrived
+// first, while the room said it had arrived.
+//
+// A LINE NOBODY CAN READ ANY MORE IS A REFUSAL AND NEVER A DROP. A node whose
+// worker closed in the instant between the state check and the enqueue — the
+// last piece reported, the parent folded, the agent shut — cannot be talked to,
+// and the person is told so in the same breath as every other "there is nobody
+// in there".
+func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return errors.New("nothing to say")
+		return false, errors.New("nothing to say")
 	}
 	node := a.taskNode(id)
 	if node == nil {
-		return fmt.Errorf("no task %d in this session", id)
+		return false, fmt.Errorf("no task %d in this session", id)
 	}
 	if state := node.stateNow(); state != TaskRunning {
-		return fmt.Errorf("task %d is %s, not running", id, state)
+		return false, fmt.Errorf("task %d is %s, not running", id, state)
 	}
 	child := node.openRoom().speaker()
 	if child == nil {
@@ -102,10 +125,16 @@ func (a *Agent) SteerTask(id uint64, text string) error {
 		// prepared) or is already shutting down. Both are "there is nobody in
 		// there to talk to", and both are worth saying rather than silently
 		// dropping the person's line into a queue nothing will drain.
-		return fmt.Errorf("task %d has no worker to talk to yet", id)
+		return false, fmt.Errorf("task %d has no worker to talk to yet", id)
 	}
-	child.enqueueSteering(text)
-	return nil
+	// Read BEFORE the line is handed over, because handing it over is what ends
+	// the wait: after the enqueue the honest answer to "was it waiting" has
+	// already changed.
+	waiting := node.waitingOnItsPieces()
+	if !child.enqueueSteeredLine(text) {
+		return false, fmt.Errorf("task %d has just finished, so there is nobody left to say it to", id)
+	}
+	return waiting, nil
 }
 
 // RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
