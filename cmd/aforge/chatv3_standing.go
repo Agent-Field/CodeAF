@@ -172,6 +172,15 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		CompactEnabled: true,
 		ProfileDir:     settings.ProfileDir,
 		ArtifactsIndex: artifactsIndexPath(),
+		// THE DIVISION ROAD, from the same row a conversation reads it off
+		// (chatv3.go). A firing is the one piece of work nobody is watching, so
+		// it is the one place where "this brief holds eleven jobs" has to be
+		// answerable by the work itself rather than by a person noticing at
+		// breakfast — and it is free where it does not apply, because a firing
+		// whose brief enumerates nothing is never armed and carries no verb
+		// (internal/session's standingWideWork). `AFORGE_SWARM=0` takes it away
+		// here exactly as it does everywhere else.
+		Divide: settings.Swarm,
 	}
 	// NOT yolo, ever, whatever a window was started with: --yolo is a posture
 	// somebody took for a session they were sitting in front of, and carrying it

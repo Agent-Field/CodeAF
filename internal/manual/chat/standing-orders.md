@@ -83,7 +83,9 @@ aforge keeps that kind as a standing order that **holds**. It never fires, it is
 checked, and it costs nothing. What it does instead is ride into the world of the work
 it reaches: a new conversation in this project opens already knowing it, and a task
 starts with it in its brief under the heading `Standing orders`, told these are your
-conditions and not suggestions.
+conditions and not suggestions, and to say so in its report if it cannot honour one.
+That is the whole of how a rule is kept, and it is the only kind that arrives in those
+words — see *What rides into the work* below.
 
 Because nothing about one ever wakes, its card is short — your sentence, and the
 `where ·` band saying how far it reaches. **No cadence line and no cost line**: there
@@ -414,6 +416,33 @@ anything else:
 Nothing stands, no line. It is a count and a door, not a list — the orders themselves
 are one keystroke away on the page it names.
 
+## What rides into the work — how an order reaches a task or a new conversation
+
+Every conversation that opens, and every task that starts, in a place your orders reach
+gets them in front of it, under one heading:
+
+```
+Standing orders:
+```
+
+**They do not all arrive in the same words, because they are not all the same kind of
+thing.** A rule that holds — "always use tabs here" — is a condition on the work, and it
+is handed over as one: *these are the person's own conditions over this place … they are
+not suggestions. Work within them.* A reminder, a rhythm, a file being watched, a check
+of the world — those are appointments on your clock, answered by aforge itself when
+their moment comes. They ride along too, so the work knows what else is standing here,
+but under a plainer sentence: *these are the person's own standing orders over this
+place, each waiting on a moment, a rhythm or a change of its own … none of them is a
+condition over this work and none asks anything of you now.*
+
+When both kinds reach one place there is still **one heading and one section**, with the
+rules first and the appointments under them, because the rules are the half that can
+change what the work does. A task also gets one closing line the conversation does not:
+if it cannot honour one of these, it says so in its report.
+
+Why it matters: told that "remind me at 6 to check the deploy" was a condition to work
+within, a worker will hedge everything it does for a sentence that was never about it.
+
 ## Stop reminding me — stopping, pausing and narrowing one
 
 Three different things, and they are not the same:
@@ -436,14 +465,16 @@ Honest limits, so you do not rely on something that is not built:
 
 - **An order shapes new work; nothing acts on a landing yet.** Every conversation and
   every task that starts in a place your orders reach now opens knowing them. They ride
-  under the heading `Standing orders`, they say they are your conditions and not
-  suggestions, and a task that cannot honour one is told to say so in its report. So
-  "never touch the public API" is in front of a task before it writes a line. What is
-  **not** built is the other direction: nothing re-reads your orders *after* a change
-  lands and starts work to put it right, so a change that slipped past one is still
-  yours to catch. That half is a later wave.
+  under the heading `Standing orders` — the rules as your conditions and not suggestions,
+  the ones waiting on a moment as what else is standing here (*What rides into the work*
+  has both sentences) — and a task that cannot honour one is told to say so in its
+  report. So "never touch the public API" is in front of a task before it writes a line.
+  What is **not** built is the other direction: nothing re-reads your orders *after* a
+  change lands and starts work to put it right, so a change that slipped past one is
+  still yours to catch. That half is a later wave.
 - **At most eight orders ride along.** When more than eight stand over one place, the
-  ones that have stood the longest go, and the rest are counted — `…3 more`.
+  rules that hold go first — whatever their age — and the longest-standing of the rest
+  fill what room is left. What was cut is counted rather than dropped quietly: `…3 more`.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. If you named a
   per-run or per-day limit yourself, the card says your limit back instead.
@@ -452,4 +483,9 @@ Honest limits, so you do not rely on something that is not built:
   delivered in.
 - **A firing cannot set up another order.** Nothing that runs on its own may arm
   something else that runs on its own.
+- **A firing gets no sizing call.** Work you type is read once for width before it starts;
+  an order that fires is not, and is armed to split itself only off the items its own
+  brief already names. Asking a model every night whether a sentence that has not changed
+  is wide would be a bill you never agreed to. (What splitting is, and the two tests that
+  decide it, are on the tasks page.)
 - **Nothing is armed silently.** Every order on the page is one you answered a card for.

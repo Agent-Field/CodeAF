@@ -1101,6 +1101,19 @@ func (g *TaskGraph) announce(node *TaskNode) {
 	}
 }
 
+// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
+// is built, which is the shape a standing firing's own graph has: the session
+// that is going to own it cannot be constructed until the graph is in its config
+// (standing_run.go's [standingWideWork]). A conversation's graph binds the
+// method directly ([Agent.graph]) because by then there is an agent to bind to;
+// this reads the same field one moment later and answers nothing before there
+// is one.
+func (g *TaskGraph) reportHome(node *TaskNode) {
+	if g != nil && g.home != nil {
+		g.home.reportTaskNode(node)
+	}
+}
+
 // node looks one up by id.
 func (g *TaskGraph) node(id uint64) *TaskNode {
 	g.mu.Lock()

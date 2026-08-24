@@ -13,6 +13,11 @@ under **FIXED** headings are left as they were written, because they are the
 evidence the fix was made against. Line numbers in this document are from w41 and
 have moved.*
 
+*Updated w43, 2026-08-24, by the lane that fixed M5's division half and M7 — the
+two standing-order gaps. A firing that turns out to be wide now takes the
+division road under the same gates as everything else, and the birth seam stopped
+handing a reminder to a worker as a house rule.*
+
 ## The world this is measured against
 
 Four laws, decided across waves 35–40, are what "as-intended" means here.
@@ -46,10 +51,12 @@ falling back to the long way escaped the tool ceiling it was approved under
 (**C2**). Both are fixed and pinned by tests through the real doors.
 
 **The rest is a short list of honest gaps** — a set of sentences that promise
-more than their code does, and the restart, standing-firing and planner gaps
-below. The wide-work door that admitted unarmed (**M1**), the refusal that named
-the wrong cause (**C3**) and the ledger leak on the stop path (**M2**) were
-closed in the same lane.
+more than their code does, and the restart and planner gaps below. The wide-work
+door that admitted unarmed (**M1**), the refusal that named the wrong cause
+(**C3**) and the ledger leak on the stop path (**M2**) were closed in the same
+lane. The two standing-order gaps followed in w43: the one road on which width
+could not be said was the unattended one (**M5**), and the birth seam said "these
+are not suggestions" over a reminder (**M7**).
 
 ---
 
@@ -122,8 +129,8 @@ path.
 | trajectory | door | what it starts | road | armed? | consent | verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 | standing `WhenHold` | `internal/standing/standing.go:143`, skipped `tick.go:166-168` | **nothing** | none | n/a | n/a | as-intended — it returns before the daily rail, the spend rail and the whole look/judge/fire walk |
-| standing `WhenAt` / `WhenEvery` / `WhenFile` / `WhenIdle` / `WhenProbe` | `internal/standing/tick.go:250-331`, dispatched `:398-409` | `ActionSay` one line, or `ActionTask` **one headless conversational turn** (`standing_run.go:498-521`) | neither road — no `TaskNode` is ever born | **no, and it cannot be** | ratified at proposal time; a firing asks nobody | **drifted — M5** |
-| holds reaching workers | `standing_world.go:118`, appended `task_run.go:826`, `:1035-1039` | — | — | — | — | as-intended for holds — one read per frontier pass, appended last to the brief, no per-node branch, and division parts join the conversation's own graph so `g.home` resolves the person's place. But **every kind** rides, not only holds — **M7** |
+| standing `WhenAt` / `WhenEvery` / `WhenFile` / `WhenIdle` / `WhenProbe` | `internal/standing/tick.go:250-331`, dispatched `:398-409` | `ActionSay` one line, or `ActionTask` a headless session that may now hand its parts out (`standing_run.go:506-640`) | the division road — `standingWideWork` gives a wide firing its own graph and the one node it IS | **yes — enumeration only** (`enumeratesWidth`, `task_divide.go`) | ratified at proposal time; a firing asks nobody | as-intended (M5 fixed w43, 2026-08-24) |
+| holds reaching workers | `standing_world.go:118`, appended `task_run.go:826`, `:1035-1039` | — | — | — | — | as-intended (M7 fixed w43, 2026-08-24) — one read per frontier pass, appended last to the brief, no per-node branch, and division parts join the conversation's own graph so `g.home` resolves the person's place. Every kind still rides, and now in **two registers**: a `WhenHold` under the binding sentence, every waking kind under one that says it is not a condition over this work |
 | resident leaf `request_split` | `internal/exec/tools.go:936`, armed `internal/exec/linear.go:600` | the leaf **ends** and its parts replace it | the resident's own growth road | by config, never per-node | nobody is asked; the money gate defers | as-intended — a deliberate product difference, documented on both sides (`task_divide.go:50-57` vs `linear.go:794-810`) |
 | the shared gate | `internal/splitgate/splitgate.go` | — | — | — | — | as-intended — genuinely one implementation, and `cmd/aforge/cooperative.go:148-156` keeps the old names as forwarders over `splitgate.Floor` — except **M8** |
 | `aforge chat --once` | `cmd/aforge/chatv3.go:146-172` | one headless turn | division road present but inert (C1) | `spec.wide`/enumeration | **`AskConsent=false` ⇒ the policy's "prompt" refuses** (`consent.go:282-284`); `Standing` nilled | as-intended |
@@ -516,19 +523,42 @@ Related and smaller: a design thread already carries `propose_task`
 `wide` ones included. Bounded — it cannot reach a planner — but nothing in
 `harness_task.go` argues for it.
 
-### M5 — a standing firing cannot divide, and cannot fan out either.
+### M5 — a standing firing cannot divide, and cannot fan out either. — **DIVISION FIXED, w43, 2026-08-24.**
 
-`ActionTask` runs "a fresh headless session in the run folder, one turn on the
-brief" (`standing_run.go:498-505`). `standingRunConfig` (`:631-663`) sets
-`InTask=true` but leaves `tasker` nil, so `mayFanOut()` is false (`task.go:301`)
-and the session has neither `propose_task`, nor `tasks`, nor `divide_work`;
-`run_adaptive` needs `AskConsent` and gets none. `v3StandingPosture`
-(`cmd/aforge/chatv3_standing.go:162-203`) never sets `Divide` either.
+The finding as written: `ActionTask` ran "a fresh headless session in the run
+folder, one turn on the brief". `standingRunConfig` set `InTask=true` but left
+`tasker` nil, so `mayFanOut()` was false (`task.go:301`) and the session had
+neither `propose_task`, nor `tasks`, nor `divide_work`; `run_adaptive` needs
+`AskConsent` and gets none. `v3StandingPosture` never set `Divide` either. So the
+one place nobody is watching — overnight work, the case the ambient side exists
+for — was the one place width was unaddressable.
 
-So the one place nobody is watching — overnight work, the case the ambient side
-exists for — is the one place width is unaddressable: it runs strictly
-sequentially inside one 60-step turn (`standing_run.go:92`). A gap against law 1,
-not a bug in what is written.
+**The division half is closed.** `v3StandingPosture` now carries `Divide` off the
+same `settings.Swarm` row a conversation reads, and `standingWideWork`
+(`standing_run.go`) arms a firing through the SAME lawful signal ordinary work
+uses — `armDivision`'s third, factored out as `enumeratesWidth` so there is one
+reader of "does this text name enough separate items" and not two. A wide firing
+gets a graph of its own carrying the person's `task.parallel` cap and the
+admission governor built from `task.max_load` / `task.min_free_mb`, plus the one
+node it IS: born RUNNING, holding a lane, never given to the frontier. The parts
+are ordinary nodes under it, so C3's law holds unattended too — a busy machine
+makes them WAIT and `armPoll` lifts them, it never refuses. `Run` grew the same
+tail loop `runTaskChild` has, so the firing does not come back until its parts
+have reported, their reports have re-entered the model, and their spend is in the
+figure the pass writes down.
+
+**Enumeration only, recorded as the decision.** A firing gets no sizing read. The
+other two signals are people — a typed `/task` somebody is waiting on, and a chat
+model's `wide` written with the conversation in front of it — and a firing has
+neither: its brief was compiled from one sentence, ratified on a card, and has
+been sitting in a file since. A model call per firing per night to re-read
+unchanged text is a subscription nobody agreed to, so the free signal that reads
+the work's own words is the honest floor. It under-arms rather than over-arms.
+
+**Still open:** a firing has no `propose_task` and no `tasks`, and `run_adaptive`
+still needs an `AskConsent` it does not have. Division is the road wide work was
+meant to take (`task_divide.go`'s header); the fan-out half is a separate
+question about what an unattended session may commission.
 
 ### M6 — three one-source-of-truth breaks between a description and its code.
 
@@ -547,16 +577,34 @@ way is not taken — the ceiling holds*, which is now true of the code (C2).
 
 **(c) `armDivision` ignores the escape hatch** — see M8.
 
-### M7 — every kind of standing item rides into every worker's brief as a house rule.
+### M7 — every kind of standing item rides into every worker's brief as a house rule. — **FIXED, w43, 2026-08-24.**
 
-`Store.Applicable` (`internal/standing/store.go:175-194`) filters on `Status` and
-`AppliesTo` and never on `WhenKind`, and `renderStandingWorld`
-(`standing_world.go:65-95`) writes whatever comes back under
-`standingWorldIntro` — "They … are not suggestions. Work within them."
-(`standing_world.go:33`). `Item.Prompt()` falls back to the person's raw words
-for any kind (`standing.go:452-457`). So "remind me at 6 to check the deploy" is
-presented to every task in the project as a rule to work within, until it
-retires. Only a `hold` is a rule; the other five kinds are schedules.
+The finding as written: `Store.Applicable` filters on `Status` and `AppliesTo`
+and never on `WhenKind`, and `renderStandingWorld` wrote whatever came back under
+one intro — "They … are not suggestions. Work within them." So "remind me at 6 to
+check the deploy" was presented to every task in the project as a rule to work
+within, until it retired. Only a `hold` is a rule; the other five kinds are
+schedules.
+
+**The tiering is the contract's own kinds and nothing else.** `renderStandingWorld`
+now reads one field against one name — `When.Kind == standing.WhenHold` — and
+writes two registers under one heading. A hold keeps the binding sentence
+verbatim (`standingWorldHolding`). Every waking kind rides under
+`standingWorldWaiting`: *"These are the person's own standing orders over this
+place, each waiting on a moment, a rhythm or a change of its own. They are here
+so you know what stands; none of them is a condition over this work and none asks
+anything of you now."* The wording is the register `docs/STANDING-ORDERS.md`
+already speaks — standing orders, conditions, waiting, context — and introduces
+no vocabulary of its own.
+
+`Store.Applicable` is deliberately unchanged: which orders govern a place is its
+one question (D5), and a second filter here would be a second answer. What the
+seam decides is only how each one is *said*.
+
+Two consequences worth naming. The holds LEAD the section, because they are the
+only half that can change what the worker does. And when the eight-order clip
+bites, holds survive it whatever their age — eight reminders crowding out the one
+rule in the project was the same failure in a smaller shape.
 
 ### M8 — `AFORGE_SPLITGATE=0` has a reader that ignores it.
 
