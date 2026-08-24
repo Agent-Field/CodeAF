@@ -278,7 +278,7 @@ made of alignment and space:
  ──────────────────────────────────────────────────────────────────────────────────────────
   needs you                    aforge                         keeping an eye on
   ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
-                               ○ rename plan      yesterday   hands
+                               ○ rename plan      yesterday   agents
   moving                       hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
   ● port sweep          8m     ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
                                ─ elsewhere ─                  since you left
@@ -549,7 +549,7 @@ keeping an eye on
 ◦ tests sweep                in 2h
 ◦ weekly review            mon 8am
 
-hands · in flight, the last few minutes
+agents · in flight, the last few minutes
 ▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 
 since you left
@@ -566,9 +566,9 @@ today
   rather than a thing being watched, and it belongs with the rest of what needs you. Paused
   and stopped things are not here either. Past four, the rest fold to
   `▸ …3 more keeping an eye`.
-- **`hands`** — a small **chart**, one row of bars, of how many things this machine has
+- **`agents`** — a small **chart**, one row of bars, of how many things this machine has
   had running over the last few minutes, oldest on the left and **newest on the right**.
-  The heading says what it is — `hands · in flight, the last few minutes` — and the chart
+  The heading says what it is — `agents · in flight, the last few minutes` — and the chart
   itself prints no number: the figure is on the pulse line at the top of the screen
   (`3 working`) and this is the shape it came from. See below for the whole of how it
   behaves.
@@ -591,17 +591,17 @@ machine nobody has touched today has no `today` band at all — never `0 chats �
 $0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
 side, which is the good news said with space.
 
-## The little chart on home — the hands band, and what the bars mean
+## The little chart on home — the agents band, and what the bars mean
 
-The `hands` band on the machine's own card is the one **chart** anywhere in aforge: one row
+The `agents` band on the machine's own card is the one **chart** anywhere in aforge: one row
 of bars tracing how many things this machine has had running over the last few minutes.
 
 ```
-hands · in flight, the last few minutes
+agents · in flight, the last few minutes
 ▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 ```
 
-- **The heading says what the shape is.** `hands · in flight, the last few minutes` — the
+- **The heading says what the shape is.** `agents · in flight, the last few minutes` — the
   chart is a mark and the clause beside it is the word that says what the mark is about.
   There is no figure in that clause, on purpose: this band prints no numbers at all.
 - **One bar is one reading**, taken every three seconds — the same beat home rescans the
@@ -620,7 +620,7 @@ hands · in flight, the last few minutes
   the readings differ and the line slides one bar every three seconds; while the machine is
   quiet the readings are all the same and the line lies **flat and still** along the floor.
 - **It disappears when it has nothing to show.** A machine that has run nothing for the
-  whole window draws no `hands` band at all — not a heading over a flat line on the floor.
+  whole window draws no `agents` band at all — not a heading over a flat line on the floor.
   The first thing that runs brings it back.
 - **And it does not draw half a chart.** The readings are kept only in memory, so for the
   first half-minute of a fresh aforge there are two or three of them — which is a smudge
@@ -630,7 +630,7 @@ hands · in flight, the last few minutes
   history is kept between runs: quit and start again and the chart is absent until the next
   few beats fill it in.
 - **It needs the room to be a chart.** On a frame too narrow for a card at all (under 80
-  columns) there is no `hands` band, and the count on the pulse line is what you keep. In
+  columns) there is no `agents` band, and the count on the pulse line is what you keep. In
   plain-text mode and with fancy glyphs turned off it is not drawn either — a row of bars
   read aloud is a row of noise — and again the count is what stays.
 

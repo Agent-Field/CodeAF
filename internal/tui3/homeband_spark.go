@@ -2,9 +2,9 @@ package tui3
 
 import "strings"
 
-// `hands` — WHAT THE MACHINE'S HANDS HAVE BEEN DOING, AS A SHAPE.
+// `agents` — WHAT THE MACHINE'S AGENTS HAVE BEEN DOING, AS A SHAPE.
 //
-//	hands · in flight, the last few minutes
+//	agents · in flight, the last few minutes
 //	▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁▁▁▁▁▁▁▁▁
 //
 // One row of block bars, one bar per reading, newest at the right: how many
@@ -88,7 +88,7 @@ import "strings"
 // (homebands.go's third law), and nothing above or below this one moved.
 func init() {
 	registerHomeBand(homeBand{
-		name:  "hands",
+		name:  "agents",
 		order: bandOrderHands,
 		kinds: []bandKind{bandKindMachine},
 		draw:  drawHandsBand,
@@ -96,9 +96,11 @@ func init() {
 }
 
 // machineHandsWord is the band's heading, quoted in internal/manual/chat/home.md
-// exactly as it is spelled here. It is the word the card's own reading uses for
-// the thing ([machineFacts.hands]) rather than a second name for it.
-const machineHandsWord = "hands"
+// exactly as it is spelled here. The heading says `agents` — the owner's word
+// for what a person is looking at — while the card's own reading keeps its
+// internal name ([machineFacts.hands]); the two are one fact and this constant
+// is the only place the person-facing spelling of it lives.
+const machineHandsWord = "agents"
 
 // machineHandsClause is the word beside the mark: what the shape IS, said in the
 // clause grammar the rest of this surface uses (` · ` and a lower-case phrase).

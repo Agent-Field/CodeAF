@@ -334,9 +334,9 @@ func TestTheHandsSparkFadesFromItsOldestEndToItsNewest(t *testing.T) {
 }
 
 // THE GEOGRAPHY IS STABLE, AND THE CHART DID NOT TAKE `today`'S PLACE:
-// keeping an eye on · hands · since you left · today.
+// keeping an eye on · agents · since you left · today.
 func TestTheMachineCardKeepsItsBandOrderWithTheChartOnIt(t *testing.T) {
-	want := []string{"watchlist", "hands", "sinceleft", "today"}
+	want := []string{"watchlist", "agents", "sinceleft", "today"}
 	var got []string
 	for _, band := range homeBandsFor(bandKindMachine) {
 		got = append(got, band.name)
