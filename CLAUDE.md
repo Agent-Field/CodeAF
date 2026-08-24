@@ -42,6 +42,11 @@ Three gates fail the build if you forget:
 
 The failure message names the exact missing string.
 
+The corpus ships **packed** — `internal/manual/{pages,chat}.pack.gz`, generated from the
+folders by `make build` (see `internal/packed`). Edit the Markdown and never the archive;
+`internal/manual/packed_test.go` fails when the two disagree, so a page changed without a
+build is a page the binary has not learned.
+
 **When a question reaches the wrong page, fix the page, never the test.** Write the
 asker's vocabulary into a `## ` heading — people search for "saved" where a writer wrote
 "kept", for "delete a file" where a writer wrote "write". Retrieval is the feature; a page
