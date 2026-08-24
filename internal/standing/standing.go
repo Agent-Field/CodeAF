@@ -186,8 +186,15 @@ const (
 	// ActionSay delivers one line to the person — into the conversation that
 	// asked, and onto home. A reminder, "CI is red", "Priya replied".
 	ActionSay ActionKind = "say"
-	// ActionTask runs a task: a brief in the item's workspace, with a worktree,
-	// a landing and a cost row, exactly as propose_task's work runs.
+	// ActionTask runs work: the brief is carried out in the item's workspace by
+	// a fresh unattended session of its own, bounded by the item's rails, and
+	// what it came to is written down with a cost row.
+	//
+	// IT IS A SESSION AND NOT A WORKTREE, which is the runner's own statement of
+	// itself (internal/session's standing_run.go) and worth saying here because
+	// this constant used to promise otherwise. A firing is one turn in the
+	// project the person pointed it at — it has no branch, no landing to accept,
+	// and no hands to give work to.
 	ActionTask ActionKind = "task"
 )
 

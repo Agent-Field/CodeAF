@@ -181,10 +181,15 @@ func (n *TaskNode) dividing() bool {
 //     reaches past this road entirely.
 //   - THE WORK'S OWN TEXT ENUMERATES ENOUGH ITEMS. This is
 //     cmd/aforge/cooperative.go's plan-time gate asked of a task instead of a
-//     plan: a brief that already names eleven adapters is a brief that may
+//     plan: a brief that already names eleven adapter FILES is a brief that may
 //     divide. It is what arms the road for work nobody ran the judge over — a
 //     proposal the chat model groomed, `/task solo`, a person whose standing
-//     answer is `single`.
+//     answer is `single`. THE NOUN IS LOAD-BEARING AND A COUNT ALONE IS NOT
+//     ENOUGH: internal/splitgate reads a number only where it stands beside one
+//     of the eighteen item-nouns it knows, so "eleven adapters" counts ZERO and
+//     "eleven adapter files" counts eleven. This signal therefore arms far less
+//     work than its wording suggests, which is why it is the last of the three
+//     and never the one a door should lean on by itself.
 //
 // Anything else is not armed, and a task that is not armed is byte-identical to
 // a task from before this wave.
