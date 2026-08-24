@@ -30,17 +30,41 @@ import "strings"
 // A chip on a word this surface would answer with "unknown command: /tsak" would
 // be the surface promising something it is about to refuse.
 //
-// ── WHAT RUNS, AND WHAT IS ONLY MENTIONED ──
+// ── THE CHIP IS A PROMISE ──
 //
-// A chip is a fact about the WORD and never a promise about what happens at
-// submit. [app.enter] sends a draft to [app.slash] when its FIRST character is a
-// slash, and that has not changed: a line that opens with "/task" is a command,
-// and a "/task" anywhere else in a sentence is a MENTION — it travels to the
-// model as the literal text a person typed, exactly as an "@path" does.
+// A CHIP MARKS A WORD THAT WILL ACT: a command at the head of the draft, or a
+// send-door tag anywhere else. Other commands inside prose stay prose. A person
+// may make a live tag plain by pressing backspace immediately after it, and its
+// chip leaves on that first press without deleting a letter.
 //
-// Both wear the same chip, deliberately. The distinction is one the eye already
-// has — a command is at the head of the line or it is not — and a second tint
-// for it would be a colour that has to be learned to read a sentence.
+// THE TWO TAG DOORS BOTH END AT A PERSON-VISIBLE DECISION. /standing raises its
+// ratification card and /task opens its sizing choice; pasted text cannot turn a
+// tinted word into silent work or spent money. This safety fact is why the chip
+// may honestly promise that enter will act on a tag.
+
+type sendDoor uint8
+
+const (
+	sendDoorNone sendDoor = iota
+	sendDoorStanding
+	sendDoorTask
+)
+
+const (
+	slashTagHintStanding = "enter keeps this true"
+	slashTagHintTask     = "enter sizes this task"
+	slashTagRefusal      = "one tag per send — backspace one to make it plain words"
+)
+
+func commandDoor(word string) sendDoor {
+	name := canonicalCommand(word)
+	for _, c := range commands {
+		if c.name == name && c.door != sendDoorNone {
+			return c.door
+		}
+	}
+	return sendDoorNone
+}
 
 // knownCommand reports whether word — a slash command's word, with the slash
 // already taken off — is one this surface actually runs. The word is resolved
@@ -71,7 +95,7 @@ func knownCommand(word string) bool {
 // boundary says whether position 0 of value counts as a word boundary. The
 // composer paints one soft-wrapped ROW at a time, and a row that begins in the
 // middle of a word begins in the middle of a word.
-func commandSpans(value []rune, boundary bool) []segment {
+func recognizedCommandSpans(value []rune, boundary bool) []segment {
 	var out []segment
 	for i := 0; i < len(value); i++ {
 		if value[i] != '/' {
@@ -100,6 +124,99 @@ func commandSpans(value []rune, boundary bool) []segment {
 	return out
 }
 
+func commandSpans(value []rune, boundary bool) []segment {
+	all := recognizedCommandSpans(value, boundary)
+	out := all[:0]
+	for _, s := range all {
+		word := string(value[s.from+1 : s.to])
+		// A leading recognized word runs through the command dispatcher. Away
+		// from the head, only a row that names a send door is a promise.
+		if s.from == 0 && boundary || commandDoor(word) != sendDoorNone {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func containsSegment(list []segment, want segment) bool {
+	for _, got := range list {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+// liveTags returns the actionable send-door words away from the head command.
+func (a *app) liveTags() []segment {
+	value := a.input.value
+	var out []segment
+	for _, s := range commandSpans(value, true) {
+		if s.from == 0 || containsSegment(a.input.demotedTags, s) {
+			continue
+		}
+		if commandDoor(string(value[s.from+1:s.to])) != sendDoorNone {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// editTags carries demotions through an edit. An edit before a tag shifts its
+// range; an edit that overlaps or enters the word dissolves it, allowing the
+// scanner to recognize the resulting spelling afresh.
+func (a *app) editTags(from, to, inserted int) {
+	delta := inserted - (to - from)
+	out := a.input.demotedTags[:0]
+	for _, s := range a.input.demotedTags {
+		if to <= s.from {
+			s.from += delta
+			s.to += delta
+			out = append(out, s)
+			continue
+		}
+		if from >= s.to {
+			out = append(out, s)
+			continue
+		}
+		// The edit touched the annotation, so plainness is no longer banked.
+	}
+	a.input.demotedTags = out
+}
+
+func (a *app) demoteTagBehindCaret() bool {
+	for _, s := range a.liveTags() {
+		if s.to == a.input.cursor {
+			a.input.demotedTags = append(a.input.demotedTags, s)
+			return true
+		}
+	}
+	return false
+}
+
+func (a *app) slashTagHint() string {
+	tags := a.liveTags()
+	if len(tags) != 1 {
+		return ""
+	}
+	word := string(a.input.value[tags[0].from+1 : tags[0].to])
+	if commandDoor(word) == sendDoorStanding {
+		return slashTagHintStanding
+	}
+	return slashTagHintTask
+}
+
+func removeSlashTag(value []rune, s segment) string {
+	left, right := strings.TrimRight(string(value[:s.from]), " \t\n"), strings.TrimLeft(string(value[s.to:]), " \t\n")
+	if left == "" {
+		return strings.TrimSpace(right)
+	}
+	if right == "" {
+		return strings.TrimSpace(left)
+	}
+	return strings.TrimSpace(left + " " + right)
+}
+
 // paintCommands paints one line of a person's own words: the ink the caller
 // asked for over the prose, and the chip over every command in it.
 //
@@ -115,12 +232,60 @@ func commandSpans(value []rune, boundary bool) []segment {
 func paintCommands(line string, pal palette, ink func(string) string, boundary bool) string {
 	value := []rune(line)
 	spans := commandSpans(value, boundary)
+	return paintCommandSpans(line, spans, pal, ink)
+}
+
+func paintCommandSpans(line string, spans []segment, pal palette, ink func(string) string) string {
+	value := []rune(line)
 	if len(spans) == 0 {
 		return ink(line)
 	}
 	var b strings.Builder
 	at := 0
 	for _, s := range spans {
+		if s.from > at {
+			b.WriteString(ink(string(value[at:s.from])))
+		}
+		b.WriteString(pal.chip(string(value[s.from:s.to])))
+		at = s.to
+	}
+	if at < len(value) {
+		b.WriteString(ink(string(value[at:])))
+	}
+	return b.String()
+}
+
+// transcriptCommandSpans keeps the chip's promise after a send: a leading
+// command did act, and only the tag ranges recorded on that entry did act.
+func transcriptCommandSpans(value []rune, acted []segment) []segment {
+	var out []segment
+	for _, s := range commandSpans(value, true) {
+		if s.from == 0 || containsSegment(acted, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func paintDraftCommands(line string, pal palette, ink func(string) string, offset int, boundary bool, demoted []segment) string {
+	value := []rune(line)
+	spans := commandSpans(value, boundary)
+	kept := spans[:0]
+	for _, s := range spans {
+		s.from += offset
+		s.to += offset
+		if !containsSegment(demoted, s) {
+			s.from -= offset
+			s.to -= offset
+			kept = append(kept, s)
+		}
+	}
+	if len(kept) == 0 {
+		return ink(line)
+	}
+	var b strings.Builder
+	at := 0
+	for _, s := range kept {
 		if s.from > at {
 			b.WriteString(ink(string(value[at:s.from])))
 		}
