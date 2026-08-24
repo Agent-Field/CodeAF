@@ -1671,6 +1671,14 @@ A task that was never read for width at all (`/task solo`, the `single` row, a p
 did not mark wide) says nothing up front and can still split, off the items its own brief
 already names.
 
+**And so can work that runs while you are asleep.** A standing order that fires and starts
+work is on this road too, armed the same last way — off the items its own brief names,
+with no sizing call, because a firing runs on a rhythm you set once and a model call every
+night to re-read the same sentence is a bill nobody agreed to. The two tests still decide,
+and the machine is still respected: a division at 3am on a loaded box is admitted and the
+parts wait for it. The firing stays open until its parts are home and their spend is on its
+own cost row. The standing orders page has the rest of what an unattended run is.
+
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief
 do. Walk into the parent's room and its header lists each part by name with the state it is
