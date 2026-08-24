@@ -233,22 +233,43 @@ var (
 // itself reaching for a third has found a state this ladder does not have
 // rather than a colour this table is missing.
 //
-// ── WHY THE STEPS ARE AUTHORED AND NOT DERIVED ──────────────────────────────
+// ── WHY THE STEPS ARE AUTHORED, AND WHEN THEY ARE DERIVED INSTEAD ───────────
+//
+// THE STEPS BELOW ARE DERIVED WHEN THE TERMINAL ANSWERS AND AUTHORED WHEN IT
+// DOES NOT, and both halves exist because the two are answers to two different
+// questions rather than a good way and a bad way of doing one thing.
 //
 // The honest way to build this ladder is the way a compositor builds it: take
-// the foreground colour, composite it over the background at a stated alpha,
-// and let every step inherit the theme's own hue for free. We cannot. THE
-// TERMINAL'S OWN BACKGROUND IS UNKNOWN TO US — there is no variable that says
-// it and no query this constructor may block on (see [detectTheme] for the same
-// wall, met from the other side) — so there is nothing to composite over. The
-// steps are therefore AUTHORED per ladder, dark and light, as fixed colours.
+// the background, move it away from itself at a stated ratio, and let every step
+// inherit the theme's own hue for free. That needs a background, and for four
+// waves this file had none. There is no variable that states it, and the one
+// query that would — OSC 11 — is a round trip on a terminal that may never
+// answer, which is not something a CONSTRUCTOR may wait on (see [detectTheme]
+// for the same wall, met from the other side).
 //
-// What is authored is aimed rather than guessed. The assumed ground is the
-// range real dark terminals actually sit in, #101014 through #1e1e2e, and the
-// aim is the band a wide reading of calm terminal palettes converges on: the
-// cursor step at ≈1.1–1.2:1 against that ground, the selected step at
-// ≈1.35–1.5:1, and the marked span louder again because it is transient and
-// spans many rows at once. Measured, at the middle of the assumed range:
+// What changed is not the wall, it is the door beside it. A background reply is
+// an EVENT: [app.Init] asks with tea.RequestBackgroundColor and the answer, if
+// there is one, arrives as a tea.BackgroundColorMsg on the same lane as every
+// keystroke. Nothing blocks, there is no timer, and there is no deadline to get
+// wrong. adaptive.go turns that one colour into this whole ladder —
+// [adaptRamp] — and the surface repaints.
+//
+// So the values below are THE PERMANENT FALLBACK, and they are load-bearing:
+// they are what a terminal that stays silent paints, which is every terminal
+// that does not implement the query, every pipe, every recording, and every
+// frame drawn between startup and the reply. A silent terminal is not a degraded
+// one — it gets exactly the surface four waves of authorship aimed at it — and
+// that is the whole reason the question can be asked at all.
+//
+// What is authored is aimed rather than guessed, and the aim is what adaptive.go
+// derives AGAINST: it is the same three ratios either way, measured against a
+// real ground when there is one and against an assumed range when there is not.
+// The assumed ground is the range real dark terminals actually sit in, #101014
+// through #1e1e2e, and the aim is the band a wide reading of calm terminal
+// palettes converges on: the cursor step at ≈1.1–1.2:1 against that ground, the
+// selected step at ≈1.35–1.5:1, and the marked span louder again because it is
+// transient and spans many rows at once. Measured, at the middle of the assumed
+// range:
 //
 //	step      dark      #101014  #1a1b26  #1e1e2e   256
 //	cursor    #242932    1.30     1.17     1.09     235
@@ -260,11 +281,13 @@ var (
 //	selected  #D8DEE9    1.35     1.17              254
 //	mark      #B7C0D1    1.83     1.59              251
 //
-// The cost of authoring is stated rather than hidden: a fixed ground reads one
-// notch louder on a blacker terminal and one notch quieter on a lighter one,
-// and on a tinted page like nord's own #ECEFF4 the whole light ladder drops
-// close to invisible. That is the price of not knowing, and it is cheaper than
-// a query that hangs.
+// The cost of authoring is stated rather than hidden, and it is exactly the cost
+// a reply pays off: a fixed ground reads one notch louder on a blacker terminal
+// and one notch quieter on a lighter one, and on a tinted page like nord's own
+// #ECEFF4 the whole light ladder drops close to invisible. That is the price of
+// not knowing. It is still cheaper than a query that hangs — which is why the
+// query does not hang, and why these values remain what a terminal that will not
+// say gets.
 //
 // Two things survived this retune unchanged and both were deliberate. #2E3440
 // is the value this file has drawn under the pointer since the day it first
@@ -504,10 +527,13 @@ func themeFromRow(row string) theme {
 // index: 0-6 and 8 are the dark half of the sixteen, everything else is light.
 //
 // The other way to ask — OSC 11, a query and a reply parsed off the input
-// stream — is deliberately not done here. It is a round trip on a terminal that
-// may never answer, in a constructor that must not block, to decide a colour
-// that a person who cares can pin outright. Unset means dark, which is what
-// this surface has always assumed and what most terminals are.
+// stream — is still deliberately not done HERE, and for the reason it never was:
+// it is a round trip on a terminal that may never answer, and this is a
+// constructor. It is asked one layer out instead, where an answer is an EVENT
+// and silence costs nothing (adaptive.go's [app.groundReply]), and this function
+// is what paints until it lands and what keeps painting if it never does. Unset
+// means dark, which is what this surface has always assumed and what most
+// terminals are.
 func detectTheme(env func(string) string) theme {
 	if env == nil {
 		return themeDark
@@ -545,11 +571,14 @@ func rampFor(t theme, env func(string) string) ramp {
 // as an OPACITY GRADIENT instead: the oldest visible line furthest toward the
 // background, the newest at the dim tier it will keep when it settles.
 //
-// The stops are the dim ink at three opacities over black — a terminal will not
-// say what its background is, and every terminal this palette was authored for
-// is dark, so black is the honest anchor. Naming the opacities rather than the
-// colours is the point: change hueDim and the fade follows it, which is what
-// stops the gradient drifting off the tier it belongs to.
+// The stops are the dim ink at three opacities over black — for a terminal that
+// has not said what its background is, and every terminal this palette was
+// authored for is dark, so black is the honest anchor. Where one DOES say, the
+// same three opacities are composited over the colour it named instead
+// (adaptive.go's [fadeToward]), and the gradient ends on the real page rather
+// than near it. Naming the opacities rather than the colours is what makes that
+// swap one line: change hueDim, or measure a ground, and the fade follows either
+// way, which is what stops the gradient drifting off the tier it belongs to.
 //
 //	35%  #25282D  the oldest line — read already, on its way out
 //	60%  #40444D  the middle
@@ -649,6 +678,20 @@ type palette struct {
 	ascii bool
 	// ramp is the ladder this palette paints from — dark, or light.
 	ramp ramp
+	// pin is the theme this palette was CONSTRUCTED with, kept rather than
+	// discarded so that a measured background can be told apart from a person.
+	// A reply from the terminal re-derives every value on the ladder either way,
+	// but it may only choose WHICH ladder when the answer was auto — somebody who
+	// said "light" out loud outranks a terminal that reports otherwise
+	// (adaptive.go's [app.groundReply]).
+	pin theme
+	// ground is the terminal's own background once it has said what it is, and
+	// measured says it has. They are the seam between the authored palette and
+	// the derived one: unset is the honest state of every terminal that has not
+	// answered and of every terminal that never will, and it is the state the
+	// whole of styles.go was written for.
+	ground   measuredGround
+	measured bool
 	// linear is the screen-reader tier (Options.Linear): no motion, no pointer.
 	// It gates the two paints that mean neither of those things to a reader —
 	// the thinking window's gradient and the hover background — because a
@@ -668,6 +711,7 @@ func newPalette(p tokens.Profile, ascii bool) palette {
 func newThemedPalette(p tokens.Profile, ascii bool, t theme, env func(string) string) palette {
 	pal := newPalette(p, ascii)
 	pal.ramp = rampFor(t, env)
+	pal.pin = t
 	return pal
 }
 

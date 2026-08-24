@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -75,6 +74,7 @@ var colourAuthors = map[string]string{
 	"styles.go": "THE CURATED PASTEL AUTHORITY: the palette is authored here",
 
 	"designlanguage_test.go": "names the assumed terminal grounds the ladder is aimed at",
+	"adaptive_test.go":       "names the MEASURED grounds the derivation is tabled against",
 	"bundle_test.go":         "pins the light ladder's authored values",
 	"thinking_test.go":       "pins the three stops [fadeOf] derives from hueDim",
 }
@@ -370,33 +370,24 @@ func TestTheGroundLadderStepsNeverCollapse(t *testing.T) {
 
 // ── the arithmetic ──────────────────────────────────────────────────────────
 
-// contrastOf is the WCAG ratio between an authored hue and an assumed ground.
-// It is here rather than in styles.go on purpose: nothing at runtime knows what
-// the terminal's background is, so nothing at runtime may compute this. It is a
-// number the AUTHOR checks, and a test is where an author's checks live.
+// contrastOf is the WCAG ratio between an authored hue and an ASSUMED ground —
+// the hex an author wrote down, which is the only kind of ground this file deals
+// in.
+//
+// The arithmetic underneath it is adaptive.go's ([luminanceOf],
+// [contrastRatio]) and used to be a private copy here, on the stated grounds
+// that nothing at runtime knew what the terminal's background was so nothing at
+// runtime could compute a contrast. A terminal can be asked now. Two copies of
+// one formula is the drift this repo's one-source-of-truth law exists to
+// prevent — a test that measured the ladder differently from the code that
+// derives it would pass while the surface was wrong — so this is a wrapper that
+// parses a hex and nothing more.
 func contrastOf(h hue, ground string) float64 {
 	r, g, b, ok := parseHex(ground)
 	if !ok {
 		panic("tui3: malformed assumed ground " + ground)
 	}
-	first, second := luminanceOf(h.r, h.g, h.b), luminanceOf(r, g, b)
-	if first < second {
-		first, second = second, first
-	}
-	return (first + 0.05) / (second + 0.05)
-}
-
-// luminanceOf is sRGB relative luminance, the sRGB transfer curve included —
-// the linear-light average that contrast is defined on, not the raw channels.
-func luminanceOf(r, g, b uint8) float64 {
-	channel := func(c uint8) float64 {
-		v := float64(c) / 255
-		if v <= 0.03928 {
-			return v / 12.92
-		}
-		return math.Pow((v+0.055)/1.055, 2.4)
-	}
-	return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b)
+	return contrastRatio(luminanceOf(h.r, h.g, h.b), luminanceOf(r, g, b))
 }
 
 // trimFloat spells a measured number the way the comments spell it: two places,

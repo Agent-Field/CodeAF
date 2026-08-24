@@ -91,11 +91,24 @@ does not have, rather than a colour the palette is missing.
 The honest way to build this ladder is the compositor's way: take the foreground
 colour, composite it over the background at a stated alpha, and every step
 inherits the theme's own hue for free and self-inverts on a light terminal with
-no light-mode branch at all. **We cannot.** The terminal's own background is
-unknown to us — there is no variable that states it and no query a constructor
-may block on — so there is nothing to composite over.
+no light-mode branch at all. **In a constructor we cannot.** There is no variable
+that states the terminal's background and no query a constructor may block on, so
+at the moment the palette is built there is nothing to composite over.
 
-The steps are therefore **authored** per ladder, dark and light. What is
+**Both halves now exist, and which one you see depends on your terminal.** The
+first frame asks the terminal for its background with `tea.RequestBackgroundColor`
+and nothing waits for the answer; a terminal that replies gets every value on this
+ladder derived against its real ground, and a terminal that stays silent keeps the
+authored values below forever. The derivation is `internal/tui3/adaptive.go` and
+is aimed at exactly the ratios this section already states — it changes what the
+steps are measured *against*, not what they are aimed at. Where an authored value
+already lands in band on the measured ground it is not touched, so most terminals
+see nothing change; a pure black screen and a tinted page, the two grounds nobody
+could aim at, are what move.
+
+The steps below are therefore **authored** per ladder, dark and light, and they
+are what a silent terminal paints — which is not a degraded mode, it is four
+waves of aim. What is
 authored is aimed rather than guessed: the assumed dark ground is the range real
 terminals sit in, `#101014` through `#1e1e2e`, and the light ground is near
 white.
@@ -120,11 +133,12 @@ where a large flat area stops being perceptible at all. That is deliberate. A
 selection tint is not a boundary; it is an anchor for something the row already
 says in text.
 
-The cost of authoring rather than deriving is stated rather than hidden: a fixed
-ground reads one notch louder on a blacker terminal and one notch quieter on a
-lighter one, and on a tinted page like `#ECEFF4` the whole light ladder drops
-close to invisible. That is the price of not knowing, and it is cheaper than a
-query that hangs.
+The cost of authoring rather than deriving is stated rather than hidden, and it
+is exactly the cost a reply pays off: a fixed ground reads one notch louder on a
+blacker terminal and one notch quieter on a lighter one, and on a tinted page like
+`#ECEFF4` the whole light ladder drops close to invisible. That is the price of
+not knowing. It is still cheaper than a query that hangs — which is why the query
+does not hang.
 
 Two things survived the retune unchanged, both deliberately. `#2E3440` is what
 this surface has drawn under the pointer since the day it first drew a
