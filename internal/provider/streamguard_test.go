@@ -223,7 +223,9 @@ func TestASilentEndpointIsCutAndNamed(t *testing.T) {
 		w.(http.Flusher).Flush()
 		// Keepalive comments and nothing else: bytes on the wire, no model
 		// writing. This is exactly the shape transport.go's byte watchdog
-		// cannot see.
+		// cannot see. The comments buy the stream the buffered cap — and
+		// nothing past it, which is what this test now proves: an endpoint
+		// that speaks forever and answers never is still cut.
 		for i := 0; i < 40; i++ {
 			fmt.Fprint(w, ": keepalive\n\n")
 			w.(http.Flusher).Flush()
@@ -303,6 +305,112 @@ func TestTheWatchdogDoesNotEatAnInterrupt(t *testing.T) {
 	}
 	if ctx.Err() == nil {
 		t.Fatal("the test never actually interrupted")
+	}
+}
+
+// TestAQuietStreamWhoseEndpointStillSpeaksIsGivenPatience is the buffering
+// case measured on 2026-08-24: the model goes quiet past the gap bound while
+// the endpoint assembles the answer server-side, keepalives flowing the whole
+// time — and then the answer LANDS. Five of sixteen production endpoints
+// deliver tool calls exactly this way; before the buffered cap existed, every
+// one of those streams was cut on the verge of finishing.
+func TestAQuietStreamWhoseEndpointStillSpeaksIsGivenPatience(t *testing.T) {
+	restore := shortenStallBoundsCapped(t, 5*time.Second, 60*time.Millisecond, 800*time.Millisecond)
+	defer restore()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: "+deltaChunk("the answer begins ")+"\n\n")
+		w.(http.Flusher).Flush()
+		// Quiet for three gap bounds — a cut under the old law — with the
+		// endpoint speaking the whole time.
+		for i := 0; i < 20; i++ {
+			fmt.Fprint(w, ": keepalive\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+		fmt.Fprint(w, "data: "+deltaChunk("and lands whole")+"\n\n")
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	response, err := streamAgainst(t, server.URL, nil)
+	if err != nil {
+		t.Fatalf("a buffered stream that finished was cut: %v", err)
+	}
+	if got := response.Text(); got != "the answer begins and lands whole" {
+		t.Fatalf("text = %q", got)
+	}
+}
+
+// TestPatienceEndsAtTheBufferedCap is the trickler the header always feared: an
+// endpoint that speaks forever and answers never. The cap is the whole reason
+// the extension is safe to grant, and the cut names the cap it waited.
+func TestPatienceEndsAtTheBufferedCap(t *testing.T) {
+	restore := shortenStallBoundsCapped(t, 60*time.Millisecond, 60*time.Millisecond, 200*time.Millisecond)
+	defer restore()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: "+deltaChunk("started")+"\n\n")
+		w.(http.Flusher).Flush()
+		for i := 0; i < 60; i++ {
+			fmt.Fprint(w, ": keepalive\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	_, err := streamAgainst(t, server.URL, nil)
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a stream cut", err)
+	}
+	if cut.Reason != CutStalled {
+		t.Fatalf("reason = %d, want CutStalled", cut.Reason)
+	}
+	if cut.Waited != stallBufferedBound {
+		t.Fatalf("waited = %v, want the buffered cap %v — the sentence must name the wait the person actually watched", cut.Waited, stallBufferedBound)
+	}
+}
+
+// TestDeadSilenceIsStillCutAtThePlainBound pins that the extension is only for
+// an endpoint that is SPEAKING: a connection sending nothing at all gets the
+// old bounds, because that one really is not coming back.
+func TestDeadSilenceIsStillCutAtThePlainBound(t *testing.T) {
+	restore := shortenStallBoundsCapped(t, 5*time.Second, 60*time.Millisecond, 10*time.Second)
+	defer restore()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: "+deltaChunk("the answer begins")+"\n\n")
+		w.(http.Flusher).Flush()
+		time.Sleep(500 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	began := time.Now()
+	_, err := streamAgainst(t, server.URL, nil)
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a stream cut", err)
+	}
+	if cut.Reason != CutStalled {
+		t.Fatalf("reason = %d, want CutStalled", cut.Reason)
+	}
+	if cut.Waited != stallGapBound {
+		t.Fatalf("waited = %v, want the plain gap bound %v", cut.Waited, stallGapBound)
+	}
+	if elapsed := time.Since(began); elapsed > 400*time.Millisecond {
+		t.Fatalf("a dead connection was given %v — the buffered patience is only for an endpoint that is speaking", elapsed)
 	}
 }
 
@@ -392,14 +500,22 @@ func TestTheGuardCanBeSwitchedOff(t *testing.T) {
 
 // ── plumbing ────────────────────────────────────────────────────────────────
 
-// shortenStallBounds makes the two silence bounds testable. They are constants
-// in the shipping binary for the one-source-of-truth reason; this swaps the
-// variables the watchdog actually reads and puts them back.
+// shortenStallBounds makes the silence bounds testable. They are constants in
+// the shipping binary for the one-source-of-truth reason; this swaps the
+// variables the watchdog actually reads and puts them back. The buffered cap
+// travels with the two bounds because every keepalive-sending test server is
+// now buying patience against it, and a test that shortened only the bounds
+// would sit through the real two and a half minutes.
 func shortenStallBounds(t *testing.T, first, gap time.Duration) func() {
 	t.Helper()
-	oldFirst, oldGap := stallFirstBound, stallGapBound
-	stallFirstBound, stallGapBound = first, gap
-	return func() { stallFirstBound, stallGapBound = oldFirst, oldGap }
+	return shortenStallBoundsCapped(t, first, gap, 4*gap)
+}
+
+func shortenStallBoundsCapped(t *testing.T, first, gap, buffered time.Duration) func() {
+	t.Helper()
+	oldFirst, oldGap, oldBuffered := stallFirstBound, stallGapBound, stallBufferedBound
+	stallFirstBound, stallGapBound, stallBufferedBound = first, gap, buffered
+	return func() { stallFirstBound, stallGapBound, stallBufferedBound = oldFirst, oldGap, oldBuffered }
 }
 
 func deltaChunk(text string) string {

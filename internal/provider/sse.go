@@ -31,6 +31,13 @@ import (
 type sseDecoder struct {
 	reader  *bufio.Reader
 	message []byte
+	// alive, when set, is called once per SSE comment line — the ": OPENROUTER
+	// PROCESSING" keepalives a router sends while an upstream assembles its
+	// answer. Comments never become chunks (parseSSEMessage drops them), so
+	// without this seam the one reader who cares that the endpoint is still
+	// speaking — the stall watch — would never hear it (streamguard.go says
+	// what it buys). It is called from the read loop, so it must be cheap.
+	alive func()
 }
 
 // sseReadBuffer is the read size. Larger than the SDK's 8 KB because the read
@@ -91,6 +98,15 @@ func (d *sseDecoder) next() ([]byte, error) {
 			continue
 		}
 		if len(line) > 0 {
+			// A line opening with a colon is an SSE comment — the keepalive
+			// vocabulary, and the only non-answer this layer reports. It is
+			// noticed HERE, per line rather than per message, because a router
+			// under a slow upstream sends comments without terminating a
+			// message for minutes at a time, and a hook on message completion
+			// would stay silent exactly when it matters.
+			if line[0] == ':' && d.alive != nil {
+				d.alive()
+			}
 			// The separator is "\n\n": this line opens with a newline and the
 			// message so far ended with one. Everything before that first
 			// newline is the message; the rest of the buffer is the next one.
