@@ -609,7 +609,6 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// their screen and only becomes a waiting one if they leave without
 	// answering it.
 	sess.held.raise(wire, id, len(sess.surfaces) == 0)
-	sess.held.withdraw(wire)
 	watching := sess.watchingLocked()
 	sess.mu.Unlock()
 

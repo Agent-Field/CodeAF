@@ -594,8 +594,8 @@ func (a *app) submitImages(text string) tea.Cmd {
 	// The transcript keeps the person's own line either way — the paths go to
 	// the model and the NAMES go on the screen ([chipMarkers]), because a
 	// scrollback full of absolute paths is a scrollback nobody reads.
-	spoken := text
-	if len(files) > 0 && !a.hosted() {
+	hosted, spoken := a.hosted(), text
+	if len(files) > 0 && !hosted {
 		spoken = remote.AttachedSentence(text, chipPaths(files))
 	}
 
@@ -623,23 +623,18 @@ func (a *app) submitImages(text string) tea.Cmd {
 	a.awaited = time.Now()
 	a.follow()
 	a.touch()
-	hosted := a.hosted()
 	return tea.Batch(func() tea.Msg {
 		images, err := readAttachments(pictures)
 		if err != nil {
 			return submittedMsg{err: err}
 		}
-		if len(files) == 0 {
-			ch, err := agent.SubmitImage(ctx, spoken, images)
-			return submittedMsg{ch: ch, err: err}
-		}
-		if !hosted {
-			// The engine is on this machine and the files are already where it
-			// can open them. Nothing is copied and nothing is read: the sentence
-			// composed above names them where they sit, which is what
-			// internal/remote's image.go already blesses for a picture that
-			// arrives with a path and no bytes — a caller naming a file on the
-			// engine's own disk, which the session will read for itself.
+		// A MESSAGE WITH NO FILES AND A MESSAGE WHOSE FILES ARE ALREADY ON THE
+		// ENGINE'S OWN DISK ARE THE SAME CALL. Locally nothing is copied and
+		// nothing is read — the sentence composed above names the files where
+		// they sit, which is what internal/remote's image.go blesses in as many
+		// words for a picture that arrives with a path and no bytes: a caller
+		// naming a file on the engine's own disk, which the session reads itself.
+		if len(files) == 0 || !hosted {
 			ch, err := agent.SubmitImage(ctx, spoken, images)
 			return submittedMsg{ch: ch, err: err}
 		}
@@ -811,8 +806,13 @@ func readFiles(chips []chip) ([]remote.WireFile, error) {
 // It is shaped exactly like the picture's, `%s is over the %dMB image limit`,
 // because they are the same refusal about two kinds of thing and a person who
 // has read one should recognize the other.
+// THE SIZE IS ROUNDED UP, so the sentence can never read "is 16MB and over the
+// 16MB limit" — which is what truncation says about a file one byte past the
+// ceiling, and is a sentence that reads like a bug rather than like a limit.
 func oversizeFile(name string, size int64) string {
-	return fmt.Sprintf("%s is %dMB and over the %dMB file limit", name, size>>20, maxAttachedFileBytes>>20)
+	const megabyte = 1 << 20
+	return fmt.Sprintf("%s is %dMB and over the %dMB file limit",
+		name, (size+megabyte-1)/megabyte, maxAttachedFileBytes>>20)
 }
 
 // fileMIME is what this surface believed the file was, or "" when it cannot

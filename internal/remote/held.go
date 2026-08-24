@@ -112,17 +112,6 @@ func (h *heldSet) raise(event EventWire, stream uint64, alone bool) {
 	}
 }
 
-// withdraw takes a card back down because the session itself withdrew it —
-// today the one such event is a design the person asked to have rewritten
-// (session.EventHarnessDesignRevising), whose page stops existing the moment
-// the revision starts. A held card for a page that has been replaced would take
-// an answer that saved the wrong page.
-func (h *heldSet) withdraw(event EventWire) {
-	if event.Kind == session.EventHarnessDesignRevising {
-		h.answered(HeldHarness, event.ID, "")
-	}
-}
-
 // roomEmptied is the last surface leaving. Everything still outstanding is now
 // a question nobody is looking at, which is what waiting means.
 func (h *heldSet) roomEmptied() {
@@ -197,6 +186,15 @@ func heldKeyOf(event session.Event) (heldKey, bool) {
 		// asking to be SAVED both go back through ResolveHarness, which is why
 		// they share a kind here (internal/session's harness.go and its
 		// EventHarnessDesignDone both name that method).
+		//
+		// ONLY THE OFFER ACTUALLY ARRIVES HERE TODAY. A design card is sent
+		// through emitHarness, which reaches the watchers of
+		// [session.Agent.HarnessDesigns] and no turn's stream — a lane this wire
+		// has no door for, which is why building a harness is switched off over
+		// a connection at all (cmd/aforge's engine.go says so in prose). The
+		// kind is named beside the offer because the two are ONE QUESTION with
+		// one answer, and a classifier that knew about half of a door would be
+		// the thing that quietly broke on the day the other half arrives.
 		if event.ID == 0 {
 			return heldKey{}, false
 		}

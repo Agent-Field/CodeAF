@@ -105,9 +105,19 @@ func (s *server) submitFiles(call Frame) (json.RawMessage, error) {
 
 // keep writes every arriving file into this session's attachments and answers
 // with the paths, in the order they arrived.
+//
+// EVERY NAME IS JUDGED BEFORE ANY FILE IS WRITTEN. A message is refused whole or
+// kept whole: a batch that failed on its third name having already landed its
+// first two would leave litter in a folder nobody asked to litter, for a message
+// that never opened a turn.
 func (s *server) keep(files []WireFile) ([]string, error) {
 	if len(files) == 0 {
 		return nil, nil
+	}
+	for _, file := range files {
+		if _, err := attachmentName(file.Name); err != nil {
+			return nil, err
+		}
 	}
 	workspace, place := s.session.folder()
 
