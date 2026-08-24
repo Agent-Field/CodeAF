@@ -365,7 +365,11 @@ func (a *app) resolvePath(path string) string {
 func chipLabels(chips []chip, pal palette) []string {
 	mark := chipMark(pal)
 	out := make([]string, 0, len(chips))
-	for i, c := range chips {
+	// The pictures are counted along the row rather than asked for one at a
+	// time, because this is rebuilt on every pointer motion that crosses the
+	// tray ([app.chipTrayTarget]).
+	seen := 0
+	for _, c := range chips {
 		// A FILE CARRIES NO NUMBER, because there is nothing for a number to
 		// refer to: the model is told the file's path, not `[file #2]`, so a
 		// digit here would be a reference to something that is not in the
@@ -374,13 +378,14 @@ func chipLabels(chips []chip, pal palette) []string {
 			out = append(out, fileChipMark(pal)+" "+c.name())
 			continue
 		}
+		seen++
 		// THE NUMBER IS AS MUCH THE POINT OF A PICTURE'S CHIP AS THE NAME IS. It
 		// is what `[image #2]` in the sentence refers to and what the model sees
 		// second, and a tray that showed only names would leave the person
 		// counting from the left to find out which picture they were talking
 		// about. It counts PICTURES and not chips, so a file dropped between two
 		// screenshots does not move the second one's number ([pictureChips]).
-		out = append(out, mark+" #"+strconv.Itoa(pictureOrdinal(chips, i))+" "+c.name())
+		out = append(out, mark+" #"+strconv.Itoa(seen)+" "+c.name())
 	}
 	return out
 }
@@ -527,7 +532,8 @@ func chipMarkers(chips []chip, pal palette) string {
 		return ""
 	}
 	names := make([]string, 0, len(chips))
-	for i, c := range chips {
+	seen := 0
+	for _, c := range chips {
 		// A FILE'S MARKER IS ITS NAME AND NOTHING ELSE, for [chipLabels]' reason
 		// — the number would refer to a token the sentence does not carry — and
 		// because the name is what a reader is actually looking for when they
@@ -536,7 +542,8 @@ func chipMarkers(chips []chip, pal palette) string {
 			names = append(names, "["+c.name()+"]")
 			continue
 		}
-		names = append(names, "[#"+strconv.Itoa(pictureOrdinal(chips, i))+" "+c.name()+"]")
+		seen++
+		names = append(names, "[#"+strconv.Itoa(seen)+" "+c.name()+"]")
 	}
 	return pal.dim(strings.Join(names, " "))
 }
