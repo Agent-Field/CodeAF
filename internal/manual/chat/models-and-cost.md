@@ -661,7 +661,10 @@ use, then the window the session was configured with, then a conservative defaul
 
 Compaction is triggered at **`window − max(15% of window, 16384)`**, with that reserve
 clamped to at most half the window. When a pass runs, the **verbatim tail** it keeps is
-**20,000 tokens**, capped at a quarter of the window.
+**20,000 tokens**, capped at a quarter of the window. A pass folds down to a target **half
+a reserve below the trigger** — about 99,200 tokens on the default window against a trigger
+of 108,800 — so the next few steps of growth do not start another pass; the page on
+compacting over and over explains why that headroom exists.
 
 The current size is the larger of two figures: the context size the provider last reported,
 and an estimate of the transcript at 4 bytes per token. That way a 300KB tool result appended
