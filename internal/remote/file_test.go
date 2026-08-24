@@ -221,8 +221,14 @@ func TestAFileInTheWorkspaceOrTheSessionFolderComesBack(t *testing.T) {
 	if strings.ContainsAny(got.Name, `/\`) {
 		t.Fatalf("the name has to be a name: %q", got.Name)
 	}
-	if got.MIME == "" {
-		t.Fatal("a .md file has a type this machine can name")
+	// The type is a HINT and empty is an honest answer for an extension nobody
+	// can name, so it is asserted where Go's own table has one rather than
+	// against whatever /etc/mime.types this machine happens to hold.
+	if got := fileMIME("/anywhere/chart.png"); got != "image/png" {
+		t.Fatalf("fileMIME of a png is %q", got)
+	}
+	if got := fileMIME("/anywhere/no-extension"); got != "" {
+		t.Fatalf("an unnameable type has to answer nothing, not %q", got)
 	}
 	if _, err := fetch(t, s, transcript); err != nil {
 		t.Fatalf("the session's own folder has to cross: %v", err)
