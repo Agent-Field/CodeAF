@@ -94,8 +94,9 @@ func TestATaskCarriesTheOrdersStandingOverTheConversationThatAdmittedIt(t *testi
 	}
 	// AND THE NODE IS TOLD WHOSE THESE ARE AND WHAT TO DO WITH ONE IT CANNOT KEEP.
 	// A list of sentences with no sentence around it is a list a worker may read
-	// as suggestions, which is the one thing an order is not.
-	if !strings.Contains(world, standingWorldIntro) {
+	// as nothing in particular. These five are reminders, so the sentence over
+	// them is the one that says so.
+	if !strings.Contains(world, standingWorldWaiting) {
 		t.Fatalf("the node was handed the orders with nothing saying whose they are:\n%s", world)
 	}
 	if !strings.Contains(world, standingWorldReport) {
@@ -210,7 +211,7 @@ func TestAHoldRidesIntoTheWorldOfTheWorkThatStarts(t *testing.T) {
 	if !strings.Contains(world, "always run the tests before you say you are done") {
 		t.Fatalf("the rule never reached the node:\n%s", world)
 	}
-	if !strings.Contains(world, standingWorldIntro) {
+	if !strings.Contains(world, standingWorldHolding) {
 		t.Fatalf("the rule arrived with nothing saying whose it is:\n%s", world)
 	}
 
@@ -238,7 +239,7 @@ func TestTheConversationsWorldGainsAndLosesTheStandingSectionWithTheSet(t *testi
 
 	made := anOrder(t, store, "never touch the public API", workspace, standing.AltitudeProject, session)
 	withOrder := theSystemPrompt(t, agent)
-	for _, want := range []string{"<standing>", standingWorldHeading, standingWorldIntro, "never touch the public API"} {
+	for _, want := range []string{"<standing>", standingWorldHeading, standingWorldWaiting, "never touch the public API"} {
 		if !strings.Contains(withOrder, want) {
 			t.Fatalf("the conversation was not told %q:\n%s", want, withOrder)
 		}
@@ -303,5 +304,114 @@ func TestTheStandingSectionIsBoundedLongestStandingFirst(t *testing.T) {
 	}
 	if renderStandingWorld(nil, standingWorldReport) != "" {
 		t.Fatal("an empty set rendered a section")
+	}
+}
+
+// ── the two registers ───────────────────────────────────────────────────────
+//
+// A HOLD IS A HOUSE RULE AND A REMINDER IS NOT, and until this wave both rode
+// under the same iron sentence — so "remind me at 6 to check the deploy" was
+// handed to every task in the project as a condition to work within. These pin
+// the sentence each kind gets, that both can be in one section at once, and
+// that the tiering costs nothing where nothing stands.
+
+func TestAHoldRidesUnderTheWordsThatBindAndAReminderDoesNot(t *testing.T) {
+	rule := standing.Item{
+		Words:   "always use tabs here",
+		When:    standing.When{Kind: standing.WhenHold},
+		Created: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC),
+	}
+	reminder := standing.Item{
+		Words:   "check the deploy",
+		When:    standing.When{Kind: standing.WhenAt, At: time.Date(2026, 6, 1, 18, 0, 0, 0, time.UTC)},
+		Created: time.Date(2026, 1, 2, 9, 0, 0, 0, time.UTC),
+	}
+
+	held := renderStandingWorld([]standing.Item{rule}, standingWorldReport)
+	if !strings.Contains(held, standingWorldHolding) {
+		t.Fatalf("a rule was not given the words that bind:\n%s", held)
+	}
+	if strings.Contains(held, standingWorldWaiting) {
+		t.Fatalf("a rule was softened into something waiting on a moment:\n%s", held)
+	}
+
+	due := renderStandingWorld([]standing.Item{reminder}, standingWorldReport)
+	if !strings.Contains(due, standingWorldWaiting) {
+		t.Fatalf("a reminder was not stated as what the person has standing:\n%s", due)
+	}
+	if strings.Contains(due, standingWorldHolding) {
+		t.Fatalf("a reminder was handed over as a condition to work within:\n%s", due)
+	}
+
+	// EVERY WAKING KIND TAKES THE SOFTER REGISTER, and the hold is the only one
+	// that does not. The list is closed, so it can be walked.
+	for _, kind := range []standing.WhenKind{
+		standing.WhenAt, standing.WhenEvery, standing.WhenFile, standing.WhenIdle, standing.WhenProbe,
+	} {
+		one := renderStandingWorld([]standing.Item{{Words: "something", When: standing.When{Kind: kind}}}, "")
+		if strings.Contains(one, standingWorldHolding) {
+			t.Errorf("a %q order rode as a house rule:\n%s", kind, one)
+		}
+	}
+}
+
+// BOTH AT ONCE, IN ONE SECTION, WITH THE HOLDS LEADING. A place with a rule and
+// a reminder over it gets one heading, two sentences, and the rule first —
+// because the rule is the only half of this section that can change what the
+// worker does.
+func TestASectionCarryingBothKindsLeadsWithWhatBinds(t *testing.T) {
+	section := renderStandingWorld([]standing.Item{
+		{Words: "check the deploy", When: standing.When{Kind: standing.WhenAt},
+			Created: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)},
+		{Words: "always use tabs here", When: standing.When{Kind: standing.WhenHold},
+			Created: time.Date(2026, 2, 1, 9, 0, 0, 0, time.UTC)},
+	}, standingWorldReport)
+
+	if strings.Count(section, standingWorldHeading) != 1 {
+		t.Fatalf("the two kinds were given two sections:\n%s", section)
+	}
+	binding := strings.Index(section, standingWorldHolding)
+	waiting := strings.Index(section, standingWorldWaiting)
+	if binding < 0 || waiting < 0 || binding > waiting {
+		t.Fatalf("the rule does not lead (binding at %d, waiting at %d):\n%s", binding, waiting, section)
+	}
+	if rule, deploy := strings.Index(section, "- always use tabs here"), strings.Index(section, "- check the deploy"); rule < 0 || deploy < 0 || rule > deploy {
+		t.Fatalf("the rule is not under the sentence that binds:\n%s", section)
+	}
+	// AND WHEN SOMETHING MUST GO IT IS NEVER THE RULE, however new it is. Nine
+	// reminders older than one hold would have pushed the only thing in the
+	// section that governs the work off the end of it.
+	crowd := []standing.Item{{Words: "always use tabs here", When: standing.When{Kind: standing.WhenHold},
+		Created: time.Date(2026, 12, 1, 9, 0, 0, 0, time.UTC)}}
+	for at := 0; at <= standingWorldMost; at++ {
+		crowd = append(crowd, standing.Item{
+			Words:   "reminder " + strconv.Itoa(at),
+			When:    standing.When{Kind: standing.WhenEvery},
+			Created: time.Date(2026, 1, 1+at, 9, 0, 0, 0, time.UTC),
+		})
+	}
+	clipped := renderStandingWorld(crowd, "")
+	if !strings.Contains(clipped, "- always use tabs here") {
+		t.Fatalf("the newest rule was clipped away by older reminders:\n%s", clipped)
+	}
+	if !strings.Contains(clipped, "…2 more") {
+		t.Fatalf("the clip did not count what it cut:\n%s", clipped)
+	}
+}
+
+// THE EMPTINESS LAW SURVIVES THE TIERING, byte for byte: a place with nothing
+// standing over it is handed its brief and not one character more, and a place
+// with one kind only gets one sentence and no blank tier.
+func TestTheTieringCostsNothingWhereNoOrdersApply(t *testing.T) {
+	agent, _ := ordersAgent(t)
+	if world := oneNodesWorld(t, agent, "fix the crash in the parser"); world != "fix the crash in the parser" {
+		t.Fatalf("a node with no orders over it was handed %q", world)
+	}
+	one := renderStandingWorld([]standing.Item{{
+		Words: "always use tabs here", When: standing.When{Kind: standing.WhenHold},
+	}}, standingWorldReport)
+	want := standingWorldHeading + ":\n\n" + standingWorldHolding + "\n\n- always use tabs here\n\n" + standingWorldReport + "\n"
+	if one != want {
+		t.Fatalf("one kind rendered\n%q\nwant\n%q", one, want)
 	}
 }
