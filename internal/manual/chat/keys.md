@@ -236,6 +236,9 @@ These apply with no overlay up, no room open, and no mode on.
 | `left` | Empty box: step back a level — close the room, else clear the selection. Two `left` presses inside about 600ms go home to the live edge. Non-empty box: move the caret left |
 | `right` | Empty box: go into the next running task's room. Non-empty box: move the caret right |
 | `ctrl+f` | Move the caret right, always. Never navigation |
+| `alt+left` / `alt+b` / `ctrl+left` | Jump a word left. `alt+left` is what `option+←` arrives as on most Mac terminals. Does nothing over an empty box — the plain arrows keep their navigation meaning |
+| `alt+right` / `alt+f` / `ctrl+right` | Jump a word right, under the same three names |
+| `super+left` / `super+right` | Start / end of the line — Mac `cmd+←` and `cmd+→`, on terminals that forward `cmd` at all (see the terminal table below) |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
@@ -244,6 +247,38 @@ These apply with no overlay up, no room open, and no mode on.
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
 not on the row your terminal wrapped it onto. `up` only reaches history when the
 caret is on the first logical line, and `down` only when it is on the last.
+
+A word jump crosses the same boundary the word kill deletes: spaces first, then
+the run of non-spaces, so `alt+left` then `ctrl+w` always deletes exactly the
+word it just crossed.
+
+## Click to move the cursor — clicking the message box places the caret
+
+A click anywhere on the message box puts the caret under the pointer: on the
+letter you aimed at, at the row's end when you click past the end of a line, and
+at the start of the text when you click on the prompt's side of it. It works on
+a wrapped, multi-line draft — the row you click is the row the caret lands on.
+
+It is the ordinary text-field gesture, and only the message box answers it.
+While a picker's filter box is standing in the box's place — the model picker,
+`/resume`, `/files`, the memory panel — a click does not move that box's caret;
+those are typed at and filtered, not edited by pointer.
+
+## Why option+left or cmd+left does nothing — word jump depends on your terminal
+
+If `option+←` does nothing, the key never reached aforge: some terminals keep
+the option key to themselves or send it as something else. aforge answers every
+spelling terminals actually send — `alt+left`, `alt+b` (the esc-b some profiles
+send instead), and `ctrl+left` — so on Ghostty, Kitty, WezTerm and iTerm2's
+default profile it simply works. On iTerm2 with the option key set to *Normal*,
+set **Settings → Profiles → Keys → Left Option Key** to *Esc+* to make
+`option+←` a word jump. `alt+b` and `alt+f` are the spellings that work nearly
+everywhere.
+
+`cmd+←` / `cmd+→` follow the `cmd+delete` rule below: they arrive only on
+terminals that speak the keyboard protocol carrying the `cmd` modifier
+(Ghostty, Kitty, WezTerm). Everywhere else use `ctrl+a` / `ctrl+e` or
+`home` / `end`, which are the same jumps on every terminal.
 
 ## Keys in the message box: deleting words and lines
 

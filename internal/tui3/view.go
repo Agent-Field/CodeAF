@@ -136,6 +136,13 @@ const (
 	// end carries the hint slot, and the one thing in that slot a person can
 	// press is the door home (home.go's [app.homeDoorPress]).
 	chromeLegend
+	// chromeDraft is one row of the input block; index is its position within
+	// the block as [app.inputBlock] built it, tray row included. It exists so a
+	// click on the box can put the caret under the pointer (draftclick.go) —
+	// before it, a press on the draft fell through to the body's drag parking
+	// and moved nothing, which made the one place a person types the one place
+	// their pointer did not work.
+	chromeDraft
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -532,8 +539,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// the one above it rather than assuming so.
 	input = a.roomSteerLaneRows(input, width-len(inputPad))
 	caretRow += len(rows)
-	for _, line := range input {
-		add(inputPad+line, chromeRow{})
+	for i, line := range input {
+		// Marked so the pointer can answer for the box: which row of the block a
+		// press landed on is the y half of putting the caret under it
+		// (draftclick.go).
+		add(inputPad+line, chromeRow{kind: chromeDraft, index: i})
 	}
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence

@@ -131,6 +131,28 @@ func (e *editor) right() {
 	}
 }
 
+// wordLeft and wordRight move the caret a word at a time, over the SAME
+// boundaries ctrl+w deletes by — spaces first, then the run of non-spaces — so
+// the distance a jump covers and the distance a kill covers are one distance,
+// learned once.
+func (e *editor) wordLeft() {
+	for e.cursor > 0 && unicode.IsSpace(e.value[e.cursor-1]) {
+		e.cursor--
+	}
+	for e.cursor > 0 && !unicode.IsSpace(e.value[e.cursor-1]) {
+		e.cursor--
+	}
+}
+
+func (e *editor) wordRight() {
+	for e.cursor < len(e.value) && unicode.IsSpace(e.value[e.cursor]) {
+		e.cursor++
+	}
+	for e.cursor < len(e.value) && !unicode.IsSpace(e.value[e.cursor]) {
+		e.cursor++
+	}
+}
+
 func (e *editor) home() { e.cursor = e.lineStart() }
 
 func (e *editor) end() { e.cursor = e.lineEnd() }
@@ -738,6 +760,42 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.input.deleteWord()
 		a.editTags(from, to, 0)
 		return a.edited()
+	case "alt+left", "alt+b", "ctrl+left":
+		// JUMP A WORD BACK, under every name a terminal spells it with.
+		// alt+left is what option+← arrives as on macOS terminals that keep the
+		// option key a modifier (Ghostty, kitty, WezTerm, iTerm's default);
+		// alt+b is the same gesture from a profile that sends esc-b instead, and
+		// it is readline's own word-back; ctrl+left is Windows' and Linux's, and
+		// the kitty-protocol terminals send it faithfully. Over an empty box the
+		// chord does nothing at all — the plain arrows own the empty-box
+		// navigation, and a modifier held by accident must not move a person to
+		// another page.
+		if !a.input.empty() {
+			a.input.wordLeft()
+			a.touch()
+		}
+		return nil
+	case "alt+right", "alt+f", "ctrl+right":
+		// And a word forward, under the same three names.
+		if !a.input.empty() {
+			a.input.wordRight()
+			a.touch()
+		}
+		return nil
+	case "super+left", "super+right":
+		// cmd+←/→ ARE THE LINE'S ENDS, which is what a Mac hand means by them in
+		// every text field it has ever used. They reach this switch only on a
+		// terminal that reports the super modifier at all (kitty's protocol,
+		// win32-input) — everywhere else the chord never arrives, which costs
+		// nothing and is why they are bound rather than detected. The
+		// super+backspace kill above made the same bargain first.
+		if msg.String() == "super+left" {
+			a.input.home()
+		} else {
+			a.input.end()
+		}
+		a.touch()
+		return nil
 	case "left":
 		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
 		// draft, which is the same argument the proposal's row makes for taking
