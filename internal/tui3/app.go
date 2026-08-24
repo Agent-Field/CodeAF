@@ -1253,6 +1253,9 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
+	// notices is what this surface has told the person and may tell them next —
+	// the earned hints and the news line, over the profile's ledger (notice.go).
+	notices noticeBoard
 	// saveApproval and saveBashApproval are the door's write seams for the
 	// consent card's "always" (consent.go). Nil is a surface that remembers an
 	// answer for the session and no longer, which is what this card did before
@@ -1522,6 +1525,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.railAway = !config.TaskColumnAt(a.profileDir)
 	// And the approval countdown, on the same terms (consent.go).
 	a.askWait = a.consentWait()
+	// The ledger of what this profile has been told, and whether this build is
+	// news to it (notice.go). The toggle is re-read at every turn end, beside the
+	// mouse row above.
+	a.notices = newNoticeBoard(noticeLedgerPath(a.profileDir), buildStamp(), config.HintsAt(a.profileDir))
 	if a.linear {
 		// The linear tier is a palette question as well as an app one: the two
 		// paints that mean motion and pointer stop, and the rail drops to the
@@ -1552,6 +1559,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a.noteStandingHere()
 	a.measureContext()
+	// The notices get their first look now that the conversation, the box and
+	// the directory's facts are all in place: a news line lands here, under the
+	// replay and above the door's own notice, and the hints that wait on this
+	// directory having an earlier conversation can see the welcome's list.
+	a.noticeEvent(eventBoot)
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
@@ -2358,6 +2370,8 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case compactedMsg:
 		if msg.err != nil {
 			a.note("compact failed: " + msg.err.Error())
+		} else {
+			a.noticeEvent(eventCompacted)
 		}
 		return a, nil
 
@@ -2410,6 +2424,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
 			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
+			a.noticeEvent(eventTaskStarted)
 		}
 		return a, nil
 
@@ -2989,6 +3004,11 @@ func (a *app) settle() tea.Cmd {
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
 	a.askWait = a.consentWait()
+	a.notices.enabled = config.HintsAt(a.profileDir)
+	// A turn ending is the moment most hints become true — the answer was long,
+	// the window is half full, the money is real — so it is the event they are
+	// decided on (notice.go).
+	a.noticeEvent(eventTurnEnded)
 	a.follow()
 	a.touch()
 	if !wasFollowing {
@@ -4494,6 +4514,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// law let through.
 		spent := a.costText()
 		a.noteFacts(spent, columnFacts(spent, false)...)
+		a.noticeEvent(eventCostShown)
 		return nil
 
 	case "resume":
@@ -5187,7 +5208,12 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	wasOpen := a.menu.open
 	a.menu.sync(&a.input)
+	if a.menu.open && !wasOpen {
+		// The list coming up is the proof that "/" has been found (notice.go).
+		a.noticeEvent(eventMenuOpened)
+	}
 	if a.menu.open {
 		a.comp.close()
 		a.harnPick.close()

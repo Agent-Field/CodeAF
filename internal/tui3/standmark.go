@@ -221,6 +221,7 @@ func (a *app) standingSay(text string) tea.Cmd {
 }
 
 func (a *app) standingSayShown(text, shown string) tea.Cmd {
+	a.noticeEvent(eventStandingOpened)
 	if !a.standingHere() {
 		// The same absence the chord answers with, said in the same words: there
 		// is nothing here that could hold one.

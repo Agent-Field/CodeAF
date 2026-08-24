@@ -198,6 +198,13 @@ const (
 	// surfaces with two shapes, and a person who put v3's column away has said
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
+	// KeyHints is whether the v3 chat shows its earned hints — the one-line tips
+	// in the slot above the message box that each retire once the key or command
+	// they name has been used (internal/tui3's notice.go) — and, with them, the
+	// one-line what's-new notes a new build may say. It is one row and not two
+	// because a person who has silenced the tips has said they know the surface,
+	// and being told about features is the same conversation.
+	KeyHints = "ui.hints"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
@@ -955,6 +962,11 @@ const (
 	// their behalf — the strip is what keeps running work reachable from a frame
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
+
+	// DefaultHints shows the v3 chat's tips to a profile that has never said
+	// otherwise. The tips retire themselves the moment each is acted on, so the
+	// default costs a veteran one line per gesture they already know, once.
+	DefaultHints = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -1831,6 +1843,15 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
 		Setting{
+			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
+			Label: "hints",
+			Hint: "one-line tips above the message box, each shown until the key or command " +
+				"it names has been used once. Off silences them, and the what's-new line a " +
+				"new build may say with them. A change lands at the end of the next turn.",
+			read:  func() string { return formatBool(HintsAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyHints, raw) },
+		},
+		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
 			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
@@ -2365,6 +2386,16 @@ func TaskColumnAt(profileDir string) bool {
 // validation.
 func SaveTaskColumn(profileDir string, open bool) error {
 	return writeBool(profileDir, KeyTaskColumn, formatBool(open))
+}
+
+// HintsAt resolves whether the v3 chat shows its tips, default on. A row that
+// will not parse reads as the default rather than as off, for [TaskColumnAt]'s
+// reason: a garbled row must not quietly take a newcomer's only pointers away.
+func HintsAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyHints); ok {
+		return value
+	}
+	return DefaultHints
 }
 
 func knownRailState(state string) bool {
