@@ -149,7 +149,7 @@ The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
-## Interrupting a running turn — how to stop it
+## Interrupting a running turn — how do I stop it mid answer
 
 Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
 is stopped and everything it already said is kept.
@@ -1470,6 +1470,10 @@ two-column gutter is work done on your behalf: thinking, tool calls and their de
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
 
+Indented reply text is also **greyer** than the answer, and carries no markdown — no
+bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
+the actual answer" on the screen page.
+
 ## How do I see what aforge did?
 
 This is the answer to "what did aforge just do", "show me the work behind that answer",
@@ -1480,14 +1484,22 @@ When a successful turn has work and a trailing answer, the finished work collaps
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
 elapsed time, the thinking block's time when there was one, and the real call count.
+There is a blank row between the chip and the answer under it.
+
+**A turn you stopped with `esc` says so instead**, and it collapses whole:
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
+A stopped turn never reached an answer, so there is no answer to leave out of the chip —
+that is the point of the wording. aforge's own lines about the stop (`· interrupted`, and
+what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
 no transcript cursor, so the key chooses the latest completed turn's work in the
 conversation. Opening restores the existing bounded views: thinking remains its
 own chip and only the latest 3 tool calls show until those are opened separately.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
-answer are never hidden. Fold state belongs to this window; resumed sessions derive
-fresh closed chips from their saved entries.
+answer are never hidden — nor is a second message you sent into a running turn, which
+ends the chip above it and starts a new one. Fold state belongs to this window; resumed
+sessions derive fresh closed chips from their saved entries.
 
 **The chip is the conversation's alone.** A task's room, and a node's transcript inside an
 adaptive run's page, never fold their work: those pages are the machinery, and a chip there
