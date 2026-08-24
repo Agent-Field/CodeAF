@@ -1629,8 +1629,15 @@ func (a *app) Init() tea.Cmd {
 	// is opened here rather than at the first switch because the channel has to
 	// exist before a watcher can be handed it, and a pump started twice would be
 	// two readers on one lane.
+	// AND THE TERMINAL IS ASKED WHAT COLOUR IT IS, ONCE, HERE. It is the one
+	// standing command on this list that nothing waits for: a terminal that
+	// answers gets a palette derived against its real background (adaptive.go),
+	// and a terminal that stays silent — which is most of them, and every pipe —
+	// simply keeps the authored ladder it has been painting since the first
+	// frame. There is no timer behind it and no fallback path to take, because
+	// the fallback is what is already on screen.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
-		a.loadTasks(), a.stirLane()}
+		a.loadTasks(), a.stirLane(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -1659,6 +1666,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.resized(msg.Width, msg.Height)
 		}
 		return a, nil
+
+	case tea.BackgroundColorMsg:
+		// THE TERMINAL ANSWERED [app.Init]'s one unanswerable question. Everything
+		// that follows from it is adaptive.go's; this arm exists so that nothing
+		// else in this function has to know the surface can be re-coloured.
+		return a, a.groundReply(msg)
 
 	case resizeSettledMsg:
 		// The drag stopped moving, so the scroll is clamped once, against the
