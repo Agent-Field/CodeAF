@@ -316,6 +316,25 @@ func (n *taskNode) liveLines() taskLive {
 	return taskLive{doing: n.doing, mending: n.mending, waiting: n.waiting}
 }
 
+// taskStops reports whether an update carries a STOP this node has not heard
+// about yet.
+//
+// IT IS THE DE-DUP'S EXCEPTION FOR THE ONE THING A PERSON DID THEMSELVES, and it
+// has to be an exception because a stop does not move the state. The engine cuts
+// a running node's context and leaves it RUNNING for as long as the child takes
+// to wind up — its own word for that window is "stopping" (session's cancel.go
+// answers a second press with "task 7 is already stopping") — so the notice that
+// carries the news is a running node publishing running, which is exactly the
+// shape the guard above throws away. Without this clause the room's header went
+// on saying "working" about work the person had just ended, until some later
+// update happened to carry a bigger figure with it, and the honest word arrived
+// whenever the accounting felt like it.
+//
+// It can only ever fire ONCE per node: [app.taskUpdate] never un-stops one.
+func taskStops(notice *session.TaskNotice, node *taskNode) bool {
+	return notice.Stopped && !node.stopped
+}
+
 // taskRenames reports whether an update carries a NAME this node does not have.
 //
 // IT IS THE DE-DUP'S FOURTH EXCEPTION and the only one that is not about the
@@ -1180,6 +1199,15 @@ func (a *app) answerTask(approve bool, redirect string) {
 			chosen = card.model
 		}
 		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect, Model: chosen})
+	}
+	// A YES OPENS THE SAME WAIT THE TYPED COMMAND STANDS IN. The engine shapes
+	// the approved brief before the task exists, and the person who just said
+	// yes is owed the same forming block a person who typed /task gets — one
+	// vocabulary for one pause, whichever door opened it (taskcommand.go's
+	// [app.beginProposalWait]). A no and a redirect raise nothing: there is no
+	// task coming to wait for.
+	if approve && redirect == "" {
+		a.beginProposalWait(card)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -2637,11 +2665,34 @@ func (a *app) railColumns(width int) int {
 // gets instead is one dim line at the foot of the column naming the page that
 // holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
-	if a.railAway {
+	if a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
 	return a.railColumns(width) > 0
+}
+
+// railQuiet reports whether the column has nothing true to say yet: the
+// greeting is up, this conversation has run nothing, and nothing stands over
+// it.
+//
+// THE COLUMN IS ABSENT UNTIL IT HAS CONTENT OR THE CONVERSATION HAS BEGUN. It is
+// still permanent in the sense that matters — it stands from the first
+// keystroke on, before any work exists, so the place is learned before it is
+// needed — but on the empty screen it was a bordered column of `+ /task` and
+// `+ /standing` beside nothing, and `❯ ctrl+g hide` under them, on a frame whose
+// only other content was a greeting (welcome.go). Furniture drawn to mark an
+// absence is the one thing this surface does not draw. The doors are one `/`
+// away and the greeting's own line says so.
+//
+// It answers false — the column stands — the moment there is a task or a
+// standing order to put on it, so a session with orders over it meets the
+// column on its first frame exactly as before. And it is only ever true while
+// the greeting is open: neither the closed column's edge nor the column itself
+// is on the frame, so nothing here can be pressed ([app.railStowed] asks it
+// too).
+func (a *app) railQuiet() bool {
+	return a.welcome.open && !a.railAvail() && len(a.marginStanding()) == 0
 }
 
 // railAvail reports whether there is a roster to raise at all, at ANY width.
@@ -2702,7 +2753,7 @@ func (a *app) railRoom() int {
 // positive — so the right-hand strip of the frame always belongs to the roster
 // in one of its two shapes, and never to nobody.
 func (a *app) railStowed() bool {
-	if !a.railAway {
+	if !a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
@@ -4817,7 +4868,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
-			!taskRenamesContext(notice, node)) {
+			!taskRenamesContext(notice, node) && !taskStops(notice, node)) {
 			return nil
 		}
 	}

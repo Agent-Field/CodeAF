@@ -229,6 +229,10 @@ func (a *app) deckTitle() string {
 // forty-four the fraction is what the sheet is for.
 func (a *app) deckSpend() (string, string) {
 	var parts []hudPart
+	// Nothing before the first turn, on the wide row's terms ([app.statusQuiet]).
+	if a.statusQuiet() {
+		return "", ""
+	}
 	if cost := dollars(a.cost); cost != "" {
 		parts = append(parts, hudPart{kind: segCost, text: cost})
 	}
@@ -408,6 +412,21 @@ func (a *app) deckItems() []deckItem {
 		model += ":" + level
 	}
 	add("model", model, deckActModel)
+	// THE CREW GOES DIRECTLY UNDER THE MODEL, because the two are read together
+	// or not at all: the line above is the model this conversation talks to, and
+	// this one is the four classes aforge makes its own calls on. A person who
+	// has just changed one and is checking whether it took is looking at exactly
+	// this pair, and a crew line anywhere else on the page would be a fact they
+	// have to go and find. It is the FULL reading here — the preset word and the
+	// three class ids — where the row's own segment is the word alone: a page has
+	// the room a row does not, and "which one of these did I change" is why a
+	// person opens the page. THE EMPTINESS LAW: a door with no profile has no
+	// crew to read and [app.crewWord] is empty, so there is no line rather than a
+	// label with a guess beside it. It used to be /status's alone, added there
+	// after the fact, which made it the one fact the phone's own sheet did not
+	// carry; it is part of this list now, so both surfaces say it and neither
+	// says it twice.
+	add("crew", a.crewWord(), deckActNone)
 	// AND THE ROOM'S MODEL IS A SECOND LINE RATHER THAN A REPLACEMENT, the way
 	// the task's title is a second identity above: the deck's row 2 has room for
 	// one model and says the one the page is about, while the sheet is where
@@ -421,6 +440,12 @@ func (a *app) deckItems() []deckItem {
 	add("served", strings.TrimPrefix(a.servedRider(), " · "), deckActNone)
 
 	for _, part := range a.telemetry(hudWide) {
+		// The crew's segment is the word alone and this page already carries the
+		// whole reading under the model, so the segment is not written a second
+		// time as a shorter line further down.
+		if part.kind == segCrew {
+			continue
+		}
 		if int(part.kind) < len(deckSegWords) {
 			add(deckSegWords[part.kind], part.text, deckActNone)
 		}
@@ -462,6 +487,9 @@ func (a *app) deckItems() []deckItem {
 // its shape ("$0.14" is money), and a figure alone on a line is read from its
 // label. The words are the ones the code comments already use for them.
 var deckSegWords = [segCount]string{
+	// The crew's word is here so the array is complete, and [app.deckItems] never
+	// reads it: the crew is written under the model in full instead.
+	segCrew:    "crew",
 	segAmbient: "background",
 	// phone lane: the standing side had NO word at all here, so its segment came
 	// out of the loop above with an empty label and hung in the value column

@@ -91,11 +91,24 @@ does not have, rather than a colour the palette is missing.
 The honest way to build this ladder is the compositor's way: take the foreground
 colour, composite it over the background at a stated alpha, and every step
 inherits the theme's own hue for free and self-inverts on a light terminal with
-no light-mode branch at all. **We cannot.** The terminal's own background is
-unknown to us — there is no variable that states it and no query a constructor
-may block on — so there is nothing to composite over.
+no light-mode branch at all. **In a constructor we cannot.** There is no variable
+that states the terminal's background and no query a constructor may block on, so
+at the moment the palette is built there is nothing to composite over.
 
-The steps are therefore **authored** per ladder, dark and light. What is
+**Both halves now exist, and which one you see depends on your terminal.** The
+first frame asks the terminal for its background with `tea.RequestBackgroundColor`
+and nothing waits for the answer; a terminal that replies gets every value on this
+ladder derived against its real ground, and a terminal that stays silent keeps the
+authored values below forever. The derivation is `internal/tui3/adaptive.go` and
+is aimed at exactly the ratios this section already states — it changes what the
+steps are measured *against*, not what they are aimed at. Where an authored value
+already lands in band on the measured ground it is not touched, so most terminals
+see nothing change; a pure black screen and a tinted page, the two grounds nobody
+could aim at, are what move.
+
+The steps below are therefore **authored** per ladder, dark and light, and they
+are what a silent terminal paints — which is not a degraded mode, it is four
+waves of aim. What is
 authored is aimed rather than guessed: the assumed dark ground is the range real
 terminals sit in, `#101014` through `#1e1e2e`, and the light ground is near
 white.
@@ -120,11 +133,12 @@ where a large flat area stops being perceptible at all. That is deliberate. A
 selection tint is not a boundary; it is an anchor for something the row already
 says in text.
 
-The cost of authoring rather than deriving is stated rather than hidden: a fixed
-ground reads one notch louder on a blacker terminal and one notch quieter on a
-lighter one, and on a tinted page like `#ECEFF4` the whole light ladder drops
-close to invisible. That is the price of not knowing, and it is cheaper than a
-query that hangs.
+The cost of authoring rather than deriving is stated rather than hidden, and it
+is exactly the cost a reply pays off: a fixed ground reads one notch louder on a
+blacker terminal and one notch quieter on a lighter one, and on a tinted page like
+`#ECEFF4` the whole light ladder drops close to invisible. That is the price of
+not knowing. It is still cheaper than a query that hangs — which is why the query
+does not hang.
 
 Two things survived the retune unchanged, both deliberately. `#2E3440` is what
 this surface has drawn under the pointer since the day it first drew a
@@ -158,11 +172,64 @@ said*. They are a ladder by construction, lightness is the whole of their
 meaning, and the band deliberately does not govern them. The test excludes them
 by name rather than by silence.
 
+### THE GLARE LAW
+
+> **The body may not be the brightest thing on the screen.**
+> The reading tier's top rung sits between **8:1 and 11:1** against the middle
+> of its assumed ground, on both ladders. `TestTheBodyInkDoesNotGlare` holds it
+> there.
+
+The signal band governs hue; this governs the one colour a person looks at for
+minutes at a time. Above about 11:1 a white on a dark terminal stops being
+legible and starts being a lamp — strokes halate, counters fill in, and every
+quieter thing beside it reads as switched off.
+
+The dark ink was `#D8DEE9` for five waves and measured **12.65:1** against
+`#1a1b26`, half again as bright as the person's own accent at 9.26:1. So the
+loudest thing on a surface whose accent budget is *one lit element per screen*
+was the paragraph, and the budget bought nothing because whatever it was spent
+on was outshone by the text around it.
+
+| ink | vs `#101014` | vs `#1a1b26` | vs `#1e1e2e` | xterm-256 |
+| --- | --- | --- | --- | --- |
+| `#D8DEE9` | 14.05:1 | **12.65:1** | 12.14:1 | 254 |
+| `#C6CDDA` | 11.88:1 | **10.70:1** | 10.27:1 | 252 |
+
+The move is the smallest one that fixes it: **hue held at 219°**, lightness down
+L 88.0 → 81.6, saturation eased 28% → 21% — a body white is the one colour here
+with no identity to carry, and a tint nobody can name is a tint paid for in
+contrast. The 256 neighbour was re-checked, as every change to this table owes:
+`#C6CDDA` lands on **252**, claimed by nothing on either ladder. The near miss
+is worth naming — the old ink's own 254 is the *light* ladder's selected ground
+and 255 is its cursor step, so an ink that drifted back up a rung would share an
+index with furniture.
+
+The ladder still reads as a ladder, which is the other half of the law: ink
+10.70, muted 6.67, dim 3.54 against the middle of the range. Coming down far
+enough to be comfortable without landing on the second voice is the whole width
+of the move, and the test asserts that gap as well as the ceiling.
+
+**The light ladder's ink is untouched** at `#3B4252` — 10.06:1 against `#FFFFFF`
+and 8.73:1 against nord's `#ECEFF4`. It was measured against the same band and
+was already inside it, and a value in band is not touched. The test walks both
+ladders regardless.
+
+**And the transcript reaches the ink through a seam.** A model's markdown is
+rendered by `internal/tui2/prose`, which resolves colour from
+`internal/tui2/tokens`, whose body tier is brighter still — so the reply was
+painted by a palette this surface does not own while every row around it wore
+this one. Two whites, one screen, the louder on the thing people read most.
+`tokens.Styler.WithBodyInk` is the fix: the colour authority a caller hands
+prose may be asked to say the body tier in the caller's own voice. One Styler,
+one answer to *which white*, and the heading ladder, the code ramp and the
+raised plane under an inline span all stay prose's. The v2 surface keeps tokens'
+own white — the override travels on the Styler and never touches the table.
+
 ### Dark ladder, before and after this wave
 
 | role | before | after | H | S | L | in band? |
 | --- | --- | --- | --- | --- | --- | --- |
-| ink | `#D8DEE9` | *unchanged* | 219° | 28% | 88.0 | reading tier |
+| **ink** | `#D8DEE9` | **`#C6CDDA`** | 219° | 28→21% | **88.0 → 81.6** | reading tier — see THE GLARE LAW |
 | accent | `#9DC3E6` | *unchanged* | 209° | 59% | **75.9** | signal — band top |
 | muted | `#7FA6C9` | *unchanged* | 208° | 41% | 64.3 | reading tier |
 | dim | `#6B7280` | *unchanged* | 220° | 9% | 46.1 | reading tier |
@@ -171,7 +238,7 @@ by name rather than by silence.
 | bad | `#D08770` | *unchanged* | 14° | 51% | **62.7** | signal |
 | ask | `#C08FE8` | *unchanged* | 273° | 66% | **73.5** | signal |
 | warn | `#EBCB8B` | *unchanged* | 40° | 71% | **73.3** | signal |
-| **data** | — | **`#88C0D0`** *(new)* | 193° | 43% | **67.5** | signal — the payload rule's datum hue |
+| **data** | — | **`#91C5D4`** *(new)* | 193° | 43% | **70.0** | signal — the payload rule's datum hue |
 | violet | `#8F6FA8` | *unchanged* | 274° | 25% | 54.7 | shared by both ladders; was the shell operator's until the transcript restraint greyed shell grammar — held in the table, currently unspent |
 
 Signal spread: **19.4 points before, 14.9 after** (unchanged by `data`, which sits mid-band).
@@ -260,7 +327,7 @@ datum inside it steps up one role.**
 | what | role |
 | --- | --- |
 | the prose | `dim`, or whatever quiet tier the surface already used |
-| a datum | `data` (`#88C0D0` dark / `#2C8A9E` light) — a model id, a figure, a count, a name, a key chord |
+| a datum | `data` (`#91C5D4` dark / `#2C8A9E` light) — a model id, a figure, a count, a name, a key chord |
 | something typeable | the chip a slash command already wears |
 | — | **never `accent`** |
 
@@ -273,11 +340,18 @@ different **kind** of thing, not a louder one. So data wear a hue of their own �
 the syntax-highlighting contract every calm terminal theme keeps (greyscale for
 prose, colour for identifiers) — sitting inside the fifteen-point signal band so
 a line full of data still reads as one quiet field until somebody looks.
-`#88C0D0` resolves to xterm-256 **110**, one clear step from the accent's 146;
-`#2C8A9E` to **31**, colliding with nothing on the light ladder. The key–value
-legends (a card's `enter open · ctrl+t new chat here`, the foot hints, the task
-card's keys) are written in the hint grammar and painted by the same mechanism,
-so every key/verb pair splits the same way everywhere.
+`#91C5D4` resolves to xterm-256 **116**, one clear step from the accent's 146;
+`#2C8A9E` to **31**, colliding with nothing on the light ladder. The dark value
+was nord's own `#88C0D0` for four waves and it **did** collide: `#88C0D0` rounds
+to **110**, which is `muted`'s index and a steel blue rather than a cyan, so on
+every 256-colour terminal the datum wore the second voice's own colour. Only the
+lightness moved (L 67.5 → 70.0, hue and saturation held), and
+`TestNoTwoRolesShareA256Index` now walks the whole table on both ladders so the
+next one fails instead of shipping.
+
+The key–value legends (a card's `enter open · ctrl+t new chat here`, the foot
+hints, the task card's keys) are written in the hint grammar and painted by the
+same mechanism, so every key/verb pair splits the same way everywhere.
 
 **The chip is the slash command's mark and is not lent out.** A key chord is
 typeable too, and the obvious move was to give the chords in the legend and the

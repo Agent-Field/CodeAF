@@ -257,20 +257,38 @@ func (a *Agent) WatchTaskRoom(id uint64) (<-chan Event, func(), error) {
 }
 
 // TaskJournal is the node's journal path — its whole transcript on disk — or ""
-// for an unknown id.
+// for an unknown id, and for a node whose transcript cannot be found.
 //
 // The path is recorded when the node's child agent is built, because that is
 // where it is minted: [taskJournalPath] stamps the current time into the name,
-// so recomputing it later would name a file nobody ever wrote. A node from a
-// checkpoint of an earlier life answers "" — its journal is on disk under the
-// same session directory, but this process never learned which file it is, and
-// a guessed path is worse than none.
+// so recomputing it later would name a file nobody ever wrote. It survives the
+// process on the checkpoint (task_store.go's taskRecord.Journal), which is what
+// lets a finished task's room replay after a restart.
+//
+// A NODE FROM A CHECKPOINT THAT NEVER CARRIED THE PATH IS LOOKED UP BY ITS ID.
+// The file is named with the node's id in the session's own journal directory
+// — the same directory [taskJournalPath] mints into — so it is found rather
+// than guessed ([findTaskJournal]); a name that is not on disk answers "" as it
+// always did. What is found is written onto the node and checkpointed, so the
+// lookup happens once per node per life rather than on every open.
 func (a *Agent) TaskJournal(id uint64) string {
 	node := a.taskNode(id)
 	if node == nil {
 		return ""
 	}
-	return node.journalPath()
+	if path := node.journalPath(); path != "" {
+		return path
+	}
+	a.mu.Lock()
+	dir := taskJournalDir(a.familyPlace(node), a.sessionID())
+	a.mu.Unlock()
+	path := findTaskJournal(dir, node.id)
+	if path == "" {
+		return ""
+	}
+	node.setJournal(path)
+	node.graph.checkpoint()
+	return path
 }
 
 // taskNode finds one admitted node, without BUILDING a graph that a question

@@ -493,15 +493,20 @@ func TestTheTargetIsInkAndTheNameIsMuted(t *testing.T) {
 			break
 		}
 	}
-	name := "\x1b[38;2;127;166;201mread"           // muted accent
-	target := "\x1b[38;2;216;222;233minternal/ses" // primary ink
+	// The three sequences are INTERPOLATED from the palette rather than spelled
+	// out, because what this test is about is which ROLE lands on which run — and
+	// a hand-written escape sequence turns every retune of a role into a failure
+	// here about nothing a reader would ever notice. The body ink came down for
+	// THE GLARE LAW and this test failed on the bytes it used to be.
+	name := sgrTrue(hueMuted) + "read"
+	target := sgrTrue(hueInk) + "internal/ses"
 	if !strings.Contains(line, name) {
 		t.Fatalf("the tool name is not the muted accent: %q", line)
 	}
 	if !strings.Contains(line, target) {
 		t.Fatalf("the target is not primary ink: %q", line)
 	}
-	if strings.Contains(line, "\x1b[38;2;107;114;128minternal/") {
+	if strings.Contains(line, sgrTrue(hueDim)+"internal/") {
 		t.Fatalf("the target was dimmed: %q", line)
 	}
 }

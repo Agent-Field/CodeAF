@@ -7,8 +7,9 @@
 `alt+enter` opens a new line inside the message without sending. `ctrl+j` does the
 same thing — it is a second spelling for terminals that swallow `alt+enter`.
 
-`shift+enter` is **not bound** anywhere in the v3 chat. If you press it, nothing
-happens. Use `alt+enter` or `ctrl+j`.
+`shift+enter` does **not** open a line. While a turn is running it **stops the answer
+and sends what you have typed** — see "Interrupt and say something new in one key"
+below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -49,6 +50,7 @@ reply. The box is cleared, so you can keep typing.
 | the answer finishes | the waiting message sends itself as an ordinary new turn |
 | several are waiting | one per finished turn, oldest first, in the order you typed them |
 | `esc` | stops the answer and sends the waiting message immediately |
+| `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
 | `enter` again | holds the edited sentence again |
@@ -69,6 +71,61 @@ whose last request has already gone out has no boundary left, so a message pushe
 it would land in the transcript with nothing coming to answer it. Waiting for the turn
 to end means the message always gets a reply, and it is what makes the message editable
 until it goes.
+
+## Interrupt and say something new in one key — barge in, stop it and tell it something else
+
+`shift+enter` while a turn is running **stops the answer and sends what is in the box**,
+as one gesture. It is the two keys `enter` then `esc` collapsed into one, for the moment
+you are watching an answer go the wrong way and want to say "no — the other file" *now*
+rather than after it finishes.
+
+What happens, in order:
+
+1. Your sentence goes onto the waiting queue exactly as plain `enter` would put it there.
+2. The turn is interrupted: everything it already said is **kept**, and the note
+   `interrupted` is added, exactly as `esc` does it.
+3. When that turn has actually finished stopping, your message opens the **next** turn.
+
+Nothing is sent into the turn you stopped. The transcript reads in the order it
+happened: the partial answer, the `interrupted` note, then your message.
+
+**The box is cleared** the moment you press it, and the draft file it came from is done
+with — from your side you have said the thing. Attachments in the tray go with it.
+
+**What it does not do.** A `/`-command is run at once and the turn is **left running** —
+a slash command is something you said to aforge rather than to the model, so there is
+nothing to interrupt for. The same is true of a live `/task` or `/stand` tag, of a picked
+harness, and of a refusal. The rule is simple: the turn is stopped only if the key
+actually queued a message.
+
+**With an empty box it does nothing at all** — not even a plain interrupt. Use `esc` for
+that. With nothing running it also does nothing: `enter` already sends.
+
+**It marks nothing.** `ctrl+enter` is the chord that means "keep this true"; this one
+means "instead of that". One key does not do both.
+
+**Where it does not exist.** Inside a **task room** there is nothing for it to mean —
+`enter` in a room steers the node there and then, with no queue to jump, and a room's way
+of ending work is `x` and a card that asks first. The chord is ignored there.
+
+**Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
+can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
+modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
+and your message simply **waits**, which is the safe half of the same meaning; nothing is
+lost and nothing breaks. On those terminals aforge also **never advertises the chord**:
+the line under the box keeps saying `esc interrupt`. If you never see
+`shift+enter stops and sends` there, that is why — use `enter` then `esc` instead, which
+works everywhere.
+
+**The line that teaches it.** While a turn is running and you have typed something, the
+right end of the row under the message box reads exactly:
+
+```
+enter waits · shift+enter stops and sends
+```
+
+It is shown only in that state — a turn running, something in the box, and a terminal that
+can deliver the chord. Over an empty box it goes back to `esc interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
@@ -92,26 +149,41 @@ The one thing that is not answered is a message you queued with `ctrl+q` for a
 turn you then **interrupted**. A drain never restarts a turn you stopped, so those
 are dropped — press `enter` again to send it.
 
-## Interrupting a running turn — how to stop it
+## Interrupting a running turn — how do I stop it mid answer
 
 Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
 is stopped and everything it already said is kept.
 
 What happens:
 
-1. The session is told to stop, the state becomes `interrupted`, and a note
-   `interrupted` is added to the conversation.
-2. Any queued follow-ups are dropped, and aforge says so — `1 queued message
+1. The session is told to stop, and a note `stopped` is added to the conversation.
+2. The screen stops on the key: every spinner goes, and every call that was running keeps
+   the time it ran until you stopped it.
+3. Any queued follow-ups are dropped, and aforge says so — `1 queued message
    dropped`, or `N queued messages dropped`.
-3. `interrupted` stays as the status word until the next turn starts.
-4. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
+4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
+   status word until the next turn starts.
+5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
+**The words aforge uses for one stop.** They are four slots and one key press, so they
+are worth reading together: `stopping` is the status word while the turn is being let go,
+`interrupted` is the status word once it is over, `· stopped` is the note left in the
+conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. If
+you are looking for the word *interrupted* anywhere else on the screen, that is where it
+is — the status line, and only after the turn has truly ended.
+
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
-yours is waiting for the answer to finish. On the very first frame of a session the
-conversation carries the note `esc interrupts · ctrl+c twice quits`.
+message box reads exactly `esc interrupt` — or `enter waits · shift+enter stops and
+sends` while you have typed something and this terminal can deliver that chord, or `esc
+stops and sends` while a message of yours is already waiting for the answer to finish. On
+the very first frame of a session the conversation carries the note
+`esc interrupts · ctrl+c twice quits`.
+
+**Stopping it and saying something new at once.** `shift+enter` does both in one key —
+see "Interrupt and say something new in one key" above. `esc` on its own stops without
+sending anything you have not already committed with `enter`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
 the interrupt last: a history recall is cancelled first, rewind is armed on the way
@@ -123,6 +195,30 @@ past, and any open list or overlay takes the key before the message box sees it.
 time straight away does not quit either: the press that stopped the turn does not
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Why is the turn still finishing after esc — the stopping window
+
+`esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
+`bash` call whose command left something holding its output waits up to three seconds
+before the pipes are forced shut, and a `jobs` kill spends two seconds on a polite signal
+and two more on the one that is not polite. For those seconds the status line reads
+`stopping` rather than `interrupted`, and that is the honest word: the work is being let
+go rather than gone.
+
+**Nothing moves in that window and nothing new is drawn.** The spinners are already gone
+from the status line and from every tool row. Any consent question, account offer or
+harness offer that was open is taken down on the key, because each was about work that is
+now over. Whatever the model says while the turn winds down is not shown — a sentence it
+was still speaking stops where it was, and a call it was half-way through asking for never
+becomes a row. Two things do still land, because neither can draw anything new: a call
+that was **already** on screen reports its own result if it returns in that moment, and
+what the turn spent is still counted.
+
+**No key makes it stop harder, and there is no second stage.** A second `esc` inside half
+a second is the rewind's door and `ctrl+c` is the quit arm, so neither is free — and there
+would be nothing behind a third key: the waits that make this window long are inside a
+tool that has already been cancelled. If something genuinely will not let go, `ctrl+c`
+twice quits and takes it with it.
 
 ## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
@@ -206,9 +302,12 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
 | `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
-`shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
+`shift+enter` does **not** open a line — use `alt+enter` or `ctrl+j` for that. It needs a
+terminal that can tell it apart from a plain `enter`; where it cannot, the key arrives as
+an ordinary `enter` and the message waits instead.
 
 ## Keys in the message box: opening things and moving the view
 
@@ -219,7 +318,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
-| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine. Does nothing when the box has words in it, or on a machine with nowhere else to go |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -696,9 +795,10 @@ cancel`.
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
 
-**Welcome box:** it takes only two keys, and only over an empty message box —
-`up`/`down` walk the recent sessions and `enter` opens the selected one. Every other
-key dismisses the box and then does whatever it normally does.
+**The empty screen's greeting:** it takes only two keys, and only over an empty message
+box — `up`/`down` walk the recent sessions listed under it and `enter` opens the selected
+one. Every other key dismisses the greeting and then does whatever it normally does; the
+first letter you type lands in the box, which is drawn inside the greeting until then.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
@@ -837,16 +937,22 @@ meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box holding exactly one space,
 takes both away and opens home — so a leading space you actually wanted is never eaten
-(space then `x` leaves ` x`). It does nothing when the box has words in it, nothing on a
-machine with nowhere else to go, and it is not a paste: text pasted with two leading spaces
-is two spaces.
+(space then `x` leaves ` x`). It does nothing when the box has words in it, it is not bound
+over `--host` where home refuses, and it is not a paste: text pasted with two leading
+spaces is two spaces. A machine with one conversation, or none, opens an empty home.
 
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
-When the box is empty and there is somewhere to go, the legend line above the box says so:
+When the box is empty, the legend line above the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type.
+you type, and it is absent only over `--host`.
+
+**The door does not ask what the machine holds.** It is open on a machine with only this
+conversation and on one with none, from the first minute, and starting a second
+conversation with `/new` changes nothing about it. It used to be shut until the launch
+found somewhere else to go, and that rule is gone (the home page, *space space does
+nothing*).
 
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
@@ -968,7 +1074,10 @@ The key falls through and does nothing only when there is no roster on the frame
 close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
 `ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
-empty column is still a column to close.
+empty column is still a column to close. On the untouched empty screen there is no
+column yet; there `ctrl+g` is a first keystroke like any other — the greeting goes and
+the key then closes the column it would just have raised, so a second press brings it
+back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
@@ -1065,6 +1174,12 @@ sentence stays a letter, always.
 Once answered the four go away and one dim line takes their place saying what you chose.
 The same four are clickable on the card. See the tasks page for what each answer does to
 the work.
+
+**Inside the task's room the same four keys need no selection.** The room is the task, so
+`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+at the foot of the page where `task finished — esc to return` would otherwise be, and the
+hint slot reads `a accept · l look again · n not right` while the question stands. The room
+and the card are one question: answer in either and both show the receipt.
 
 ## The mouse: what you can click
 
@@ -1304,6 +1419,10 @@ Two chords carry unrelated meanings. Which one you get depends on where you are.
 | Phone tool detail sheet | Lift the line cap |
 | Nothing selected | Fold or unfold this turn's tool cluster |
 
+Inside a task's page `ctrl+o` folds and unfolds the task's own turn, and scrolling up at
+the top of the page opens the fold as well; the fold line there reads `N earlier tool
+calls · scroll up or ctrl+o`.
+
 Two more chords surprise people:
 
 - **`ctrl+b` is copy mode, not emacs "left".** The alternate screen took your
@@ -1321,7 +1440,7 @@ answer:
 
 | Chord | Status |
 |---|---|
-| `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
+| `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
@@ -1407,6 +1526,10 @@ two-column gutter is work done on your behalf: thinking, tool calls and their de
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
 
+Indented reply text is also **greyer** than the answer, and carries no markdown — no
+bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
+the actual answer" on the screen page.
+
 ## How do I see what aforge did?
 
 This is the answer to "what did aforge just do", "show me the work behind that answer",
@@ -1417,14 +1540,22 @@ When a successful turn has work and a trailing answer, the finished work collaps
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
 elapsed time, the thinking block's time when there was one, and the real call count.
+There is a blank row between the chip and the answer under it.
+
+**A turn you stopped with `esc` says so instead**, and it collapses whole:
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
+A stopped turn never reached an answer, so there is no answer to leave out of the chip —
+that is the point of the wording. aforge's own lines about the stop (`· stopped`, and
+what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
 no transcript cursor, so the key chooses the latest completed turn's work in the
 conversation. Opening restores the existing bounded views: thinking remains its
 own chip and only the latest 3 tool calls show until those are opened separately.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
-answer are never hidden. Fold state belongs to this window; resumed sessions derive
-fresh closed chips from their saved entries.
+answer are never hidden — nor is a second message you sent into a running turn, which
+ends the chip above it and starts a new one. Fold state belongs to this window; resumed
+sessions derive fresh closed chips from their saved entries.
 
 **The chip is the conversation's alone.** A task's room, and a node's transcript inside an
 adaptive run's page, never fold their work: those pages are the machinery, and a chip there

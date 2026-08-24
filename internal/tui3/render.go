@@ -128,6 +128,14 @@ const toolWindow = 3
 // showsWork says this page IS the work rather than a conversation about it, so
 // nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
 // Only a room sets it.
+//
+// toolTail is how many of a folded turn's calls stay on screen, and zero means
+// [toolWindow]. Only a room sets it, and it sets it from the height of its own
+// view (room.go's [app.roomToolTail]) — because in a room the cluster IS the
+// page, and a fold that kept three calls of a hundred-and-twenty drew four rows
+// over a forty-row void with the history a person came to read nowhere in the
+// row list at all. The conversation leaves it zero on purpose: there the fold
+// sits among prose, and three is the designed compactness.
 type deck struct {
 	entries     []entry
 	unfolded    map[int]bool
@@ -135,6 +143,17 @@ type deck struct {
 	clock       bool
 	showsWork   bool
 	runningTurn int
+	toolTail    int
+}
+
+// window is the number of a folded turn's calls this deck keeps on screen: its
+// own tail where it set one, [toolWindow] otherwise. It is the ONE place the
+// two are reconciled, so a renderer never has to know which list it is drawing.
+func (d deck) window() int {
+	if d.toolTail > 0 {
+		return d.toolTail
+	}
+	return toolWindow
 }
 
 // conversation is the deck the transcript draws.
@@ -197,6 +216,13 @@ func (a *app) visible(width int) []row {
 //   - ONE blank after a cluster, before the text that follows it.
 //   - ONE blank before each user message: the turn boundary, the only
 //     structural silence this surface has.
+//   - ONE blank above THE ANSWER of a turn that did work (hierarchy.go's
+//     [answerBreath]). The rule above it covers the commonest shape and only
+//     that shape — an answer after a cluster — while a turn that thought and
+//     then answered, and a turn whose whole machinery collapsed into one chip,
+//     both put the answer hard against the row above it. The silence belongs to
+//     the ANSWER rather than to whatever preceded it. A turn with no work in it
+//     is given nothing and renders exactly as it did before the rule existed.
 //
 // Two rules can ask for the same gap — a cluster ending a turn, then the next
 // user message — and a gap asked for twice is still one gap, which is why each
@@ -212,6 +238,18 @@ func (a *app) layout(width int) []row {
 	// to promise and the marker is not laid out at all.
 	if line := a.earlierRow(width); line != "" && len(out) > 0 {
 		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
+	}
+	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
+	// notes deck it is deliberately not part of. It takes the ordinary block gap
+	// and no border of its own beyond the one named hairline on each live row.
+	if forming := a.preflightRows(width); len(forming) > 0 {
+		if len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
+		for _, text := range forming {
+			out = append(out, row{text: text, entry: -1})
+		}
+		closed = true
 	}
 	line, ok := a.harnessStepRow(width)
 	if !ok {
@@ -244,6 +282,13 @@ func (a *app) layout(width int) []row {
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
 	folds := a.deckFolds(d)
+	// THE ANSWER HIERARCHY IS DECIDED BEFORE A SINGLE BLOCK DRAWS (hierarchy.go).
+	// Which prose was narration and which was the answer is a fact about this
+	// LIST, and it is settled here — over the deck, so the conversation, a room
+	// and a node's transcript inside a run's page all get it from one pass — so
+	// that [app.renderEntry] can paint one block at a time without ever asking
+	// what surrounds it.
+	stampHierarchy(es, folds)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -345,7 +390,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			continue
 		}
 		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask ||
-			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) {
+			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
+			// [answerBreath]). It is asked HERE, inside the same condition as the
+			// four rules above it, because [gap] is not idempotent: two calls are
+			// two blank rows, and the commonest promoted answer follows a cluster
+			// that has already asked for the same silence.
+			answerBreath(es, i) {
 			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
 			// surface that interrupts a reply to ask something, and a question
 			// wedged against the sentence above it reads as part of that sentence.
@@ -540,14 +591,6 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
-	// AND A TASK COMMAND'S PRE-FLIGHT, for the reason all three of those are not:
-	// `shaping the brief…` carries a spinner and a count-up while the call is out
-	// (taskcommand.go's [app.preflightRows]), and both are functions of the frame.
-	// It rejoins the cache the moment the wait ends, which is the moment the line
-	// is taken away altogether.
-	if a.waiting(e) {
-		return a.renderEntry(i, e, width)
-	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -661,14 +704,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
 	case entryNote:
-		// A WAIT THAT IS STILL RUNNING IS NOT A NOTE YET. The lane's other lines
-		// are facts about work that is over, and a command's pre-flight is the one
-		// thing in it that is still happening — so while it is, it wears the
-		// spinner and the clock every other live row on this surface wears
-		// (taskcommand.go's [preflight]).
-		if a.waiting(e) {
-			return a.preflightRows(e, width)
-		}
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
 		// lane keeps its dim prose and its dim lead — a note is still the surface
 		// talking about itself — while the words the person typed the command to
@@ -729,17 +764,114 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // The index is carried in for one reason, and it is [app.renderEntry]'s: a
 // foot brightens under the pointer, and the pointer is a fact about a POSITION
 // in the list being drawn.
+//
+// ── INK SETTLES WHEN THE TURN ENDS ──────────────────────────────────────────
+//
+// The plain tail below — and ONLY the plain tail — is painted one lightness
+// step above the body, in [palette.live]. It is THE GROWING EDGE: the bytes
+// that arrived since the last promotion, the one thing on this screen that is
+// actually moving, and therefore the one thing THE ACCENT BUDGET (styles.go)
+// says may lead. When the turn settles, [entry.settled] flips, the row cache is
+// dropped with it (see [app.closeLive] and [app.entryRows]) and the same words
+// come back through [app.settledMarkdown] at the calm body tier. The eye is
+// drawn to the edge while it grows and history recedes on its own — no spinner
+// is added and no checkmark, so the emptiness law is kept THROUGH the
+// transition rather than around it.
+//
+// WHY ONLY THE TAIL, AND NOT THE PROMOTED HEAD. The head is
+// [app.renderMarkdown]'s output: already-styled spans, already through prose's
+// sanitizer, carrying headings, code chroma and emphasis of its own. Repainting
+// it would mean either wrapping styled runs in a second foreground — which the
+// inner SGR 39s would tear open halfway down the row — or reaching into the
+// renderer, and the tail is where the honest answer already is. THE HEAD IS THE
+// PART THAT HAS ALREADY STOPPED MOVING: every promotion is the surface deciding
+// those bytes are final enough to format, so the head being calm and the tail
+// being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
+	tags := a.taskReplyTagRows(e.replyTags, width)
+	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
+	//
+	// A block that more work opened under is narration, and it is drawn as what
+	// it is: the model's own words in the work column, one lightness step BELOW
+	// the body, with no markdown on them at all (hierarchy.go states the law and
+	// [app.workingProse] does the paint).
+	//
+	// It is asked BEFORE [entry.settled] because a demoted block has no live tail
+	// worth keeping. [entry.mdCut] — the promotion boundary a still-streaming
+	// block was cut at — stops mattering the instant the block stops being the
+	// answer: it is a bookkeeping mark about how much of a growing edge had been
+	// formatted, and there is no growing edge here. The whole text is wrapped at
+	// one tier, so a block demoted mid-sentence cannot come back as half rendered
+	// markdown and half plain.
+	//
+	// AND ITS TABLE FEET GO WITH IT. A foot is an offer to open something, and
+	// the affordances belong to the answer: [entry.feet] is keyed by row, these
+	// are different rows, and a stale foot would put a door on somebody else's
+	// line (mdtable.go).
+	if e.demoted {
+		e.feet = nil
+		return append(tags, a.workingProse(e.text, width)...)
+	}
 	if e.settled {
-		return a.settledMarkdown(at, e, width)
+		return append(tags, a.settledMarkdown(at, e, width)...)
 	}
 	e.feet = nil
 	var out []string
 	if e.mdCut > 0 {
 		out = append(out, a.renderMarkdown(e.text[:e.mdCut], width)...)
 	}
-	out = append(out, wrap(e.text[e.mdCut:], width)...)
-	return trimBlanks(out)
+	out = append(out, a.liveTail(e.text[e.mdCut:], width)...)
+	return append(tags, trimBlanks(out)...)
+}
+
+// liveTail is the growing edge of a streaming reply: the bytes since the last
+// markdown promotion, wrapped plain and painted at the live tier.
+//
+// It is a method of its own rather than four lines inside [app.assistantRows]
+// so that a test can ask for the same rows the renderer builds instead of
+// spelling the paint out a second time — a want that reimplements its subject
+// is a want that agrees with the bug.
+func (a *app) liveTail(text string, width int) []string {
+	rows := wrap(text, width)
+	for i, line := range rows {
+		// A ROW WITH NOTHING ON IT IS LEFT ALONE. Painting whitespace paints
+		// nothing a person can see and costs something a person can: [trimBlanks]
+		// decides what to drop by asking whether a row is blank, and a run of
+		// spaces wrapped in an escape stops answering yes — which would leave the
+		// gap at the foot of every reply that ends on a newline.
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		rows[i] = a.pal.live(line)
+	}
+	return rows
+}
+
+// taskReplyTagRows puts the cause immediately above the answer it prompted.
+// The request is copied as-is from the task record and omitted when empty.
+func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string {
+	var out []string
+	for _, tag := range tags {
+		title := taskTitleOf(tag.Title, tag.Request, tag.ID)
+		body := title
+		if tag.Request != "" {
+			body += " · \"" + tag.Request + "\""
+		}
+		ident := identFor(tag.ID)
+		glyph := ident.glyph
+		if a.pal.ascii || a.linear {
+			glyph = ident.ascii
+		}
+		rows := wrap(glyph+" "+body, width)
+		for i, line := range rows {
+			if i == 0 && strings.HasPrefix(line, glyph) {
+				out = append(out, a.taskMark(ident)+a.pal.dim(strings.TrimPrefix(line, glyph)))
+				continue
+			}
+			out = append(out, a.pal.dim(line))
+		}
+	}
+	return out
 }
 
 // stillWorking is how long a turn has to be silent before the indicator says
@@ -1062,10 +1194,16 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
+	// segCrew is the crew's preset word — `crew max` — the OTHER model dial,
+	// drawn at the head of the telemetry so it stands beside the conversation's
+	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
+	segCrew hudSeg = iota
 	// segOpen is how many conversations this terminal is holding, and how many
-	// of them want a person (keeper.go). It comes FIRST on the row because it is
-	// the only segment that is not about the conversation in front.
-	segOpen hudSeg = iota
+	// of them want a person (keeper.go). It comes first among the run's own
+	// facts — only the crew word, which belongs beside the model, stands ahead of
+	// it — because it is the only segment that is not about the conversation in
+	// front.
+	segOpen
 	segAmbient
 	// segKeeping is the standing side's own presence: how many things are
 	// keeping an eye on this project (homestanding.go). It sits beside segAmbient
@@ -1220,6 +1358,12 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 	left, span := a.identityParts()
 	a.modelSpan = span
 	parts := a.telemetry(width)
+	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
+	// this is a state and not width pressure, and a segment the row is not
+	// drawing has nothing to be fresh about ([app.statusQuiet]).
+	if a.statusQuiet() {
+		parts = quietParts(parts)
+	}
 	// The change clocks are stamped from the ASSEMBLED segments, before any
 	// width pressure is applied: a number that moved has moved whether or not
 	// this frame had room to say so.
@@ -1445,6 +1589,14 @@ func (a *app) telemetry(width int) []hudPart {
 			parts = append(parts, hudPart{kind: kind, text: text})
 		}
 	}
+	// THE TWO DIALS READ AS A PAIR. The identity cluster ends with the model the
+	// conversation talks to, and the telemetry begins with the crew word, so a
+	// frame wide enough for both shows `… · deepseek-v4-flash      crew max · …`:
+	// two facts, one gap, and no way to read `/crew max` as having moved the
+	// model beside it. It is the first thing after the delta to go when the row
+	// is short ([dropOrder]) — /status and the model picker's hint slot both say
+	// it in full — and it is nothing at all on a door with no profile.
+	add(segCrew, a.crewSegment())
 	add(segOpen, a.openSegment())
 	add(segAmbient, a.ambientSegment())
 	add(segKeeping, a.keepingSegment())
@@ -1468,6 +1620,41 @@ func (a *app) telemetry(width int) []hudPart {
 	word, _ := a.stateSegment()
 	add(segState, word)
 	return parts
+}
+
+// statusQuiet reports whether the status row is the untouched screen's: the
+// greeting is up, so nothing has been said, sent, spent or produced here yet.
+//
+// THE BILL AND THE METER ARRIVE WITH THE CONVERSATION. On the empty screen there
+// is nothing to bill and nothing but the prompt to meter, and `$0.00 · 9.4k/1.3M
+// · 1%` under a greeting asking for a first sentence was the first thing a
+// person on their own card read. The `$0.00` exception ([app.statusRows]'s law)
+// is untouched: it is about a session IN USE not having its segments jump
+// sideways, and from the first keystroke on — the frame on which the greeting
+// dissolves and the box moves anyway — every row is drawn exactly as it always
+// was.
+//
+// IT IS THE GREETING'S OWN STATE AND NOT A COUNT OF ANYTHING, for the reason the
+// column and the legend read the same state (task.go's [app.railQuiet],
+// view.go's [app.chrome]): the empty screen is one condition, and four pieces
+// of furniture that each derived "empty" their own way would come and go on
+// four different frames. And it governs THE ROW AND THE DECK AND NOTHING ELSE
+// — the status sheet and /status read the full segment set (statusdeck.go's
+// [app.deckItems], statusnote.go), because a person who asked what the context
+// holds is owed the prompt's size; only the row nobody asked is kept quiet.
+func (a *app) statusQuiet() bool { return a.welcome.open }
+
+// quietParts is the segment set with the bill and the meter taken out, for a
+// row that is [app.statusQuiet].
+func quietParts(parts []hudPart) []hudPart {
+	kept := parts[:0]
+	for _, part := range parts {
+		if part.kind == segCost || part.kind == segCtx {
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return kept
 }
 
 // openSegment is how many conversations this terminal holds and how many of
@@ -1504,6 +1691,9 @@ func (a *app) openSegment() string {
 // and it is ordered by how ACTIONABLE each segment is:
 //
 //	delta    what the session wrote — the only fact here about the past
+//	crew     which preset aforge's own calls are on — a setting, not a
+//	         measurement; it changes only when the person changes it, and
+//	         /status, the picker's hint and bare /crew all say it in full
 //	cache    an accounting nicety; the cost segment already carries the bill
 //	eta      a forecast, and the meter beside it is already painted the warning
 //	burn     nice to watch, but the clock on the state word says it is alive
@@ -1517,7 +1707,7 @@ func (a *app) openSegment() string {
 //	open     how many other conversations this terminal holds — true, and about
 //	         somewhere else; at forty columns what a person needs is what THIS
 //	         conversation is doing
-var dropOrder = []hudSeg{segDelta, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
+var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
 
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.
@@ -2024,6 +2214,15 @@ func (a *app) stateWord() (string, string) {
 	if word := a.dragWord(); word != "" {
 		return word, a.pal.accent(word)
 	}
+	// AND THE STOP OUTRANKS THE QUESTION, on that same reading turned around. A
+	// card still standing between the esc and the stream's close is asking about
+	// a call the cancellation has already released (session's consent.go), so
+	// "waiting · your call" would be this line naming the person as the thing
+	// holding up a turn they themselves stopped. What is true and actionable at
+	// that moment is neither — it is that the work is being let go.
+	if a.windingDown() {
+		return stoppingWord, a.pal.dim(stoppingWord)
+	}
 	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
@@ -2044,6 +2243,28 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+// stoppingWord is what the status line says between a person's esc and the
+// engine letting go of the turn ([app.windingDown]).
+//
+// IT IS THE PRESENT TENSE, AND THAT IS THE WHOLE OF WHAT IT ADDS. The line has
+// always gone straight to "interrupted" on the key, which is the truth about the
+// turn and reads, for the three or four seconds a real teardown can take, as a
+// claim that everything is over — so a person watching a tool that has not quite
+// let go presses the key again, harder, on a surface that already heard them.
+// "stopping" says the stop landed AND that the letting go is still happening,
+// and "interrupted" arrives behind it the moment it has.
+//
+// IT IS DIM, where "interrupted" is the soft red and "working" the accent. The
+// hues on this line are its loudness, and winding down is the quietest thing the
+// surface ever does: nothing is wrong, nothing is wanted, nothing is being
+// waited on by anybody but the machine. It carries NO SPINNER for the reason it
+// carries no colour — [app.stateSegment] draws the mark only in stateWorking, so
+// the line stills on the key and stays stilled, which is the whole point.
+//
+// IT NAMES NO KEY, and there is no line about it in the hint slot, because there
+// is no second key to name. See [app.interrupt] for why there is no hard stop.
+const stoppingWord = "stopping"
 
 // ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────
 //
@@ -2329,6 +2550,14 @@ func (a *app) legendRight(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
+	// lowest rung there is — a tip about a gesture the person has not used yet,
+	// drawn only over an idle box — and it takes the slot from the rest state
+	// below because that is what the rest state is for: the one line a newcomer
+	// reads when nothing is happening.
+	if tip := a.noticeHint(); tip != "" {
+		return tip
+	}
 	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
 	// other ways — the manual, /help, typing a slash — and home, until this
 	// line existed, was recoverable only by knowing it was there. So the rest
@@ -2531,14 +2760,44 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
-	case len(a.parks) > 0:
+	case len(a.parks) > 0 && a.parking():
 		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
 		// more thing than it did: it stops the turn AND sends what is parked
 		// (park.go). It outranks the plain interrupt below for the reason the
 		// armed rewind outranks it — the slot promises what the NEXT esc does,
 		// and that is no longer only a stop. It is spelled exactly as the block's
 		// own dim line spells it, so the two lines on one screen agree.
+		//
+		// AND IT ASKS [app.parking] AS WELL AS THE QUEUE, which is that agreement
+		// made structural rather than left to two authors. A message stays parked
+		// through the whole of the wind-down window ([app.windingDown]) and esc is
+		// inert for every frame of it, so the queue alone would keep this line
+		// standing over a key that does nothing — the one thing A HINT MAY ONLY
+		// NAME A KEY THAT WORKS forbids. The block's own dim line drops the same
+		// piece on the same question (park.go's [parkedWord]).
 		return parkedHint[1]
+	case a.bargeOffered():
+		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches
+		// the two things enter's neighbourhood now means — it waits, or the chord
+		// stops the answer and sends it (bargein.go). It is the ONE state this line
+		// is drawn in, which is the emptiness law: over an empty box there is
+		// nothing to send, at rest there is nothing to stop, and in either the line
+		// would be a permanent cheatsheet in the slot this surface stopped keeping
+		// one in.
+		//
+		// It ranks UNDER the parked block above, which is the slot's ordering law
+		// rather than an exception to it: while a message is already waiting, what
+		// the next esc does is the fact a person needs, and the block on screen is
+		// drawing its own dim line about the queue besides. Somebody who has parked
+		// a message has already found the queue; this line is for somebody who has
+		// not.
+		//
+		// AND IT IS ABSENT WHERE THE CHORD IS. [app.bargeOffered] asks the terminal
+		// before it asks anything else, so on a terminal that cannot spell
+		// `shift+enter` this case never fires and the plain interrupt below keeps
+		// the slot — the capability law reaching the advertisement and not only the
+		// key.
+		return bargeHint
 	case a.state == stateWorking:
 		return "esc interrupt"
 	case a.spell.asking:

@@ -131,7 +131,10 @@ var settingReaders = map[string]string{
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).
 	KeyTaskColumn: "TaskColumnAt",
-	KeyNerdFont:   "NerdFontChosenAt",
+	// The hints row names its accessor too: the surface reads it at boot and at
+	// every turn end, beside the mouse row (internal/tui3's notice.go).
+	KeyHints:    "HintsAt",
+	KeyNerdFont: "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls
@@ -242,6 +245,7 @@ var settingReaders = map[string]string{
 	// rather than the mapping they share, so a row that stops being read
 	// cannot be proven by its neighbours' call site.
 	KeySearchProvider: "SearchProviderAt",
+	KeyAPIKey:         "APIKeyAt",
 	KeyExaKey:         "ExaKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
 	// The Google pair is read by the v3 door, which turns it into the manager

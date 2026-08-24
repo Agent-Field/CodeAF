@@ -361,6 +361,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// Steering lands here, between batches: the transcript tail is a tool
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering()
+		if tags := a.takeReplyTags(); len(tags) > 0 {
+			hub.send(Event{Kind: EventTaskReplyTags, TaskReplyTags: tags})
+		}
 
 		// NOTHING TOO BIG TO FIT IS SENT AND HOPED OVER. The last thing before
 		// the wire, after steering has landed, because steering is part of the
@@ -1821,11 +1824,60 @@ func CompactThreshold(window int) int {
 	// bigger than a small window, and below ~21.8k it drove the threshold under
 	// the verbatim tail — every step over threshold, every pass finding nothing
 	// but the tail to summarize, forever. Half the window is the clamp because
-	// the tail is at most a quarter of it.
+	// the tail is at most a quarter of it. [compactTarget] sits between the
+	// two and carries the rest of the chain.
 	if half := window / 2; reserve > half {
 		reserve = half
 	}
 	return window - reserve
+}
+
+// compactTarget is how far a pass folds once it has fired, and IT IS STRICTLY
+// BELOW THE THRESHOLD ON PURPOSE. Until it existed the fold's stopping line was
+// the trigger itself: a pass folded the fewest batches that put the estimate
+// just under [CompactThreshold], the next step's few thousand tokens carried it
+// back over, and the pair ran once per step for the rest of the task — one live
+// run compacted fifteen times in six minutes, four to six messages a pass, with
+// the estimate never once going down. Every pass rewrites the transcript
+// prefix, so each one also threw away the provider's prompt cache, and the
+// session repaid the whole ~135k-token prompt on every request. The task was
+// not wrong; it was slow and expensive for no reason.
+//
+// The headroom is half the reserve the threshold already subtracts, so the
+// target sits at window − 1.5×reserve and is built from the same two constants
+// as the trigger rather than a third number free to drift from them. A pass
+// then buys itself roughly half a reserve of growth before the next one, which
+// on the default window is nearly ten thousand tokens — several steps, and a
+// prompt cache that gets to live through them.
+//
+// Invariant, extending the one in [CompactThreshold]:
+//
+//	CompactThreshold(window) > compactTarget(window) > keepRecent(window)
+//
+// The lower bound matters for the same reason the threshold's does: a target
+// under the verbatim tail is one no pass can reach, and a pass that cannot
+// reach its target folds everything foldable every time. On a small window the
+// half-window clamp on the reserve puts window − 1.5×reserve EXACTLY on the
+// quarter-window tail, so the headroom is also capped at half the distance
+// between the threshold and the tail — the target is then never lower than the
+// midpoint of the two, and the chain holds all the way down to windows where
+// the numbers stop meaning anything. Neither bound moves when compaction FIRES;
+// the trigger and the status meter's accent are [CompactThreshold]'s alone.
+func compactTarget(window int) int {
+	threshold := CompactThreshold(window)
+	if threshold <= 0 {
+		return 0
+	}
+	window = TrustedWindow(window)
+	headroom := (window - threshold) / 2
+	if gap := (threshold - keepRecent(window)) / 2; gap < headroom {
+		headroom = gap
+	}
+	return threshold - headroom
+}
+
+func (a *Agent) compactTargetTokens() int {
+	return compactTarget(a.window())
 }
 
 // keepRecentTokens is the verbatim tail budget, capped at a quarter of the
@@ -1833,8 +1885,15 @@ func CompactThreshold(window int) int {
 // is not a compaction at all, and without the cap a small-window session would
 // find nothing to summarize and overflow with the pass "succeeding".
 func (a *Agent) keepRecentTokens() int {
+	return keepRecent(a.window())
+}
+
+// keepRecent is [Agent.keepRecentTokens] as a function of the window alone, so
+// [compactTarget] can hold its invariant against the same figure the cut point
+// uses rather than a second reading of it.
+func keepRecent(window int) int {
 	keep := compactKeepRecentTokens
-	if quarter := a.window() / 4; quarter < keep {
+	if quarter := window / 4; quarter < keep {
 		keep = quarter
 	}
 	return keep
@@ -1932,8 +1991,11 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 //
 //  2. THE FOLD. If the transcript is still over threshold, the oldest ASSISTANT
 //     work is replaced by one marker line naming how much went and where it can
-//     be read. User messages are never folded: a person's own words are the one
-//     thing in a transcript that nothing else can reconstruct.
+//     be read, and the fold runs down to [compactTarget] — below the threshold
+//     by half a reserve, so the pass that just ran is not the pass that runs
+//     again after the next step. User messages are never folded: a person's
+//     own words are the one thing in a transcript that nothing else can
+//     reconstruct.
 //
 // What the model is handed instead of a summary is the STATE CARD, which rides
 // in the system prompt on every turn and is maintained incrementally by the
@@ -2071,9 +2133,15 @@ func compactionHint(pass compactionPass, before, after int) string {
 // with a 400 — on this request and on every request after it, because the
 // transcript is append-only — so the walk moves in whole batches and stops on a
 // batch boundary.
+//
+// The walk stops at [compactTarget], NOT at the threshold that started the
+// pass: stopping at the trigger is what made a pass fire again one step later
+// (see compactTarget for the run that proved it). A walk that runs out of
+// foldable material before it gets there still succeeds with what it took —
+// the target is how far to go, never a condition on the pass.
 func (a *Agent) foldLocked(stored bool) (int, string) {
 	limit := a.cutPointLocked()
-	target := a.compactThreshold() * bytesPerToken
+	target := a.compactTargetTokens() * bytesPerToken
 	total := 0
 	for _, message := range a.messages {
 		total += messageBytes(message)

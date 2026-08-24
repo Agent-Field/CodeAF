@@ -45,6 +45,9 @@ import (
 // says how many, and ctrl+o (or a click on that line) unfolds them. One call
 // opens inline — click it, or select it with ↑/↓ and press enter — and shows a
 // tool-shaped expansion under the rail rather than in a pane somewhere else.
+// A TASK'S PAGE KEEPS AS MANY AS ITS VIEW IS TALL instead of three, and there a
+// scroll up at the top of the page opens the fold too (render.go's
+// [deck.toolTail], room.go's [app.roomScroll]).
 
 // toolDetail is a call's payload as the surface holds it: the two display
 // fields internal/session sends (session.go's Event.Args and Event.Output),
@@ -110,14 +113,20 @@ type toolDetail struct {
 // The deck is carried in rather than read off the app because a task's page is
 // drawn by this function too, from its own list and its own fold state
 // (render.go's [deck], room.go): one cluster renderer, two lists.
+//
+// THE WINDOW IS THE DECK'S AND NOT A CONSTANT'S. The conversation keeps
+// [toolWindow]; a room keeps a tail sized to its view ([deck.window]), so that a
+// fold never starves the screen — only the overflow folds. One renderer, two
+// lists, and the fold's sentence names the gesture each list answers.
 func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
 	turn := d.entries[from].turn
 	start := from
-	if to-from > toolWindow && !d.unfolded[turn] {
-		start = to - toolWindow
-		fold := a.pal.dim(a.pal.toolGlyph() + foldWord(start-from))
+	if window := d.window(); to-from > window && !d.unfolded[turn] {
+		start = to - window
+		word := foldWord(start-from, d.toolTail > 0)
+		fold := a.pal.dim(a.pal.toolGlyph() + word)
 		if a.hoveringFold(turn) {
-			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(foldWord(start-from))
+			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(word)
 		}
 		out = append(out, row{text: fold, entry: -1, hit: hitFold, turn: turn})
 	}
@@ -128,13 +137,27 @@ func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
 }
 
 // foldWord is the fold line's sentence. It names the key that opens it, because
-// a surface that hides something without saying how to see it has hidden it.
-func foldWord(n int) string {
-	if n == 1 {
-		return "1 earlier tool call · ctrl+o"
+// a surface that hides something without saying how to see it has hidden it —
+// and on a task's page, where scrolling up at the top opens it too, it names
+// the scroll first, because that is the gesture a person reading history is
+// already making (room.go's [app.roomScroll]).
+func foldWord(n int, scrolls bool) string {
+	opens := foldKeyWord
+	if scrolls {
+		opens = foldScrollWord
 	}
-	return strconv.Itoa(n) + " earlier tool calls · ctrl+o"
+	if n == 1 {
+		return "1 earlier tool call" + opens
+	}
+	return strconv.Itoa(n) + " earlier tool calls" + opens
 }
+
+// The two endings of the fold's sentence: the conversation's, and the room's.
+// They are constants because the manual quotes them and a test pins each.
+const (
+	foldKeyWord    = " · ctrl+o"
+	foldScrollWord = " · scroll up or ctrl+o"
+)
 
 // toolRows is one call: its line, plus its expansion when it is open.
 //

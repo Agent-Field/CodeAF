@@ -513,6 +513,7 @@ func (a *app) openStanding() { a.openStandingAt("") }
 // the page answers to leaves the cursor where [standPage.start] put it, which is
 // the honest answer to an order that has just been stood down in another window.
 func (a *app) openStandingAt(id string) {
+	a.noticeEvent(eventStandingOpened)
 	rows := a.standingRows()
 	if len(rows) == 0 {
 		a.note(standNothingWord)

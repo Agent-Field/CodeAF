@@ -369,7 +369,10 @@ type TaskNode struct {
 	// when the node lands.
 	room *taskRoom
 	// journal is where this node's transcript was written, recorded when its
-	// child agent was built. It is the node's history, and it outlives the room.
+	// child agent was built. It is the node's history, and it outlives the room
+	// — and the process: it rides the checkpoint (task_store.go's
+	// taskRecord.Journal), so a resumed session opens a finished task on its
+	// whole transcript rather than on a blank page.
 	journal string
 	// revise is the lane a DESIGN's thread asks for its page to be rewritten on,
 	// and nil on every other kind of node — which is what keeps the revise_design
@@ -1813,7 +1816,11 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 			}
 		}
 	}
-	reader.enqueueSteering(note)
+	message := wakeNote(note)
+	message.replyTags = []TaskReplyTag{{
+		ID: node.id, Title: node.title(), Request: node.request(),
+	}}
+	reader.enqueueNote(message)
 	reader.postTaskNews()
 }
 
@@ -3672,13 +3679,65 @@ func (a *Agent) journalID() string {
 // handed one path would be one agent with two names (task_audit.go).
 func taskJournalPath(place Place, session string, id uint64, suffix string) string {
 	name := fmt.Sprintf("%s_%d%s.jsonl", time.Now().Format("20060102-150405"), id, suffix)
+	return filepath.Join(taskJournalDir(place, session), name)
+}
+
+// taskJournalDir is the directory every one of a session's node transcripts is
+// written into: the session folder's tasks/, or the legacy parallel tree for a
+// session with no folder. It is the one answer to "where would this session's
+// task journals be" — [taskJournalPath] mints new names inside it and
+// [findTaskJournal] looks for old ones in it — so the two cannot look in
+// different places.
+func taskJournalDir(place Place, session string) string {
 	if journals := place.NodeJournals(); journals != "" {
-		return filepath.Join(journals, name)
+		return journals
 	}
 	// The legacy tree, through the one seam: os.UserHomeDir was read directly
 	// here, which is why AFORGE_HOME moved every other v3 file and left a node's
 	// transcript behind in the real home (Decision 26, "one home, one seam").
-	return filepath.Join(home.Dir(), "v3", "tasks", session, name)
+	return filepath.Join(home.Dir(), "v3", "tasks", session)
+}
+
+// findTaskJournal is the node's transcript found by its id rather than by its
+// name: the newest `<stamp>_<id>.jsonl` in the session's journal directory, or
+// "" when there is none.
+//
+// It exists for checkpoints written before the journal path was carried on the
+// record (task_store.go's taskRecord.Journal): the file is on disk and named
+// with the node's id, so a session that never learned the name can still find
+// the file. THE MAIN TRANSCRIPT ONLY — the stem must end in exactly `_<id>`, so
+// the audits (`_<id>-audit-<nonce>`) and repair rounds (`_<id>-repair1`) that
+// sit beside it under the same id are never mistaken for the run that IS the
+// node. Several mains under one id are a node that ran more than once — an
+// interrupt resumed — and the stamp leads the name, so the greatest name is the
+// latest run.
+func findTaskJournal(dir string, id uint64) string {
+	if strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	want := fmt.Sprintf("_%d", id)
+	var newest string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".jsonl")
+		if !strings.HasSuffix(stem, want) || stem == want {
+			continue
+		}
+		if name > newest {
+			newest = name
+		}
+	}
+	if newest == "" {
+		return ""
+	}
+	return filepath.Join(dir, newest)
 }
 
 // unwrapCompleter reaches past the session's own request wrapper.

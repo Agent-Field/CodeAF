@@ -242,6 +242,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.takeMouseBack()
 	}
 
+	// THE FIRST-RUN SETUP OUTRANKS EVERYTHING BUT ctrl+c, and it can afford to:
+	// it is up only on a launch where no turn has run, no question has been
+	// raised and nothing has been typed, so there is nothing under it a key
+	// could be aimed at (firstrun.go). ctrl+c is excepted as it is for every
+	// modal here — leaving is never modal.
+	if a.setup.open && msg.String() != "ctrl+c" {
+		cmd, _ := a.setupKeyPress(msg)
+		return cmd
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can
@@ -570,6 +580,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// other spellings of a different gesture entirely, and a chord that fell
 		// through to them would open a line where somebody meant to send.
 		return a.enterStanding()
+
+	case bargeKey:
+		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside
+		// the two chords above because it is the third reading of one hand shape —
+		// a modifier on the send — and it sits UNDER the standing mark for the
+		// same reason that one sits under enter: each of the three is a narrower
+		// claim than the one before it, and the narrowest is read last.
+		//
+		// It is above the newline pair below for standmark.go's reason exactly:
+		// those two are the other spellings of a different gesture, and a chord
+		// that fell through to them would open a line where somebody meant to
+		// stop an answer.
+		return a.bargeIn()
 
 	case "alt+enter", "ctrl+j":
 		// Open a line. Two spellings because terminals disagree about which one
