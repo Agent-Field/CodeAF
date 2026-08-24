@@ -259,6 +259,11 @@ Concretely:
 
 ## 5. The proposal
 
+> **Superseded on sequencing:** the phases below were ordered by value, not dependency.
+> `docs/remote-access-plan.md` replaces them with parallel lanes shipping as one wave
+> (one protocol bump instead of three), and adds the `furrow` assessment. The rungs and
+> their designs above remain the reference; only the A→D sequencing is retired.
+
 Phased so every phase ships a complete experience and no phase bets on infrastructure
 before the product has earned it:
 
