@@ -58,9 +58,20 @@ And two structural limits, which are the whole reason this document exists:
 
 There is also a known capability gap-list over `--host` (browser sign-ins, harness
 building, adaptive runs, the task rail, home) — each one currently refused honestly
-because its answer-channel would land in an empty room. Worth noticing: **most of these
-are consequences of limit 1, not of remoteness.** A persistent engine that can hold a
-question until *somebody* attaches dissolves several of them.
+because its answer-channel would land in an empty room.
+
+> **Corrected during the build, and worth keeping visible because the original guess
+> shaped the plan.** This paragraph used to claim that most of the gap list was a
+> consequence of the engine's lifetime, and that a persistent engine holding questions
+> would dissolve several of them. Reading the code rather than the comments showed
+> otherwise: harness building, subharness intake cards and adaptive runs raise their
+> cards on **subscriptions that never cross this wire at all**, and two of the three have
+> no resolve door on the remote agent either. The empty room was never their blocker, so
+> holding questions does not open them — what it takes is a lane on the wire for the card
+> and its answer, which is a separate piece of work. What held questions genuinely
+> unlock is narrower and real: **consent cards, standing proposals, harness offers and
+> connect asks now survive nobody being attached.** The stale "the card would land in an
+> empty room" reasoning has been removed from the code that carried it.
 
 *(Vocabulary note: `internal/resident` — v1's "employee that keeps working while the
 terminal is closed" — is a different product in the same binary. The persistent engine

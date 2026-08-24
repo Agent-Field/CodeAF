@@ -134,6 +134,15 @@ under held-card semantics or gets a new true sentence — each one is a small sc
 inside this lane, and the manual's `running-on-another-machine.md` is rewritten
 accordingly.
 
+> **Outcome: the gap list did not open, and the reason is instructive.** None of the
+> three capabilities was blocked by the empty room. Harness building, subharness intake
+> and adaptive runs all raise their cards on subscriptions that never cross the wire, and
+> two have no resolve door on the remote agent at all — so a question that could be
+> *held* was never the missing piece. Each carries its true reason now and the retired
+> sentence is gone from the code. Opening them for real means putting the card and its
+> answer on the wire, which is its own lane and is not in this wave. Held questions do
+> land, for consent cards, standing proposals, harness offers and connect asks.
+
 ### Lane B — surface resume + roaming *(medium; parallel with A via the fixture)*
 
 Redial loop with backoff around the transport spawn; resume-cursor replay; quiet
