@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -859,6 +860,12 @@ type app struct {
 	sizing bool
 
 	pal palette
+	// mdStyler is the painter prose is handed when this surface has MEASURED its
+	// terminal, and nil is the whole of "it has not" — every surface that never
+	// hears back from its terminal reads [markdownStyler]'s process-wide one, for
+	// the reasons that function states. See [app.styler]: this field is the seam
+	// THE GLARE LAW crosses when the ground stops being assumed.
+	mdStyler *tokens.Styler
 	// codeCache is the painted rows of the last few source blocks this surface
 	// lexed (codeview.go). Tool rows are drawn fresh on every frame by design, and
 	// this is what stops that from meaning "lex eight hundred lines thirty times a
@@ -1629,8 +1636,15 @@ func (a *app) Init() tea.Cmd {
 	// is opened here rather than at the first switch because the channel has to
 	// exist before a watcher can be handed it, and a pump started twice would be
 	// two readers on one lane.
+	// AND THE TERMINAL IS ASKED WHAT COLOUR IT IS, ONCE, HERE. It is the one
+	// standing command on this list that nothing waits for: a terminal that
+	// answers gets a palette derived against its real background (adaptive.go),
+	// and a terminal that stays silent — which is most of them, and every pipe —
+	// simply keeps the authored ladder it has been painting since the first
+	// frame. There is no timer behind it and no fallback path to take, because
+	// the fallback is what is already on screen.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
-		a.loadTasks(), a.stirLane()}
+		a.loadTasks(), a.stirLane(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -1659,6 +1673,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.resized(msg.Width, msg.Height)
 		}
 		return a, nil
+
+	case tea.BackgroundColorMsg:
+		// THE TERMINAL ANSWERED [app.Init]'s one unanswerable question. Everything
+		// that follows from it is adaptive.go's; this arm exists so that nothing
+		// else in this function has to know the surface can be re-coloured.
+		return a, a.groundReply(msg)
 
 	case resizeSettledMsg:
 		// The drag stopped moving, so the scroll is clamped once, against the
@@ -3118,6 +3138,14 @@ func (a *app) sampleContext() {
 
 // closeLive ends the assistant block being streamed into. A block nobody is
 // writing any more is a finished document, so it renders as one.
+//
+// THE STALE FLAG IS THE WHOLE OF THE SETTLE, and it is load-bearing rather than
+// tidy. [app.entryRows] hands back the rows it built last time unless something
+// says otherwise, and a settled entry is not one of the shapes that bypass the
+// cache — so without marking it here the block would keep the rows it was drawn
+// with mid-stream: unrendered markdown, and the live ink of render.go's growing
+// edge left bright on an answer that finished minutes ago. Setting both in one
+// statement is deliberate: the two facts are one event.
 func (a *app) closeLive() {
 	if a.live >= 0 && a.live < len(a.entries) {
 		e := &a.entries[a.live]
