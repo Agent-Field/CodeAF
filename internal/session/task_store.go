@@ -1038,7 +1038,15 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 	// sizing judge's own yes, which lived in the session that has gone; a task
 	// armed only by that comes back as one worker, which is the safe direction
 	// for a reading to fail in.
-	node.spec.divide = graph.home.armDivision(node.spec)
+	//
+	// THE KIND IS ASKED OF THE RECORD AND NOT OF THE REBUILT SPEC, because on
+	// this path the record is the only thing that knows. [taskSpec.design] is
+	// rebuilt from the Offer below, and a design whose page was never finished
+	// comes back carrying none at all — so [Agent.armDivision]'s own kind guard
+	// would read a design as ordinary work here and arm a page writer.
+	if record.Kind == "" {
+		node.spec.divide = graph.home.armDivision(node.spec)
+	}
 	// A QUEUED DESIGN IS ONLY EVER A FINISHED PAGE ASKING AGAIN ([interrupt]'s
 	// Offer branch), and the Offer is the one record that can rebuild the design
 	// spec the checkpoint otherwise never carries — without this line the
