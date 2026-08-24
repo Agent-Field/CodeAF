@@ -786,12 +786,16 @@ func (a *app) groundReply(msg tea.BackgroundColorMsg) tea.Cmd {
 // a finished string with escape sequences already inside it, so a palette that
 // changed under one is a row that will keep drawing yesterday's colours until
 // something else happens to make it stale — and on a transcript that is scrolled
-// back through, "something else" may be never. Four caches hold painted text and
-// all four are named here rather than trusted to expire:
+// back through, "something else" may be never. Six caches hold painted text and
+// all six are named here rather than trusted to expire:
 //
 //   - every entry on every deck reachable right now (render.go's build/width/
 //     stale key). The conversation, the open room's page, and a run's journal are
 //     three separate lists and a person can be looking at any of them
+//   - the promoted head of a streaming reply ([entry.mdHead]), whose key is the
+//     promotion's cut and the width and so cannot see a ladder move
+//   - the block a tool row hangs ([entry.hung]), whose key is the call's own
+//     payload and so cannot see one either
 //   - the highlighted source blocks (codeview.go), which are painted rows keyed
 //     by text and width and nothing else
 //   - the laid-out screen list itself, dropped by width so the next frame
@@ -814,6 +818,12 @@ func (a *app) repaintPalette() {
 	stale := func(entries []entry) {
 		for i := range entries {
 			entries[i].stale = true
+			// AND THE TWO MEMOS THE STALE FLAG DOES NOT REACH. Both hold painted
+			// rows behind keys made of the block's own content, so neither can
+			// notice a ladder that moved under it; both are simply forgotten, and
+			// the next frame pays for them once.
+			entries[i].mdHead = nil
+			entries[i].hung = nil
 		}
 	}
 	stale(a.entries)

@@ -4,22 +4,25 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE INPUT PATH, AND WHAT IT IS ALLOWED TO COST.
 //
-// Three things arrive in BURSTS on this surface and only one of them carries
-// three bursts' worth of meaning: a pointer sends a message per cell it crosses,
-// a terminal being dragged sends a size per step of the drag, and a paste
-// arrives as one message holding what a person spent an afternoon producing.
-// Every one of them used to pay for the whole transcript, or for the whole
-// draft, per message — which is why a session that felt instant on a laptop felt
-// like syrup over a link with a hundred milliseconds in it.
+// Four things arrive in BURSTS on this surface and only one of them carries four
+// bursts' worth of meaning: a pointer sends a message per cell it crosses, a
+// terminal being dragged sends a size per step of the drag, a paste arrives as
+// one message holding what a person spent an afternoon producing, and a provider
+// streaming a reply sends a hundred to two hundred text deltas a second. Every
+// one of them used to pay for the whole transcript, or for the whole draft, per
+// message — which is why a session that felt instant on a laptop felt like syrup
+// over a link with a hundred milliseconds in it.
 //
 // These tests state the ceilings rather than the timings. A ceiling holds on a
 // loaded CI box and a stopwatch does not.
@@ -208,10 +211,16 @@ func bigPaste(lines int) string {
 	return strings.Repeat("goroutine 42 [running]: main.step(0x1400, 0x2)\n", lines)
 }
 
-// A PASTE IS ONE MESSAGE, ONE EDIT AND ONE FRAME, however long it is. The
+// A PASTE IS ONE MESSAGE, ONE EDIT AND NO LAYOUT AT ALL, however long it is. The
 // bracket coalesces it (app.go), the box shows the six rows it can, and nothing
 // about its length reaches the transcript.
-func TestALargePasteIsOneEditAndOneFrame(t *testing.T) {
+//
+// NO LAYOUT AT ALL is the stronger ceiling this wave earned. Filling the box
+// changes the CHROME and the chrome is rebuilt every frame anyway; the laid-out
+// transcript underneath it cannot have changed, so [app.edited] no longer throws
+// it away (draft.go states the law). The frame after the paste therefore draws
+// the rows it already had.
+func TestALargePasteIsOneEditAndNoLayout(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.frame()
 	a.builds = 0
@@ -226,8 +235,8 @@ func TestALargePasteIsOneEditAndOneFrame(t *testing.T) {
 	}
 
 	a.frame()
-	if a.builds != 1 {
-		t.Fatalf("the frame after the paste built %d layouts, want one", a.builds)
+	if a.builds != 0 {
+		t.Fatalf("the frame after the paste built %d layouts, want none", a.builds)
 	}
 	block, _, _ := a.inputBlock(a.width - len(inputPad))
 	if len(block) > draftRows {
@@ -438,5 +447,111 @@ func BenchmarkResizeStep(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		a.Update(tea.WindowSizeMsg{Width: 90 + i%20, Height: 40})
+	}
+}
+
+// ── the stream ──────────────────────────────────────────────────────────────
+//
+// The fourth burst, and the loudest: a provider sends a hundred to two hundred
+// text deltas a second and bubbletea builds a frame per message. [waitEvent]
+// folds a run that is ALREADY QUEUED into one message, by internal/session's own
+// rule about which kinds are exactly their texts joined.
+
+// A RUN OF DELTAS ALREADY QUEUED IS ONE MESSAGE.
+func TestAQueuedRunOfDeltasArrivesAsOneMessage(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	for _, part := range []string{"the answer ", "is a sentence ", "in three parts."} {
+		ch <- text(session.EventTextDelta, part)
+	}
+	msg, ok := waitEvent(ch, 7)().(streamEventMsg)
+	if !ok {
+		t.Fatalf("the wait answered %T, want a stream event", msg)
+	}
+	if msg.gen != 7 {
+		t.Fatalf("the fold came back on generation %d, want 7", msg.gen)
+	}
+	if msg.then != nil {
+		t.Fatalf("a run with nothing behind it carried a stopper: %+v", *msg.then)
+	}
+	if want := "the answer is a sentence in three parts."; msg.ev.Text != want {
+		t.Fatalf("the fold reads %q, want %q", msg.ev.Text, want)
+	}
+	if len(ch) != 0 {
+		t.Fatalf("the drain left %d events on the channel", len(ch))
+	}
+}
+
+// AND THE EVENT THAT ENDED IT COMES WITH IT. The drain has to take an event off
+// the channel to find out whether it folds, and a channel cannot be put back —
+// so the one that stopped the run rides beside the run.
+func TestTheEventThatEndsAFoldTravelsWithIt(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventTextDelta, "reading it ")
+	ch <- text(session.EventTextDelta, "now")
+	ch <- toolBegin("read", "internal/tui3/app.go")
+	msg := waitEvent(ch, 1)().(streamEventMsg)
+	if msg.ev.Text != "reading it now" {
+		t.Fatalf("the fold reads %q", msg.ev.Text)
+	}
+	if msg.then == nil {
+		t.Fatal("the call that ended the fold was dropped")
+	}
+	if msg.then.Kind != session.EventToolBegin || msg.then.Tool != "read" {
+		t.Fatalf("the stopper is %+v, want the read that ended the run", *msg.then)
+	}
+}
+
+// AND TWO KINDS THAT ARE BOTH FOLDABLE STILL DO NOT FOLD INTO EACH OTHER:
+// reasoning and a reply are two blocks, and joining them would put the model's
+// thinking inside its answer.
+func TestReasoningDoesNotFoldIntoAReply(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventReasoning, "checking the loop")
+	ch <- text(session.EventTextDelta, "it parses.")
+	msg := waitEvent(ch, 1)().(streamEventMsg)
+	if msg.ev.Kind != session.EventReasoning || msg.ev.Text != "checking the loop" {
+		t.Fatalf("the reasoning event was folded into something else: %+v", msg.ev)
+	}
+	if msg.then == nil || msg.then.Kind != session.EventTextDelta {
+		t.Fatalf("the reply that ended the run is %+v", msg.then)
+	}
+}
+
+// AND A FOLDED RUN DRAWS WHAT THE DELTAS WOULD HAVE DRAWN. This is the whole
+// claim the fold rests on: [app.appendText] concatenates, so a joined text and
+// the texts joined are the same transcript.
+func TestAFoldedRunDrawsWhatTheDeltasWouldHave(t *testing.T) {
+	parts := []string{"## the answer\n\n", "it parses, ", "and the loop ", "is where it lands.\n"}
+
+	apart := newTestApp(&fakeAgent{model: "m"})
+	for _, part := range parts {
+		apart.apply(text(session.EventTextDelta, part))
+	}
+	apart.frame()
+
+	folded := newTestApp(&fakeAgent{model: "m"})
+	folded.apply(text(session.EventTextDelta, strings.Join(parts, "")))
+	folded.frame()
+
+	if got, want := strings.Join(plainRows(folded), "\n"), strings.Join(plainRows(apart), "\n"); got != want {
+		t.Fatalf("the folded run drew a different transcript:\nfolded:\n%s\n\napart:\n%s", got, want)
+	}
+}
+
+// AND A QUIET STREAM IS NOT MADE TO WAIT. The drain takes what is queued and
+// stops the instant it would block, so one event on its own is delivered as
+// promptly as it always was.
+func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
+	ch := make(chan session.Event, 8)
+	ch <- text(session.EventTextDelta, "one word")
+	done := make(chan tea.Msg, 1)
+	go func() { done <- waitEvent(ch, 1)() }()
+	select {
+	case msg := <-done:
+		if msg.(streamEventMsg).ev.Text != "one word" {
+			t.Fatalf("the lone delta came back as %+v", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the wait held a lone delta back looking for more")
 	}
 }
