@@ -291,7 +291,7 @@ the material is wider than one pair of hands. It says `adaptive run` only for a 
 graph has to be planned before anything starts. The row says `run harness` because it
 is the harness offer's row, reused; nothing about a saved harness is involved.
 
-- `enter` or `y` starts it: an adaptive run on the default **$2.00** tank, or one task,
+- `enter` or `y` starts it: an adaptive run on the default **$10.00** tank, or one task,
   admitted straight away from the goal the judge wrote.
 - `esc` or `n` drops it. Nothing started, nothing was written down, and the answer you
   already have is untouched.
