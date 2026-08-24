@@ -23,8 +23,13 @@ package session
 // wide ask is ONE task now, admitted with the road armed, and the worker hands
 // the parts out from the material rather than anybody guessing them from the
 // request (task_divide.go). `wide` is how the model says so, and it is the
-// model's half of the flip the typed `/task` front door already made — the
-// planner is what a person asks for, not what width reaches for.
+// model's half of the flip the typed `/task` front door already made.
+//
+// THE FLIP FINISHED: run_adaptive is off the belt outright, so this is not the
+// wider of two hands the model chooses between — it is the ONLY hand the model
+// has for work with parts in it. A planned graph is now something a person names
+// in so many words (orchestrate.go's anchored cue) and nothing a turn reaches for
+// on width.
 //
 // ── AND A TASK MAY HAND PART OF ITS OWN WORK OUT ──
 //

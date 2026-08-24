@@ -1781,11 +1781,11 @@ type Agent struct {
 	harnessPick *harnessRoute
 
 	// routeTurns counts the turns this session has finished and routeOffered is
-	// the one the route judge last raised a card on (route_judge.go). They are the
-	// whole of that feature's memory: the judge asks at most one question every
+	// the one the route judge last started work on (route_judge.go). They are the
+	// whole of that feature's memory: the judge starts at most one task every
 	// few turns, and "a few turns ago" is a number that only means anything if
-	// something is counting. Both are zero for the life of a session nobody ever
-	// offers anything to, which is most of them.
+	// something is counting. Both are zero for the life of a session nothing is
+	// ever started in, which is most of them.
 	routeTurns   uint64
 	routeOffered uint64
 

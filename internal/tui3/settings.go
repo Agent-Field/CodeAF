@@ -179,14 +179,15 @@ var settingUI = map[string]settingMeta{
 	// not — because that, and not the shape of the apparatus behind it, is the
 	// thing they are being asked to decide.
 	// And above the check, the other end of a task's life: what happens the
-	// moment you type /task. It reads as a preference about YOUR work — in pieces
-	// at once, or one thing at a time — rather than as a switch over machinery,
-	// because that is the question a person is actually answering here.
+	// moment you type /task. Both answers start ONE worker — the planned-graph
+	// answer went with the road it named — so what a person is choosing between is
+	// whether their brief is READ for width before that worker starts, and the row
+	// is written as that question rather than as a switch over machinery.
 	config.KeyTaskStart: {
 		tab: tabSession, label: "starting a task", widget: widgetCycle,
-		about: "what /task does with your brief: sized starts one worker that can " +
-			"split itself when the work turns out wide, adaptive plans the pieces up " +
-			"front, single starts one worker without reading the brief for width.",
+		about: "what /task does with your brief: sized reads it for width first, so " +
+			"the one worker that starts can hand the parts out once it has opened the " +
+			"material, single starts that worker without reading the brief at all.",
 	},
 	config.KeyTaskAudit: {
 		tab: tabSession, label: "check task work", widget: widgetCycle,

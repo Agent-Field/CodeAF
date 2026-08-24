@@ -37,13 +37,18 @@ package session
 // a tool that blocks without a bound of its own is the one way left to break the
 // turn's batch law (loop.go's runToolsWarm).
 //
-// ── THE FOUR VERBS ARE DISJOINT ──
+// ── THE THREE VERBS ARE DISJOINT ──
 //
 // propose_subharness runs a program that ALREADY EXISTS for this exact shape.
-// build_harness designs a new repeatable recipe. run_adaptive takes a many-part
-// goal with no known shape. propose_task hands out one self-contained piece of
-// ordinary work. A model that has three of the four reaches for the wrong one,
-// which is why each description names the other three.
+// build_harness designs a new repeatable recipe. propose_task hands out ordinary
+// work — one self-contained piece of it, or a wide job with `wide` set, which
+// starts ONE worker that hands the parts out once it has opened the material. A
+// model that has two of the three reaches for the wrong one, which is why each
+// description names the other two.
+//
+// THERE WERE FOUR, and the fourth was run_adaptive. It is off the belt entirely
+// (tools_harness.go): a chat turn may not open a planned graph any more, so no
+// description here may send the model at one.
 
 import (
 	"context"
@@ -69,7 +74,7 @@ import (
 // rule). When it fires, nothing has run and the model is told exactly that.
 const subharnessCardWindow = 15 * time.Minute
 
-var proposeSubharnessDescription = "Offer to run a SAVED PROGRAM that already does this exact shape of work. A subharness is a named procedure somebody kept — it takes typed input, produces a typed answer, uses only the tools it declared, and runs beside this conversation as its own task with a room, a number and a stop. Call list_subharnesses first: you can only propose one that exists, by its exact name. PROPOSE ONLY WHEN THE WORK IN FRONT OF YOU IS THAT SHAPE — the program's purpose is what the person is actually asking for, not merely adjacent to it. If you are reaching, say nothing: a wrong offer costs the person a decision they did not want to make, and nothing is lost by leaving it, because they can always ask. The reason is the whole of what they read before deciding, so write what MATCHED in their own terms — \"the brief and a failing test name are both here\" — and not a description of the program, which they can see. Nothing runs when you call this. The person is shown the program, your reason, and its form with whatever this conversation already answers already filled in; they change what is wrong, fill what is missing, and confirm — or they do not, and nothing happens. You are told which. Use it for work a saved program does; use build_harness to DESIGN a program for a shape that has none, run_adaptive for a large goal with many parts and no known shape, and propose_task for one self-contained piece of ordinary work."
+var proposeSubharnessDescription = "Offer to run a SAVED PROGRAM that already does this exact shape of work. A subharness is a named procedure somebody kept — it takes typed input, produces a typed answer, uses only the tools it declared, and runs beside this conversation as its own task with a room, a number and a stop. Call list_subharnesses first: you can only propose one that exists, by its exact name. PROPOSE ONLY WHEN THE WORK IN FRONT OF YOU IS THAT SHAPE — the program's purpose is what the person is actually asking for, not merely adjacent to it. If you are reaching, say nothing: a wrong offer costs the person a decision they did not want to make, and nothing is lost by leaving it, because they can always ask. The reason is the whole of what they read before deciding, so write what MATCHED in their own terms — \"the brief and a failing test name are both here\" — and not a description of the program, which they can see. Nothing runs when you call this. The person is shown the program, your reason, and its form with whatever this conversation already answers already filled in; they change what is wrong, fill what is missing, and confirm — or they do not, and nothing happens. You are told which. Use it for work a saved program does; use build_harness to DESIGN a program for a shape that has none, and propose_task for ordinary work — one self-contained piece of it, or a wide job with `wide` set, which starts one worker that hands the parts out once it has opened the material."
 
 const proposeSubharnessSchemaJSON = `{"type":"object","properties":{` +
 	`"name":{"type":"string","description":"The exact name of a saved subharness, as list_subharnesses spells it."},` +

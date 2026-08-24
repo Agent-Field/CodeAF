@@ -27,11 +27,14 @@ package session
 //
 // WHAT IS NOT HERE. Nothing in this file decides how much a run may spend, and
 // nothing in it decides that a turn wanted one. The cap comes from the person's
-// sentence, from the model's call, or from the default below; and a run is
-// commissioned from exactly two places — an anchored cue in what a person typed
-// ([orchestrateCue], which is a lookup and never a judgement) and the model's
-// own hand on the belt (tools_harness.go's run_adaptive, which is the judgement
-// and is where the sentences no cue can catch are read). A build with no runner
+// sentence or from the default below; and a run is commissioned from exactly ONE
+// place in a conversation — an anchored cue in what a person typed
+// ([orchestrateCue], which is a lookup and never a judgement). THERE WERE TWO:
+// the model had a `run_adaptive` hand on the belt, and it went with the wave that
+// left ordinary work one road, because a planner guessing the parts from a
+// request it can only read lost to a worker that opens the material first
+// (task_divide.go). So a planned graph is now something somebody asks for in so
+// many words and nothing a turn decides on their behalf. A build with no runner
 // wired (Config.OrchestrateRunner) never reaches past one nil check.
 
 import (
@@ -491,10 +494,13 @@ func (a *Agent) startOrchestrate(ctx context.Context, goal, model string, capDol
 //
 // IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT, and the bargain is worth stating
 // because a run costs money: a wrong yes here is a wrong yes with a fuel tank
-// attached. So the sentence says so in words or this path does nothing. The
-// judgement it refuses to make is not lost — it is the model's, on the belt
-// (tools_harness.go), where it is made once with the conversation in view
-// instead of on every turn against a regular expression.
+// attached. So the sentence says so in words or this path does nothing. THE
+// JUDGEMENT IT REFUSES TO MAKE IS NOT MADE ANYWHERE ELSE EITHER, and that is the
+// change this cue outlived: the belt used to carry it (`run_adaptive`) and does
+// not now, so nothing decides on a person's behalf that their work wants a
+// planner. Width is answered by the worker that opens the material instead
+// (task_divide.go), and this lookup is what is left for somebody who names a
+// planned run outright.
 //
 // It is anchored for the same reason that one is: "orchestrate the migration"
 // at the head of what somebody typed is a request, and the same words inside a
@@ -1129,9 +1135,11 @@ func (e *orchestrateExec) root() string {
 //
 // A RUN HAS NO SEPARATE DELIVERABLE OR DONE-CONDITION and this is where that
 // shows: a run's goal is also its title on the roster and in the room header
-// (roomorch.go draws it as one line), so the contract lives INSIDE the goal the
-// model writes rather than in fields beside it, and run_adaptive's schema is
-// what asks for it there. Everything else about the layout is decided in
+// (roomorch.go draws it as one line), so the contract lives INSIDE the goal
+// rather than in fields beside it. NOBODY ASKS FOR IT SEPARATELY ANY MORE —
+// run_adaptive's schema used to, and the one door left is a person's own
+// sentence read off an anchored cue ([orchestrateGoal]), which arrives as goal
+// and contract at once. Everything else about the layout is decided in
 // [composeBrief] and not here.
 func orchestrateRootBrief(request, goal string) string {
 	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "")

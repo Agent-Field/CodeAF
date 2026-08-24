@@ -320,8 +320,11 @@ question in an empty room. Build harnesses in a session running on that machine 
 
 **Adaptive runs are switched off over a remote connection**, and for the same reason: a
 run's fuel gate arrives on that same standing lane. A run left switched on would spend the
-money, stop at its cap, and wait four hours for an answer nobody could give it. The
-`run_adaptive` tool is simply not there.
+money, stop at its cap, and wait four hours for an answer nobody could give it. So this
+session is built with no adaptive runner at all, and the one door onto a run — a message
+beginning `orchestrate …` — does nothing here: those words run as an ordinary turn. That is
+a remote condition on the door, not on aforge: the same sentence opens a run in a session
+running on that machine directly.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering

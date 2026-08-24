@@ -2,37 +2,48 @@ package session
 
 // THE BIG MACHINERY, PUT IN THE MODEL'S HANDS.
 //
-// Two of this build's largest capabilities — designing a sub-harness, and
-// running an adaptive run — were reached by ANCHORED CUE and by nothing else:
-// a sentence that began "make a harness for …" started a designer, and one that
-// began "orchestrate …" started a run. Everything the person said in any other
-// shape went to the model, which has no verb for either and answered with prose
-// about harnesses instead of building one.
+// Designing a sub-harness was reached by ANCHORED CUE and by nothing else: a
+// sentence that began "make a harness for …" started a designer, and everything
+// the person said in any other shape went to the model, which had no verb for it
+// and answered with prose about harnesses instead of building one.
 //
 // THE DECIDING IS THE MODEL'S. That is the law this file exists to keep, and it
 // is worth stating plainly because the rest of this package leans the other way:
 // detection is a table lookup, the build cue was a table lookup, and both are
 // written that way because a model call on every turn is a tax and a wrong yes
 // is somebody's turn. A TOOL COSTS NEITHER. It is not consulted unless the model
-// reaches for it, so the judgement — is this work a saved recipe, a run, or just
-// work — is made once, by the thing in this program that can actually make it,
-// with the whole conversation in front of it. "Build me something that does this
-// every sprint" is a build; "we should make a harness for this one day" is not;
-// no regular language can tell those apart and no regex should have to try.
+// reaches for it, so the judgement — is this work a saved recipe, or just work —
+// is made once, by the thing in this program that can actually make it, with the
+// whole conversation in front of it. "Build me something that does this every
+// sprint" is a build; "we should make a harness for this one day" is not; no
+// regular language can tell those apart and no regex should have to try.
 //
-// WHAT THE TOOLS DO NOT DECIDE. Neither hand commits anything a person did not
-// approve. build_harness starts a design that ends in a card somebody says yes
-// to (harness_build.go), and run_adaptive starts a run against a fuel tank that
-// stops and asks when it is empty (orchestrate.go). The model chooses to ASK;
-// the person still chooses to keep and to pay.
+// THERE IS ONE ROAD FOR ORDINARY WORK, AND THIS FILE NO LONGER OPENS A SECOND.
+// The model used to carry `run_adaptive` here — a hand that started a planned
+// graph of nodes beside the conversation — and it is gone rather than gated,
+// because a verb the model has is a verb it reasons around: a plain research
+// question reached for the planner on width alone, before the road that actually
+// wins (one worker that divides itself from the material it opened,
+// task_divide.go) had been looked at once. So a chat turn now has propose_task
+// and nothing else for work that leaves it. THE PLANNER ENGINE IS UNTOUCHED —
+// orchestrate.go still runs it for a conversation, and cmd/harness-design runs
+// internal/orchestrate on a driver of its own — but in a conversation it is
+// reached only by somebody NAMING a run in so many words, off the anchored cue
+// ([orchestrateGoal]), never by a model deciding that this piece of work looks
+// wide.
+//
+// WHAT THE TOOLS DO NOT DECIDE. No hand here commits anything a person did not
+// approve: build_harness starts a design that ends in a card somebody says yes
+// to (harness_build.go). The model chooses to ASK; the person still chooses to
+// keep and to pay.
 //
 // EACH HAND IS ABSENT WHERE IT CANNOT WORK, which is this codebase's law for a
 // belt (tools.go) and matters more here than anywhere: a model told it can build
 // a harness plans around that ability for the rest of the conversation, long
 // after the first refusal. So the gates are the same ones the cue path checked —
 // a store to write into, a runner to run what is written, somebody watching who
-// can answer the card and the fuel gate — and a build that fails one of them
-// simply does not have the verb.
+// can answer the card — and a build that fails one of them simply does not have
+// the verb.
 
 import (
 	"context"
@@ -42,10 +53,9 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
-const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to a harness that is already SAVED is a new design, so say what the whole harness must do rather than only what is different. A design that is still on its card is not: the person changes that one by saying so in the design's own room and it is rewritten in place, so never start a second design because they want the first one altered. Use it for a recipe worth repeating; for one-off work use propose_task, wide or not — `wide` starts one worker that splits itself — and keep run_adaptive for the goal whose graph has to be planned before anything starts."
+const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to a harness that is already SAVED is a new design, so say what the whole harness must do rather than only what is different. A design that is still on its card is not: the person changes that one by saying so in the design's own room and it is rewritten in place, so never start a second design because they want the first one altered. Use it for a recipe worth repeating; for one-off work use propose_task, wide or not — `wide` starts one worker that splits itself once it has opened the material, so width is never a reason to reach past propose_task."
 
 const buildHarnessSchemaJSON = `{"type":"object","properties":{` +
 	`"goal":{"type":"string","description":"What the harness must do, self-contained. The designer never sees this conversation, so fold in whatever the person's words were pointing at: the work, the files, how a good result is checked."}` +
@@ -55,40 +65,22 @@ const listHarnessesDescription = "List the sub-harnesses saved on this machine: 
 
 const listHarnessesSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 
-// runAdaptiveDescription teaches the one judgement this hand needs, and THE
-// JUDGEMENT MOVED. A run used to be what "this has several parts" reached for,
-// and that made it the reflex for every broad ask: a person typed a plain
-// research question, the model announced a broad multi-source sweep, and a
-// planner graph opened before the division road — one worker that splits itself
-// from the material (task_divide.go) — had been looked at once. So this
-// description now teaches the run as THE DELIBERATE EXCEPTION. Width alone is
-// not the case for it; a shape that has to be declared before the work starts
-// is, and so is a person who asked to see a plan.
+// harnessTools are the model's hand on the one big machine it still starts, and
+// the list that says whether the thing it is about to design already exists.
 //
-// The default tank is interpolated rather than spelled, for the law a schema
-// that said 40 while the executor applied 200 broke: a number written twice is a
-// number that will disagree with itself.
-var runAdaptiveDescription = "Start an ADAPTIVE RUN: a planner and a fleet of small workers taking one goal apart as a graph of pre-declared nodes, beside this conversation. The planner cuts the goal into small nodes — one question, one artifact each, each with its own brief — and re-plans every time one lands; a node whose prerequisites are done starts immediately, and each is a child agent with a context of its own. One fuel tank in dollars caps the WHOLE run, planner calls included: it says so at 80%, and at 100% it finishes what is in flight, starts nothing new, and asks the person to top it up, finish on what is done, or stop. THE GOAL IS THE WHOLE CONTRACT — say what must exist at the end and how it is checked, not only what to look into — and the person's own message rides above it, verbatim, into the planner and into every node, so write your goal beside their words rather than instead of them. You get the run's id at once — the run outlives this turn, the person can watch its graph and steer it, and its write-up arrives here as a note. THIS IS THE EXCEPTION AND NOT THE ROAD FOR BROAD WORK. Reach for it in two cases only: the person asked for a planned graph — to see the plan, to steer the nodes, to run it as a fleet — or the work genuinely needs its structure settled before anything starts, because the nodes have different briefs and later ones are aimed by what the earlier ones find. A goal that is merely WIDE is not one of them: a sweep across many files, research across many sources, the same change repeated over many items all go to propose_task with `wide` set, which starts ONE worker that hands the parts out itself once it has opened the material — nobody has to guess the parts from the request. Do NOT use it for work you can do here, for wide or self-contained work (that is propose_task), or for a shape worth saving and repeating (that is build_harness)."
-
-var runAdaptiveSchemaJSON = fmt.Sprintf(`{"type":"object","properties":{`+
-	`"goal":{"type":"string","description":"The whole goal, self-contained, and written as a contract: what is to be found out or done, over what, WHAT MUST EXIST at the end and where it lands, and how anybody checks it is right. Open with one line naming the work — it is the run's title on the roster. The planner cannot see this conversation, but the person's own message is attached verbatim above this, so do not copy it in and do not contradict it."},`+
-	`"fuel_dollars":{"type":"number","description":"Dollars the whole run may spend, the planner's own calls included. Omit for %s. Name a bigger tank only when the person did: a run that empties its tank pauses and asks for more with its frontier on screen, which is a better question than a large number guessed before anything has run."}`+
-	`},"required":["goal"],"additionalProperties":false}`, orchestrate.Dollars(orchestrateDefaultCap))
-
-// harnessTools are the model's hands on the two big machines, and the list that
-// says whether one of them already exists.
+// They come as a pair because they are one decision with two answers — run what
+// exists, or build something that will exist — and a model that has the second
+// without the first builds a second harness for work this machine already knows
+// how to do.
 //
-// They come as a group because they are one decision with three answers — run
-// what exists, build something that will exist, or plan something one-off — and
-// a model that has the first two without the third builds a second harness for
-// work this machine already knows how to do.
+// THE THIRD ANSWER USED TO BE `run_adaptive`, and its absence is the point: the
+// belt this function returns is byte-identical to a world where the chat never
+// had a planner hand, which is what "absent, not refusing" means when the thing
+// being taken away is a verb (this file's header).
 func (a *Agent) harnessTools() []bare.Tool {
 	tools := a.designThreadTools()
 	if a.canDesignHarness() {
 		tools = append(tools, a.buildHarnessTool(), a.listHarnessesTool())
-	}
-	if a.canOrchestrate() {
-		tools = append(tools, a.runAdaptiveTool())
 	}
 	return tools
 }
@@ -101,12 +93,12 @@ func (a *Agent) canDesignHarness() bool {
 	return a.config.HarnessStore != nil && a.config.RunHarness != nil && a.config.AskConsent
 }
 
-// canOrchestrate is the run gate: a runner to launch one, and somebody watching
-// who can answer the fuel gate — a run nobody can top up is a run that stops
-// halfway and stays there.
-func (a *Agent) canOrchestrate() bool {
-	return a.config.OrchestrateRunner != nil && a.config.AskConsent
-}
+// THE RUN GATE THAT USED TO SIT HERE IS GONE WITH THE HAND IT GUARDED. It read
+// `OrchestrateRunner != nil && AskConsent`, and it was here because `run_adaptive`
+// was on the belt above. The one path left that may open a planned run spells the
+// same two conditions where it stands ([Agent.routeOrchestrate], orchestrate.go),
+// and a gate kept alive in this file for a caller in another one is the second
+// source of truth this codebase does not keep.
 
 // ── THE HAND A DESIGN'S OWN THREAD HAS ──────────────────────────────────────
 //
@@ -271,58 +263,6 @@ func (a *Agent) listHarnessesTool() bare.Tool {
 			}
 			out.WriteString("\nEach of these is on `/subharness` and runs from there, and each is offered by the turn itself when the person's words match it, and they answer that card.")
 			return out.String(), false, nil
-		},
-	}
-}
-
-// runAdaptiveTool launches one adaptive run and hands back its id.
-//
-// THE RUN OUTLIVES THIS CALL, which is the whole arrangement (orchestrate.go):
-// the tool returns as soon as the run is registered, the conversation carries
-// on, and the write-up arrives later as an ambient note. A tool that waited
-// would freeze the conversation for twenty minutes on work the person can watch.
-func (a *Agent) runAdaptiveTool() bare.Tool {
-	return bare.Tool{
-		Name:        "run_adaptive",
-		Description: runAdaptiveDescription,
-		Schema:      json.RawMessage(runAdaptiveSchemaJSON),
-		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed struct {
-				Goal string  `json:"goal"`
-				Fuel float64 `json:"fuel_dollars"`
-			}
-			if len(args) > 0 {
-				if err := json.Unmarshal(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
-				}
-			}
-			goal := strings.TrimSpace(parsed.Goal)
-			if goal == "" {
-				return "Invalid arguments: run_adaptive needs a goal — the whole thing to be worked on, written for a planner that cannot see this conversation.", true, nil
-			}
-			cap := parsed.Fuel
-			if cap <= 0 {
-				// A tank nobody named is the default, and a negative one is a
-				// model spelling "I did not choose" the wrong way. Neither is
-				// worth a refusal that costs the person the run.
-				cap = orchestrateDefaultCap
-			}
-			// The model is the conversation's own: the run's planner and its
-			// nodes think with whatever this session thinks with, and a run that
-			// picked its own model would be spending the person's money on a
-			// choice they never made.
-			id, err := a.startOrchestrate(ctx, goal, "", cap)
-			if err != nil {
-				return "The run could not be started: " + err.Error(), true, nil
-			}
-			if id == "" {
-				// The runner declined without saying why. Nothing started, and
-				// saying so is better than an id that names nothing.
-				return "Adaptive runs are not available in this build, so nothing started. Do the work here, or hand one self-contained piece to propose_task.", true, nil
-			}
-			a.announceOrchestrate(id, goal, "", cap)
-			return fmt.Sprintf("adaptive run %s started on a %s tank: %s", id, orchestrate.Dollars(cap), goal) +
-				"\nThe planner is cutting it into nodes now. It runs beside this conversation — the person can watch its graph, steer it, and answer it when the tank runs dry — and its write-up arrives here when it lands. Carry on rather than waiting.", false, nil
 		},
 	}
 }

@@ -27,9 +27,16 @@ and seen how many there really are. That is *When a task turns out to be too wid
 worker*, below. A no, a timeout or an unreadable answer starts the same one worker in
 silence, with no line about width, after `sizing it up…` disappears.
 
-`/task solo <brief>` skips the judge and starts one worker. `/task adaptive <brief>` skips
-it too and starts a planner and a fleet instead — that is the door to an adaptive run, and
-it is the only thing that opens one from `/task`.
+`/task solo <brief>` skips the judge and starts one worker.
+
+**There is no `/task adaptive` any more.** `/task` cannot open an adaptive run, and the
+word picks nothing. Type it and your brief is kept exactly as you typed it — the word is
+left where you put it rather than cut out of your sentence — the work starts as one
+ordinary worker, and one dim line says so:
+
+```
+/task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes
+```
 
 **Every `/task` has its brief shaped before the work starts.** Your words are kept word for
 word and a fuller brief is written around them — the constraints this kind of work needs,
@@ -122,8 +129,8 @@ field in an answer aforge was already paying for and already waiting on.
 
 **Where nothing named it, a small call does.** Some work reaches the roster with no name at
 all — only the sentence it was started from: a `/task` whose shaping could not run, work
-offered on a card you said yes to, an adaptive run's own row. That title is handed to the
-cheap `taskname` role, which reads the work and answers with two or three lowercase words.
+that started on its own after a words-only turn, an adaptive run's own row. That title is
+handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose
@@ -151,31 +158,27 @@ worker read the brief, not the name.
 **A sub-harness being designed keeps its own title** — `harness · <what you asked for>` —
 because its row is read as a design and not as a task.
 
-## Making adaptive or one worker the default — the starting a task setting, stopping the sizing call
+## Stopping the sizing call — the starting a task setting, making one worker the default
 
-`/task <brief>` asks you nothing, but what it starts is yours to set once and for all.
-`/settings` → Session → **starting a task**, or the `task.start` row:
+`/task <brief>` asks you nothing, and every answer here starts **one worker**. What the row
+decides is only what is paid to find out how wide the work is. `/settings` → Session →
+**starting a task**, or the `task.start` row:
 
 - **sized** — the default. The sizing call reads your brief, one worker starts either way,
   and a brief with independent parts in it starts a worker that is allowed to split itself
   once it has opened the material.
-- **adaptive** — a planner and a fleet up front instead, without asking. Parts found, the
-  adaptive run starts straight away; nothing to split, one worker starts, because a planner
-  over work with no independent parts in it is an extra model deciding nothing. This is an
-  **opt-in override**: a planner is not how wide work is normally done here, and setting
-  this row is you asking for one anyway.
 - **single** — one worker, and the sizing call is not made at all. Nothing is spent reading
   your brief for width, and nothing is said about it.
 
-`/task solo <brief>` and `/task adaptive <brief>` always mean what they say, whatever the row
-is set to.
+`/task solo <brief>` always means what it says, whatever the row is set to.
 
-**There used to be a fourth answer, `ask`, and a card to go with it.** A yes from the sizing
-call opened a two-row list reading “this parallelizes — how should it run?”, and you picked
-`adaptive` or `single`. Both are gone: the question was being put to the one person in the
-room who had not read the material yet, and it is now answered later and from evidence by
-the worker itself. A profile still set to `ask` reads as **sized**, which is the same one
-worker that dismissing the card used to start.
+**Two answers have been retired, and neither retirement is felt.** `ask` went first: a yes
+from the sizing call used to open a two-row list reading “this parallelizes — how should it
+run?”, and the question was being put to the one person in the room who had not read the
+material yet. `adaptive` went with it: it started a planner and a fleet without asking, and
+a chat turn may no longer open a planned run at all. A profile still holding either word
+reads as **sized**, silently — nothing errors, nothing is said, and you are not told that a
+preference you set months ago has gone.
 
 **Choosing `single` closes nothing off.** A single worker can still break its own brief into
 smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
@@ -212,30 +215,46 @@ Only one proposal is a live question at a time. If a second one arrives while th
 unanswered, the older card settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
 
-## Why aforge offered to run something as a task after answering me
+## Why a task started on its own — this looked like work, so task N started
 
-There is a second, smaller card, and it is not the proposal above. After a turn that
-answered a substantial message in **words alone** — no tool call — a cheap model reads what
-you asked and the first two lines of the reply and decides whether that should have been
-work. When it says yes, one row appears above the message box:
+**Sometimes work starts without you asking for it, and you are told after.** After a turn
+that answered a substantial message in **words alone** — no tool call — a cheap model reads
+what you asked and the first two lines of the reply, and decides one thing: should that have
+been work? When it says yes, the work is started there and then and one dim line goes into
+the transcript:
 
 ```
-? run harness "task"? · one self-contained sweep · [enter] run · [esc] no
+this looked like work, so task 4 started: audit the pricing code
 ```
 
-The name in quotes is the shape it is offering, and `task` is nearly always the one: it
-covers one self-contained job **and** wide work — a broad sweep, research across many
-sources — because a wide task starts one worker that splits itself once it has opened the
-material. It offers `adaptive run` only for a goal whose graph has to be planned before
-anything starts, or when you asked for a plan. It says `run harness` because it is the harness
-offer's row, reused; no saved harness is involved. `enter` or `y` admits the work straight
-away — from a self-contained goal that model wrote, with no second countdown, because the
-card **is** the consent. `esc` or `n` drops it and nothing happened.
+The number is the task's own, and the words after the colon are what it was started on. If
+the machine was already full the line reads `queued` instead of `started`, and the task
+begins when a lane frees up.
 
-It never starts anything by itself, it is asked at most once every three turns (so two
-cards can never arrive in a row), and it is silent on short messages, on turns that called
-tools, and wherever there is no screen to answer it. A task admitted this way behaves like
-every other task on this page from that moment on: a row on the roster, a room, a report.
+**There is no card and no key to press.** There used to be a row above the message box
+offering to run it, and it is gone: the question "shall I?" was being asked about work
+nobody had seen yet, and the task itself answers it better by existing — it is on the
+roster, it says what it is doing, and `x` stops it like any other task. Nothing else is
+different about it: a row, a room, a report, and everything else on this page.
+
+**What keeps it from becoming a nuisance:**
+
+- **At most one start every three turns.** Two can never arrive back to back, so a
+  conversation you have just taken back is not interrupted again on the next line.
+- **Nothing after a turn that used tools.** A turn that called tools was already work, and
+  asking whether work should have been work has no useful answer.
+- **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
+  the tests", "what does this key do" are answered in words by construction.
+- **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
+  no router model to ask are all silent.
+- **Silence when it cannot answer.** A judge that cannot be reached, or that replies with
+  anything but the small JSON object it was asked for, starts nothing and says nothing.
+
+**Stopping one you did not want** is the ordinary stop: `x` on its row over an empty message
+box, or the ✕ on the pointer. Nothing about it is special from the moment it exists.
+
+**There is no setting that turns this off.** No `/settings` row switches it, and nothing you
+type disarms it for the session. What bounds it is the list above, and the stop.
 
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
@@ -701,9 +720,9 @@ the only question the word can answer with no brief behind it — *what work is 
 **On a project that has never run a task it says `no tasks yet — /task <brief> starts one`**
 and opens nothing, which is the same refusal `/history` gives there.
 
-**The forms that start work are completely unchanged.** `/task <brief>`, `/task solo
-<brief>` and `/task adaptive <brief>` still size, shape and start the work directly, with
-no proposal card in between and no extra question.
+**The forms that start work are unchanged.** `/task <brief>` and `/task solo <brief>`
+still size, shape and start the work directly, with no proposal card in between and no
+extra question. There is no third form: `/task adaptive` is retired.
 
 **There is still no `/tasks` command.** The plural is not a word this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
@@ -1673,9 +1692,9 @@ what this section is about. It promises nothing: the two tests below still have 
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
 work broad — a sweep across many files, research across many sources, the same change over
 many separate items. It still starts **one** task, armed to split itself; it is not a
-planner and not three tasks. A run (*adaptive runs*) is the exception now, for a goal whose
-graph has to be planned before anything starts or a plan you asked to see, and not something
-width alone reaches for.
+planner and not three tasks. **There is no planner on my belt at all any more**, so width
+has nowhere else to go — an adaptive run is reached only by asking for one by name, and
+*adaptive runs* says which words do that.
 
 A task that was never read for width at all (`/task solo`, the `single` row, a proposal I
 did not mark wide) says nothing up front and can still split, off the items its own brief

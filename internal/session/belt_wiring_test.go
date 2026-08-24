@@ -7,21 +7,27 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
-// THE FOUR BIG HANDS, and whether the conversation actually has them.
+// THE BIG HANDS, and whether the conversation actually has them.
 //
-// build_harness, list_harnesses, run_adaptive and propose_task are how work
-// leaves a turn: a recipe worth repeating, the list that says whether one
-// already exists, a many-part goal, and one self-contained job. Each is
-// ABSENT-NOT-BROKEN by design (tools.go) — a missing seam takes the verb off the
-// belt rather than leaving it there to fail — which is exactly why a wiring
-// mistake in a shipping door is silent: the model simply never has the verb, and
-// nothing anywhere says so.
+// build_harness, list_harnesses and propose_task are how work leaves a turn: a
+// recipe worth repeating, the list that says whether one already exists, and one
+// self-contained job — wide or not, because `wide` starts one worker that hands
+// the parts out itself. Each is ABSENT-NOT-BROKEN by design (tools.go) — a
+// missing seam takes the verb off the belt rather than leaving it there to fail
+// — which is exactly why a wiring mistake in a shipping door is silent: the
+// model simply never has the verb, and nothing anywhere says so.
 //
-// So this is the test that fails when one of them is not there. The config below
-// is the SHAPE the v3 door assembles (cmd/aforge's chatv3.go): a registry to
-// design into, a runner to run what is designed, an adaptive runner, and a
-// surface that answers questions. cmd/aforge's own chatv3_belt_test.go pins that
-// the door fills those four seams; this pins what filling them buys.
+// THERE WERE FOUR, and the fourth was `run_adaptive`. It is off the belt for
+// good now (tools_harness.go): a chat turn takes ONE ROAD for ordinary work, and
+// the planner engine is reached only by somebody naming it. The adaptive runner
+// is still wired into the config below, exactly as the shipping door wires it,
+// so that this file keeps proving the absence is a decision rather than a seam
+// somebody forgot to fill.
+//
+// So this is the test that fails when one of the surviving hands is not there.
+// The config below is the SHAPE the v3 door assembles (cmd/aforge's chatv3.go):
+// a registry to design into, a runner to run what is designed, an adaptive
+// runner, and a surface that answers questions.
 
 // v3ShapedAgent is a conversation configured the way the interactive door
 // configures one.
@@ -40,12 +46,18 @@ func v3ShapedAgent(t *testing.T) *Agent {
 	return agent
 }
 
-func TestTheChatBeltCarriesTheFourBigHands(t *testing.T) {
+func TestTheChatBeltCarriesTheBigHands(t *testing.T) {
 	agent := v3ShapedAgent(t)
-	for _, want := range []string{"build_harness", "list_harnesses", "run_adaptive", "propose_task"} {
+	for _, want := range []string{"build_harness", "list_harnesses", "propose_task"} {
 		if !agent.hasTool(want) {
 			t.Fatalf("%s is not on the belt, so the model does not have the verb", want)
 		}
+	}
+	// AND NOT THE ONE THAT IS GONE, on the fully-wired shape where it would
+	// otherwise appear. This is the assertion that would have caught the verb
+	// coming back.
+	if agent.hasTool("run_adaptive") {
+		t.Fatal("run_adaptive is on the belt: a chat turn can open a planned run again")
 	}
 }
 
@@ -69,13 +81,8 @@ func TestEachBigHandIsAbsentWhenItsSeamIs(t *testing.T) {
 			drop: func(config *Config) { config.RunHarness = nil },
 		},
 		{
-			name: "no adaptive runner",
-			gone: []string{"run_adaptive"},
-			drop: func(config *Config) { config.OrchestrateRunner = nil },
-		},
-		{
-			name: "nobody watching to answer the card or the gate",
-			gone: []string{"build_harness", "list_harnesses", "run_adaptive"},
+			name: "nobody watching to answer the card",
+			gone: []string{"build_harness", "list_harnesses"},
 			drop: func(config *Config) { config.AskConsent = false },
 		},
 		{

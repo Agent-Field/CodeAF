@@ -56,13 +56,21 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
-// build_harness, list_harnesses and run_adaptive (tools_harness.go) are the two
-// big machines and the list that says whether one of them already exists: a
-// saved procedure this project can be offered again, and a planner-and-fleet run
-// against a fuel cap. They are the model's to reach for BY DESIGN — the
-// judgement "is this a recipe, a run, or just work" is one no cue list can make
-// — and each is absent where its machinery is (no registry, no runner, nobody
-// watching to answer the card or the fuel gate).
+// build_harness and list_harnesses (tools_harness.go) are the ONE big machine
+// left on this belt and the list that says whether the thing about to be built
+// already exists: a saved procedure this project can be offered again. They are
+// the model's to reach for BY DESIGN — the judgement "is this a recipe, or just
+// work" is one no cue list can make — and both are absent where their machinery
+// is (no registry, no runner, nobody watching to answer the card).
+//
+// THE PLANNER-AND-FLEET RUN WAS A THIRD HAND HERE (`run_adaptive`) AND IS NOT ANY
+// MORE. The judgement it asked the model to make — is this wide enough to plan up
+// front — is a guess made before anybody opens the material, and the road that
+// won makes it from the material instead: one task, admitted wide, handing the
+// parts out as it finds them (task_divide.go). The engine still ships and a
+// person can still name a run outright (orchestrate.go's anchored cue); the model
+// simply has no verb for it, which is what "absent, not refusing" means when the
+// thing taken away is a hand.
 //
 // settings and change_setting (tools_settings.go) are the person's own
 // configuration: the sheet read back by its registry keys, and one row of it
