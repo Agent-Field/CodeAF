@@ -56,9 +56,7 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 	if len(images) == 0 {
 		return images, nil
 	}
-	s.state.Lock()
-	workspace, place := s.engine.Workspace, s.engine.Place
-	s.state.Unlock()
+	workspace, place := s.session.folder()
 
 	out := make([]session.Image, 0, len(images))
 	for _, image := range images {
