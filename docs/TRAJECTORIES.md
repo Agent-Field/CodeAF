@@ -7,6 +7,12 @@ taken against `chat-v3-task` at `cd2370d7`. This tree moves under several
 sessions at once — re-grep an anchor rather than trusting the number if it does
 not land.*
 
+*Updated w42, 2026-08-24, by the lane that fixed C1, C2, C3, M1, M2, M4, m3, m14
+and M6(b). Verdict rows carry the date where they moved; the finding paragraphs
+under **FIXED** headings are left as they were written, because they are the
+evidence the fix was made against. Line numbers in this document are from w41 and
+have moved.*
+
 ## The world this is measured against
 
 Four laws, decided across waves 35–40, are what "as-intended" means here.
@@ -34,13 +40,16 @@ Four laws, decided across waves 35–40, are what "as-intended" means here.
 setting or manual page still steers wide work to the planner; the reword landed
 cleanly and a test pins both the new sentences and the absence of the old ones.
 
-**Two roads do not actually run.** `divide_work` has never been on a production
-belt (**C1**), and a subharness that falls back to the long way escapes the tool
-ceiling and the consent gate it was approved under (**C2**).
+**Two roads did not actually run, and both do now** (w42, 2026-08-24).
+`divide_work` had never been on a production belt (**C1**), and a subharness
+falling back to the long way escaped the tool ceiling it was approved under
+(**C2**). Both are fixed and pinned by tests through the real doors.
 
-**The rest is a short list of honest gaps** — one wide-work door that admits
-unarmed, one refusal that names the wrong cause, one ledger leak on the stop
-path, and a set of sentences that promise more than their code does.
+**The rest is a short list of honest gaps** — a set of sentences that promise
+more than their code does, and the restart, standing-firing and planner gaps
+below. The wide-work door that admitted unarmed (**M1**), the refusal that named
+the wrong cause (**C3**) and the ledger leak on the stop path (**M2**) were
+closed in the same lane.
 
 ---
 
@@ -71,11 +80,11 @@ path, and a set of sentences that promise more than their code does.
 | `propose_task` without `wide` | `task.go:279` → `:311` → admit `:412` | one node | enumeration only | countdown card (`task.go:570-593`); silence is yes | as-intended |
 | `propose_task` **with `wide`** | schema `task.go:119`, spec `:492` | **one node — `proposeTask` has no planner branch at all** | **yes**, signal one (`task_divide.go:195`) | same countdown | as-intended in routing; the description over-promises — **M6** |
 | `run_adaptive` (post-reword) | `tools_harness.go:286`, guard `:90` = `canOrchestrate` `:107` | planner DAG | n/a | none at launch; the fuel gate asks later | as-intended |
-| `build_harness` tail | `tools_harness.go:192` → `harness_task.go:453` → admit `:463` | a design node; the page is written, then carded | **it should not be, and it can be** — **M4** | save-or-discard card, and **no clock at all** (`harness_build.go:383-400`) | gap (latent) |
+| `build_harness` tail | `tools_harness.go:192` → `harness_task.go:453` → admit `:463` | a design node; the page is written, then carded | **no — the kind guard refuses it** | save-or-discard card, and **no clock at all** (`harness_build.go:383-400`) | as-intended (M4 fixed w42, 2026-08-24) |
 | `propose_subharness` | `tools_subharness.go:129`, guard `:122` | intake card → `startSubharnessRun` `subharness_contract.go:190` | n/a | mandatory card; **no clock that says yes** — the 15-minute window expires to *nothing ran* (`tools_subharness.go:388-392`) | as-intended |
-| **route judge card** | `route_judge.go:146` → card `:304` → `launchRouteTask` `:395` → admit `:413` | one node from the judge's goal | **no — the gap** | the card; a no returns before any admit (`:200-203`); a yes is deliberately not re-asked (`:383-388`) | **gap — M1** |
+| **route judge card** | `route_judge.go:146` → card `:304` → `launchRouteTask` `:395` → admit `:413` | one node from the judge's goal | **yes**, the judge's own `wide` | the card; a no returns before any admit (`:200-203`); a yes is deliberately not re-asked (`:383-388`) | as-intended (M1 fixed w42, 2026-08-24) |
 | `stand` | `tools_standing.go:299`, guard `:295` | a standing item | n/a | card, mandatory, **no clock**: `Deadline` explicitly zeroed (`:963`), two select arms only (`:967-976`) | as-intended |
-| `divide_work` itself | `task_divide.go:114`, guard `mayDivide` `:138` | parts on the same nesting road `propose_task` uses | — | none needed — a refusal is an ordinary tool result | **the verb never appears — C1** |
+| `divide_work` itself | `task_divide.go:114`, guard `mayDivide` `:138` | parts on the same nesting road `propose_task` uses | — | none needed — a refusal is an ordinary tool result | as-intended (C1 fixed w42, 2026-08-24) |
 
 `run_adaptive`'s description now says "THIS IS THE EXCEPTION AND NOT THE ROAD FOR
 BROAD WORK … A goal that is merely WIDE is not one of them" (`tools_harness.go:71`)
@@ -98,12 +107,15 @@ refuses when unwatched (`:940-943`), and unwatched doors never fill
 | 1 | `task.go:412` `proposeTask` | the model's proposal | **yes** | `spec.wide`, else enumeration | as-intended |
 | 2 | `task_person.go:112` `StartTask` | a person's `/task <brief>` | **yes** | the sizing judge's yes, else enumeration | as-intended |
 | 3 | `task_divide.go:301` `divideWork` | one part of a division | bounded | inherited `request` matches the bank — **by accident** | drifted, inert (**m2**) |
-| 4 | `route_judge.go:413` `launchRouteTask` | the judge's carded task | **yes** | enumeration only, which its own prose defeats | **gap (M1)** |
-| 5 | `harness_task.go:463` `admitHarnessDesign` | a harness design | no — it is one page | enumeration on the goal text — **arms the wrong thing** | **gap (M4)** |
-| 6 | `subharness_run.go:108` `admitSubharnessRun` | a saved program's run | no — the steps are fixed | enumeration on `manifest.Purpose`; inert | minor (**m3**) |
+| 4 | `route_judge.go:413` `launchRouteTask` | the judge's carded task | **yes** | `verdict.wide`, else enumeration | as-intended (M1 fixed w42) |
+| 5 | `harness_task.go:463` `admitHarnessDesign` | a harness design | no — it is one page | **nothing: `armDivision` refuses any spec whose kind is not ordinary** | as-intended (M4 fixed w42) |
+| 6 | `subharness_run.go:108` `admitSubharnessRun` | a saved program's run | no — the steps are fixed | nothing, by the same kind guard | as-intended (m3 fixed w42) |
 
-Two of the six can carry genuinely wide work and both are armed. The third that
-can — the route judge's card — passes no signal at all.
+All three doors that can carry genuinely wide work are armed, and the three that
+cannot are refused by kind at the one arming door — `armDivision`
+(`task_divide.go`) asks `spec.kind()` before it looks at any of the three
+signals, and `restoreNode` asks `record.Kind` for the same reason on the restart
+path.
 
 ## C. Autonomous — nobody typed; the machine started it
 
@@ -150,17 +162,17 @@ parent re-discovers outstanding parts.
 | parts inherit the person's words | `task_divide.go:282` `a.taskRequest()` | each part opens on the sentence the person typed | as-intended — same test |
 | journals | `task_run.go:3435-3444`, `:3301` | one `tasks/<when>_<id>.jsonl` per part; the URI reaches the parent in the landing note (`:1702`, `:1736-1747`) and reaches a `tasks` row through `TranscriptURI` (`task_index.go:629`) with the live graph merged over the file (`:437-484`) | as-intended; no test pins a *part's* journal |
 | cancel-tree | `cancel.go:73-96`; `task_run.go:2126` + `:2235-2243` | stopping the parent cuts every unsettled kid, and each kid repeats it — a real cascade with no recursive walk. A part is individually stoppable from its own roster row (`internal/tui3/stop.go:277-304`) | as-intended **for the person**; a gap for the model — **M9** |
-| spend fold | `task_run.go:3182-3204`; `loop.go:2101`, `:2127-2155` | on the ordinary path, exactly once: a part folds into the parent worker, which the conversation later folds whole into the session ledger; ordering is safe because a part folds in its own defer before `markNoted` and the tail loop waits on `reported()` | **gap on the stop path — M2** |
+| spend fold | `task_run.go:3182-3204`; `loop.go:2101`, `:2127-2155` | on the ordinary path, exactly once: a part folds into the parent worker, which the conversation later folds whole into the session ledger; ordering is safe because a part folds in its own defer before `markNoted` and the tail loop waits on `reported()`. On a stopped ending the parent's books are already closed, so `Agent.spendLedger` skips the closed hop and folds the part straight into the conversation — the same total by a shorter route | as-intended (M2 fixed w42, 2026-08-24) |
 | the parent stays and folds | tail loop `task_run.go:2788-2810`; park `:2187-2201` | waits on the **report** and never on the state (`:2780-2784`); hands its lane back at `:2799`, takes it back at `:2804`; exits only when nothing is owed and nothing is outstanding | as-intended — `TestAParentWaitingOnAPieceHandsBackItsLane` PASS |
-| deadlock at `parallel=1` | `freeHands` `task_divide.go:404-423` | cannot happen: with the asker in the only lane `freeHands` is 0 and the division is refused up front — deliberate, argued at `:392-398` | as-intended, but the refusal's wording is wrong — **C3** |
+| deadlock at `parallel=1` | `freeHands` `task_divide.go` | cannot happen: with the asker in the only lane `freeHands` is 0 and the division is refused up front — deliberate, argued in `freeHands`'s own comment. The refusal (`divisionNoLane`) now says which of the two lane cases it is, and does not invite the worker back where the cap is exactly one | as-intended (C3 fixed w42, 2026-08-24) |
 | every live worker on the surface | `work_tree.go:85-148`, `:161-170` | tasks + parts + adaptive runs + their nodes + background jobs; a root is drawn while anything under it is live and then the whole family is drawn; every row's id is `cancel.go`'s own spelling | as-intended — "NEVER FAKE LIVENESS" (`:76-78`) — with one surface drift, **m1** |
 | …except a sub-harness run | `cancel.go:269-301` mints `harness:<n>`; `work_tree.go:86` lists tasks, runs and jobs only | cancellable, but not a row in the tree | minor — **m4** |
-| deopt subharness → linear | trigger `subharness_run.go:192`; `internal/exec/deopt.go:67-92` → `ExecutorRunner.Run` `internal/exec/runner.go:422` | six producers feed one gate; a person's ✕ correctly is not one. The person is told in clean words — `needed a closer look — handled it the long way` (`deopt.go:38`) | **critical — C2**, plus **M10** (pre-deopt spend lost) and **m6** (invisible while it runs) |
+| deopt subharness → linear | trigger `subharness_run.go:192`; `internal/exec/deopt.go` `Deopt` → `ExecutorRunner.Run` `internal/exec/runner.go` | six producers feed one gate; a person's ✕ correctly is not one. The person is told in clean words — `needed a closer look — handled it the long way` (`deopt.go`) — **and the long way is only taken where the program's own ceiling already reaches a shell** (`DeoptHeld`); otherwise the run stops incomplete with `DeoptHeldWord` and the generalist is never reached | as-intended (C2 fixed w42, 2026-08-24); **M10** (pre-deopt spend lost) and **m6** (invisible while it runs) still open |
 | a run's node fails | `internal/orchestrate/run.go:496` `land`, `:461` `metLocked` | **abandoned** — no re-plan, no rewire, no cascade; downstream nodes sit `Queued` and `synthesize` writes up Done and Failed only (`:524-536`). Its spend still folds (`orchestrate.go:951`; `run.go:500`) | drifted — **M11** |
 | a run's fuel gate | `internal/orchestrate/fuel.go:36`, `:133-136`, `:142-145`; `run.go:413-417` | 80% says so once; 100% finishes what is in flight, starts nothing new, and asks topup/finish/stop | as-intended — matches `system.md:178-179` and the description at `tools_harness.go:71` |
 | steering into a running task | `task_room.go:87-109`; `tools_tasks.go:430-438` | a person or the model can say a line into any node, parts included; the brief and acceptance stay frozen — the only writable field is `spec.model`, through `RetargetTask` (`:143-182`) | as-intended |
 | steering a **parked** parent | `agent.go:1526-1529`; park select `task_run.go:2799-2803` | the line is accepted and does **not** arrive: `wakeLocked` declines inside a task, and the park select wakes only on a child's report | **gap — M12** |
-| the governor's hold | `task_divide.go:410-413` | a held governor answers zero free hands, so a division is refused | the coupling is intended; the refusal is not honest — **C3** |
+| the governor's hold | `TaskGraph.machineBusy`, `task_divide.go` | the governor is no longer part of the division's gate: a busy machine holds the *parts* on the frontier (`waiting · machine busy`) and `armPoll` lifts them, exactly as it does for work admitted through `propose_task`. `divisionDone`'s receipt says so | as-intended (C3 fixed w42, 2026-08-24) |
 
 ### Pause and fuel, all nine mechanisms
 
@@ -223,9 +235,22 @@ guard (**m9**). The unconditional advertisement of `propose_task` and `tasks` wa
 
 # Findings, ranked
 
+*Findings marked **FIXED** carry the date and the lane. The paragraphs under them
+are left as they were written — they are the evidence the fix was made against,
+and rewriting them into the past tense would leave nothing to check the fix
+against.*
+
 ## CRITICAL
 
-### C1 — `divide_work` is not on any production belt. The division road is inert.
+### C1 — `divide_work` is not on any production belt. The division road is inert. — **FIXED, w42, 2026-08-24**
+
+> `newTaskAgent` now carries `Divide: parent.Divide` onto every worker it
+> builds, and `armDivision` refuses any spec whose `kind()` is not the ordinary
+> one (which is M4, landed in the same change). Pinned through the real
+> constructor by `TestTheProductionConstructorCarriesTheRoadOntoTheWorker`,
+> `TestAHarnessDesignIsNeverArmedToDivide` and
+> `TestTheRoadOffProducesWorkersWithoutTheVerb` — none of which writes a Config
+> literal.
 
 `Config.Divide` has exactly one production setter — `cmd/aforge/chatv3.go:640`,
 `Divide: settings.Swarm` — and it sets it on the **conversation**. But
@@ -272,7 +297,27 @@ nil` inside `admit` (`task_run.go:686`), or gate `mayDivide` on the node's kind.
 Plus a test that goes through `newTaskAgent` rather than around it. Not applied
 here: turning a whole road on in production is a lane, not an audit.
 
-### C2 — a deopted subharness escapes the tool ceiling and the consent gate it was approved under.
+### C2 — a deopted subharness escapes the tool ceiling and the consent gate it was approved under. — **FIXED, w42, 2026-08-24**
+
+> **The linear generalist genuinely cannot be caged, so the honest half of the
+> fix shape was taken.** `Toolbox`'s five tools are unconditional and sit in a
+> fixed order by a stated cache law (`Definitions`), and `Arm` only ADDS optional
+> families — there is no subtractive seam and building one would rewrite the
+> block the law is about. So the decision moved to `exec.Deopt`, which now takes
+> the PROGRAM'S own manifest: `DeoptHeld` says the long way may only be taken
+> where the approved ceiling already reaches a shell (`bash` or `sh` — the shell
+> subsumes write, edit and web, so a ceiling that reaches it reaches everything
+> the fallback uses). Otherwise the run stops **incomplete** with
+> `DeoptHeldWord`, in the person's own register, and the generalist is never
+> reached. Both surfaces ask `DeoptLineFor` before they announce anything, so
+> neither says "handled it the long way" over a run that is about to stop, and
+> `Deopt` refuses again inside itself so neither can skip it. `ExecutorRunner.Run`
+> now names its Env parameter `_` and says in prose why an executor has nothing
+> to do with one. Pinned by `internal/exec`'s
+> `TestACeilingThatDoesNotReachAShellHoldsTheLongWay`,
+> `TestAHeldFallbackNeverReachesTheGeneralist`,
+> `TestACeilingThatReachesAShellStillFallsBack`, and by
+> `TestALongWayThatWouldReachPastTheCeilingIsNotTaken` on both surfaces.
 
 `ExecutorRunner.Run(ctx, input, env Env)` (`internal/exec/runner.go:422-457`)
 **takes the `Env` and never reads it** — the parameter is unused in the whole
@@ -293,7 +338,25 @@ Fix shape: `ExecutorRunner.Run` must build its executor's belt from
 `env`'s filtered toolbelt and its approval seam, or the deopt must re-ask. Either
 way the ceiling a person approved has to survive the fallback.
 
-### C3 — the division refusal names the wrong cause, and the machine hold is terminal where the same hold is temporary for `propose_task`.
+### C3 — the division refusal names the wrong cause, and the machine hold is terminal where the same hold is temporary for `propose_task`. — **FIXED, w42, 2026-08-24**
+
+> **The asymmetry was the finding, so the asymmetry is what went.** `freeHands`
+> no longer asks the governor at all: it is the person's `task.parallel` cap and
+> nothing else. A busy machine no longer refuses a division — the parts are
+> admitted, the frontier holds them as `waiting · machine busy`, and `armPoll`
+> lifts them by itself, which is byte-for-byte what work admitted through
+> `propose_task` has always done with the same reading. `divisionDone`'s receipt
+> says the parts are waiting and that there is nothing to come back for.
+> `divisionNoHands` became `divisionNoLane`, which names the cap rather than "no
+> free hand", drops the untrue worktree-cost claim (a worktree is made at START),
+> and tells the worker to ask again ONLY where a lane can actually come free —
+> at `task.parallel = 1` it says plainly that asking again will not change it,
+> which also closes **m14**. Pinned by
+> `TestADivisionNobodyIsFreeToPickUpIsDeferredRatherThanTaken`,
+> `TestADivisionHeldByBusyLanesInvitesTheWorkerBack` and
+> `TestABusyMachineHoldsTheDivisionsPartsRatherThanRefusingIt` — the last of
+> which is the governor × division interaction **m18** listed as uncovered.
+> `internal/manual/chat/tasks.md`'s division section carries the new words.
 
 `freeHands` (`task_divide.go:404-423`) answers 0 when the governor holds
 (`:410-413`), and `divideWork` then returns `divisionNoHands` (`:365-369`):
@@ -328,7 +391,14 @@ every governor test drives `runFrontier` and never `divideWork`.
 
 ## MAJOR
 
-### M1 — the route judge's card is the one model-decided wide-work door that admits unarmed.
+### M1 — the route judge's card is the one model-decided wide-work door that admits unarmed. — **FIXED, w42, 2026-08-24**
+
+> The three edits below were applied as written, now that C1 makes them live:
+> `routeVerdict.Wide`, the `wide` line in the judge's brief and its yes-example,
+> and `wide: verdict.Wide` on the spec. Pinned by
+> `TestTheJudgesWideVerdictArmsTheTaskItStarts` (over a goal `splitgate` counts
+> as zero, so only the judge's own word can have armed it) and
+> `TestARouteYesWithoutWidthArmsNothing`.
 
 `launchRouteTask` (`route_judge.go:395-413`) builds a `taskSpec` with no `wide`,
 no judge-bank entry (its `request` is the live user message, not the judged
@@ -373,7 +443,16 @@ adaptive. Minimal change, three edits, no new machinery:
 Deliberately not applied: it is dead behind C1 until C1 lands, and the two should
 be judged as one change.
 
-### M2 — a division part's whole spend is lost from the session ledger on any stopped ending.
+### M2 — a division part's whole spend is lost from the session ledger on any stopped ending. — **FIXED (first half), w42, 2026-08-24**
+
+> `foldTaskUsage` now charges `Agent.spendLedger(node)` rather than the owner
+> directly: an owner that has already closed its own books is skipped and the
+> money goes straight to the graph's home, which is the session ledger. Same
+> total, one hop shorter, and it covers the whole class — `propose_task`
+> children stopped with their parent took the identical road. Pinned by
+> `TestAStoppedPartsSpendStillReachesTheSessionLedger`. **The second half is
+> still open:** the parent node's recorded cost includes its parts' while each
+> part records its own, so a surface summing node rows double-counts.
 
 `workTaskNode`'s defer closes the parent worker (`task_run.go:2269`) and folds it
 (`:2276`); `stopChildren` does not run until `:2126`, *after* `work()` has
@@ -414,7 +493,14 @@ incomplete set.
 No test covers arming across a restart: `task_store_test.go`, `recovery_test.go`
 and `replay_test.go` never mention `divide` or `wide`.
 
-### M4 — a harness design can be armed for division.
+### M4 — a harness design can be armed for division. — **FIXED, w42, 2026-08-24**
+
+> Gated by kind at the one arming door, as C1 required: `armDivision` returns
+> false for any spec whose `kind()` is not the ordinary one, and `restoreNode`
+> asks `record.Kind` — not the rebuilt spec, which for a design whose page never
+> finished carries no `design` field at all. It closes **m3** in the same line.
+> The related-and-smaller half is still open: a design thread still carries
+> `propose_task`.
 
 `admitHarnessDesign` (`harness_task.go:462-470`) passes the goal as `brief`, and
 `admit` asks `armDivision` of it like any other spec. A goal saying "a harness
@@ -452,11 +538,12 @@ not a bug in what is written.
 hedge. Either the description hedges, or `AFORGE_SWARM=0` removes the property
 the way every other conditional capability on this belt is removed.
 
-**(b) The manual is wrong on two safety-relevant limits.** `tasks.md:1609-1610`
-states the capacity test as lanes-only and never mentions `task.max_load` /
-`task.min_free_mb` refusing a split (see C3). `saved-programs.md:116-128` and
-`:143-157` describe the subharness tool ceiling and the consent gate as
-unconditional facts about a run — which the deopt makes false (see C2).
+**(b) The manual is wrong on two safety-relevant limits.** — **FIXED, w42,
+2026-08-24.** `tasks.md`'s division section now states the capacity test as the
+`task.parallel` cap (which is what it is, since C3 took the governor out of it)
+and says outright that `task.max_load` / `task.min_free_mb` never refuse a split
+— the parts wait and lift themselves. `saved-programs.md` gained *When the long
+way is not taken — the ceiling holds*, which is now true of the code (C2).
 
 **(c) `armDivision` ignores the escape hatch** — see M8.
 
@@ -546,9 +633,9 @@ is dropped without ever reaching the transcript.
   sentence, and `judgedDivisible(spec.request)` (`:198`) matches. Inert because
   parts sit at depth 2. The invariant should not depend on `taskDepthLimit`
   staying at 2.
-- **m3 — `admit` arms nodes that have no belt.** Subharness run nodes
-  (`subharness_run.go:108`) get `spec.divide` from `manifest.Purpose`. Harmless,
-  but it reads as meaningful in the room and on the checkpoint.
+- **m3 — `admit` arms nodes that have no belt.** — **FIXED, w42, 2026-08-24**,
+  by M4's kind guard: `armDivision` refuses a spec whose `kind()` is
+  `subharness` before it reads `manifest.Purpose`, so the flag is never written.
 - **m4 — a sub-harness run is cancellable but is not a row in `WorkingNow`.**
   `beginHarnessRun` (`cancel.go:269-292`) registers it for `Cancel("harness:<n>")`,
   but `work_tree.go:86` is tasks plus runs plus jobs. Mitigated: the run happens
@@ -609,8 +696,9 @@ is dropped without ever reaching the transcript.
   trail, and already named "the anti-pattern" by
   `docs/SUBHARNESS-PRD.md:266-269`. Recorded because law 3 says a yes is never
   assumed and the person **is** there.
-- **m14 — `"ask again later"` is untrue at `task.parallel = 1`**, where the
-  free-hands refusal is structurally permanent (`task_divide.go:365-369`).
+- **m14 — `"ask again later"` is untrue at `task.parallel = 1`** — **FIXED, w42,
+  2026-08-24**: `divisionNoLane` has two sentences, and the one-lane one ends
+  "asking again will not change this".
 - **m15 — a parked parent has no deadline.** `limits.deadline` is checked only on
   tool-end events (`task_run.go:2718-2726`) and a parked parent emits none, so a
   parent waiting on a part the governor never starts waits until a person stops it.
@@ -625,11 +713,88 @@ is dropped without ever reaching the transcript.
 - **m18 — test-coverage holes behind the above:** the governor × `freeHands`
   interaction, the stopped-parent fold ordering, steering a parked parent, arming
   across a restart, a settle with a stranded `Queued` node, a part's own journal,
-  and the deopt's belt are all uncovered.
+  and the deopt's belt are all uncovered. **Three closed w42, 2026-08-24** — the
+  governor × division interaction, the stopped-parent fold, and the deopt's
+  ceiling (see C3, M2, C2). The other four stand.
 
 ---
 
-# What was fixed in this lane
+# What `newTaskAgent` still does not carry down
+
+C1 was one missing field in a literal that copies about thirty. So the whole
+literal was diffed against `session.Config` (`session.go:716`). Thirty-eight
+fields are not copied. Most are deliberate and the reasons are recorded here so
+the next reader does not have to re-derive them; the rest are named as gaps and
+were **not** fixed in this lane, because each is its own product decision rather
+than a consequence of turning the division road on.
+
+**Deliberate, and argued somewhere in the code:**
+
+| field(s) | why a node does not get it |
+| --- | --- |
+| `Standing`, `standingItems` | orders reach a node through the brief and only the brief (`standing_world.go`); a per-node door would say everything twice |
+| `Memory`, `MemoryImport` | a node is handed no store, which is exactly what keeps `remember` and `search_conversations` off its belt (`tools.go`) |
+| `Harnesses`, `HarnessStore`, `RunHarness`, `HarnessCards`, `HarnessDesignWindow`, `Subharnesses`, `SubharnessMemory`, `SubharnessLastRun`, `SubharnessRecordRun`, `OrchestrateRunner` | the three big machines are deliberately not handed to a node — `tools.go:100-107` states it: a node can neither commission a procedure nor start a run of its own |
+| `TaskParallel`, `TaskMaxLoad`, `TaskMinFreeMB` | graph-level. Read once when the graph is built (`task_run.go:625-626`) and shared through `tasker`, so a node reading its own copy would be a second answer to one question |
+| `TaskDeadline`, `TaskRepairRounds`, `TaskAutoApproveSeconds` | read on the agent that OWNS the frontier's bookkeeping, never on the worker |
+| `TaskModel`, `TaskModels` | absent means a part inherits its parent worker's LIVE model (`defaultTaskModel`), which is the right answer for a part |
+| `System` | replaced wholesale for a node by `renderSystemAt` |
+| `writeScope` | only ever set by orchestrate (`orchestrate.go:1063`); no conversation carries one |
+| `Errand` | an errand is a shape a conversation has, not a node |
+| `Guardian` | a node's policy is allow-all with `AskConsent=false`, so there is no consent prompt for a guardian to turn into an allow |
+| `WorktreeRoot` | orchestrate-only (`orchestrate.go:1292`) |
+
+**Named as gaps, not fixed here:**
+
+- **`Routing`, `ModelFallbacks`, `NearestModels`** — all three are read into the
+  provider client at construction (`agent.go:51`, `:59-60`). A node therefore has
+  the zero routing strategy, no model fallbacks and no nearest-model repair,
+  while the conversation has the person's. `newTaskAgent` is the OUTLIER here:
+  `memory_consolidate.go:242` and `standing_run.go:755` both copy
+  `parent.Routing` into the children they build.
+- **`SupportsParameter`** — used *inside* `newTaskAgent` to refuse a model that
+  cannot use tools, and not copied down. So the rescue works exactly one level
+  deep: a part, or a `propose_task` child of a node, is built by an owner whose
+  `SupportsParameter` is nil and gets no check at all. C1 makes this reachable
+  far more often than it was.
+- **`TaskProgressCheck`** — asked of the node's `owner` (`task_run.go:2645-2654`),
+  and a part's owner is the parent worker, whose config has none. The
+  no-progress check never runs for a part.
+- **`Place`** — `workTaskNode` reads `a.config.Place` for `prepareTaskTree` and
+  `lockGitRoot`. A part's owner is the parent worker with an empty `Place`, so a
+  part's worktree lands under the repository's default `tasks/<session>/<id>`
+  rather than inside the session's own folder (Decision 26), and the git-root
+  lock is keyed on a different place. Pre-existing on the nesting road — a
+  `propose_task` child of a node already does this — but division makes it
+  common.
+- **`ArtifactsIndex`** — media a node generates is not recorded in the artifacts
+  index the conversation's is.
+- **`SpendRailUSD`, `ReplyGuardOff`, `ProfileDir`** — three person-set defaults a
+  node simply does not have. The rail one matters most: `railBlockLocked` cannot
+  stop a runaway family, only the conversation's next turn.
+
+# What was fixed in the roads lane (w42, 2026-08-24)
+
+The lane's own record. Every claim above was re-verified in the tree before it
+was acted on; none had gone stale.
+
+1. **C1** — `Divide: parent.Divide` in `newTaskAgent`'s literal, with M4's kind
+   guard in `armDivision` and `restoreNode`. Three tests through the real
+   constructor.
+2. **C2** — `exec.Deopt` takes the program's manifest and refuses to hand a
+   caged program to an uncageable generalist; `DeoptHeld`, `DeoptHeldWord`,
+   `DeoptWordFor`/`DeoptLineFor` are the new vocabulary, asked by both surfaces
+   before either announces anything.
+3. **C3** — the governor left the division's gate; `divisionNoLane` replaced
+   `divisionNoHands`; `divisionDone` says when the parts are waiting on the
+   machine.
+4. **M2** — `Agent.spendLedger` skips a closed hop so a stopped part's spend
+   still folds.
+5. **M1** — the route judge's `wide`, applied as written.
+6. Manual: `tasks.md`'s division section and a new `saved-programs.md` section.
+7. This document's verdict rows, and the constructor audit above.
+
+# What was fixed in the audit lane (w41)
 
 Four comment, prompt and manual corrections. No behaviour changed; every
 structural finding above was left as a finding.
