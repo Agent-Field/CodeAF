@@ -388,6 +388,14 @@ type babbleWatch struct {
 	inFence bool
 	// since counts bytes of clean text added since the last test.
 	since int
+	// squeeze is the compressor [babbleWatch.loopedTail] runs the window
+	// through, and counter is what it writes into. Both are held for the life of
+	// the stream rather than built per test: zlib.NewWriter carries a deflate
+	// state a hundred kilobytes wide, the test runs once every babbleEvery bytes
+	// of a reply, and Reset leaves the writer in exactly the state a new one
+	// would be in — so the ratio measured is the same ratio, bit for bit.
+	squeeze *zlib.Writer
+	counter countingWriter
 }
 
 func (b *babbleWatch) write(delta string) bool {
@@ -465,7 +473,7 @@ func (b *babbleWatch) window() []byte {
 
 func (b *babbleWatch) tripped() bool {
 	window := b.window()
-	return loopedTail(window) || churnedTail(window)
+	return b.loopedTail(window) || churnedTail(window)
 }
 
 type fenceKind int
@@ -512,20 +520,24 @@ func fenceLine(line []byte) (fenceKind, bool) {
 // The window must be FULL before this may say anything. A short reply that
 // happens to be one repeated line is somebody answering "no, no, no" and is not
 // a model that has come off the rails.
-func loopedTail(window []byte) bool {
+func (b *babbleWatch) loopedTail(window []byte) bool {
 	if len(window) < babbleWindow {
 		return false
 	}
 	tail := window[len(window)-babbleWindow:]
-	var counter countingWriter
-	writer := zlib.NewWriter(&counter)
-	if _, err := writer.Write(tail); err != nil {
+	b.counter.n = 0
+	if b.squeeze == nil {
+		b.squeeze = zlib.NewWriter(&b.counter)
+	} else {
+		b.squeeze.Reset(&b.counter)
+	}
+	if _, err := b.squeeze.Write(tail); err != nil {
 		return false
 	}
-	if err := writer.Close(); err != nil {
+	if err := b.squeeze.Close(); err != nil {
 		return false
 	}
-	return float64(counter.n)/float64(len(tail)) < babbleFloor
+	return float64(b.counter.n)/float64(len(tail)) < babbleFloor
 }
 
 // countingWriter is how many bytes the compressor produced. The compressed
@@ -554,15 +566,26 @@ var _ io.Writer = (*countingWriter)(nil)
 // "このAPIはHTTPリクエストを受け取り" is ordinary Japanese and scored 27 switches
 // per hundred runes before the tolerance existed.
 func churnedTail(window []byte) bool {
-	runes := []rune(string(window))
-	if len(runes) < churnWindow {
+	// The window is walked rather than materialized. Decoding it into a []rune
+	// first cost sixteen kilobytes of garbage on every test to read six hundred
+	// runes off the end of it, and a byte that is not valid UTF-8 becomes the
+	// same replacement rune either way — which is what keeps this the same
+	// measurement it was.
+	total := utf8.RuneCount(window)
+	if total < churnWindow {
 		return false
 	}
-	runes = runes[len(runes)-churnWindow:]
-	counts := make(map[scriptClass]int, 8)
+	tail := window
+	for skip := total - churnWindow; skip > 0; skip-- {
+		_, size := utf8.DecodeRune(tail)
+		tail = tail[size:]
+	}
+	var counts [scriptCount]int
 	switches := 0
 	previous := scriptNeutral
-	for _, r := range runes {
+	for len(tail) > 0 {
+		r, size := utf8.DecodeRune(tail)
+		tail = tail[size:]
 		class := scriptOf(r)
 		if class == scriptNeutral {
 			previous = scriptNeutral
@@ -605,6 +628,10 @@ const (
 	scriptHan
 	scriptHangul
 	scriptOther
+	// scriptCount is the width of [churnedTail]'s tally and not an alphabet. It
+	// must stay last in this block, which is what makes the tally an array
+	// rather than a map allocated once per test.
+	scriptCount
 )
 
 // tolerant names the alphabets that legitimately sit against each other with no
