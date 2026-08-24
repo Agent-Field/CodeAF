@@ -64,6 +64,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
+		{"the harness I just had built is not in /subharness", "subharnesses"},
+		{"how do I run a harness I had designed", "subharnesses"},
+		// The card aforge raises by itself, asked the three ways somebody meets
+		// it: a card they did not open, the answer they want to give it, and
+		// the one that arrived while they were away from the keyboard.
+		{"a card popped up offering to run a program", "subharnesses"},
+		{"how do I say no to the offer to run something", "subharnesses"},
+		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
 
 		// The second wave, added after probing the corpus the way it is
@@ -188,6 +196,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		// A person reading a column of workers all called the same thing, and a
+		// person watching a run that has not drawn anything yet. Both are asked
+		// with the screen in front of them, in the words the screen gave them.
+		{"why are all my workers called You are a", "adaptive-runs"},
+		{"the sub task names are just the prompt", "adaptive-runs"},
+		{"who names the workers under a run", "adaptive-runs"},
+		{"what does forming the work mean", "adaptive-runs"},
+		{"nothing happens for a minute after a run starts", "adaptive-runs"},
+		// And a person reading a column of ids. These are asked with the ids
+		// themselves in the question, because that is what the screen handed them.
+		{"my run's rows are called r1 r2 r3", "adaptive-runs"},
+		{"why is a subtask called synth", "adaptive-runs"},
+		{"the tasks under my run have ids instead of names", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
 
@@ -383,6 +404,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the first one wrongly — it described a countdown that is now gone.
 		{"how long do I have to answer the card", "keeping-an-eye"},
 		{"where is the record of a reminder I made from home", "keeping-an-eye"},
+		// Asked in a person's own words after they met their first card and
+		// could not see a way out of it, could not tell what the options meant,
+		// and expected to be able to change the `where ·` band they were being
+		// shown. Every one of these is now on the card itself; the pages say so.
+		{"how do I cancel this card", "keeping-an-eye"},
+		{"I don't understand these options", "keeping-an-eye"},
+		{"what does just once mean", "keeping-an-eye"},
+		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk
 		// to the terminal it belongs to — which, for the ordinary answers, they
@@ -495,6 +524,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},
 		{"can I click keeping an eye on 2", "standing-orders"},
+		// The wave that gave home's landed rows an aim. Somebody looking at a
+		// `needs you` row that has sat for four days asks two things — what does
+		// pressing it actually show me, and how do I make it go away — and both
+		// used to be asked in front of a door that opened a conversation with no
+		// trace of the task the row was named after.
+		{"I clicked the needs you row and it just opened the chat", "home"},
+		{"what opens when I press a landed row on home", "home"},
+		{"the needs you row has been there for days", "home"},
+		{"how do I clear a needs your look row", "home"},
+		// The wave that fixed where the cursor wakes on a wide home, and gave a
+		// zone with nothing under it something to say. Both are asked by somebody
+		// looking at the screen: the arrow went somewhere they did not expect, and
+		// a dim word is sitting over what looks like nothing.
+		{"why does the cursor start in the middle of home", "home"},
+		{"where does the first down arrow go on home", "home"},
+		{"what is that line under needs you", "home"},
+		{"what goes in the moving column", "home"},
+		// The wave that gave the section holding the cursor a marked heading.
+		// Somebody sees one heading darker than the rest and asks what it means;
+		// somebody else has the opposite problem and cannot tell which of three
+		// columns their arrow keys are in. Both land on the same two sections.
+		{"why is the needs you heading highlighted", "home"},
+		{"how do I know which column I am in", "home"},
+		{"why is one project name darker than the others", "home"},
+		{"which section is my cursor in on home", "home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

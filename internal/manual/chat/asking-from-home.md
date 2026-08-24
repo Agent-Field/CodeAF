@@ -239,10 +239,11 @@ on home says `▲ waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
-uses: `yes, set it up · set up`, `once, not standing`, `you asked for a different when`,
+uses: `yes, set it up · set up`, `just once · done now, nothing kept`,
+`change when or where · you asked for something different`,
 `not set up`, `ended · nothing was set up`. The chips go, so `1`, `2`, `3` and `0` are
 ordinary characters again and can be typed into a follow-up. The only card that ever replaces it is the new one the
-model sends after `2 change when`.
+model sends after `2 change when or where`.
 
 The digits belong to a card only while it is still a question. With no card up, or with an
 answered one on screen, `2` in the middle of "make it 2pm" is just a `2`.

@@ -116,6 +116,15 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// shared assembly still fills, and it works over a connection today.
 	cfg.HarnessStore = nil
 
+	// AND FOR THE SAME REASON, cfg.HarnessCards IS LEFT FALSE — the one line on
+	// this list that is a silence rather than a statement. It is the door saying
+	// "a surface here holds the harness lane", and no surface here does; so chat
+	// is not given the verb that offers a saved program with an intake card
+	// (internal/session's canProposeSubharness), because that card travels the
+	// same lane the design card does and would reach the same empty room.
+	// RUNNING a saved program is untouched: `/subharness` is a surface door, and
+	// the surface on the far end of this wire has no registry to open either.
+
 	// AND THE AMBIENT SIDE IS ON, which is the one capability on this list that
 	// a connection does not take away. It arrives already filled, from the
 	// shared assembly every v3 door goes through (chatv3.go's [openV3Launch]

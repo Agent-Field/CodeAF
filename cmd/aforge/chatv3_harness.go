@@ -115,13 +115,10 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 		return nil
 	}
 	client, err := provider.NewClient(provider.Config{
-		APIKey:         settings.APIKey,
-		BaseURL:        settings.BaseURL,
-		Model:          model,
-		Timeout:        harnessTimeout,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
+		APIKey:  settings.APIKey,
+		BaseURL: settings.BaseURL,
+		Model:   model,
+		Timeout: harnessTimeout,
 	})
 	if err != nil {
 		return nil

@@ -151,8 +151,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
-| `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
+| `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
@@ -756,16 +756,22 @@ Moving in it: ↑ / ctrl+p, ↓ / ctrl+n, pgup / pgdown by 10. A click on a row 
 click anywhere else closes the panel. esc leaves.
 
 A row reads `◆ name v3` on the left — the version is part of what the thing is — and
-dimly on the right the description, then the history: `never run`, or
-`6 runs · last ok, 2h ago`. A run count with an unreadable newest trace shows just the
-count, because "never run" and "ran, and I cannot read the trace" are different facts.
+dimly on the right the description, then `6 runs`, then the last run in the same two words
+`/subharness` uses for it: `2h · finished`, or `2h · incomplete`. A harness nobody has run
+draws nothing there — not `never run`, not `0 runs`. A run count with an unreadable newest
+trace shows just the count, because "never ran" and "ran, and I cannot read the trace" are
+different facts.
 
 enter **prints the harness's card into the conversation** and closes the panel: numbered
 steps with the bounds under them, plus `last run` and that run's card when there is one.
-It is prose, and prose belongs in the transcript where you can scroll and copy it.
+It is prose, and prose belongs in the transcript where you can scroll and copy it. The
+card keeps the columns it was written in — a line too wide for the frame is cut, never
+wrapped, because the indent under a lane is what says which step belongs to it.
 
-Building a harness is a conversation, not a command. This list only says which ones
-exist. While one is running, a chip with a spinner and its name leads the task strip.
+Building a harness is a conversation, not a command. This panel only says which ones exist;
+`/harness ` with a space picks one to run on a typed request, and `/subharness` lists the
+same programs beside everything else runnable here and starts one from its card. While one
+is running, a chip with a spinner and its name leads the task strip.
 
 Refusals, exactly as written:
 
@@ -782,8 +788,9 @@ than an error.
 ## /subharness — the command's two forms, bare and with a name after it
 
 `/subharness` (or `/sub`) opens a filtering list of the programs this conversation can
-run. Typing narrows it over the name, the one line and the cues. `enter` opens that one's
-intake card. `esc` closes.
+run — the ones built in, the bundles on disk, and the harnesses you have had designed, in
+one list. Typing narrows it over the name, the one line and the cues. `enter` opens that
+one's intake card. `esc` closes.
 
 `/subharness <name>` skips the list and opens that one's card. A name nothing answers to
 is **not** an error: it becomes the list's filter, so a typo turns into a search.
@@ -805,15 +812,8 @@ machine. No list opens behind it. See the *Subharnesses* page for the card and i
 
 ## /standing — the command's two forms, bare and with words after it
 
-`/standing` (or `/orders`) has two forms, and they do different things.
-
-**Bare, it opens a page.** A short list under the message box of what stands over this
-conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
-this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens nothing and says
-`nothing stands here yet — say what should always be true, and I'll hold it.`
-Pressing it again straight away says it once, not twice: a line aforge has just written is
-not written a second time under itself.
+`/standing` (or `/orders`) has two forms, and they do different things. The words form
+leads — making an order is what the command exists for; the page is the follow-up.
 
 **With words after it, those words become a new standing order.**
 
@@ -829,12 +829,21 @@ nothing else. Typed while an answer is still arriving it waits above the box and
 through the marked door when its turn comes. On a build with no ambient side it says
 `nothing here can hold a standing order` and sends nothing.
 
+**Bare, it opens a page.** A short list under the message box of what stands over this
+conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
+this place and `enter` to open the conversation that asked for it. With nothing standing it
+opens nothing and says
+`nothing stands here yet — say what should always be true, and I'll hold it.`
+Pressing it again straight away says it once, not twice: a line aforge has just written is
+not written a second time under itself.
+
 Nothing on the page is ever named at the command line — the words are always a new order,
 never a query, because the only way to name one is to read it off the page first.
 
-**The command list carries both rows**: `/standing` on its own, and a second row spelled
-`/standing <words>` whose tail reads `…or keep this true · a card, never work done once`.
-Pressing the second row puts the command in your box rather than running it. The
+**The command list carries both rows, the words form first**: `/standing <words>` whose
+tail reads `keep this true · a card, never work done once`, and under it `/standing` on
+its own, whose tail reads `…or what stands over this conversation · stop, pause or not
+here`. Pressing the words row puts the command in your box rather than running it. The
 `+ /standing` row at the foot of the column on the right does the same thing.
 
 ## /task — start work you can walk away from

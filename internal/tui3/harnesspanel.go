@@ -20,8 +20,8 @@ import (
 // time — because the card that said so has scrolled away. That question is a
 // LIST, which is a thing this surface already knows how to draw:
 //
-//	  ◆ triage-flake       v3 · 6 runs · last ok, 2h ago
-//	  ◆ review-diff        v1 · never run
+//	  ◆ triage-flake       v3 · chase a flaky test · 6 runs · 2h · finished
+//	  ◆ review-diff        v1 · read a diff
 //
 // Three decisions, and all three are borrowed rather than invented:
 //
@@ -121,11 +121,22 @@ func (p *harnessPanel) label(index int, pal palette) string {
 	return fmt.Sprintf("%s %s v%d", pal.muted(mark), row.harness.Id.Name, row.harness.Id.Version)
 }
 
-// note is the dim tail: what this harness is for, and what its history says.
+// note is the dim tail: what this harness is for, how many times it has run, and
+// what the last of those runs did.
 //
-// The description comes first because it is what a person is scanning for, and
-// the history is appended only when there IS one — a row that said "never run"
-// beside every other row's timing would be a column of apologies.
+// ── ONE PROGRAM, ONE SENTENCE ABOUT ITS LAST RUN ──
+//
+// The last run is spelled by [subharness.LastRunLine] and not here, because
+// `/subharness` draws the same fact about the same program four keystrokes away
+// and the two doors used to disagree about the words for it: this row read
+// `last ok, 2h ago` while that one read `2h · finished`. The reading is this
+// door's (a trace beside the page); the words are neither door's.
+//
+// THE EMPTINESS LAW REACHES BOTH HALVES. `never run` is gone with it: a harness
+// nobody has run says what it is for and stops, because a column of rows all
+// admitting they have nothing to report is the screen counting its own silences.
+// A row whose newest trace cannot be read still shows the count, because "ran,
+// and I cannot read the trace" is a different fact from "never ran".
 func (p *harnessPanel) note(index int) string {
 	row, ok := p.at(index)
 	if !ok {
@@ -135,54 +146,26 @@ func (p *harnessPanel) note(index int) string {
 	if note := strings.TrimSpace(row.harness.Id.Desc); note != "" {
 		parts = append(parts, note)
 	}
-	switch {
-	case row.runs == 0:
-		parts = append(parts, "never run")
-	case row.hasLast:
-		parts = append(parts, fmt.Sprintf("%s · last %s %s",
-			countedRuns(row.runs), harnessStatusWord(row.last), harnessAgo(row.last.Started)))
-	default:
+	if row.runs > 0 {
 		parts = append(parts, countedRuns(row.runs))
+	}
+	if row.hasLast {
+		if line := subharness.LastRunLine(subharness.TraceRun(row.last), time.Now()); line != "" {
+			parts = append(parts, line)
+		}
 	}
 	return strings.Join(parts, " · ")
 }
 
+// countedRuns is how many traces this page has. It is the one thing this door
+// says that the other cannot: a page keeps a trace per run, and a bundle keeps
+// only its newest note, so a count on `/subharness` would be a figure three of
+// its four kinds of row could never fill in.
 func countedRuns(n int) string {
 	if n == 1 {
 		return "1 run"
 	}
 	return fmt.Sprintf("%d runs", n)
-}
-
-// harnessStatusWord is how the last run ended, in the trace's own word. A trace
-// written before the status field existed still says one, derived from whether
-// it carried a failure (subharness's exec.go).
-func harnessStatusWord(t subharness.Trace) string {
-	if t.Status != "" {
-		return string(t.Status)
-	}
-	if t.Err != "" {
-		return string(subharness.StatusFailed)
-	}
-	return string(subharness.StatusOK)
-}
-
-// harnessAgo is a coarse "when" — this row is scanned, not audited, and the
-// exact timestamp is in the trace.
-func harnessAgo(at time.Time) string {
-	if at.IsZero() {
-		return ""
-	}
-	since := time.Since(at)
-	switch {
-	case since < time.Minute:
-		return "just now"
-	case since < time.Hour:
-		return fmt.Sprintf("%dm ago", int(since.Minutes()))
-	case since < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(since.Hours()))
-	}
-	return fmt.Sprintf("%dd ago", int(since.Hours()/24))
 }
 
 // height is how many lines the overlay wants.
@@ -331,7 +314,12 @@ func (a *app) harnessAct(at int) {
 	if row.hasLast {
 		card += "\n\nlast run\n" + subharness.RunCard(row.last)
 	}
-	a.note(card)
+	// IT GOES IN AS A BLOCK AND NOT AS PROSE. The card says which step belongs to
+	// which lane by indenting it, and the ordinary note re-flows every paragraph
+	// to the frame — which took every nested lane and laid it flat against the
+	// margin, so the one thing the card is read for was the one thing this door
+	// destroyed on the way to the screen ([app.noteBlock]).
+	a.noteBlock(card)
 }
 
 // ── the chip ────────────────────────────────────────────────────────────────

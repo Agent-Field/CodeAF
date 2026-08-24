@@ -40,8 +40,12 @@ func familyAgent(t *testing.T) (*Agent, <-chan Event) {
 	return agent, agent.TaskUpdates()
 }
 
-func node(id, goal string, state orchestrate.State) orchestrate.NodeStatus {
-	return orchestrate.NodeStatus{Node: orchestrate.Node{ID: id, Goal: goal}, State: state}
+// node is one planned node as a run publishes it, and the title and the goal are
+// two different things on purpose: the title is the two or three words the
+// planner named the slice, and the goal is the whole second-person brief its
+// worker opens on. A row is drawn from the first and never cut out of the second.
+func node(id, title, goal string, state orchestrate.State) orchestrate.NodeStatus {
+	return orchestrate.NodeStatus{Node: orchestrate.Node{ID: id, Title: title, Goal: goal}, State: state}
 }
 
 // THE SHAPE: the run is a root, every node is a child of it, and the states are
@@ -51,13 +55,16 @@ func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/model", "run-pricing")
 
 	family.upsert([]orchestrate.NodeStatus{
-		node("n1", "read the tariff table", orchestrate.Running),
-		node("n2", "read the invoice writer", orchestrate.Queued),
+		node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running),
+		node("n2", "invoice writer", "You are reading the invoice writer. Report what it emits.", orchestrate.Queued),
 	})
 
 	notices := familyNotices(t, updates)
-	if len(notices) != 3 {
-		t.Fatalf("%d rows published, want the run and its two nodes: %+v", len(notices), notices)
+	// Four rows: the run, its two nodes, and the run again once its workers are
+	// on the board and the forming line comes off it
+	// ([orchestrateFamily.formingLocked]).
+	if len(notices) != 4 {
+		t.Fatalf("%d rows published, want the run, its two nodes and the run again: %+v", len(notices), notices)
 	}
 	root := notices[0]
 	if root.Parent != 0 {
@@ -69,7 +76,7 @@ func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 	if root.Run != "run-pricing" || root.Node != "" {
 		t.Fatalf("the run's identity is run=%q node=%q", root.Run, root.Node)
 	}
-	for _, kid := range notices[1:] {
+	for _, kid := range notices[1:3] {
 		if kid.Parent != root.ID {
 			t.Fatalf("node row %d hangs off %d, want the run %d", kid.ID, kid.Parent, root.ID)
 		}
@@ -86,8 +93,14 @@ func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 	if notices[1].State != TaskRunning || notices[2].State != TaskQueued {
 		t.Fatalf("the states published are %s / %s", notices[1].State, notices[2].State)
 	}
-	if notices[1].Title != "read the tariff table" {
+	// THE ROW IS CALLED WHAT THE PLANNER NAMED IT, never the head of the brief it
+	// hands its worker. The brief here opens "You are reading the tariff table",
+	// which is what a row cut from the goal would have been named.
+	if notices[1].Title != "tariff table" {
 		t.Fatalf("the node's row is titled %q", notices[1].Title)
+	}
+	if notices[3].ID != root.ID || notices[3].Parent != 0 {
+		t.Fatalf("the last row is %+v, want the run's own again", notices[3])
 	}
 }
 
@@ -97,8 +110,8 @@ func TestAFamilyPublishesOnlyWhatMoved(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "")
 	frontier := []orchestrate.NodeStatus{
-		node("n1", "read the tariff table", orchestrate.Running),
-		node("n2", "read the invoice writer", orchestrate.Queued),
+		node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running),
+		node("n2", "invoice writer", "You are reading the invoice writer. Report what it emits.", orchestrate.Queued),
 	}
 	family.upsert(frontier)
 	familyNotices(t, updates)
@@ -157,8 +170,15 @@ func TestAFailedNodesRowSaysWhatStoppedIt(t *testing.T) {
 		{Node: orchestrate.Node{ID: "n1", Goal: "read the tariff table"},
 			State: orchestrate.Failed, Err: "the file is not there\nand nothing else is either"},
 	})
-	notices := familyNotices(t, updates)
-	kid := notices[len(notices)-1]
+	// The run's own row is published around the node's — once when it is minted
+	// and once when its worker lands and the forming line comes off — so the row
+	// this is about is picked by its node rather than by its position.
+	var kid TaskNotice
+	for _, notice := range familyNotices(t, updates) {
+		if notice.Node == "n1" {
+			kid = notice
+		}
+	}
 	if kid.State != TaskFailed || kid.Report != "the file is not there" {
 		t.Fatalf("the failed row is %+v", kid)
 	}
@@ -171,13 +191,13 @@ func TestAPlannerCancelSettlesTheRowItLeftBehind(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "", "run-pricing")
 	family.upsert([]orchestrate.NodeStatus{
-		node("n1", "read the tariff table", orchestrate.Running),
-		node("n2", "read the invoice writer", orchestrate.Queued),
+		node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running),
+		node("n2", "invoice writer", "You are reading the invoice writer. Report what it emits.", orchestrate.Queued),
 	})
 	familyNotices(t, updates)
 
 	// n2 is gone from the graph entirely.
-	family.upsert([]orchestrate.NodeStatus{node("n1", "read the tariff table", orchestrate.Running)})
+	family.upsert([]orchestrate.NodeStatus{node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running)})
 	notices := familyNotices(t, updates)
 	if len(notices) != 1 {
 		t.Fatalf("%d rows published for one cancellation: %+v", len(notices), notices)
@@ -189,7 +209,7 @@ func TestAPlannerCancelSettlesTheRowItLeftBehind(t *testing.T) {
 		t.Fatalf("the cancelled row's identity is run=%q node=%q", notices[0].Run, notices[0].Node)
 	}
 	// And it is said once: the node stays gone, and the row stays settled.
-	family.upsert([]orchestrate.NodeStatus{node("n1", "read the tariff table", orchestrate.Running)})
+	family.upsert([]orchestrate.NodeStatus{node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running)})
 	if quiet := familyNotices(t, updates); len(quiet) != 0 {
 		t.Fatalf("a settled row was published again: %+v", quiet)
 	}
@@ -262,7 +282,7 @@ func TestOrchestrateNodeJournalAnswersOnlyForKnownWork(t *testing.T) {
 func TestAFamilyMintsItsIdsFromTheTaskGraph(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "")
-	family.upsert([]orchestrate.NodeStatus{node("n1", "read the tariff table", orchestrate.Running)})
+	family.upsert([]orchestrate.NodeStatus{node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running)})
 	familyNotices(t, updates)
 
 	// The next proposal a person answers takes the id after the run's.
@@ -287,12 +307,12 @@ func TestEveryRowOfARunIsPublishedWithItsName(t *testing.T) {
 	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/model", "run-pricing")
 
 	family.upsert([]orchestrate.NodeStatus{
-		node("n1", "read the tariff table", orchestrate.Running),
-		node("n2", "read the invoice writer", orchestrate.Queued),
+		node("n1", "tariff table", "You are reading the tariff table. Report what it charges.", orchestrate.Running),
+		node("n2", "invoice writer", "You are reading the invoice writer. Report what it emits.", orchestrate.Queued),
 	})
 	// A SNAPSHOT THAT CAME BACK WITHOUT THE GOAL still names the row: the node is
 	// the one it was a moment ago, and the run remembers what it published.
-	family.upsert([]orchestrate.NodeStatus{node("n1", "", orchestrate.Done)})
+	family.upsert([]orchestrate.NodeStatus{node("n1", "", "", orchestrate.Done)})
 	// AND A NODE THE PLANNER DROPPED KEEPS ITS NAME ON THE WAY OUT. This is the
 	// one notice with no snapshot behind it — the node is gone from the graph,
 	// which is why it is being settled at all.
@@ -327,11 +347,11 @@ func TestEveryRowOfARunIsPublishedWithItsName(t *testing.T) {
 	for _, notice := range settled {
 		switch notice.Node {
 		case "n1":
-			if notice.Title != "read the tariff table" {
+			if notice.Title != "tariff table" {
 				t.Fatalf("the dropped node is called %q", notice.Title)
 			}
 		case "n2":
-			if notice.Title != "read the invoice writer" {
+			if notice.Title != "invoice writer" {
 				t.Fatalf("the dropped node is called %q", notice.Title)
 			}
 		}

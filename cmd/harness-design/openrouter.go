@@ -25,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 const openrouterURL = "https://openrouter.ai/api/v1/chat/completions"
@@ -181,7 +183,12 @@ func (c *chatClient) once(ctx context.Context, body []byte) (reply, bool, error)
 	}
 	request.Header.Set("Authorization", "Bearer "+c.key)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Title", "aforge harness-design rig")
+	// The app, from the one place that spells it. This rig used to set a title
+	// of its own and no referer at all, which bought it nothing — a title
+	// without a referer creates no app page, so the rig's tokens were
+	// attributed to nobody — while leaving a second app name in the tree that
+	// would have RENAMED the real app page the day anything paired the two.
+	provider.ApplyAttribution(request.Header)
 
 	response, err := c.http.Do(request)
 	if err != nil {

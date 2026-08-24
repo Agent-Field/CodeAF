@@ -28,8 +28,7 @@ func TestTranscriberUsesOpenRouterJSONAudioContract(t *testing.T) {
 		}, nil
 	})}
 	client, err := NewClient(ClientConfig{
-		APIKey: "secret", BaseURL: "https://openrouter.test/api/v1/", SiteURL: "https://agentfield.ai",
-		SiteName: "AgentField AI", HTTPClient: httpClient,
+		APIKey: "secret", BaseURL: "https://openrouter.test/api/v1/", HTTPClient: httpClient,
 	})
 	if err != nil {
 		t.Fatal(err)

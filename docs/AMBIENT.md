@@ -138,12 +138,14 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
    tool, `stand`, with the person's words, a watch spec, an action, and rails. The
    surface draws the card. Nothing stands until yes.
 
-   **The card's answers are the kind's answers.** A one-off reminder offers two —
-   `1 yes, set it up` and `2 change when`, with esc declining — because "once, not
-   standing" said of a thing that already fires once and retires is a chip that does
-   nothing. Everything else keeps the third: `3 once, not standing` runs the action now
-   and arms nothing. `change when` is never in the engine's list of answers; it opens
-   the box for the person's own correction.
+   **The card's answers are the kind's answers.** A one-off reminder offers two numbered
+   chips — `1 yes, set it up` and `2 change when or where` — because "just once" said of
+   a thing that already fires once and retires is a chip that does nothing. Everything
+   else keeps the third: `3 just once` runs the action now and arms nothing.
+   `2 change when or where` is never in the engine's list of answers; it opens the box
+   for the person's own correction, to the schedule or the reach alike. **And every card
+   draws `0 no`**, which is the way out and the one chip a narrow row never drops; esc
+   says the same thing in the conversation.
 
    **And the model knows the clock.** The system prompt carries a `Now:` line with the
    date, the minute and the zone, refreshed inside a live session so a conversation

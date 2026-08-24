@@ -59,7 +59,7 @@ func TestHarnessProgressCollapsesIntoFeedCard(t *testing.T) {
 	p := designedPage()
 	a.designEvent(session.Event{Kind: session.EventHarnessDesignDone, ID: 7, Harness: &p})
 	got := plain(frame(a))
-	for _, want := range []string{"harness designed", "research-helper", "[plan]──▶[fetch]──▶[verify]", "every claim cites a source", harnessCardChange} {
+	for _, want := range []string{"research-helper", "plan the research", "check — every claim cites a source", harnessCardChange} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card is missing %q:\n%s", want, got)
 		}
@@ -78,7 +78,7 @@ func TestTheDesignLaneNamesTheTaskItStarted(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing triaging flaky tests — task 4") {
+	if !strings.Contains(got, "subharness · designing triaging flaky tests — task 4") {
 		t.Fatalf("the announce does not name the task:\n%s", got)
 	}
 }
@@ -92,7 +92,7 @@ func TestTheDesignAnnounceWithNoTaskDrawsNoTail(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing triaging flaky tests") {
+	if !strings.Contains(got, "subharness · designing triaging flaky tests") {
 		t.Fatalf("the announce was never drawn:\n%s", got)
 	}
 	if strings.Contains(got, "— task") {
@@ -113,7 +113,7 @@ func TestTheDesignNoteNamesTheModelDesigning(t *testing.T) {
 	})
 	a.width = 100
 	got := plain(frame(a))
-	if !strings.Contains(got, "harness · designing with moonshot/kimi-k3 · triaging flaky tests") {
+	if !strings.Contains(got, "subharness · designing with moonshot/kimi-k3 · triaging flaky tests") {
 		t.Fatalf("the design note does not name the model designing:\n%s", got)
 	}
 }
@@ -133,7 +133,7 @@ func designingNode(t *testing.T, phase string) *app {
 	a.width, a.height = 120, 30
 	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
 		ID:    4,
-		Title: "harness · " + designedGoal,
+		Title: "subharness · " + designedGoal,
 		Kind:  session.TaskKindHarness,
 		State: session.TaskRunning,
 		Doing: phase,
@@ -321,30 +321,73 @@ func TestAskingToChangeADesignOpensItsRoom(t *testing.T) {
 	}
 }
 
-func TestHarnessDiagramGoldens(t *testing.T) {
-	shapes := map[string]subharness.Harness{
-		"linear":  designedPage(),
-		"fan":     {Program: subharness.Program{Nodes: []subharness.Node{{Id: "plan"}, {Id: "web"}, {Id: "papers"}, {Id: "join"}}, Edges: []subharness.Edge{{"plan", "web"}, {"plan", "papers"}, {"web", "join"}, {"papers", "join"}}}},
-		"single":  {Program: subharness.Program{Nodes: []subharness.Node{{Id: "answer"}}}},
-		"clipped": {Program: subharness.Program{Nodes: []subharness.Node{{Id: "extraordinarily-long-step-name"}}}},
+// THE FEED'S DESIGN CARD IS THE ONE CARD, IN PLAIN SPEECH AND WITHOUT A BORDER.
+//
+// It used to draw its own: an ASCII architecture diagram (`[plan]──▶[fetch]`), a
+// bullet per node carrying the raw field off it, and rows reading `verify:
+// report` and `tools: read · grep` — the ladder's own word and the belt's
+// registered ids — all inside a `│ … │` box. Every one of those is a name for
+// something inside this binary, drawn at somebody who has never seen inside it,
+// and the box is furniture this surface does not own.
+func TestTheFeedsDesignCardIsThePlainSpeechCard(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	p := designedPage()
+	c := &harnessCard{id: 1, page: &p}
+	got := plain(strings.Join(a.harnessFeedRows(c, 120, false), "\n"))
+
+	// The words are subharness.CardParts's, line for line.
+	for _, line := range subharness.CardLines(p) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.Contains(got, strings.TrimRight(line, " ")) {
+			t.Fatalf("the card's own line %q is not on the feed card:\n%s", line, got)
+		}
 	}
-	wants := map[string]string{"linear": "[plan]──▶[fetch]──▶[verify]", "fan": "[plan]\n├──▶ [web]\n└──▶ [papers]\n      ▼\n    [join]", "single": "[answer]", "clipped": "[extraordina…]"}
-	for name, h := range shapes {
-		t.Run(name+"/wide", func(t *testing.T) {
-			got := strings.Join(harnessDiagram(h, 80, false), "\n")
-			if got != wants[name] {
-				t.Fatalf("\n%s", got)
-			}
-		})
-		t.Run(name+"/phone", func(t *testing.T) {
-			got := strings.Join(harnessDiagram(h, 40, true), "\n")
-			if !strings.Contains(got, "▼") && len(h.Program.Nodes) > 1 {
-				t.Fatalf("not vertical:\n%s", got)
-			}
-			if strings.Contains(got, "──▶") {
-				t.Fatalf("horizontal on phone:\n%s", got)
-			}
-		})
+	// NOT ONE GLYPH OF BOX DRAWING. The no-borders law, and the emphasis law with
+	// it: there is no rule to paint an accent along.
+	for _, glyph := range []string{"│", "┌", "└", "┐", "┘", "─", "▶", "├", "▼"} {
+		if strings.Contains(got, glyph) {
+			t.Fatalf("the design card draws box furniture (%q):\n%s", glyph, got)
+		}
+	}
+	// AND NOT ONE WORD OF MACHINERY: no ladder rung, no node kind, no tool id.
+	for _, word := range []string{"verify:", "tools:", "report", "agent.loop", "grep", "invariants", "whitelist"} {
+		if strings.Contains(got, word) {
+			t.Fatalf("the design card says %q, which is a name from inside this binary:\n%s", word, got)
+		}
+	}
+	// The tool words a person reads are there instead.
+	for _, word := range []string{"reads files", "searches inside files"} {
+		if !strings.Contains(got, word) {
+			t.Fatalf("the card does not say what its tools do (%q):\n%s", word, got)
+		}
+	}
+}
+
+// AND THE CARD'S OWN INDENTATION SURVIVES A NARROW FRAME. A lane's steps are
+// indented under the thing that opens them, which is the whole of how the card
+// says structure — so a frame too narrow for a row CUTS it and never re-flows it.
+func TestTheFeedsDesignCardIsCutAndNeverReflowed(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	p := designedPage()
+	p.Program.Nodes[0].Fields["brief"] = "plan the research and say what each source is for"
+	c := &harnessCard{id: 1, page: &p}
+	rows := a.harnessFeedRows(c, 40, false)
+	for _, row := range rows {
+		if width := len([]rune(plain(row))); width > 40 {
+			t.Fatalf("a card row ran past the frame (%d cells): %q", width, plain(row))
+		}
+	}
+	// The step that was cut is still ONE row, in its own column, rather than two.
+	planned := 0
+	for _, row := range rows {
+		if strings.Contains(plain(row), "plan") {
+			planned++
+		}
+	}
+	if planned != 1 {
+		t.Fatalf("the cut step was re-flowed into %d rows:\n%s", planned, plain(strings.Join(rows, "\n")))
 	}
 }
 

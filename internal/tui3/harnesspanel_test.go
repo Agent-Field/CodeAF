@@ -60,10 +60,11 @@ func TestTheHarnessPanelDrawsWhatIsRegistered(t *testing.T) {
 	if !strings.Contains(screen, "chase a flaky test") {
 		t.Fatalf("a row does not say what it is for:\n%s", screen)
 	}
-	// A HARNESS THAT HAS NEVER RUN SAYS SO rather than drawing an empty column
-	// where every other row has a timing.
-	if !strings.Contains(screen, "never run") {
-		t.Fatalf("a harness with no history does not say so:\n%s", screen)
+	// AND A HARNESS NOBODY HAS RUN SAYS NOTHING THERE. `never run` was a column of
+	// apologies under every fresh row; the emptiness law says a row with nothing
+	// to report reports nothing, and `/subharness` has always drawn it that way.
+	if strings.Contains(screen, "never run") || strings.Contains(screen, "0 runs") {
+		t.Fatalf("a harness with no history counted its own silence:\n%s", screen)
 	}
 }
 
@@ -80,9 +81,19 @@ func TestTheHarnessPanelSaysWhatTheHistorySays(t *testing.T) {
 	}
 	typeLine(t, a, "/harness")
 	screen := strings.Join(plainOverlay(a), "\n")
-	// The count is every trace, and the word is the NEWEST one's.
-	if !strings.Contains(screen, "2 runs") || !strings.Contains(screen, "last declined") {
-		t.Fatalf("the row does not carry the history:\n%s", screen)
+	// The count is every trace, and the LAST RUN IS SPELLED THE WAY /subharness
+	// spells it — the same two words for the same fact about the same program,
+	// rather than this door's old `last declined, 2h ago`.
+	if !strings.Contains(screen, "2 runs") || !strings.Contains(screen, "2h · incomplete") {
+		t.Fatalf("the row does not carry the history in the shared words:\n%s", screen)
+	}
+	// AND NOT ONE MACHINE WORD FOR HOW IT ENDED. `declined` is the trace's own
+	// status; on a row somebody is scanning, a person who said no at a gate did
+	// not fail and is not told they did.
+	for _, word := range []string{"declined", "cancelled", "intervened", "failed"} {
+		if strings.Contains(screen, word) {
+			t.Fatalf("the row says %q about a run:\n%s", word, screen)
+		}
 	}
 }
 
@@ -96,7 +107,7 @@ func TestEnterOnAHarnessPrintsItsCard(t *testing.T) {
 		t.Fatal("the panel stayed up over the card it printed")
 	}
 	screen := strings.Join(plainRows(a), "\n")
-	for _, want := range []string{"triage-flake · v1", "look at it", "land it?", "tools  read"} {
+	for _, want := range []string{"triage-flake · v1", "look at it", "land it?", "can use · reads files"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, screen)
 		}
@@ -122,6 +133,81 @@ func TestTheCardCarriesTheLastRun(t *testing.T) {
 	screen := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(screen, "last run") || !strings.Contains(screen, "declined") {
 		t.Fatalf("the card does not carry the last run:\n%s", screen)
+	}
+}
+
+// THE CARD REACHES THE SCREEN WITH ITS OWN LINE STRUCTURE INTACT.
+//
+// It went through the ordinary note, which re-flows every paragraph to the frame
+// — and the card says which step belongs to which lane by INDENTING it, so the
+// one thing a person opens the card to read was the one thing this door
+// destroyed on the way there. Each line is now fitted where it stands and cut if
+// it has to be, never wrapped.
+func TestThePrintedCardKeepsItsOwnIndentation(t *testing.T) {
+	branching := demoHarness("triage-flake", "chase a flaky test")
+	branching.Program = subharness.Program{
+		Nodes: []subharness.Node{
+			{Id: "pick", Kind: subharness.KindBranch, Fields: subharness.Fields{"when": "contains flaky"}},
+			{Id: "rerun", Kind: subharness.KindToolCall, Fields: subharness.Fields{
+				"tool": "bash", "args": "go test -run TestFoo -count 20",
+			}},
+			{Id: "explain", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{
+				"brief": "say why it is not flaky",
+			}},
+		},
+		Edges: []subharness.Edge{{"pick", "rerun"}, {"pick", "explain"}},
+	}
+	// A choice is a shape only a harness allowed to decide may hold, which the
+	// store checks on the way in.
+	branching.Dyn = subharness.Dyn{Ladder: subharness.DynBranch, Cap: 2}
+	branching.Whitelist = []string{"read", "bash"}
+	a, _ := harnessApp(t, branching)
+	// A NARROW FRAME IS THE WHOLE TEST. At a hundred cells nothing is long enough
+	// to wrap and the two paths agree; the flattening only ever showed up on the
+	// frame a person actually reads a long step on.
+	a.width = 44
+	typeLine(t, a, "/harness")
+	drive(t, a, key("enter"))
+
+	at := -1
+	for i := range a.entries {
+		if a.entries[i].kind == entryNote {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("the card never reached the transcript")
+	}
+	rows := a.renderEntry(at, &a.entries[at], a.width)
+
+	// ONE ROW PER LINE OF THE CARD. Re-flowing would turn a long step into two
+	// rows, the second of which sits at the margin and claims to be a step of the
+	// run rather than the tail of one.
+	lines := strings.Split(a.entries[at].text, "\n")
+	if len(rows) != len(lines) {
+		t.Fatalf("the card was re-flowed: %d lines became %d rows at width %d:\n%s",
+			len(lines), len(rows), a.width, plain(strings.Join(rows, "\n")))
+	}
+	// AND EACH ROW KEEPS THE COLUMN THE CARD PUT IT IN, measured past the note's
+	// own two-cell lead ("· " on the first row, two spaces after it).
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		row := plain(rows[i])
+		if len([]rune(row)) < 2 {
+			t.Fatalf("line %d came back as %q", i, row)
+		}
+		body, want := string([]rune(row)[2:]), len(line)-len(strings.TrimLeft(line, " "))
+		if got := len(body) - len(strings.TrimLeft(body, " ")); got != want {
+			t.Fatalf("line %d sits in column %d and the card put it in %d: %q", i, got, want, row)
+		}
+	}
+	// Nothing runs past the frame either.
+	for _, row := range rows {
+		if width := len([]rune(plain(row))); width > a.width {
+			t.Fatalf("a card row ran past the frame (%d cells): %q", width, plain(row))
+		}
 	}
 }
 

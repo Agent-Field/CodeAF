@@ -174,6 +174,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
+	// AND THAT SURFACE HOLDS THE HARNESS LANE, which is a second fact and not the
+	// same one: the lane is a standing subscription opened on the agent itself
+	// (internal/tui3's watchDesigns), so it exists only where the surface and the
+	// session are in one process. It is what lets chat offer a saved program with
+	// an intake card (internal/session's canProposeSubharness); a conversation
+	// held over a connection sets AskConsent and NOT this, because the card has no
+	// road to the far end (engine.go says the same about the design card).
+	cfg.HarnessCards = true
 
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
@@ -505,16 +513,13 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, models, chosen, workspace)
+	subharnesses := v3Subharnesses(settings, models, chosen, workspace, harnesses)
 
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
 		// The folder this conversation keeps everything in (Decision 26). It is
@@ -667,6 +672,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// readers (internal/session's harness_belt.go). It is wired here rather than
 	// in the literal above because the resolver it needs is one line up.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel, cfg.MediaPick)
+	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
+	// a program this conversation can run, so it belongs on `/subharness` beside
+	// the bundles and the compiled-in workers rather than in a catalog of its own
+	// (chatv3_subharness.go's UsePages). It is wired here because the runner it
+	// needs is the line above.
+	subharnesses.UsePages(harnesses, cfg.RunHarness)
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"

@@ -117,7 +117,7 @@ passed".
 Because "once" would not be a smaller version of what you asked for; it would be
 a different thing at the wrong moment.
 
-`3 once, not standing` means **do the action now, as an ordinary turn, and leave
+`3 just once` means **do the action now, as an ordinary turn, and leave
 nothing behind**. For a watch, a rule, a routine or overnight work that is a real
 answer: you wanted the tests run, not the arrangement. For "remind me at 6 to
 leave" the whole content of the request is the **6** — doing it now says
@@ -125,14 +125,15 @@ leave" the whole content of the request is the **6** — doing it now says
 it there:
 
 ```
-│ [ 1 yes, set it up ]  [ 2 change when ]
+│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 0 no ]
 ```
 
-Two chips, `1` and `2`, and `3` does nothing — on the card in the conversation,
-on the card in home's `ask here` pane, and on home's own answer row. The hint
-under the box says so too: `1 yes · 2 change when · 0 or esc, no`. `esc` still
-declines the whole thing, as it does on every card, and so does `0` — the
-decline is on **every** standing card, the one answer that is never missing.
+Two numbered chips, `1` and `2`, and `3` does nothing — on the card in the
+conversation, on the card in home's `ask here` pane, and on home's own answer
+row. The hint under the box says so too:
+`1 yes · 2 change when or where · 0 or esc, no`. The **way out is still drawn**:
+`0 no` is on every standing card there is, it is the one chip a narrow card never
+drops, and `esc` does the same thing beside it.
 
 Everything else keeps all three: a watch, a rule, a routine, overnight work.
 
@@ -195,8 +196,8 @@ yes nor a clear no, aforge treats it as a no and the log says
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
 moment when it answers on somebody's behalf. It waits until you press `1 yes,
-set it up`, `2 change when`, `0 not set up`, or — where the card offers it —
-`3 once, not standing`.
+set it up`, `2 change when or where`, `0 no`, or — where the card offers it —
+`3 just once`.
 
 A **one-off reminder's card has only two chips**; the next section says why. It
 still takes the decline.
@@ -206,24 +207,57 @@ card says so on **home**, and the row there carries the same chips the card is
 offering — `1 yes`, `3 once` and `0 not set up`, or `1 yes` and `0 not set up` on
 a one-off reminder — so the card can be **answered or declined** from the
 dashboard without opening the conversation (home's own page has the whole rule).
-`2 change when` stays here, where there is a box to say the new when into.
+`2 change when or where` stays here, where there is a box to say the new time or
+place into.
 
-## How do I say no to a reminder — 0, or esc in the conversation
+## I don't understand these options — what each answer on the card does, and how to cancel
 
-`0 not set up` is the no, and it is one keystroke everywhere a standing card is
-drawn: in the conversation, on home's answer row, and in home's `ask here` pane.
-Nothing is created, nothing is run, and the card settles as `not set up`.
+Every answer on the card says what will HAPPEN, and the dim line under the row spells the
+one you are on out in full, in this card's own words rather than a fixed sentence:
+
+```
+│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
+│ I'll keep doing this Mondays at 9am, for this project, until you stop it
+```
+
+- **`1 yes, set it up`** — it gets set up and starts happening. The line under it reads
+  back the exact schedule and reach from the bands above, and ends `until you stop it`.
+- **`2 change when or where`** — you want it, but not like that. The box below becomes a
+  place to say the **time or the place** instead — "make it 8", "only in this project",
+  "everywhere" — and `enter` sends your words back. Nothing is set up until a new card
+  comes with them in it.
+- **`3 just once`** — do the thing now, this once, and keep nothing. Some cards do not
+  offer it; the section above says why.
+- **`0 no`** — **this is cancel**. Nothing is set up, nothing is run, and the card settles
+  as `not set up`. `esc` does exactly the same thing.
+
+Walk the row with `←`/`→` and the line under it follows the answer you are on, so you can
+read what each one will do before you take it. The answer you are on is lifted and lit, and
+its digit takes it outright from wherever the cursor is. A click takes it too.
+
+On a narrow window the words shorten to `yes`, `change`, `once` and `no` rather than any
+answer being dropped, and **the `no` is never the one that goes**.
+
+## How do I say no to a reminder — 0, esc, or the no on the card
+
+`0 no` is the way out, and it is one keystroke and **one visible chip** everywhere
+a card like this is drawn: in the conversation, on home's answer row, and in
+home's `ask here` pane. Nothing is created, nothing is run, and the card settles
+as `not set up`. On home's answer row the chip reads `0 not set up`, which is the
+same answer said as its outcome, because that row has no card under it to settle.
 
 In the conversation `esc` does the same thing and always has. The digit exists
 because the other two places cannot spare `esc`: on home it closes home, and in
 the `ask here` pane it hands the keyboard back to the list without answering
 anything — so before `0` there was no way at all to refuse a card from either of
-them, only to walk to the window or leave the question standing.
+them, only to walk to the window or leave the question open.
 
 It is a `0` and not a `4` because the chips are numbered by where they sit —
-`1 yes`, `2 change when`, `3 once` — so a fourth digit would move under your hand
-on a card that drew one chip fewer. `0` is off the end of that numbering, on
-every card, always the same answer.
+`1 yes`, `2 change when or where`, `3 just once` — so a fourth digit would move
+under your hand on a card that drew one chip fewer. `0` is off the end of that
+numbering, on every card, always the same answer. It is also the one chip a
+narrow card never drops: the answers shorten to `yes`, `change`, `once` and `no`
+before any of them goes.
 
 That is the opposite of a task proposal's card, which does count down and starts
 the work on silence. A task is bounded work somebody is watching; a standing

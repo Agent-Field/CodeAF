@@ -355,6 +355,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// the conversation exactly as it was (subharness.go). Being modal is what
 	// frees every printable key for the filter box and, on the card, for the
 	// value somebody is typing into a field.
+	//
+	// WITH ONE CARD THAT IS NOT OPENED BY A COMMAND: the intake chat itself
+	// raised. It comes through this same door because it is the same overlay,
+	// and the only thing that differs is what esc means on it — a NO, answered
+	// back to the turn that is waiting on it, rather than a way out of a page
+	// somebody opened to read ([app.answerSubharnessOffer]).
 	if a.subPage.open && msg.String() != "ctrl+c" {
 		return a.subPageKey(msg)
 	}

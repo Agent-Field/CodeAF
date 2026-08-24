@@ -11,13 +11,15 @@ remembering it. A program that works out why a test is flaky does that the same 
 time, for the same money, and tells you the same shaped answer at the end.
 
 Some of them are built into aforge. Some are files on your machine under
-`~/.aforge/subharnesses`, or in the project you are working in. **You cannot tell which is
-which, and nothing in the list says** — a saved program and a built-in one are the same
-kind of thing here on purpose.
+`~/.aforge/subharnesses`, or in the project you are working in. Some are the pages a design
+wrote when you asked aforge to build you one, under `~/.aforge/harnesses`. **They are one
+list and nothing in it says which is which** beyond where each was found — a saved program
+and a built-in one are the same kind of thing here on purpose.
 
-A subharness is a different thing from a **harness** (the older machinery, its own page):
-a harness is a procedure the turn offers to take over your sentence with. A subharness is
-a program with a form, run as a task you can walk away from.
+A **harness** is one of these too, reached by another door: `/harness` picks one and takes
+your request as a sentence, `/subharness` lists it beside everything else and takes your
+request as the one field on its card. *Saved shapes of work* is the page about designing
+one.
 
 ## How aforge offers to run one — the "this looks like" card
 
@@ -56,6 +58,11 @@ Every saved program declares what it takes. The card shows each field with what 
 
 You change what is wrong, fill what is missing, and confirm. Confirming is what launches
 it. The same card opens whether the chat proposed the program or you picked it yourself.
+
+On a card the chat raised, the last row is its two answers — `run it` and `no` — walked
+with `←` / `→` and taken with `enter`, with `1` and `0` as the direct keys and `esc` as
+another way of saying no. Under them is a line saying what the answer you are on will do.
+*Subharnesses* is the page with the whole card and every key on it.
 
 ## What running one looks like — it is a task with a number
 

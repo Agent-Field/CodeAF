@@ -252,6 +252,16 @@ func (s designSeat) broke(err error) {
 // as markdown (internal/tui3's renderMarkdown), and markdown folds single
 // newlines into running prose — which is all a card is made of. Unfenced, a card
 // whose columns line up at a glance arrived as one run-on paragraph.
+//
+// THE FENCE SAYS `text` FOR THE SAME REASON. An untagged block is handed to
+// chroma's language GUESS (internal/tui2/prose's highlight), and a card is plain
+// English with a shell command or two in it — so the guess landed wherever the
+// step details happened to look like code that day, and lit a person's approval
+// page up in four colours that meant nothing. Naming the plainest lexer there is
+// makes the block one calm colour every time, which is what a card is supposed
+// to be.
+const harnessCardFence = "text"
+
 func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "The draft is written — %s · %d steps.", page.Id.Name, len(page.Program.Nodes))
@@ -263,7 +273,7 @@ func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
 	if len(draft.Cues) > 0 {
 		out.WriteString("\n\nIt answers to: " + strings.Join(draft.Cues, " · "))
 	}
-	out.WriteString("\n\n```\n" + subharness.Card(page) + "\n```")
+	out.WriteString("\n\n```" + harnessCardFence + "\n" + subharness.Card(page) + "\n```")
 	return out.String()
 }
 
@@ -330,6 +340,53 @@ const (
 	harnessPhaseDesigning = "designing"
 	HarnessPhaseAsking    = "awaiting your look"
 )
+
+// ── WHAT A PERSON IS PART OF WHILE THEY STAND IN HERE ───────────────────────
+//
+// A design thread is the one place in this program where somebody's own sentence
+// is not a message to a conversation: it is a line inside a named piece of work,
+// and what they say there can rewrite a page. The transcript that draws it drew
+// it exactly as it draws an ordinary chat turn — a `›` line, a think, an answer —
+// so "use models dynamically in the subharness", typed at a design and acted on
+// by it, was indistinguishable from the same sentence typed at nobody in
+// particular.
+//
+// So the node says what it IS, in the words a person would use, and every surface
+// draws that word where the turn starts ([TaskNode.context]). It is spelled here
+// and nowhere else: one context, one sentence, one file that owns it.
+//
+// THE NOUN IS "SUBHARNESS" AND IT HAS NO SECOND FORM. There is one system and one
+// word for it in everything a person reads; nothing here may say otherwise.
+
+// designContextWord is the design thread as a place, before its page has a name.
+// WHICH design is answered by the room around it; what this word carries is the
+// fact that a sentence typed here is part of one.
+const designContextWord = "designing a subharness"
+
+// namedDesignContext is the same context once the page has been written and has a
+// name of its own. It is the better word and it cannot be said any earlier: for
+// the first minutes of a design there is no name, and a context that guessed one
+// would be naming a subharness that does not exist yet.
+func namedDesignContext(name string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		return designContextWord
+	}
+	return "designing subharness " + name
+}
+
+// contextNow gives this node a working context, or a better name for the one it
+// has, and tells the world — on [TaskNode.doingNow]'s terms and for its reason:
+// nothing about the node's state moved, so this is an update and never a landing,
+// and it is announced only when the word actually changes.
+func (n *TaskNode) contextNow(word string) {
+	n.graph.mu.Lock()
+	changed := n.context != word
+	n.context = word
+	n.graph.mu.Unlock()
+	if changed {
+		n.graph.announce(n)
+	}
+}
 
 // designStoppedWord is the report a design a person ended settles with. It says
 // the one thing somebody who stopped a design needs to know, which is not that
@@ -435,6 +492,12 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// page is a window that round takes and gives back.
 	log := taskLog(listed)
 	fmt.Fprintf(log, "task %d · %s\ndesigning with %s\n", node.id, node.title(), model)
+
+	// THE CONTEXT IS NAMED BEFORE ANYTHING CAN BE SAID INTO IT. A person can walk
+	// into this room the instant the row appears, and a turn taken in a room that
+	// had not said what it was would be drawn as an ordinary chat turn — which is
+	// the whole defect [TaskNode.context] exists to close.
+	node.contextNow(designContextWord)
 
 	// THE CHANGES LANE IS OPENED BEFORE THE THREAD IS BUILT, and it has to be:
 	// the thread's one extra hand is wired out of it, and a belt is assembled
@@ -634,6 +697,12 @@ func (r *designRun) round(ctx context.Context, change string) (TaskState, bool, 
 	}
 	r.standing = accepted
 	page := accepted.page
+	// AND THE CONTEXT LEARNS THE PAGE'S NAME. Until this line the room could only
+	// say it was a design; from here it can say WHICH, which is the difference
+	// between a mark that orients somebody and one that merely reassures them. A
+	// rewrite passes through here too and may carry a new name with it, which is
+	// why this is set per round rather than once.
+	node.contextNow(namedDesignContext(page.Id.Name))
 
 	// THE CARD IS WHAT A PERSON READS AND THE PAGE IS WHAT THE MODEL READS, and
 	// they are two messages for exactly that reason ([harnessPageContext]).
@@ -847,11 +916,17 @@ func (a *Agent) harnessWritingWindow() time.Duration {
 // harnessSavedWord is the settle card's line: the name, the version it landed
 // as, and what to do with it.
 func harnessSavedWord(saved subharness.Harness) string {
-	line := fmt.Sprintf("harness %q v%d saved", saved.Id.Name, saved.Id.Version)
+	line := fmt.Sprintf("subharness %q v%d saved", saved.Id.Name, saved.Id.Version)
 	// The version is spelled even at v1 here, unlike the registry listing, and
 	// it is deliberate: this line is about a thing that has JUST come into
 	// existence, and "v1" is the news that it is the first of them.
-	return line + "\nIt is offered by the turn itself whenever somebody's words match it; there is no command that runs one."
+	//
+	// AND THE SECOND LINE IS WHERE IT IS NOW, which is the whole of what somebody
+	// who has just approved a card needs: it is on the list with everything else
+	// they can run, and it still answers the words it was designed for. The line
+	// this replaced said there was no command that ran one, which was the sentence
+	// sending people to look for a page they had just made and not find it.
+	return line + "\n/subharness runs it, and it offers itself when what you say matches."
 }
 
 // doingNow moves a node to a named phase and tells the world, on
@@ -1081,7 +1156,7 @@ func harnessPageSuperseded(encoded []byte) string {
 // it, one message along and out of sight ([harnessPageContext]).
 func harnessPageThread(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written.\n\n```\n")
+	out.WriteString("The page is written.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nNothing is saved yet — the card is up, and it is saved only if it is approved.")
@@ -1098,7 +1173,7 @@ func harnessPageThread(page subharness.Harness) string {
 // over by itself.
 func harnessPageRewritten(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written again, with your change in it.\n\n```\n")
+	out.WriteString("The page is written again, with your change in it.\n\n```" + harnessCardFence + "\n")
 	out.WriteString(subharness.Card(page))
 	out.WriteString("\n```")
 	out.WriteString("\n\nStill nothing is saved — the card is up again, and it is saved only if it is approved.")

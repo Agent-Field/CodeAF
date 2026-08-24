@@ -448,6 +448,18 @@ type homeLine struct {
 	// for, so this field is the only thing that tells the two views of one live
 	// object apart.
 	zone *homeAttention
+	// task is the ONE PIECE OF WORK a row was named after, and nil on every row
+	// that stands for a conversation as a whole. The `needs you` strip's landed
+	// rows are the ones that carry it today (homeattention.go's [attentionTask]):
+	// the row is named after the task, so its door has to be able to aim at that
+	// task rather than at the live edge of a conversation with forty others in it
+	// ([app.homeLandOnTask]).
+	//
+	// IT IS THE RECORD ROW ITSELF AND NOT AN ID. The card is drawn out of the
+	// entry (taskrecord.go's [app.taskCardBody]), so a row carrying an id would
+	// have to find the row again in a project index the window it is opening has
+	// not read yet — and would have nothing to show until it did.
+	task *session.TaskIndexEntry
 	// item is the standing item, for [homeItem], and view carries the two facts
 	// about NOW that the document does not hold (homestanding.go's
 	// [StandingItemView]). They are resolved when the row is built, so a row and
@@ -1814,6 +1826,17 @@ func (h *homeView) move(delta int) {
 		step, delta = -1, -delta
 	}
 	at := h.cursor
+	// bridge lane: FOCUS WAKES AT THE CENTER OF MASS. The first step down off
+	// rest at the three-column tier is spent entering the middle column — the one
+	// the layout declares primary — rather than walking into the flank the line
+	// list happens to begin with ([homeView.wake] holds the whole law). Every
+	// further step is the ordinary walk from there, so `pgdown` off rest is that
+	// landing and then three more rows, exactly as it is from anywhere else.
+	if at == homeRest && step > 0 {
+		if land := h.wake(); land != homeRest {
+			at, delta = land, delta-1
+		}
+	}
 	for ; delta > 0; delta-- {
 		next := at + step
 		for next >= 0 && next < len(h.lines) && !h.lines[next].stop() {
@@ -2448,7 +2471,7 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// surface narrating a door it just walked through.
 		cmd, _ := a.bringForward(line.row.Transcript)
 		a.closeHome()
-		return cmd
+		return tea.Batch(cmd, a.homeLandOnTask(line))
 	case !a.canOpen():
 		h.say(resumeUnavailableWord, "")
 		return nil
@@ -2490,7 +2513,48 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		return nil
 	}
 	a.closeHome()
-	return cmd
+	return tea.Batch(cmd, a.homeLandOnTask(line))
+}
+
+// homeLandOnTask is the SECOND HALF of a door whose row was named after one
+// piece of work: the conversation is open, and that work's own record card is
+// raised in front of it.
+//
+// ── WHY THE CONVERSATION ALONE WAS THE WRONG ARRIVAL ────────────────────────
+//
+// A `needs you` row for work that landed and cannot say whether it holds is
+// named after the TASK — `Illustrate chapter 2 · landed · 4d` — and its door
+// used to open the bare conversation. In a session that has run forty-five of
+// them that is a person landing on the live edge of a transcript with no trace
+// of the thing the row they pressed was about, and the row reads as a door onto
+// nothing. The row already knew which task it stood for; the line it was carried
+// on did not, so the door had nothing to aim with ([homeLine.task] is that fact,
+// now written down).
+//
+// ── IT ASKS THE ROW AND NEVER THE STATE ─────────────────────────────────────
+//
+// Any row carrying a record entry lands on it, whatever state that work is in.
+// The landed rows are the only ones that carry one today, and a strip that grew
+// a second kind of task row tomorrow would arrive here already working — where a
+// list of states written into this door would have to be found and extended. A
+// row that stands for a conversation as a whole carries nothing and this does
+// nothing, which is what keeps a waiting question's row the plain door onto its
+// conversation it has always been.
+//
+// ── AND IT RUNS ONLY WHERE THE OPEN SUCCEEDED ───────────────────────────────
+//
+// Every refusal above returns before this, so a conversation another window is
+// holding still answers with its own word and no card is ever raised over a
+// conversation nobody walked into.
+func (a *app) homeLandOnTask(line homeLine) tea.Cmd {
+	if line.task == nil {
+		return nil
+	}
+	// The page stands the other fullscreen surfaces down and parks its list on
+	// the row that was pressed, so esc is one layer at a time from here: the card
+	// backs out to the record, and the record's own esc leaves the conversation
+	// on the screen (taskrecord.go's [app.openTaskRecord]).
+	return a.openTaskRecord(line.task)
 }
 
 // homeFolderThere reports whether a project's directory is still on the disk.
@@ -3478,9 +3542,11 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 	//
 	// THE CURSOR AND THE POINTER ARE SPARED wherever they land. Both already wear
 	// a background of their own ([overlayRow]), and the row a person is standing
-	// on is the one row a gradient must not take part in.
+	// on is the one row a gradient must not take part in. THE MARKED HEADING IS
+	// SPARED FOR THE SAME REASON — it wears the cursor step too, and a ground with
+	// a gradient run over it is a ground that reads as a smudge (homesection.go).
 	for i := range drawn {
-		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover {
+		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover || h.marksSection(drawn[i].hit) {
 			continue
 		}
 		if stop := tailStop(i, len(drawn), at < end); stop >= 0 {
@@ -3508,7 +3574,12 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// of them now, so there is nothing to mark. The word survives one floor
 		// down, on the rule over the folded block, where it is about the SHAPE of
 		// the list and not about a door ([homeElsewhereRuleWord]).
-		return "  " + pal.dim(fit(line.project, width-2))
+		//
+		// AND IT WEARS A GROUND WHILE THE CURSOR IS SOMEWHERE INSIDE THIS PROJECT
+		// — the one heading a frame marks, saying which block the keyboard is
+		// standing in (homesection.go holds the whole law). The word itself does
+		// not change tier: a heading stays dim, and the ground alone moves.
+		return h.sectionGround("  "+pal.dim(fit(line.project, width-2)), at, width, pal)
 	case homeQuiet:
 		// THE SAME FOLD MARK THE TASK COLUMN USES (task.go's [glyphShut] and
 		// [glyphOpen]), because it is the same gesture over the same kind of
@@ -3531,7 +3602,11 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// tried and could not say that: the folded lines simply read as a fourth
 		// project with very short rows. The word rides the rule rather than
 		// sitting on a heading of its own, so the section costs one row.
-		return pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))
+		//
+		// IT IS A HEADING FOR THE PURPOSE OF THE ONE MARKED SECTION, because it is
+		// the only thing naming the block under it: a cursor down among the folded
+		// projects marks this rule (homesection.go).
+		return h.sectionGround(pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width)), at, width, pal)
 	case homeProject:
 		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
 		// a whole project: `▸` while it is one line, `▾` once it is a block.

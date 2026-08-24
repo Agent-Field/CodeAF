@@ -602,7 +602,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// one here is not typed at all: an `@task` mention leaves a footnote
 		// block naming the node's transcript, and that block is the fastest way
 		// into what a task actually did.
-		return a.linkPaths(out)
+		//
+		// AND THEN THE TURN SAYS WHAT IT WAS PART OF, when it was part of anything
+		// (turncontext.go). It is added AFTER the paths are linked, and that order
+		// is the point: the mark is this surface talking about the message, not a
+		// word of the message, so nothing in it may become a door. On an ordinary
+		// turn it adds nothing at all — which is nearly every turn, and is why this
+		// line changes no frame most people will ever look at.
+		return a.turnContextRows(a.linkPaths(out), e.context, width)
 
 	case entryAssistant:
 		return a.linkPaths(a.assistantRows(i, e, width))
@@ -661,7 +668,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// once for the whole note and spent across its wrapped rows, because the
 		// data are in the order of the sentence and not of the rows the frame
 		// happened to break it into.
+		//
+		// A NOTE WHOSE INDENTATION IS ITS MEANING IS CUT RATHER THAN RE-FLOWED
+		// ([app.noteBlock]). The one shape that asks for it is a subharness card,
+		// where the indent under a lane is what says the step belongs to that lane
+		// — and [wrap] laid every one of those flat against the margin.
 		body := wrap(e.text, width-2)
+		if e.block {
+			body = noteBlockLines(e.text, width-2)
+		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
 		for i, line := range body {
@@ -1700,16 +1715,13 @@ func (a *app) ctxSpark() string {
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
-	// THE HEIGHT IS THE SPARK MACHINERY'S ARITHMETIC AND NOT THIS FUNCTION'S
-	// (spark.go). The machine card's `hands` chart quantizes the same way into a
-	// different alphabet, and one rounding rule is what keeps two sparks on one
-	// screen from disagreeing about the same reading.
-	bars := []rune(sparkBars)
-	var out strings.Builder
-	for _, reading := range a.ctxRing {
-		out.WriteRune(bars[sparkLevel(reading, threshold, len(bars))])
-	}
-	return out.String()
+	// THE SHAPE IS THE SPARK MACHINERY'S AND NOT THIS FUNCTION'S (spark.go). The
+	// machine card's `hands` chart draws in the same alphabet off the same
+	// quantizer, and one rounding rule is what keeps two sparks on one screen
+	// from disagreeing about the same reading. The ceiling is STATED here —
+	// a context bar means the same thing from one turn to the next — where the
+	// chart on the card has no scale but its own window.
+	return barSpark(a.ctxRing, threshold, len(a.ctxRing))
 }
 
 // burnSegment is how fast the model is writing, right now:
@@ -2001,7 +2013,7 @@ func (a *app) stateWord() (string, string) {
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
 	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
+	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
 	word := a.state.String()
@@ -2645,6 +2657,25 @@ func wrap(text string, width int) []string {
 			continue
 		}
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
+	}
+	return out
+}
+
+// noteBlockLines is [wrap]'s opposite number for a block whose own line
+// structure is the meaning: the text's own lines, each one FITTED to the width
+// and none of them re-flowed.
+//
+// It is the same shape a fenced block already gets (markdown.go says why in the
+// same words: indentation is content, and a paragraph filler does not know it).
+// The difference is only which door the text came through — a card printed into
+// the conversation by a slash command arrives as a note rather than as prose
+// from the model.
+func noteBlockLines(text string, width int) []string {
+	text = strings.ReplaceAll(text, "\t", "    ")
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, fit(line, width))
 	}
 	return out
 }

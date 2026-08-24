@@ -26,12 +26,9 @@ func TestATranscriptionCarriesTheWholeAttributionSet(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(ClientConfig{
-		APIKey:         "key",
-		BaseURL:        server.URL,
-		SiteURL:        "https://agentfield.ai",
-		SiteName:       "AgentField AI",
-		SiteCategories: "cli-agent,programming-app",
-		HTTPClient:     server.Client(),
+		APIKey:     "key",
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -51,9 +48,10 @@ func TestATranscriptionCarriesTheWholeAttributionSet(t *testing.T) {
 	}
 }
 
-// An operator who cleared a field asked not to be attributed by it, and an empty
-// header is a claim about the app rather than the absence of one.
-func TestATranscriptionSendsNothingItWasNotGiven(t *testing.T) {
+// And a client built from the barest configuration there is still names the
+// app. Attribution is not a value this package can be given, so it is not a
+// value it can be denied: the constants go out or the request does not.
+func TestATranscriptionAttributesWithoutBeingAsked(t *testing.T) {
 	var seen http.Header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = r.Header.Clone()
@@ -65,9 +63,14 @@ func TestATranscriptionSendsNothingItWasNotGiven(t *testing.T) {
 	if _, err := client.Transcribe(context.Background(), []byte("RIFF....WAVE"), TranscriptionOptions{Model: "whisper"}); err != nil {
 		t.Fatalf("transcribe: %v", err)
 	}
-	for _, header := range []string{"HTTP-Referer", "X-OpenRouter-Title", "X-Title", "X-OpenRouter-Categories"} {
-		if _, present := seen[http.CanonicalHeaderKey(header)]; present {
-			t.Errorf("%s was sent empty", header)
+	for header, want := range map[string]string{
+		"HTTP-Referer":            "https://agentfield.ai",
+		"X-OpenRouter-Title":      "AgentField AI",
+		"X-Title":                 "AgentField AI",
+		"X-OpenRouter-Categories": "cli-agent,programming-app",
+	} {
+		if got := seen.Get(header); got != want {
+			t.Errorf("%s: got %q, want %q", header, got, want)
 		}
 	}
 }

@@ -107,21 +107,25 @@ var commands = []command{
 	// table is a claim about frequency, and a page a person opens when something
 	// has surprised them may not push /compact into a scroll.
 	//
-	// /orders is here because it is the other word people bring for the thing:
-	// a standing order is the concept, and half of them will type the noun they
-	// remember rather than the adjective this surface chose.
-	{name: "standing", desc: "what stands over this conversation · stop, pause or not here",
-		alias: []string{"orders"}},
 	// TWO ROWS FOR ONE COMMAND, the way /export and /crew have two, and for that
-	// reason: a single row carrying <words> would make the bare form — the page,
-	// which is what nearly everybody wants — unreachable from this list, because
-	// [app.runMenu] puts a row that TAKES something into the draft instead of
-	// running it.
+	// reason: a single row carrying <words> would make the bare form — the page
+	// — unreachable from this list, because [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it.
+	//
+	// THE WORDS COME FIRST. Making an order is the act this command exists for —
+	// the owner's own ruling — and the page is the follow-up a person opens to
+	// see what their sentences became. So the row that starts an order leads,
+	// and the page rides under it wearing the "…or".
 	//
 	// The words go through the deliberate door (standmark.go's [app.standingSay]),
 	// which is what the tail of this row promises: it is the chord's own sentence
 	// said in the grammar of the list.
-	{name: "standing", args: "<words>", desc: "…or keep this true · a card, never work done once"},
+	{name: "standing", args: "<words>", desc: "keep this true · a card, never work done once"},
+	// /orders is here because it is the other word people bring for the thing:
+	// a standing order is the concept, and half of them will type the noun they
+	// remember rather than the adjective this surface chose.
+	{name: "standing", desc: "…or what stands over this conversation · stop, pause or not here",
+		alias: []string{"orders"}},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -371,6 +375,25 @@ func canonicalCommand(word string) string {
 // "res" puts /resume above the /new that carries "reset".
 const aliasRung = 1_000
 
+// bareFor says whether this row is the argless form of exactly the word that
+// was typed — by its name or by any alias. It is [menu.rank]'s tiebreak: a
+// finished word is a command a person is about to run, and the row that runs
+// it is the one that takes nothing more.
+func (c command) bareFor(needle string) bool {
+	if c.args != "" {
+		return false
+	}
+	if c.name == needle {
+		return true
+	}
+	for _, al := range c.alias {
+		if al == needle {
+			return true
+		}
+	}
+	return false
+}
+
 // matchAt is where needle was found in this command's words and whether it was
 // found at all — the name first, then the aliases a rung below it. Lower is
 // better, the same way the model picker's tiers are (palette.go's [tokenScore]).
@@ -527,7 +550,21 @@ func (m *menu) rank(needle string) {
 		m.hits = append(m.hits, i)
 	}
 	if needle != "" {
-		sort.SliceStable(m.hits, func(a, b int) bool { return m.score[m.hits[a]] < m.score[m.hits[b]] })
+		sort.SliceStable(m.hits, func(a, b int) bool {
+			ra, rb := m.hits[a], m.hits[b]
+			if m.score[ra] != m.score[rb] {
+				return m.score[ra] < m.score[rb]
+			}
+			// THE TYPED LINE OUTRANKS THE TABLE once it spells a whole name.
+			// Enter is about to answer that line, and the honest answer is the
+			// argless form — the form the line already IS — never a row that
+			// would swallow a deliberately typed command into a draft still
+			// waiting for words. Short of the full name the table's own order
+			// stands, which is where a pair like /standing puts its words form
+			// first on purpose: a person still typing is offered the act, a
+			// person who finished the word gets what the word does bare.
+			return commands[ra].bareFor(needle) && !commands[rb].bareFor(needle)
+		})
 	}
 	m.cursor = moveCursor(m.cursor, 0, len(m.hits))
 	m.follow(menuRows)
