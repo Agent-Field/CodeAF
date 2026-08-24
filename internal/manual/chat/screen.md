@@ -21,7 +21,11 @@ menu, completion), and the status line last.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's very first frame, before any tasks exist. It carries `tasks`, the
+from the session's first keystroke, before any tasks exist. An untouched empty
+conversation opens without it: no column, no doors, no rule, no telemetry, just the
+centred greeting with the message box inside it (see *The empty screen* page); the
+column stands the moment you type, or at once if a standing order or a task is already
+here. It carries `tasks`, the
 roster of work, and `standing`, the orders standing over this conversation. A section's
 dim lowercase label appears only when that section has rows. Work fills the column
 rather than raising it, and the work it fills with is **this conversation's alone**.
@@ -501,9 +505,12 @@ A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown conte
 window, an unpriced cache — every one of them draws nothing rather than a zero.
 
 The spend segment is the one deliberate exception. The status line and the phone status
-deck **do print `$0.00`** on a session that has spent nothing. The reason is that the
-status row is a live row: a segment that came into existence on the first priced turn
-would shove every segment beside it sideways.
+deck **do print `$0.00`** on a session that has sent a turn and spent nothing. The reason
+is that the status row is a live row: a segment that came into existence on the first
+priced turn would shove every segment beside it sideways. **While the empty screen's
+greeting is up there is no spend segment and no context meter at all** — the row is
+the name, the model and `idle`, and the numbers arrive with your first keystroke (see
+*The empty screen* page).
 
 The commands keep the law instead. `/status` filters the spend line out when the cost is
 zero, and `/cost` only adds it when the cost is above zero — so the two commands say
@@ -669,7 +676,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
-| welcome box | not drawn below height 12 or width 40 |
+| the empty screen's greeting (wordmark, model line, centred message box, try line, recent sessions) | not drawn below height 12 or width 40 |
 | consent bottom sheet at phone width | width 16 |
 | the size in a tool row's right column | dropped unless the target keeps 7 cells |
 | tool preview and expansion | nothing below width 8 |
@@ -1689,7 +1696,8 @@ hand that types chords.
 
 The column beside the conversation carries the two things that govern a conversation.
 A section with rows earns a dim lowercase label; an empty section keeps only its dim `+`
-door:
+door. (An untouched empty conversation has no column at all until the first keystroke,
+a task, or a standing order — *The empty screen* page says why.) Once it stands:
 
 ```
 tasks

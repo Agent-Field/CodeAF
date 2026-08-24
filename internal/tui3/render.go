@@ -1339,6 +1339,12 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 	left, span := a.identityParts()
 	a.modelSpan = span
 	parts := a.telemetry(width)
+	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
+	// this is a state and not width pressure, and a segment the row is not
+	// drawing has nothing to be fresh about ([app.statusQuiet]).
+	if a.statusQuiet() {
+		parts = quietParts(parts)
+	}
 	// The change clocks are stamped from the ASSEMBLED segments, before any
 	// width pressure is applied: a number that moved has moved whether or not
 	// this frame had room to say so.
@@ -1595,6 +1601,41 @@ func (a *app) telemetry(width int) []hudPart {
 	word, _ := a.stateSegment()
 	add(segState, word)
 	return parts
+}
+
+// statusQuiet reports whether the status row is the untouched screen's: the
+// greeting is up, so nothing has been said, sent, spent or produced here yet.
+//
+// THE BILL AND THE METER ARRIVE WITH THE CONVERSATION. On the empty screen there
+// is nothing to bill and nothing but the prompt to meter, and `$0.00 · 9.4k/1.3M
+// · 1%` under a greeting asking for a first sentence was the first thing a
+// person on their own card read. The `$0.00` exception ([app.statusRows]'s law)
+// is untouched: it is about a session IN USE not having its segments jump
+// sideways, and from the first keystroke on — the frame on which the greeting
+// dissolves and the box moves anyway — every row is drawn exactly as it always
+// was.
+//
+// IT IS THE GREETING'S OWN STATE AND NOT A COUNT OF ANYTHING, for the reason the
+// column and the legend read the same state (task.go's [app.railQuiet],
+// view.go's [app.chrome]): the empty screen is one condition, and four pieces
+// of furniture that each derived "empty" their own way would come and go on
+// four different frames. And it governs THE ROW AND THE DECK AND NOTHING ELSE
+// — the status sheet and /status read the full segment set (statusdeck.go's
+// [app.deckItems], statusnote.go), because a person who asked what the context
+// holds is owed the prompt's size; only the row nobody asked is kept quiet.
+func (a *app) statusQuiet() bool { return a.welcome.open }
+
+// quietParts is the segment set with the bill and the meter taken out, for a
+// row that is [app.statusQuiet].
+func quietParts(parts []hudPart) []hudPart {
+	kept := parts[:0]
+	for _, part := range parts {
+		if part.kind == segCost || part.kind == segCtx {
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return kept
 }
 
 // openSegment is how many conversations this terminal holds and how many of
