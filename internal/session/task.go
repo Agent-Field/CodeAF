@@ -15,6 +15,17 @@ package session
 // depends_on exists on the wire and is honoured by the executor, so a
 // conversation that grooms two pieces of work can say which waits for which.
 //
+// ── AND IT IS THE ROAD FOR WIDE WORK, WHICH IT DID NOT USED TO BE ──
+//
+// "Self-contained" once meant "not wide": a goal with several parts was the
+// planner's, and the model reached for run_adaptive the moment somebody asked
+// for a broad sweep (tools_harness.go). The division road took that away. A
+// wide ask is ONE task now, admitted with the road armed, and the worker hands
+// the parts out from the material rather than anybody guessing them from the
+// request (task_divide.go). `wide` is how the model says so, and it is the
+// model's half of the flip the typed `/task` front door already made — the
+// planner is what a person asks for, not what width reaches for.
+//
 // ── AND A TASK MAY HAND PART OF ITS OWN WORK OUT ──
 //
 // This tool is on a NODE'S belt too, and the node's proposals join the
@@ -69,7 +80,7 @@ import (
 // INTERPOLATED for taskSchemaJSON's reason: a number a model reasons with must
 // be the number the code enforces, and the two drift the moment they are typed
 // twice.
-var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. WHAT YOU WRITE HERE IS THE TASK'S WHOLE WORLD — it never sees this conversation — SO WRITE A CONTRACT, in three parts: brief is the work and everything needed to do it, deliverable is what must exist when it is over and where, acceptance is how anybody checks that. Write each for a colleague joining today: name the files and symbols, the conventions and constraints you have learned here, and what has already been tried. THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU, verbatim, at the top of what the task reads — do not copy it in or summarise it, and do not contradict it. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands. WHEN THE FILES YOU NAME ARE ALREADY BEING WRITTEN by work another aforge window has out, the result says so on its own line — that is a fact to plan around, not a refusal: nothing is blocked, nothing is queued, and the task you proposed has started."
+var taskDescription = "Hand a piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. THIS IS ALSO THE ROAD FOR WIDE WORK — a sweep across many files, research across many sources, a goal with several independent parts. Wide work is still ONE task: set `wide` and the worker splits itself, handing the parts out once it has opened the material and can see how many there are, and staying to fold their reports into one deliverable. Do not cut wide work into several proposals here and do not reach for a planner: the parts are only visible from inside the material, and a worker holding it can name them better than you can from the request. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. WHAT YOU WRITE HERE IS THE TASK'S WHOLE WORLD — it never sees this conversation — SO WRITE A CONTRACT, in three parts: brief is the work and everything needed to do it, deliverable is what must exist when it is over and where, acceptance is how anybody checks that. Write each for a colleague joining today: name the files and symbols, the conventions and constraints you have learned here, and what has already been tried. THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU, verbatim, at the top of what the task reads — do not copy it in or summarise it, and do not contradict it. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands. WHEN THE FILES YOU NAME ARE ALREADY BEING WRITTEN by work another aforge window has out, the result says so on its own line — that is a fact to plan around, not a refusal: nothing is blocked, nothing is queued, and the task you proposed has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -105,6 +116,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST when this is over, and where: the file and its path, the branch, the answer and the shape it takes. Name the thing, not the activity — \"docs/pricing.md, one page, table of the four tiers\" rather than \"look into pricing\""},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking the task's word for it: the command that must pass, the behaviour that must hold, the output that must appear. \"It is finished\" and \"it is good\" are not checkable and are not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts — only ids propose_task itself returned in this session, never a job, adaptive-run or step number, which look alike but are different kinds of work. Its brief is given their reports when it begins. Naming an unknown or already-failed id refuses the proposal rather than queueing it"},` +
+	`"wide":{"type":"boolean","description":"Optional. Set it when this work is WIDER THAN ONE PAIR OF HANDS — a sweep over many files, research across many sources, a change that repeats across many independent items. It starts one task either way: what it changes is that the worker may hand the parts out under itself once it has opened the material and found the width is real, and it stays to make one deliverable out of their reports. Say true whenever you judged the work broad, even without a count in front of you — the worker is refused unless what it actually finds names enough separate items, so a true that turns out to be wrong costs nothing and the work simply carries on in one pair of hands. Leave it out for one self-contained linear job"},` +
 	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
 	`"max_steps":{"type":"number","description":"Optional. How many finished tool calls make one progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `). Work that is still advancing may receive four more equal allowances; circling work gets one landing turn and stops. Raise it for a sweep across many files; lower it for something small that should be checked sooner"},` +
 	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may teach the work nothing new AND leave no new file before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Reading, looking at a picture, searching and generating all count as progress the first time they aim somewhere new, so this only fires on the same call repeated. Raise it when the work genuinely needs a lot of reading before its first edit"}` +
@@ -118,6 +130,7 @@ type taskArguments struct {
 	Deliverable string   `json:"deliverable"`
 	Acceptance  string   `json:"acceptance"`
 	DependsOn   []uint64 `json:"depends_on"`
+	Wide        bool     `json:"wide"`
 	Model       string   `json:"model"`
 	MaxSteps    int      `json:"max_steps"`
 	NoProgress  int      `json:"no_progress"`
@@ -219,6 +232,22 @@ type taskSpec struct {
 	parent uint64
 	depth  int
 	owner  *Agent
+	// wide is THE PROPOSER'S OWN JUDGEMENT that this work is wider than one pair
+	// of hands, and it is one of the three signals [Agent.armDivision] weighs
+	// (task_divide.go). It is the model's half of the flip the typed `/task`
+	// front door already made: a sizing yes there starts one worker and arms it
+	// rather than opening a planner, and a model that has decided in its own
+	// words that the work is broad has made the same judgement about the same
+	// question, so it arms the same road.
+	//
+	// IT RIDES ON THE SPEC AND NOT IN [Agent.rememberDivisible]'s bank, which is
+	// where the sizing judge's yes lives, and the reason is the batch. A model
+	// fanning out emits its propose_task calls together and the loop runs them
+	// CONCURRENTLY (loop.go), while the bank is deliberately one entry — three
+	// proposals banking three briefs would leave two of them looking up an
+	// answer another proposal had overwritten, and each would silently lose the
+	// road. A judgement made about one spec belongs on that spec.
+	wide bool
 	// divide says THIS piece of work may discover that it is wider than one
 	// worker and hand the parts out (task_divide.go). It is settled at
 	// admission by [Agent.armDivision] — the one door every task comes through
@@ -456,9 +485,14 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		deliverable: strings.TrimSpace(parsed.Deliverable),
 		acceptance:  strings.TrimSpace(parsed.Acceptance),
 		dependsOn:   parsed.DependsOn,
-		modelWord:   strings.TrimSpace(parsed.Model),
-		maxSteps:    parsed.MaxSteps,
-		noProgress:  parsed.NoProgress,
+		// THE MODEL'S OWN "THIS IS WIDE", carried to [TaskGraph.admit] where the
+		// road is armed. Absent is false, which is the honest default: a model
+		// that has never heard of this argument proposes exactly the task it
+		// proposed before it existed.
+		wide:       parsed.Wide,
+		modelWord:  strings.TrimSpace(parsed.Model),
+		maxSteps:   parsed.MaxSteps,
+		noProgress: parsed.NoProgress,
 	}
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary

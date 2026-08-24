@@ -334,6 +334,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
 
+		// And the question the division road left standing on the other page.
+		// A run used to be what broad work reached for; it is the exception now,
+		// and somebody who expected a planner and watched one worker start asks
+		// it in front of that worker.
+		{"should this be an adaptive run or one worker", "adaptive-runs"},
+		{"why didn't you start an adaptive run for this", "adaptive-runs"},
+		{"when do you use a run instead of a task", "adaptive-runs"},
+
 		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
 		// writes four class models and the session picks them up on its next
 		// call — and the model on the status line does not move, because that one

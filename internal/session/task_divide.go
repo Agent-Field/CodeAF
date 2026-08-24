@@ -157,8 +157,11 @@ func (n *TaskNode) dividing() bool {
 // that it is wide. It is asked at admission by [TaskGraph.admit], which is the
 // one door every task in this package comes through whoever opened it.
 //
-// TWO SIGNALS, AND BOTH ARE FREE — no model call is made here, because this
-// question is asked of every task that is ever admitted.
+// THREE SIGNALS, AND ALL THREE ARE FREE — no model call is made here, because
+// this question is asked of every task that is ever admitted. Each is one
+// reader of the work saying it looks wider than one pair of hands, and they
+// cover the three doors work comes through: the typed command, the model's own
+// belt, and the text of the brief itself.
 //
 //   - THE JUDGE ALREADY SAID SO. `/task <brief>` asks a sizing judge whether
 //     the work parallelizes (task_person.go's [Agent.judgeDecomposable]) and
@@ -168,6 +171,14 @@ func (n *TaskNode) dividing() bool {
 //     is now the shape wide work takes by default: the upfront choice is gone
 //     because a single worker that turns out to be holding six jobs can say so
 //     from the material instead of from the brief.
+//   - THE PROPOSER SAID SO IN ITS OWN WORDS. propose_task carries a `wide`
+//     argument ([taskSpec.wide], task.go), and it is the model's half of the
+//     same flip: a chat model that judged the work broad is answering the
+//     question the sizing judge is asked at the typed door, with the whole
+//     conversation in front of it rather than one sentence. THAT JUDGEMENT IS
+//     THE YES. It starts one worker and arms it — never a planner — which is
+//     what stops "this is a broad multi-source sweep" from being a reflex that
+//     reaches past this road entirely.
 //   - THE WORK'S OWN TEXT ENUMERATES ENOUGH ITEMS. This is
 //     cmd/aforge/cooperative.go's plan-time gate asked of a task instead of a
 //     plan: a brief that already names eleven adapters is a brief that may
@@ -180,6 +191,9 @@ func (n *TaskNode) dividing() bool {
 func (a *Agent) armDivision(spec taskSpec) bool {
 	if a == nil || !a.config.Divide {
 		return false
+	}
+	if spec.wide {
+		return true
 	}
 	if a.judgedDivisible(spec.request) || a.judgedDivisible(spec.brief) {
 		return true
