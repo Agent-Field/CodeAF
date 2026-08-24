@@ -1140,6 +1140,12 @@ Once answered the four go away and one dim line takes their place saying what yo
 The same four are clickable on the card. See the tasks page for what each answer does to
 the work.
 
+**Inside the task's room the same four keys need no selection.** The room is the task, so
+`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+at the foot of the page where `task finished — esc to return` would otherwise be, and the
+hint slot reads `a accept · l look again · n not right` while the question stands. The room
+and the card are one question: answer in either and both show the receipt.
+
 ## The mouse: what you can click
 
 aforge owns the pointer by default, using all-motion tracking so hover works.

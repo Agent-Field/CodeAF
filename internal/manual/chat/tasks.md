@@ -1967,6 +1967,10 @@ to it with `↑`/`↓` — and only over an **empty** message box, exactly like 
 into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
 
+**The task's room asks the same question** at the foot of its page, and in there the four
+keys need no selection — see *How do I approve a task* below. Room and card are one
+question: answer in either and both show the receipt.
+
 ## What accept, look again and not right each do
 
 - **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
@@ -2031,6 +2035,40 @@ asked first**, and nothing else about the landing: either way the task is neithe
 failed until somebody answers, its branch is kept, and anything waiting on it waits.
 
 To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
+
+## How do I approve a task — accept a finished task from the room, the card, or by saying so
+
+A task that landed `needs your look` (`finished — look it over` on the roster) is approved
+by **accepting** it, and there are three doors onto the same decision. Use whichever is in
+front of you:
+
+| Where you are | What to do |
+| --- | --- |
+| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `l` looks again, `n` says it is not right, `d` hands these to aforge from now on. The same four are chips at the foot of the page |
+| **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
+| **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
+
+Accepting merges the task's branch into yours and unblocks everything queued behind it.
+Whichever door is used first wins; the other two find the question already gone and show
+`already answered` rather than raising an error.
+
+## Task needs my look but there is no button — where the answers are
+
+If a landed task is asking and you cannot see anything to press, you are on a row that
+only reports the state: the roster's `finished — look it over`, home's `needs you` strip,
+or the card's own head. The answers are in exactly two places on screen:
+
+- **the foot of the task's room** — `finished, but nobody has checked it — your call` and
+  `[a] accept · [l] look again · [n] not right · [d] decide these for me`. Enter on the
+  roster row opens the room; the answers are at the bottom of the page and the hint slot
+  under the message box names the three keys;
+- **the landing card in the conversation**, under the outcome line, once the card is
+  selected.
+
+Both need an **empty** message box: the letters are held to the same rule `x` is, so a
+letter typed into a sentence stays a letter. If neither place shows the rows, the task is
+under `task.settle = auto` and aforge is deciding it — say "you decide" or "ask me about
+these again" to change who is asked.
 
 ## Stopping an adaptive run
 
