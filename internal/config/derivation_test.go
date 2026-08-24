@@ -131,7 +131,10 @@ var settingReaders = map[string]string{
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).
 	KeyTaskColumn: "TaskColumnAt",
-	KeyNerdFont:   "NerdFontChosenAt",
+	// The hints row names its accessor too: the surface reads it at boot and at
+	// every turn end, beside the mouse row (internal/tui3's notice.go).
+	KeyHints:    "HintsAt",
+	KeyNerdFont: "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls

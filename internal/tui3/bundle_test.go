@@ -2299,6 +2299,11 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	a.ctxTokens = 100_000
 	a.ctxRing = []int{20_000, 60_000, 100_000}
 	a.inputTokens, a.cacheRead = 10_000, 6_200
+	// A dollar spent and a half-full window arm two earned hints (notice.go),
+	// and either would take the rest slot this ladder measures. The ladder is
+	// about the slot's rest state, so the tips are silenced here as the Display
+	// row would silence them.
+	a.notices.enabled = false
 
 	spark := a.ctxSpark()
 	for _, tc := range []struct {
