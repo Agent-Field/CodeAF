@@ -851,7 +851,7 @@ be added to say it. Asking something else afterwards does not promote it later.
 The turn also collapses to a chip that says who stopped it —
 `▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
 `ctrl+e` over an empty message box, or a click on the chip, opens it again. aforge's own
-lines about the stop, `· interrupted` and anything it dropped from the queue, stay outside
+lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
 the chip.
 
 One limit worth knowing: the session file keeps the words a stopped turn managed to say

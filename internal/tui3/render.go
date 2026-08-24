@@ -2675,13 +2675,21 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
-	case len(a.parks) > 0:
+	case len(a.parks) > 0 && a.parking():
 		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
 		// more thing than it did: it stops the turn AND sends what is parked
 		// (park.go). It outranks the plain interrupt below for the reason the
 		// armed rewind outranks it — the slot promises what the NEXT esc does,
 		// and that is no longer only a stop. It is spelled exactly as the block's
 		// own dim line spells it, so the two lines on one screen agree.
+		//
+		// AND IT ASKS [app.parking] AS WELL AS THE QUEUE, which is that agreement
+		// made structural rather than left to two authors. A message stays parked
+		// through the whole of the wind-down window ([app.windingDown]) and esc is
+		// inert for every frame of it, so the queue alone would keep this line
+		// standing over a key that does nothing — the one thing A HINT MAY ONLY
+		// NAME A KEY THAT WORKS forbids. The block's own dim line drops the same
+		// piece on the same question (park.go's [parkedWord]).
 		return parkedHint[1]
 	case a.bargeOffered():
 		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches

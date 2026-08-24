@@ -1036,8 +1036,12 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	if agent.stops != 1 {
 		t.Fatalf("esc did not interrupt (%d)", agent.stops)
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// The stream has not closed, so the word is the wind-down's own
+	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
+	// Asked of the status line rather than of the frame, because the note the
+	// stop writes into the transcript is on the same frame.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes

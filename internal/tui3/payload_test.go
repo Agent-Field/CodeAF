@@ -83,8 +83,8 @@ func TestANoteThatNamesNoFactsIsDrawnExactlyAsItWas(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width = 200
 
-	rows := noteRows(a, "interrupted")
-	if len(rows) != 1 || rows[0] != a.pal.dim("· interrupted") {
+	rows := noteRows(a, "stopped")
+	if len(rows) != 1 || rows[0] != a.pal.dim("· stopped") {
 		t.Fatalf("a note with no facts is not the plain dim line it was:\n%q", rows)
 	}
 }

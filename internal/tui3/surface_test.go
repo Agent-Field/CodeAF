@@ -160,8 +160,12 @@ func TestCtrlCInterruptsAWorkingTurnAndTakesTwoPressesAtRest(t *testing.T) {
 	if a.quitArmed() {
 		t.Fatal("an interrupting ctrl+c armed the door")
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// AND THE STATUS LINE SAYS THE STOP LANDED. It is asked of the line rather
+	// than of the whole frame, which is what this assertion always meant to say:
+	// the stop's own note is in the transcript on the same frame, so a search
+	// over the frame passed on the note whatever the status segment said.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// At rest the first press arms and says so, and nothing closes. It returns
