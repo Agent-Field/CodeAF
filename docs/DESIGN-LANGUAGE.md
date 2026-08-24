@@ -158,11 +158,64 @@ said*. They are a ladder by construction, lightness is the whole of their
 meaning, and the band deliberately does not govern them. The test excludes them
 by name rather than by silence.
 
+### THE GLARE LAW
+
+> **The body may not be the brightest thing on the screen.**
+> The reading tier's top rung sits between **8:1 and 11:1** against the middle
+> of its assumed ground, on both ladders. `TestTheBodyInkDoesNotGlare` holds it
+> there.
+
+The signal band governs hue; this governs the one colour a person looks at for
+minutes at a time. Above about 11:1 a white on a dark terminal stops being
+legible and starts being a lamp — strokes halate, counters fill in, and every
+quieter thing beside it reads as switched off.
+
+The dark ink was `#D8DEE9` for five waves and measured **12.65:1** against
+`#1a1b26`, half again as bright as the person's own accent at 9.26:1. So the
+loudest thing on a surface whose accent budget is *one lit element per screen*
+was the paragraph, and the budget bought nothing because whatever it was spent
+on was outshone by the text around it.
+
+| ink | vs `#101014` | vs `#1a1b26` | vs `#1e1e2e` | xterm-256 |
+| --- | --- | --- | --- | --- |
+| `#D8DEE9` | 14.05:1 | **12.65:1** | 12.14:1 | 254 |
+| `#C6CDDA` | 11.88:1 | **10.70:1** | 10.27:1 | 252 |
+
+The move is the smallest one that fixes it: **hue held at 219°**, lightness down
+L 88.0 → 81.6, saturation eased 28% → 21% — a body white is the one colour here
+with no identity to carry, and a tint nobody can name is a tint paid for in
+contrast. The 256 neighbour was re-checked, as every change to this table owes:
+`#C6CDDA` lands on **252**, claimed by nothing on either ladder. The near miss
+is worth naming — the old ink's own 254 is the *light* ladder's selected ground
+and 255 is its cursor step, so an ink that drifted back up a rung would share an
+index with furniture.
+
+The ladder still reads as a ladder, which is the other half of the law: ink
+10.70, muted 6.67, dim 3.54 against the middle of the range. Coming down far
+enough to be comfortable without landing on the second voice is the whole width
+of the move, and the test asserts that gap as well as the ceiling.
+
+**The light ladder's ink is untouched** at `#3B4252` — 10.06:1 against `#FFFFFF`
+and 8.73:1 against nord's `#ECEFF4`. It was measured against the same band and
+was already inside it, and a value in band is not touched. The test walks both
+ladders regardless.
+
+**And the transcript reaches the ink through a seam.** A model's markdown is
+rendered by `internal/tui2/prose`, which resolves colour from
+`internal/tui2/tokens`, whose body tier is brighter still — so the reply was
+painted by a palette this surface does not own while every row around it wore
+this one. Two whites, one screen, the louder on the thing people read most.
+`tokens.Styler.WithBodyInk` is the fix: the colour authority a caller hands
+prose may be asked to say the body tier in the caller's own voice. One Styler,
+one answer to *which white*, and the heading ladder, the code ramp and the
+raised plane under an inline span all stay prose's. The v2 surface keeps tokens'
+own white — the override travels on the Styler and never touches the table.
+
 ### Dark ladder, before and after this wave
 
 | role | before | after | H | S | L | in band? |
 | --- | --- | --- | --- | --- | --- | --- |
-| ink | `#D8DEE9` | *unchanged* | 219° | 28% | 88.0 | reading tier |
+| **ink** | `#D8DEE9` | **`#C6CDDA`** | 219° | 28→21% | **88.0 → 81.6** | reading tier — see THE GLARE LAW |
 | accent | `#9DC3E6` | *unchanged* | 209° | 59% | **75.9** | signal — band top |
 | muted | `#7FA6C9` | *unchanged* | 208° | 41% | 64.3 | reading tier |
 | dim | `#6B7280` | *unchanged* | 220° | 9% | 46.1 | reading tier |

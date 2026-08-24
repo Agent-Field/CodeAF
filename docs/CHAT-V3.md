@@ -537,7 +537,8 @@ presentation derivation is surface business):
 | find/ls | `· N entries` | the listing |
 
 **The palette is pastel, dark-terminal first, designer-curated** — soft, low
-saturation, never loud: body ink soft white (#D8DEE9), accent pastel blue
+saturation, never loud: body ink soft white (#C6CDDA — held under the glare
+ceiling, see THE GLARE LAW), accent pastel blue
 (#9DC3E6) for the one live or chosen thing, dim #6B7280 for meta, diff and
 match accents in nord pastels, failure soft orange-red (#D08770), and the code
 fence theme a pastel chroma style (catppuccin-mocha where available, else the

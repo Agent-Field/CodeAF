@@ -49,6 +49,12 @@ type Styler struct {
 	// terminal with a patched font still draws icons and a truecolor terminal
 	// on the plain tier still draws the 5.17 floor.
 	upgrading bool
+	// bodyInk is [Styler.WithBodyInk]'s override, precomputed per focus: the
+	// foreground sequence [TextPrimary] resolves to on THIS Styler, or "" in
+	// both slots when the tier keeps the palette's own value. Empty is therefore
+	// the whole of "no override", which is what every Styler built by
+	// [NewStyler] and [NewStylerIn] is.
+	bodyInk [focusCount]string
 }
 
 // NewStyler returns a Styler for a terminal profile and a pane focus, on the
@@ -108,6 +114,13 @@ func (s *Styler) GlyphSet() GlyphSet {
 // WithFocus returns a Styler identical to s but painting at the given focus.
 // Dimming is a property of the pane (8.3), so a compositor that has just lost
 // focus swaps one small value rather than re-resolving every row.
+//
+// It COPIES rather than reconstructing, which it did not have to do before
+// [Styler.WithBodyInk] existed: a reconstruction goes through [NewStylerIn], and
+// [NewStylerIn] knows nothing about an override, so a pane that lost focus would
+// silently get the palette's own body tier back. Copying is exactly equivalent
+// for everything that used to be re-derived — neither `enabled` nor `upgrading`
+// depends on the focus.
 func (s *Styler) WithFocus(f Focus) *Styler {
 	if f >= focusCount {
 		f = FocusNormal
@@ -115,12 +128,14 @@ func (s *Styler) WithFocus(f Focus) *Styler {
 	if f == s.focus {
 		return s
 	}
-	return NewStylerIn(s.profile, f, s.glyphs)
+	out := *s
+	out.focus = f
+	return &out
 }
 
 // WithGlyphSet returns a Styler identical to s but drawing in the given tier.
-// It mirrors [Styler.WithFocus], and it is what a settings sheet's live preview
-// renders its two sample lines through.
+// It mirrors [Styler.WithFocus] — copy included, for the same reason — and it is
+// what a settings sheet's live preview renders its two sample lines through.
 func (s *Styler) WithGlyphSet(g GlyphSet) *Styler {
 	if g >= glyphSetCount {
 		g = Plain
@@ -128,7 +143,103 @@ func (s *Styler) WithGlyphSet(g GlyphSet) *Styler {
 	if g == s.glyphs {
 		return s
 	}
-	return NewStylerIn(s.profile, s.focus, g)
+	out := *s
+	out.glyphs = g
+	out.upgrading = g != Plain
+	return &out
+}
+
+// WithBodyInk returns a Styler that paints the body tier — [TextPrimary] — in a
+// STATED colour rather than in this palette's own.
+//
+// ── WHY THIS SEAM EXISTS: ONE SURFACE, ONE BODY WHITE ──
+//
+// internal/tui3 authors its own quieter palette and then renders a model's
+// markdown through internal/tui2/prose, which is the only markdown renderer in
+// the tree and deliberately resolves every colour on the row from this package
+// (prose's own package comment says why it will not seat a second colour
+// authority). The consequence was two whites on one screen: prose painted the
+// reply's body at [TextPrimary] #E6E6F0 while everything tui3 drew around it
+// wore tui3's own, dimmer ink. The brightest thing on the surface was therefore
+// the thing a person reads most — about 14:1 against a dark terminal where the
+// accent beside it sat at 9.6:1 — which is glare, and halation that makes the
+// strokes read heavier than they are.
+//
+// The fix is not a second renderer and not a copy of the ramp. It is that the
+// COLOUR AUTHORITY a caller hands prose may be asked to say the body tier in the
+// caller's own voice. One Styler, one answer to "which white", and the ladder's
+// shape untouched: an h1 is still the top of the grey ramp and still bold, an h3
+// still steps down through [Demote], a fenced block still lands on the code ramp
+// and an inline span still stands on the [Sheet]. What moves is the VALUE at the
+// top of the ramp, so everything standing on it moves together — which is the
+// point, because a tier the body alone left behind would simply relocate the
+// glare onto the headings.
+//
+// A Styler built by [NewStyler] or [NewStylerIn] carries no override, so every
+// construction site in this tree — the whole v2 surface included — keeps
+// rendering exactly the bytes it rendered.
+//
+// ── WHAT IT COSTS PER PROFILE ──
+//
+// The override is a COLOUR, so it exists only where the profile has colours to
+// spend. [TrueColor] takes it exactly. [ANSI256] takes its nearest cube-or-grey
+// neighbour, computed here by the same [nearest256] this package's own table is
+// built with — a caller whose palette rounded the same hex to a different index
+// would be two whites again on the majority profile, and one resolver is what
+// stops that. [ANSI16] and [NoColor] take NOTHING and fall back to the token:
+// the sixteen are the user's own theme, so there is no honest form for an
+// authored hex there (the wall [Token.UnderlineColor] meets from the other
+// side), and a profile told to write no SGR at all writes none.
+//
+// The DIMMED variant is derived rather than asked for, by the one rule the whole
+// palette is dimmed with ([DimTowardGround]). A caller states the colour it
+// reads at; an unfocused pane then recedes by the same law every other token
+// obeys, instead of staying at full strength because nobody thought about it.
+//
+// CONTRAST IS THE CALLER'S TO JUSTIFY. contrast_test.go gates [Pairings], and a
+// colour that is not in the table is not in that walk — so the caller who states
+// one owes it the check its own palette owes. internal/tui3 pins its body ink
+// with a contrast law of its own for exactly this reason.
+func (s *Styler) WithBodyInk(c Color) *Styler {
+	out := *s
+	out.bodyInk = [focusCount]string{
+		inkSeq(s.profile, c),
+		inkSeq(s.profile, Mix(c, groundBase, DimTowardGround)),
+	}
+	return &out
+}
+
+// Fg is the foreground sequence this Styler paints a token with, and it is THE
+// ONE DOOR: every painter here and in internal/tui2/prose asks it rather than
+// reaching past to [Token.Fg], so an override stated once is honoured everywhere
+// a row is assembled rather than on whichever paths somebody remembered.
+//
+// A nil Styler and an out-of-range token both answer "", which is the same
+// nothing [NoColor] answers: there is no colour to write, and no reason to panic
+// on the way to writing none.
+func (s *Styler) Fg(t Token) string {
+	if s == nil || t >= tokenCount {
+		return ""
+	}
+	if t == TextPrimary {
+		if seq := s.bodyInk[s.focus]; seq != "" {
+			return seq
+		}
+	}
+	return t.Fg(s.profile, s.focus)
+}
+
+// inkSeq spells one authored colour as a foreground sequence for a profile, and
+// answers "" where the profile has no honest form for an authored colour at all.
+// See [Styler.WithBodyInk] for which profiles those are and why.
+func inkSeq(p Profile, c Color) string {
+	switch p {
+	case TrueColor:
+		return "\x1b[38;2;" + itoa(int(c.R)) + ";" + itoa(int(c.G)) + ";" + itoa(int(c.B)) + "m"
+	case ANSI256:
+		return "\x1b[38;5;" + itoa(int(nearest256(c))) + "m"
+	}
+	return ""
 }
 
 // Glyph is the EXPLICIT door to the vocabulary: it resolves a slot in this
@@ -221,7 +332,9 @@ func (s *Styler) PaintOn(text string, fg, bg Token) string {
 		return text
 	}
 	var b strings.Builder
-	fgSeq := fg.Fg(s.profile, s.focus)
+	// Through [Styler.Fg] rather than [Token.Fg], so a band drawn under the body
+	// tier keeps the body tier this Styler actually paints.
+	fgSeq := s.Fg(fg)
 	bgSeq := bg.Bg(s.profile, s.focus)
 	b.Grow(len(fgSeq) + len(bgSeq) + len(text) + len(sgrResetAll))
 	b.WriteString(bgSeq)
@@ -317,7 +430,7 @@ func (s *Styler) paint(text string, t Token) string {
 	if !s.enabled || text == "" {
 		return text
 	}
-	seq := t.Fg(s.profile, s.focus)
+	seq := s.Fg(t)
 	if seq == "" {
 		return text
 	}

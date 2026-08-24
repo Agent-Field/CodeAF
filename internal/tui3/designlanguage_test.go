@@ -9,15 +9,19 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE DESIGN LANGUAGE, HELD TO ITS OWN NUMBERS ────────────────────────────
 //
 // docs/DESIGN-LANGUAGE.md is the prose; this file is the part of it a build can
-// fail on. Four laws are pinned here: the palette is CLOSED (nothing outside
-// styles.go authors a colour), the signal hues are ISOLUMINANT, and THE GROUND
-// LADDER's three drawable steps land in the band they were aimed at, and THE
-// SPACING LADDER's shared steps keep their measured values.
+// fail on. Five laws are pinned here: the palette is CLOSED (nothing outside
+// styles.go authors a colour), the signal hues are ISOLUMINANT, THE GROUND
+// LADDER's three drawable steps land in the band they were aimed at, THE
+// SPACING LADDER's shared steps keep their measured values, and THE GLARE LAW
+// holds the body ink under the ceiling where a white stops reading and starts
+// shining.
 
 // ── 0. THE SPACING LADDER ───────────────────────────────────────────────────
 
@@ -368,7 +372,171 @@ func TestTheGroundLadderStepsNeverCollapse(t *testing.T) {
 	}
 }
 
+// ── 4. THE GLARE LAW ────────────────────────────────────────────────────────
+
+// glareCeiling is the loudest the READING TIER's top rung may be against the
+// middle of its assumed ground, and glareFloor is the quietest.
+//
+// Eleven is where a white stops being legible and starts being a lamp. Past it
+// the strokes halate on a dark terminal, the counters of a, e and o fill in, and
+// every quieter thing on the row reads as switched off — so the body, which is
+// the one colour a person looks at for minutes at a time, is held BELOW it. Eight
+// is the other wall and it is the ordinary one: under it the body stops being
+// comfortably readable and starts asking to be leant toward.
+//
+// The band is 8–11 rather than a point because the ground is unknown (see THE
+// GROUND LADDER in styles.go for the same wall met from the other side) and
+// because the two ladders are authored, not derived. What is NOT slack is the
+// ceiling: this whole law exists because #D8DEE9 measured 12.65 here and read as
+// glare on every screenshot anybody took of it.
+const (
+	glareCeiling = 11.0
+	glareFloor   = 8.0
+)
+
+// glareInkOverMuted is how far the body must stand above the surface's second
+// voice, as a ratio of their two contrasts against the same ground.
+//
+// It is the retune's own failure mode written down. Bringing the body down is a
+// move TOWARD [hueMuted], and a body ink that arrived on top of the tier below it
+// would have traded glare for a screen with no reading ladder at all — one
+// loudness for the answer, the tool names, the headings and the wordmark alike.
+// A quarter again is the smallest gap that still reads as two tiers rather than
+// as one tier drawn twice.
+const glareInkOverMuted = 1.25
+
+// THE BODY MAY NOT BE THE BRIGHTEST THING ON THE SCREEN.
+//
+// The signal band above governs hues that mean a KIND of thing and deliberately
+// does not govern the reading tiers, because lightness is the whole of what a
+// reading tier says. This is the law that does govern them, and it governs the
+// top rung in particular: the tier the answer itself is written in.
+//
+// It is stated against the MIDDLE of each assumed ground rather than against all
+// of them, exactly as THE GROUND LADDER's own band is. A fixed ink reads one
+// notch louder on a blacker terminal and one notch quieter on a lighter one;
+// holding the darkest end of the range to the ceiling would be authoring for a
+// terminal at the edge of the range and letting every terminal inside it go
+// quiet.
+//
+// A future retune that pushes the body back up fails here with the number it
+// chose, which is the whole point — the last one was undone by nothing louder
+// than somebody wanting the text to "pop".
+func TestTheBodyInkDoesNotGlare(t *testing.T) {
+	for _, ladder := range []struct {
+		name            string
+		mid             string
+		ink, muted, dim hue
+	}{
+		{"dark", darkMid, hueInk, hueMuted, hueDim},
+		{"light", lightMid, lightInk, lightMuted, lightDim},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			ink := contrastOf(ladder.ink, ladder.mid)
+			if ink > glareCeiling {
+				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at most %s:1 — "+
+					"this is THE GLARE LAW (styles.go): the body is the one colour somebody "+
+					"reads for minutes at a time, and above the ceiling it halates instead of "+
+					"reading. Lower the LIGHTNESS of the ink in styles.go, hold its hue, and "+
+					"re-check its xterm-256 neighbour afterwards.",
+					ladder.name, trimFloat(ink), ladder.mid, trimFloat(glareCeiling))
+			}
+			if ink < glareFloor {
+				t.Fatalf("the %s ladder's body ink is %s:1 against %s, want at least %s:1 — "+
+					"the body has gone past comfortable and into faint",
+					ladder.name, trimFloat(ink), ladder.mid, trimFloat(glareFloor))
+			}
+
+			// AND THE READING LADDER IS STILL A LADDER. Coming down is a move
+			// toward the tier below, so the step that the move could have spent is
+			// the step this asserts.
+			muted := contrastOf(ladder.muted, ladder.mid)
+			dim := contrastOf(ladder.dim, ladder.mid)
+			if !(ink > muted && muted > dim) {
+				t.Fatalf("the %s reading tiers are not a ladder against %s: ink %s, muted %s, dim %s",
+					ladder.name, ladder.mid, trimFloat(ink), trimFloat(muted), trimFloat(dim))
+			}
+			if ink < muted*glareInkOverMuted {
+				t.Fatalf("the %s ladder's body (%s:1) has come down onto its second voice (%s:1) "+
+					"against %s — want the body at least %s× the muted tier, or the answer and "+
+					"the surface's own words are one loudness",
+					ladder.name, trimFloat(ink), trimFloat(muted), ladder.mid,
+					trimFloat(glareInkOverMuted))
+			}
+		})
+	}
+}
+
+// THE BODY WHITE THE TRANSCRIPT WEARS IS THE PALETTE'S OWN, ON EVERY RUNG THAT
+// HAS A COLOUR TO SPEND.
+//
+// The law above governs a value in a table; this governs whether the value ever
+// reaches the screen. A model's markdown is rendered by internal/tui2/prose,
+// which resolves colour from internal/tui2/tokens, and tokens' body tier is a
+// brighter white than anything this palette authors — so without the seam
+// markdown.go threads ([tokens.Styler.WithBodyInk]) the one thing a person reads
+// most is the one thing this palette does not paint.
+//
+// The 256 rung is checked as well as the truecolor one, and it is the rung that
+// could actually break: the index is resolved by TOKENS' nearest-neighbour walk
+// while every other cell on the screen is resolved by THIS package's, and the
+// two use different distance metrics. They agree on #C6CDDA. The day they stop
+// agreeing on some future ink, this fails rather than shipping two whites to
+// every 256-colour terminal.
+func TestTheTranscriptBodyWearsTheSurfacesOwnInk(t *testing.T) {
+	// A stated environment rather than the process's: [newMarkdownStyler] is a
+	// pure function of one so a test can ask what a named terminal gets, instead
+	// of racing the package's own sync.Once for whatever the runner happened to
+	// export.
+	env := func(term string) func(string) string {
+		return func(key string) string {
+			if key == "TERM" {
+				return term
+			}
+			return ""
+		}
+	}
+
+	const doc = "A sentence the model wrote.\n"
+	for _, rung := range []struct {
+		name string
+		term string
+		want string
+	}{
+		{"256", "xterm-256color", sgr256(hueInk)},
+		{"truecolor", "xterm-direct", sgrTrue(hueInk)},
+	} {
+		t.Run(rung.name, func(t *testing.T) {
+			rows := renderMarkdownWith(newMarkdownStyler(env(rung.term)), doc, 60)
+			if len(rows) == 0 {
+				t.Fatal("no rows")
+			}
+			if !strings.Contains(rows[0], rung.want) {
+				t.Fatalf("the transcript body is painted %q, want the palette's own ink %q — "+
+					"markdown.go must hand prose a Styler carrying [hueInk] (styles.go, "+
+					"THE GLARE LAW), or a reply is painted by internal/tui2/tokens' brighter "+
+					"white while every row around it wears this one",
+					rows[0], rung.want)
+			}
+			// And tokens' own body tier is nowhere on the row: ONE body white, not
+			// two taking turns.
+			if stale := tokens.TextPrimary.Fg(tokens.TrueColor, tokens.FocusNormal); rung.name == "truecolor" &&
+				strings.Contains(rows[0], stale) {
+				t.Fatalf("the transcript row still carries tokens' own body white %q: %q", stale, rows[0])
+			}
+		})
+	}
+}
+
 // ── the arithmetic ──────────────────────────────────────────────────────────
+
+// sgrTrue is one hue's TRUECOLOR foreground sequence — [sgr256]'s twin, and it
+// lives here rather than beside it because the rung it pins belongs to THE GLARE
+// LAW: the 24-bit answer and the 256 answer are resolved by different code, and
+// only a test that asks for both can say the two agree.
+func sgrTrue(h hue) string {
+	return "\x1b[38;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" + itoa(int(h.b)) + "m"
+}
 
 // contrastOf is the WCAG ratio between an authored hue and an assumed ground.
 // It is here rather than in styles.go on purpose: nothing at runtime knows what
