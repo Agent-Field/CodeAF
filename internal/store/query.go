@@ -125,6 +125,21 @@ func (s *Store) CharterFiredNodes(afterSeq int64) ([]Node, error) {
 		[]any{OriginTrigger, afterSeq})
 }
 
+// SessionMemberNodes returns every node one session admitted — steps and all,
+// not the job roots [Store.SessionNodes] answers with — in the same stable
+// admission order as Nodes. The splice stamps its session on every node it
+// admits and an extension inherits it, so equality on the stored id is the
+// whole membership test, and the spine root, which belongs to no session, is
+// excluded the way every session-scoped read excludes it.
+//
+// A headless run asks this several times a second for as long as it lasts. It
+// used to ask by decoding every node in the graph and throwing away the ones
+// that were somebody else's, which on a store with any history at all is a
+// thirty-nine-column decode of a month's work to be told about four nodes.
+func (s *Store) SessionMemberNodes(sessionID string) ([]Node, error) {
+	return s.queryNodes(`WHERE session_id = ? AND id != ?`, []any{sessionID, RootID})
+}
+
 // SubtreeNodes returns root and every descendant in the same stable admission
 // order as Nodes, without loading the rest of the graph.
 func (s *Store) SubtreeNodes(root string) ([]Node, error) {
@@ -263,7 +278,7 @@ func (s *Store) queryNodesLimitOrdered(where string, args []any, limit int, orde
 		statement += ` LIMIT ?`
 		args = append(args, limit)
 	}
-	rows, err := s.db.Query(statement, args...)
+	rows, err := s.queryPrepared(statement, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read nodes: %w", err)
 	}
@@ -457,7 +472,7 @@ func (s *Store) Events(afterSeq int64, limit int) ([]Event, error) {
 // by one bounded operation.
 func (s *Store) LatestEventSeq() (int64, error) {
 	var seq int64
-	if err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM events`).Scan(&seq); err != nil {
+	if err := s.queryRowPrepared(`SELECT COALESCE(MAX(seq), 0) FROM events`).Scan(&seq); err != nil {
 		return 0, fmt.Errorf("read latest event sequence: %w", err)
 	}
 	return seq, nil

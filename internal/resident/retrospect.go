@@ -391,7 +391,7 @@ func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
 // session is live, and if nobody is there it is not asked at all — the charter
 // row is durable and the next retrospective picks the question back up.
 func (r *Reconciler) askCharterProposal(charter store.Charter) {
-	pending, err := r.store.UnresolvedQuestions(200)
+	pending, err := r.store.UnresolvedQuestions(unresolvedQuestionScan)
 	if err != nil {
 		return
 	}
