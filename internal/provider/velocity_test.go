@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -479,6 +480,112 @@ func TestLedgerVerdictRidesTheNextRequest(t *testing.T) {
 	if prefs["sort"] != "latency" || prefs["allow_fallbacks"] != true {
 		t.Fatalf("preferences = %v, want the standing ask kept alongside the verdict", prefs)
 	}
+}
+
+// A cut is stronger evidence than a slow completion: the endpoint stopped
+// producing the answer entirely, so one cut must steer the very next encode.
+func TestNamedCutRefusesTheEndpointOnTheNextRequest(t *testing.T) {
+	client, recorded := cutThenAnswerClient(t, RoutingLatency, "molasses")
+	const model = "vendor/fast-model"
+	client.velocity.brisk(model, "quicksilver")
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("the stalled first stream landed, want a guard cut")
+	}
+	prefs := client.providerPreferences(model)
+	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) ||
+		!equalStrings(prefs.Ignore, []string{"molasses"}) {
+		t.Fatalf("preferences after cut = %#v, want the named endpoint refused behind the healthy lane", prefs)
+	}
+	if _, err := client.CompleteWithMessages(ctx, userMessages("again")); err != nil {
+		t.Fatal(err)
+	}
+	written := prefsOn(t, recorded, 1)
+	if got := words(written["order"]); !equalStrings(got, []string{"quicksilver"}) {
+		t.Fatalf("next request order = %v, want the healthy endpoint", got)
+	}
+	if got := words(written["ignore"]); !equalStrings(got, []string{"molasses"}) {
+		t.Fatalf("next request ignore = %v, want the endpoint that was cut", got)
+	}
+}
+
+func TestUnnamedCutNotesNothing(t *testing.T) {
+	client, _ := cutThenAnswerClient(t, RoutingLatency, "")
+	client.velocity.brisk("vendor/fast-model", "quicksilver")
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("the stalled first stream landed, want a guard cut")
+	}
+	prefs := client.providerPreferences("vendor/fast-model")
+	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) || len(prefs.Ignore) != 0 {
+		t.Fatalf("preferences after unnamed cut = %#v, want no endpoint attributed", prefs)
+	}
+}
+
+func TestRoutingOffNotesNothingForACut(t *testing.T) {
+	client, _ := cutThenAnswerClient(t, RoutingOff, "molasses")
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("the stalled first stream landed, want a guard cut")
+	}
+	if order, ignore := client.velocity.preferences("vendor/fast-model"); len(order) != 0 || len(ignore) != 0 {
+		t.Fatalf("routing off recorded order=%v ignore=%v, want no cut ledger entry", order, ignore)
+	}
+}
+
+// cutThenAnswerClient makes the first stream identify itself, write one token,
+// and stop until the guard cancels it. The second stream lands, exposing the
+// preferences rebuilt after the cut without involving the turn loop's retry.
+func cutThenAnswerClient(t *testing.T, strategy RoutingStrategy, served string) (*Client, *capture) {
+	t.Helper()
+	t.Cleanup(shortenStallBounds(t, time.Second, 20*time.Millisecond))
+	recorded := &capture{}
+	var mu sync.Mutex
+	calls := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorded.record(request)
+		mu.Lock()
+		calls++
+		call := calls
+		mu.Unlock()
+		if call == 1 {
+			provider := ""
+			if served != "" {
+				provider = `,"provider":"` + served + `"`
+			}
+			reader, writer := io.Pipe()
+			go func() {
+				_, _ = writer.Write([]byte(`data: {"id":"cut"` + provider +
+					`,"choices":[{"index":0,"delta":{"content":"start"}}]}` + "\n\n"))
+				<-request.Context().Done()
+				_ = writer.CloseWithError(request.Context().Err())
+			}()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       reader,
+				Request:    request,
+			}, nil
+		}
+		body := `data: {"id":"done","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}` +
+			"\n\ndata: [DONE]\n\n"
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1", Model: "vendor/fast-model",
+		Routing: StaticRouting(strategy), HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.velocity = newVelocityLedger()
+	return client, recorded
 }
 
 // ── THE MEASUREMENT ─────────────────────────────────────────────────────────

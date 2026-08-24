@@ -1769,8 +1769,9 @@ A dim line lands in the conversation saying which:
 ```
 
 The model is **not** named on `trying again`. The name was on the line that was just cut,
-and repeating it would suggest the second attempt went somewhere else; it did not. There
-is no grace on this one either — the plain wait hides its clock for four seconds, and this
+and the retry still asks that same model. When the router identified an endpoint that went
+quiet, the retry avoids that endpoint and may reach another one serving the model. There is
+no grace on this one either — the plain wait hides its clock for four seconds, and this
 appears at once, because you have just watched something disappear and are owed the reason.
 
 **Where the text went.** If the reply had started, what you were reading is **removed from

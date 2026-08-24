@@ -505,6 +505,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// against the CALLER'S context and never against this one, so a
 			// stop that lands while a watchdog is firing still reads as a stop.
 			if cut := stall.cut(); cut != nil && ctx.Err() == nil {
+				c.noteCutProvider(c.modelFor(request), served)
 				return nil, cut
 			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
@@ -551,7 +552,9 @@ func (c *Client) completeWithMessagesStreaming(
 				// point becomes a response, so no soup is ever returned to the
 				// turn loop and none of it reaches the transcript.
 				if babble != nil && babble.write(choice.Delta.Content) {
-					return nil, &StreamCut{Reason: CutBabble}
+					cut := &StreamCut{Reason: CutBabble}
+					c.noteCutProvider(c.modelFor(request), served)
+					return nil, cut
 				}
 			}
 			// The run of reasoning is announced ONCE — that boundary is what a

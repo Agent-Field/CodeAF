@@ -206,6 +206,18 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 	c.velocity.pace(model, served, wait)
 }
 
+// noteCutProvider folds one guard-cut stream into the ledger under the same
+// gate as notePacedProvider. A named endpoint that stopped producing an answer
+// is stronger evidence than a merely slow completion, so it is refused at once
+// and the retry encoded by the turn loop can route around it. An unnamed stream
+// reaches pace too, where the attribution law leaves the ledger untouched.
+func (c *Client) noteCutProvider(model, served string) {
+	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+		return
+	}
+	c.velocity.pace(model, served, 0)
+}
+
 // pacedProviderName reads which endpoint a 429 came from, "" when the body
 // does not say. OpenRouter names the upstream in the error's metadata when the
 // limit is one provider's shared pool rather than this account — exactly the
