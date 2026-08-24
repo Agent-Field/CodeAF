@@ -402,8 +402,11 @@ unaffected.
 
 **A run does not survive the process.** It has no checkpoint and nothing resumes it: its
 planner, its nodes and its fuel tank all live in memory, and closing aforge ends them.
+Reopening the conversation does not start it again, and there is no way to ask for that.
 
-What survives is the **record** of it. Every run takes a row in the project's task list
+What survives is the **record** of it — and, on the task column, its **rows**, redrawn
+settled when you reopen the conversation. See *Where my run's rows went* below for what
+they say and what they can no longer do. Every run takes a row in the project's task list
 (the `@` list and the `tasks` tool) the moment it starts, saying **running** — that is how
 you can see a run that is still going. When the run ends, a second row closes it with its
 final state, its answer and what it spent.
@@ -423,6 +426,39 @@ window that started it is open and still holds it — otherwise it reads `incomp
 straight away, whatever the file still says. Each node's transcript stays on disk at
 `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
 did get done is still readable.
+
+## Where did my run's rows go — the run disappeared from the task column when I switched away or reopened the conversation
+
+**The rows come back. Both ways.**
+
+**Switching away and coming back** — to home, to another conversation, and back again —
+redraws a live run whole: the run's own row, every node under it, and each one in the state
+it is in *right now*, including `forming the work` if the run is still in its opening
+minute. Nothing is lost by looking somewhere else, and nothing has to be re-asked for.
+
+**Reopening the conversation tomorrow** redraws the run's rows as **history**. The run
+itself does not come back — see *What happens to a run when aforge closes or restarts* —
+but the rows do, settled:
+
+- a node that **finished** comes back done, with its digest and what it spent
+- a node that **failed** comes back failed, with what it said
+- the run's own row and anything still queued or still moving come back **stopped**, and
+  the row reads:
+
+```
+it ended when aforge closed; its journal is kept
+```
+
+**These restored rows are history the column keeps, not work.** Nothing on them runs.
+Nothing on them can be stopped — `x` and the header's ✕ are not offered over a run that
+ended with the last process, because there is nothing left to stop. They are not counted
+in the running total on the status line, and no queued row among them will start. Opening
+one still opens the run's page, and the page says `no shape published yet`, because the
+frontier it would draw died with the process. Each node's transcript is still on disk at
+`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`.
+
+A conversation you have reopened several times keeps every run it ever started, in the
+order they were started, each still a family with its nodes hanging under it.
 
 ## When a run is the wrong tool
 

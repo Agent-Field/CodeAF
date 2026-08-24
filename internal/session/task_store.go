@@ -273,18 +273,67 @@ type harnessOfferRecord struct {
 	Justification string          `json:"justification,omitempty"`
 }
 
-// taskDocument is the file: a type tag, a version, the id counter, and the
-// nodes in admission order.
+// runRecord is ONE ROW OF AN ADAPTIVE RUN as it survives the process — the run's
+// own row, or one worker under it.
+//
+// IT IS A RECORD AND NOT A NODE, and that is the whole shape of this feature. A
+// run's execution does not survive: the orchestrator, its frontier and its
+// context all died with the process, and nothing here rebuilds any of them
+// (internal/manual/chat/adaptive-runs.md says so to the person). What died with
+// them that had no business dying was the VISIBILITY — the rows were only ever
+// published at the instant they moved, so a conversation reopened tomorrow drew
+// an empty column beside a transcript full of runs. These entries are what the
+// column redraws from: settled rows, kept as history, that cannot be scheduled,
+// cannot be stopped and are not work.
+//
+// THE FIELDS ARE THE NOTICE'S FIELDS, because the row this restores to is a
+// [TaskNotice] and there is exactly one shape of a run's row in this package
+// (orchestrate.go's [orchestrateFamily.publish] keeps the live ones). Doing is
+// deliberately NOT among them: it is the phase a row is in while it is moving
+// ("forming the work"), and nothing restored from here is moving.
+type runRecord struct {
+	ID     uint64 `json:"id"`
+	Run    string `json:"run,omitempty"`
+	Node   string `json:"node,omitempty"`
+	Parent uint64 `json:"parent,omitempty"`
+	Title  string `json:"title,omitempty"`
+
+	State   TaskState `json:"state"`
+	Stopped bool      `json:"stopped,omitempty"`
+	Report  string    `json:"report,omitempty"`
+	Model   string    `json:"model,omitempty"`
+	CostUSD float64   `json:"costUsd,omitempty"`
+
+	// ElapsedMS is whatever age the row was last published with, frozen. A run's
+	// rows do not carry one today — the family publishes no Elapsed — so it is
+	// absent on every record this code writes, and it is here rather than left
+	// out because the record's job is to carry the notice, not to decide which
+	// half of it matters. Zero renders as nothing, which is the emptiness law.
+	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
+}
+
+// taskDocument is the file: a type tag, a version, the id counter, the nodes in
+// admission order, and the adaptive runs' rows.
 //
 // Seq is on it because ids must not be reused across a resume: a second session
 // that started counting from one would admit a node with the id of a node whose
 // report is still in the transcript, and every sentence either of them appears
-// in would be about the wrong work.
+// in would be about the wrong work. It covers a run's rows too, because those
+// take their ids from the same counter (orchestrate.go's family seam reuses
+// [TaskGraph.reserve] precisely so that no run's row can collide with a task's).
+//
+// THE VERSION DOES NOT MOVE FOR Runs, AND THAT IS THE POINT. A file carrying any
+// other version is IGNORED rather than migrated, so bumping it would throw away
+// every graph written before this change — the exact loss this seam exists to
+// stop. Runs is an added, omitted-when-empty field: an older checkpoint decodes
+// with no runs in it and resumes precisely as it always did, and this code's own
+// files are still version 1 documents that older builds can read.
 type taskDocument struct {
 	Type    string       `json:"type"`
 	Version int          `json:"version"`
 	Seq     uint64       `json:"seq"`
 	Nodes   []taskRecord `json:"nodes"`
+	Runs    []runRecord  `json:"runs,omitempty"`
 }
 
 // taskStore is the file and the lock that serializes writes to it.
@@ -377,8 +426,84 @@ func (g *TaskGraph) document() taskDocument {
 		}
 		document.Nodes = append(document.Nodes, node.recordLocked())
 	}
+	// AND THE ADAPTIVE RUNS' ROWS GO DOWN IN THE SAME DOCUMENT, written by the
+	// same store on the same beats. There is no second writer of tasks.json: a
+	// family's transitions reach the disk by handing their rows to the graph
+	// ([TaskGraph.keepRunRows]), and this is the only place that turns a row into
+	// a record.
+	for _, notice := range g.runRowsLocked() {
+		document.Runs = append(document.Runs, runRowRecord(notice))
+	}
 	return document
 }
+
+// runRowRecord is one live row written down, and [runRowNotice] reads it back.
+// They are a pair and they are next to each other so that a field added to one
+// is missing from the other in the same eyeful.
+func runRowRecord(notice TaskNotice) runRecord {
+	return runRecord{
+		ID:        notice.ID,
+		Run:       notice.Run,
+		Node:      notice.Node,
+		Parent:    notice.Parent,
+		Title:     notice.Title,
+		State:     notice.State,
+		Stopped:   notice.Stopped,
+		Report:    notice.Report,
+		Model:     notice.Model,
+		CostUSD:   notice.CostUSD,
+		ElapsedMS: notice.Elapsed.Milliseconds(),
+	}
+}
+
+// runRowNotice is one record as the row a column draws again, SETTLED.
+//
+// Done stays done and failed stays failed, verbatim: those rows said their last
+// word before the process ended and nothing has happened to them since. A row
+// that was still QUEUED OR MOVING is the only one this changes, and it changes
+// because the truth about it changed while nobody was watching — the work behind
+// it stopped existing the moment the process did. It settles the way a run's own
+// nodes settle when they are called off (orchestrate.go's
+// [orchestrateFamily.retire]): failed, with Stopped beside it, because nothing
+// went wrong with the work and nobody made a finding about it.
+//
+// A RESTORED ROW IS NEVER MOVING, which is why Doing is not restored and why
+// Elapsed is whatever was frozen onto it. Nothing here re-enters the frontier:
+// these rows are not in the graph's `nodes` and never were, so there is nothing
+// for a scheduler to find (task_run.go's [TaskGraph.runs] says it at length).
+func runRowNotice(record runRecord) TaskNotice {
+	notice := TaskNotice{
+		ID:      record.ID,
+		Run:     record.Run,
+		Node:    record.Node,
+		Parent:  record.Parent,
+		Title:   record.Title,
+		State:   record.State,
+		Stopped: record.Stopped,
+		Report:  record.Report,
+		Model:   record.Model,
+		CostUSD: record.CostUSD,
+		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+	}
+	if !notice.State.settled() {
+		notice.State, notice.Stopped = TaskFailed, true
+		notice.Report = orchestrateEndedReport
+	}
+	return notice
+}
+
+// orchestrateEndedReport is what a row of an adaptive run says for itself when
+// it was still moving as aforge closed.
+//
+// IT IS THE SENTENCE AND NOT A STATE WORD, because the state word is already
+// "stopped" and it would be answering the wrong question: a person looking at
+// this row wants to know why it stopped, and the answer is that the program it
+// was running inside went away. The second clause is the useful half — what the
+// run got through is on disk, in the same journal the run's page reads
+// (orchestrate.go's orchestrateJournalPath) — and it is the same promise the
+// sibling sentence for a subharness makes (subharness_run.go's
+// subharnessInterruptedReport).
+const orchestrateEndedReport = "it ended when aforge closed; its journal is kept"
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {
@@ -506,6 +631,32 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d was handed out by %d, which is not in this graph", record.ID, record.Parent)
 		}
 		seen[record.ID] = true
+		if record.ID > highest {
+			highest = record.ID
+		}
+	}
+	// THE RUNS' ROWS ARE VALIDATED ON THEIR OWN TERMS AND THEY ARE NOT NODES. No
+	// edge rules apply — a run's rows have no dependencies, and their tree is the
+	// Parent field the family filled — but the two rules that make a row a row do:
+	// it has an id, and it is in a state this package knows. The id space is
+	// SHARED with the nodes, so a row wearing a node's id is a file where one
+	// number names two pieces of work, which is the one corruption a roster
+	// could not draw its way out of.
+	drawn := make(map[uint64]bool, len(document.Runs))
+	for _, record := range document.Runs {
+		switch {
+		case record.ID == 0:
+			return taskDocument{}, fmt.Errorf("a run's row has no id")
+		case seen[record.ID]:
+			return taskDocument{}, fmt.Errorf("run row %d is also a node", record.ID)
+		case drawn[record.ID]:
+			return taskDocument{}, fmt.Errorf("run row %d appears twice", record.ID)
+		case !validTaskState(record.State):
+			return taskDocument{}, fmt.Errorf("run row %d is in state %q", record.ID, record.State)
+		case record.ElapsedMS < 0:
+			return taskDocument{}, fmt.Errorf("run row %d has a negative elapsed", record.ID)
+		}
+		drawn[record.ID] = true
 		if record.ID > highest {
 			highest = record.ID
 		}
@@ -661,9 +812,15 @@ func (a *Agent) recoverTasks() {
 		return
 	}
 	document, found := loadTaskCheckpoint(a.config.checkpointFile())
-	if !found || len(document.Nodes) == 0 {
+	if !found || (len(document.Nodes) == 0 && len(document.Runs) == 0) {
 		return
 	}
+	// THE RUN NAMES ARE CLAIMED BEFORE ANY RUN CAN BE STARTED. A run's name is a
+	// counter on the agent and it starts again at one in every process, so
+	// without this the first run of a resumed conversation would wear the name of
+	// one already on the column — and would write its journal into that run's
+	// folder (orchestrate.go's orchestrateJournalPath).
+	a.reserveRunNames(document.Runs)
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
@@ -748,6 +905,36 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	}
 	if document.Seq > g.seq {
 		g.seq = document.Seq
+	}
+	// THE ADAPTIVE RUNS' ROWS COME BACK AS ROWS AND AS NOTHING ELSE. They are put
+	// where the live ones live — [TaskGraph.runs], which the roster replay walks —
+	// so the column has ONE door and ONE row-space whether a run is happening now
+	// or happened yesterday. Nothing about them is scheduled, because they are not
+	// in `nodes`: the loop below that turns records into [TaskNode]s never sees
+	// them, and the frontier this recovery turns afterwards has nothing of theirs
+	// to find.
+	//
+	// The grouping is read off the rows themselves: a row with no parent is a
+	// run's own row and opens a family; a worker hangs under the id its Parent
+	// names. That is the order [TaskGraph.document] wrote them in, and it is the
+	// order they are drawn in.
+	//
+	// They are deliberately absent from [taskRecovery]: that note is the model's
+	// account of the graph it can still act on, and a restored run's rows are
+	// history a person reads on the column. Telling the model about work it
+	// cannot touch would invite it to say something about it.
+	for _, record := range document.Runs {
+		root := record.Parent
+		if root == 0 {
+			root = record.ID
+		}
+		if g.runs == nil {
+			g.runs = make(map[uint64][]TaskNotice, 1)
+		}
+		if _, held := g.runs[root]; !held {
+			g.runRuns = append(g.runRuns, root)
+		}
+		g.runs[root] = append(g.runs[root], runRowNotice(record))
 	}
 	var unannounced []*TaskNode
 	for _, record := range records {
