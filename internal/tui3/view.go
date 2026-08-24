@@ -326,8 +326,9 @@ func (a *app) frame() (string, int, int) {
 		// the roster has taken the body: dropping them would draw a window short
 		// of the terminal by exactly the box. [app.chromeAt] does not resolve
 		// them while the roster is up, which is right — the roster is over them.
+		liftedAt := len(rows)
 		rows = append(rows, lifted...)
-		return a.frameOut(rows, chrome, height, caretX, caretRow)
+		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
 	body, pad := a.bodyRows(a.bodyWidth(), view)
 	rail := a.railRows(view)
@@ -373,28 +374,61 @@ func (a *app) frame() (string, int, int) {
 		}
 		rows = append(rows, a.railJoin(text, railAt(i)))
 	}
-	// The welcome box, directly under the conversation and above the slack.
-	rows = append(rows, lifted...)
-	for i := 0; i < pad; i++ {
+	// THE GREETING SITS IN THE SLACK, a shade above its middle, with whatever
+	// the conversation already holds — a notice, an order standing here — above
+	// it where it was. The split is [welcomeAbove]'s and the pointer reads the
+	// same split back ([app.chromeAt]).
+	above := welcomeAbove(lift, pad)
+	for i := 0; i < above; i++ {
 		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
-	return a.frameOut(rows, chrome, height, caretX, caretRow)
+	liftedAt := len(rows)
+	rows = append(rows, lifted...)
+	for i := above; i < pad; i++ {
+		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
+	}
+	return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+}
+
+// welcomeAbove is how much of the body's slack goes ABOVE the lifted greeting:
+// nothing when nothing is lifted, and two fifths of it otherwise. Two fifths
+// rather than a half because an object at the exact middle of a tall window
+// reads as sitting low — the eye's centre is above the frame's — and a shade
+// above is where a centred thing looks centred.
+func welcomeAbove(lift, pad int) int {
+	if lift == 0 || pad <= 0 {
+		return 0
+	}
+	return pad * 2 / 5
 }
 
 // frameOut closes a frame: the chrome under whatever the body drew, cut to the
-// terminal, and the caret counted back through the chrome's own height.
+// terminal, and the caret turned into a screen row.
 //
 // It is one function because the two body layouts — the conversation beside its
 // rail, and the roster over the whole of it — must end the same way. A second
 // copy of this arithmetic is a caret that lands on the right row in one of them.
-func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow int) (string, int, int) {
+//
+// THE CARET IS COUNTED FROM WHICHEVER HALF OF THE CHROME IT IS IN. caretRow is
+// a row of the chrome block as [app.chrome] built it — the lifted greeting
+// first, then the tail. A caret inside the greeting is liftedAt rows down plus
+// its row; a caret in the tail is counted back from the foot of the frame
+// through the tail alone. Counting it back through the tail with the lift still
+// in it is the arithmetic this replaced, and it put the terminal's cursor on the
+// status row for as long as the greeting was up.
+func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) (string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
+	cut := 0
 	if len(rows) > height {
-		rows = rows[len(rows)-height:]
+		cut = len(rows) - height
+		rows = rows[cut:]
 	}
-	caretY := height - len(chrome) + caretRow
+	caretY := height - len(chrome) + caretRow - lift
+	if caretRow < lift {
+		caretY = liftedAt + caretRow - cut
+	}
 	if caretY < 0 {
 		caretY = 0
 	}
@@ -444,19 +478,25 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		}
 		add("", chromeRow{})
 	}
-	// The rows above the rule are the SECOND helping of breathing room, so there
-	// is one of them or none (see [app.breathingRows]).
-	for i := 1; i < gap; i++ {
-		addGap()
-	}
-	// The welcome box sits ABOVE the rule, which is where it belongs: the rule
-	// is the seam between what happened and what you are about to say, and the
-	// box is about neither — it is what there is instead of a conversation
-	// (welcome.go).
-	for i, line := range a.welcomeRows(width) {
+	// THE GREETING IS THE HEAD OF THIS BLOCK AND, WHILE IT IS UP, IT IS MOST OF
+	// IT. The unit's rows are built here and marked here so that they are
+	// hit-tested with the rest of the chrome, and then lifted to the middle of
+	// the frame ([welcomeLift]). While it is drawn, the rule, the breathing rows
+	// and the box at the foot are not: the unit is centred in the slack, and a
+	// legend under nothing is a seam between two things that are not there.
+	// The status row still closes the frame, and any question the session
+	// raises before the first sentence still stacks above it.
+	unit, _, unitX, unitRow := a.welcomeUnit(width)
+	greeted := len(unit) > 0
+	for i, line := range unit {
 		add(line, chromeRow{kind: chromeWelcome, index: i})
 	}
-	if roomy {
+	// The rows above the rule are the SECOND helping of breathing room, so there
+	// is one of them or none (see [app.breathingRows]).
+	for i := 1; i < gap && !greeted; i++ {
+		addGap()
+	}
+	if roomy && !greeted {
 		// THE RULE IS A LEGEND NOW: the same one line, with where you are written
 		// into it (render.go). It degrades back to the plain rule on a frame with
 		// no room for a label.
@@ -515,25 +555,32 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.parkedRows(width) {
 		add(line, a.parkedMark(i, width))
 	}
-	if roomy {
+	if roomy && !greeted {
 		addGap()
 	}
 
-	input, caretX, caretRow := a.inputBlock(width - len(inputPad))
-	// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder is
-	// applied to the block the input already rendered, because the hint slot
-	// inside it belongs to the picker's filter and the two are never up together
-	// (task.go).
-	input = a.redirectLane(input, width-len(inputPad))
-	// AND THE BOX TALKS TO THE NODE while a room is open: same box, same rules,
-	// a placeholder that says who is listening (room.go). The two lanes cannot be
-	// up together — a proposal is a question about work that has not started, a
-	// room is a page for work that has — and [app.roomSteerLaneRows] defers to
-	// the one above it rather than assuming so.
-	input = a.roomSteerLaneRows(input, width-len(inputPad))
-	caretRow += len(rows)
-	for _, line := range input {
-		add(inputPad+line, chromeRow{})
+	// THE CARET IS IN THE UNIT WHILE THE UNIT HOLDS THE BOX, and at the foot
+	// otherwise. Both are a row counted from the head of this block — the unit's
+	// rows are its first rows — and the frame turns each into a screen row from
+	// where it drew that half ([app.frameOut]).
+	caretX, caretRow := unitX, unitRow
+	if !a.welcomeHolds() {
+		input, x, row := a.inputBlock(width - len(inputPad))
+		// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder
+		// is applied to the block the input already rendered, because the hint
+		// slot inside it belongs to the picker's filter and the two are never up
+		// together (task.go).
+		input = a.redirectLane(input, width-len(inputPad))
+		// AND THE BOX TALKS TO THE NODE while a room is open: same box, same
+		// rules, a placeholder that says who is listening (room.go). The two lanes
+		// cannot be up together — a proposal is a question about work that has not
+		// started, a room is a page for work that has — and [app.roomSteerLaneRows]
+		// defers to the one above it rather than assuming so.
+		input = a.roomSteerLaneRows(input, width-len(inputPad))
+		caretX, caretRow = x+len(inputPad), row+len(rows)
+		for _, line := range input {
+			add(inputPad+line, chromeRow{})
+		}
 	}
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence
@@ -549,7 +596,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		add(line, chromeRow{kind: chromeStatus, index: i})
 	}
 
-	return rows, marks, caretX + len(inputPad), caretRow
+	return rows, marks, caretX, caretRow
 }
 
 // statusRow is the HUD's status row — one row, or two on a narrow frame where
@@ -605,16 +652,17 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 	if at := y - (height - tail); at >= 0 && at < tail {
 		return marks[lift+at], true
 	}
-	// The lifted rows sit directly under the conversation, which is where the
-	// frame drew them. Asking [app.bodyRows] again is what keeps this answer and
-	// the drawn one the same answer.
+	// The lifted rows sit under the conversation and its share of the slack,
+	// which is where the frame drew them. Asking [app.bodyRows] again, and
+	// [welcomeAbove] again, is what keeps this answer and the drawn one the same
+	// answer.
 	if lift > 0 && !a.railFull() {
 		top := a.bodyTop()
 		if top < 0 {
 			return chromeRow{}, false
 		}
-		body, _ := a.bodyRows(a.bodyWidth(), a.viewHeight())
-		start := top + len(body)
+		body, pad := a.bodyRows(a.bodyWidth(), a.viewHeight())
+		start := top + len(body) + welcomeAbove(lift, pad)
 		if at := y - start; at >= 0 && at < lift {
 			return marks[at], true
 		}
@@ -658,10 +706,17 @@ func (a *app) chromeHeight() int {
 	// layout to learn how tall the bottom of the frame is), the input block, and
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
-	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
+	n := a.statusHeight(width) + a.overlayHeight() + a.consentHeight() +
 		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
 		a.followHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
-	if gap := a.breathingRows(); gap > 0 {
+	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
+	// rule and its breathing room are not drawn under a greeting at all — both
+	// are [app.chrome]'s own decisions, read back here so the conversation is
+	// charged exactly what the frame draws.
+	if !a.welcomeHolds() {
+		n += a.inputHeight()
+	}
+	if gap := a.breathingRows(); gap > 0 && a.welcomeHeight() == 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}
 	return n

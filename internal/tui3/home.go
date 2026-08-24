@@ -809,7 +809,10 @@ func (a *app) landHome() {
 	// home lands on the ordinary prompt rather than on a box popping up behind
 	// the screen that just closed. A machine where home does not land is
 	// untouched by this: the box greets a first run exactly as it always has.
-	a.welcome = welcome{spent: true}
+	//
+	// It goes through [app.dismissWelcome] so the opening line about esc and
+	// ctrl+c is written under home, where it always was, rather than never.
+	a.dismissWelcome()
 }
 
 // worldHasElsewhere reports whether this machine holds a conversation OTHER than
