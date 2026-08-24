@@ -177,12 +177,14 @@ say rather than the default.
 - **balanced** — kimi-k3 thinks, qwen checks
 - **max** — kimi-k3 everywhere, thinks longer
 
-`/crew` opens all three as a chooser with yours marked. ↑ / ctrl+p and ↓ / ctrl+n move;
+`/crew` opens all three as a chooser with yours marked, under a scope line — `the four
+models aforge uses on its own behalf — not the one you chat with` — and a `you talk to ·
+<model>` line naming the seat the presets do not touch. ↑ / ctrl+p and ↓ / ctrl+n move;
 enter applies and esc cancels. If the four classes make a custom crew, no row is marked and
-the footer says picking one puts all four back. `/crew max` still sets it directly and
-confirms in one line, which ends `· the model you talk to is /model` — because the crew
-changes nothing about the conversation's own model, and the frame goes on saying what it
-said before.
+the chooser says picking one puts all four back. `/crew max` still sets it directly and
+confirms in one line, which ends `· you are still talking to deepseek-v4-flash — /model
+changes that` — naming the conversation's own model by id, because the crew changes
+nothing about it and the model segment on the status line goes on saying what it said before.
 The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
 frugal → balanced → max.
 
@@ -221,12 +223,14 @@ The careful calls are many and short; these two are few, and each one decides wh
 other calls do. A planner that cuts badly spends a whole run on work nobody wanted; a
 designer that writes badly puts a wrong answer on the menu with a name on it.
 
-## I changed the crew but the model at the bottom did not change
+## I changed the crew but the model at the bottom did not change — why did my model not change
 
 That is right, and nothing is broken. **`/crew` does not change the model you are talking
 to**, and the readout at the bottom of the frame is that model — the conversation's. The
 only thing that moves it is `/model`, the model row in `/settings`, or naming one with
-`/model <name>`.
+`/model <name>`. The confirmation says so by name: `/crew max` ends
+`· you are still talking to deepseek-v4-flash — /model changes that`, and the status line
+now carries `crew max` beside the model so the two dials read as two.
 
 The crew is a different dial: the four **classes** aforge makes its own calls on — reflex,
 small work, careful work, mastermind — used for titles, memory, the safety gate, checks on
@@ -241,7 +245,10 @@ relaunch and no new session.
   `crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3`. The word is
   the preset, or `custom` when the four classes are your own arrangement.
 - `/settings` → Providers has the **crew** row above the four class rows.
-- Bare `/crew` opens the three presets with yours marked.
+- Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
+  line naming the seat they do not touch.
+- The live status line says `crew max` at the head of the telemetry, across the gap from
+  the model segment — the same word `/status` prints, read from the same four rows.
 - The hint line under the model picker says `crew max` beside its keys, so the picker you
   opened looking for the change tells you the crew is a separate thing.
 
@@ -250,6 +257,45 @@ the conversation's model when that row is empty. Only an **adaptive run** uses t
 its planner takes the **mastermind** class and every node under it takes **small work**.
 Those ids are settled once, when the run starts, so changing the crew — or `/model` — half
 way through does not move a run already going.
+
+## What are the five models — the one you talk to and the four crew seats
+
+aforge runs **five model seats**. **Seat one is the model you talk to**: it answers every
+message you type, it is the id on the left of the status line, and `/model` is the only thing
+that moves it. The other four are the **crew** — the models aforge uses on its own behalf,
+for calls you did not type:
+
+| seat | word | what it answers |
+| --- | --- | --- |
+| 1 | you talk to | your messages — set with `/model` |
+| 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
+| 3 | small work | run nodes, digests, task names — cheap |
+| 4 | careful work | checks on finished work, compaction summaries, vision |
+| 5 | mastermind | plans adaptive runs and designs harnesses — thinks |
+
+`/crew` shows all five and sets seats two to five in one word — `frugal`, `balanced` or
+`max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
+presets, so the seat the presets do not touch is on the same page as the ones they do.
+`/settings` → Providers pins any one of the four on its own, which turns the crew word to
+`custom`. The live status line says both dials: the model segment on the left is seat one,
+and `crew max` at the head of the telemetry on the right is the other four.
+
+## Does /crew change my chat model — no, and what crew max on the status line means
+
+No. `/crew max` moves the four crew seats and leaves the model you talk to exactly where it
+was. The confirmation names it:
+
+```
+crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+```
+
+`/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
+chat model, and `/crew` never offers to. The two dials also stay separate on the frame: the
+status line shows the chat model on the left and `crew max` — or `crew balanced`,
+`crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
+on the right. That segment is a setting, not a measurement, so it is among the first things
+a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
+width. A session opened without a profile has no crew and shows no `crew` segment at all.
 
 ## Asking a class to think harder — a level on a class value
 
@@ -642,14 +688,16 @@ the three classes after it:
 crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 ```
 
-Three things differ deliberately from the status line on screen:
+On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
+the head of the telemetry beside the model, and among the first a narrow row gives up; the
+`crew` line here and on the phone's status sheet is the full reading. A session opened
+without a profile directory has no crew to read and gets no `crew` line or segment at all.
+
+Two things differ deliberately from the status line on screen:
 
 - the session **file** is added, because a path is a thing you copy into another program;
 - the `spend` line is **dropped** when nothing has been spent. The live status line keeps
-  `$0.00`; a note printed into the conversation must not;
-- the **crew** is added, because it is sixty cells of one fact that a narrow row would cut
-  in the middle of the third class. A session opened without a profile directory has no
-  crew to read and gets no `crew` line at all.
+  `$0.00`; a note printed into the conversation must not.
 
 Over `--host`, the `place` and `file` values are written in full as `machine:/path`.
 
