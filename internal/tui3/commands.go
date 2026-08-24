@@ -59,6 +59,22 @@ var commands = []command{
 	{name: "model", desc: "pick a model · or press its name in the status line"},
 	{name: "model", args: "<slug>", desc: "switch the model"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
+	// THE SAME TRAY FOR EVERYTHING THAT IS NOT A PICTURE (attach.go). It sits
+	// directly under /image because the two are one errand — putting a thing
+	// into the message you are writing — and a person hunting either reads both
+	// rows on the way past.
+	//
+	// It is NOT a second spelling of /image and the rows say so in their own
+	// words: a picture is looked at, a file is read. A picture handed to /attach
+	// still goes on as a picture, because somebody who learned one word should
+	// not have to find out this build has two.
+	//
+	// /upload is here because it is the word people bring from every chat
+	// program they have used. /file is deliberately NOT an alias: it shares four
+	// characters with /files, which opens the list of what has been MADE for you,
+	// and a word that narrowed the list to both errands at once is the near-miss
+	// /history was renamed to avoid.
+	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
 	// now because the table is the one place: a word the surface accepts and the
