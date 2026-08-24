@@ -93,7 +93,7 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	if preset == config.TaskStartSingle {
 		return a.startTaskDoor(door, "single", brief, "")
 	}
-	a.beginPreflight(taskSizingNote)
+	a.beginPreflight(taskSizingNote, brief)
 	ctx := a.ctx
 	return func() tea.Msg {
 		parallel, parts, why := door.JudgeDecomposable(ctx, brief)
@@ -106,10 +106,10 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // THE WAIT IS NAMED BECAUSE IT IS NOT INSTANT ANY MORE. Both doors shape the
 // brief before they admit anything (internal/session's task_shape.go), which is
 // a model call of its own, and a command that appeared to do nothing for several
-// seconds would read as a command that had not registered. The note says the one
-// true thing about the pause in the same voice `sizing it up…` says its own, and
-// [app.settleShaping] takes it away the moment the task lands — including when
-// nothing shaped it, because the note was about the attempt.
+// seconds would read as a command that had not registered. The forming block
+// says the one true thing about the pause in the same voice `sizing it up…` says
+// its own, and [app.settleShaping] collapses it the moment the task lands —
+// including when nothing shaped it, because the block was about the attempt.
 func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea.Cmd {
 	ctx := a.ctx
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
@@ -125,7 +125,7 @@ func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea
 	if line := session.PreflightNote(a.workspace, a.elsewhere(), brief); line != "" {
 		a.note(line)
 	}
-	a.beginPreflight(taskShapingNote)
+	a.beginPreflight(taskShapingNote, brief)
 	return func() tea.Msg {
 		if mode == "adaptive" {
 			id, title, err := door.StartPlannerRun(ctx, brief, hint)
@@ -136,10 +136,9 @@ func (a *app) startTaskDoor(door taskCommandAgent, mode, brief, hint string) tea
 	}
 }
 
-// The two waiting notes. They are named rather than typed at their two ends
-// because each is written once and REMOVED by matching the same text: a note
-// whose spelling drifted between the writer and the remover is a line that
-// stays on screen for the rest of the session.
+// The two phase words are named rather than typed at their two ends because the
+// state that begins a phase and the state that settles it must agree. A spelling
+// drift there would leave the wrong live phase on screen or fail to clear it.
 const (
 	taskSizingNote  = "sizing it up…"
 	taskShapingNote = "shaping the brief…"
@@ -161,41 +160,30 @@ const (
 // are what say it happened.
 const taskWideNote = "the work looks wide · one worker starts, and it can split as it goes"
 
-// preflight is the wait a task command is standing in: which of the two notes
-// above is on screen, and the moment it went up.
+// preflight is the one visible thing a task command is becoming: the person's
+// words, its present phase, and the moment that phase began.
 //
-// THE DEFECT THIS FIXES: both notes were plain notes, and a note is the lane
-// this surface says FINISHED things in — `exported · …`, `⟲ 135.7k cached ·
-// saved $0.0069`. Dim, static, and cached like every other note (render.go's
-// [app.entryRows]), so `shaping the brief…` was a still photograph for the
-// twenty-five seconds the shaping call is allowed (internal/session's
-// task_shape.go), sitting in a stack of post-hoc telemetry with nothing to
-// distinguish it from the lines above it that were about work already over.
-// Worse, no frame was even being ASKED for while it was up: the seven reasons
-// this surface keeps painting with the model idle ([app.paint]) did not include a
-// command's pre-flight, so the surface genuinely stopped. From where the person sat, a command they had just typed
-// had done nothing and then kept doing nothing.
-//
-// So the wait is drawn the way every other genuinely in-flight thing on this
-// surface is drawn — the braille spinner and the count-up the tool lines and a
-// running compaction already wear (render.go's [app.compactRow]) — and the frame
-// keeps turning while it is up. It borrows both rather than inventing an
-// animation, for [app.compactRow]'s stated reason: somebody who has learned that
-// a spinner means "this is happening right now" has learned it here too, and
-// both turn on the same [spinnerStep] grid so two moving rows never beat against
-// each other.
+// THE WAIT DOES NOT ENTER THE NOTES LANE. Notes report facts that have landed;
+// this scaffold exists only while a command is in flight and is drawn at the
+// transcript tail as a live region. Its left hairline gives every row one owner,
+// while the shared spinner and count-up say that owner is still changing. When
+// the door answers, the state is cleared before the ordinary settled task or
+// error row is written, so collapse is one replacement frame rather than a
+// second announcement.
 type preflight struct {
-	note string
-	at   time.Time
+	note  string
+	brief string
+	at    time.Time
 }
 
 // live reports whether a wait is up. It is the frame's eighth reason to paint.
 func (p preflight) live() bool { return p.note != "" }
 
 // begin puts the wait on screen and starts its clock.
-func (a *app) beginPreflight(note string) {
-	a.wait = preflight{note: note, at: a.now()}
-	a.note(note)
+func (a *app) beginPreflight(note, brief string) {
+	a.wait = preflight{note: note, brief: brief, at: a.now()}
+	a.follow()
+	a.touch()
 }
 
 // endPreflight stops the clock and takes the line away. The two halves are one
@@ -206,29 +194,26 @@ func (a *app) endPreflight(note string) {
 	if a.wait.note == note {
 		a.wait = preflight{}
 	}
-	a.dropNote(note)
+	a.touch()
 }
 
 func (a *app) settleSizing()  { a.endPreflight(taskSizingNote) }
 func (a *app) settleShaping() { a.endPreflight(taskShapingNote) }
 
-// waiting reports whether this note is the wait that is in flight right now,
-// rather than one of the finished facts the same lane carries.
-func (a *app) waiting(e *entry) bool {
-	return a.wait.live() && e.kind == entryNote && e.text == a.wait.note
-}
-
-// preflightRows draws the wait: the spinner, the note's own words, and how long
-// it has been going.
+// preflightRows draws the forming block at the transcript tail.
 //
-//	⠙ shaping the brief… · 6s
+//	▏ task
+//	▏ "write the release notes"
+//	▏ ⠙ shaping the brief… · 6s
 //
-// It keeps the note lane's hanging indent — the spinner stands exactly where the
-// `· ` would, two cells, and every continuation lines up under the words — so a
-// wait that wraps at a narrow width is still one block rather than a ragged
-// clump. The count-up is [countUpWord], which floors under a second: a wait that
-// has only just started says nothing about its length, by the emptiness law.
-func (a *app) preflightRows(e *entry, width int) []string {
+// ONE HAIRLINE AND ONE SPACE IS THE WHOLE SCAFFOLD. The brief is quoted because
+// it is the person's verbatim input, and is capped at two fitted rows so a long
+// command cannot turn a transient wait into a transcript card. The count-up is
+// [countUpWord], which floors under a second by the emptiness law.
+func (a *app) preflightRows(width int) []string {
+	if !a.wait.live() || width < 3 {
+		return nil
+	}
 	// The linear tier's objection to a spinner is the one it makes on a tool
 	// line: a claim repeated thirty times a second is heard thirty times a second
 	// by a surface being read aloud. A still mark makes it once.
@@ -236,32 +221,24 @@ func (a *app) preflightRows(e *entry, width int) []string {
 	if a.linear {
 		mark = glyphRunASCII
 	}
-	line := e.text
+	line := a.wait.note
 	if word := countUpWord(a.now().Sub(a.wait.at)); word != "" {
 		line += " · " + word
 	}
-	body := wrap(line, width-2)
-	out := make([]string, 0, len(body))
-	for i, row := range body {
-		lead := mark + " "
-		if i > 0 {
-			lead = "  "
+	rail := "▏ "
+	room := width - 2
+	brief := wrap(strconv.Quote(a.wait.brief), room)
+	if len(brief) > 2 {
+		brief = brief[:2]
+		brief[1] = fit(brief[1], room)
+		if !strings.HasSuffix(brief[1], "…") {
+			brief[1] = fit(brief[1]+"…", room)
 		}
-		out = append(out, a.pal.dim(lead+row))
 	}
+	out := []string{a.pal.dim(rail + "task")}
+	for _, row := range brief {
+		out = append(out, a.pal.dim(rail+row))
+	}
+	out = append(out, a.pal.dim(rail+mark+" "+fit(line, room-2)))
 	return out
-}
-
-// dropNote takes the most recent note with this exact text back off the
-// transcript. It is how a line that said what was happening leaves when it has
-// stopped being true, rather than being rewritten in place — a note is a thing
-// the conversation said, and the honest end of "sizing it up…" is that it is no
-// longer sizing anything up.
-func (a *app) dropNote(text string) {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		if a.entries[i].kind == entryNote && a.entries[i].text == text {
-			a.entries = append(a.entries[:i], a.entries[i+1:]...)
-			return
-		}
-	}
 }

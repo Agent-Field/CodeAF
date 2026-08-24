@@ -213,6 +213,18 @@ func (a *app) layout(width int) []row {
 	if line := a.earlierRow(width); line != "" && len(out) > 0 {
 		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
 	}
+	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
+	// notes deck it is deliberately not part of. It takes the ordinary block gap
+	// and no border of its own beyond the one named hairline on each live row.
+	if forming := a.preflightRows(width); len(forming) > 0 {
+		if len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
+		for _, text := range forming {
+			out = append(out, row{text: text, entry: -1})
+		}
+		closed = true
+	}
 	line, ok := a.harnessStepRow(width)
 	if !ok {
 		line, ok = a.ellipsis()
@@ -540,14 +552,6 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
-	// AND A TASK COMMAND'S PRE-FLIGHT, for the reason all three of those are not:
-	// `shaping the brief…` carries a spinner and a count-up while the call is out
-	// (taskcommand.go's [app.preflightRows]), and both are functions of the frame.
-	// It rejoins the cache the moment the wait ends, which is the moment the line
-	// is taken away altogether.
-	if a.waiting(e) {
-		return a.renderEntry(i, e, width)
-	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -661,14 +665,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
 	case entryNote:
-		// A WAIT THAT IS STILL RUNNING IS NOT A NOTE YET. The lane's other lines
-		// are facts about work that is over, and a command's pre-flight is the one
-		// thing in it that is still happening — so while it is, it wears the
-		// spinner and the clock every other live row on this surface wears
-		// (taskcommand.go's [preflight]).
-		if a.waiting(e) {
-			return a.preflightRows(e, width)
-		}
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
 		// lane keeps its dim prose and its dim lead — a note is still the surface
 		// talking about itself — while the words the person typed the command to
