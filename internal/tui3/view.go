@@ -201,6 +201,14 @@ func (a *app) frame() (string, int, int) {
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.
 	a.caret = true
+	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
+	// because it is the one that may be open before any of them exists and it
+	// goes away to reveal whichever of them was decided underneath (firstrun.go).
+	// One block, centred, no chrome.
+	if a.setup.open {
+		lines, caretX, caretY := a.setupFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	// The settings panel is the first thing on this surface that takes the whole
 	// frame, and it takes it WHOLE: no conversation above it, no input line
 	// under it, nothing of the frame below showing through at the edges
