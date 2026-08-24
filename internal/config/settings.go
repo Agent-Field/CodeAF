@@ -1668,10 +1668,12 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
 			Label: "fallback models", EmptyLabel: "nearest in the catalog",
-			Hint: "where a conversation goes when no endpoint serving your model will take " +
-				"the request at all — one or more slugs, comma-separated, first tried first: " +
-				"`openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank and the nearest " +
-				"same-class model in the catalog is used. The turn says which one it moved to.",
+			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
+				"it will take the request, it keeps going quiet mid-reply, or it is being " +
+				"rate limited and will not stop. One or more slugs, comma-separated, first " +
+				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
+				"and the nearest same-class model in the catalog is used. The turn says which " +
+				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
 		},

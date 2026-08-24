@@ -42,6 +42,19 @@ type Completer interface {
 	CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error)
 }
 
+// modelChain is the OPTIONAL half of a [Completer]: which models it would move
+// to when the one in hand can no longer answer, in order.
+//
+// It is a second interface rather than a second method on [Completer] because a
+// chain is a thing only the real adapter has (internal/provider's
+// FallbackModels). A completer that does not offer one — a test double, a build
+// wired to no catalog and no `models.fallbacks` row — makes the hop ABSENT: the
+// turn ends on the sentence it has always ended on, rather than on a capability
+// that is present and fails.
+type modelChain interface {
+	FallbackModels(model string) []string
+}
+
 // EventKind names one thing the person can see happening.
 type EventKind int
 

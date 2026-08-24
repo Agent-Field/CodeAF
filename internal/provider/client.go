@@ -208,10 +208,19 @@ func (c *Client) modelFor(request *ai.Request) string {
 // unservable, and the answer to it is a narrated ladder the person watches
 // (endpoints.go), because every rung of it takes away something they may care
 // about having sent.
+//
+// And a third thing, which is not about the request's shape at all: a provider
+// that paced this call until its patience ran out. That call has no answer and
+// no shape to fix, so the only door left is another model — the same chain,
+// through [Client.recoverFromPacing], which hands the error straight back when
+// there is no chain to walk.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
-	if err != nil || !endpointRefusalStatus(response.StatusCode) {
-		return response, err
+	if err != nil {
+		return c.recoverFromPacing(ctx, request, knobs, stream, err)
+	}
+	if !endpointRefusalStatus(response.StatusCode) {
+		return response, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 	if readErr != nil || !endpointRefusal(peek) {
@@ -515,7 +524,10 @@ func (c *Client) completeWithMessagesStreaming(
 			// against the CALLER'S context and never against this one, so a
 			// stop that lands while a watchdog is firing still reads as a stop.
 			if cut := stall.cut(); cut != nil && ctx.Err() == nil {
-				c.noteCutProvider(c.modelFor(request), served)
+				// Whether the ledger took the lane away travels ON the cut: the
+				// turn loop decides how many more times to ask this model from
+				// it, and it has no other way to know ([StreamCut.Rerouted]).
+				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 				return nil, cut
 			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
@@ -568,7 +580,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// turn loop and none of it reaches the transcript.
 				if babble != nil && babble.write(choice.Delta.Content) {
 					cut := &StreamCut{Reason: CutBabble}
-					c.noteCutProvider(c.modelFor(request), served)
+					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 					return nil, cut
 				}
 			}
