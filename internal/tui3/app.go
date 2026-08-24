@@ -2628,6 +2628,25 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// to the batch below rather than returned early, because the stream still
 	// has to be waited on afterwards.
 	var after tea.Cmd
+	// THE STOP IS THE LAST THING THAT TURN WRITES ON THIS SCREEN. Between a
+	// person's esc and the stream closing the engine is still winding the turn
+	// down ([app.windingDown]) and still speaking: the tail of a reply the
+	// provider had already buffered, a call the model was half-way through
+	// spelling out, a nudge about a request nobody is waiting for any more. Every
+	// one of those drew — a fresh assistant block UNDER the `interrupted` note, a
+	// new tool row for a call that is never going to run — and what a person read
+	// was a model that carried on talking after they stopped it.
+	//
+	// So nothing new is drawn from here to the close. The events are still TAKEN
+	// — the stream is still waited on below, and the short list that closes
+	// something already on the screen or carries the turn's accounting still
+	// lands ([keptAfterStop]) — and everything else is spent without a mark. This
+	// is not [app.dropLive]'s removal and does not disturb its asymmetry: nothing
+	// that arrived before the key is taken away, and the partial reply the engine
+	// keeps is the partial reply on screen.
+	if a.windingDown() && !keptAfterStop(ev.Kind) {
+		return a.streamOn(nil)
+	}
 	// THE BURN WINDOW OPENS ON THE FIRST EVENT of any turn that did not open one
 	// itself. A turn starts in three places — a submit, an attached message, a
 	// queued follow-up — and only the first of them runs through [app.submit];
@@ -2917,6 +2936,19 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.take(ev.Usage)
 		after = a.settle()
 	}
+	return a.streamOn(after)
+}
+
+// streamOn is what every road out of [app.event] owes the program loop: the next
+// wait on the turn's stream, batched with whatever the event itself asked for.
+//
+// It is a function rather than the tail of one because the stop guard at the top
+// of [app.event] leaves early and MUST NOT leave the stream unwaited — a turn
+// whose events stopped being read would never reach its close, and the close is
+// where the turn settles, the parked message goes and the follow-up queue
+// starts. One account of the obligation is the only way two exits can be sure
+// they are paying the same one.
+func (a *app) streamOn(after tea.Cmd) tea.Cmd {
 	if a.stream == nil {
 		return after
 	}
@@ -2925,6 +2957,31 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// nobody built. Batch drops a nil cmd, so this costs nothing when the
 	// clock is up.
 	return tea.Batch(after, a.wake(), waitEvent(a.stream, a.gen))
+}
+
+// keptAfterStop is the short list of events that still mean something once a
+// person has stopped the turn, and it is short on purpose: everything not named
+// here would DRAW, and after the key nothing new is drawn ([app.event]).
+//
+// The three tool closes are kept because they close a row THAT IS ALREADY ON THE
+// SCREEN and can open nothing — [app.closeTool] walks the drawn rows and writes
+// the result into the one that is still live, so a `go test` that finished in
+// the instant before the cancel reached it reports what it actually did instead
+// of standing forever as a call nobody knows the end of. The end stamp
+// [app.interrupt] already put on that row is replaced by the call's own, which
+// is the truer of the two.
+//
+// The turn's end and its error are kept because they carry the USAGE, and money
+// the turn spent is money the turn spent whether or not anybody waited for the
+// answer. Both also settle the turn, and a settle that fell through here would
+// simply arrive a moment later with the stream's close.
+func keptAfterStop(kind session.EventKind) bool {
+	switch kind {
+	case session.EventToolFinished, session.EventToolEnd, session.EventToolFailed,
+		session.EventTurnDone, session.EventError:
+		return true
+	}
+	return false
 }
 
 // settle ends a turn: the stream is done or abandoned, nothing is live, and the
@@ -4900,6 +4957,16 @@ func (a *app) quit() tea.Cmd {
 }
 
 // interrupt is esc: stop the turn, keep what it said.
+//
+// EVERYTHING A STOP OWES THE SCREEN IS PAID AT THE KEY, and that is the whole of
+// what this function changed when the interruption wave went through it. The
+// acts below were all already performed — every one of them is [app.settle]'s,
+// done when the stream finally closed — so the only thing that is different is
+// WHEN, and "when" is the entire subject. The engine's teardown is not
+// instantaneous and is not bounded (see [app.windingDown]); a surface that
+// waited for it left tool rows spinning, questions standing and a reply
+// arriving for seconds after a person had stopped the turn, which is the screen
+// disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
 	// THE AGENT IS ASKED FOR RATHER THAN ASSUMED, on [app.quit]'s own terms: a
 	// surface can be standing with no session under it, and a stop that panicked
@@ -4910,12 +4977,101 @@ func (a *app) interrupt() {
 	}
 	a.agent.Interrupt()
 	a.state = stateInterrupted
+	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
+	// still the spinners and the count-ups — both renderers stand down outside
+	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
+	// as long as nothing else starts working, and only as a consequence of the
+	// state rather than as a fact about the call. The end stamp is the fact, and
+	// stamping it here rather than at the close says the true thing about each
+	// row: this call ran until the person stopped it. Both are idempotent, so
+	// [app.settle] repeating them a few seconds later changes nothing.
+	a.dropForming()
+	a.resolveUnfinished()
+	// AND THE QUESTIONS GO WITH THE TURN THEY WERE ASKED INSIDE. The engine's
+	// own cancellation releases a parked call and it refuses (session's
+	// consent.go), so a block still on screen is asking about work that is over
+	// — and until the stream closed the status line read "waiting · your call"
+	// over a turn the person had already stopped. These are settle's three drops,
+	// on settle's reasons, moved to the moment the answer stopped mattering.
+	a.dropAsks()
+	a.dropConnectAsks()
+	a.dropHarnessAsks()
 	a.note("interrupted")
 	// The session drops its follow-up queue on an interrupt — a stop that was
 	// followed by the session working again is not a stop — so the surface says
 	// so rather than leaving a count above the box for turns that will never run.
 	a.dropFollows()
 }
+
+// windingDown reports that the turn on screen was STOPPED BY HAND and its stream
+// has not closed yet: the seconds between a person's esc and the engine letting
+// go of the turn.
+//
+// IT IS A REAL WINDOW AND IT IS NOT SHORT. [session.Agent.Interrupt] cancels the
+// turn's context and returns at once, but the turn goroutine does not close its
+// event hub until [session.Agent]'s loop returns, and the loop cannot look at
+// the context until the tool batch it is inside has finished — `wg.Wait()` on
+// every call, with no escape for a cancelled context, which is deliberate and
+// documented there. Two ordinary calls outlast the cancel by seconds: a `bash`
+// whose command left a grandchild holding the output pipe waits the exec
+// package's own three-second `WaitDelay` before the pipes are forced shut, and a
+// `jobs` kill spends two seconds on a SIGTERM grace and two more on the SIGKILL
+// that follows without ever consulting the context. Three to four seconds of
+// "nothing appears to have happened" is what this window is worth avoiding.
+//
+// It is DERIVED and not stored, from the two facts that already exist: the state
+// word is only [stateInterrupted] because [app.interrupt] put it there, and the
+// stream is only non-nil between a turn opening and its close (app.go's Update).
+// A third field holding the same fact is a third thing to keep in step with the
+// two.
+func (a *app) windingDown() bool { return a.state == stateInterrupted && a.stream != nil }
+
+// ── WHY THERE IS NO SECOND STAGE, AND WHAT WOULD HAVE TO EXIST FIRST ────────
+//
+// The obvious next thing to build on top of the window above is a HARD STOP: a
+// key pressed while the surface is still winding down that ends the turn for
+// real rather than politely. It is not built, and it is not built for two
+// reasons, either of which would be enough on its own.
+//
+// THE FIRST IS THAT THERE IS NO KEY LEFT. esc's grammar in the conversation is
+// read in a fixed order (input.go, rewind.go): a recall walk takes it, then
+// [app.escRewind] — where the first esc ARMS the rewind on its way past and a
+// second one inside [rewindArmWindow] OPENS it — and only then [app.interrupt].
+// So every esc that lands within half a second of another esc already belongs to
+// rewind, and THE INTERRUPT IS NOT FOR SALE cuts the other way just as hard: a
+// hard stop inside the window would be taking the door rewind is behind. Putting
+// it AFTER the window does not save it either, because an esc past the window is
+// a FIRST esc again — it arms the rewind on its way past exactly as before — so
+// the key would mean "stop harder" or "open the rewind" depending on what the
+// person did half a second later, which is one keypress with two readings and
+// the one thing this keyboard cannot have. ctrl+c is spoken for on both sides of
+// the same moment: mid-turn it is the interrupt, and at rest — which is what
+// winding down IS, since [app.interrupt] leaves stateWorking on the spot — it is
+// the quit arm (quitarm.go). A third key, bound for a state that lasts three
+// seconds and occurs on a minority of stops, is furniture.
+//
+// THE SECOND REASON IS THE DECIDING ONE: there would be nothing behind it. A
+// CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, and the session exposes no
+// second door to stop with — [session.Agent.Interrupt] cancels the turn's
+// context and that context has ALREADY been cancelled by the time this window
+// opens, so calling it twice is calling it once. The waits that make the window
+// long are waits that do not look at the context at all: the tool loop's
+// unconditional `wg.Wait()`, `bash`'s three-second `WaitDelay` on a leaked pipe,
+// the `jobs` kill's two SIGTERM-and-SIGKILL graces. A key wired to any of those
+// would be a key that says "stopping harder" while the wait ends exactly when it
+// was always going to end — which is the worst thing this surface could put
+// under the key a person presses when they want something to stop.
+//
+// WHAT A PERSON ACTUALLY HAS is the program's own door, and it is already on the
+// screen and already learnable: ctrl+c twice quits ([landingKeysWord]), and
+// quitting takes the process and its children with it. Nothing smaller than that
+// can end a wait the engine does not check.
+//
+// SO THE ORDER OF WORK, if a second stage is ever wanted, is the engine first: a
+// context arm on the jobs registry's grace waits, a `ctx.Done()` case on bash's
+// wait that hands back what the call has accumulated and lets the reaper finish
+// behind it, and then a door on [session.Agent] to reach them by. A key comes
+// last, and it comes with something behind it.
 
 // ── the paste bracket ───────────────────────────────────────────────────────
 //

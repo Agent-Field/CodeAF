@@ -2491,6 +2491,26 @@ func (a *app) roomPath() []string {
 func (a *app) roomStateWord(node *taskNode) string {
 	switch node.state {
 	case session.TaskRunning:
+		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
+		// BELOW. This is the room's copy of the conversation's own law (app.go's
+		// [stoppingWord]): between the card's "stop it" and the engine moving the
+		// node there is a real window — the child's context is cut and the child
+		// is winding up — and for the whole of it this line read "working" about
+		// work the person had just ended, which is the one word on the page they
+		// know to be wrong. The word is the same word for the same reason the
+		// working word is shared: a person who has learned what it means out in
+		// the conversation has learned it here too.
+		//
+		// The SPINNER beside it deliberately keeps turning, which is not a
+		// contradiction but the other half of the honesty ([app.stoppedGlyph]
+		// makes the argument in full, stop.go): out in the conversation the person
+		// is sitting in front of the turn and nothing should move once they have
+		// stopped it, while a node is work going on somewhere else that really is
+		// still going on — and the mark that says "landed" is owed to the landing
+		// and to nothing earlier.
+		if node.stopped {
+			return stoppingWord
+		}
 		// A NODE IN A NAMED PHASE SAYS THE PHASE, and it outranks both of the
 		// clauses below. "designing" and "awaiting your look" are what this work
 		// IS at this moment (session's TaskNotice.Doing) — a header that said
