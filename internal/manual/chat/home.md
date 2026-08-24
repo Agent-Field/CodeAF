@@ -195,10 +195,13 @@ Work that landed needing a look **stays on the strip until you decide about it**
 many days that is. It is not stale and it does not age out: nothing more will happen to
 that work until somebody accepts it or sends it back.
 
-Two ways to settle it, and they are the same door:
+Three ways to settle it, and they are the same door:
 
 - **the landing card in the conversation** — `[a] accept`, `[l] look again`, `[n] not
   right`, `[d] decide these for me`;
+- **the task's room** — enter on its roster row opens it, and the same four choices stand
+  at the foot of the page; `a`, `l`, `n`, `d` over an empty box answer it with nothing
+  selected;
 - **just say so.** "accept task 7", "that one isn't finished", "have another look at task
   7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
   says `already answered`.
