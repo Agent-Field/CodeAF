@@ -13,6 +13,11 @@ under **FIXED** headings are left as they were written, because they are the
 evidence the fix was made against. Line numbers in this document are from w41 and
 have moved.*
 
+*Updated w43, 2026-08-24, by the lane that fixed M5's division half and M7 — the
+two standing-order gaps. A firing that turns out to be wide now takes the
+division road under the same gates as everything else, and the birth seam stopped
+handing a reminder to a worker as a house rule.*
+
 ## The world this is measured against
 
 Four laws, decided across waves 35–40, are what "as-intended" means here.
@@ -46,10 +51,12 @@ falling back to the long way escaped the tool ceiling it was approved under
 (**C2**). Both are fixed and pinned by tests through the real doors.
 
 **The rest is a short list of honest gaps** — a set of sentences that promise
-more than their code does, and the restart, standing-firing and planner gaps
-below. The wide-work door that admitted unarmed (**M1**), the refusal that named
-the wrong cause (**C3**) and the ledger leak on the stop path (**M2**) were
-closed in the same lane.
+more than their code does, and the restart and planner gaps below. The wide-work
+door that admitted unarmed (**M1**), the refusal that named the wrong cause
+(**C3**) and the ledger leak on the stop path (**M2**) were closed in the same
+lane. The two standing-order gaps followed in w43: the one road on which width
+could not be said was the unattended one (**M5**), and the birth seam said "these
+are not suggestions" over a reminder (**M7**).
 
 ---
 
@@ -122,8 +129,8 @@ path.
 | trajectory | door | what it starts | road | armed? | consent | verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 | standing `WhenHold` | `internal/standing/standing.go:143`, skipped `tick.go:166-168` | **nothing** | none | n/a | n/a | as-intended — it returns before the daily rail, the spend rail and the whole look/judge/fire walk |
-| standing `WhenAt` / `WhenEvery` / `WhenFile` / `WhenIdle` / `WhenProbe` | `internal/standing/tick.go:250-331`, dispatched `:398-409` | `ActionSay` one line, or `ActionTask` **one headless conversational turn** (`standing_run.go:498-521`) | neither road — no `TaskNode` is ever born | **no, and it cannot be** | ratified at proposal time; a firing asks nobody | **drifted — M5** |
-| holds reaching workers | `standing_world.go:118`, appended `task_run.go:826`, `:1035-1039` | — | — | — | — | as-intended for holds — one read per frontier pass, appended last to the brief, no per-node branch, and division parts join the conversation's own graph so `g.home` resolves the person's place. But **every kind** rides, not only holds — **M7** |
+| standing `WhenAt` / `WhenEvery` / `WhenFile` / `WhenIdle` / `WhenProbe` | `internal/standing/tick.go:250-331`, dispatched `:398-409` | `ActionSay` one line, or `ActionTask` a headless session that may now hand its parts out (`standing_run.go:506-640`) | the division road — `standingWideWork` gives a wide firing its own graph and the one node it IS | **yes — enumeration only** (`enumeratesWidth`, `task_divide.go`) | ratified at proposal time; a firing asks nobody | as-intended (M5 fixed w43, 2026-08-24) |
+| holds reaching workers | `standing_world.go:118`, appended `task_run.go:826`, `:1035-1039` | — | — | — | — | as-intended (M7 fixed w43, 2026-08-24) — one read per frontier pass, appended last to the brief, no per-node branch, and division parts join the conversation's own graph so `g.home` resolves the person's place. Every kind still rides, and now in **two registers**: a `WhenHold` under the binding sentence, every waking kind under one that says it is not a condition over this work |
 | resident leaf `request_split` | `internal/exec/tools.go:936`, armed `internal/exec/linear.go:600` | the leaf **ends** and its parts replace it | the resident's own growth road | by config, never per-node | nobody is asked; the money gate defers | as-intended — a deliberate product difference, documented on both sides (`task_divide.go:50-57` vs `linear.go:794-810`) |
 | the shared gate | `internal/splitgate/splitgate.go` | — | — | — | — | as-intended — genuinely one implementation, and `cmd/aforge/cooperative.go:148-156` keeps the old names as forwarders over `splitgate.Floor` — except **M8** |
 | `aforge chat --once` | `cmd/aforge/chatv3.go:146-172` | one headless turn | division road present but inert (C1) | `spec.wide`/enumeration | **`AskConsent=false` ⇒ the policy's "prompt" refuses** (`consent.go:282-284`); `Standing` nilled | as-intended |
@@ -160,10 +167,10 @@ parent re-discovers outstanding parts.
 | --- | --- | --- | --- |
 | parts inherit standing orders | `task_run.go:826` + `:1035-1039`; `standing_world.go:118-131` | orders arrive through the brief and only the brief; the part's own config carries no `Standing` door, so nothing is said twice | as-intended — `TestThePersonsOwnWordsAndTheStandingOrdersReachEveryPart` PASS (it calls `briefLocked` by hand, so the frontier→part seam is pinned at one remove) |
 | parts inherit the person's words | `task_divide.go:282` `a.taskRequest()` | each part opens on the sentence the person typed | as-intended — same test |
-| journals | `task_run.go:3435-3444`, `:3301` | one `tasks/<when>_<id>.jsonl` per part; the URI reaches the parent in the landing note (`:1702`, `:1736-1747`) and reaches a `tasks` row through `TranscriptURI` (`task_index.go:629`) with the live graph merged over the file (`:437-484`) | as-intended; no test pins a *part's* journal |
+| journals | `task_run.go:3435-3444`, `:3301` | one `tasks/<when>_<id>.jsonl` per part; the URI reaches the parent in the landing note (`:1702`, `:1736-1747`) and reaches a `tasks` row through `TranscriptURI` (`task_index.go:629`) with the live graph merged over the file (`:437-484`) | as-intended, and the path is now the family's rather than the owner's (`Place` gap fixed w43, 2026-08-24) — a part's journal is pinned by `TestAPieceOfATasksWorkKeepsToTheSameSessionFolder` |
 | cancel-tree | `cancel.go:73-96`; `task_run.go:2126` + `:2235-2243` | stopping the parent cuts every unsettled kid, and each kid repeats it — a real cascade with no recursive walk. A part is individually stoppable from its own roster row (`internal/tui3/stop.go:277-304`) | as-intended **for the person**; a gap for the model — **M9** |
 | spend fold | `task_run.go:3182-3204`; `loop.go:2101`, `:2127-2155` | on the ordinary path, exactly once: a part folds into the parent worker, which the conversation later folds whole into the session ledger; ordering is safe because a part folds in its own defer before `markNoted` and the tail loop waits on `reported()`. On a stopped ending the parent's books are already closed, so `Agent.spendLedger` skips the closed hop and folds the part straight into the conversation — the same total by a shorter route | as-intended (M2 fixed w42, 2026-08-24) |
-| the parent stays and folds | tail loop `task_run.go:2788-2810`; park `:2187-2201` | waits on the **report** and never on the state (`:2780-2784`); hands its lane back at `:2799`, takes it back at `:2804`; exits only when nothing is owed and nothing is outstanding | as-intended — `TestAParentWaitingOnAPieceHandsBackItsLane` PASS |
+| the parent stays and folds | tail loop `task_run.go:2788-2810`; park `:2187-2201` | waits on the **report** and never on the state (`:2780-2784`); hands its lane back at `:2799`, takes it back at `:2804`; exits only when nothing is owed, nothing is outstanding and no steered line is queued | as-intended — `TestAParentWaitingOnAPieceHandsBackItsLane` PASS; the queued-line clause is M12's fix, `TestSteeringAParkedParentWakesItAndArrivesInItsNextTurn` |
 | deadlock at `parallel=1` | `freeHands` `task_divide.go` | cannot happen: with the asker in the only lane `freeHands` is 0 and the division is refused up front — deliberate, argued in `freeHands`'s own comment. The refusal (`divisionNoLane`) now says which of the two lane cases it is, and does not invite the worker back where the cap is exactly one | as-intended (C3 fixed w42, 2026-08-24) |
 | every live worker on the surface | `work_tree.go:85-148`, `:161-170` | tasks + parts + adaptive runs + their nodes + background jobs; a root is drawn while anything under it is live and then the whole family is drawn; every row's id is `cancel.go`'s own spelling | as-intended — "NEVER FAKE LIVENESS" (`:76-78`) — with one surface drift, **m1** |
 | …except a sub-harness run | `cancel.go:269-301` mints `harness:<n>`; `work_tree.go:86` lists tasks, runs and jobs only | cancellable, but not a row in the tree | minor — **m4** |
@@ -171,7 +178,7 @@ parent re-discovers outstanding parts.
 | a run's node fails | `internal/orchestrate/run.go:496` `land`, `:461` `metLocked` | **abandoned** — no re-plan, no rewire, no cascade; downstream nodes sit `Queued` and `synthesize` writes up Done and Failed only (`:524-536`). Its spend still folds (`orchestrate.go:951`; `run.go:500`) | drifted — **M11** |
 | a run's fuel gate | `internal/orchestrate/fuel.go:36`, `:133-136`, `:142-145`; `run.go:413-417` | 80% says so once; 100% finishes what is in flight, starts nothing new, and asks topup/finish/stop | as-intended — matches `system.md:178-179` and the description at `tools_harness.go:71` |
 | steering into a running task | `task_room.go:87-109`; `tools_tasks.go:430-438` | a person or the model can say a line into any node, parts included; the brief and acceptance stay frozen — the only writable field is `spec.model`, through `RetargetTask` (`:143-182`) | as-intended |
-| steering a **parked** parent | `agent.go:1526-1529`; park select `task_run.go:2799-2803` | the line is accepted and does **not** arrive: `wakeLocked` declines inside a task, and the park select wakes only on a child's report | **gap — M12** |
+| steering a **parked** parent | `task_room.go`'s `SteerTask`; `enqueueSteeredLine` `agent.go`; park select `task_run.go`'s tail loop | the line RELEASES the wait, the runner re-enters the model with it, and the loop will not park on or close over a queued line (`steeringHeld`). The door answers whether the node was waiting, and both surfaces say so | as-intended (M12 fixed w43, 2026-08-24) |
 | the governor's hold | `TaskGraph.machineBusy`, `task_divide.go` | the governor is no longer part of the division's gate: a busy machine holds the *parts* on the frontier (`waiting · machine busy`) and `armPoll` lifts them, exactly as it does for work admitted through `propose_task`. `divisionDone`'s receipt says so | as-intended (C3 fixed w42, 2026-08-24) |
 
 ### Pause and fuel, all nine mechanisms
@@ -516,19 +523,42 @@ Related and smaller: a design thread already carries `propose_task`
 `wide` ones included. Bounded — it cannot reach a planner — but nothing in
 `harness_task.go` argues for it.
 
-### M5 — a standing firing cannot divide, and cannot fan out either.
+### M5 — a standing firing cannot divide, and cannot fan out either. — **DIVISION FIXED, w43, 2026-08-24.**
 
-`ActionTask` runs "a fresh headless session in the run folder, one turn on the
-brief" (`standing_run.go:498-505`). `standingRunConfig` (`:631-663`) sets
-`InTask=true` but leaves `tasker` nil, so `mayFanOut()` is false (`task.go:301`)
-and the session has neither `propose_task`, nor `tasks`, nor `divide_work`;
-`run_adaptive` needs `AskConsent` and gets none. `v3StandingPosture`
-(`cmd/aforge/chatv3_standing.go:162-203`) never sets `Divide` either.
+The finding as written: `ActionTask` ran "a fresh headless session in the run
+folder, one turn on the brief". `standingRunConfig` set `InTask=true` but left
+`tasker` nil, so `mayFanOut()` was false (`task.go:301`) and the session had
+neither `propose_task`, nor `tasks`, nor `divide_work`; `run_adaptive` needs
+`AskConsent` and gets none. `v3StandingPosture` never set `Divide` either. So the
+one place nobody is watching — overnight work, the case the ambient side exists
+for — was the one place width was unaddressable.
 
-So the one place nobody is watching — overnight work, the case the ambient side
-exists for — is the one place width is unaddressable: it runs strictly
-sequentially inside one 60-step turn (`standing_run.go:92`). A gap against law 1,
-not a bug in what is written.
+**The division half is closed.** `v3StandingPosture` now carries `Divide` off the
+same `settings.Swarm` row a conversation reads, and `standingWideWork`
+(`standing_run.go`) arms a firing through the SAME lawful signal ordinary work
+uses — `armDivision`'s third, factored out as `enumeratesWidth` so there is one
+reader of "does this text name enough separate items" and not two. A wide firing
+gets a graph of its own carrying the person's `task.parallel` cap and the
+admission governor built from `task.max_load` / `task.min_free_mb`, plus the one
+node it IS: born RUNNING, holding a lane, never given to the frontier. The parts
+are ordinary nodes under it, so C3's law holds unattended too — a busy machine
+makes them WAIT and `armPoll` lifts them, it never refuses. `Run` grew the same
+tail loop `runTaskChild` has, so the firing does not come back until its parts
+have reported, their reports have re-entered the model, and their spend is in the
+figure the pass writes down.
+
+**Enumeration only, recorded as the decision.** A firing gets no sizing read. The
+other two signals are people — a typed `/task` somebody is waiting on, and a chat
+model's `wide` written with the conversation in front of it — and a firing has
+neither: its brief was compiled from one sentence, ratified on a card, and has
+been sitting in a file since. A model call per firing per night to re-read
+unchanged text is a subscription nobody agreed to, so the free signal that reads
+the work's own words is the honest floor. It under-arms rather than over-arms.
+
+**Still open:** a firing has no `propose_task` and no `tasks`, and `run_adaptive`
+still needs an `AskConsent` it does not have. Division is the road wide work was
+meant to take (`task_divide.go`'s header); the fan-out half is a separate
+question about what an unattended session may commission.
 
 ### M6 — three one-source-of-truth breaks between a description and its code.
 
@@ -547,16 +577,34 @@ way is not taken — the ceiling holds*, which is now true of the code (C2).
 
 **(c) `armDivision` ignores the escape hatch** — see M8.
 
-### M7 — every kind of standing item rides into every worker's brief as a house rule.
+### M7 — every kind of standing item rides into every worker's brief as a house rule. — **FIXED, w43, 2026-08-24.**
 
-`Store.Applicable` (`internal/standing/store.go:175-194`) filters on `Status` and
-`AppliesTo` and never on `WhenKind`, and `renderStandingWorld`
-(`standing_world.go:65-95`) writes whatever comes back under
-`standingWorldIntro` — "They … are not suggestions. Work within them."
-(`standing_world.go:33`). `Item.Prompt()` falls back to the person's raw words
-for any kind (`standing.go:452-457`). So "remind me at 6 to check the deploy" is
-presented to every task in the project as a rule to work within, until it
-retires. Only a `hold` is a rule; the other five kinds are schedules.
+The finding as written: `Store.Applicable` filters on `Status` and `AppliesTo`
+and never on `WhenKind`, and `renderStandingWorld` wrote whatever came back under
+one intro — "They … are not suggestions. Work within them." So "remind me at 6 to
+check the deploy" was presented to every task in the project as a rule to work
+within, until it retired. Only a `hold` is a rule; the other five kinds are
+schedules.
+
+**The tiering is the contract's own kinds and nothing else.** `renderStandingWorld`
+now reads one field against one name — `When.Kind == standing.WhenHold` — and
+writes two registers under one heading. A hold keeps the binding sentence
+verbatim (`standingWorldHolding`). Every waking kind rides under
+`standingWorldWaiting`: *"These are the person's own standing orders over this
+place, each waiting on a moment, a rhythm or a change of its own. They are here
+so you know what stands; none of them is a condition over this work and none asks
+anything of you now."* The wording is the register `docs/STANDING-ORDERS.md`
+already speaks — standing orders, conditions, waiting, context — and introduces
+no vocabulary of its own.
+
+`Store.Applicable` is deliberately unchanged: which orders govern a place is its
+one question (D5), and a second filter here would be a second answer. What the
+seam decides is only how each one is *said*.
+
+Two consequences worth naming. The holds LEAD the section, because they are the
+only half that can change what the worker does. And when the eight-order clip
+bites, holds survive it whatever their age — eight reminders crowding out the one
+rule in the project was the same failure in a smaller shape.
 
 ### M8 — `AFORGE_SPLITGATE=0` has a reader that ignores it.
 
@@ -608,7 +656,25 @@ recovery the design depends on is left for a model to infer. A node stranded tha
 way also keeps a live `queued` roster row after its run has closed
 (`orchestrate.go:1787-1804`) and never reaches the project index (`:1635`).
 
-### M12 — steering a parked parent has no effect, and can be dropped outright.
+### M12 — steering a parked parent has no effect, and can be dropped outright. — **FIXED, w43, 2026-08-24**
+
+> **The line is now the news.** `SteerTask` marks it as the person's own
+> (`userMessage.steered`) and hands it over through `enqueueSteeredLine`, which
+> RELEASES the wait the runner is holding — the same release a report makes,
+> without being a report. The tail loop reads `steeringHeld()` beside the owed
+> count: it will not park on top of a queued line and will not break and close
+> the child while one is still there, so the sentence always reaches a request.
+> A worker that has already closed refuses out loud — *"task 3 has just
+> finished, so there is nobody left to say it to"* — instead of swallowing the
+> line. And the door answers WHETHER THE NODE WAS WAITING, so both surfaces say
+> which wait the line landed in: the `tasks` tool with *"It was waiting on the
+> pieces it handed out; your line wakes it"*, and the room with its own note,
+> `it was waiting on its pieces — your line wakes it`. Pinned by
+> `TestSteeringAParkedParentWakesItAndArrivesInItsNextTurn`,
+> `TestALineSteeredAtAClosedWorkerIsRefusedRatherThanSwallowed` and, on the
+> surface, `TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid` /
+> `TestSteeringAWorkingNodeSaysNothingExtra`. `tasks.md` has a section of its
+> own for it.
 
 `SteerTask` accepts the line — a parked node's state is still `TaskRunning`
 (`park` sets only `node.parked`, `task_run.go:2187-2201`) — and the tool answers
@@ -746,21 +812,60 @@ than a consequence of turning the division road on.
 
 **Named as gaps, not fixed here:**
 
-- **`Routing`, `ModelFallbacks`, `NearestModels`** — all three are read into the
-  provider client at construction (`agent.go:51`, `:59-60`). A node therefore has
-  the zero routing strategy, no model fallbacks and no nearest-model repair,
-  while the conversation has the person's. `newTaskAgent` is the OUTLIER here:
-  `memory_consolidate.go:242` and `standing_run.go:755` both copy
-  `parent.Routing` into the children they build.
-- **`SupportsParameter`** — used *inside* `newTaskAgent` to refuse a model that
-  cannot use tools, and not copied down. So the rescue works exactly one level
-  deep: a part, or a `propose_task` child of a node, is built by an owner whose
-  `SupportsParameter` is nil and gets no check at all. C1 makes this reachable
-  far more often than it was.
-- **`TaskProgressCheck`** — asked of the node's `owner` (`task_run.go:2645-2654`),
-  and a part's owner is the parent worker, whose config has none. The
-  no-progress check never runs for a part.
-- **`Place`** — `workTaskNode` reads `a.config.Place` for `prepareTaskTree` and
+- **`Routing`, `ModelFallbacks`, `NearestModels`** — **STALE, w43, 2026-08-24.
+  The conclusion was drawn from the Config literal and is wrong about the
+  running program.** All three are read in exactly one place — `New`, where they
+  are handed to the provider client (`agent.go:43-60`) — and `newTaskAgent` does
+  not build a client at all: it hands the node THE PARENT'S OWN, unwrapped
+  (`client := unwrapCompleter(a.client)`, and `agent.go:230`'s own comment says
+  so). So a worker asks through the person's routing strategy, falls back down
+  the person's list and gets the catalog's nearest-model rescue — transitively,
+  all the way down to a part, whose parent's client is the conversation's. The
+  three are facts about the connection and there is one connection; copying them
+  onto a node's Config would be three fields nothing reads. `memory_consolidate.go:242`
+  and `standing_run.go:755` are not a contrast, they are the same rule seen from
+  the other side: those two BUILD clients, so they must carry `Routing`.
+  Measured through the real constructor and pinned by
+  `TestTheProductionConstructorCarriesTheProviderRepairOntoEveryWorker`, which
+  also fails if anybody gives a node a connection of its own.
+- **`SupportsParameter`** — **FIXED, w43, 2026-08-24**: verified exactly as
+  written and copied down, so the no-tools rescue works at every depth.
+  `TestAPartIsBuiltWithTheSameNoToolsRescueItsParentHad` builds the part through
+  the real constructor and checks that the catalog was asked about the PART'S
+  model and that the swap is on its row.
+
+  Used *inside* `newTaskAgent` to refuse a model that cannot use tools, and not
+  copied down. So the rescue works exactly one level deep: a part, or a
+  `propose_task` child of a node, is built by an owner whose `SupportsParameter`
+  is nil and gets no check at all. C1 makes this reachable far more often than
+  it was.
+- **`TaskProgressCheck`** — **FIXED, w43, 2026-08-24, with the finding's last
+  sentence corrected.** The field is the TEST SEAM (`session.go:930-932`);
+  production leaves it nil and `taskProgress` asks the real read-only checker
+  either way, so a part's leash was never unchecked — what stopped one level
+  down was any test's ability to put a deterministic answer behind it. Copied,
+  because a seam must reach as far as the machinery it stands in for
+  (`TestAPartsLeashIsCheckedByTheSameHandTheConversationSet`). `TaskDeadline` is
+  read on the same owner (`taskLimits`) and has the same shape; it is left
+  alone, so a part's checkpoint is still reachable in a test only through the
+  step and no-progress thresholds.
+
+  Asked of the node's `owner` (`task_run.go:2645-2654`), and a part's owner is
+  the parent worker, whose config has none. The no-progress check never runs for
+  a part.
+- **`Place`** — **FIXED, w43, 2026-08-24, and not by copying it.** A node with a
+  Place would be a second session: `Place` is what turns on the meta file, the
+  presence rows, the delta reader and the artifacts directory, all of which
+  belong to the conversation and would be written twice. So the PATHS ask the
+  family instead — `Agent.familyPlace(node)` answers the graph's `home`'s Place,
+  and it is what `workTaskNode` (worktree, resume, git-root lock),
+  `newTaskAgent` (journal) and `task_audit.go`'s accept/re-audit
+  (`node.workingCopy`) now read. One family, one folder.
+  `TestAPieceOfATasksWorkKeepsToTheSameSessionFolder` puts a part's worktree
+  under `<session>/trees/<id>` and its transcript in `<session>/tasks/`, and
+  fails on the old reading.
+
+  `workTaskNode` reads `a.config.Place` for `prepareTaskTree` and
   `lockGitRoot`. A part's owner is the parent worker with an empty `Place`, so a
   part's worktree lands under the repository's default `tasks/<session>/<id>`
   rather than inside the session's own folder (Decision 26), and the git-root
@@ -772,6 +877,27 @@ than a consequence of turning the division road on.
 - **`SpendRailUSD`, `ReplyGuardOff`, `ProfileDir`** — three person-set defaults a
   node simply does not have. The rail one matters most: `railBlockLocked` cannot
   stop a runaway family, only the conversation's next turn.
+
+# What was fixed in the routes lane (w43, 2026-08-24)
+
+Two of the constructor's named gaps and M12. Every claim was re-verified in the
+tree before it was acted on; one had gone stale and is marked as such above
+rather than quietly deleted.
+
+1. **The constructor's carry set.** `SupportsParameter` and `TaskProgressCheck`
+   are in the literal; `Place` is answered by `Agent.familyPlace` at the three
+   readers that need it rather than copied onto the node; the provider-repair
+   trio is recorded as travelling with the CLIENT, with a comment at
+   `unwrapCompleter` saying so and a test that fails if a node is ever given a
+   connection of its own. Everything is pinned through `newTaskAgent` — no
+   worker Config is written by hand in `task_carry_test.go`.
+2. **M12.** A steered line marks itself as the person's, releases the wait a
+   parked runner is holding, and cannot be parked on or closed over; a worker
+   that has closed refuses in words; both surfaces say which wait the line
+   landed in.
+3. Manual: `tasks.md`'s new *Steering a task that is waiting on its pieces*
+   section, the division section's own sentence about it, and two probes.
+4. This document's verdict rows and constructor bullets.
 
 # What was fixed in the roads lane (w42, 2026-08-24)
 

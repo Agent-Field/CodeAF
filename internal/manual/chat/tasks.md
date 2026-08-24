@@ -1362,6 +1362,34 @@ frame always says which of these the next `esc` is: `room · esc/←← main` no
 
 `enter` steers. Nothing is ever held above the box inside a room — the waiting-message
 machinery belongs to the main thread, since a task reads what you send at its next step.
+A task that is waiting on pieces it handed out has no next step coming, and your line is
+what wakes it (*Steering a task that is waiting on its pieces*).
+
+## Steering a task that is waiting on its pieces — I typed into a task that split its work and nothing happened
+
+A task that handed pieces of its work out stops talking and waits. It has said everything it
+had to say, and the only thing that was ever going to move it again is one of its pieces
+finishing (*When a task splits its own work*). The column still draws it as working, because
+it is: waiting on its own pieces is the work.
+
+**Type into its room anyway — your line is what wakes it.** The task reads your words as your
+words, answers them, and goes back to waiting for its pieces. Because the page has been
+still, the room says what just happened when it takes the line:
+
+```
+· it was waiting on its pieces — your line wakes it
+```
+
+Nothing else about the task moves. What it was asked to do and what it will be checked
+against were frozen when it started, and steering never touches either — if the goal itself
+was wrong, the answer is a new task (*Does aforge change my task, or rewrite what I asked
+for?*).
+
+**A task whose worker has just finished is refused out loud, never swallowed.** If the last
+piece reported in the instant before you pressed enter, there is nobody left in there to
+read your sentence, and you are told so — `task 3 has just finished, so there is nobody left
+to say it to` — rather than watching a room that says your words arrived. Your words stay in
+the box.
 
 ## Reading a task's room, and its frozen clock
 
@@ -1578,7 +1606,9 @@ in one merge, not as three branches racing for yours.
 
 A parent never lands while a piece of it is still running. Its own turn may end long
 before; the task stays open, each report is put in front of it as it arrives, and only then
-is the parent's work checked and merged. If you stop a parent, its unfinished pieces are
+is the parent's work checked and merged. While it waits it is not taking steps — so a line
+you type into its room is what wakes it, and it goes back to waiting afterwards (*Steering a
+task that is waiting on its pieces*). If you stop a parent, its unfinished pieces are
 stopped with it and their branches are kept.
 
 ## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task
@@ -1640,6 +1670,14 @@ width alone reaches for.
 A task that was never read for width at all (`/task solo`, the `single` row, a proposal I
 did not mark wide) says nothing up front and can still split, off the items its own brief
 already names.
+
+**And so can work that runs while you are asleep.** A standing order that fires and starts
+work is on this road too, armed the same last way — off the items its own brief names,
+with no sizing call, because a firing runs on a rhythm you set once and a model call every
+night to re-read the same sentence is a bill nobody agreed to. The two tests still decide,
+and the machine is still respected: a division at 3am on a loaded box is admitted and the
+parts wait for it. The firing stays open until its parts are home and their spend is on its
+own cost row. The standing orders page has the rest of what an unattended run is.
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief

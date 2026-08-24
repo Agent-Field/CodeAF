@@ -219,7 +219,26 @@ func (a *Agent) armDivision(spec taskSpec) bool {
 	if a.judgedDivisible(spec.request) || a.judgedDivisible(spec.brief) {
 		return true
 	}
-	return splitgate.WorthIt(spec.title + "\n" + spec.brief + "\n" + spec.acceptance)
+	return enumeratesWidth(spec.title, spec.brief, spec.acceptance)
+}
+
+// enumeratesWidth is [Agent.armDivision]'s THIRD SIGNAL on its own: does this
+// text already name enough separate items to be worth handing out?
+//
+// IT IS A FUNCTION AND NOT A LINE INSIDE armDivision BECAUSE UNATTENDED WORK HAS
+// ONLY THIS SIGNAL. A standing order's firing is armed here too (standing_run.go),
+// and it has neither of the other two: nobody typed `/task` for the sizing judge
+// to answer, and no chat model wrote `wide` on a proposal — a firing's brief was
+// compiled from the person's own sentence months ago and has been sitting in a
+// file since. Two spellings of "what counts as wide text" would be two floors,
+// and the day they disagreed the honest one would be whichever the reader in
+// front of you did not use (design-law §ONE SOURCE OF TRUTH).
+//
+// The pieces are joined with newlines because that is how [splitgate.WorthIt]
+// reads a plan: a number and its noun must stand together, and gluing a title
+// onto the front of a brief invents adjacencies neither of them wrote.
+func enumeratesWidth(pieces ...string) bool {
+	return splitgate.WorthIt(strings.Join(pieces, "\n"))
 }
 
 // rememberDivisible banks a yes from the sizing judge against the exact text it
