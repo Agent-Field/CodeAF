@@ -197,6 +197,13 @@ func (a *app) visible(width int) []row {
 //   - ONE blank after a cluster, before the text that follows it.
 //   - ONE blank before each user message: the turn boundary, the only
 //     structural silence this surface has.
+//   - ONE blank above THE ANSWER of a turn that did work (hierarchy.go's
+//     [answerBreath]). The rule above it covers the commonest shape and only
+//     that shape — an answer after a cluster — while a turn that thought and
+//     then answered, and a turn whose whole machinery collapsed into one chip,
+//     both put the answer hard against the row above it. The silence belongs to
+//     the ANSWER rather than to whatever preceded it. A turn with no work in it
+//     is given nothing and renders exactly as it did before the rule existed.
 //
 // Two rules can ask for the same gap — a cluster ending a turn, then the next
 // user message — and a gap asked for twice is still one gap, which is why each
@@ -256,6 +263,13 @@ func (a *app) layout(width int) []row {
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
 	folds := a.deckFolds(d)
+	// THE ANSWER HIERARCHY IS DECIDED BEFORE A SINGLE BLOCK DRAWS (hierarchy.go).
+	// Which prose was narration and which was the answer is a fact about this
+	// LIST, and it is settled here — over the deck, so the conversation, a room
+	// and a node's transcript inside a run's page all get it from one pass — so
+	// that [app.renderEntry] can paint one block at a time without ever asking
+	// what surrounds it.
+	stampHierarchy(es, folds)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -357,7 +371,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			continue
 		}
 		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask ||
-			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) {
+			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
+			// [answerBreath]). It is asked HERE, inside the same condition as the
+			// four rules above it, because [gap] is not idempotent: two calls are
+			// two blank rows, and the commonest promoted answer follows a cluster
+			// that has already asked for the same silence.
+			answerBreath(es, i) {
 			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
 			// surface that interrupts a reply to ask something, and a question
 			// wedged against the sentence above it reads as part of that sentence.
@@ -750,6 +770,29 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
 	tags := a.taskReplyTagRows(e.replyTags, width)
+	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
+	//
+	// A block that more work opened under is narration, and it is drawn as what
+	// it is: the model's own words in the work column, one lightness step BELOW
+	// the body, with no markdown on them at all (hierarchy.go states the law and
+	// [app.workingProse] does the paint).
+	//
+	// It is asked BEFORE [entry.settled] because a demoted block has no live tail
+	// worth keeping. [entry.mdCut] — the promotion boundary a still-streaming
+	// block was cut at — stops mattering the instant the block stops being the
+	// answer: it is a bookkeeping mark about how much of a growing edge had been
+	// formatted, and there is no growing edge here. The whole text is wrapped at
+	// one tier, so a block demoted mid-sentence cannot come back as half rendered
+	// markdown and half plain.
+	//
+	// AND ITS TABLE FEET GO WITH IT. A foot is an offer to open something, and
+	// the affordances belong to the answer: [entry.feet] is keyed by row, these
+	// are different rows, and a stale foot would put a door on somebody else's
+	// line (mdtable.go).
+	if e.demoted {
+		e.feet = nil
+		return append(tags, a.workingProse(e.text, width)...)
+	}
 	if e.settled {
 		return append(tags, a.settledMarkdown(at, e, width)...)
 	}
