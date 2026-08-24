@@ -47,7 +47,7 @@ func TestTheStatusLineDrawsTheReadableName(t *testing.T) {
 // were read from.
 func TestTheRecentListDrawsReadableNames(t *testing.T) {
 	w := &welcome{sel: -1, recent: []Session{{Title: "fix_the_nil_map", File: "/tmp/lab/20260816.jsonl"}}}
-	row := plain(w.recentRow(0, newPalette(0, false), false))
+	row := plain(w.recentRow(0, newPalette(0, false), welcomeUnitWidth, false))
 	if !strings.Contains(row, "Fix The Nil Map") {
 		t.Fatalf("the recent row drew a machine name: %q", row)
 	}
