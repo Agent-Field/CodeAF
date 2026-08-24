@@ -2127,6 +2127,67 @@ func TestTheDoorIsShutWhenThereIsNowhereToGo(t *testing.T) {
 	}
 }
 
+// …AND IT OPENS THE MOMENT THIS WINDOW MAKES SOMEWHERE ELSE TO GO. The launch
+// found one conversation and shut the door; /new is the person putting a second
+// one on the machine, and the door was the only way to the screen that would
+// have noticed.
+func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
+	a := lab.door(mine)
+	if a.homeDoorOpen() {
+		t.Fatal("the door is open on a machine with only this conversation")
+	}
+
+	// /new: another conversation in this project, which leaves the one the
+	// launch opened behind as somewhere to go back to (app.go's [app.renew]).
+	runCmd(a.renew())
+	if a.file == mine {
+		t.Fatal("/new did not move the surface onto another conversation")
+	}
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is still shut with a conversation to go back to")
+	}
+	if !a.homeDoorShowing() {
+		t.Fatal("the door works and is not advertised")
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("the gesture did not open home")
+	}
+}
+
+// …AND A WALK THAT COULD NOT BE TAKEN DOES NOT SHUT IT. [session.ReadWorld]
+// answers an empty world both for a machine holding nothing and for a walk that
+// failed, and home's own tick believing the second one used to shut the door for
+// the rest of the session.
+func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	runCmd(a.openHome())
+	// The root goes out from under the walk, which is what a bucket being
+	// groomed or a descriptor the process could not get looks like from here.
+	a.homeRoot = filepath.Join(t.TempDir(), "gone")
+	a.refreshHome()
+	if !a.homeWorth {
+		t.Fatal("a reading that found nothing shut the door")
+	}
+	a.closeHome()
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is shut after home closed on a reading of nothing")
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("the gesture did not open home")
+	}
+}
+
 // The advertisement shows at rest and vanishes on the first character.
 func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	lab := newHomeLab(t)
