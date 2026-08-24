@@ -323,30 +323,30 @@ func (s *stubAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return s.Submit(context.Background(), text)
 }
 
-func (s *stubAgent) Interrupt()                            {}
-func (s *stubAgent) Compact(ctx context.Context) error     { return errors.New("not here") }
-func (s *stubAgent) Close() error                          { return nil }
-func (s *stubAgent) Model() string                         { return "a-model" }
-func (s *stubAgent) SetModel(string)                       {}
-func (s *stubAgent) SetContextWindow(int)                  {}
-func (s *stubAgent) ReasoningFor(string) string            { return "" }
-func (s *stubAgent) SetReasoningFor(string, string)        {}
-func (s *stubAgent) ResolveConsent(uint64, bool)           {}
-func (s *stubAgent) Title() string                         { return "" }
-func (s *stubAgent) Usage() session.Usage                  { return session.Usage{} }
-func (s *stubAgent) ContextTokens() int                    { return 0 }
-func (s *stubAgent) Transcript() []session.DisplayEntry    { return nil }
-func (s *stubAgent) RewindPoints() []session.RewindPoint   { return nil }
-func (s *stubAgent) NoteConnected(string, string)          {}
-func (s *stubAgent) ResolveConnect(string, bool)           {}
-func (s *stubAgent) ResolveConnectKey(string, string)      {}
-func (s *stubAgent) ResolveHarness(uint64, bool, string)   {}
+func (s *stubAgent) Interrupt()                          {}
+func (s *stubAgent) Compact(ctx context.Context) error   { return errors.New("not here") }
+func (s *stubAgent) Close() error                        { return nil }
+func (s *stubAgent) Model() string                       { return "a-model" }
+func (s *stubAgent) SetModel(string)                     {}
+func (s *stubAgent) SetContextWindow(int)                {}
+func (s *stubAgent) ReasoningFor(string) string          { return "" }
+func (s *stubAgent) SetReasoningFor(string, string)      {}
+func (s *stubAgent) ResolveConsent(uint64, bool)         {}
+func (s *stubAgent) Title() string                       { return "" }
+func (s *stubAgent) Usage() session.Usage                { return session.Usage{} }
+func (s *stubAgent) ContextTokens() int                  { return 0 }
+func (s *stubAgent) Transcript() []session.DisplayEntry  { return nil }
+func (s *stubAgent) RewindPoints() []session.RewindPoint { return nil }
+func (s *stubAgent) NoteConnected(string, string)        {}
+func (s *stubAgent) ResolveConnect(string, bool)         {}
+func (s *stubAgent) ResolveConnectKey(string, string)    {}
+func (s *stubAgent) ResolveHarness(uint64, bool, string) {}
 func (s *stubAgent) EarlierHistory() session.EarlierHistory {
 	return session.EarlierHistory{}
 }
 
 func (s *stubAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (s *stubAgent) ResolveStanding(uint64, session.StandingAnswer)           {}
+func (s *stubAgent) ResolveStanding(uint64, session.StandingAnswer)            {}
 
 func (s *stubAgent) RewindAt(int) ([]session.DisplayEntry, error) {
 	return nil, errors.New("not here")
