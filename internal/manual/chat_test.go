@@ -575,6 +575,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I know which column I am in", "home"},
 		{"why is one project name darker than the others", "home"},
 		{"which section is my cursor in on home", "home"},
+		// The wave that stopped guessing at the terminal's background and asked
+		// it. Three of these are somebody checking whether the surface knows what
+		// it is sitting on — the first two before switching to a light terminal,
+		// the third from a terminal that never answers and gets the built-in
+		// palette. The fourth is the defect the measurement fixes, in the words
+		// of the person looking at it.
+		{"does it detect my terminal theme", "screen"},
+		{"can it use my terminal's light background", "screen"},
+		{"why are the colors the same on every terminal", "screen"},
+		{"the text is too bright on my black terminal", "screen"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
