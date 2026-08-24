@@ -301,7 +301,7 @@ What steps up, in the lines you will see it in:
 
 | Line | What is drawn brighter |
 | --- | --- |
-| the crew line after `/crew` | the three model ids — `brain`, `hands` and `checks` stay grey |
+| the crew line after `/crew` | the three crew model ids and the model you are still talking to — `brain`, `hands`, `checks` and `you are still talking to` stay grey |
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
@@ -373,6 +373,12 @@ is a claim about now; the attribution alone goes silent after **10 minutes**.
 Pressing the model segment opens the model picker, and it brightens under the pointer to
 say so.
 
+Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
+`crew frugal`, or `crew custom` when you pinned one of the four yourself — so the two model
+dials sit side by side: the model you talk to on the left, the preset the four models aforge
+uses on its own behalf are on to its right. It is absent on a session with no profile, and
+it is one of the first segments a narrow row drops.
+
 While a task **room** is open the cluster renames itself to the room chip and the room's
 model — `task <model>` — and **pressing it moves that task**, not the conversation: the
 same picker opens aimed at that node, and the task switches from its next turn onward. One
@@ -388,20 +394,21 @@ survives, the identity is not drawn, and nothing on the row is pressable.
 
 ## What each part of the status line means
 
-Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
+Eleven segments, right to left of the identity, joined by ` · ` in a fixed order:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
-| 0 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
-| 1 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
-| 2 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
-| 3 | cost | `$0.14` | the session's running spend | never empty |
-| 4 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
-| 5 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
-| 6 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
-| 7 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
-| 8 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
-| 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
+| 0 | crew | `crew max` | which preset the four models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent on a session with no profile |
+| 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
+| 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
+| 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
+| 4 | cost | `$0.14` | the session's running spend | never empty |
+| 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
+| 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
+| 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
+| 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
+| 9 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
+| 10 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
@@ -508,10 +515,12 @@ When the segments do not fit, they are removed one at a time in a fixed order, b
 actionable each one is:
 
 ```
-delta → open → cache → eta → burn → ambient → cost → context
+delta → crew → open → cache → eta → burn → ambient → cost → context
 ```
 
-`open` goes early because it is the one segment that is not about the conversation in
+`crew` goes second because it is a setting rather than a measurement — it changes only when
+you change it, and `/status`, bare `/crew` and the hint under the model picker all say it in
+full. `open` goes early because it is the one segment that is not about the conversation in
 front: at forty columns what you need is what **this** conversation is doing.
 
 The **state word and the `YOLO` badge are not in that list at all**. One is why you are

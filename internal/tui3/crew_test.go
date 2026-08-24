@@ -405,8 +405,10 @@ func TestTheModelPickerNamesTheCrewInTheHintSlot(t *testing.T) {
 	}
 }
 
-// AND THE CONFIRMATION SAYS WHAT IT DID NOT CHANGE, in the same line and at the
-// moment the question is raised. It is still one line.
+// AND THE CONFIRMATION NAMES WHAT IT DID NOT CHANGE, in the same line and at
+// the moment the question is raised: the conversation's model by id, spelled as
+// the status line spells it, and the one command that moves it. It is still one
+// line.
 func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.slash("/crew max")
@@ -415,7 +417,189 @@ func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
 	if strings.Count(text, "\n") != 0 {
 		t.Fatalf("the confirmation is more than one line:\n%s", text)
 	}
-	if !strings.HasSuffix(text, "· the model you talk to is /model") {
-		t.Fatalf("the confirmation does not say which dial it left alone: %q", text)
+	if !strings.HasSuffix(text, "· you are still talking to gpt-4.1-mini — /model changes that") {
+		t.Fatalf("the confirmation does not name the model it left alone: %q", text)
 	}
+	// The id is the status line's spelling — the basename — and not the routing
+	// address, so a person can check the clause against the foot of the frame.
+	if strings.Contains(text, "openai/gpt-4.1-mini") {
+		t.Fatalf("the confirmation spells the model as a routing address: %q", text)
+	}
+	// AND THE SPELLING FOLLOWS THE REASONING LEVEL, because the status line's does.
+	a.agent.SetReasoningFor("openai/gpt-4.1-mini", "high")
+	a.slash("/crew balanced")
+	if text := lastNote(t, a); !strings.Contains(text, "you are still talking to gpt-4.1-mini:high —") {
+		t.Fatalf("the confirmation lost the level the status line shows: %q", text)
+	}
+}
+
+// ── THE FIVE SEATS ──────────────────────────────────────────────────────────
+//
+// aforge runs five model seats — the one you talk to, plus reflex, small work,
+// careful work and mastermind — and /crew moves only the last four. Every
+// surface that names the crew now names the fifth seat beside it, so the two
+// dials are visibly two dials.
+
+// BARE /crew IS THE FIVE-SEAT READING: a scope line saying what the presets
+// change and what they do not, seat one on a line of its own, the three presets
+// exactly as before, and a closing line pointing at where a single seat is
+// pinned.
+func TestBareCrewReadsTheFiveSeats(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.width = 240
+	a.slash("/crew")
+
+	rows := a.overlayRows(a.width, a.overlayHeight())
+	if len(rows) != a.crewPick.height() {
+		t.Fatalf("the chooser drew %d rows and promised %d", len(rows), a.crewPick.height())
+	}
+	text := plain(strings.Join(rows, "\n"))
+	if !strings.HasPrefix(plain(rows[0]), crewScopeLine) {
+		t.Fatalf("the chooser does not open with the scope line:\n%s", text)
+	}
+	if seat := plain(rows[1]); !strings.Contains(seat, crewSeatLead+" · gpt-4.1-mini") {
+		t.Fatalf("seat one is not the second row:\n%s", text)
+	}
+	if !strings.HasSuffix(plain(rows[len(rows)-1]), crewPinLine) {
+		t.Fatalf("the chooser does not close on the pinning note:\n%s", text)
+	}
+	// SEAT ONE IS NOT A ROW ENTER COULD APPLY: it wears no lead, no cursor and no
+	// ground, and the cursor still opens on the crew in force below it.
+	if strings.Contains(rows[1], a.pal.accent("› ")) {
+		t.Fatalf("seat one took the cursor:\n%q", rows[1])
+	}
+	if strings.Contains(rows[1], "\x1b[48;5;"+itoa(int(hueSelected.idx))+"m") {
+		t.Fatalf("seat one wears the chosen ground:\n%q", rows[1])
+	}
+	if a.crewPick.cursor != 1 {
+		t.Fatalf("the cursor opened on row %d, want balanced at 1", a.crewPick.cursor)
+	}
+	// The presets follow, in their own order, after the two reading lines.
+	for i, preset := range config.CrewPresets {
+		if row := plain(rows[2+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
+			t.Errorf("row %d is not %s's:\n%q", 2+2*i, preset, row)
+		}
+	}
+	// And enter still applies the preset under the cursor, seat one untouched.
+	a.crewPickerKey(key("down"))
+	a.crewPickerKey(key("enter"))
+	if got := config.CrewAt(a.profileDir); got != config.CrewMax {
+		t.Fatalf("enter applied %q, want max", got)
+	}
+	if a.model != "openai/gpt-4.1-mini" {
+		t.Fatalf("the chooser moved the conversation's model to %q", a.model)
+	}
+}
+
+// THE STATUS LINE PAIRS THE TWO DIALS: the crew word stands at the head of the
+// telemetry, across the gap from the conversation's model, and the word is the
+// same one /status, the picker's hint and the chooser read — derived from the
+// four live rows through one function.
+func TestTheStatusLinePairsTheCrewWithTheModel(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.width = 200
+	a.slash("/crew max")
+
+	line := plain(a.status(a.width))
+	if !strings.Contains(line, "crew max") {
+		t.Fatalf("the status line does not name the crew:\n%q", line)
+	}
+	if strings.Index(line, "crew max") < strings.Index(line, "gpt-4.1-mini") {
+		t.Fatalf("the crew word is not beside the model, on its right:\n%q", line)
+	}
+	if parts := a.telemetry(a.width); len(parts) == 0 || parts[0].kind != segCrew {
+		t.Fatalf("the crew is not the head of the telemetry: %+v", parts)
+	}
+	// ONE SOURCE FOR THE WORD, wherever it is said.
+	if a.crewHint() != a.crewSegment() {
+		t.Fatalf("the hint says %q and the segment says %q", a.crewHint(), a.crewSegment())
+	}
+	a.slash("/status")
+	if !strings.Contains(lastNote(t, a), "\ncrew     max ·") {
+		t.Fatalf("/status does not read the same word:\n%s", lastNote(t, a))
+	}
+	// A hand-set seat turns every reading to custom at once.
+	a.openSettings()
+	toProviders(t, a)
+	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
+	a.closeSettings()
+	if line := plain(a.status(a.width)); !strings.Contains(line, "crew custom") || strings.Contains(line, "crew max") {
+		t.Fatalf("the status line did not follow the hand-set seat:\n%q", line)
+	}
+}
+
+// THE CREW IS AMONG THE FIRST SEGMENTS TO GO: a setting rather than a
+// measurement, said in full elsewhere, so a short row gives it up before the
+// bill and the meter and nothing else on the row moves.
+func TestTheCrewSegmentYieldsBeforeTheNumbers(t *testing.T) {
+	a, _ := sheetApp(t)
+	// The name is sized so that at a hundred columns the telemetry is over by
+	// exactly the crew's width: dropping it is enough, and nothing else goes.
+	a.title = "a conversation with a name long enough to crowd"
+	a.ctxWindow, a.ctxTokens = 200_000, 24_000
+	a.cost = 0.31
+
+	wide := plain(a.status(200))
+	if !strings.Contains(wide, "crew balanced") {
+		t.Fatalf("the wide row does not carry the crew:\n%q", wide)
+	}
+	narrow := plain(a.status(100))
+	if strings.Contains(narrow, "crew") {
+		t.Fatalf("the crowded row kept the crew over the numbers:\n%q", narrow)
+	}
+	for _, kept := range []string{"$0.31", "24k/200k", "idle"} {
+		if !strings.Contains(narrow, kept) {
+			t.Fatalf("the crowded row lost %q while dropping the crew:\n%q", kept, narrow)
+		}
+	}
+	if dropOrder[1] != segCrew {
+		t.Fatalf("the crew is not second in the drop order: %v", dropOrder)
+	}
+}
+
+// THE EMPTINESS LAW ON THE ROW: a door opened without a profile has no crew to
+// read, and the status line says nothing rather than guessing a word.
+func TestTheStatusLineSaysNothingAboutACrewWithNoProfile(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.model = "m"
+	if a.profileDir != "" {
+		t.Fatalf("this app has a profile at %q and cannot test the empty case", a.profileDir)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, "crew") {
+		t.Fatalf("a session with no profile grew a crew segment:\n%q", line)
+	}
+	for _, part := range a.telemetry(200) {
+		if part.kind == segCrew {
+			t.Fatalf("a session with no profile assembled a crew segment: %+v", part)
+		}
+	}
+}
+
+// AND THE STATUS SHEET CARRIES THE CREW UNDER THE MODEL, the way /status does,
+// because the two are one list: the phone's sheet was the one surface that did
+// not say it.
+func TestTheStatusSheetCarriesTheCrewUnderTheModel(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew max")
+
+	items := a.deckItems()
+	for i, item := range items {
+		if item.label != "crew" {
+			continue
+		}
+		if i == 0 || items[i-1].label != "model" {
+			t.Fatalf("the crew is not under the model: %+v", items)
+		}
+		if item.value != a.crewWord() {
+			t.Fatalf("the sheet's crew reads %q, want %q", item.value, a.crewWord())
+		}
+		// Once, and in full — never a second time as the row's short word.
+		for _, other := range items[i+1:] {
+			if other.label == "crew" || other.value == "crew max" {
+				t.Fatalf("the crew is on the sheet twice: %+v", items)
+			}
+		}
+		return
+	}
+	t.Fatalf("the sheet has no crew line: %+v", items)
 }
