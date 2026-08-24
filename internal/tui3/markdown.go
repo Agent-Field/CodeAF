@@ -25,22 +25,35 @@ import (
 // What this file owns is therefore only the two things prose leaves to a
 // caller: which Styler paints, and which measure the prose wraps to.
 //
+// "Which Styler paints" is doing more work than it looks like. The Styler is the
+// colour authority, so stating the BODY INK on it ([newMarkdownStyler]) is not a
+// second authority arriving — it is this surface answering the one question the
+// authority cannot answer for it, which white a reply's paragraphs are read in.
+// Everything else about the row — the heading ladder, the code ramp, the raised
+// plane under an inline span, what a 16-colour terminal may draw — stays prose's
+// and tokens'.
+//
 // CODE FENCES STAY ON THE TOKENS RAMP, and this is the whole of D11's "else"
 // branch. Decision 11 asks for a pastel chroma style (catppuccin-mocha) on
 // fenced code IF it can be had without editing internal/tui2 — and it cannot:
-// prose.Options is Width, Measure and *tokens.Styler, with no theme parameter
-// and no seam for one. Behind it, prose/code.go BUILDS its chroma style out of
-// the tokens ramp and maps every chroma token onto a tokens.CodeSlot, so there
-// is no style to swap from this side even in principle — the theme is the token
-// layer. Adopting mocha here would mean adding an option to prose, which is the
-// one edit this slice is not allowed to make and would in any case hand the
-// surface a second colour authority — exactly what prose's own package comment
-// rejects glamour for.
+// prose.Options carries a width, a measure, a Styler and one semantic callback,
+// with no theme parameter and no seam for one. Behind it, prose/code.go BUILDS
+// its chroma style out of the tokens ramp and maps every chroma token onto a
+// tokens.CodeSlot, so there is no style to swap from this side even in principle
+// — the theme is the token layer. Adopting mocha here would mean adding a whole
+// second ramp to prose, and would hand the surface a second colour authority —
+// exactly what prose's own package comment rejects glamour for.
 //
 // The cost is small and the floor is already right: the tokens ramp is muted by
 // construction, so a fence renders quiet next to styles.go's pastels rather
 // than clashing with them. If the theme is wanted later it is one option on
 // prose.Options and one line here, and it belongs to whoever owns tui2.
+//
+// THE BODY INK IS NOT A COUNTER-EXAMPLE to any of that. Stating one token's
+// value on the Styler is naming a colour to the authority that already owns the
+// answer; shipping a rival ramp is standing a second authority beside it. The
+// first is one value and one law to hold it (styles.go, THE GLARE LAW); the
+// second is two hundred token relationships maintained twice.
 
 var (
 	stylerOnce sync.Once
@@ -55,6 +68,16 @@ var (
 // bytes each time. Lazily, because construction reads the environment, and a
 // package-level var would fix the profile at init — before a test or a caller
 // that sets NO_COLOR for a subprocess has had a word.
+func markdownStyler() *tokens.Styler {
+	stylerOnce.Do(func() { styler = newMarkdownStyler(os.Getenv) })
+	return styler
+}
+
+// newMarkdownStyler is that construction as a PURE FUNCTION of the environment,
+// which is the same shape [newThemedPalette] already has and for the same
+// reason: the two decisions below are both read off variables, and a test that
+// wants to see what a 256-colour terminal gets has to be able to say so rather
+// than race the once.
 //
 // The profile comes from [tokens.DetectProfile], the same door cmd/aforge opens
 // for the v2 surface, so both surfaces answer "what can this terminal say" from
@@ -63,11 +86,30 @@ var (
 // surface does not have yet, and the plain tier is a designed floor, not a
 // degradation. Focus is normal — this surface has one pane, so there is nothing
 // for a dimmed one to recede behind.
-func markdownStyler() *tokens.Styler {
-	stylerOnce.Do(func() {
-		styler = tokens.NewStyler(tokens.DetectProfile(os.Getenv), tokens.FocusNormal)
-	})
-	return styler
+//
+// ── AND THE BODY WEARS THIS SURFACE'S OWN INK ──
+//
+// THERE IS ONE BODY WHITE ON THIS SCREEN AND IT IS THE PALETTE'S. Left alone,
+// prose paints a reply at [tokens.TextPrimary], which is a brighter white than
+// anything styles.go authors, while every row this package draws around it wears
+// [hueInk] — two whites on one screen, and the louder of them on the thing a
+// person reads most, at a contrast the palette spent a whole wave coming down
+// from (styles.go, THE GLARE LAW). So the Styler is handed the ink before it is
+// handed to prose, and the reply's paragraphs, headings and inline code spans
+// all come back in it.
+//
+// The ladder it comes from is asked the way [detectPalette] asks: [rampFor] with
+// [themeAuto] and the same environment. It has to be the same question — a
+// person on a white terminal reading a reply in a dark-terminal white would be
+// the two-whites defect wearing its other face — and asking it here rather than
+// caching a ramp keeps ONE answer to "which ladder is this terminal on".
+//
+// Nothing below the 256 rung takes the override at all, and that is
+// [tokens.Styler.WithBodyInk]'s decision rather than one made here: the sixteen
+// are the user's own theme, and an authored hex has no honest form there.
+func newMarkdownStyler(env func(string) string) *tokens.Styler {
+	return tokens.NewStyler(tokens.DetectProfile(env), tokens.FocusNormal).
+		WithBodyInk(rampFor(themeAuto, env).ink.tokenColor())
 }
 
 // renderMarkdown renders model-written markdown into screen rows, one string

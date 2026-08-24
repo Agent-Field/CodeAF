@@ -17,7 +17,7 @@ import (
 // above every choice: if a colour could be described as "bright", it is wrong.
 //
 //	role    hex       what it paints
-//	ink     #D8DEE9   the body — what was said, and every tool's TARGET
+//	ink     #C6CDDA   the body — what was said, and every tool's TARGET
 //	accent  #9DC3E6   THE ONE LIVE OR CHOSEN THING ON THE SCREEN — the person's
 //	                  › glyph, the rail, and whatever is currently moving or
 //	                  currently picked. NOT headings (see the accent budget)
@@ -116,6 +116,62 @@ import (
 // on 168 — a pink — and a diff whose minus lines went pink on every
 // 256-colour terminal is the fallback nobody looked at, again.
 //
+// ── THE GLARE LAW ───────────────────────────────────────────────────────────
+//
+// THE BODY MAY NOT BE THE BRIGHTEST THING ON THE SCREEN. The reading tier's top
+// rung is the one colour a person looks at for minutes at a time, and on a dark
+// terminal a white much above 11:1 stops being legible and starts being a lamp:
+// the strokes halate, the counters fill in, and everything quieter beside it
+// reads as switched off. Comfortable long-read contrast on the assumed grounds
+// is 8–11:1, and TestTheBodyInkDoesNotGlare holds BOTH ladders to it.
+//
+// #C6CDDA rather than the #D8DEE9 this table carried for five waves. At 14.05:1
+// against #101014 the ink was half again as bright as the person's own accent
+// (9.26:1 at the middle of the range), so the loudest thing on a surface whose
+// accent budget is ONE LIT ELEMENT PER SCREEN was the paragraph — and the budget
+// bought nothing, because whatever it was spent on was outshone by the text
+// around it. The move is the smallest one that fixes that: THE HUE IS HELD at
+// 219°, the lightness comes down L 88.0 → 81.6, and the saturation eases 28 →
+// 21 because a body white is the one colour here with no identity to carry, and
+// a tint nobody can name is a tint paid for in contrast.
+//
+//	ground    #101014  #1a1b26  #1e1e2e
+//	#D8DEE9   14.05    12.65    12.14   was: a lamp
+//	#C6CDDA   11.88    10.70    10.27   is:  a page
+//
+// The 256 neighbour was re-checked, because that is where an unchecked change
+// silently becomes a different colour. #C6CDDA resolves to 252, and 252 is
+// claimed by nothing on either ladder. The near misses are worth naming: the old
+// ink's own 254 is the LIGHT ladder's selected ground and 255 is its cursor
+// step, so a body ink that drifted back up a rung would be sharing an index with
+// furniture. Any future change here owes the same check.
+//
+// THE LADDER STILL READS AS A LADDER, which is the other half of the law: ink
+// 10.70, muted 6.67, dim 3.54 against the middle of the assumed range — three
+// clear steps, ink still a wide step above the second voice. Coming down far
+// enough to be comfortable without arriving on top of [hueMuted] is the whole
+// width of the move.
+//
+// The LIGHT ladder's body ink is untouched at #3B4252 — 10.06:1 against #FFFFFF
+// and 8.73:1 against nord's #ECEFF4. It was measured against the same band and
+// was already inside it, and A VALUE IN BAND IS NOT TOUCHED, which is the rule
+// THE GROUND LADDER's own retune stated. The law's test walks both ladders
+// regardless, so the light side cannot drift out of band unnoticed either.
+//
+// ── AND THE TRANSCRIPT REACHES IT THROUGH A SEAM ──
+//
+// Authoring the ink here is only half the fix. A model's markdown is rendered by
+// internal/tui2/prose, which resolves every colour on the row from
+// internal/tui2/tokens, whose body tier is #E6E6F0 — brighter again than the
+// white this table used to carry. Two whites shared one screen and the louder
+// one painted the thing people read most.
+//
+// So markdown.go hands prose a Styler carrying THIS ink
+// ([tokens.Styler.WithBodyInk]; [hue.tokenColor] below is the conversion), and a
+// reply's paragraphs, its headings and its inline code spans all come back
+// wearing the value above. The v2 surface keeps tokens' own white, because the
+// override travels on the Styler and never touches the table.
+//
 // ── THE ACCENT BUDGET ───────────────────────────────────────────────────────
 //
 // ONE LIT ELEMENT PER SCREEN. The accent is the loudest thing this palette can
@@ -152,10 +208,27 @@ type hue struct {
 	tier tier16
 }
 
+// tokenColor is one authored hue said in internal/tui2/tokens' own vocabulary.
+//
+// It exists for the ONE seam that crosses — [tokens.Styler.WithBodyInk], which
+// is how a model's markdown comes back in this palette's body ink rather than in
+// tokens' brighter own (see THE GLARE LAW above, and markdown.go). Nothing else
+// in this package hands a colour out; the palette is closed in both directions.
+//
+// The 256 index is deliberately NOT handed across with it. tokens resolves the
+// neighbour itself, with its own metric, and the two answers have to agree or a
+// 256-colour terminal is back to two whites — so the agreement is ASSERTED, by
+// TestTheTranscriptBodyWearsTheSurfacesOwnInk, rather than papered over by
+// shipping our answer to a question we were not asked.
+func (h hue) tokenColor() tokens.Color { return tokens.Color{R: h.r, G: h.g, B: h.b} }
+
 // The table. Changing a colour is changing one line here, and nothing else in
 // the package holds an escape sequence.
 var (
-	hueInk    = mustHue("#D8DEE9", flat)
+	// hueInk is the body, and it is held DOWN rather than up: see THE GLARE LAW
+	// above for why 11:1 is a ceiling and not a target, and for the 256 check
+	// that goes with any change to this line.
+	hueInk    = mustHue("#C6CDDA", flat)
 	hueAccent = mustHue("#9DC3E6", heavy)
 	hueMuted  = mustHue("#7FA6C9", flat)
 	hueDim    = mustHue("#6B7280", quiet)
@@ -343,7 +416,7 @@ var lightTaskRing = []hue{
 //
 // The table above is dark-terminal first and was, for four waves, the only
 // table there was. A person on a white terminal got soft pastels authored
-// against black: #D8DEE9 body ink on #FFFFFF is very nearly invisible, and the
+// against black: #C6CDDA body ink on #FFFFFF is very nearly invisible, and the
 // dim tier below it is invisible outright.
 //
 // So there is a second ladder, authored the same way and against the same law —
@@ -352,7 +425,8 @@ var lightTaskRing = []hue{
 // than the background now carries by being DARKER than it.
 //
 //	role    dark      light     what changed
-//	ink     #D8DEE9   #3B4252   the body inverts: near-black on the page
+//	ink     #C6CDDA   #3B4252   the body inverts: near-black on the page. Both
+//	                            ends sit inside THE GLARE LAW's 8–11:1 band
 //	accent  #9DC3E6   #5E81AC   the pastel blue saturates; a pastel on white
 //	                            is a smudge
 //	muted   #7FA6C9   #8098B8   accent, one step back, on both ladders
