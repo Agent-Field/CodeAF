@@ -185,11 +185,11 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 // routing preference is not measured either. Measuring it would build a ledger
 // whose only possible use — demoting an endpoint on the next request — is a
 // thing this client has just promised not to do.
-func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration) {
+func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration) {
 	if c.velocity == nil || c.routing() == RoutingOff {
 		return
 	}
-	c.velocity.observe(model, served, ttft, tokens, elapsed)
+	c.velocity.observe(model, served, ttft, tokens, elapsed, gap)
 }
 
 // notePacedProvider folds one provider-named 429 into the ledger, under the
@@ -256,6 +256,18 @@ const (
 	// this surface rides sustain, and comfortably under the slowest large one.
 	LagRate = 30.0
 
+	// LagGap is the widest quiet stretch INSIDE a successful answer that still
+	// counts as streaming. Above it the endpoint is assembling the reply
+	// server-side and delivering it in lumps — a shape measured across one
+	// model's sixteen endpoints on 2026-08-24, where every endpoint that
+	// streamed stayed under four seconds between deltas and every one that
+	// buffered sat at twelve seconds or worse, up to fifty. Fifteen sits in
+	// the empty middle. A lumped answer that arrives is still an answer, which
+	// is why this is a lag strike and never a cut: the lane is demoted below
+	// the endpoints that stream, and the stall guard's patience (streamguard.
+	// go's bufferedQuietBound) is what keeps the lump survivable meanwhile.
+	LagGap = 15 * time.Second
+
 	// demoteAfter is how many laggy answers an endpoint gets before the next
 	// request prefers something else. TWO rather than one: a single slow answer
 	// is as likely to be a cold cache or a long prompt as a bad endpoint, and
@@ -297,6 +309,10 @@ type Sighting struct {
 	// Rate is output tokens per second, zero when the answer was too short to
 	// rate (see [ratedFloor]).
 	Rate float64
+	// Gap is the widest quiet stretch between two deltas of a streamed answer,
+	// zero when unmeasured — every non-streamed call, where the answer has no
+	// inside to be quiet in.
+	Gap time.Duration
 	// Laggy is the verdict this sighting earned under the law above.
 	Laggy bool
 	// At is when the answer finished.
@@ -366,7 +382,7 @@ func (l *velocityLedger) lastServed(model string) (Sighting, bool) {
 // An answer whose server did not identify itself is measured and remembered as
 // the model's latest sighting, but earns no strike: a strike is a claim about
 // an endpoint, and there is no endpoint here to make it about.
-func (l *velocityLedger) observe(model, served string, ttft time.Duration, tokens int, elapsed time.Duration) Sighting {
+func (l *velocityLedger) observe(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration) Sighting {
 	if l == nil {
 		return Sighting{}
 	}
@@ -380,11 +396,12 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 		TTFT:     ttft,
 		Tokens:   tokens,
 		Elapsed:  elapsed,
+		Gap:      gap,
 	}
 	if tokens >= ratedFloor && elapsed > 0 {
 		sighting.Rate = float64(tokens) / elapsed.Seconds()
 	}
-	sighting.Laggy = (ttft > 0 && ttft > LagTTFT) || (sighting.Rate > 0 && sighting.Rate < LagRate)
+	sighting.Laggy = (ttft > 0 && ttft > LagTTFT) || (sighting.Rate > 0 && sighting.Rate < LagRate) || gap > LagGap
 
 	l.mu.Lock()
 	defer l.mu.Unlock()

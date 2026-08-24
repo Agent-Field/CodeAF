@@ -350,14 +350,16 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	// A non-streamed answer has no first token to wait for — the whole thing
-	// arrives at once — so it is rated and never judged on TTFT. Passing zero
-	// says "unmeasured" rather than "instant" (velocity.go).
+	// arrives at once — so it is rated and never judged on TTFT, and it has no
+	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
+	// than "instant" (velocity.go).
 	c.noteVelocity(
 		c.modelFor(request),
 		servedProvider(payload),
 		0,
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
+		0,
 	)
 	return &response, nil
 }
@@ -444,8 +446,9 @@ func (c *Client) completeWithMessagesStreaming(
 	}
 	// The silence watchdog starts the moment the headers land, which is the
 	// moment the endpoint has accepted the request and owes an answer
-	// (streamguard.go). Only the MODEL WRITING moves its clock; the keepalives
-	// that reset transport.go's byte watchdog do not reach it.
+	// (streamguard.go). Only the MODEL WRITING moves its clock; keepalives buy
+	// bounded patience instead — the decoder reports them through the alive
+	// seam below, and streamguard.go says exactly what they are worth.
 	stall := newStallWatch(cutStream)
 	defer stall.stop()
 	// And the degeneration guard, unless this call has it switched off. It is
@@ -492,6 +495,13 @@ func (c *Client) completeWithMessagesStreaming(
 	// anything heavier would be paid per token, in the read loop, against the
 	// connection's idle watchdog.
 	decoder := newSSEDecoder(httpResponse.Body)
+	decoder.alive = stall.alive
+	// lastWrite and widestGap watch the same deltas the stall guard does, for
+	// the ledger rather than for a cut: an endpoint that finished its answer
+	// but delivered it in lumps is working, slowly, and "working slowly" is
+	// the lag law's department (velocity.go's LagGap).
+	var lastWrite time.Time
+	var widestGap time.Duration
 	for {
 		chunk, decodeErr := decoder.DecodeChunk()
 		if decodeErr != nil {
@@ -540,6 +550,11 @@ func (c *Client) completeWithMessagesStreaming(
 			// three things an endpoint that is working produces, and nothing
 			// else on this wire.
 			if choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0 {
+				now := c.clock()
+				if !lastWrite.IsZero() && now.Sub(lastWrite) > widestGap {
+					widestGap = now.Sub(lastWrite)
+				}
+				lastWrite = now
 				stall.progress()
 			}
 			if choice.Delta.Content != "" {
@@ -616,9 +631,10 @@ func (c *Client) completeWithMessagesStreaming(
 			firstToken.Sub(began),
 			outputTokens(response, content.String()),
 			generation.Sub(firstToken),
+			widestGap,
 		)
 	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0)
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0)
 	}
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
