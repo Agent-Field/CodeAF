@@ -161,7 +161,9 @@ because its row is read as a design and not as a task.
   once it has opened the material.
 - **adaptive** — a planner and a fleet up front instead, without asking. Parts found, the
   adaptive run starts straight away; nothing to split, one worker starts, because a planner
-  over work with no independent parts in it is an extra model deciding nothing.
+  over work with no independent parts in it is an extra model deciding nothing. This is an
+  **opt-in override**: a planner is not how wide work is normally done here, and setting
+  this row is you asking for one anyway.
 - **single** — one worker, and the sizing call is not made at all. Nothing is spent reading
   your brief for width, and nothing is said about it.
 
@@ -221,8 +223,11 @@ work. When it says yes, one row appears above the message box:
 ? run harness "task"? · one self-contained sweep · [enter] run · [esc] no
 ```
 
-The name in quotes is the shape it is offering: `task` for one self-contained job,
-`adaptive run` for a many-part goal. It says `run harness` because it is the harness
+The name in quotes is the shape it is offering, and `task` is nearly always the one: it
+covers one self-contained job **and** wide work — a broad sweep, research across many
+sources — because a wide task starts one worker that splits itself once it has opened the
+material. It offers `adaptive run` only for a goal whose graph has to be planned before
+anything starts, or when you asked for a plan. It says `run harness` because it is the harness
 offer's row, reused; no saved harness is involved. `enter` or `y` admits the work straight
 away — from a self-contained goal that model wrote, with no second countdown, because the
 card **is** the consent. `esc` or `n` drops it and nothing happened.
@@ -1554,9 +1559,19 @@ work: a task that is not wide is never split, and finding that out is free.
 **You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
 than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
-what this section is about. It promises nothing: the two tests below still have to pass. A
-task that was never read for width (`/task solo`, the `single` row, work the model proposed)
-says nothing up front and can still split, off the items its own brief already names.
+what this section is about. It promises nothing: the two tests below still have to pass.
+
+**And this is what I do with wide work too.** When I hand work off myself rather than you
+typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
+work broad — a sweep across many files, research across many sources, the same change over
+many separate items. It still starts **one** task, armed to split itself; it is not a
+planner and not three tasks. A run (*adaptive runs*) is the exception now, for a goal whose
+graph has to be planned before anything starts or a plan you asked to see, and not something
+width alone reaches for.
+
+A task that was never read for width at all (`/task solo`, the `single` row, a proposal I
+did not mark wide) says nothing up front and can still split, off the items its own brief
+already names.
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief
