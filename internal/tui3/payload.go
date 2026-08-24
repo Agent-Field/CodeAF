@@ -174,7 +174,10 @@ func paintPayload(line string, facts []segment, pal palette, prose func(string) 
 	if len(value) == 0 {
 		return prose(line)
 	}
-	chips := commandSpans(value, true)
+	// Informational lines NAME commands rather than accepting a send. Every
+	// recognized word they teach keeps its chip; slashchip.go's promise law is
+	// about the person's draft and transcript, not /help's key sheet.
+	chips := recognizedCommandSpans(value, true)
 	if len(chips) == 0 && len(facts) == 0 {
 		return prose(line)
 	}

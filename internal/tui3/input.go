@@ -30,6 +30,10 @@ const draftRows = 6
 type editor struct {
 	value  []rune
 	cursor int
+	// demoted tags are slash words made plain in this draft. Keeping them with
+	// the value makes every reset or whole-draft replacement clear the state
+	// automatically instead of letting a new sentence inherit old plainness.
+	demotedTags []segment
 }
 
 func (e *editor) String() string { return string(e.value) }
@@ -49,13 +53,14 @@ func (e *editor) empty() bool {
 	return true
 }
 
-func (e *editor) reset() { e.value, e.cursor = e.value[:0], 0 }
+func (e *editor) reset() { e.value, e.cursor, e.demotedTags = e.value[:0], 0, nil }
 
 // setText replaces the whole draft and parks the caret at its end. It is what
 // history recall and the command list write through.
 func (e *editor) setText(text string) {
 	e.value = append(e.value[:0], []rune(text)...)
 	e.cursor = len(e.value)
+	e.demotedTags = nil
 }
 
 // rewrite replaces the whole draft and leaves the caret where it was, clamped to
@@ -65,6 +70,7 @@ func (e *editor) setText(text string) {
 // the end of it would move them somewhere they did not ask to be.
 func (e *editor) rewrite(text string) {
 	e.value = append(e.value[:0], []rune(text)...)
+	e.demotedTags = nil
 	if e.cursor > len(e.value) {
 		e.cursor = len(e.value)
 	}
@@ -550,7 +556,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// Open a line. Two spellings because terminals disagree about which one
 		// they can even send: alt+enter is the one people reach for, ctrl+j is
 		// the one that survives every terminal that swallows it.
+		at := a.input.cursor
 		a.input.insert("\n")
+		a.editTags(at, at, 1)
 		return a.edited()
 
 	case "ctrl+q":
@@ -669,6 +677,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "backspace":
+		// BACKSPACE AFTER A LIVE TAG MAKES IT PLAIN BEFORE IT EDITS IT. The
+		// first press withdraws the chip's promise and leaves every rune in
+		// place; the next press is the ordinary character deletion below.
+		if a.demoteTagBehindCaret() {
+			return a.edited()
+		}
 		// With nothing typed, the thing behind the caret is the attachment tray:
 		// backspace takes the last picture off it (attach.go). It is the same
 		// gesture as deleting a character, applied to the only thing left to
@@ -679,10 +693,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if len(a.input.value) == 0 && (a.dropChip() || a.dropHarnessChip()) {
 			return a.edited()
 		}
+		at := a.input.cursor
 		a.input.deleteBackward()
+		if at > 0 {
+			a.editTags(at-1, at, 0)
+		}
 		return a.edited()
 	case "delete":
+		at := a.input.cursor
+		deleted := at < len(a.input.value)
 		a.input.deleteForward()
+		if deleted {
+			a.editTags(at, at+1, 0)
+		}
 		return a.edited()
 	case "ctrl+u", "super+backspace":
 		// KILL TO THE START OF THE LINE, under both of its names. ctrl+u is the
@@ -692,7 +715,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// terminal that reports the super modifier at all (kitty's protocol,
 		// win32-input) — everywhere else it is simply never sent, which costs
 		// nothing and is why it is bound rather than detected.
+		from, to := a.input.lineStart(), a.input.cursor
 		a.input.killToStart()
+		a.editTags(from, to, 0)
 		return a.edited()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		// DELETE THE WORD BEHIND THE CARET, under all three of its names.
@@ -705,7 +730,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// delivers a plain backspace as ctrl+h (ultraviolet's key table maps
 		// 0x08 that way), so binding it to a word kill would make one keyboard's
 		// ordinary backspace eat a word at a time.
+		to := a.input.cursor
+		from := to
+		for from > 0 && unicode.IsSpace(a.input.value[from-1]) {
+			from--
+		}
+		for from > 0 && !unicode.IsSpace(a.input.value[from-1]) {
+			from--
+		}
 		a.input.deleteWord()
+		a.editTags(from, to, 0)
 		return a.edited()
 	case "left":
 		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
@@ -773,7 +807,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// terminal whose brackets leaked was sent to the model a line at a time.
 		// The bracket is what catches that now, before this router is reached at
 		// all (app.go's [app.pasteKey]).
+		at := a.input.cursor
 		a.input.insert(text)
+		a.editTags(at, at, len([]rune(text)))
 		return a.edited()
 	}
 	return nil
@@ -800,6 +836,22 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.openTool(a.sel)
 		return nil
 	}
+	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
+	// winner safely: falling back to an ordinary send is precisely the failure
+	// these alternate doors exist to prevent, so the words stay in the box.
+	tags := a.liveTags()
+	if !strings.HasPrefix(line, "/") && len(tags) > 1 {
+		a.note(slashTagRefusal)
+		return nil
+	}
+	var tagDoor sendDoor
+	var tagWords string
+	tagShown := line
+	if !strings.HasPrefix(line, "/") && len(tags) == 1 {
+		tag := tags[0]
+		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
+		tagWords = removeSlashTag(a.input.value, tag)
+	}
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
@@ -821,6 +873,19 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		// waits through it for the same reason — a slash is a thing said to this
 		// surface, and the request is a thing said to the harness.
 		return a.slash(line)
+	}
+	// Send-door tags use the command's existing bare and argument forms. Both
+	// roads stop at a visible card or chooser, so this act cannot become silent
+	// work merely because the token arrived in pasted prose.
+	switch tagDoor {
+	case sendDoorStanding:
+		if tagWords == "" {
+			a.openStanding()
+			return nil
+		}
+		return a.standingSayShown(tagWords, tagShown)
+	case sendDoorTask:
+		return a.runTaskCommand(tagWords)
 	}
 	// A PICKED HARNESS TAKES THE SENTENCE, and it takes it whole: the person
 	// chose the shape of the work off a list and then said what the work is, so
@@ -953,7 +1018,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the
 	// filter boxes above stand in this position while an overlay has the keyboard,
 	// and none of them sends a word anywhere.
-	block, caretX, caretRow := draftBlock(&a.input, a.pal, width, rows, "", a.roomLead(width))
+	block, caretX, caretRow := draftBlockWithTags(&a.input, a.pal, width, rows, "", a.roomLead(width), a.input.demotedTags)
 	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
 	// (attach.go). It is one row above the draft, so it is one row of this
 	// block: every geometric question below the conversation already goes
@@ -1005,6 +1070,10 @@ func (a *app) inputHeight() int {
 // because a lead the layout drew and the caret arithmetic did not know about
 // would put the terminal's cursor several cells left of the letter it is on.
 func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) ([]string, int, int) {
+	return draftBlockWithTags(e, pal, width, maxRows, hint, lead, nil)
+}
+
+func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment) ([]string, int, int) {
 	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt)
 	room := width - head
 	if room < 4 {
@@ -1057,7 +1126,7 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) (
 		at := segments[i].from
 		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
 		row := string(e.value[at:segments[i].to])
-		out = append(out, row0+paintCommands(row, pal, pal.ink, boundary))
+		out = append(out, row0+paintDraftCommands(row, pal, pal.ink, at, boundary, demoted))
 	}
 	return out, head + caretColumn, caretRow - top
 }

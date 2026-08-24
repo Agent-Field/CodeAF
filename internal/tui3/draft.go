@@ -121,6 +121,11 @@ func draftPrefix(workspace string) string {
 // edited is what every draft mutation returns: the two typed overlays follow
 // what is in the box, the frame is marked, and the debounce is armed.
 func (a *app) edited() tea.Cmd {
+	if len(a.input.value) == 0 {
+		// An empty box is a new draft. Plainness belongs to the sentence that
+		// held it and may not be inherited by the next identical slash word.
+		a.input.demotedTags = nil
+	}
 	lists := a.syncLists()
 	a.touch()
 	if a.draftFile == "" || a.draftPending {

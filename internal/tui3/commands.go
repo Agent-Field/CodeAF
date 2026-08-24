@@ -37,6 +37,10 @@ type command struct {
 	name string
 	args string
 	desc string
+	// door names the alternate send road this command owns. THE SEND-DOOR SET
+	// LIVES ON THE COMMAND ROWS so dispatch, aliases, chips and tags cannot grow
+	// separate lists that disagree about which words act inside a sentence.
+	door sendDoor
 	// alias are the other words that reach this same row. They are NOT rows of
 	// their own: the list shows the canonical name, filtering an alias surfaces
 	// that canonical row, and running one runs that canonical command — with the
@@ -121,7 +125,7 @@ var commands = []command{
 	// The words go through the deliberate door (standmark.go's [app.standingSay]),
 	// which is what the tail of this row promises: it is the chord's own sentence
 	// said in the grammar of the list.
-	{name: "standing", args: "<words>", desc: "…or keep this true · a card, never work done once"},
+	{name: "standing", args: "<words>", desc: "…or keep this true · a card, never work done once", door: sendDoorStanding},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -188,9 +192,9 @@ var commands = []command{
 	// occasionally regrets it, which is exactly where /memories sits too.
 	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
 	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
-	{name: "task", args: "<brief>", desc: "start work you can walk away from"},
-	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner"},
-	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts"},
+	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
+	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner", door: sendDoorTask},
+	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts", door: sendDoorTask},
 	// AND THE PAGE THAT SHOWS WHAT THEY ALL CAME TO (taskview.go). It sits with
 	// the three rows that START work because that is the pair of errands a person
 	// has about tasks — set one going, and go and look at the ones that already

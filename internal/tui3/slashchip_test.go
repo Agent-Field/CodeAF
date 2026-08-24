@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── the chip ────────────────────────────────────────────────────────────────
@@ -105,20 +107,134 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	}
 }
 
-func TestACommandInsideASentenceIsChippedInTheBoxAndInTheMessage(t *testing.T) {
+func TestOnlyASendDoorInsideASentenceIsChipped(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 
 	typeInto(t, a, "later I will run /compact on this")
-	sameRuns(t, boxRuns(a), []string{"/compact"}, "a mention mid-sentence")
+	sameRuns(t, boxRuns(a), nil, "an inert command mid-sentence")
+
+	a.input.reset()
+	typeInto(t, a, "keep this true /standing")
+	sameRuns(t, boxRuns(a), []string{"/standing"}, "a send-door tag")
 
 	// AND IT KEEPS THE CHIP AFTER IT IS SENT. The transcript is the only record
 	// of what was asked for, and a mark that survived only until enter would be
 	// taken back at the moment it is worth having.
-	a.entries = []entry{
-		{kind: entryUser, text: "later I will run /compact on this, not /nope"},
-	}
+	a.entries = []entry{{kind: entryUser, text: "later I will run /compact on this, not /nope"}}
 	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
-		[]string{"/compact"}, "the sent message")
+		nil, "plain slash prose in the sent message")
+}
+
+func tagTestApp() (*app, *fakeAgent) {
+	agent := &fakeAgent{model: "m"}
+	a := newTestApp(agent)
+	a.stands.Items = func(string) []standing.Item { return nil }
+	return a, agent
+}
+
+func TestATrailingAndMidSentenceTagRouteAndStrip(t *testing.T) {
+	for _, line := range []string{"keep the tests green /standing", "keep /standing the tests green"} {
+		a, agent := tagTestApp()
+		typeInto(t, a, line)
+		drive(t, a, key("enter"))
+		if len(agent.marked) != 1 || agent.marked[0] != "keep the tests green" {
+			t.Fatalf("%q routed marked words %q", line, agent.marked)
+		}
+		if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/standing" {
+			t.Fatalf("the routed transcript chipped %q", got)
+		}
+	}
+}
+
+func TestTwoTagsRefuseAndKeepTheDraft(t *testing.T) {
+	a, agent := tagTestApp()
+	line := "keep /standing this /task"
+	typeInto(t, a, line)
+	drive(t, a, key("enter"))
+	if a.input.String() != line || len(agent.sent) != 0 {
+		t.Fatalf("refusal left draft %q and sent %q", a.input.String(), agent.sent)
+	}
+	if len(a.entries) == 0 || a.entries[len(a.entries)-1].text != slashTagRefusal {
+		t.Fatalf("refusal note is %#v", a.entries)
+	}
+}
+
+func TestBackspaceDemotesATagThenEditsAndSendsItAsProse(t *testing.T) {
+	a, agent := tagTestApp()
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"))
+	if a.input.String() != "say /standing" || len(boxRuns(a)) != 0 {
+		t.Fatal("first backspace did not demote without editing")
+	}
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
+		t.Fatalf("demoted send: sent=%q marked=%q", agent.sent, agent.marked)
+	}
+	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
+		t.Fatalf("demoted transcript chipped %q", got)
+	}
+
+	a, _ = tagTestApp()
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"), key("backspace"))
+	if a.input.String() != "say /standin" {
+		t.Fatalf("second backspace left %q", a.input.String())
+	}
+}
+
+func TestEditingADemotedTagRecognizesItAfreshAndAliasesWork(t *testing.T) {
+	a, agent := tagTestApp()
+	typeInto(t, a, "say /orders")
+	drive(t, a, key("backspace"))
+	drive(t, a, key("left"), key("x"), key("backspace"), key("right"))
+	if got := boxRuns(a); len(got) != 1 || got[0] != "/orders" {
+		t.Fatalf("edited alias chipped %q", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.marked) != 1 || agent.marked[0] != "say" {
+		t.Fatalf("alias routed %q", agent.marked)
+	}
+}
+
+func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
+	a, agent := tagTestApp()
+	typeInto(t, a, "say /standing")
+	drive(t, a, key("backspace"))
+	a.input.cursor = 0
+	drive(t, a, key("x"), key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != "xsay /standing" || len(agent.marked) != 0 {
+		t.Fatalf("shifted demotion sent=%q marked=%q", agent.sent, agent.marked)
+	}
+}
+
+func TestNonDoorCommandsStayInertAndLeadingCommandsAreUnchanged(t *testing.T) {
+	a, agent := tagTestApp()
+	typeInto(t, a, "please /compact later")
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != "please /compact later" {
+		t.Fatalf("inert command sent %q", agent.sent)
+	}
+
+	a, agent = tagTestApp()
+	typeInto(t, a, "/standing keep this")
+	drive(t, a, key("enter"))
+	if len(agent.marked) != 1 || agent.marked[0] != "keep this" {
+		t.Fatalf("leading command routed %q", agent.marked)
+	}
+}
+
+func TestTaskTagUsesTheTaskCommandRoad(t *testing.T) {
+	base := &fakeAgent{model: "m"}
+	door := &taskCommandFake{Agent: base}
+	a := newTestApp(door)
+	typeInto(t, a, "investigate the wrap /task")
+	drive(t, a, key("enter"))
+	if door.judgeCalls != 1 {
+		t.Fatalf("task tag made %d sizing calls", door.judgeCalls)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("task tag left %q in the draft", a.input.String())
+	}
 }
 
 func TestTheModelsOwnProseIsNeverChipped(t *testing.T) {
@@ -245,7 +361,7 @@ func TestChoosingARowMidSentenceWritesTheWordAndRunsNothing(t *testing.T) {
 	if a.input.cursor != len([]rune("before you answer, /compact")) {
 		t.Fatalf("the caret parked at %d", a.input.cursor)
 	}
-	sameRuns(t, boxRuns(a), []string{"/compact"}, "the word the list wrote")
+	sameRuns(t, boxRuns(a), nil, "the inert word the list wrote")
 
 	// And enter now SENDS the sentence: only a leading slash is a command, so a
 	// mention travels to the model as the words a person typed.
