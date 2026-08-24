@@ -4,9 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io/fs"
 	"os"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/packed"
 )
 
 type manifestEntry struct {
@@ -51,25 +52,23 @@ func TestEmbeddedAssetManifest(t *testing.T) {
 		}
 	}
 
-	embeddedCount := 0
-	err := fs.WalkDir(files, "src", func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		embeddedCount++
+	embedded := files.Names()
+	for _, path := range embedded {
 		if _, ok := manifestPaths[path]; !ok {
 			t.Errorf("embedded asset %q is missing from the manifest", path)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk embedded assets: %v", err)
 	}
-	if embeddedCount != len(entries) {
-		t.Errorf("embedded asset count = %d, manifest count = %d", embeddedCount, len(entries))
+	if len(embedded) != len(entries) {
+		t.Errorf("embedded asset count = %d, manifest count = %d", len(embedded), len(entries))
+	}
+}
+
+// TestEmbeddedAssetsAreTheFolderOnDisk is what makes packing safe: src/ is the
+// source of truth, src.pack.gz is generated from it, and an asset edited
+// without regenerating fails here rather than shipping the old text.
+func TestEmbeddedAssetsAreTheFolderOnDisk(t *testing.T) {
+	if err := packed.Verify(srcArchive, "src"); err != nil {
+		t.Fatalf("%v\n\nrun: go generate ./internal/swepro/internal/assets", err)
 	}
 }
 

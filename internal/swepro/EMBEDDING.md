@@ -494,3 +494,30 @@ tool has no read-history tracking. A harvest touching `loop.go`'s `Run`
 method or `read.go`'s `executeRead` must re-apply the `aforge-embed: D11`
 markers. The `stepGuard` and `readHistoryState` types are aforge-owned with no
 upstream counterpart.
+
+### D12 — `internal/baked` + `internal/assets`: the embedded corpora ship compressed
+
+*Binary-size work.* The baked agent roster (`baked/agents/`, half a megabyte of
+Markdown) and the engine's prompt and tool-description assets
+(`assets/src/`, 166 KB of text) are the two most compressible things this tree
+puts in the aforge binary, and go:embed puts them in verbatim. Both now embed a
+generated archive instead: one gzip stream per folder, unpacked whole on the
+first read, through `internal/packed`. Together they take 443 KB off the
+shipped binary.
+
+Nothing a caller sees moves. A packed folder keeps the names go:embed gave it,
+so `assets.Get("src/session/prompt/gpt.txt")` resolves exactly as before and
+`baked` still reads `agents/<name>.md`; the bytes that come back are the bytes
+on disk, which `assets_test.go` and `registry_packed_test.go` assert file by
+file against the folders. The folders remain the source of truth — the archives
+are generated from them by the `//go:generate` line beside each embed and by
+`make build`, and a folder edited without regenerating fails those tests.
+
+The unpack is lazy in both places. `baked` already deferred its parse to first
+use, so the roster costs a chat or a `--help` nothing, exactly as before;
+`assets.Get` is reached only from a live session.
+
+*Cherry-pick note:* upstream embeds both folders raw. A harvest that touches
+`baked/registry.go`'s embed or `assets/assets.go` must re-apply the
+`aforge-embed:` markers there, and must regenerate the archives rather than
+hand-edit them.

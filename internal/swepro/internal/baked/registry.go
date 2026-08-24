@@ -4,12 +4,14 @@
 package baked
 
 import (
-	"embed"
+	_ "embed"
 	"fmt"
 	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Agent-Field/aforge-v2/internal/packed"
 )
 
 const (
@@ -66,8 +68,18 @@ var loadBearingAgentNames = []string{
 	"coder",
 }
 
-//go:embed agents/*.md
-var agentFiles embed.FS
+// aforge-embed: D12 — the roster ships packed rather than raw. Half a megabyte
+// of Markdown compresses to a quarter of that, and the parse below already
+// reads every file at once, so the whole archive unpacks on the same first use
+// it already deferred to. The agents/ folder is still the source of truth; see
+// internal/packed, and registry_packed_test.go, which fails when the archive
+// and the folder disagree.
+//
+//go:generate go run github.com/Agent-Field/aforge-v2/internal/packed/cmd/pack -o agents.pack.gz agents
+//go:embed agents.pack.gz
+var agentArchive []byte
+
+var agentFiles = packed.New(agentArchive)
 
 type agentDocument struct {
 	raw      string
