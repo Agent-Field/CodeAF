@@ -235,8 +235,14 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
-`esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
-waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+`esc interrupt` while a turn is running, `enter waits · shift+enter stops and sends` while
+a turn is running and you have typed something, `esc stops and sends` while a message of
+yours is waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+
+It only ever names a key that **works right now**, and that includes the terminal: the
+`shift+enter` line is not drawn on a terminal that cannot tell that chord apart from a
+plain `enter`, because a hint for a key that could never arrive would be the surface
+lying to you. See the keys page, "Interrupt and say something new in one key".
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -502,7 +508,7 @@ Other honest silences: the context percentage is dropped below 1% rather than sh
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
 fraction of a cent is not rounded away to nothing.
 
-## The state word: idle, working, waiting
+## The state word: idle, working, stopping, waiting
 
 The last segment of the status line is the one thing true of the whole row. The exact
 words:
@@ -512,14 +518,36 @@ words:
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
-| `interrupted` | the last turn was stopped by hand | the bad hue |
+| `stopping` | you pressed `esc` and the turn has not finished letting go yet | dim |
+| `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
-`waiting · your call` outranks `working`. Copy mode outranks everything, because it is
-the only state about the keyboard rather than about the turn.
+`stopping` outranks `waiting · your call`, and `waiting · your call` outranks `working`.
+Copy mode outranks everything, because it is the only state about the keyboard rather
+than about the turn.
 
 The spinner turns on the same 4-tick grid the tool rows use, so nothing on screen beats
 against anything else. In the screen-reader tier the spinner is a still `*`.
+
+## What the word stopping means in the status line, and why it is not interrupted yet
+
+Because it has not finished stopping. `esc` cancels the turn instantly, but the turn does
+not close instantly: a `bash` call whose command left something holding its output waits
+up to three seconds before the pipes are forced shut, and a `jobs` kill spends two seconds
+on a polite signal and two more on the one that is not polite. For those few seconds the
+turn is being let go rather than gone, and the word says so.
+
+Nothing moves during that window. The spinner is gone from the status line and from every
+tool row, every running call already carries the time it ran until you stopped it, and
+nothing new is drawn — a reply the model was still speaking and a call it was half-way
+through asking for both stop where they were rather than landing under the `interrupted`
+line. The word becomes `interrupted` the moment the turn is actually over.
+
+**There is no second, harder stop, and there is no key to press.** `esc` again is the
+rewind's door (see the sessions and rewind page) and `ctrl+c` is the quit arm, so neither
+is free — and there would be nothing behind a third key anyway: the waits that make this
+window long are inside a tool that has already been told to stop. What you have if it
+will not let go is the program's own door, `ctrl+c` twice.
 
 ## What the status line drops when it is narrow
 
@@ -785,6 +813,51 @@ has already decided is final.
 The whole effect needs 256 colours. On a terminal with sixteen, and with `NO_COLOR` set,
 a streaming reply is drawn exactly like a settled one — bolding it instead would make it
 look like a reply that opened in bold, which is a different thing.
+
+## Why is part of the reply grey, and where is the actual answer
+
+Because that part was never the answer. It was aforge saying what it was about to do.
+
+A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
+work start under it in the same turn is narration** — "let me check the config first" —
+and the moment the next tool call opens, that paragraph visibly steps back: it moves into
+the same two-column gutter the tool rows use, and drops one shade below the body text.
+
+**The answer is the last thing the turn says, and it is the only flush-left, full-ink
+block in it.** So: scan down the left edge. Text that starts at the margin was said to
+you. Text that starts two columns in was done for you. There is one blank row above the
+answer whenever the turn did any work, so it stands away from the machinery.
+
+Grey narration carries **no markdown** — no bold, no headings, no code colouring. That is
+deliberate: a bold heading inside working notes would be heavier than the answer under it,
+and the loudest thing on screen would be the part you did not ask for.
+
+Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
+what came after what — so it is the same on a conversation you resume as it was live, and
+the same on a task's own page.
+
+Below 60 columns the gutter is dropped and the shading alone carries the difference. With
+no colour at all, the gutter alone does.
+
+## I pressed esc and the reply stayed grey — why nothing became the answer
+
+That is the screen telling you the truth: **an interrupted turn never reached an answer.**
+
+Press `esc` while a turn is running and whatever had been written stays on screen,
+because the session keeps it — but it stays at the working shade, in the working column, for good. The missing
+flush-left paragraph *is* the statement that you did not get an answer, so nothing has to
+be added to say it. Asking something else afterwards does not promote it later.
+
+The turn also collapses to a chip that says who stopped it —
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
+`ctrl+e` over an empty message box, or a click on the chip, opens it again. aforge's own
+lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
+the chip.
+
+One limit worth knowing: the session file keeps the words a stopped turn managed to say
+and keeps no mark saying it was stopped. So if you close aforge and **resume** that
+conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
+as an answer again.
 
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 

@@ -253,6 +253,14 @@ func key(s string) tea.KeyPressMsg {
 		// fall-through below only builds single-rune chords, and a chord that
 		// silently became the zero key would be a test pressing nothing.
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
+	case bargeKey:
+		// The barge-in (bargein.go), spelled out for the same reason as the chord
+		// directly above it — and carrying NO Text, which is how a real terminal
+		// sends it: ultraviolet gives KeyEnter the CR rune, which is not
+		// printable, so its decoder leaves the text empty however the shift
+		// modifier is set. A helper that invented text here would hide the one
+		// thing that makes falling through this chord safe.
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "alt+backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
 	case "ctrl+backspace":
@@ -1028,8 +1036,12 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	if agent.stops != 1 {
 		t.Fatalf("esc did not interrupt (%d)", agent.stops)
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// The stream has not closed, so the word is the wind-down's own
+	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
+	// Asked of the status line rather than of the frame, because the note the
+	// stop writes into the transcript is on the same frame.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes

@@ -316,6 +316,25 @@ func (n *taskNode) liveLines() taskLive {
 	return taskLive{doing: n.doing, mending: n.mending, waiting: n.waiting}
 }
 
+// taskStops reports whether an update carries a STOP this node has not heard
+// about yet.
+//
+// IT IS THE DE-DUP'S EXCEPTION FOR THE ONE THING A PERSON DID THEMSELVES, and it
+// has to be an exception because a stop does not move the state. The engine cuts
+// a running node's context and leaves it RUNNING for as long as the child takes
+// to wind up — its own word for that window is "stopping" (session's cancel.go
+// answers a second press with "task 7 is already stopping") — so the notice that
+// carries the news is a running node publishing running, which is exactly the
+// shape the guard above throws away. Without this clause the room's header went
+// on saying "working" about work the person had just ended, until some later
+// update happened to carry a bigger figure with it, and the honest word arrived
+// whenever the accounting felt like it.
+//
+// It can only ever fire ONCE per node: [app.taskUpdate] never un-stops one.
+func taskStops(notice *session.TaskNotice, node *taskNode) bool {
+	return notice.Stopped && !node.stopped
+}
+
 // taskRenames reports whether an update carries a NAME this node does not have.
 //
 // IT IS THE DE-DUP'S FOURTH EXCEPTION and the only one that is not about the
@@ -4826,7 +4845,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
-			!taskRenamesContext(notice, node)) {
+			!taskRenamesContext(notice, node) && !taskStops(notice, node)) {
 			return nil
 		}
 	}

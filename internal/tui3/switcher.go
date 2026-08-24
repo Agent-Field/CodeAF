@@ -341,6 +341,13 @@ func (a *app) closeForSwitch() {
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.takeUp(conv, true)
+	// AND THE DOOR HOME IS TRUED UP AGAINST THE CONVERSATION THIS NOW IS. Every
+	// door onto this function leaves a conversation behind — /new, a row on
+	// home, a row on the welcome box, a switch between two this window already
+	// holds — and "somewhere else to go" is exactly what that means. The fact is
+	// cached because the frame reads it, and this is where it stops being stale
+	// (home.go's [app.trueUpHomeDoor]).
+	a.trueUpHomeDoor()
 	agent := a.agent
 	a.state = stateIdle
 	a.resetMeters()

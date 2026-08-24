@@ -559,6 +559,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// through to them would open a line where somebody meant to send.
 		return a.enterStanding()
 
+	case bargeKey:
+		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside
+		// the two chords above because it is the third reading of one hand shape —
+		// a modifier on the send — and it sits UNDER the standing mark for the
+		// same reason that one sits under enter: each of the three is a narrower
+		// claim than the one before it, and the narrowest is read last.
+		//
+		// It is above the newline pair below for standmark.go's reason exactly:
+		// those two are the other spellings of a different gesture, and a chord
+		// that fell through to them would open a line where somebody meant to
+		// stop an answer.
+		return a.bargeIn()
+
 	case "alt+enter", "ctrl+j":
 		// Open a line. Two spellings because terminals disagree about which one
 		// they can even send: alt+enter is the one people reach for, ctrl+j is

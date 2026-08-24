@@ -1883,7 +1883,18 @@ told its prerequisite will never finish. Either way:
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
   looking for a fault that is not there.
 
-Pressing `x` twice, or on work that has already landed, does nothing but say so.
+**Between the card and the landing the header reads `stopping`.** A running task is not
+stopped the instant you answer the card: its context is cut and its worker takes a moment
+to wind up, so for those seconds the task is genuinely still running, and both the line
+you are shown — `stopping task 7 (Fix the parser) — its branch is kept` — and the header
+say the same present-tense thing. The word becomes `stopped` when the task actually lands.
+The spinner beside it deliberately keeps turning, and that is not a contradiction: a task
+is work happening somewhere else that really is still happening, unlike a turn in the
+conversation, which is work you are sitting in front of and which stills the moment you
+press `esc`.
+
+Pressing `x` twice, or on work that has already landed, does nothing but say so — the
+second press answers `task 7 (Fix the parser) is already stopping`.
 
 **You can still ask in words instead** — "stop task 7" — and the model has the door
 through its `tasks` tool. The key is faster and does not spend a turn.
