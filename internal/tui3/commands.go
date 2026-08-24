@@ -194,8 +194,8 @@ var commands = []command{
 	// know" and this is "what does it think WITH", and because position in this
 	// table is a claim about frequency: a person sets their crew once and then
 	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
-	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
+	{name: "crew", desc: "the four models aforge uses on its own behalf, beside the one you talk to"},
+	{name: "crew", args: "<preset>", desc: "…set the four to frugal, balanced or max · /model stays"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner", door: sendDoorTask},
 	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts", door: sendDoorTask},

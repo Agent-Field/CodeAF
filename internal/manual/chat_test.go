@@ -383,6 +383,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
+		// The onboarding wave: the five seats. /crew and /model became two dials
+		// a person can see as two — the confirm line names the model it left
+		// alone, bare /crew opens with seat one, and the status line carries
+		// `crew max` beside the model — and these are the questions the framing
+		// invites.
+		{"what are the five models", "models-and-cost"},
+		{"does /crew change my chat model", "models-and-cost"},
+		{"why did my model not change", "models-and-cost"},
+		{"what does crew max on the status line mean", "models-and-cost"},
+		{"what is the you talk to line in /crew", "commands"},
 
 		{"how do I quit", "keys"},
 		{"how do I exit aforge", "keys"},
