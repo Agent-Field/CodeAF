@@ -32,6 +32,13 @@ same program.
 | `aforge resume` | the chat, opened on the picker of earlier conversations |
 | `aforge chat --host devbox` | the chat here, the work on another machine |
 
+**The very first launch on a machine with nothing configured** opens on a short setup
+instead — your openrouter key, the crew, a daily ceiling; `enter` accepts, `esc` skips —
+and then on the empty conversation. It is shown once, ever; the getting-started page has
+the whole of it. Without a key in your shell or your profile, `aforge` still opens; a
+`--once` or piped run with no key still stops at the door with
+`aforge chat needs a model to talk with.`
+
 **The first frame is home** — every project on this machine and every conversation
 in them — with the conversation this directory would have opened loaded and ready
 underneath it. `esc`, or `enter` on the row the cursor starts on, drops into that

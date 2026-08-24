@@ -73,6 +73,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// The first-run setup, asked the four ways somebody meets it: arriving,
+		// wanting the key in, seeing the screen, and wanting to undo an answer.
+		{"first time setup", "getting-started"},
+		{"set up my api key", "getting-started"},
+		{"openrouter key", "getting-started"},
+		{"change what I picked during setup", "getting-started"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
