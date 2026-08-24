@@ -36,12 +36,13 @@ func (s *Store) prepared(query string) *sql.Stmt {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	s.statements.mu.RLock()
-	statement, ok := s.statements.ready[query]
-	s.statements.mu.RUnlock()
-	if ok {
+	if statement, ok := s.cachedStatement(query); ok {
 		return statement
 	}
+	// THE PREPARE IS NOT UNDER EITHER LOCK. It is a round trip into the driver's
+	// parser and planner, and holding the cache shut across it would serialize
+	// every other reader behind the one that arrived first. Two readers
+	// preparing the same text at once is the price, and it is settled below.
 	prepared, err := s.db.Prepare(query)
 	if err != nil {
 		return nil
@@ -60,6 +61,17 @@ func (s *Store) prepared(query string) *sql.Stmt {
 	}
 	s.statements.ready[query] = prepared
 	return prepared
+}
+
+// cachedStatement is the read half of [Store.prepared] and nothing else: the
+// lookup, under the read lock, with the unlock on a defer so no future early
+// return can leave the cache shut (internal/guard's lockdefer_test.go states
+// the law, and a read lock held by a dead goroutine wedges every writer).
+func (s *Store) cachedStatement(query string) (*sql.Stmt, bool) {
+	s.statements.mu.RLock()
+	defer s.statements.mu.RUnlock()
+	statement, ok := s.statements.ready[query]
+	return statement, ok
 }
 
 // queryPrepared is db.Query through the statement cache.
