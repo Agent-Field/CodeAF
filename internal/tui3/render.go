@@ -1062,10 +1062,16 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
+	// segCrew is the crew's preset word — `crew max` — the OTHER model dial,
+	// drawn at the head of the telemetry so it stands beside the conversation's
+	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
+	segCrew hudSeg = iota
 	// segOpen is how many conversations this terminal is holding, and how many
-	// of them want a person (keeper.go). It comes FIRST on the row because it is
-	// the only segment that is not about the conversation in front.
-	segOpen hudSeg = iota
+	// of them want a person (keeper.go). It comes first among the run's own
+	// facts — only the crew word, which belongs beside the model, stands ahead of
+	// it — because it is the only segment that is not about the conversation in
+	// front.
+	segOpen
 	segAmbient
 	// segKeeping is the standing side's own presence: how many things are
 	// keeping an eye on this project (homestanding.go). It sits beside segAmbient
@@ -1445,6 +1451,14 @@ func (a *app) telemetry(width int) []hudPart {
 			parts = append(parts, hudPart{kind: kind, text: text})
 		}
 	}
+	// THE TWO DIALS READ AS A PAIR. The identity cluster ends with the model the
+	// conversation talks to, and the telemetry begins with the crew word, so a
+	// frame wide enough for both shows `… · deepseek-v4-flash      crew max · …`:
+	// two facts, one gap, and no way to read `/crew max` as having moved the
+	// model beside it. It is the first thing after the delta to go when the row
+	// is short ([dropOrder]) — /status and the model picker's hint slot both say
+	// it in full — and it is nothing at all on a door with no profile.
+	add(segCrew, a.crewSegment())
 	add(segOpen, a.openSegment())
 	add(segAmbient, a.ambientSegment())
 	add(segKeeping, a.keepingSegment())
@@ -1504,6 +1518,9 @@ func (a *app) openSegment() string {
 // and it is ordered by how ACTIONABLE each segment is:
 //
 //	delta    what the session wrote — the only fact here about the past
+//	crew     which preset aforge's own calls are on — a setting, not a
+//	         measurement; it changes only when the person changes it, and
+//	         /status, the picker's hint and bare /crew all say it in full
 //	cache    an accounting nicety; the cost segment already carries the bill
 //	eta      a forecast, and the meter beside it is already painted the warning
 //	burn     nice to watch, but the clock on the state word says it is alive
@@ -1517,7 +1534,7 @@ func (a *app) openSegment() string {
 //	open     how many other conversations this terminal holds — true, and about
 //	         somewhere else; at forty columns what a person needs is what THIS
 //	         conversation is doing
-var dropOrder = []hudSeg{segDelta, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
+var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
 
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.

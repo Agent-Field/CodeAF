@@ -189,7 +189,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the three-preset crew chooser |
+| `/crew` | — | — | opens the five-seat reading: the model you talk to, then the three crew presets |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
@@ -509,14 +509,17 @@ the three classes:
 crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 ```
 
-`/status` differs from the on-screen status sheet in three deliberate ways:
+On the live status line the same fact is one short segment — `crew max`, or
+`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
+the first segments a narrow row gives up. The `crew` line here and on the phone's status
+sheet is the full reading; there is no `crew` line at all when the session was opened
+without a profile directory.
+
+`/status` differs from the on-screen status sheet in two deliberate ways:
 
 - The session **file** is added. A path is a thing you copy into another program.
 - The `spend` line is **dropped** when nothing has been spent. The live status line keeps
   showing `$0.00`; a note in the transcript must not.
-- The `crew` line is added, because sixty cells of one fact would be cut in the middle of
-  the third class on a forty-four-column row, and the three classes are the answer. There
-  is no `crew` line at all when the session was opened without a profile directory.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
@@ -952,68 +955,73 @@ a mention to point at. They are how you find out that the directory is busy some
 On a project that has never run a task it says `no tasks yet — /task <brief> starts one`
 and opens nothing. The tasks pages describe the page in full.
 
-## /crew — the four models aforge works with
+## /crew — the four models aforge uses on its own behalf, read beside the one you talk to
 
-aforge makes calls you did not type, and they do not all want the same model. `/crew` is
-those four choices answered in one word.
+aforge runs **five model seats**. Seat one is the model you talk to, and `/model` is what
+moves it. The other four — reflex, small work, careful work, mastermind — are the models
+aforge uses on its own behalf, for the calls you did not type. `/crew` reads all five and
+sets the four in one word. **It never moves seat one.**
 
 ```
 /crew
 ```
 
-opens a three-row chooser. Yours is marked with a `·`; each row has its own line and a dim
-second line naming the four models it would set. ↑ / ctrl+p and ↓ / ctrl+n move, **enter**
-applies the row, and **esc** closes the chooser without changing anything:
+opens the five-seat reading, bottom-anchored like the model picker. From the top:
 
 ```
+the four models aforge uses on its own behalf — not the one you chat with
+  you talk to · deepseek-v4-flash
   frugal — qwen handles careful work · pennies a day
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-flash
-    careful work  qwen/qwen3.8-27b
-    mastermind    qwen/qwen3.8-27b
-· balanced — kimi-k3 thinks, qwen checks
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-flash
-    careful work  qwen/qwen3.8-27b
-    mastermind    moonshotai/kimi-k3:low
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
+› balanced — kimi-k3 thinks, qwen checks
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
-    reflex        nex-agi/nex-n2-mini
-    small work    deepseek/deepseek-v4-pro
-    careful work  moonshotai/kimi-k3
-    mastermind    moonshotai/kimi-k3:high
+    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+each of the four can be pinned on its own in /settings → Providers
 ```
 
-`/crew frugal`, `/crew balanced` or `/crew max` sets it, and confirms in one line:
+The first line says what the presets change and what they do not. The second is **seat
+one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+no highlight, because nothing in this chooser can move it. Then the three presets: the one
+in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
+↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
+line points at the settings row where one seat can be pinned by itself; the chooser does not
+pick seats one at a time.
 
-```
-crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b · the model you talk to is /model
-```
-
-**The three model ids are drawn brighter than the words around them.** `crew →`, the
-preset word and `brain`/`hands`/`checks` stay at the grey every note is written in; the
-ids step up into the body ink, because they are what the command was typed to find out.
-`/model` at the end is plain because it is explanatory prose, not a command that will act.
-See "Why is one word in a line brighter than the rest" on the screen page.
-
-The last clause is there because nothing else on the frame moves: the model named on the
-status line is the **conversation's** model, and `/crew` never touches it. To read the crew
-back afterwards, use the `crew` line in `/status`, the crew row in `/settings` → Providers,
-or bare `/crew`, which marks yours.
-
-**The change is live.** The next call aforge makes on its own uses the new crew — no
-relaunch, and no waiting for the next session.
+If you have pinned one of the four yourself, no preset wears the ground and the chooser says
+`yours is none of the three — picking one puts all four back` above the closing line.
 
 A word that is not one of the three changes nothing and prints the three:
 `/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
 
-If you have answered one of the four rows yourself, no preset is marked and the chooser ends with
-
-```
-yours is none of the three — picking one puts all four back
-```
-
 What each of the four classes funds, and how to set one of them on its own, is on the models
 page.
+
+## /crew <preset> — the confirm line, and the model it leaves alone
+
+`/crew frugal`, `/crew balanced` or `/crew max` sets the four and confirms in one line:
+
+```
+crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+```
+
+**The model ids are drawn brighter than the words around them.** `crew →`, the preset
+word, `brain`/`hands`/`checks` and `you are still talking to` stay at the grey every note
+is written in; the three crew ids and the model you are talking to step up, because they
+are what the command was typed to find out. `/model` wears the command chip, because it is
+a command you can type. See "Why is one word in a line brighter than the rest" on the
+screen page.
+
+The last clause names, by id, the one seat the command did not touch: the model you are
+talking to, in the same spelling the status line's model segment uses, so you can check it
+against the foot of the frame. `/crew` never changes that model and never offers to; only
+`/model` does. When the session has no model yet the clause reads
+`the model you talk to is untouched — /model changes that`.
+
+**The change is live.** The next call aforge makes on its own uses the new crew — no
+relaunch, and no waiting for the next session. To read the crew back afterwards: the live
+status line says `crew max` beside the model, `/status` prints the `crew` line under
+`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
 ## /connect — your connected accounts
 
