@@ -278,6 +278,69 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 	}
 }
 
+// NO TWO ROLES ON ONE LADDER RESOLVE TO THE SAME xterm-256 INDEX.
+//
+// styles.go asks for this check on every line it authors, and it was asked for
+// one line at a time: the accent's own note names 146, [hueAsk]'s names 140 and
+// why 146 would have been a disaster, [hueDel]'s names 167 against [hueBad]'s
+// 173. Every one of those checks was done. What nobody did was ASK THE WHOLE
+// TABLE AT ONCE — and the table had an answer: [hueMuted] and [hueData] both
+// rounded to 110, so on every 256-colour terminal the payload rule's datum was
+// painted in the second voice's own colour, which is the identity hue doing
+// nothing while appearing to work. Four waves, and it was found by somebody
+// reading a comment rather than by anything failing.
+//
+// So the check that used to be a habit is a gate. It is the SECOND RUNG that is
+// held, deliberately: the authored hexes are all distinct by construction, and
+// the rung where they stop being distinct is the fallback nobody looks at —
+// which is also where the MAJORITY of terminals actually are.
+//
+// The reading tiers are in the walk beside the signals, because they are roles
+// too and a body ink that landed on the second voice's index would be worse than
+// either collision the file already worries about. What is NOT in the walk is
+// the GROUND ladder (its three steps have their own test, and a ground is not an
+// ink) and the identity ring (its own law is distinctness around a wheel, and it
+// is allowed to fall back to glyphs).
+func TestNoTwoRolesShareA256Index(t *testing.T) {
+	for _, ladder := range []struct {
+		name  string
+		roles map[string]hue
+	}{
+		{"dark", map[string]hue{
+			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
+			"dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
+			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
+		}},
+		{"light", map[string]hue{
+			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
+			"dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
+			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
+		}},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			// Sorted, so the failure names the same pair every time somebody runs it.
+			var names []string
+			for name := range ladder.roles {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			seen := map[uint8]string{}
+			for _, name := range names {
+				idx := ladder.roles[name].idx
+				if other, clash := seen[idx]; clash {
+					t.Fatalf("on the %s ladder %s and %s both resolve to xterm-256 %d — "+
+						"two roles become ONE COLOUR on every 256-colour terminal, which is "+
+						"most of them. Move the LIGHTNESS of whichever of the two is the "+
+						"smaller surface, hold its hue and saturation, and re-check the "+
+						"isoluminant band afterwards (styles.go's THE SIGNAL BAND)",
+						ladder.name, other, name, idx)
+				}
+				seen[idx] = name
+			}
+		})
+	}
+}
+
 // ── 3. THE GROUND LADDER ────────────────────────────────────────────────────
 
 // The grounds a real dark terminal actually sits on. We cannot ask (see THE

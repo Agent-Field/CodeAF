@@ -32,7 +32,7 @@ import (
 //	del     #C67173   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
 //	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
-//	data    #88C0D0   the payload rule's datum — a model id, a figure, a key
+//	data    #91C5D4   the payload rule's datum — a model id, a figure, a key
 //	                  chord inside a quiet line (see [hueData])
 //
 // The three backgrounds are a ladder of their own and are stated under THE
@@ -336,12 +336,38 @@ var (
 	// hue of its own — the syntax-highlighting contract every calm terminal
 	// theme already keeps: greyscale for prose, colour for identifiers.
 	//
-	// Nord's frost cyan, at L 67.5 inside the fifteen-point signal band, so a
+	// Nord's frost cyan, at L 70.0 inside the fifteen-point signal band, so a
 	// line full of data still reads as one quiet field until somebody looks.
-	// 110 on the 256 rung — one clear step from the accent's 146, which is the
-	// collision that would matter: a datum painted the person's own colour
-	// would spend the budget forty times a minute by rounding.
-	hueData = mustHue("#88C0D0", heavy)
+	//
+	// ── WHY L 70 AND NOT NORD'S OWN L 67.5 ─────────────────────────────────────
+	//
+	// #88C0D0 is the hex nord authors and this table carried for four waves, and
+	// on the rung where hues are rounded it was not a cyan at all: it resolves to
+	// xterm-256 110, which is #87afd7 — A STEEL BLUE, and the SAME INDEX
+	// [hueMuted] rounds to. So on every 256-colour terminal the datum wore the
+	// second voice's own colour, which is the one thing a hue given out for
+	// IDENTITY may not do: the payload rule lifts a model id out of a dim line by
+	// giving it a hue of its own, and a lifted datum painted in the tier it was
+	// lifted out of is the rule doing nothing while appearing to work.
+	//
+	// The move is the smallest one that fixes it and it is THE MOVE THIS FILE
+	// ALWAYS MAKES: the hue is held at 193°, the saturation at 43%, and only the
+	// LIGHTNESS rises, L 67.5 → 70.0. That crosses onto 116 — #87d7d7, which is
+	// an actual cyan and is claimed by nothing on either ladder — and it is the
+	// first index above #88C0D0 that is: L 69.0 still rounds to 110 and L 73.0 has
+	// gone on to 152. The signal band is unmoved, because the spread it measures
+	// is [hueDel]'s L 61.0 to [hueAccent]'s L 75.9 and this value sits inside
+	// both ends. Contrast against the middle of the assumed dark range goes 8.54
+	// → 9.07, which leaves it under the accent's 9.26 — a datum may not outrank
+	// the person's own hue.
+	//
+	// 116 is also one clear step from the accent's 146, which was the collision
+	// this line was originally checked against and remains the one that would
+	// matter most: a datum painted the person's own colour would spend the accent
+	// budget forty times a minute by rounding. Both checks are now written down
+	// rather than merely done — TestNoTwoRolesShareA256Index walks the whole
+	// table on both ladders, which is what would have caught this one.
+	hueData = mustHue("#91C5D4", heavy)
 	// hueViolet was the SHELL OPERATOR's hue until the transcript restraint
 	// greyed shell grammar down to the reading tiers (shellx.go) — it is held
 	// in the table, currently unspent, and it is deliberately NOT the question
@@ -548,7 +574,7 @@ var lightTaskRing = []hue{
 //	                            it has to lead on a page too
 //	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
 //	                            wants the same warning as dark amber
-//	data    #88C0D0   #2C8A9E   the datum's cyan, deepened for the page the
+//	data    #91C5D4   #2C8A9E   the datum's cyan, deepened for the page the
 //	                            way the accent was
 //	violet  #8F6FA8   #8F6FA8   the shared one (above)
 //
