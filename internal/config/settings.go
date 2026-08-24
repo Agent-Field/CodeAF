@@ -216,18 +216,22 @@ const (
 	KeyReplyGuard = "reply.guard"
 	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
 	// or a planner cutting the work into pieces that run at once (internal/tui3's
-	// taskcommand.go). Shipped, it asks — a small sizing call reads the brief and,
-	// where it finds independent parts, a two-row chooser opens.
+	// taskcommand.go). Shipped, it starts ONE WORKER — a small sizing call reads
+	// the brief first, and a yes from it arms that worker to hand the work out
+	// mid-run once it has opened the material and found the width is real
+	// (internal/session's task_divide.go).
 	//
 	// It is a row because the question is not really about one task. Somebody who
-	// works in pieces wants the pieces every time and is answering the same
-	// chooser every time; somebody who does not want a planner at all is
-	// dismissing it every time. Both are a preference stated once, and the row is
-	// where you state it.
+	// wants the work planned into pieces before anybody starts wants that every
+	// time; somebody who does not want the sizing call on their bill is refusing
+	// it every time. Both are a preference stated once, and the row is where you
+	// state it.
 	//
-	// The two silent answers also decide what is SPENT: `single` skips the sizing
-	// call outright, because that call exists only to raise the chooser and
-	// running it to ignore the answer is a model paid to be overruled.
+	// NOBODY IS ASKED ANY MORE, whichever answer is set. The row used to decide
+	// who chose the shape, because a two-row card opened on a yes; the card is
+	// gone and a wide task divides itself as it runs, so what is left here is
+	// which shape starts and what it costs to find out — `single` skips the
+	// sizing call outright and takes one worker on the brief's own words.
 	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router
@@ -498,29 +502,36 @@ var TaskSettleModes = []string{TaskSettleAsk, TaskSettleAuto}
 const DefaultTaskSettle = TaskSettleAsk
 
 // The three answers to [KeyTaskStart], and they are not three settings but one
-// question asked once instead of on every `/task`: who decides the shape.
+// question asked once instead of on every `/task`: what a bare `/task` starts,
+// and what it pays to find out.
 //
-//	ask        you do, when there is something to decide. The sizing call runs,
-//	           and only a brief with independent parts in it raises the chooser.
-//	adaptive   aforge does, toward the planner: parts found, it runs adaptive
-//	           without asking; none found, it starts one worker, because a planner
-//	           over work that cannot be split is a whole extra model deciding
-//	           nothing. A single worker can still split its own brief when it
-//	           finds independent parts in it, so nothing is closed off.
-//	single     aforge does, toward one worker, and the sizing call is not made
-//	           at all.
+//	sized      one worker, with the sizing call read over the brief first. A yes
+//	           from it arms that worker to hand the work out as it goes, once it
+//	           has opened the material and found the width is real — so wide work
+//	           runs wide without a planner ever being asked to guess at it.
+//	adaptive   a planner, without asking: parts found, the adaptive run starts;
+//	           none found, one worker starts, because a planner over work that
+//	           cannot be split is a whole extra model deciding nothing.
+//	single     one worker, and the sizing call is not made at all. The work can
+//	           still divide itself, but only off what its own brief already says
+//	           (internal/splitgate), because nothing was read over it.
+//
+// THE OLD FOURTH ANSWER WAS `ask`, and it is gone with the card it named: a yes
+// from the sizing call used to raise a two-row chooser, and now it starts the
+// one worker armed. A profile still holding the word reads as the default, which
+// is the same one worker it would have got by dismissing that card.
 const (
-	TaskStartAsk      = "ask"
+	TaskStartSized    = "sized"
 	TaskStartAdaptive = "adaptive"
 	TaskStartSingle   = "single"
 )
 
 // TaskStartModes lists them, the default first.
-var TaskStartModes = []string{TaskStartAsk, TaskStartAdaptive, TaskStartSingle}
+var TaskStartModes = []string{TaskStartSized, TaskStartAdaptive, TaskStartSingle}
 
-// DefaultTaskStart is ask: the shipped behaviour, and the only one of the three
-// that never decides something the person might have wanted the other way.
-const DefaultTaskStart = TaskStartAsk
+// DefaultTaskStart is sized: one worker that knows whether it is allowed to
+// divide, which is the shape the measured road is built around.
+const DefaultTaskStart = TaskStartSized
 
 // The timestamps row's three answers, and they are a LADDER rather than three
 // unrelated pictures: each rung draws strictly less of the clock than the one
@@ -1437,13 +1448,13 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
 			Label: "starting a task", Choices: TaskStartModes,
-			Hint: "what /task <brief> does before it starts. ask reads the brief first and " +
-				"offers you adaptive or single whenever it finds parts that could run at the " +
-				"same time; that offer is the default. adaptive takes it without asking and " +
-				"starts one worker when there is nothing to split. single always starts one " +
-				"worker and skips the reading altogether. /task solo and /task adaptive still " +
-				"say so outright whatever this is set to, and a single worker can still split " +
-				"its own brief when it finds independent parts in it.",
+			Hint: "what /task <brief> starts. sized is the default: the brief is read for " +
+				"width first and one worker starts either way, and a brief with parts in it " +
+				"starts a worker that can hand them out once it has opened the material. " +
+				"adaptive plans the pieces up front instead, and starts one worker when there " +
+				"is nothing to split. single starts one worker and skips the reading " +
+				"altogether. /task solo and /task adaptive still say so outright whatever " +
+				"this is set to.",
 			read:  func() string { return TaskStartAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},

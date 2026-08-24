@@ -164,7 +164,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
-| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single; shapes the brief |
+| `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
 | `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
@@ -840,9 +840,11 @@ Pressing the second row puts the command in your box rather than running it. The
 ## /task — start work you can walk away from
 
 `/task <brief>` starts work directly from the words after the command; the brief does not
-pass through the conversation model. aforge briefly shows `sizing it up…`. If the work is
-meaningfully parallel, a two-choice list opens with adaptive recommended. Otherwise one
-task starts silently.
+pass through the conversation model. aforge briefly shows `sizing it up…` while a small
+judge reads the words for width, and then **one worker starts, whatever the answer was —
+nothing is asked of you**. If the work is meaningfully parallel, one dim line says so
+(`the work looks wide · one worker starts, and it can split as it goes`) and that worker
+may hand the parts out once it has opened the material. Otherwise the task starts silently.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
@@ -865,10 +867,11 @@ adaptive run with a planner immediately. Both explicit forms skip sizing altoget
 both still shape the brief.
 
 The `starting a task` row in `/settings` → Session decides what the plain form does:
-`ask` is the default and is the behaviour above, `adaptive` takes the adaptive shape without
-asking whenever there is anything to split, and `single` always starts one worker and does
-not size the work at all. `solo` and `adaptive` typed on the command line override the row
-either way.
+`sized` is the default and is the behaviour above, `adaptive` takes the adaptive shape
+without asking whenever there is anything to split, and `single` always starts one worker
+and does not size the work at all. `solo` and `adaptive` typed on the command line override
+the row either way. The row's old fourth answer `ask`, and the two-choice list it opened,
+are both gone; a profile still set to it reads as `sized`.
 
 ## /history — the task history command: past tasks, every task this project has run
 

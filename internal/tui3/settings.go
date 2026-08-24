@@ -184,9 +184,9 @@ var settingUI = map[string]settingMeta{
 	// because that is the question a person is actually answering here.
 	config.KeyTaskStart: {
 		tab: tabSession, label: "starting a task", widget: widgetCycle,
-		about: "what /task does with your brief: ask offers pieces-at-once when it " +
-			"finds any, adaptive takes it, single starts one worker. Work that turns " +
-			"out to be wide can still split itself either way.",
+		about: "what /task does with your brief: sized starts one worker that can " +
+			"split itself when the work turns out wide, adaptive plans the pieces up " +
+			"front, single starts one worker without reading the brief for width.",
 	},
 	config.KeyTaskAudit: {
 		tab: tabSession, label: "check task work", widget: widgetCycle,

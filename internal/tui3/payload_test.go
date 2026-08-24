@@ -242,7 +242,6 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"esc interrupt", []string{"esc"}},
 		{"enter switch · esc", []string{"enter", "esc"}},
 		{"↑↓ · enter apply · esc", []string{"↑↓", "enter", "esc"}},
-		{"↑↓ · enter start · esc single", []string{"↑↓", "enter", "esc"}},
 		{"enter open · esc", []string{"enter", "esc"}},
 		{"v select · a block · y yank · esc", []string{"v", "a", "y", "esc"}},
 		{"esc again to rewind", []string{"esc"}},

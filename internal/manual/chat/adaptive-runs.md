@@ -25,6 +25,14 @@ keyword that triggers it. When the goal genuinely has independent parts and no k
 ("audit every package for this pattern", "migrate us off the old client and fix what
 breaks"), the run is started with the `run_adaptive` tool and you are told in one line.
 
+**`/task adaptive <brief>` is the door you can type**, and it is the only way `/task` opens
+a run. A plain `/task <brief>` never does: it reads the brief for width and then starts one
+worker, which hands its work out itself if the material turns out to be wider than one
+worker's share (*work that runs on its own*, under *When a task turns out to be too wide for
+one worker*). There used to be a card offering you `adaptive` or `single` whenever the
+sizing call found parts; it is gone, and the word `adaptive` typed into the command is what
+replaced it. The `starting a task` setting can make it the standing answer.
+
 There is also an older, narrower door: a message that BEGINS with `orchestrate …`,
 `adaptively work on …`, `run an adaptive run on …` starts one directly, without asking the
 model at all. Courtesy openers (`please `, `can you `, …) are stripped first. You can name

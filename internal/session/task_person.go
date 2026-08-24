@@ -179,17 +179,6 @@ func taskPersonTitle(brief string) string {
 	return clip(strings.Join(words, " "), titleLimit)
 }
 
-// TaskPlannerModel is the resolved mastermind call as the chooser spells it.
-func (a *Agent) TaskPlannerModel() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RolePlanner, a.model)
-	if err != nil {
-		return ""
-	}
-	return call.String()
-}
-
 // JudgeDecomposable asks one bounded auxiliary question. Every failure is a no:
 // the caller can start a single task without teaching a person about this call.
 func (a *Agent) JudgeDecomposable(ctx context.Context, brief string) (bool, []string, string) {
@@ -218,12 +207,12 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 		}
 		a.addAuxiliaryUsage(response, call.Model, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
-			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT. The person may
-			// answer this judge's card with `single`, and that is not them
-			// saying the work is narrow — it is them saying they do not want a
-			// planner and a fleet. So the single worker they start is armed to
-			// divide if it turns out to be holding six jobs (task_divide.go's
-			// [Agent.armDivision]).
+			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT, AND IT IS WHAT THE
+			// WHOLE CALL IS FOR NOW. A yes used to raise a card offering a
+			// planner; today `/task <brief>` starts one worker either way and
+			// this banked yes is what arms that worker to hand the work out
+			// once it has opened the material and found the width is real
+			// (task_divide.go's [Agent.armDivision]).
 			if verdict.Parallel {
 				a.rememberDivisible(brief)
 			}

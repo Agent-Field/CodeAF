@@ -845,8 +845,6 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
-	// taskPick is /task's two-row answer after the sizing call found useful parallel work.
-	taskPick taskChooser
 	// wait is the pre-flight a task command is standing in — the sizing call or
 	// the shaping call — and the moment it started (taskcommand.go). It is what
 	// turns that note's spinner and its count-up.
@@ -2363,13 +2361,23 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.parallel {
 			return a, a.startTaskDoor(door, "single", msg.brief, "")
 		}
+		// A PLANNER ONLY WHERE SOMEBODY ASKED FOR ONE. The row set to `adaptive`
+		// is that asking, said once instead of on every command.
 		if msg.preset == config.TaskStartAdaptive {
 			return a, a.startTaskDoor(door, "adaptive", msg.brief, msg.hint())
 		}
-		a.closeLists()
-		a.taskPick = taskChooser{open: true, brief: msg.brief, hint: msg.hint(), parts: msg.parts, why: msg.why, planner: door.TaskPlannerModel()}
-		a.touch()
-		return a, nil
+		// AND OTHERWISE THE WIDE WORK STARTS AS ONE WORKER, ARMED. This used to be
+		// the moment a two-row card opened and asked which shape to run, and the
+		// card was the wrong question: it wanted a decision about width before
+		// anybody had opened the material, from the one person in the room who had
+		// not read it. The measured road answers it later and from evidence — the
+		// judge's yes here arms this task to divide (internal/session's
+		// [Agent.armDivision]), the worker hands the parts out only once it has
+		// seen how many there really are, and they ride the same frontier the rest
+		// of the graph does. So the command starts the work, and the note says the
+		// one thing the person could not otherwise know: it may not stay one task.
+		a.note(taskWideNote)
+		return a, a.startTaskDoor(door, "single", msg.brief, "")
 
 	case taskStartedMsg:
 		a.settleShaping()
@@ -5141,7 +5149,6 @@ func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
 	a.harnPick.close()
-	a.taskPick.close()
 }
 
 // dismissLists is esc over a typed list, which is [app.closeLists] plus the one
