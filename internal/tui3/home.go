@@ -773,9 +773,22 @@ func (a *app) landHome() {
 	// afterwards ([app.homeWorth]), are the same fact about the same machine —
 	// and the second is asked on every frame, which is exactly as many times as
 	// a directory walk must not happen.
+	//
+	// BUT THE WALK IS ONLY TAKEN HERE WHEN THIS FRAME IS THE ONE WAITING ON IT.
+	// This function runs inside [newApp], before bubbletea exists and therefore
+	// on the road to the FIRST PAINT, and the walk is four system calls per
+	// session across every project on the machine ([session.ReadWorld]). A launch
+	// that is not being greeted — which is `--session`, `aforge resume`, `--once`,
+	// every headless frame and every test — was paying all of it to decide one
+	// word in the legend. So the two conditions above are asked FIRST now, and a
+	// launch that fails them gets the same reading a beat later off the model
+	// loop instead ([app.probeWorld]).
+	if !a.landing || a.pickSession {
+		return
+	}
 	world := session.ReadWorld(a.placesRoot())
 	a.homeWorth = worldHasElsewhere(world, a.file)
-	if !a.landing || a.pickSession || !a.homeWorth {
+	if !a.homeWorth {
 		return
 	}
 	a.home = homeView{
@@ -813,6 +826,34 @@ func (a *app) landHome() {
 	// It goes through [app.dismissWelcome] so the opening line about esc and
 	// ctrl+c is written under home, where it always was, rather than never.
 	a.dismissWelcome()
+}
+
+// probeWorld is the door's cached fact for every launch that is NOT being
+// greeted, read off the model loop and landed as a message.
+//
+// It is [app.probeGit]'s shape and it is that shape for the same reason: a walk
+// of the disk is tens of milliseconds and the road to the first frame is not a
+// place to wait. What the walk decides here is one word in the legend
+// ([app.homeDoorShowing]) and the two doors that word advertises — the
+// double-space gesture and a click on it, both of which ask [app.homeDoorOpen] —
+// so the whole cost of arriving a beat late is that the offer appears on the
+// second frame rather than the first, at a moment when nobody has had time to
+// take it up.
+//
+// IT ANSWERS NOTHING WHERE THE WALK WAS ALREADY TAKEN. [app.landHome]'s own two
+// conditions are repeated here, in the same order, so a greeted launch does not
+// read the machine twice — and its guards are asked here as well, for the reason
+// [app.trueUpHomeDoor] asks them: where home cannot be reached at all, the walk
+// behind this fact is work nothing will read.
+func (a *app) probeWorld() tea.Cmd {
+	if a.hosted() || !a.canOpen() || (a.landing && !a.pickSession) {
+		return nil
+	}
+	// The root is taken HERE and the comparison is made in the arm that lands the
+	// message: the goroutine may read nothing off the surface, and which
+	// conversation this window is in is the surface's to say.
+	root := a.placesRoot()
+	return func() tea.Msg { return worldMsg{world: session.ReadWorld(root)} }
 }
 
 // worldHasElsewhere reports whether this machine holds a conversation OTHER than

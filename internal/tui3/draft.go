@@ -119,7 +119,25 @@ func draftPrefix(workspace string) string {
 }
 
 // edited is what every draft mutation returns: the two typed overlays follow
-// what is in the box, the frame is marked, and the debounce is armed.
+// what is in the box, and the debounce is armed.
+//
+// IT DOES NOT TOUCH THE TRANSCRIPT, and that absence is the point. [app.touch]
+// throws away the laid-out screen list ([app.visible]), and typing cannot change
+// a single row of it: the box, the tray, the completion overlay, the slash chip,
+// the spellout preview and the legend's hint are all CHROME, rebuilt from
+// scratch on every frame (view.go's [app.chrome]), and [app.layout] reads none of
+// the draft's state. So a keystroke that marked the transcript dirty was buying a
+// full relayout of the whole conversation — every entry, every tool cluster,
+// every hover pass — to draw exactly the rows it had just drawn, once per
+// character on a fast typist's keyboard and once per chunk of a large paste.
+//
+// THE CALLERS THAT DO CHANGE THE TRANSCRIPT ALREADY SAY SO. Answering a proposal
+// (task.go), settling a standing card (standing.go), steering a room
+// (room.go, roomorch.go), pulling a parked message back (park.go), dropping a
+// picture chip (attach.go) and completing a file (files.go) all touch — or mark
+// their own block stale — on the line above their `return a.edited()`, because
+// each of them is a change to what is IN the list rather than to what is being
+// typed under it. Nothing was ever relying on this call to do it for them.
 func (a *app) edited() tea.Cmd {
 	if len(a.input.value) == 0 {
 		// An empty box is a new draft. Plainness belongs to the sentence that
@@ -127,7 +145,6 @@ func (a *app) edited() tea.Cmd {
 		a.input.demotedTags = nil
 	}
 	lists := a.syncLists()
-	a.touch()
 	if a.draftFile == "" || a.draftPending {
 		return lists
 	}
