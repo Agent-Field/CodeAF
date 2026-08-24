@@ -235,6 +235,18 @@ var commands = []command{
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
 	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
+	// this is what the machine is holding for it — the shared build cache task
+	// workers fill (internal/cachedir). Two rows for one command, /export's
+	// reason exactly: the reading form is the one nearly everybody wants, and
+	// [app.runMenu] writes a row that TAKES something into the draft instead of
+	// running it, so the destructive form rides second wearing the "…". It is
+	// NOT an alias of anything and shares no word with /new's fresh-start set —
+	// /clean already means "start another conversation" there, and a word that
+	// sometimes cleared the screen and sometimes deleted half a gigabyte would
+	// be the most expensive pun on the surface.
+	{name: "cache", desc: "the shared build cache — how big, and where"},
+	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// the first two are the least discoverable on the surface — nothing on the

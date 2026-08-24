@@ -2131,6 +2131,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// A CLICK ON THE BOX PUTS THE CARET UNDER THE POINTER (draftclick.go).
+			// It is read after every chrome target that can stand over or inside
+			// the block — the chips, the parked messages, the guard — and before
+			// the body's drag parking, because a press on the draft is a press on
+			// the draft even when the drag machinery would happily park it.
+			if a.draftPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// THE BODY'S CLICK IS PARKED, NOT SPENT. It fires on release — from
 			// [app.dragRelease], where the batch this line used to build now
 			// lives — unless the pointer sweeps first and the gesture turns out
@@ -2359,6 +2367,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.note("compact failed: " + msg.err.Error())
 		}
+		return a, nil
+
+	case cacheNoteMsg:
+		// A cache errand's whole answer is one line, success and refusal alike
+		// (cachecmd.go).
+		a.note(msg.line)
 		return a, nil
 
 	case spelledMsg:
@@ -4495,6 +4509,12 @@ func (a *app) slash(line string) tea.Cmd {
 		spent := a.costText()
 		a.noteFacts(spent, columnFacts(spent, false)...)
 		return nil
+
+	case "cache":
+		// The shared build cache — reading it, and the guarded road to deleting
+		// it. Every branch runs off the loop and answers as a note; the guard
+		// itself, and why it is typed rather than a card, is cachecmd.go.
+		return a.runCacheCommand(rest)
 
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
