@@ -1956,8 +1956,8 @@ func (a *app) contextSegment() (string, bool) {
 // warmSegment is the session's cached share of everything it has sent, and what
 // that share was WORTH — and it is empty until there is one.
 //
-//	⟲ saved $0.02 · 89%    a priced session: the cash, then the hit rate
-//	⟲ 89%                  nobody published a price: the rate alone
+//	⟲ saved $0.02 · 89% cached    a priced session: the cash, then the hit rate
+//	⟲ 89% cached                  nobody published a price: the rate alone
 //
 // THE LAW IN ONE LINE: the percentage is the hit RATE, and the cash is what it
 // MEANT. "⟲ 89%" alone was a number nobody could act on — a person reading it
@@ -1985,7 +1985,13 @@ func (a *app) warmSegment() string {
 	if !ok {
 		return ""
 	}
-	rate := itoa(int(share*100)) + "%"
+	// The word rides with the rate because the rate alone was the owner's own
+	// stumble: two percentages share this line, and the one that means "of the
+	// window" and the one that means "served from the cache" are told apart by
+	// a word, not by position. It is the same word the per-turn note spends on
+	// the same subject ("⟲ 9.8k cached"), so the running share and the turn
+	// that explains it stay one vocabulary.
+	rate := itoa(int(share*100)) + "% cached"
 	if a.cacheSaved > 0 {
 		return "⟲ saved " + savedWord(a.cacheSaved) + " · " + rate
 	}

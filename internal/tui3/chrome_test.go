@@ -855,17 +855,17 @@ func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 
 	// OpenAI-style: the cached tokens are inside the input count.
 	a.inputTokens, a.cacheRead = 10_000, 6_200
-	if got := a.warmSegment(); got != "⟲ 62%" {
-		t.Fatalf("the warm share reads %q, want ⟲ 62%%", got)
+	if got := a.warmSegment(); got != "⟲ 62% cached" {
+		t.Fatalf("the warm share reads %q, want ⟲ 62%% cached", got)
 	}
-	if line := plain(a.status(90)); !strings.Contains(line, "⟲ 62%") {
+	if line := plain(a.status(90)); !strings.Contains(line, "⟲ 62% cached") {
 		t.Fatalf("the status line is missing the warm share:\n%s", line)
 	}
 
 	// Anthropic-style: they sit beside it. Same 62%, not 620%.
 	a.inputTokens, a.cacheRead = 3_800, 6_200
-	if got := a.warmSegment(); got != "⟲ 62%" {
-		t.Fatalf("the disjoint dialect reads %q, want ⟲ 62%%", got)
+	if got := a.warmSegment(); got != "⟲ 62% cached" {
+		t.Fatalf("the disjoint dialect reads %q, want ⟲ 62%% cached", got)
 	}
 }
 

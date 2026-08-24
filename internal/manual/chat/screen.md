@@ -397,7 +397,7 @@ Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
 | 2 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
 | 3 | cost | `$0.14` | the session's running spend | never empty |
 | 4 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
-| 5 | cache | `⟲ saved $0.02 · 89%` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89%` |
+| 5 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
 | 6 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
 | 7 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 8 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
