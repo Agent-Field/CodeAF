@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -374,6 +375,114 @@ func TestNoticesReachAStreamedTurnBeforeItStarts(t *testing.T) {
 	for _, event := range order[:len(order)-1] {
 		if !strings.HasPrefix(event, "notice:Retry ") {
 			t.Fatalf("event order = %v, want only retry notices before the stream", order)
+		}
+	}
+}
+
+// ── THE SECOND DOOR: PATIENCE SPENT ON PACING ───────────────────────────────
+//
+// A 429 that never clears is the other way a model runs out of ability to
+// answer, and the answer is the same one the refusal ladder ends in: ask a
+// different model, through the same chain, in the same words.
+
+// pacingUntil is a handler that 429s every request naming a model in `paced`
+// and answers everything else.
+func pacingUntil(paced map[string]bool) (http.Handler, *capture) {
+	recorded := &capture{}
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		body := recorded.body(len(recorded.bodies) - 1)
+		model, _ := body["model"].(string)
+		writer.Header().Set("Content-Type", "application/json")
+		if paced[model] {
+			writer.WriteHeader(http.StatusTooManyRequests)
+			_, _ = writer.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"model":"` + model + `","choices":[{"index":0,"finish_reason":"stop",` +
+			`"message":{"role":"assistant","content":"ok"}}]}`))
+	}), recorded
+}
+
+func pacedChainClient(t *testing.T, handler http.Handler, fallbacks []string) *Client {
+	t.Helper()
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://openrouter.ai/api/v1",
+		Model: "sim/model", Fallbacks: fallbacks, HTTPClient: handlerClient(handler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The waits themselves are retry.go's business and are proved there; what
+	// this file is about is where the call goes once they are spent.
+	client.wait = func(context.Context, time.Duration) error { return nil }
+	return client
+}
+
+func TestPacingThatNeverClearsFallsBackToAnotherModelAndSaysSo(t *testing.T) {
+	handler, recorded := pacingUntil(map[string]bool{"sim/model": true})
+	client := pacedChainClient(t, handler, []string{"other/model"})
+
+	var notices []string
+	response, err := client.CompleteWithMessages(
+		noticeContext(context.Background(), &notices), userMessages("hi"))
+	if err != nil {
+		t.Fatalf("the chain should have landed the call: %v", err)
+	}
+	if response == nil {
+		t.Fatal("no response")
+	}
+	if want := "Retry 1/1: Falling back to other/model"; len(notices) != 1 || notices[0] != want {
+		t.Fatalf("notices = %v, want exactly [%q]", notices, want)
+	}
+	// The last request is the one that answered, and it rode the fallback.
+	last := recorded.body(len(recorded.bodies) - 1)
+	if got, _ := last["model"].(string); got != "other/model" {
+		t.Fatalf("the answering request named %q, want other/model", got)
+	}
+}
+
+// NO CHAIN IS NO HOP. A build with nothing to fall back to surfaces the
+// provider's own refusal, exactly as it did before this door existed.
+func TestPacingWithoutAChainSurfacesTheProvidersRefusal(t *testing.T) {
+	handler, _ := pacingUntil(map[string]bool{"sim/model": true})
+	client := pacedChainClient(t, handler, nil)
+
+	var notices []string
+	_, err := client.CompleteWithMessages(
+		noticeContext(context.Background(), &notices), userMessages("hi"))
+	if err == nil {
+		t.Fatal("every attempt was paced; the call should have failed")
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("the error %q no longer names what the provider said", err)
+	}
+	if len(notices) != 0 {
+		t.Fatalf("notices = %v, want nothing said about a chain that does not exist", notices)
+	}
+}
+
+// A FAULT IS NOT PACING. A 500 keeps the short patience and the error it always
+// had; only a provider that would not stop pacing us opens this door.
+func TestAServerFaultDoesNotEnterTheChain(t *testing.T) {
+	recorded := &capture{}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, _ = writer.Write([]byte(`{"error":{"message":"server error","code":500}}`))
+	})
+	client := pacedChainClient(t, handler, []string{"other/model"})
+
+	var notices []string
+	if _, err := client.CompleteWithMessages(
+		noticeContext(context.Background(), &notices), userMessages("hi")); err == nil {
+		t.Fatal("a failing server should have failed the call")
+	}
+	if len(notices) != 0 {
+		t.Fatalf("notices = %v, want a fault to stay a fault", notices)
+	}
+	for index := range recorded.bodies {
+		if got, _ := recorded.body(index)["model"].(string); got != "sim/model" {
+			t.Fatalf("request %d rode %q; a fault never moves a model", index, got)
 		}
 	}
 }

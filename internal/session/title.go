@@ -52,7 +52,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -96,22 +95,16 @@ func (a *Agent) maybeTitle(ctx context.Context, hub *eventHub) {
 	a.titleTried = true
 	question, answer := a.firstExchangeLocked()
 	model := a.model
-	source := a.config.RolesSource
 	a.mu.Unlock()
 
 	if question == "" {
 		return
 	}
-	named, err := roles.Resolve(roles.Source(source), roles.RoleTitle, model)
-	if err != nil {
-		return
-	}
-
-	// WithoutStream for the reason the compaction summary uses it: this is
-	// bookkeeping, and left on the turn's stream it would type itself into the
-	// room. No tools either — the namer's only job is to produce eight words.
-	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
+	// One errand, through the one door errands go through (auxiliary.go): the
+	// role's tier bounds how long eight words may take, and a model that cannot
+	// answer at all costs one fall-through down the ladder rather than the
+	// session's name. No tools — the namer's only job is to produce eight words.
+	response, named, err := a.callRole(ctx, roles.RoleTitle, model,
 		[]ai.Message{
 			textMessage("system", titleSystem),
 			// THE INSTRUCTION IS LAST, after the exchange rather than above it.
@@ -124,11 +117,12 @@ func (a *Agent) maybeTitle(ctx context.Context, hub *eventHub) {
 			textMessage("user", "First message:\n"+clip(question, titleClip)+
 				"\n\nFirst reply:\n"+clip(answer, titleClip)+
 				"\n\n"+titlePrompt),
-		},
-		ai.WithModel(named))
+		})
 	if err != nil || response == nil {
 		return
 	}
+	// BILLED AGAINST THE MODEL THAT ANSWERED, which is not always the one the
+	// ladder resolved first.
 	a.addAuxiliaryUsageAs(response, named, 1, auxRoleTitle)
 
 	title := cleanTitle(response.Text())

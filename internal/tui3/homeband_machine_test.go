@@ -17,6 +17,17 @@ func machineBandContext(a *app, now time.Time, width int) bandContext {
 	return bandContext{subject: a.machineSubject(), width: width, now: now, pal: a.pal}
 }
 
+// middayNow is this file's clock: today's own noon rather than the wall clock.
+// Every stamp below sits minutes or hours before "now", and a suite run in the
+// first hour of a day pushed those stamps across midnight — the today band then
+// honestly counted nothing and the failure read as the band's. Noon keeps every
+// small offset inside the day whatever hour the suite runs at; the offsets are
+// unchanged, so nothing else about the tests moves.
+func middayNow() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.Local)
+}
+
 // machineCardText is the whole card at rest, as a reader sees it.
 func machineCardText(a *app, width int) string {
 	return plain(strings.Join(a.machineCard(width, 40, a.pal), "\n"))
@@ -27,7 +38,7 @@ func machineCardText(a *app, width int) string {
 // in another zone.
 func TestTheMachineKeepsAnEyeOnEveryProjectSoonestFirst(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	lab.session("-beta", "bbbb000000000001", "Porting", beta, now.Add(-2*time.Hour))
@@ -85,7 +96,7 @@ func TestTheMachineKeepsAnEyeOnEveryProjectSoonestFirst(t *testing.T) {
 // DOOR: pressing one opens the conversation it names.
 func TestSinceYouLeftGathersEveryProjectAndEveryRowIsADoor(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	theirs := lab.session("-beta", "bbbb000000000001", "Porting", beta, now.Add(-2*time.Hour))
@@ -151,7 +162,7 @@ func TestSinceYouLeftGathersEveryProjectAndEveryRowIsADoor(t *testing.T) {
 func TestTodayCountsTheDayAndObeysTheEmptinessLaw(t *testing.T) {
 	t.Setenv("AFORGE_DAILY_BUDGET", "5")
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha := lab.workspace("alpha")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	lab.session("-alpha", "aaaa000000000002", "Yesterday", alpha, now.Add(-30*time.Hour))
@@ -198,7 +209,7 @@ func TestTodayCountsTheDayAndObeysTheEmptinessLaw(t *testing.T) {
 // every segment but the clock goes when it is not true.
 func TestThePulseSaysWhatIsOnWatchAndWhatTodayCost(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha := lab.workspace("alpha")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	lab.task("-alpha", session.TaskIndexEntry{
@@ -263,7 +274,7 @@ func TestThePulseSaysWhatIsOnWatchAndWhatTodayCost(t *testing.T) {
 func TestTheMachineCardPaintsMeaningAndNotMood(t *testing.T) {
 	t.Setenv("AFORGE_DAILY_BUDGET", "1")
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha := lab.workspace("alpha")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	lab.task("-alpha", session.TaskIndexEntry{
@@ -325,7 +336,7 @@ func TestTheMachineCardPaintsMeaningAndNotMood(t *testing.T) {
 // the machine's own card, a rescan keeps it, and ↓ walks back in.
 func TestWalkingUpOffTheTopRowReachesTheMachineCard(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha := lab.workspace("alpha")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	band := &standBand{items: []standing.Item{
@@ -394,7 +405,7 @@ func TestWalkingUpOffTheTopRowReachesTheMachineCard(t *testing.T) {
 // claims on the eye and no answer to "which of these is now".
 func TestTheMachineCardAtRestSpendsNoAccent(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := middayNow()
 	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
 	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", alpha, now.Add(-time.Hour))
 	lab.session("-beta", "bbbb000000000001", "Porting", beta, now.Add(-2*time.Hour))

@@ -1776,6 +1776,19 @@ quiet, the retry avoids that endpoint and may reach another one serving the mode
 no grace on this one either — the plain wait hides its clock for four seconds, and this
 appears at once, because you have just watched something disappear and are owed the reason.
 
+**The one dim line that does name a model** is the last of them: when asking again has run
+out, aforge finishes the reply on a different model, and that is said before it happens.
+
+```
+  nothing kept coming back from the model — finishing this one on openai/gpt-5-mini
+  the model kept going quiet mid-reply — finishing this one on openai/gpt-5-mini
+  the reply kept losing its thread — finishing this one on openai/gpt-5-mini
+```
+
+The rest of the answer arrives from that model, at that model's price, and the wait line
+above it names it from then on. Your own model is unchanged and your next message goes back
+to it. See *Models, context, and what it costs* for which model it moves to and when.
+
 **Where the text went.** If the reply had started, what you were reading is **removed from
 the screen**, and it is removed because it was removed everywhere: none of it is in the
 conversation, none of it is in the session file, and none of it is sent back to the model

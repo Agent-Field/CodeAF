@@ -73,6 +73,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -86,6 +87,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -1185,6 +1187,30 @@ func (n *TaskNode) runModelLocked() string {
 		return n.ran
 	}
 	return n.spec.model
+}
+
+// runModel is [TaskNode.runModelLocked] from outside the lock: the model this
+// node is ACTUALLY on, which is the frozen admitted id until something moved it.
+func (n *TaskNode) runModel() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.runModelLocked()
+}
+
+// runOn moves a node onto another model WITHOUT touching the id it was admitted
+// with, and writes the one line a row carries about why.
+//
+// It is the difference between a rescue and a choice, and that difference is the
+// whole reason it is not [TaskNode.retarget]. A person picking a model in this
+// node's room has decided something, and the spec learns it. A worker whose
+// provider could not answer has decided nothing — the admitted id is still the
+// answer to "what was this work handed to", and a rescue that overwrote it would
+// erase the fact that a rescue happened at all.
+func (n *TaskNode) runOn(model, note string) {
+	n.graph.mu.Lock()
+	n.ran = strings.TrimSpace(model)
+	n.mend = note
+	n.graph.mu.Unlock()
 }
 
 // assembledBrief is the brief the node is actually working from: its own, plus
@@ -2324,30 +2350,82 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
 
-	child, err := a.newTaskAgent(ctx, tree.dir, node, "")
-	if err != nil {
-		node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
-		return TaskFailed
-	}
-	defer func() {
+	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
+	// auxiliary usage — the pocket the title and the compaction summary come out
+	// of — rather than charged to whichever turn happened to propose it. It is
+	// kept ON THE NODE as well, in the same call, because the node outlives its
+	// child: a surface asking a landed node what it cost has nobody else to ask
+	// (see [TaskNode.spend]). A node that was re-modelled has TWO children, and
+	// both of them cost money, so the fold is per child rather than per node.
+	var child *Agent
+	retire := func() {
+		if child == nil {
+			return
+		}
 		_ = child.Close()
-		// The node's spend is the person's, so it is folded into the session's
-		// auxiliary usage — the pocket the title and the compaction summary come
-		// out of — rather than charged to whichever turn happened to propose it.
-		// It is kept ON THE NODE as well, in the same call, because the node
-		// outlives its child: a surface asking a landed node what it cost has
-		// nobody else to ask (see [TaskNode.spend]).
 		a.foldTaskUsage(node, child)
-	}()
+		child = nil
+	}
+	defer retire()
 
-	// THE ROOM OPENS HERE, because this is the first moment there is anybody in
-	// it: from now until the node lands, its events reach whoever is watching
-	// and the person's words reach this child's steering lane (task_room.go).
-	room := node.openRoom()
-	room.speaking(child)
+	var (
+		changed []string
+		stopped string
+		runErr  error
+		report  string
+		// movedFrom is the model this node was admitted on, once it has stopped
+		// being the model it is running on. Empty is the ordinary case.
+		movedFrom string
+	)
+	// ONE WORKER, OR TWO. The second exists for exactly one reason, stated at
+	// [terminalProviderFailure]: a node whose worker died because the PROVIDER
+	// could not answer has learned nothing about the work, and throwing away a
+	// prepared worktree over that is throwing away the part that was expensive.
+	for {
+		worker, err := a.newTaskAgent(ctx, tree.dir, node, "")
+		if err != nil {
+			node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
+			return TaskFailed
+		}
+		child = worker
+		// THE ROOM OPENS HERE, because this is the first moment there is anybody
+		// in it: from now until the node lands, its events reach whoever is
+		// watching and the person's words reach this child's steering lane
+		// (task_room.go).
+		room := node.openRoom()
+		room.speaking(child)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, node.instruction(), tree.dir, a.taskLimits(node), room, log)
-	report := taskReport(child)
+		var wrote []string
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, node.instruction(), tree.dir, a.taskLimits(node), room, log)
+		// The files SURVIVE the worker that wrote them. A second run starts in
+		// the same working copy, so what the first one saved is still on disk and
+		// still the node's leavings.
+		changed = mergePaths(changed, wrote)
+		report = taskReport(child)
+
+		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !terminalProviderFailure(runErr) {
+			break
+		}
+		next, moved := a.nextNodeModel(node)
+		if !moved {
+			break
+		}
+		movedFrom = node.runModel()
+		fmt.Fprintf(log, "%s could not answer: running again on %s\n", movedFrom, next)
+		// The retarget machinery is the room's own (task_room.go's RetargetTask):
+		// the row, the roster, the card and the checkpoint all learn the new model
+		// from these three lines, and the worker below reads it off the node.
+		node.runOn(next, taskModelMovedNote(movedFrom, next))
+		node.graph.checkpoint()
+		a.emitTaskUpdate(node.notice())
+		retire()
+	}
+	// AND THE REPORT SAYS SO, on every road out of here — done, failed, stopped,
+	// unchecked. A node that quietly finished on a model nobody chose is a card
+	// whose cost, voice and quality all belong to a model the person never sees.
+	if movedFrom != "" {
+		report = withReport(taskModelMovedSentence(movedFrom, node.runModel()), report)
+	}
 
 	switch {
 	// The threshold comes FIRST because it is the most specific answer: it
@@ -3349,7 +3427,11 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // store, no reflex, or a router that answered nothing: the node opens with
 // exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
-	model := node.model()
+	// The model it is ACTUALLY on rather than the id it was admitted with, so a
+	// second worker built for a node that was moved is built for where the node
+	// now is ([TaskNode.runOn]). They are the same string for every node nothing
+	// has moved, which is almost all of them.
+	model := node.runModel()
 	var (
 		tasker *TaskGraph
 		nodeID uint64
@@ -3925,4 +4007,90 @@ func shortID() string {
 		return strconv.FormatInt(time.Now().UnixNano()%0xffffff, 16)
 	}
 	return hex.EncodeToString(raw[:])
+}
+
+// ── ONE MOVE, WHEN THE PROVIDER RATHER THAN THE WORK FAILED ─────────────────
+
+// terminalProviderFailure reports whether the error a worker ended on is the
+// PROVIDER having failed this node, rather than anything about the work.
+//
+// The distinction is what keeps this from becoming a second audit. A tool that
+// failed never reaches here at all — a failed call is a result the worker reads
+// and goes on from, and only a turn that could not be completed ends a run. Work
+// that is merely incomplete does not reach here either: that is a finished
+// worker with a thin claim, and whether it holds is task_audit.go's question and
+// nobody else's. What is left is the shape this answers — a refusal, an account
+// limit, an exhausted set of retries against a provider that would not serve
+// this model — and none of those says one word about the brief.
+//
+// TWO ARE DELIBERATELY EXCLUDED:
+//
+//   - A CUT THE TURN ALREADY ANSWERED. A stream cut over and over has already
+//     walked the fallback chain inside the turn that died (loop.go), so the
+//     first model this would move to is the model that just failed there. A
+//     whole second worker to re-learn that is the most expensive way to find out
+//     nothing.
+//   - A CONTEXT OVERFLOW, which is a fact about the transcript. The answer to it
+//     is a shorter conversation, which the turn loop already tries; another
+//     model with another window is a guess dressed as a rescue.
+func terminalProviderFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, isCut := provider.CutFrom(err); isCut {
+		return false
+	}
+	if isContextOverflow(err.Error()) {
+		return false
+	}
+	var refusal *provider.RefusalError
+	if errors.As(err, &refusal) {
+		return true
+	}
+	var api *provider.APIError
+	return errors.As(err, &api)
+}
+
+// nextNodeModel is where a node goes when the model it is on cannot answer: the
+// ADAPTER'S OWN CHAIN, the same one a conversation's turn hops along and the
+// same one an endpoint refusal walks (internal/provider's endpoints.go).
+//
+// One spelling of "the next model" for the whole binary. A second list here —
+// the worker tier, a catalog guess of this file's own — would be a second answer
+// to a question already answered, and the first thing to drift.
+//
+// Empty is A MOVE THAT IS ABSENT rather than one that fails: a build with no
+// chain, or `--one-model`, and the node fails on the error it always failed on.
+func (a *Agent) nextNodeModel(node *TaskNode) (string, bool) {
+	chain, ok := a.client.(modelChain)
+	if !ok {
+		return "", false
+	}
+	options := chain.FallbackModels(node.runModel())
+	if len(options) == 0 {
+		return "", false
+	}
+	return options[0], true
+}
+
+// mergePaths adds what a second worker wrote to what the first one did, in
+// order and without repeats. The working copy is the same one, so a file the
+// first run saved is still the node's leavings whether or not the second run
+// touched it again.
+func mergePaths(kept, added []string) []string {
+	if len(kept) == 0 {
+		return added
+	}
+	seen := make(map[string]bool, len(kept))
+	for _, path := range kept {
+		seen[path] = true
+	}
+	for _, path := range added {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		kept = append(kept, path)
+	}
+	return kept
 }

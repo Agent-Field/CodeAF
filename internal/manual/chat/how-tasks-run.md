@@ -771,6 +771,32 @@ Row 3 is checked before it is written down: a task that hit a limit is judged ag
 acceptance one more time, and if the work holds it lands **done** at row 10 instead, merged,
 with no `stopped:` line anywhere in the report.
 
+**Row 6 gets one more go, on a different model.** When the worker ended because the
+*provider* could not answer — nothing serving the model would take the request, an account
+limit, a set of retries the provider never cleared — the task has learned nothing about the
+work, and the working copy it prepared is the expensive part. So it **runs again once**, in
+the same working copy, on the same brief, on the next model in your `fallback models` row.
+Its row says `model <first> could not answer; using <second>` while it runs, and the report
+says it either way it ends:
+
+```
+openai/gpt-5 stopped answering, so this ran again on openai/gpt-5-mini
+```
+
+Three things it deliberately does not do. It never moves for a **tool** that failed — a
+failed call is a result the worker reads and goes on from, and it never ends a task. It
+never moves for work that is merely **incomplete** — that is the check's verdict, and
+re-rolling a model on it would be guessing at the answer. And it never moves for a reply
+that kept **going quiet**, because that turn already moved to another model on its own (see
+*Models, context, and what it costs*) and doing it again would spend a whole second worker
+learning the same thing.
+
+**Once per task.** The second failure is real, and the report names both models. With no
+chain to move to — or under `--one-model` — the task fails on the error it always failed on.
+The id the task was **admitted** with is not overwritten by any of this: a rescue is not a
+choice somebody made, and picking a model yourself inside the task's own room still outranks
+it and clears the line.
+
 In rows 3 to 7 the task's **own last words are kept underneath** the one-line reason, and
 the branch is kept — with the work committed onto it. A task that was stopped mid-flight
 still hands over the files it produced: they are listed under `changed:` and the branch is
