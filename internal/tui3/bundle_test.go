@@ -1593,8 +1593,8 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 	a.inputTokens, a.cacheRead = 100_000, 89_000
 
 	// Before a turn has been priced there is nothing to claim: the rate alone.
-	if got := a.warmSegment(); got != "⟲ 89%" {
-		t.Fatalf("the segment reads %q before any priced turn, want ⟲ 89%%", got)
+	if got := a.warmSegment(); got != "⟲ 89% cached" {
+		t.Fatalf("the segment reads %q before any priced turn, want ⟲ 89%% cached", got)
 	}
 
 	// Two turns, each 9,800 cached tokens at a nine-dollar-per-million gap:
@@ -1605,7 +1605,7 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 		t.Fatalf("cacheSaved = %v after two turns, want %v", a.cacheSaved, want)
 	}
 	got := a.warmSegment()
-	if got != "⟲ saved $0.1764 · 89%" {
+	if got != "⟲ saved $0.1764 · 89% cached" {
 		t.Fatalf("the segment reads %q, want the cash then the rate", got)
 	}
 	if line := plain(a.status(120)); !strings.Contains(line, got) {
@@ -1622,8 +1622,8 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 	if bare.cacheSaved != 0 {
 		t.Fatalf("an unpriced turn banked %v", bare.cacheSaved)
 	}
-	if got := bare.warmSegment(); got != "⟲ 89%" {
-		t.Fatalf("the unpriced segment reads %q, want ⟲ 89%%", got)
+	if got := bare.warmSegment(); got != "⟲ 89% cached" {
+		t.Fatalf("the unpriced segment reads %q, want ⟲ 89%% cached", got)
 	}
 
 	// The saving is a fact about ONE conversation: the next one does not open
