@@ -220,13 +220,49 @@ what it is about to call.
 
 ## Some accounts bring their own tools
 
-Notion, Linear, Sentry, Atlassian and Slack sign in through a browser the way
-Google does, and then they do one thing the others do not: **they say for
-themselves what they can do**. Aforge asks the account what it brings the moment
-it picks it up, and what comes back — search this, open that, file the other —
-is what it holds for the rest of the conversation. None of that list is written
-into aforge, so an account that gains a tool next month is an account aforge
-picks that tool up from, with nothing to change here.
+Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
+GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
+Neon, Netlify, Notion, PayPal, PostHog, Railway, Sanity, Sentry, Supabase and
+Todoist sign in through a browser the way Google does, and then they do one
+thing the others do not: **they say for themselves what they can do**. Aforge
+asks the account what it brings the moment it picks it up, and what comes back —
+search this, open that, file the other — is what it holds for the rest of the
+conversation. None of that list is written into aforge, so an account that
+gains a tool next month is an account aforge picks that tool up from, with
+nothing to change here.
+
+| Service | Address | What it brings |
+| --- | --- | --- |
+| Airtable | `https://mcp.airtable.com/mcp` | your bases, tables and records |
+| Atlassian | `https://mcp.atlassian.com/v1/mcp/authv2` | Jira issues and Confluence pages |
+| Buildkite | `https://mcp.buildkite.com/mcp` | your pipelines, builds and logs |
+| Calendly | `https://mcp.calendly.com` | your event types, availability and scheduled meetings |
+| Canva | `https://mcp.canva.com/mcp` | your designs, folders and brand kits |
+| CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
+| ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
+| Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
+| Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
+| Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
+| Hugging Face | `https://huggingface.co/mcp` | your models, datasets and Spaces |
+| Klaviyo | `https://mcp.klaviyo.com/mcp` | your campaigns, flows and audiences |
+| LaunchDarkly | `https://mcp.launchdarkly.com/mcp/launchdarkly` | your feature flags, segments and environments |
+| Linear | `https://mcp.linear.app/mcp` | your issues, projects and cycles |
+| Miro | `https://mcp.miro.com` | your boards, frames and notes |
+| Neon | `https://mcp.neon.tech/mcp` | your projects, branches and queries |
+| Netlify | `https://netlify-mcp.netlify.app/mcp` | your sites, deploys and domains |
+| Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
+| PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
+| PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Railway | `https://mcp.railway.com/` | your projects, services and deployments |
+| Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
+| Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
+| Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
+| Todoist | `https://ai.todoist.net/mcp` | your tasks, projects and labels |
+
+**All 26 work with zero setup here.** GitLab may need its admin to turn its AI
+features on first, and an Airtable enterprise account may need its admin to
+allow the connection first.
 
 Two things follow from a list nobody here wrote:
 
