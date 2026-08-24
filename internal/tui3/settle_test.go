@@ -214,3 +214,50 @@ func TestBelowThe256RungAStreamingReplyIsUnpainted(t *testing.T) {
 		}
 	}
 }
+
+// ONE IDEOLOGY, EVERY CHAT SURFACE — A NODE'S ROOM SETTLES THE WAY THE
+// CONVERSATION DOES.
+//
+// tui3 draws a conversation in more than one place: the transcript, a node's
+// room, and a run's node journal inside one (room.go, roomorch.go). They are the
+// same blocks drawn by the same renderers through [deck], which is what is
+// SUPPOSED to make a law like this one hold everywhere for free — and "supposed
+// to" is exactly the claim a test is for. A live tier that lit only the
+// transcript would be a surface where the same event means two different things
+// depending on which page a person happened to be standing on.
+//
+// The path is proved through [app.entryRows] rather than [app.assistantRows]
+// directly, because the cache is half of what settling IS: [app.roomCloseLive]
+// has to mark the block stale as well as settled, or the page keeps the rows it
+// was drawn with mid-stream and the ink never dries.
+func TestANodesRoomSettlesLikeTheConversation(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.width, a.height = 80, 40
+	const head = "The parser is fixed.\n"
+	a.room = &taskRoom{
+		id: 7, title: "the node", live: 0, think: -1,
+		unfolded: map[int]bool{}, workOpen: map[int]bool{},
+		entries: []entry{{
+			kind:  entryAssistant,
+			text:  head + "It was reading the length prefix twice",
+			mdCut: len(head),
+		}},
+	}
+
+	rows := a.entryRows(a.room.deck(), 0, 60)
+	if !strings.Contains(strings.Join(rows, "\n"), liveSGR()) {
+		t.Fatalf("a node's growing edge is not lit, and the conversation's is:\n%s",
+			strings.Join(rows, "\n"))
+	}
+
+	a.roomCloseLive()
+	settled := a.entryRows(a.room.deck(), 0, 60)
+	if strings.Contains(strings.Join(settled, "\n"), liveSGR()) {
+		t.Fatalf("a node's finished answer kept the live tier — [app.roomCloseLive] "+
+			"must mark the block stale as well as settled, or the page hands back "+
+			"the rows it built mid-stream:\n%s", strings.Join(settled, "\n"))
+	}
+	if !strings.Contains(plain(strings.Join(settled, "\n")), "length prefix twice") {
+		t.Fatalf("the settled page lost the answer:\n%s", strings.Join(settled, "\n"))
+	}
+}
