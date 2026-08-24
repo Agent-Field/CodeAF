@@ -128,6 +128,14 @@ const toolWindow = 3
 // showsWork says this page IS the work rather than a conversation about it, so
 // nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
 // Only a room sets it.
+//
+// toolTail is how many of a folded turn's calls stay on screen, and zero means
+// [toolWindow]. Only a room sets it, and it sets it from the height of its own
+// view (room.go's [app.roomToolTail]) — because in a room the cluster IS the
+// page, and a fold that kept three calls of a hundred-and-twenty drew four rows
+// over a forty-row void with the history a person came to read nowhere in the
+// row list at all. The conversation leaves it zero on purpose: there the fold
+// sits among prose, and three is the designed compactness.
 type deck struct {
 	entries     []entry
 	unfolded    map[int]bool
@@ -135,6 +143,17 @@ type deck struct {
 	clock       bool
 	showsWork   bool
 	runningTurn int
+	toolTail    int
+}
+
+// window is the number of a folded turn's calls this deck keeps on screen: its
+// own tail where it set one, [toolWindow] otherwise. It is the ONE place the
+// two are reconciled, so a renderer never has to know which list it is drawing.
+func (d deck) window() int {
+	if d.toolTail > 0 {
+		return d.toolTail
+	}
+	return toolWindow
 }
 
 // conversation is the deck the transcript draws.

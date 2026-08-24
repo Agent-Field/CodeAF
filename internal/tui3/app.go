@@ -3824,7 +3824,10 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 }
 
 // unfold is ctrl+o: every call of the current turn on its own line, or back to
-// the last [toolWindow] of them.
+// the last [toolWindow] of them — or, on a task's page, the last screenful
+// (render.go's [deck.window]). A scroll up at the top of a room comes through
+// here too (room.go's [app.roomUnfoldAtTop]), so the key, the click and the
+// wheel all write the same map.
 // It folds the turn of whichever list is on screen — a room's page folds its
 // own clusters, from its own map, because the key names the thing being read
 // (render.go's [app.bodyDeck], room.go).
