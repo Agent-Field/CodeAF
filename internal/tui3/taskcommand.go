@@ -173,7 +173,16 @@ const taskWideNote = "the work looks wide · one worker starts, and it can split
 type preflight struct {
 	note  string
 	brief string
-	at    time.Time
+	// name is the block's identity line where there are no person-words to
+	// quote: a PROPOSAL the person just approved. It is the card's own name, so
+	// the block and the card that raised it can never call the work two things.
+	name string
+	// taskID owns the wait on the proposal road, and zero is the typed command's
+	// wait. The two roads settle differently — a command's door answers with a
+	// message, a proposal's task simply starts existing on the update lane — and
+	// the id is how the second settle finds its own block and no other.
+	taskID uint64
+	at     time.Time
 }
 
 // live reports whether a wait is up. It is the frame's eighth reason to paint.
@@ -184,6 +193,34 @@ func (a *app) beginPreflight(note, brief string) {
 	a.wait = preflight{note: note, brief: brief, at: a.now()}
 	a.follow()
 	a.touch()
+}
+
+// beginProposalWait is the SAME forming block raised by the OTHER door: a
+// proposal card the person just answered yes. The engine shapes the brief
+// before the task exists (internal/session's task_shape.go), which is the same
+// pause the typed command stands in — and until this existed the yes was
+// followed by seconds of nothing, the exact dead air the block was built to
+// end. One forming vocabulary, two lawful entrances; the card itself stays,
+// because it is a spend gate and not a rendering.
+func (a *app) beginProposalWait(card *taskCard) {
+	name := card.name
+	if name == "" {
+		name = card.title
+	}
+	a.wait = preflight{note: taskShapingNote, name: name, taskID: card.id, at: a.now()}
+	a.follow()
+	a.touch()
+}
+
+// settleProposalWait collapses a proposal's forming block the moment its task
+// exists at all. Any update for the id is that moment: queued and running mean
+// admitted, and a failure is a fact the task's own machinery announces — the
+// block was only ever about the pause before there was anything to point at.
+func (a *app) settleProposalWait(id uint64) {
+	if id != 0 && a.wait.taskID == id {
+		a.wait = preflight{}
+		a.touch()
+	}
 }
 
 // endPreflight stops the clock and takes the line away. The two halves are one
@@ -227,16 +264,26 @@ func (a *app) preflightRows(width int) []string {
 	}
 	rail := "▏ "
 	room := width - 2
-	brief := wrap(strconv.Quote(a.wait.brief), room)
-	if len(brief) > 2 {
-		brief = brief[:2]
-		brief[1] = fit(brief[1], room)
-		if !strings.HasSuffix(brief[1], "…") {
-			brief[1] = fit(brief[1]+"…", room)
+	// The identity line is the person's words when there are person's words —
+	// quoted, because they are verbatim — and the task's own name when the block
+	// was raised by an approved proposal, plain, because the name is the
+	// surface's word and wearing quotes would claim somebody typed it.
+	var identity []string
+	switch {
+	case a.wait.brief != "":
+		identity = wrap(strconv.Quote(a.wait.brief), room)
+		if len(identity) > 2 {
+			identity = identity[:2]
+			identity[1] = fit(identity[1], room)
+			if !strings.HasSuffix(identity[1], "…") {
+				identity[1] = fit(identity[1]+"…", room)
+			}
 		}
+	case a.wait.name != "":
+		identity = []string{fit(a.wait.name, room)}
 	}
 	out := []string{a.pal.dim(rail + "task")}
-	for _, row := range brief {
+	for _, row := range identity {
 		out = append(out, a.pal.dim(rail+row))
 	}
 	out = append(out, a.pal.dim(rail+mark+" "+fit(line, room-2)))

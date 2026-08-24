@@ -2787,6 +2787,12 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.standingUpdate(ev)
 
 	case session.EventTaskUpdate:
+		// A PROPOSAL'S FORMING BLOCK ENDS HERE, because this is the first breath
+		// the approved task takes on any lane: an update for its id means the
+		// shaping pause the block was about is over (taskcommand.go's
+		// [app.settleProposalWait]). It runs before the fold so the collapse and
+		// the row it collapses into land in the same frame.
+		a.settleProposalWait(ev.Task.ID)
 		// The same event also arrives on the standing lane; [app.taskUpdate]'s
 		// (id, state) de-dup is what makes taking both harmless (task.go).
 		//

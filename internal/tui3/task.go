@@ -1181,6 +1181,15 @@ func (a *app) answerTask(approve bool, redirect string) {
 		}
 		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect, Model: chosen})
 	}
+	// A YES OPENS THE SAME WAIT THE TYPED COMMAND STANDS IN. The engine shapes
+	// the approved brief before the task exists, and the person who just said
+	// yes is owed the same forming block a person who typed /task gets — one
+	// vocabulary for one pause, whichever door opened it (taskcommand.go's
+	// [app.beginProposalWait]). A no and a redirect raise nothing: there is no
+	// task coming to wait for.
+	if approve && redirect == "" {
+		a.beginProposalWait(card)
+	}
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()

@@ -410,3 +410,48 @@ func TestNoTaskCommandDrawsNoFormingBlock(t *testing.T) {
 		t.Fatalf("idle surface drew a forming block: %q", plainRowsText(got))
 	}
 }
+
+// THE OTHER DOOR WEARS THE SAME BLOCK. A proposal the person approves stands in
+// the identical shaping pause the typed command does, so the yes raises the one
+// forming block — the card's own name on the identity line, unquoted, because
+// nobody typed it — and the first update for that task's id collapses it.
+func TestAnApprovedProposalRaisesTheFormingBlockUntilItsTaskExists(t *testing.T) {
+	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
+	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
+	a.answerTask(true, "")
+	frame := plainRowsText(a.preflightRows(60))
+	if !strings.Contains(frame, "▏ task") || !strings.Contains(frame, "▏ adapter index") {
+		t.Fatalf("the approved proposal raised no forming block:\n%s", frame)
+	}
+	if strings.Contains(frame, `"adapter index"`) {
+		t.Fatalf("the card's name wears quotes nobody typed:\n%s", frame)
+	}
+	if !strings.Contains(frame, taskShapingNote) {
+		t.Fatalf("the block does not say what it is waiting on:\n%s", frame)
+	}
+	// An update for a DIFFERENT task settles nothing; the first breath of this
+	// one collapses the scaffold in the same frame its row lands.
+	a.settleProposalWait(7)
+	if !a.wait.live() {
+		t.Fatal("another task's update stole the block")
+	}
+	a.settleProposalWait(41)
+	if a.wait.live() {
+		t.Fatal("the block outlived its task's first update")
+	}
+	if got := plainRowsText(a.preflightRows(60)); got != "" {
+		t.Fatalf("the scaffold survived the collapse: %q", got)
+	}
+}
+
+// A no is not a pause: nothing is coming, so nothing forms.
+func TestADeclinedProposalRaisesNoFormingBlock(t *testing.T) {
+	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	a.task = &taskCard{id: 42, title: "index the adapters", name: "adapter index"}
+	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
+	a.answerTask(false, "")
+	if a.wait.live() {
+		t.Fatal("a declined proposal left a forming block on screen")
+	}
+}

@@ -11,6 +11,14 @@ other live rows. When the start succeeds, the block is replaced in that same fra
 the normal started-task row and the task appears on its rail. When it fails, the block is
 replaced by the error sentence. The hairline never remains on settled work.
 
+The same block appears when you say yes to a task the model proposed on its card:
+approving is followed by the same short pause while the brief is prepared, so the block
+rises with the task's name on it — unquoted, because the name is aforge's word rather
+than something you typed — and it collapses the moment the task appears on the rail.
+Saying no, or redirecting the proposal, raises nothing. One forming look for both ways a
+task begins; only the card, which asks before the model spends your money, is particular
+to the proposed one.
+
 ## Does a task touch my working copy?
 
 No. Each task gets its own checkout of the repository, on its own branch, so you can keep
