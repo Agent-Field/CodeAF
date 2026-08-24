@@ -225,8 +225,14 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
-`esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
-waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+`esc interrupt` while a turn is running, `enter waits · shift+enter stops and sends` while
+a turn is running and you have typed something, `esc stops and sends` while a message of
+yours is waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+
+It only ever names a key that **works right now**, and that includes the terminal: the
+`shift+enter` line is not drawn on a terminal that cannot tell that chord apart from a
+plain `enter`, because a hint for a key that could never arrive would be the surface
+lying to you. See the keys page, "Interrupt and say something new in one key".
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's

@@ -30,6 +30,11 @@ import (
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
+// AND THE FIRST TWO OF THOSE AS ONE ACT: `shift+enter` parks the draft and
+// stops the answer in one gesture, which is the way somebody actually
+// interrupts — by speaking (bargein.go). It is built ON this queue rather than
+// beside it, so everything below is what happens to the message afterwards.
+//
 // ONE AT A TIME, in the order they were typed — the session's own law for its
 // follow-up queue (internal/session's agent.go), said about this queue: each
 // finished turn sends exactly one parked message, and the rest wait for the end
@@ -196,7 +201,12 @@ func (a *app) recallParkedAt(i int) bool {
 // parkedHint is the dim line under the block, in the three pieces it is trimmed
 // down through on a narrow frame. Each piece is dropped from the right, because
 // what the message is DOING outranks what you can do about it.
-var parkedHint = []string{"waits for this answer", "esc stops and sends", "↑ or click to edit"}
+// The middle piece is interpolated from [bargeSendWord] rather than spelled
+// here, because the same three words are now what the hint slot says about the
+// CHORD that does this in one gesture (bargein.go). One phrase, one act, and no
+// second copy to drift: `esc stops and sends` and `shift+enter stops and sends`
+// have to stay the same sentence about the same thing.
+var parkedHint = []string{"waits for this answer", "esc " + bargeSendWord, "↑ or click to edit"}
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim
 // line. Zero when nothing is parked, which is every frame of an ordinary
