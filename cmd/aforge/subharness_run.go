@@ -244,11 +244,15 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 		}
 		// The one sentence, written once, in the one place both surfaces read it
 		// from. Nothing here calls this a failure or a fallback where a person can
-		// see it: the step needed a closer look and it was handled the long way.
-		line := exec.DeoptLine(because)
+		// see it: the step needed a closer look and it was handled the long way —
+		// or, where the long way would reach past the ceiling this program was
+		// approved under, it says that instead and the run stops there
+		// ([exec.DeoptHeld] carries the argument). Asked before anything is
+		// announced, so stderr and the journal say what actually happens.
+		line := exec.DeoptLineFor(manifest, because)
 		fmt.Fprintln(run.stderr, line)
 		_ = exec.Record(run.journal, exec.JournalEntry{At: time.Now(), Call: exec.CallLog, Note: line})
-		result, err = exec.Deopt(ctx, run.registry, run.input, env, because)
+		result, err = exec.Deopt(ctx, run.registry, manifest, run.input, env, because)
 		if err != nil {
 			// There is no fourth worker under the generalist. This is the "could
 			// not be made to happen" ending, and it leaves through main's own

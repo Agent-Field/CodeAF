@@ -1606,12 +1606,23 @@ deliverable made out of all of it. A task never finishes while a part of it is s
 - **There must be enough separate items.** Below six, one worker doing them in order beats
   paying for a copy of the repository, a check and a wait for each part. This was measured,
   not guessed: twelve image files won, four modules and three bugs lost.
-- **Somebody has to be free to pick the parts up.** Parts that could only queue behind work
-  that is already running would cost a copy of the repository each and save nothing.
+- **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
+  nothing else — the worker asking does not count, because it hands its lane back the
+  moment it starts waiting on its parts. With every lane busy the parts would be done one
+  at a time anyway and each would still cost a copy of the repository, so the split is not
+  taken and the worker is told to ask again once something finishes. With `task.parallel`
+  set to exactly **1** there is no second pair of hands at all, and the worker is told
+  plainly that asking again will not change it.
 
 If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
 the worker carries straight on as one worker. That is why this costs nothing on ordinary
 work: a task that is not wide is never split, and finding that out is free.
+
+**A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
+refuse a split. If the machine is over one of them when the work divides, the split happens
+and the parts simply **wait** — the same wait any queued task does, drawn as
+`waiting · machine busy` — and they start themselves as soon as the machine clears. The
+worker is told so in its receipt and has nothing to come back for.
 
 **You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
 than one job in your words writes one dim line before the work starts —

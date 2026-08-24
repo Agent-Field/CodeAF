@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -351,6 +352,69 @@ func TestATaskShapedYesAdmitsANode(t *testing.T) {
 	}
 	if strings.TrimSpace(node.spec.acceptance) == "" {
 		t.Fatal("a node was admitted with no acceptance at all")
+	}
+}
+
+// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK ITS CARD STARTS. This was the one
+// model-decided door for wide work that admitted UNARMED: the judge is asked for
+// a self-contained goal and never for a count, so the only signal reaching
+// [Agent.armDivision] here was the text gate — which reads a number only beside
+// one of eighteen item-nouns and therefore counts zero on almost every goal a
+// judge writes. The verdict now carries the judgement it was already making.
+func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
+	const verdict = `{"work": true, "shape": "task", "wide": true, "goal": "research the pricing tiers of every major cloud provider and say where they differ", "why": "research across many sources"}`
+	// THE GOAL ARMS NOTHING BY ITSELF, deliberately: if the node comes out armed,
+	// the judge's own word is the only thing that could have armed it.
+	const goal = "research the pricing tiers of every major cloud provider and say where they differ"
+	if splitgate.WorthIt(goal) {
+		t.Fatal("this goal arms itself, so it cannot show that the judge's verdict armed it")
+	}
+
+	completer := &routeCompleter{answer: "Here is what I would do.", verdict: verdict}
+	agent, _ := routeAgent(t, completer)
+	agent.config.Divide = true
+	stubbedGraph(agent, func(node *TaskNode) { node.graph.complete(node, TaskDone) })
+
+	events, err := agent.Submit(context.Background(), routeAsk)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	drainAnsweringRoute(t, agent, events, true)
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if !node.spec.wide {
+		t.Fatal("the judge said the work was wide and the spec did not carry it")
+	}
+	if !node.dividing() {
+		t.Fatal("the judge's wide yes did not arm the task its card started")
+	}
+}
+
+// AND A YES THAT SAID NOTHING ABOUT BREADTH ARMS NOTHING. The field is the
+// judge's own reading and never a default: work that is one job however long it
+// takes starts one worker with the belt it has always had.
+func TestARouteYesWithoutWidthArmsNothing(t *testing.T) {
+	const verdict = `{"work": true, "shape": "task", "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
+	completer := &routeCompleter{answer: "Here is what I would do.", verdict: verdict}
+	agent, _ := routeAgent(t, completer)
+	agent.config.Divide = true
+	stubbedGraph(agent, func(node *TaskNode) { node.graph.complete(node, TaskDone) })
+
+	events, err := agent.Submit(context.Background(), routeAsk)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	drainAnsweringRoute(t, agent, events, true)
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if node.spec.wide || node.dividing() {
+		t.Fatal("a verdict that said nothing about breadth armed the task anyway")
 	}
 }
 

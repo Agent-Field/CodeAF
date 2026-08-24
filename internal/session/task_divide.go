@@ -197,6 +197,22 @@ func (a *Agent) armDivision(spec taskSpec) bool {
 	if a == nil || !a.config.Divide {
 		return false
 	}
+	// ONLY ORDINARY WORK MAY DIVIDE, AND THE KIND IS ASKED BEFORE ANY OF THE
+	// THREE SIGNALS ARE. A harness DESIGN is two model calls producing one JSON
+	// page, in a room, with no worktree and nothing to hand out
+	// (harness_task.go); a saved program's RUN has its steps written down
+	// already (subharness_run.go). Neither has parts, and neither has a worker's
+	// belt to put the verb on.
+	//
+	// IT MATTERS BECAUSE THE THIRD SIGNAL READS TEXT. A design goal saying "a
+	// harness that checks the 8 endpoint files" enumerates enough items for
+	// [splitgate.WorthIt], and a design thread satisfies mayFanOut — so without
+	// this line the page writer would be handed divide_work the moment the road
+	// was switched on, and it spawns workers in worktrees. The kind is settled
+	// at admission and never changes (task_contract.go's [TaskKind]).
+	if spec.kind() != "" {
+		return false
+	}
 	if spec.wide {
 		return true
 	}
@@ -252,10 +268,28 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 	if splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence) {
 		return divisionTooNarrow(parsed.Evidence), false, nil
 	}
-	// GATE TWO: THE FREE HANDS. Parts that can only queue behind lanes that are
-	// already full buy no time at all and cost a copy of the repository each.
+	// GATE TWO: THE FREE HANDS, AND IT IS THE LANES ONLY.
+	//
+	// Parts that can only queue behind lanes that are already full would still be
+	// done one at a time, and paying for a copy of the repository apiece buys
+	// nothing — that is the argument, and it is about the person's own
+	// task.parallel cap and nothing else.
+	//
+	// THE MACHINE'S OWN HOLD IS NOT A REASON TO REFUSE A DIVISION, and this is
+	// where the two stopped being one question. A busy machine is temporary and
+	// the engine already knows how to wait for it: [TaskGraph.runFrontier] holds
+	// a queued node on exactly this reading, announces it as `machine busy`, and
+	// [TaskGraph.armPoll] lifts it by itself five seconds later. Work admitted
+	// through propose_task has always been treated that way. A division that
+	// refused instead made the DEFAULT ROAD FOR WIDE WORK fail closed on a
+	// condition under which the exception merely queues — and it left the road
+	// depending on a model remembering to ask again, which is the whole thing
+	// armPoll exists so that nothing has to do.
+	//
+	// So the parts are admitted, the frontier holds them, and the receipt says
+	// so ([divisionDone]).
 	if graph.freeHands() <= 0 {
-		return divisionNoHands(len(parsed.Parts)), false, nil
+		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), false, nil
 	}
 
 	// THE SLOTS ARE TAKEN FOR THE WHOLE DIVISION BEFORE ANY OF IT IS ADMITTED.
@@ -308,7 +342,7 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 		ids = append(ids, id)
 		titles = append(titles, part.Title)
 	}
-	return divisionDone(ids, titles), false, nil
+	return divisionDone(ids, titles, graph.machineBusy()), false, nil
 }
 
 // parseDivideArguments reads one call and says, in plain words, what is wrong
@@ -366,10 +400,31 @@ func divisionTooNarrow(evidence string) string {
 		splitgate.Items(evidence), splitgate.Floor)
 }
 
-// divisionNoHands is the answer to a division nobody is free to pick up.
-func divisionNoHands(parts int) string {
+// divisionNoLane is the answer to a division there is no LANE for: this
+// session's own task.parallel cap has nothing free beside the worker asking.
+//
+// IT SAYS WHETHER ASKING AGAIN COULD EVER HELP, because that is the only thing
+// the worker's next move turns on and the two cases are genuinely different
+// facts. With a cap above one, a lane frees the moment something finishes and
+// the work really can be split in a minute. With a cap of exactly one there is
+// no second pair of hands in this session at all and there never will be, so
+// telling a worker to ask again later would be sending it back to a door that
+// is never going to open (the asker's own lane is deliberately not counted —
+// see [TaskGraph.freeHands]).
+//
+// It does NOT say a waiting part costs a copy of the repository, because that is
+// not true: a worktree is made when a part STARTS ([Agent.workTaskNode]) and
+// never when it is admitted. What the cap is really protecting against is a
+// division whose parts would run one at a time anyway, which is a division that
+// bought no time and paid three worktrees for it.
+func divisionNoLane(parts int, limit int) string {
+	if limit == 1 {
+		return fmt.Sprintf(
+			"not split: this session runs one task at a time, so there is no second pair of hands to give the %d parts to — they would be done one after another exactly as you would do them, and each would cost its own copy of the repository. Carry on with the work in your own hands; asking again will not change this.",
+			parts)
+	}
 	return fmt.Sprintf(
-		"not split: there is no free hand to take the %d parts right now, and parts that can only wait would cost a copy of the repository each and save nothing. Carry on with the work in your own hands; ask again later if it is still too wide for one.",
+		"not split: every lane is busy right now, so the %d parts would be done one at a time anyway and each would cost its own copy of the repository. Carry on with the work in your own hands; ask again once something finishes, if it is still too wide for one.",
 		parts)
 }
 
@@ -378,22 +433,34 @@ func divisionNoHands(parts int) string {
 // this node stays open and every report is put in front of it as it lands
 // ([runTaskChild]'s tail loop) — and a worker that sat on a wait would spend its
 // whole allowance doing nothing.
-func divisionDone(ids []uint64, titles []string) string {
+//
+// AND IT SAYS WHEN THE PARTS ARE NOT STARTING YET. A machine carrying more than
+// the load or the memory floor allows holds every new node
+// ([TaskGraph.runFrontier]), so the parts are admitted and waiting rather than
+// working — and a receipt that said nothing about it would have a worker reading
+// "split into three parts" while three cards sat still. It lifts by itself
+// ([TaskGraph.armPoll]), which is the half worth saying: there is nothing for
+// the worker to do about it and nothing for it to come back and re-ask.
+func divisionDone(ids []uint64, titles []string, machineBusy bool) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "split into %d parts:", len(ids))
 	for i, id := range ids {
 		fmt.Fprintf(&out, "\n  %d — %s", id, titles[i])
 	}
 	out.WriteString("\nEach works from its own brief, in its own copy of the repository, and its branch comes home into yours. Keep working — do not wait for them; each report arrives here when it lands, and this work is not finished until you have folded them into one deliverable.")
+	if machineBusy {
+		out.WriteString("\nThis machine is busy right now, so the parts are waiting for it rather than working. They start themselves as soon as it clears; there is nothing for you to do about that and nothing to come back for.")
+	}
 	return out.String()
 }
 
 // ── how many hands are free ─────────────────────────────────────────────────
 
-// freeHands is how many more workers could START right now, not counting the
-// one asking. It is the session engine's answer to the resident's slot probe
-// (internal/resident's runner.go), asked of the two ceilings this scheduler
-// actually has ([TaskGraph.runFrontier] holds a ready node on exactly these).
+// freeHands is how many more workers this session's own cap could START right
+// now, not counting the one asking. It is the session engine's answer to the
+// resident's slot probe (internal/resident's runner.go), asked of the ceiling a
+// person set ([TaskGraph.runFrontier] holds a ready node on the same one, as
+// `slot`).
 //
 // THE ASKER'S OWN LANE IS NOT COUNTED, and that is the whole difference between
 // this being a real gate and being a formality. A dividing worker hands its
@@ -404,16 +471,19 @@ func divisionDone(ids []uint64, titles []string) string {
 //
 // NO CAP MEANS HANDS ENOUGH. With task.parallel unset there is no count to
 // subtract from, so the answer is the most parts one piece of work could ever
-// ask for; the machine's own ceiling is asked first and is what says no on a
-// box that is genuinely loaded.
+// ask for.
+//
+// IT ASKS THE LANES AND NOT THE MACHINE, and the two used to be one answer here.
+// A hand held by the person's cap and a hand held by a loaded box are different
+// facts with different endings: the cap is a standing decision about how much
+// this session may run at once, and the machine is a passing condition the
+// frontier already waits out and lifts by itself ([TaskGraph.armPoll]). Folding
+// the second one into this count made a division fail closed where the same
+// reading merely queues a proposal, and made the refusal say "no free hand" over
+// a session whose lanes were all empty. The machine is asked separately, by
+// [TaskGraph.machineBusy], and it is not a refusal.
 func (g *TaskGraph) freeHands() int {
 	if g == nil {
-		return 0
-	}
-	// Asked before the lock, exactly as the frontier asks it: it is two small
-	// file reads behind a one-second cache, and no reading of /proc belongs
-	// under the lock that everything announcing a node holds.
-	if g.governor.holds() {
 		return 0
 	}
 	g.mu.Lock()
@@ -425,4 +495,27 @@ func (g *TaskGraph) freeHands() int {
 		return free
 	}
 	return 0
+}
+
+// machineBusy is the admission governor's own reading: this box is carrying more
+// than the load or the memory floor allows, so nothing new starts until it
+// clears (task_pressure.go).
+//
+// Asked before any lock, exactly as [TaskGraph.runFrontier] asks it: it is two
+// small file reads behind a one-second cache, and no reading of /proc belongs
+// under the lock that everything announcing a node holds.
+func (g *TaskGraph) machineBusy() bool {
+	return g != nil && g.governor.holds()
+}
+
+// laneLimit is the person's own task.parallel cap, or 0 for no cap. It is read
+// for one reason: a refusal has to know whether a lane could ever come free
+// ([divisionNoLane]), and a cap of exactly one says it cannot.
+func (g *TaskGraph) laneLimit() int {
+	if g == nil {
+		return 0
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.limit
 }

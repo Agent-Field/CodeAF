@@ -419,7 +419,23 @@ func (e *ExecutorRunner) Executor() Executor { return e.executor }
 // partial as a finished deliverable, which is exactly the failure the Exhausted
 // field was added for. [Outcome.Overran] is the one question worth asking and it
 // asks both fields.
-func (e *ExecutorRunner) Run(ctx context.Context, input json.RawMessage, env Env) (RunResult, error) {
+//
+// THE ENV IS TAKEN AND NOT USED, AND THAT IS A FACT ABOUT WHAT AN EXECUTOR IS
+// rather than an oversight — it is named `_` so nobody reads it as a seam that
+// merely has not been wired yet. An [Executor] is a whole worker with its own
+// client and its own belt (linear.go), not a program stepping through host
+// calls: it never asks for a tool, a model call or a person, so there is nothing
+// here for the Env's doors to serve. The parameter stays because [Runner] is one
+// interface over both shapes, and [runSpend]'s own note says the same thing from
+// the ledger's side — a fronted leaf reports its spend and journals nothing.
+//
+// WHAT THAT COSTS IS PAID IN [Deopt] AND NOWHERE ELSE. Because this belt cannot
+// be filtered, a program's approved ceiling cannot be applied to a worker
+// reached through here — so the decision about whether the fallback may run at
+// all is taken before this function, on the program's own manifest
+// ([DeoptHeld]). Nothing about that decision belongs in here: this function
+// serves the ordinary path too, where the manifest IS this runner's own.
+func (e *ExecutorRunner) Run(ctx context.Context, input json.RawMessage, _ Env) (RunResult, error) {
 	var typed TaskInput
 	if len(input) > 0 && string(input) != "null" {
 		if err := json.Unmarshal(input, &typed); err != nil {

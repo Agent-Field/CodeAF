@@ -48,6 +48,17 @@ func testManifest(name, purpose string) exec.Manifest {
 	return exec.Manifest{SubharnessInfo: exec.SubharnessInfo{Name: name, Purpose: purpose}}
 }
 
+// testOpenManifest is [testManifest] with a ceiling that already reaches a
+// shell. The deopt tests need one: the general worker the long way hands to has
+// a shell, the files and the web and cannot be narrowed, so a program approved
+// under a tighter ceiling than that does not fall back at all
+// ([exec.DeoptHeld]). The held case is pinned by its own test below.
+func testOpenManifest(name, purpose string) exec.Manifest {
+	manifest := testManifest(name, purpose)
+	manifest.Whitelist = []string{"bash"}
+	return manifest
+}
+
 // headlessRegistry is a registry with no provider behind it. The generalist it
 // is built with is never run in these tests — where the long way is exercised, a
 // scripted runner is registered under the baseline's own name and the lookup
@@ -250,7 +261,7 @@ func TestAnUnknownSubharnessNamesTheTypoAndSaysWhatThereIs(t *testing.T) {
 func TestARunThatNeededACloserLookIsHandledTheLongWayWithTheOriginalInput(t *testing.T) {
 	const original = `{"brief":"reconcile the March statement"}`
 	program := &scriptedRunner{
-		manifest: testManifest("reconcile", "reconcile a bank statement against the ledger"),
+		manifest: testOpenManifest("reconcile", "reconcile a bank statement against the ledger"),
 		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
 			return exec.RunResult{FellBack: "this one needs the statement in the repository"}, nil
 		},
@@ -288,7 +299,7 @@ func TestARunThatNeededACloserLookIsHandledTheLongWayWithTheOriginalInput(t *tes
 func TestARunThatCouldNotBeMadeToHappenIsAlsoHandledTheLongWay(t *testing.T) {
 	const original = `{"brief":"reconcile the March statement"}`
 	program := &scriptedRunner{
-		manifest: testManifest("reconcile", "reconcile a bank statement against the ledger"),
+		manifest: testOpenManifest("reconcile", "reconcile a bank statement against the ledger"),
 		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
 			return exec.RunResult{}, errors.New("the bundle stopped halfway through")
 		},
@@ -316,7 +327,7 @@ func TestARunThatCouldNotBeMadeToHappenIsAlsoHandledTheLongWay(t *testing.T) {
 
 func TestARunWithNothingUnderItToFallBackOnCouldNotBeMadeToHappen(t *testing.T) {
 	program := &scriptedRunner{
-		manifest: testManifest("reconcile", "reconcile a bank statement against the ledger"),
+		manifest: testOpenManifest("reconcile", "reconcile a bank statement against the ledger"),
 		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
 			return exec.RunResult{}, errors.New("the bundle stopped halfway through")
 		},
@@ -340,6 +351,48 @@ func TestARunWithNothingUnderItToFallBackOnCouldNotBeMadeToHappen(t *testing.T) 
 	}
 	if strings.TrimSpace(stdout) != "" {
 		t.Errorf("nothing was produced and nothing may be printed as though it was, got %q", stdout)
+	}
+}
+
+// THE CEILING A PERSON APPROVED SURVIVES THE FALLBACK, on this door too. The
+// general worker the long way hands to has a shell, the files and the web and
+// cannot be narrowed, so a program approved under a tighter ceiling than that is
+// not handed to it: the run stops incomplete, in the person's own register, and
+// the generalist is never reached.
+func TestALongWayThatWouldReachPastTheCeilingIsNotTaken(t *testing.T) {
+	program := &scriptedRunner{
+		manifest: testManifest("reconcile", "reconcile a bank statement against the ledger"),
+		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+			return exec.RunResult{FellBack: "this one needs the statement in the repository"}, nil
+		},
+	}
+	generalist := &scriptedRunner{
+		manifest: testManifest(exec.LinearSubharness, ""),
+		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+			return exec.RunResult{Report: "reconciled by hand"}, nil
+		},
+	}
+	stdout, stderr, err := drive(t, headlessRegistry(t, program, generalist), "reconcile",
+		`{"brief":"reconcile the March statement"}`, nil)
+
+	var status exitStatus
+	if !errors.As(err, &status) || status != exitPartial {
+		t.Fatalf("a run that stopped without finishing leaves with %d, got %v", int(exitPartial), err)
+	}
+	if generalist.ran != 0 {
+		t.Fatalf("a program approved for nothing reached the general worker anyway, %d times", generalist.ran)
+	}
+	if !strings.Contains(stderr, exec.DeoptHeldWord) {
+		t.Errorf("the person was not told why nothing else was tried, got %q", stderr)
+	}
+	if strings.Contains(stderr, exec.DeoptWord) {
+		t.Errorf("the run claimed it was handled the long way, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "this one needs the statement in the repository") {
+		t.Errorf("the program's own reason is carried through, got %q", stderr)
+	}
+	if strings.Contains(stdout, "reconciled by hand") {
+		t.Errorf("the general worker's answer reached stdout for a run it never took: %q", stdout)
 	}
 }
 
