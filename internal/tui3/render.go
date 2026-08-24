@@ -238,6 +238,16 @@ func (a *app) layout(width int) []row {
 	// to promise and the marker is not laid out at all.
 	if line := a.earlierRow(width); line != "" && len(out) > 0 {
 		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
+	} else if len(out) > 0 {
+		// AND ONE ROW OF AIR WHERE THE CONVERSATION TRULY BEGINS. When the
+		// marker is up, its own trailing blank is this row; when the first
+		// block drawn IS the first thing ever said, the conversation used to
+		// open hard against the top of the frame — the person's `›` on the
+		// frame's first row, with less silence above the question than any
+		// block below it gets. It is a row of the SCROLLBACK rather than of the
+		// frame, so a long conversation carries it away with the history it
+		// belongs to and the reading view is unchanged.
+		out = append([]row{{entry: -1}}, out...)
 	}
 	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
 	// notes deck it is deliberately not part of. It takes the ordinary block gap
@@ -292,9 +302,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
-	// lands (task.go). Together they are the whole of the state this pass
-	// carries.
-	wasCluster, wasBlock := false, false
+	// lands (task.go). wasUser says it was THE PERSON'S OWN MESSAGE, and it buys
+	// the one blank this pass long owed: a turn is a change of speaker, and the
+	// reply — narration, a thinking block, a cluster, the chip of a folded turn —
+	// used to open on the very next row, wedged against the question the way no
+	// answer wedges against the block above it. Together the three are the whole
+	// of the state this pass carries.
+	wasCluster, wasBlock, wasUser := false, false, false
 	gap := func() {
 		if len(out) > 0 {
 			for range spacingBlockRows {
@@ -323,12 +337,19 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
 			open := a.workMode == config.WorkOpen || d.workOpen[f.turn]
+			// The chip stands where the turn's work stood, so it takes the same
+			// blank the work's first block would have taken — which after the
+			// person's message is the change-of-speaker gap wasUser buys.
+			if wasUser || wasBlock {
+				gap()
+			}
 			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(f)), entry: -1, hit: hitWorkFold, turn: f.turn})
 			if !open {
 				i = f.answer - 1
-				wasCluster, wasBlock = false, false
+				wasCluster, wasBlock, wasUser = false, false, false
 				continue
 			}
+			wasUser = false
 		}
 		if e.turn != walk.turn {
 			// The turn before this one is over: its receipt, and then the mark
@@ -346,11 +367,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				es[end].turn == e.turn {
 				end++
 			}
-			if wasBlock || (!wasCluster && !opensTurn(es, i)) {
+			if wasBlock || wasUser || (!wasCluster && !opensTurn(es, i)) {
 				gap()
 			}
 			out = a.clusterRows(d, out, i, end, width)
-			wasCluster, wasBlock = true, false
+			wasCluster, wasBlock, wasUser = true, false, false
 			i = end - 1
 			continue
 		}
@@ -368,7 +389,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			gap()
 			out = a.doneCluster(d, out, i, end, width)
-			wasCluster, wasBlock = false, true
+			wasCluster, wasBlock, wasUser = false, true, false
 			i = end - 1
 			continue
 		}
@@ -381,7 +402,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				out = append(out, row{text: text, entry: i, hit: hit})
 			}
-			wasCluster, wasBlock = false, true
+			wasCluster, wasBlock, wasUser = false, true, false
 			continue
 		}
 
@@ -389,7 +410,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		if len(rows) == 0 {
 			continue
 		}
-		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask ||
+		if wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entryTask ||
 			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
@@ -467,6 +488,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		}
 		wasCluster = false
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
+		// The change-of-speaker gap belongs to the person's message and not to a
+		// kind of block: a divider between the question and the reply carries the
+		// mark forward, because the reply still opens under their words.
+		if e.kind != entryDivider {
+			wasUser = e.kind == entryUser
+		}
 	}
 	// THE LAST TURN'S RECEIPT, which has no next turn to be drawn at the seam
 	// with. A turn still running has no stamp yet, so this draws nothing until
@@ -542,8 +569,10 @@ func (a *app) isHot(r row) bool {
 }
 
 // opensTurn reports whether the entry at i is the first thing its turn drew.
-// A cluster that opens a turn follows the person's own message and takes no
-// blank of its own — the user message already brought one.
+// A cluster that opens a turn follows the person's own message, whose
+// change-of-speaker gap (wasUser, in [app.deckRows]) is the one blank that
+// boundary takes — this test is what keeps the cluster from asking for a
+// second one of its own.
 func opensTurn(es []entry, i int) bool {
 	for at := i - 1; at >= 0; at-- {
 		if es[at].turn != es[i].turn {
@@ -609,21 +638,23 @@ func (a *app) entryRows(d deck, i, width int) []string {
 func (a *app) renderEntry(i int, e *entry, width int) []string {
 	switch e.kind {
 	case entryUser:
-		// THE PERSON'S OWN WORDS, IN THE PERSON'S OWN HUE — the glyph and the
-		// whole body in the accent, and every continuation line aligned under
-		// the TEXT rather than under the glyph. The glyph marks the turn; the
-		// column belongs to the sentence.
+		// THE PERSON'S OWN WORDS, MARKED BY THE PERSON'S OWN GLYPH — the accent
+		// on the `›` and the body in the ordinary ink, with every continuation
+		// line aligned under the TEXT rather than under the glyph. The glyph
+		// marks the turn; the column belongs to the sentence.
 		//
-		// The body was bold ink until this wave, and bold was the wrong marker
-		// for one reason: MARKDOWN OWNS WEIGHT. An assistant answer with a bold
-		// lead-in renders exactly like a person's message, and the two things a
-		// reader must never confuse were separated by an attribute either of
-		// them could wear. Hue is the one channel identity can hold alone —
-		// nothing the model writes is ever painted in the accent — so identity
-		// takes hue and markdown keeps weight, and neither can impersonate the
-		// other. On a sixteen-colour terminal the accent degrades to bold
-		// (styles.go's tier table), which is the old rendering and the right
-		// one there: with no hue at all, weight is the only marker left.
+		// The whole body wore the accent for a wave, and a wave was long enough
+		// to read the cost: a question is often the longest paragraph on the
+		// screen, and painting all of it in the identity hue spent THE ACCENT
+		// BUDGET (styles.go) on prose — over a working turn whose narration was
+		// also blue, the page read as one blue field. Identity still takes hue
+		// and markdown still keeps weight; the hue is just spent where identity
+		// lives, on the mark, not on the sentence. Nothing the model writes is
+		// ever painted in the accent, its prose never opens on `›`, and its
+		// blocks never indent continuation lines this way — the shapes were
+		// always the marker, and the ink can be shared. The body was bold ink
+		// once before, and bold stays wrong for the stated reason: MARKDOWN
+		// OWNS WEIGHT.
 		body := wrap(e.text, width-2)
 		out := make([]string, 0, len(body))
 		for i, line := range body {
@@ -648,7 +679,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 				// while the scanner still safely recognizes their door on this row.
 				spans = commandSpans([]rune(line), true)
 			}
-			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.accent))
+			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.ink))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
 		// one here is not typed at all: an `@task` mention leaves a footnote

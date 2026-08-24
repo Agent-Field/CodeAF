@@ -91,6 +91,11 @@ var (
 	inkBand   = band{9.5, 12.0}
 	mutedBand = band{4.5, 7.5}
 	dimBand   = band{2.6, 4.4}
+	// narrBand is demoted prose ([hueNarr]): under the second voice, over the
+	// murmur. It overlaps both neighbours' bands on purpose — the ladder's order
+	// is held by the authored values, and a ground tight enough to compress the
+	// tiers together compresses this one with them rather than around them.
+	narrBand = band{3.8, 6.0}
 )
 
 // liveStep is THE FOURTH READING TIER'S BAND, and it is the one band in this
@@ -700,6 +705,7 @@ func adaptRampFrom(base ramp, m measuredGround) ramp {
 	scale := reachScale(ground, inkBand.high, up)
 	out.ink = holdInBand(base.ink, ground, up, inkBand.scaled(scale))
 	out.muted = holdInBand(base.muted, ground, up, mutedBand.scaled(scale))
+	out.narr = holdInBand(base.narr, ground, up, narrBand.scaled(scale))
 	out.dim = holdInBand(base.dim, ground, up, dimBand.scaled(scale))
 	out.live = liveOver(base.live, out.ink, ground, up)
 

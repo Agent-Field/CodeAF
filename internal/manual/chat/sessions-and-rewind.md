@@ -649,7 +649,8 @@ not several terminals. These come back with it:
 - the transcript, the task column, the meters, the model, the title, and any approval
   question, task proposal or sign-in offer the session is still holding;
 - a turn that is still running, from its **first token** rather than from wherever it had
-  got to;
+  got to — and exactly once: the replayed history stops where that turn's work begins, so
+  the steps it had already finished are not drawn a second time above the live copy;
 - the unsent sentence in the box and the pictures on it — including any message you typed
   while it was busy, folded back into the box rather than dropped;
 - where you were reading, the room you had open, and how much of an approval countdown was

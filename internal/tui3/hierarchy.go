@@ -45,12 +45,16 @@ import "strings"
 //     assistant blocks this way since the fold wave; this file is what finally
 //     makes the ink agree with the column.
 //
-//   - THE TIER IS MUTED, NOT DIM. The ladder is ink → muted → dim (styles.go),
-//     and dim is the lane this surface says its OWN lines in — a note, a seam,
-//     a fold chip, a tool row's figures. Narration is not the surface talking
-//     about itself; it is the model's own prose, one rung back. Muted is also
-//     precisely the rung a markdown heading wears, and for the same stated
-//     reason: it reads as structure rather than as a summons.
+//   - THE TIER IS THE NARRATION RUNG, NOT MUTED AND NOT DIM. Dim is the lane
+//     this surface says its OWN lines in — a note, a seam, a fold chip, a tool
+//     row's figures — and narration is not the surface talking about itself; it
+//     is the model's own prose, one rung back. It wore muted for a wave, and
+//     muted was the wrong hue for a paragraph: muted is the ACCENT one step
+//     back, right for a tool's name or a heading — a word or two of label —
+//     and paragraphs of it turned a working turn into a field of blue prose.
+//     So the working tier is the body's own hue family at the second voice's
+//     loudness ([hueNarr]): quieter than the answer in lightness, and never a
+//     different KIND of thing in hue.
 //
 //   - A DEMOTED BLOCK IS PLAIN, WITH NO MARKDOWN AT ALL. This is the honest
 //     simplification, and MARKDOWN OWNS WEIGHT (render.go's user-entry comment)
@@ -134,7 +138,7 @@ func (a *app) workingProse(text string, width int) []string {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		rows[i] = a.pal.muted(line)
+		rows[i] = a.pal.narr(line)
 	}
 	return trimBlanks(rows)
 }

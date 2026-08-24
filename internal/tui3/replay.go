@@ -62,6 +62,21 @@ const replayTail = 40
 // the drawn conversation is thrown away and rebuilt from the session's own
 // record (rewind.go's [app.rebuildTranscript], welcome.go's resume).
 func (a *app) replay() {
+	if a.agent == nil {
+		a.replayList(nil)
+		return
+	}
+	a.replayList(a.agent.Transcript())
+}
+
+// replayList is the replay over a list the caller already holds. It is the
+// door [app.attachConversation] takes with the entries an atomic attach handed
+// back — a reading that already left out the running turn's work, because the
+// stream beside it replays that work from its first event (switcher.go's
+// attachReplayer). Everything below the drawn window still pages in from
+// [Agent.Transcript] ([app.backfill]): the two lists are identical up to where
+// the running turn begins, and the backfill never walks past it.
+func (a *app) replayList(all []session.DisplayEntry) {
 	// THE BACKFILL'S BOOKKEEPING IS SET HERE, on every path including the one
 	// with nothing to replay. A fresh session that inherited a mark from the
 	// conversation before it would offer to scroll back into somebody else's
@@ -83,7 +98,6 @@ func (a *app) replay() {
 	a.earlier, a.earlierFloor = history.Entries, history.Floor
 	a.earlierFrom = len(a.earlier)
 
-	all := a.agent.Transcript()
 	if a.earlierFloor > len(all) {
 		a.earlierFloor = len(all)
 	}

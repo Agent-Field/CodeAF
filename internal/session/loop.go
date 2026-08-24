@@ -2209,6 +2209,24 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 		}
 		rebuilt = append(rebuilt, a.messages[index])
 	}
+	// THE RUNNING TURN'S FLOOR MOVES WITH THE REBUILD. A fold always runs inside
+	// a turn, and [Agent.turnFloor] is an index into the list this just replaced:
+	// count what survived below it — the system message, every unfolded line,
+	// and the marker when it landed below the floor — so [Agent.AttachReplay]
+	// keeps splitting the transcript at the same conversation moment.
+	if a.turnFloor > len(a.messages) {
+		a.turnFloor = len(a.messages)
+	}
+	floor := 1
+	for index := 1; index < a.turnFloor; index++ {
+		if !folded[index] {
+			floor++
+		}
+	}
+	if first >= 0 && first < a.turnFloor {
+		floor++
+	}
+	a.turnFloor = floor
 	a.messages = rebuilt
 	return len(folded), marker
 }
