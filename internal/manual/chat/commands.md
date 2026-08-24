@@ -198,6 +198,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/cache` | — | — | how big the shared build cache is, and where |
+| `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
@@ -543,6 +545,50 @@ hits.
 ```
 nothing spent yet — this session has not sent a turn.
 ```
+
+## /cache — the build cache, disk space, and why aforge is using so much disk
+
+`/cache` prints one line: how big the shared build cache is and where it lives —
+`~/.aforge/cache`. That directory holds the toolchain caches task workers fill as they
+build — go modules and build outputs, npm, pip, cargo — shared across sessions so the same
+module is downloaded once instead of per task. It can quietly grow to hundreds of
+megabytes; that growth is this cache, not your conversations.
+
+With nothing in it, `/cache` answers `the cache is empty · ~/.aforge/cache`.
+
+**The cache is not your conversations.** Conversation history, tasks, settings and
+credentials live elsewhere under `~/.aforge` and no cache command can reach them.
+
+## /cache clean — clean the cache, clear the cache, free disk space
+
+`/cache clean` deletes the shared build cache. It is the one deliberately destructive
+command on this surface, so it never acts on the first ask:
+
+1. `/cache clean` **only asks**. It answers with the size, the path, what deleting costs
+   (`builds start cold afterwards`), what is out of reach (`conversations and settings are
+   not touched`), and the sentence that would proceed.
+2. `/cache clean now`, typed out in full, does the deletion and answers
+   `cache cleaned · <size> freed`.
+
+Deleting it is safe but not free: the next task that builds something re-downloads its
+modules cold. The cache refills itself as work runs; there is nothing to set up again.
+
+Over an empty cache both forms answer, exactly:
+
+```
+the cache is already empty — nothing to delete.
+```
+
+A word after `/cache` that is not `clean` changes nothing and answers
+`/cache takes clean, or nothing · /cache shows what it holds`.
+
+From the terminal the same pair is `aforge cache` and `aforge cache clean` — the latter
+prints the same size-and-path warning and asks you to type the word `clean` before it
+deletes anything; `aforge cache clean --yes` skips the question for scripts.
+
+**What `/cache clean` will not do:** it does not delete conversations, reset the
+dashboard, or forget memories. To start a fresh conversation the command is `/new`;
+memories are dropped with `/forget`.
 
 ## /model — pick a model
 
