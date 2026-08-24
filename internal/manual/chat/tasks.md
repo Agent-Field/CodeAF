@@ -13,16 +13,23 @@ tool. You then get a card asking whether the work should go. The
 model's window onto work that is running or already landed is its `tasks` tool; that is
 also the door it uses to steer a task or to settle one, when you say so in conversation.
 
-You can also start one directly with `/task <brief>`. That form asks a small sizing judge
-“can this parallelize?” and only surfaces the judge when its answer is yes. A yes opens a
-two-row chooser with `adaptive` recommended and `single` below it; the adaptive row shows
-the proposed parts and planner model. Arrow keys move and enter starts the chosen shape.
-Esc means “just do it” and starts single rather than cancelling the work. A no, timeout,
-or unreadable answer starts single in silence after `sizing it up…` disappears. Whether
-you are asked at all is the `starting a task` setting, below.
+You can also start one directly with `/task <brief>`. **You are never asked a question by
+that form.** It shows `sizing it up…` while a small judge reads your words for width, and
+then one worker starts either way. If the judge found more than one job in there, one dim
+line goes into the transcript —
 
-`/task solo <brief>` skips the judge and starts single. `/task adaptive <brief>` also skips
-the judge and starts the planner run.
+```
+the work looks wide · one worker starts, and it can split as it goes
+```
+
+— and that worker is allowed to hand the parts out later, once it has opened the material
+and seen how many there really are. That is *When a task turns out to be too wide for one
+worker*, below. A no, a timeout or an unreadable answer starts the same one worker in
+silence, with no line about width, after `sizing it up…` disappears.
+
+`/task solo <brief>` skips the judge and starts one worker. `/task adaptive <brief>` skips
+it too and starts a planner and a fleet instead — that is the door to an adaptive run, and
+it is the only thing that opens one from `/task`.
 
 **Every `/task` has its brief shaped before the work starts.** Your words are kept word for
 word and a fuller brief is written around them — the constraints this kind of work needs,
@@ -144,31 +151,36 @@ worker read the brief, not the name.
 **A sub-harness being designed keeps its own title** — `harness · <what you asked for>` —
 because its row is read as a design and not as a task.
 
-## Stopping the adaptive-or-single question — making adaptive or single the default
+## Making adaptive or one worker the default — the starting a task setting, stopping the sizing call
 
-The chooser that asks “this parallelizes — how should it run?” can be answered once and for
-all. `/settings` → Session → **starting a task**, or the `task.start` row:
+`/task <brief>` asks you nothing, but what it starts is yours to set once and for all.
+`/settings` → Session → **starting a task**, or the `task.start` row:
 
-- **ask** — the default, and today's behaviour: the sizing call runs, and the two-row
-  chooser opens only when it finds parts that could run at the same time.
-- **adaptive** — never asks. Parts found, the adaptive run starts straight away; nothing to
-  split, one worker starts, because a planner over work with no independent parts in it is
-  an extra model deciding nothing.
-- **single** — never asks and never goes adaptive. The sizing call is not made at all, since
-  its only purpose was the question you have already answered.
+- **sized** — the default. The sizing call reads your brief, one worker starts either way,
+  and a brief with independent parts in it starts a worker that is allowed to split itself
+  once it has opened the material.
+- **adaptive** — a planner and a fleet up front instead, without asking. Parts found, the
+  adaptive run starts straight away; nothing to split, one worker starts, because a planner
+  over work with no independent parts in it is an extra model deciding nothing.
+- **single** — one worker, and the sizing call is not made at all. Nothing is spent reading
+  your brief for width, and nothing is said about it.
 
 `/task solo <brief>` and `/task adaptive <brief>` always mean what they say, whatever the row
 is set to.
 
+**There used to be a fourth answer, `ask`, and a card to go with it.** A yes from the sizing
+call opened a two-row list reading “this parallelizes — how should it run?”, and you picked
+`adaptive` or `single`. Both are gone: the question was being put to the one person in the
+room who had not read the material yet, and it is now answered later and from evidence by
+the worker itself. A profile still set to `ask` reads as **sized**, which is the same one
+worker that dismissing the card used to start.
+
 **Choosing `single` closes nothing off.** A single worker can still break its own brief into
 smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
-own work* — and it can split itself once it has opened the material and found the work is
-wider than one worker's share, which is *When a task turns out to be too wide for one
-worker*. The setting decides who plans, not whether work can ever run in pieces.
-
-That is also why answering the chooser with `single` is a safe answer: saying "no planner"
-is not saying "one worker forever". Whichever way you answer, work that turns out to be wide
-can still divide once somebody is actually looking at it.
+own work* — and it can still split itself once it has opened the material and found the work
+is wider than one worker's share, which is *When a task turns out to be too wide for one
+worker*. What `single` costs you is only the reading: nothing is judged up front, so the
+split has to come off what your brief already spelled out.
 
 ## The card that asks whether to run the work
 
@@ -1539,6 +1551,13 @@ deliverable made out of all of it. A task never finishes while a part of it is s
 If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
 the worker carries straight on as one worker. That is why this costs nothing on ordinary
 work: a task that is not wide is never split, and finding that out is free.
+
+**You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
+than one job in your words writes one dim line before the work starts —
+`the work looks wide · one worker starts, and it can split as it goes` — and that line is
+what this section is about. It promises nothing: the two tests below still have to pass. A
+task that was never read for width (`/task solo`, the `single` row, work the model proposed)
+says nothing up front and can still split, off the items its own brief already names.
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief

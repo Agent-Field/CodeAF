@@ -141,10 +141,11 @@ func TestWorkWhoseOwnWordsCountTheItemsIsArmedToDivide(t *testing.T) {
 	}
 }
 
-func TestTheSizingJudgesYesArmsTheSingleWorkerThePersonThenChose(t *testing.T) {
-	// THE POINT OF THE WAVE. Somebody who answers the chooser with `single` has
-	// said they do not want a planner and a fleet — not that the work is narrow
-	// — so the one worker they start can still divide later.
+func TestTheSizingJudgesYesArmsTheSingleWorkerItStarts(t *testing.T) {
+	// THE POINT OF THE WAVE, and now the road a wide `/task <brief>` takes by
+	// default: the judge's yes no longer offers anybody a planner, it starts one
+	// worker and arms it, so the work is cut up by whoever has actually opened
+	// the material.
 	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Divide = true
 	})
@@ -159,7 +160,7 @@ func TestTheSizingJudgesYesArmsTheSingleWorkerThePersonThenChose(t *testing.T) {
 	id := graph.reserve()
 	graph.admit(id, taskSpec{title: "the reports", request: ask, brief: "shaped words a model wrote", acceptance: "a", depth: 1})
 	if !graph.node(id).dividing() {
-		t.Fatal("the judge said this parallelizes and the person chose one worker: that worker must still be able to divide")
+		t.Fatal("the judge said this parallelizes and one worker was started on it: that worker must be able to divide")
 	}
 }
 
