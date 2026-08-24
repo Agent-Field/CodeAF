@@ -38,7 +38,6 @@ func (f *taskCommandFake) JudgeDecomposable(context.Context, string) (bool, []st
 	f.judgeCalls++
 	return f.yes, f.parts, f.why
 }
-func (*taskCommandFake) TaskPlannerModel() string { return "master/model:high" }
 
 func TestTaskExplicitFormsSkipSizing(t *testing.T) {
 	base := &fakeAgent{model: "m"}
@@ -60,28 +59,70 @@ func TestTaskExplicitFormsSkipSizing(t *testing.T) {
 	}
 }
 
-func TestTaskYesChoosesAdaptiveAndEscapeChoosesSingle(t *testing.T) {
+// THE SIZING JUDGE'S YES STARTS THE WORK, and it starts it as ONE WORKER. There
+// is no card in the way any more: the question the card asked — should this run
+// wide — is answered later and from the material, by the worker that has opened
+// it (internal/session's task_divide.go), and a yes here is what arms it to
+// answer at all. So the only thing the surface owes the person is the one line
+// saying their task may not stay one task.
+func TestAWideBriefStartsOneWorkerAndSaysSoWithoutAsking(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api scan", "ui scan"}, why: "independent"}
 	a := newTestApp(f)
-	msg := a.slash("/task inspect both")()
-	_, _ = a.Update(msg)
-	if !a.taskPick.open || a.taskPick.cursor != 0 {
-		t.Fatal("yes did not open on adaptive")
+	_, cmd := a.Update(a.slash("/task inspect both")())
+	if cmd == nil {
+		t.Fatal("a yes started nothing at all")
 	}
-	cmd := a.taskChooserKey(key("enter"))
 	_, _ = a.Update(cmd())
-	if f.adaptiveCalls != 1 || f.brief != "inspect both" || !strings.Contains(f.hint, "api scan") {
-		t.Fatalf("adaptive got brief=%q hint=%q", f.brief, f.hint)
+	if f.adaptiveCalls != 0 {
+		t.Fatalf("a yes opened a planner nobody asked for: %d planner runs", f.adaptiveCalls)
 	}
+	if f.singleCalls != 1 || f.brief != "inspect both" {
+		t.Fatalf("single=%d brief=%q", f.singleCalls, f.brief)
+	}
+	if !holdsNote(a, taskWideNote) {
+		t.Fatalf("nothing on the surface said the work was wide: %q", noteTexts(a))
+	}
+	// AND THE LINE STAYS. It is a fact and not a wait, unlike the two notes
+	// either side of it, so nothing takes it back when the task lands.
+	if a.wait.live() {
+		t.Fatal("a wait outlived the command that raised it")
+	}
+}
 
-	f.yes = true
-	msg = a.slash("/task inspect again")()
-	_, _ = a.Update(msg)
-	cmd = a.taskChooserKey(key("esc"))
-	_, _ = a.Update(cmd())
-	if f.singleCalls != 1 {
-		t.Fatal("escape did not start single")
+// A NO SAYS NOTHING. The line is written on the one answer that makes it true,
+// so narrow work reads exactly as it did before the division road existed.
+func TestNarrowWorkStartsWithNoLineAboutWidth(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	_, cmd := a.Update(a.slash("/task write the release notes")())
+	if cmd == nil {
+		t.Fatal("a no started nothing at all")
 	}
+	_, _ = a.Update(cmd())
+	if holdsNote(a, taskWideNote) {
+		t.Fatalf("narrow work was announced as wide: %q", noteTexts(a))
+	}
+}
+
+// holdsNote reports whether this exact note is standing in the transcript.
+func holdsNote(a *app, text string) bool {
+	for _, e := range a.entries {
+		if e.kind == entryNote && e.text == text {
+			return true
+		}
+	}
+	return false
+}
+
+// noteTexts is what a failure above prints: every note the surface holds.
+func noteTexts(a *app) []string {
+	var out []string
+	for _, e := range a.entries {
+		if e.kind == entryNote {
+			out = append(out, e.text)
+		}
+	}
+	return out
 }
 
 func TestTaskNoStartsSingleAndErrorsBecomeNotes(t *testing.T) {
@@ -93,9 +134,6 @@ func TestTaskNoStartsSingleAndErrorsBecomeNotes(t *testing.T) {
 		t.Fatal("a no did not return the single start command")
 	}
 	_, _ = a.Update(cmd())
-	if a.taskPick.open {
-		t.Fatal("a no opened the chooser")
-	}
 	if f.singleCalls != 1 {
 		t.Fatal("a no did not start single")
 	}
@@ -113,42 +151,56 @@ func TestTaskNoStartsSingleAndErrorsBecomeNotes(t *testing.T) {
 // profile on disk is the only way to state it and the only way a test can.
 func taskStartApp(t *testing.T, f *taskCommandFake, mode string) *app {
 	t.Helper()
+	a := newTestApp(f)
+	a.profileDir = taskStartProfile(t, mode)
+	return a
+}
+
+// taskStartProfile is that profile on its own, for the one assertion that is
+// about the row and not about the command it steers.
+func taskStartProfile(t *testing.T, mode string) string {
+	t.Helper()
 	dir := t.TempDir()
 	body := []byte(`{"` + config.KeyTaskStart + `":"` + mode + `"}`)
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), body, 0o600); err != nil {
 		t.Fatalf("writing the profile: %v", err)
 	}
-	a := newTestApp(f)
-	a.profileDir = dir
-	return a
+	return dir
 }
 
-// SHIPPED, /task STILL ASKS. The default is the behaviour every other test on
-// this page is written against, and a profile with nothing in it is a person who
-// has never opened the settings panel.
-func TestTaskStartDefaultsToAsking(t *testing.T) {
+// SHIPPED, /task STARTS ONE WORKER THAT CAN SPLIT ITSELF. That is the default
+// every other test on this page is written against, and a profile with nothing
+// in it is a person who has never opened the settings panel. The word `ask` the
+// row used to carry is gone with the card it named, and a profile still holding
+// it reads as the default rather than as a row this build refuses.
+func TestTaskStartDefaultsToOneWorkerThatCanSplit(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api", "ui"}}
-	a := taskStartApp(t, f, config.TaskStartAsk)
-	if got := config.TaskStartAt(a.profileDir); got != config.TaskStartAsk {
+	a := taskStartApp(t, f, config.TaskStartSized)
+	if got := config.TaskStartAt(a.profileDir); got != config.TaskStartSized {
 		t.Fatalf("the row reads %q", got)
 	}
-	if got := config.TaskStartAt(t.TempDir()); got != config.TaskStartAsk {
+	if got := config.TaskStartAt(t.TempDir()); got != config.TaskStartSized {
 		t.Fatalf("an unanswered profile reads %q", got)
 	}
-	_, _ = a.Update(a.slash("/task inspect both")())
-	if !a.taskPick.open {
-		t.Fatal("the default did not raise the chooser")
+	if got := config.TaskStartAt(taskStartProfile(t, "ask")); got != config.TaskStartSized {
+		t.Fatalf("a profile left on the retired word reads %q", got)
 	}
-	if f.adaptiveCalls != 0 || f.singleCalls != 0 {
-		t.Fatal("the default started work before it was answered")
+	_, cmd := a.Update(a.slash("/task inspect both")())
+	if cmd == nil {
+		t.Fatal("the default started nothing")
+	}
+	_, _ = a.Update(cmd())
+	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
+		t.Fatalf("the default ran adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
 	}
 }
 
-// SET TO ADAPTIVE, NOBODY IS ASKED — and what starts still follows what the
-// sizing call found: parts to split means a planner, nothing to split means one
-// worker, because a planner over work with no independent parts in it is a whole
-// extra model deciding nothing.
-func TestTaskStartAdaptiveSkipsTheChooser(t *testing.T) {
+// SET TO ADAPTIVE, THE PLANNER IS THE ROAD — the row is the person saying, once
+// instead of on every command, that they want the pieces planned before anybody
+// starts. What starts still follows what the sizing call found: parts to split
+// means a planner, nothing to split means one worker, because a planner over
+// work with no independent parts in it is a whole extra model deciding nothing.
+func TestTaskStartAdaptiveGoesStraightToThePlanner(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		parallel          bool
@@ -161,9 +213,6 @@ func TestTaskStartAdaptiveSkipsTheChooser(t *testing.T) {
 			f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: tc.parallel, parts: []string{"api", "ui"}, why: "independent"}
 			a := taskStartApp(t, f, config.TaskStartAdaptive)
 			_, cmd := a.Update(a.slash("/task inspect both")())
-			if a.taskPick.open {
-				t.Fatal("adaptive still asked")
-			}
 			if cmd == nil {
 				t.Fatal("nothing was started")
 			}
@@ -181,9 +230,10 @@ func TestTaskStartAdaptiveSkipsTheChooser(t *testing.T) {
 	}
 }
 
-// SET TO SINGLE, THE SIZING CALL IS NOT MADE AT ALL. Its only product is the
-// chooser and the adaptive sketch, and paying a model for an answer that is
-// going to be ignored is a bill with nothing behind it.
+// SET TO SINGLE, THE SIZING CALL IS NOT MADE AT ALL. This row is the person
+// declining to have their brief read for width, and a reading nobody wants is a
+// bill with nothing behind it — so nothing is spent, and nothing is said about
+// width either.
 func TestTaskStartSingleSkipsTheSizingCall(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, yes: true, parts: []string{"api", "ui"}}
 	a := taskStartApp(t, f, config.TaskStartSingle)
@@ -195,8 +245,11 @@ func TestTaskStartSingleSkipsTheSizingCall(t *testing.T) {
 	if f.judgeCalls != 0 {
 		t.Fatal("single paid for a sizing call it had already answered")
 	}
-	if a.taskPick.open || f.adaptiveCalls != 0 || f.singleCalls != 1 {
-		t.Fatalf("chooser=%v adaptive=%d single=%d", a.taskPick.open, f.adaptiveCalls, f.singleCalls)
+	if f.adaptiveCalls != 0 || f.singleCalls != 1 {
+		t.Fatalf("adaptive=%d single=%d", f.adaptiveCalls, f.singleCalls)
+	}
+	if holdsNote(a, taskWideNote) {
+		t.Fatal("a road that never read the brief still claimed the work was wide")
 	}
 }
 

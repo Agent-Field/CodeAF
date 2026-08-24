@@ -2414,8 +2414,6 @@ func (a *app) hintWord() string {
 		return "enter switch · esc"
 	case a.crewPick.open:
 		return "↑↓ · enter apply · esc"
-	case a.taskPick.open:
-		return "↑↓ · enter start · esc single"
 	case a.roster.open:
 		return "enter open · esc"
 	case a.shelf.open:

@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +17,6 @@ type taskCommandAgent interface {
 	StartTask(context.Context, string) (uint64, string, error)
 	StartPlannerRun(context.Context, string, string) (string, string, error)
 	JudgeDecomposable(context.Context, string) (bool, []string, string)
-	TaskPlannerModel() string
 }
 
 type taskSizedMsg struct {
@@ -34,8 +32,9 @@ type taskSizedMsg struct {
 	preset string
 }
 
-// hint is the sketch the sizing call produced, in the one spelling both readers
-// of it use — the chooser's adaptive row and the planner's supporting context.
+// hint is the sketch the sizing call produced, handed to the planner as
+// supporting context on the one road that still opens a planner without being
+// told to in so many words.
 func (m taskSizedMsg) hint() string {
 	hint := strings.Join(m.parts, " · ")
 	if m.why != "" {
@@ -50,74 +49,6 @@ func (m taskSizedMsg) hint() string {
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
-}
-
-type taskChooser struct {
-	open         bool
-	cursor       int
-	brief, hint  string
-	parts        []string
-	why, planner string
-}
-
-func (p *taskChooser) close()         { *p = taskChooser{} }
-func (p *taskChooser) move(delta int) { p.cursor = (p.cursor + delta + 2) % 2 }
-func (p *taskChooser) height() int {
-	if p.open {
-		return 4
-	}
-	return 0
-}
-
-func (p *taskChooser) rows(width, n int, pal palette, hover int) []string {
-	if !p.open || n <= 0 {
-		return nil
-	}
-	adaptive := fmt.Sprintf("adaptive · ~%d parts · planner %s", len(p.parts), p.planner)
-	if len(p.parts) == 0 {
-		adaptive = "adaptive · planner " + p.planner
-	}
-	sketch := strings.Join(p.parts, " · ")
-	if p.why != "" {
-		sketch += " · " + p.why
-	}
-	labels := []string{adaptive, "single · one worker, no planner"}
-	out := []string{pal.dim("this parallelizes — how should it run?")}
-	// NOTHING ON THIS CARD IS CHOSEN YET, so nothing on it wears the selected
-	// step. Both rows are offers and the cursor is a cursor: it takes THE GROUND
-	// LADDER's cursor step, the same step the pointer takes, and the `›` in the
-	// accent is what says which of the two enter would run. The row used to wear
-	// the selected step, which promised a decision this card has not been given.
-	for i, label := range labels {
-		lead := "  "
-		if i == p.cursor {
-			lead = pal.accent("› ")
-		}
-		head := lead + fit(label, width-2)
-		if i == p.cursor {
-			head = pal.cursor(pal.ink(head), width)
-		} else if hover == len(out) {
-			head = pal.cursor(pal.dim(head), width)
-		} else {
-			head = pal.dim(head)
-		}
-		out = append(out, head)
-		if i == 0 {
-			tail := "    " + fit(sketch, width-4)
-			if p.cursor == 0 {
-				tail = pal.cursor(pal.ink(tail), width)
-			} else if hover == len(out) {
-				tail = pal.cursor(pal.dim(tail), width)
-			} else {
-				tail = pal.dim(tail)
-			}
-			out = append(out, tail)
-		}
-	}
-	if len(out) > n {
-		out = out[:n]
-	}
-	return out
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
@@ -152,10 +83,12 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 	if mode != "" {
 		return a.startTaskDoor(door, mode, brief, "")
 	}
-	// And where they have said in advance that one worker is what they want, the
-	// sizing call is not made: its only product is the chooser and the adaptive
-	// sketch, and paying a model to answer a question already answered would be
-	// spending on an answer that is going to be ignored.
+	// And where they have said in advance that one worker is what they want and
+	// that they do not want the brief read for width first, the sizing call is
+	// not made. It is a small call, but it is a call, and its whole remaining
+	// product is a road this person has said they would rather not pay to open:
+	// the work can still divide off what its own brief already enumerates
+	// (internal/splitgate), which costs nothing at all.
 	preset := config.TaskStartAt(a.profileDir)
 	if preset == config.TaskStartSingle {
 		return a.startTaskDoor(door, "single", brief, "")
@@ -211,6 +144,22 @@ const (
 	taskSizingNote  = "sizing it up…"
 	taskShapingNote = "shaping the brief…"
 )
+
+// taskWideNote is what the sizing call's yes says now that it opens nothing.
+//
+// IT IS A FACT AND NOT A WAIT, so it is written once and never taken back: a
+// question was asked about this brief before the work started, the answer was
+// that there is more than one job in it, and that answer is what lets the worker
+// hand the parts out later (internal/session's task_divide.go). The person is
+// told because the roster is about to grow rows nobody typed a command for, and
+// a task that quietly becomes four tasks is a surface doing something unannounced.
+//
+// It says only what is true at the moment it is written. The worker still has to
+// open the material, find the width is real and find a free hand before anything
+// is handed out, so the line promises a possibility — "can split" — rather than
+// a plan, and the transcript's own words for the split (`split into 3 parts:`)
+// are what say it happened.
+const taskWideNote = "the work looks wide · one worker starts, and it can split as it goes"
 
 // preflight is the wait a task command is standing in: which of the two notes
 // above is on screen, and the moment it went up.
@@ -315,31 +264,4 @@ func (a *app) dropNote(text string) {
 			return
 		}
 	}
-}
-
-func (a *app) taskChooserKey(msg tea.KeyPressMsg) tea.Cmd {
-	door, ok := a.agent.(taskCommandAgent)
-	if !ok {
-		a.taskPick.close()
-		return nil
-	}
-	switch msg.String() {
-	case "up", "ctrl+p":
-		a.taskPick.move(-1)
-	case "down", "ctrl+n":
-		a.taskPick.move(1)
-	case "enter":
-		p := a.taskPick
-		a.taskPick.close()
-		if p.cursor == 0 {
-			return a.startTaskDoor(door, "adaptive", p.brief, p.hint)
-		}
-		return a.startTaskDoor(door, "single", p.brief, "")
-	case "esc":
-		p := a.taskPick
-		a.taskPick.close()
-		return a.startTaskDoor(door, "single", p.brief, "")
-	}
-	a.touch()
-	return nil
 }
