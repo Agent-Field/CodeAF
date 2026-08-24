@@ -2094,6 +2094,15 @@ func (a *app) stateWord() (string, string) {
 	if word := a.dragWord(); word != "" {
 		return word, a.pal.accent(word)
 	}
+	// AND THE STOP OUTRANKS THE QUESTION, on that same reading turned around. A
+	// card still standing between the esc and the stream's close is asking about
+	// a call the cancellation has already released (session's consent.go), so
+	// "waiting · your call" would be this line naming the person as the thing
+	// holding up a turn they themselves stopped. What is true and actionable at
+	// that moment is neither — it is that the work is being let go.
+	if a.windingDown() {
+		return stoppingWord, a.pal.dim(stoppingWord)
+	}
 	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
@@ -2114,6 +2123,28 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+// stoppingWord is what the status line says between a person's esc and the
+// engine letting go of the turn ([app.windingDown]).
+//
+// IT IS THE PRESENT TENSE, AND THAT IS THE WHOLE OF WHAT IT ADDS. The line has
+// always gone straight to "interrupted" on the key, which is the truth about the
+// turn and reads, for the three or four seconds a real teardown can take, as a
+// claim that everything is over — so a person watching a tool that has not quite
+// let go presses the key again, harder, on a surface that already heard them.
+// "stopping" says the stop landed AND that the letting go is still happening,
+// and "interrupted" arrives behind it the moment it has.
+//
+// IT IS DIM, where "interrupted" is the soft red and "working" the accent. The
+// hues on this line are its loudness, and winding down is the quietest thing the
+// surface ever does: nothing is wrong, nothing is wanted, nothing is being
+// waited on by anybody but the machine. It carries NO SPINNER for the reason it
+// carries no colour — [app.stateSegment] draws the mark only in stateWorking, so
+// the line stills on the key and stays stilled, which is the whole point.
+//
+// IT NAMES NO KEY, and there is no line about it in the hint slot, because there
+// is no second key to name. See [app.interrupt] for why there is no hard stop.
+const stoppingWord = "stopping"
 
 // ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────
 //
