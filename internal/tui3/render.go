@@ -2399,6 +2399,14 @@ func (a *app) legendRight(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
+	// lowest rung there is — a tip about a gesture the person has not used yet,
+	// drawn only over an idle box — and it takes the slot from the rest state
+	// below because that is what the rest state is for: the one line a newcomer
+	// reads when nothing is happening.
+	if tip := a.noticeHint(); tip != "" {
+		return tip
+	}
 	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
 	// other ways — the manual, /help, typing a slash — and home, until this
 	// line existed, was recoverable only by knowing it was there. So the rest
