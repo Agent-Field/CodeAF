@@ -318,6 +318,13 @@ const (
 	roomStopHint   = "x stop"
 	// roomFinishedWord is the foot under a node that has landed.
 	roomFinishedWord = "task finished — esc to return"
+	// roomGoneWord is the one line a landed node's room draws when there is
+	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
+	// transcript's path across restarts and finds it by id when it was not
+	// kept (session's task_room.go), so this is the page for a file that is
+	// actually gone — a session folder somebody deleted — and it says so as a
+	// fact rather than leaving a foot under a blank.
+	roomGoneWord = "this task's transcript is not here any more"
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
@@ -2726,6 +2733,12 @@ func (a *app) roomRows(width int) []row {
 		closed = false
 	}
 	if room.done {
+		// AN EMPTY LANDED ROOM SAYS WHY IT IS EMPTY, above the foot. It is drawn
+		// only when the entry list is empty: a room with even one block is a room
+		// with a transcript, and the foot alone is the whole of what it adds.
+		if len(room.entries) == 0 && room.harnessProgress == "" {
+			out = append(out, row{text: a.pal.dim(fit(roomGoneWord, width)), entry: -1})
+		}
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
 		// is already looking when they wonder why nothing is. It takes the blank a
