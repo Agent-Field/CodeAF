@@ -5,7 +5,6 @@ go 1.26.5
 require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
-	filippo.io/cpace v0.0.0-20210101143347-24d601e2e469
 	github.com/AOShei/go-fast-pdf v0.1.1
 	github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886
 	github.com/alecthomas/chroma/v2 v2.27.0
@@ -19,6 +18,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/flynn/noise v1.1.0
+	github.com/gtank/ristretto255 v0.1.2
 	github.com/int128/listener v1.3.0
 	github.com/int128/oauth2cli v1.18.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
@@ -73,7 +73,6 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gtank/ristretto255 v0.1.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
