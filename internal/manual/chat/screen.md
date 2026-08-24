@@ -786,6 +786,51 @@ The whole effect needs 256 colours. On a terminal with sixteen, and with `NO_COL
 a streaming reply is drawn exactly like a settled one — bolding it instead would make it
 look like a reply that opened in bold, which is a different thing.
 
+## Why is part of the reply grey, and where is the actual answer
+
+Because that part was never the answer. It was aforge saying what it was about to do.
+
+A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
+work start under it in the same turn is narration** — "let me check the config first" —
+and the moment the next tool call opens, that paragraph visibly steps back: it moves into
+the same two-column gutter the tool rows use, and drops one shade below the body text.
+
+**The answer is the last thing the turn says, and it is the only flush-left, full-ink
+block in it.** So: scan down the left edge. Text that starts at the margin was said to
+you. Text that starts two columns in was done for you. There is one blank row above the
+answer whenever the turn did any work, so it stands away from the machinery.
+
+Grey narration carries **no markdown** — no bold, no headings, no code colouring. That is
+deliberate: a bold heading inside working notes would be heavier than the answer under it,
+and the loudest thing on screen would be the part you did not ask for.
+
+Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
+what came after what — so it is the same on a conversation you resume as it was live, and
+the same on a task's own page.
+
+Below 60 columns the gutter is dropped and the shading alone carries the difference. With
+no colour at all, the gutter alone does.
+
+## I pressed esc and the reply stayed grey — why nothing became the answer
+
+That is the screen telling you the truth: **an interrupted turn never reached an answer.**
+
+Press `esc` while a turn is running and whatever had been written stays on screen,
+because the session keeps it — but it stays at the working shade, in the working column, for good. The missing
+flush-left paragraph *is* the statement that you did not get an answer, so nothing has to
+be added to say it. Asking something else afterwards does not promote it later.
+
+The turn also collapses to a chip that says who stopped it —
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
+`ctrl+e` over an empty message box, or a click on the chip, opens it again. aforge's own
+lines about the stop, `· interrupted` and anything it dropped from the queue, stay outside
+the chip.
+
+One limit worth knowing: the session file keeps the words a stopped turn managed to say
+and keeps no mark saying it was stopped. So if you close aforge and **resume** that
+conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
+as an answer again.
+
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
 It cannot any more. A message of yours is never drawn inside a streaming answer, never
