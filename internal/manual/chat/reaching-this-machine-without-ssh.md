@@ -104,8 +104,15 @@ code says:
 that is not the code shown on otter-lamp-42 — read it again, and note that it is only good for 10 minutes
 ```
 
-`aforge devices` on the machine names it: `no pairing code`-style guessing is not possible
-from outside, because only that machine can spend an attempt.
+**Guessing a code from outside does not work.** Only the machine that minted it can spend
+an attempt against it, and it allows 5 before throwing the code away. A device that turns
+up when there is no live code at all is told the same thing a wrong code is told, because
+from its side it is the same fact. The machine's own screen is where the difference shows:
+
+```
+a device tried to pair with the wrong code
+a device tried to pair and there was no code to pair with
+```
 
 ## Pairing another laptop, a desktop, or a phone
 
@@ -243,8 +250,12 @@ aforge devices revoke laptop
 which answers
 `laptop has been stopped — it can no longer open a conversation here, and it will need a new pairing code to come back.`
 
-A name nothing matches says
-`no device called "phone" is paired with this machine — `aforge devices` lists the ones that are`.
+A name nothing matches says:
+
+```
+no device called "phone" is paired with this machine — `aforge devices` lists the ones that are
+```
+
 Two devices with the same name are refused rather than guessed at, and
 `aforge devices revoke --all laptop` stops both.
 
@@ -307,11 +318,14 @@ this device is not paired with otter-lamp-42 — run `aforge serve` on that mach
 Two more you may meet. A machine that does not answer the handshake at all:
 `otter-lamp-42 did not answer this device's handshake, so nothing was sent — if that machine was rebuilt it has a new key and this device has to pair with it again`.
 And a relay that is turning connections away:
-`the relay is turning connections away right now — try again in a minute` — it allows 30
-connections a minute from one address.
+`the relay is turning connections away right now — try again in a minute` — it allows
+30 connections a minute from one address.
 
 A name of the wrong shape is caught before anything is dialled:
-`"devbox" is not the shape of a machine name — they look like otter-lamp-42, and `aforge serve` prints the name of a machine`.
+
+```
+"devbox" is not the shape of a machine name — they look like otter-lamp-42, and `aforge serve` prints the name of a machine
+```
 
 ## How to type the --at target
 
@@ -328,7 +342,10 @@ The target is a machine name, optionally with a directory after a colon — the 
 Tab completion in your own shell will not help you with it.
 
 An empty target says:
-`--at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `aforge serve` prints the name of a machine`
+
+```
+--at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `aforge serve` prints the name of a machine
+```
 
 `--model`, `--reasoning`, `--session` and `--once` all work. `--no-compact` and `--yolo`
 are refused rather than quietly ignored, because they build a session that is built over
