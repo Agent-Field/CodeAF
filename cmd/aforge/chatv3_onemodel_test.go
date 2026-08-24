@@ -62,6 +62,13 @@ func TestOneModelSettlesEveryTextSlotOnTheSessionModel(t *testing.T) {
 	if len(cfg.ModelFallbacks) != 0 {
 		t.Errorf("the fallback chain survived --one-model: %v", cfg.ModelFallbacks)
 	}
+	// AND THE CATALOG'S GUESS, which is the same question asked a second way.
+	// The chain falls through to this seam when no row is written, so a run
+	// measured as one model would have walked to two models a similarity table
+	// picked (internal/provider's fallbackChain).
+	if cfg.NearestModels != nil {
+		t.Error("the catalog's nearest-model guess survived --one-model")
+	}
 }
 
 // The half that protects everybody who never types the flag.

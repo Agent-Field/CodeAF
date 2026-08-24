@@ -211,11 +211,18 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 // is stronger evidence than a merely slow completion, so it is refused at once
 // and the retry encoded by the turn loop can route around it. An unnamed stream
 // reaches pace too, where the attribution law leaves the ledger untouched.
-func (c *Client) noteCutProvider(model, served string) {
+//
+// It REPORTS WHETHER IT STRUCK, because a caller has one question this is the
+// only place that can answer: will the next attempt be routed away from the
+// endpoint that just went quiet? False is `routing off`, a client that is not
+// talking to a router at all, or a stream that died before any chunk named its
+// provider — and in every one of those the next attempt goes back to the same
+// lane. See [StreamCut.Rerouted] for what is decided from it.
+func (c *Client) noteCutProvider(model, served string) bool {
 	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
-		return
+		return false
 	}
-	c.velocity.pace(model, served, 0)
+	return c.velocity.pace(model, served, 0)
 }
 
 // pacedProviderName reads which endpoint a 429 came from, "" when the body
@@ -514,14 +521,18 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 // first fast answer walks it out (observe). A wait the provider did not name,
 // or named absurdly, is clamped to the same cooldown a laggy lane serves —
 // pacing is a claim about the next minutes, never about the day.
-func (l *velocityLedger) pace(model, served string, wait time.Duration) {
+//
+// It reports whether a lane was actually refused. The attribution law leaves an
+// unnamed endpoint alone, and "nothing was struck" is a fact a caller acts on
+// (noteCutProvider), not a silence to infer from.
+func (l *velocityLedger) pace(model, served string, wait time.Duration) bool {
 	if l == nil {
-		return
+		return false
 	}
 	key := normalizeModel(model)
 	served = strings.TrimSpace(served)
 	if key == "" || served == "" {
-		return
+		return false
 	}
 	if wait <= 0 || wait > ignoreCooldown {
 		wait = ignoreCooldown
@@ -540,4 +551,5 @@ func (l *velocityLedger) pace(model, served string, wait time.Duration) {
 	}
 	entry.strikes = ignoreAfter
 	entry.ignoredUntil = l.now().Add(wait)
+	return true
 }

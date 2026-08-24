@@ -869,6 +869,14 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 		// nobody is watching. Empty is "no hop", which is what this build has
 		// always done for a person who set no chain.
 		cfg.ModelFallbacks = nil
+		// AND THE CATALOG'S GUESS WITH IT. Nilling the row alone was not enough
+		// and quietly never had been: the chain falls through to NearestModels
+		// when no row is written (internal/provider's fallbackChain), so a
+		// single-model run that met a refusal would have walked to two models the
+		// catalog thought were similar — chosen by nobody, and attributed to a
+		// measurement cell that says it rode one model. Both seams are the same
+		// question, so both are withheld by the same flag.
+		cfg.NearestModels = nil
 	}
 	// The guardian (internal/session's guardian.go) reads PROFILE-ONLY, unlike
 	// the two rows above it, and the reason is the one that keeps the search keys
