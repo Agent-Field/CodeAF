@@ -88,6 +88,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"openrouter key", "getting-started"},
 		{"change what I picked during setup", "getting-started"},
 
+		// The empty screen, asked the ways somebody meets it: an opening frame
+		// with nothing on it, a column they expected and cannot see, a box that
+		// is not where boxes usually are, and a status row with no numbers.
+		{"why is the screen empty when I open aforge", "empty-screen"},
+		{"where is the task column on a new conversation", "empty-screen"},
+		{"what happened to the sidebar", "empty-screen"},
+		{"why is the message box in the middle of the screen", "empty-screen"},
+		{"why does the status line not show the cost before I type", "empty-screen"},
+		{"what does try what is in this folder mean", "empty-screen"},
+		{"where did the recent sessions list go", "empty-screen"},
+
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
 		// asker's own words were written into a heading, which is the fix this
