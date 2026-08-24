@@ -274,10 +274,13 @@ type taskRoom struct {
 
 	// The row cache, on the same terms every other cached block on this surface
 	// has one (render.go): rebuilt when the content or the width changes and at
-	// no other time.
-	rows  []row
-	width int
-	dirty bool
+	// no other time — and, unlike the conversation's, on the HEIGHT too, because
+	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
+	// and a taller view is a different row list.
+	rows   []row
+	width  int
+	height int
+	dirty  bool
 }
 
 // deck is the page as the renderers take it (render.go). It is a view over the
@@ -2706,7 +2709,13 @@ func (a *app) roomRows(width int) []row {
 	if room == nil || width < 4 {
 		return nil
 	}
-	if room.rows != nil && room.width == width && !room.dirty {
+	// THE HEIGHT IS PART OF THE KEY. It is read here rather than passed in so
+	// that every caller — the frame, the wheel, the click, the freeze — lays the
+	// page out against the one view the frame is drawing, and a resize, a rail
+	// tier change or a draft growing a line all re-derive the fold's tail
+	// without any of them having to remember to.
+	height := a.viewHeight()
+	if room.rows != nil && room.width == width && room.height == height && !room.dirty {
 		return room.rows
 	}
 	// A RUN'S PAGE IS A GRAPH AND NOT A TRANSCRIPT (roomorch.go). It is branched
@@ -2717,10 +2726,12 @@ func (a *app) roomRows(width int) []row {
 	if room.orch != nil {
 		out := a.orchRows(width)
 		a.hoverPass(out, width)
-		room.rows, room.width, room.dirty = out, width, false
+		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	out, closed := a.deckRows(room.deck(), width)
+	d := room.deck()
+	d.toolTail = a.roomToolTail()
+	out, closed := a.deckRows(d, width)
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
 		closed = false
@@ -2738,13 +2749,35 @@ func (a *app) roomRows(width int) []row {
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
-	room.rows, room.width, room.dirty = out, width, false
+	room.rows, room.width, room.height, room.dirty = out, width, height, false
 	return out
 }
 
-// roomWindow is the room's visible slice and the padding above it. It is
+// roomToolTail is how many of a folded turn's calls a room keeps on screen:
+// as many as the view is tall, and never fewer than the conversation keeps.
+//
+// It is DERIVED FROM THE VIEW AT RENDER TIME and is not a second constant,
+// because a constant is a number that drifts from the frame it was chosen for.
+// The rule is "fold only the overflow": a call is at least one row, so a tail
+// this long cannot leave the frame short by itself — the fold line and the
+// oldest calls behind it are the only rows that start above the view, and
+// scrolling up reaches them ([app.roomScroll]). The conversation is untouched:
+// [deck.window] falls back to [toolWindow] wherever no tail is set.
+func (a *app) roomToolTail() int {
+	return max(toolWindow, a.viewHeight())
+}
+
+// roomWindow is the room's visible slice and the padding under it. It is
 // [app.window]'s shape over the room's own rows and the room's own offset —
 // which is the whole mechanism behind "esc restores the scroll exactly".
+//
+// THE PADDING FALLS BELOW A SHORT PAGE, EXACTLY AS IT DOES UNDER A SHORT
+// CONVERSATION (view.go's frame states the law). Do not bottom-anchor a room:
+// a young room growing from the top is the conversation's own behaviour, and
+// the void that once sat between four folded rows and the box was never a
+// gravity problem — it was the fold starving the page, which [app.roomToolTail]
+// ended. A room with material now fills its frame, and a room without it reads
+// from the top like everything else on this surface.
 func (a *app) roomWindow(width, height int) ([]row, int) {
 	if height <= 0 {
 		return nil, 0
@@ -2778,6 +2811,18 @@ func (a *app) roomOffsetFor(total, height int) int {
 
 // roomScroll moves the room's window and re-decides whether the reader is
 // following the node.
+//
+// SCROLLING UP AT THE TOP OPENS THE FOLD. Scroll is the universal read-history
+// gesture, and a fold is exactly the history a person came into a room to
+// read; a wheel that stopped dead against a line saying "N earlier tool calls"
+// was the gesture unwired from the one thing it is for. So a scroll up that
+// arrives with the view already at the top, and a fold line on screen, unfolds
+// that turn instead of going nowhere — and it is ANCHORED: the rows the person
+// was looking at stay on the same screen lines, the offset advanced by exactly
+// the rows the unfold put above them. Nothing jumps, and the next tick walks up
+// into the calls that just appeared. The gesture is spent on the unfold; it does
+// not also move. ctrl+o and a click on the line still toggle it either way, and
+// scrolling back down to the live edge re-sticks without folding anything.
 func (a *app) roomScroll(delta int) {
 	room := a.room
 	if room == nil {
@@ -2789,7 +2834,11 @@ func (a *app) roomScroll(delta int) {
 	if bottom < 0 {
 		bottom = 0
 	}
-	at := a.roomOffsetFor(total, height) + delta
+	at := a.roomOffsetFor(total, height)
+	if delta < 0 && at == 0 && a.roomUnfoldAtTop(total, height) {
+		return
+	}
+	at += delta
 	switch {
 	case at >= bottom:
 		room.offset, room.stick = bottom, true
@@ -2799,6 +2848,48 @@ func (a *app) roomScroll(delta int) {
 		room.offset, room.stick = at, false
 	}
 	a.touch()
+}
+
+// roomUnfoldAtTop is the anchored unfold [app.roomScroll] describes: the topmost
+// fold line inside the view is opened, and the offset advances by exactly the
+// rows the unfold added. It reports false, having done nothing, when no fold is
+// on screen — which hands the gesture back to the ordinary clamp.
+//
+// THE ANCHOR IS THE CALLS UNDER THE FOLD, not whatever sat above it. Every row
+// after the fold line moves down the list by the growth and nothing else, so an
+// offset moved by the same growth keeps each of them on the screen line it was
+// on; the calls that just opened take the lines the fold and anything above it
+// held, and the next tick up walks into them. The instruction at the top of a
+// young page scrolls off upward in that motion, which is right: the person is
+// reading history upward, and it is the first thing they reach when they run
+// out of calls.
+//
+// The offset is set directly rather than through the clamp because the clamp
+// reads the OLD row count: the rows have just grown by the unfold, and the
+// anchor is an index into the new list. `stick` goes false in the same motion,
+// since a person opening history has left the live edge on purpose — a sticky
+// reader would be dragged straight back down by the next event
+// ([app.roomTouched]).
+func (a *app) roomUnfoldAtTop(total, height int) bool {
+	room := a.room
+	rows := a.roomRows(a.bodyWidth())
+	end := min(height, total)
+	fold := -1
+	for i := 0; i < end; i++ {
+		if rows[i].hit == hitFold {
+			fold = i
+			break
+		}
+	}
+	if fold < 0 {
+		return false
+	}
+	a.unfold(rows[fold].turn)
+	grown := len(a.roomRows(a.bodyWidth())) - total
+	room.offset = max(grown, 0)
+	room.stick = false
+	a.touch()
+	return true
 }
 
 // roomSteerLaneRows is the box's placeholder while a room is open: who the
