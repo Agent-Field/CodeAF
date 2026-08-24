@@ -4407,6 +4407,14 @@ func (a *app) slash(line string) tea.Cmd {
 		a.attachPath(rest)
 		return nil
 
+	case "attach":
+		// The same tray, for everything that is not a picture: a log, a CSV, a
+		// stack trace saved to a file. The model is handed the PATH rather than
+		// the contents, because an attached file is a file and the session
+		// already has a `read` tool (attach.go).
+		a.attachFilePath(rest)
+		return nil
+
 	case "settings":
 		a.openSettings()
 		return nil

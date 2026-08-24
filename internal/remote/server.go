@@ -928,6 +928,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return s.stream(agent.SubmitImage(context.Background(), args.Text, images))
 
+	// The other two doors a person's own files come through, both in file.go:
+	// what they attached on the way out, and what they asked for on the way
+	// back. They are one line each here because the whole of the difficulty is
+	// on the other side of them — where a name is made safe, where the bytes
+	// land, and what this conversation is allowed to hand over.
+	case MethodSubmitFiles:
+		return s.submitFiles(call)
+
+	case MethodFetchFile:
+		return s.fetchFile(call)
+
 	case MethodInterrupt:
 		agent.Interrupt()
 		return nil, nil
