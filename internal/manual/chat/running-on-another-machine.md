@@ -21,8 +21,15 @@ The flag's own help text reads:
 run the session on another machine over ssh: host, user@host, or host:path/to/project
 ```
 
-This is a session you sit in front of, the same as a local one. Closing the terminal ends
-it; nothing keeps running on the far machine afterwards.
+This is a session you sit in front of, the same as a local one — but **it is no longer tied to
+this terminal.** The conversation lives on the far machine and your window attaches to it. Close
+the lid mid-answer, lose your wifi, kill the terminal: the turn keeps running over there, and
+running the same command puts you back in it, including whatever finished while you were away.
+See *Staying on that machine* and *When the connection drops*.
+
+The one case where closing really does end it is a far machine running `aforge engine` by hand
+on a pipe, with no session host behind it. Then the pipe **is** the conversation's life. The
+surface knows which of the two it has and never promises the stronger one.
 
 ## How to type the target
 
@@ -186,22 +193,28 @@ The second half of the list, with the exact sentence each one says.
 9. **The task rail is absent by construction.** The remote session does not carry it, so
    there is no rail and no room. It says nothing; there is nothing to draw.
 
-10. **`/image` and `@` are local, deliberately.** The picture is on the machine you are
-    sitting at and the bytes travel with the message, so a relative path and the
-    completion walk are both anchored here rather than on the remote workspace. The image
+10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
+    much as a limit. The picture or file is on the machine you are sitting at and its bytes
+    travel with the message, so a relative path and the completion walk are anchored here
+    rather than on the remote workspace. What you attach really does arrive over there; see
+    *Attaching files*. The image
     ceilings are applied on this side, with the same words a local session uses:
     `session: <path> is over the 10MB image limit` and
     `session: these images total more than the 20MB a single message may carry — send them across a few messages`
 
 11. **`/export` writes here, and the note says so.** The transcript is assembled from what
-    this surface is holding; there is no door for putting a file on the far machine's
-    disk. The success note gains the suffix, exactly:
+    this surface is holding, so the file lands on the machine you are sitting at. The success
+    note gains the suffix, exactly:
     ` · on this machine`
+    That is a fact about `/export` alone and no longer a fact about the connection — files do
+    cross, both ways (*Attaching files*).
 
-12. **Building a new sub-harness is switched off.** The card that asks whether to keep a
-    finished design arrives on a standing lane a connection does not carry, so the
-    designer is not offered at all over `--host` and aforge says it cannot build one from
-    here. Running a harness that already exists is unaffected.
+12. **Building a new sub-harness is switched off**, and not for the reason it used to be. A
+    question raised while nobody is attached now *waits* for the next window — but a design's
+    card never reaches this connection at all, because it is announced on a subscription this
+    protocol has no door for rather than on a turn's stream. So there is nothing to hold. The
+    designer is not offered over `--host` and aforge says it cannot build one from here.
+    Running a harness that already exists is unaffected.
 
 13. **File paths are not clickable.** In a local session every real path on screen is a
     hyperlink you can cmd+click. Here the files are on the far machine and the only
@@ -313,10 +326,11 @@ It does not list this machine's harnesses and offer to run them over there.
 
 **Building a new sub-harness is switched off over a remote connection.** The tools that
 design one are not on the far session's belt at all, so asking for one gets you a plain
-answer that it cannot be done from here — nothing starts and nothing is spent. The reason
-is that the card asking whether to keep the finished page arrives on a standing lane a
-remote connection does not carry, so a design left switched on would write a page and ask a
-question in an empty room. Build harnesses in a session running on that machine directly.
+answer that it cannot be done from here — nothing starts and nothing is spent. The reason is
+that the card asking whether to keep the finished page is announced on a subscription this
+protocol has no door for, so it never crosses at all. A question that *does* cross and finds
+nobody attached is held for the next window; this one is not one of those. Build harnesses in a
+session running on that machine directly.
 
 **Adaptive runs are switched off over a remote connection**, and for the same reason: a
 run's fuel gate arrives on that same standing lane. A run left switched on would spend the
@@ -347,8 +361,11 @@ session: these images total more than the 20MB a single message may carry — se
 ## Exporting over --host
 
 `/export` writes the file **on this machine**, the one you are sitting at. The transcript
-is assembled from what the surface in front of you is holding, and there is no door for
-putting a file on the far machine's disk.
+is assembled from what the surface in front of you is holding, so that is where it lands.
+
+**There is a door for moving files between the two machines** — it is simply not this one.
+`/attach` sends a file to the far machine, and a file the conversation made over there can be
+fetched back to this one. See *Attaching files*.
 
 The success note says so. It gains the suffix ` · on this machine`, so the whole note
 reads, for example:
@@ -385,11 +402,19 @@ model.
 
 ## When the connection drops
 
-Every call gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
-When the connection dies, every call in flight fails and every open stream is closed with
-an error, so no turn is left spinning.
+**It redials by itself.** A dropped link is not the end of the session any more — the surface
+keeps trying, and when it gets back in it picks the conversation up where you left it,
+including the turn that was running while you were gone.
 
-You see one sentence:
+While that is happening the status line says, quietly:
+
+```
+reconnecting to devbox — trying for up to 5 minutes
+```
+
+Every call still gives up after 10 seconds, so a dead pipe never leaves your terminal frozen.
+
+If it cannot get back at all, you see the sentence you always saw:
 
 ```
 the connection to devbox is gone — run the same command to pick the conversation back up
@@ -398,11 +423,17 @@ the connection to devbox is gone — run the same command to pick the conversati
 If the far end said why, its reason is added in parentheses. A connection you closed from
 this side reads `this connection is closed` instead.
 
-**Run the same command again.** That is not advice dressed up: the conversation is on the
-far machine's disk, and the same command opens it again. Nothing that reached the session
-file is lost — the far machine is the only writer of it, and on every road out it
-interrupts the turn in flight (keeping its partial reply, exactly as a mid-turn `ctrl+c` does) and
-flushes the file. A closed lid, a killed ssh and a closed surface are all the same event.
+**The three roads out are three different things now**, which is what makes the above safe.
+Closing the window on purpose leaves the conversation running. A link that simply dies means
+the same — the far machine assumes you are coming back. Ending the conversation is its own
+gesture. Only against a far machine with no session host do all three collapse back into one,
+and there the pipe really is the conversation's life.
+
+Nothing that reached the session file is lost either way: the far machine is the only writer of
+it, and it flushes on every road out.
+
+A fuller account of what survives, and what a returning window does and does not get back, is
+in *When the connection drops* and *Staying on that machine*.
 
 ## One headless message over a connection
 
