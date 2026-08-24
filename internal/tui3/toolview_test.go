@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -660,5 +662,86 @@ func TestTheASCIITierIsDetectedFromTheEnvironment(t *testing.T) {
 				t.Fatalf("detectASCII = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// ── the memo under the row ──────────────────────────────────────────────────
+
+// THE BLOCK UNDER A TOOL ROW IS REMEMBERED, AND THE MEMO IS INVISIBLE
+// ([toolBlock]). These are the four ways it could stop being invisible: the same
+// row drawn twice, a payload that changed under it, a frame dragged to another
+// width, and a cap the person lifted.
+func TestTheBlockUnderAToolRowIsRedrawnWhenAndOnlyWhenItChanges(t *testing.T) {
+	args := editArgs(t, "internal/session/loop.go", [2]string{
+		"const argsLimit = 400", "const argsLimit = 8192",
+	})
+	a := toolApp(t, tokens.TrueColor, call("edit", args, "Successfully replaced 1 block(s) in loop.go."))
+	at := -1
+	for i := range a.entries {
+		if a.entries[i].kind == entryTool {
+			at = i
+		}
+	}
+	a.openTool(at)
+	e := &a.entries[at]
+
+	first, _ := a.toolBlock(e, 80, false)
+	first = append([]string(nil), first...)
+	again, _ := a.toolBlock(e, 80, false)
+	if strings.Join(again, "\n") != strings.Join(first, "\n") {
+		t.Fatalf("the same row drew a different block the second time:\n%s\n\n%s",
+			strings.Join(first, "\n"), strings.Join(again, "\n"))
+	}
+
+	// A PAYLOAD THAT CHANGED IS A DIFFERENT BLOCK. The announcement and the begin
+	// carry the same arguments, but a row whose args were replaced must not go on
+	// showing the ones it was drawn from.
+	e.detail.Args = editArgs(t, "internal/session/loop.go", [2]string{
+		"const argsLimit = 400", "const argsLimit = 65536",
+	})
+	changed, _ := a.toolBlock(e, 80, false)
+	if !strings.Contains(strings.Join(changed, "\n"), "65536") {
+		t.Fatalf("the block kept the payload it was drawn from:\n%s", strings.Join(changed, "\n"))
+	}
+
+	// A NARROWER FRAME IS A DIFFERENT BLOCK, because these rows truncate to the
+	// width they were laid out to.
+	narrow, _ := a.toolBlock(e, 30, false)
+	for _, line := range narrow {
+		if ansi.StringWidth(line) > 30 {
+			t.Fatalf("a row laid out for 30 columns is %d wide: %q", ansi.StringWidth(line), line)
+		}
+	}
+
+	// AND A LIFTED CAP IS A DIFFERENT BLOCK: it is the same rows with the window
+	// taken off, and the memo may not answer the old question.
+	wide, before := a.toolBlock(e, 80, false)
+	e.full = true
+	full, after := a.toolBlock(e, 80, false)
+	if after != 0 || len(full) < len(wide) || before < 0 {
+		t.Fatalf("lifting the cap drew %d rows dropping %d, against %d dropping %d",
+			len(full), after, len(wide), before)
+	}
+}
+
+// AND A RE-MEASURED GROUND DROPS IT, which is the one thing the key cannot see:
+// these are finished strings with the escape sequences already inside them
+// (adaptive.go's [app.repaintPalette]).
+func TestARepaintDropsTheBlockUnderAToolRow(t *testing.T) {
+	args := editArgs(t, "loop.go", [2]string{"const argsLimit = 400", "const argsLimit = 8192"})
+	a := toolApp(t, tokens.TrueColor, call("edit", args, "Successfully replaced 1 block(s) in loop.go."))
+	at := -1
+	for i := range a.entries {
+		if a.entries[i].kind == entryTool {
+			at = i
+		}
+	}
+	a.openTool(at)
+	if _, _ = a.toolBlock(&a.entries[at], 80, false); a.entries[at].hung == nil {
+		t.Fatal("the block was not remembered at all")
+	}
+	a.repaintPalette()
+	if a.entries[at].hung != nil {
+		t.Fatal("a re-measured ground left yesterday's paint under the row")
 	}
 }
