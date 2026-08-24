@@ -905,6 +905,12 @@ When the box is empty and there is somewhere to go, the legend line above the bo
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
 you type.
 
+**On a machine holding only this conversation the door is shut, and it opens the moment
+that stops being true.** Start a second conversation with `/new`, or open one off the
+welcome box, and both the gesture and the line arrive — the surface asks the question
+again every time it moves you to another conversation. What it cannot see is another
+window minting one while this one sits idle; one `/new` or one resume here catches it up.
+
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
 home opens with the cursor on **no row**, and **the first `down` lands at the top of the
