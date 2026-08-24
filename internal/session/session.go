@@ -1658,7 +1658,16 @@ type Agent struct {
 	elsewhereTold []deltaLanding
 	usage         Usage
 	running       bool
-	cancel        context.CancelFunc
+	// turnFloor is where the running turn's WORK begins in a.messages: the
+	// index just past the message that opened the turn, stamped by
+	// [Agent.startTurnLocked] and meaningful only while running is true. It is
+	// what lets [Agent.AttachReplay] hand a surface the conversation once and
+	// whole — the journal's record up to the floor, the hub's backlog from it —
+	// with nothing drawn twice. A compaction pass that rebuilds a.messages
+	// mid-turn moves the floor with the rebuild ([Agent.foldLocked]); a rewind
+	// never has to, because a cut is refused while a turn is in flight.
+	turnFloor int
+	cancel    context.CancelFunc
 	steering      []userMessage
 	closed        bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over

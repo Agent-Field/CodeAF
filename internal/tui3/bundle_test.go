@@ -2539,8 +2539,16 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 		}
 	}
 	// IT IS A QUESTION, SO IT TAKES THE QUESTION HUE — the same violet the
-	// consent block spends and nothing else on this surface does.
-	painted := a.visible(a.bodyWidth())[0].text
+	// consent block spends and nothing else on this surface does. The card is
+	// found rather than assumed to lead the frame: the conversation's opening
+	// breath (render.go's [app.layout]) is a blank row above everything.
+	painted := ""
+	for _, r := range a.visible(a.bodyWidth()) {
+		if strings.TrimSpace(r.text) != "" {
+			painted = r.text
+			break
+		}
+	}
 	if !strings.Contains(painted, sgr256(hueAsk)) {
 		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
 	}

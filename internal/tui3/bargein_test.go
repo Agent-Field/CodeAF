@@ -479,7 +479,7 @@ func TestABargedInTurnFoldsAsStoppedAndTheNextOneAnswersNormally(t *testing.T) {
 	if strings.HasPrefix(plain(answer.text), " ") {
 		t.Fatalf("the answer to the correction was demoted into the work column: %q", answer.text)
 	}
-	if strings.Contains(answer.text, sgrOf(a.pal.muted)) {
+	if strings.Contains(answer.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the answer to the correction wears the working tier: %q", answer.text)
 	}
 	if !strings.Contains(body, "▸ worked") {
@@ -529,7 +529,7 @@ func TestNothingOnTheScreenBrightensWhileTheStoppedTurnWindsDown(t *testing.T) {
 	// AND THE HALF-SENTENCE IS AT THE WORKING TIER, which is the demotion said in
 	// the channel a person actually reads it in.
 	partial := rowWithText(t, a, "first paragraph of the wrong answer")
-	if !strings.Contains(partial.text, sgrOf(a.pal.muted)) {
+	if !strings.Contains(partial.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the stopped reply did not drop to the working tier: %q", partial.text)
 	}
 	// AND THE STATUS LINE IS STILL AND DIM. No spinner, no count-up, no colour:

@@ -62,7 +62,7 @@ func TestNarrationRecedesWhenWorkOpensUnderIt(t *testing.T) {
 	if !strings.HasPrefix(plain(narration.text), "  ") {
 		t.Fatalf("narration kept the answer's margin: %q", plain(narration.text))
 	}
-	if !strings.Contains(narration.text, sgrOf(a.pal.muted)) {
+	if !strings.Contains(narration.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("narration kept the body ink: %q", narration.text)
 	}
 
@@ -70,7 +70,7 @@ func TestNarrationRecedesWhenWorkOpensUnderIt(t *testing.T) {
 	if strings.HasPrefix(plain(answer.text), " ") {
 		t.Fatalf("the answer was pushed into the work column: %q", plain(answer.text))
 	}
-	if strings.Contains(answer.text, sgrOf(a.pal.muted)) {
+	if strings.Contains(answer.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the answer was demoted with its narration: %q", answer.text)
 	}
 }
@@ -174,9 +174,11 @@ func TestAFoldedTurnsAnswerTakesTheBreathToo(t *testing.T) {
 	t.Fatalf("the folded turn lost its answer:\n%s", strings.Join(lines, "\n"))
 }
 
-// 3. A TURN WITH NO WORK IN IT IS UNTOUCHED. The hierarchy adds nothing to a
-// plain question and its answer: no gutter, no tier, and above all no blank row
-// — which is what makes this file safe to have landed at all.
+// 3. A TURN WITH NO WORK IN IT IS UNTOUCHED BY THE HIERARCHY: no gutter and no
+// tier on either block. What it does get is the SPACING pass's two blanks — one
+// row of air at the top of the conversation, and the change-of-speaker gap
+// between the question and its reply (render.go's wasUser) — so the byte
+// comparison is against exactly that shape and nothing looser.
 func TestATurnWithNoWorkIsUntouchedByTheHierarchy(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries = []entry{
@@ -185,13 +187,15 @@ func TestATurnWithNoWorkIsUntouchedByTheHierarchy(t *testing.T) {
 	}
 	a.touch()
 
-	want := append(a.renderEntry(0, &a.entries[0], a.width), a.settledMarkdown(1, &a.entries[1], a.width)...)
+	want := append([]string{""}, a.renderEntry(0, &a.entries[0], a.width)...)
+	want = append(want, "")
+	want = append(want, a.settledMarkdown(1, &a.entries[1], a.width)...)
 	var got []string
 	for _, r := range rows(a) {
 		got = append(got, r.text)
 	}
 	if len(got) != len(want) {
-		t.Fatalf("a work-free turn drew %d rows, not the %d its two blocks render to:\n%q",
+		t.Fatalf("a work-free turn drew %d rows, not the %d its two blocks and two blanks render to:\n%q",
 			len(got), len(want), got)
 	}
 	for i := range want {
@@ -215,7 +219,7 @@ func TestAnInterruptedTurnPromotesNothing(t *testing.T) {
 	a.touch()
 
 	partial := rowWithText(t, a, "Looking at the parser")
-	if !strings.HasPrefix(plain(partial.text), "  ") || !strings.Contains(partial.text, sgrOf(a.pal.muted)) {
+	if !strings.HasPrefix(plain(partial.text), "  ") || !strings.Contains(partial.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a stopped turn promoted its last paragraph: %q", partial.text)
 	}
 
@@ -223,7 +227,7 @@ func TestAnInterruptedTurnPromotesNothing(t *testing.T) {
 	typeLine(t, a, "never mind, what is 2+2?")
 	a.touch()
 	partial = rowWithText(t, a, "Looking at the parser")
-	if !strings.Contains(partial.text, sgrOf(a.pal.muted)) {
+	if !strings.Contains(partial.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the stopped turn was promoted by the turn after it: %q", partial.text)
 	}
 }
@@ -329,7 +333,7 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 		return row{}
 	}
 	if r := find("Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
-		!strings.Contains(r.text, sgrOf(a.pal.muted)) {
+		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a room promoted its narration: %q", r.text)
 	}
 	if r := find("reads the length prefix twice"); strings.HasPrefix(plain(r.text), " ") {
@@ -362,7 +366,7 @@ func TestAResumedConversationRebuildsTheSameHierarchy(t *testing.T) {
 	a.touch()
 
 	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
-		!strings.Contains(r.text, sgrOf(a.pal.muted)) {
+		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a resumed turn promoted its narration: %q", r.text)
 	}
 	if r := rowWithText(t, a, "reads the length prefix twice"); strings.HasPrefix(plain(r.text), " ") {
@@ -392,7 +396,7 @@ func TestTheRowCacheFollowsTheHierarchy(t *testing.T) {
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "read", text: "parser.go", turn: 1, status: toolOK})
 	a.touch()
 	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
-		!strings.Contains(r.text, sgrOf(a.pal.muted)) {
+		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the block handed back the rows it drew as the answer: %q", r.text)
 	}
 }
