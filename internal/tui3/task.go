@@ -4236,6 +4236,9 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		if len(rows) == 0 {
 			rows = a.railWorking(node, width)
 		}
+		if len(rows) == 0 {
+			rows = a.railJobLog(node, width)
+		}
 		if len(rows) < railUnderRows {
 			if tele := a.railTelemetry(node, width); tele != "" {
 				rows = append(rows, paint(tele))
@@ -4267,6 +4270,13 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// waiting for is a person, and that is what the row says.
 		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
+		// A BACKGROUND JOB HAS NO BRANCH AND NEVER COULD, so the row that would
+		// say how its work came home says where its output is instead — the same
+		// one row it wore while it ran ([app.railJobLog]), because what a person
+		// wants off a settled job is exactly what they wanted off a live one.
+		if node.kind == session.TaskKindJob {
+			return a.railJobLog(node, width)
+		}
 		switch node.merge {
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
@@ -4382,6 +4392,37 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
+}
+
+// railJobLog is the under-line of a running BACKGROUND JOB, or nil for anything
+// else on this column.
+//
+//	job 3 · log /Users/…/.aforge-v3/jobs/3.log
+//
+// IT IS THE ROW A JOB HAS INSTEAD OF A CALL. Every other running row down here
+// says what the work is doing this second, because there is an agent inside it
+// making calls and a pilot lane reporting them ([app.railWorking]). A job is a
+// process: nothing narrates it, and the only true thing there is to say about it
+// while it runs is where its output is going. So the row is the handle back to
+// the work — the number `jobs output` takes, and the file the read tool takes —
+// which is exactly what the two loud settled rows on this column are
+// ([app.railUnder] states the law about handles).
+//
+// It is a job's ONLY door: a job has no room to open and no card to land, so a
+// path this row did not draw would be a path nowhere on this surface.
+//
+// IT CUTS RATHER THAN WRAPPING, which is the one place this column's handles
+// rule bends and the reason is that the handle here is the NUMBER. A branch name
+// wraps because half of one is worth nothing; a log path's first half is a
+// directory a person already knows, and its full form is on the row's own record
+// for a surface with the width for it. What the cut can never lose is `job 3`,
+// which is what `jobs output` and `jobs kill` take — so one quiet row says
+// everything a person can act on, and a settled job does not spend two.
+func (a *app) railJobLog(node *taskNode, width int) []string {
+	if node.kind != session.TaskKindJob || strings.TrimSpace(node.report) == "" {
+		return nil
+	}
+	return []string{a.pal.dim(fit(node.report, width))}
 }
 
 // railDoing is the row a node wears while it is in a phase of its own kind's
@@ -4925,7 +4966,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// and a card each would bury the conversation under the internals of one
 		// answer. The run itself is a root and still writes its card, which is the
 		// decision that was actually made.
-		if node.parent == "" {
+		//
+		// AND A BACKGROUND JOB LANDS ON THE ROSTER AND NOWHERE ELSE. A card is how
+		// work a person handed over reports back — it carries a brief, an
+		// acceptance, a branch, a price and a report somebody wrote — and a job has
+		// not one of those (session's TaskKindJob). What it has is a log and an
+		// exit, and the model is already told both on the steering lane, so a card
+		// built from the empty half of a notice would push a block of nothing into
+		// the conversation every time a `sleep 5` came home.
+		if node.parent == "" && node.kind != session.TaskKindJob {
 			a.landedCard(node)
 		}
 	}

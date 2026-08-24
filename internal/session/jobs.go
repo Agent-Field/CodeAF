@@ -168,6 +168,11 @@ type jobInfo struct {
 	kind    jobKind
 	label   string
 	detail  string
+	// logPath is where everything this job wrote is spooled. It is copied out
+	// with the rest because a job's row has no transcript, no branch and no
+	// report to point a person at, and the log is what it points at instead
+	// (jobrow.go).
+	logPath string
 	state   jobState
 	code    int
 	ticks   int
@@ -183,7 +188,8 @@ func (j *job) info() jobInfo {
 	}
 	return jobInfo{
 		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
-		state: j.state, code: j.exitCode, ticks: j.ticks, elapsed: elapsed,
+		logPath: j.logPath,
+		state:   j.state, code: j.exitCode, ticks: j.ticks, elapsed: elapsed,
 	}
 }
 
@@ -285,6 +291,12 @@ type jobRegistry struct {
 	// the registry has no idea what a turn is — it reports, and the lane decides
 	// whether anybody has to answer.
 	notify func(string)
+	// announce carries one job's row to the roster — the column beside the
+	// conversation, where work this session started shows whatever door started
+	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
+	// the registry reports what a job is doing and has no idea what a roster is,
+	// and a caller with nothing to draw leaves it nil and pays nothing.
+	announce func(jobInfo)
 
 	mu   sync.Mutex
 	seq  int
@@ -371,6 +383,34 @@ func (r *jobRegistry) add(started *job) {
 	r.mu.Lock()
 	r.jobs = append(r.jobs, started)
 	r.mu.Unlock()
+	r.announceRow(started)
+}
+
+// announceRow publishes one job's row, and it is the ONE PLACE that decides
+// which jobs have one.
+//
+// A TASK NODE DOES NOT. It is in this registry for everything around it — one id
+// space, one log, one kill, one death at Close ([jobKindTask]) — and it already
+// has a roster row of its own, published by the graph that runs it. A second row
+// here would draw the same piece of work twice and count it twice.
+func (r *jobRegistry) announceRow(one *job) {
+	if r.announce == nil || one.kind == jobKindTask {
+		return
+	}
+	r.announce(one.info())
+}
+
+// settled makes one job final and publishes the row's ending in the same beat.
+//
+// It exists so that the three places a job can end — a process reaped
+// ([jobRegistry.settleExit]), a goroutine finishing ([jobRegistry.finish]), a
+// watch's loop returning (tools_watch.go) — cannot disagree about whether the
+// roster was told. It reports what [job.settle] reports: whether the death was
+// one this session ASKED for.
+func (r *jobRegistry) settled(one *job, code int) bool {
+	requested := one.settle(code)
+	r.announceRow(one)
+	return requested
 }
 
 // start launches one command in the background and returns as soon as the
@@ -464,7 +504,7 @@ func (r *jobRegistry) startVideo(label, prompt string) (*job, context.Context, e
 // two rules hold, which are that a death this session ASKED for says nothing —
 // the caller already knows — and that the note is a sentence, not the output.
 func (r *jobRegistry) finish(done *job, code int, note string) {
-	if requested := done.settle(code); requested {
+	if requested := r.settled(done, code); requested {
 		return
 	}
 	if note == "" || r.notify == nil {
@@ -519,7 +559,7 @@ func (r *jobRegistry) reap(watched *job) {
 // it became known: the job is made final, and unless the death was asked for a
 // note goes on the steering queue.
 func (r *jobRegistry) settleExit(watched *job, code int) {
-	requested := watched.settle(code)
+	requested := r.settled(watched, code)
 
 	if requested || r.notify == nil {
 		return

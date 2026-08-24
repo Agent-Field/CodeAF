@@ -1839,6 +1839,11 @@ type Agent struct {
 	// empty list of watchers and the person would open a conversation with news
 	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
 	standingNews []Event
+	// jobRows is the roster id minted for each background job, keyed by the
+	// registry's own number for it. The two numberings are separate counters and
+	// a row keyed on the registry's would collide with a task's, which is why
+	// there is a map here at all (jobrow.go).
+	jobRows map[int]uint64
 
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the

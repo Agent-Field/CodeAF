@@ -49,12 +49,54 @@ func testLedger() (*velocityLedger, *fakeClock) {
 
 // laggy is one slow answer: a first token well past the threshold.
 func (l *velocityLedger) laggy(model, served string) Sighting {
-	return l.observe(model, served, LagTTFT+500*time.Millisecond, 200, 2*time.Second)
+	return l.observe(model, served, LagTTFT+500*time.Millisecond, 200, 2*time.Second, 0)
 }
 
 // brisk is one fast answer: prompt first token, a healthy sustained rate.
 func (l *velocityLedger) brisk(model, served string) Sighting {
-	return l.observe(model, served, 200*time.Millisecond, 400, time.Second)
+	return l.observe(model, served, 200*time.Millisecond, 400, time.Second, 0)
+}
+
+// lumpy is one answer that ARRIVED but was assembled server-side: healthy
+// first token, healthy overall rate, and one quiet stretch inside it wider
+// than LagGap — the buffering shape streamguard.go's cap keeps survivable.
+func (l *velocityLedger) lumpy(model, served string) Sighting {
+	return l.observe(model, served, 200*time.Millisecond, 400, time.Second, LagGap+5*time.Second)
+}
+
+// TestALumpedAnswerIsALagStrike pins the third clause of the lag law: an
+// endpoint that delivers its answer as one long silence and then a lump is
+// working, slowly — so it walks the same strike ladder a slow endpoint walks,
+// and after two lumps it stands behind every endpoint that streams. That
+// standing is what stops latency-sort from handing the next big write to a
+// bufferer whose fast first token makes it look like the quickest lane there is.
+func TestALumpedAnswerIsALagStrike(t *testing.T) {
+	ledger, _ := testLedger()
+	const model = "vendor/fast-model"
+
+	ledger.brisk(model, "streamer")
+	sighting := ledger.lumpy(model, "bufferer")
+	ledger.brisk(model, "steady")
+	if !sighting.Laggy {
+		t.Fatal("a gap past LagGap did not read as laggy")
+	}
+	if sighting.Gap != LagGap+5*time.Second {
+		t.Fatalf("gap = %v, want it recorded on the sighting", sighting.Gap)
+	}
+
+	// One lump is not a verdict, for the reason one slow answer is not: the
+	// lane keeps its seen-order place.
+	order, _ := ledger.preferences(model)
+	if want := []string{"streamer", "bufferer", "steady"}; !equalStrings(order, want) {
+		t.Fatalf("order after one lump = %v, want %v", order, want)
+	}
+
+	// The second lump is: demoted behind every lane that streams.
+	ledger.lumpy(model, "bufferer")
+	order, _ = ledger.preferences(model)
+	if want := []string{"streamer", "steady", "bufferer"}; !equalStrings(order, want) {
+		t.Fatalf("order after two lumps = %v, want %v", order, want)
+	}
 }
 
 func TestVelocityDemotesAfterTwoStrikesAndIgnoresAfterThree(t *testing.T) {
@@ -278,7 +320,7 @@ func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
 func TestVelocityDoesNotRateAnswersBelowTheFloor(t *testing.T) {
 	ledger, _ := testLedger()
 	const model = "vendor/fast-model"
-	sighting := ledger.observe(model, "quicksilver", 100*time.Millisecond, ratedFloor-1, 10*time.Second)
+	sighting := ledger.observe(model, "quicksilver", 100*time.Millisecond, ratedFloor-1, 10*time.Second, 0)
 	if sighting.Rate != 0 {
 		t.Fatalf("rate = %v, want it unrated below the floor", sighting.Rate)
 	}
@@ -286,7 +328,7 @@ func TestVelocityDoesNotRateAnswersBelowTheFloor(t *testing.T) {
 		t.Fatal("a short prompt answer was called laggy on a rate that measures the handshake")
 	}
 	// The same short answer, kept waiting, IS laggy: TTFT judges on its own.
-	slow := ledger.observe(model, "quicksilver", LagTTFT+time.Millisecond, 4, time.Second)
+	slow := ledger.observe(model, "quicksilver", LagTTFT+time.Millisecond, 4, time.Second, 0)
 	if !slow.Laggy {
 		t.Fatal("a first token past the threshold was not called laggy")
 	}
@@ -295,11 +337,11 @@ func TestVelocityDoesNotRateAnswersBelowTheFloor(t *testing.T) {
 func TestVelocityRatesSustainedOutput(t *testing.T) {
 	ledger, _ := testLedger()
 	const model = "vendor/fast-model"
-	fast := ledger.observe(model, "quicksilver", 100*time.Millisecond, 900, 10*time.Second)
+	fast := ledger.observe(model, "quicksilver", 100*time.Millisecond, 900, 10*time.Second, 0)
 	if fast.Rate != 90 || fast.Laggy {
 		t.Fatalf("90 tok/s read as %v laggy=%v, want a healthy rate", fast.Rate, fast.Laggy)
 	}
-	slow := ledger.observe(model, "molasses", 100*time.Millisecond, 200, 10*time.Second)
+	slow := ledger.observe(model, "molasses", 100*time.Millisecond, 200, 10*time.Second, 0)
 	if slow.Rate != 20 || !slow.Laggy {
 		t.Fatalf("20 tok/s read as %v laggy=%v, want it under the %v floor", slow.Rate, slow.Laggy, LagRate)
 	}
@@ -633,6 +675,49 @@ func TestStreamedAnswerIsTimedAndAttributed(t *testing.T) {
 	}
 	if sighting.Laggy {
 		t.Fatal("a prompt, fast answer was called laggy")
+	}
+}
+
+// TestTheWidestGapInAStreamReachesTheSighting proves the wiring rather than
+// the law: client.go times every writing delta against the last one, and the
+// widest quiet stretch it saw lands on the sighting the ledger judges.
+func TestTheWidestGapInAStreamReachesTheSighting(t *testing.T) {
+	const model = "vendor/fast-model"
+	chunks := []string{
+		`{"id":"one","provider":"quicksilver","choices":[{"index":0,"delta":{"role":"assistant","content":"the "}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"content":"lumped "}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":"stop"}],` +
+			`"usage":{"prompt_tokens":10,"completion_tokens":600,"total_tokens":610}}`,
+	}
+	client, _ := routedClient(t, RoutingLatency, sseHandler(chunks...))
+	clock := newClock()
+	// The send is instant, the first token prompt — and then thirty quiet
+	// seconds sit between the first delta and the second, which is the lump.
+	ticks := []time.Duration{400 * time.Millisecond, 0, 30 * time.Second, 0, 0, 0}
+	step := 0
+	client.now = func() time.Time {
+		at := clock.now()
+		if step < len(ticks) {
+			clock.advance(ticks[step])
+			step++
+		}
+		return at
+	}
+	client.velocity.now = clock.now
+
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	sighting, ok := client.velocity.lastServed(model)
+	if !ok {
+		t.Fatal("nothing measured for a streamed answer")
+	}
+	if sighting.Gap != 30*time.Second {
+		t.Fatalf("gap = %v, want the thirty seconds the stream actually sat quiet", sighting.Gap)
+	}
+	if !sighting.Laggy {
+		t.Fatal("a thirty-second lump inside an answer was not called laggy")
 	}
 }
 

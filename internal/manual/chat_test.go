@@ -82,6 +82,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run tests for me", "what-i-can-do"},
 		{"can you start a dev server", "what-i-can-do"},
 		{"how do I see what a background job printed", "what-i-can-do"},
+		// The jobs-on-the-column wave. A person watching an empty right-hand
+		// column while a long command ran asks about the COLUMN, not about the
+		// jobs tool, so these have to land on the page that owns the column.
+		{"why is nothing showing on the right while a command is running", "tasks"},
+		{"does a background job show up on the task column", "tasks"},
+		{"what is the row for my dev server on the right", "tasks"},
+		{"can I stop a background job from the sidebar", "tasks"},
 		{"do you ask before running rm", "permissions"},
 		{"what is yolo mode", "permissions"},
 		{"how do I make it stop asking every time", "permissions"},
@@ -206,6 +213,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"nothing happens for a minute after a run starts", "adaptive-runs"},
 		// And a person reading a column of ids. These are asked with the ids
 		// themselves in the question, because that is what the screen handed them.
+		// And a person who came back to a conversation and looked at the column.
+		// The rows are there now, settled — the question used to be about a
+		// column that was empty, and it is still the question they ask.
+		{"where did my run's rows go", "adaptive-runs"},
+		{"my run disappeared from the task column when I switched away", "adaptive-runs"},
+		{"do run rows come back when I reopen a conversation", "adaptive-runs"},
 		{"my run's rows are called r1 r2 r3", "adaptive-runs"},
 		{"why is a subtask called synth", "adaptive-runs"},
 		{"the tasks under my run have ids instead of names", "adaptive-runs"},

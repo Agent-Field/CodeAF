@@ -398,9 +398,7 @@ Each press walks it round: off → low → medium → high → off.
 
 A request that has been accepted and then produces nothing is cut and sent again. Two
 clocks decide, and only the **model writing** moves either of them — a token of answer, a
-token of thinking, a piece of a tool call. Keepalive bytes on the wire do not count, which
-is the whole reason this exists: an endpoint can hold a connection open forever without
-ever saying anything.
+token of thinking, a piece of a tool call.
 
 | The clock | How long | What it catches |
 | --- | --- | --- |
@@ -411,6 +409,16 @@ The first bound is generous on purpose: a reasoning model at a long context legi
 thinks for a minute before its first token, and cutting a request that was about to answer
 costs the whole prompt again. The second is shorter because the question is different — a
 model that has started writing has finished deciding.
+
+**Keepalives buy patience, never progress.** Some endpoints assemble a whole answer — most
+often one large tool call — on their own side and deliver it in one piece, sending
+keepalive comments the entire time. That quiet is not a dead connection, so while
+keepalives are still arriving the wait is extended, up to a hard cap of **2m30s** of total
+quiet. Past the cap the request is cut whatever the endpoint is saying, because an
+endpoint that speaks forever and answers never has failed too — the error then honestly
+names the longer wait, `went quiet for 2m30s`. An endpoint that delivers its answers this
+way is also remembered as a slow one and sorted behind the endpoints that stream, so it
+stops being the first pick for the next request.
 
 A cut request is asked again **twice**. When the router named the endpoint that went
 quiet, that endpoint is avoided on the retry so another endpoint serving the same model

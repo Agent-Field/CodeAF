@@ -76,8 +76,15 @@ type WorkNode struct {
 // NEVER FAKE LIVENESS. Every row here is a worker this process is holding — a
 // node in the graph or a node on a run's own snapshot. Nothing is invented for
 // a shape that has not been admitted yet.
+// A BACKGROUND JOB IS A HAND AT WORK. It is not an agent and it has no worker
+// under it, but the question this door answers is "is anything happening", and a
+// nine-minute command running under `bash background:true` is the plainest
+// possible yes. It joins the tree for the same reason it joins the roster
+// (jobrow.go): the door that started the work does not change where the work
+// shows.
 func (a *Agent) WorkingNow() []WorkNode {
-	return append(a.tasker().workingNow(), a.runsWorkingNow()...)
+	nodes := append(a.tasker().workingNow(), a.runsWorkingNow()...)
+	return append(nodes, a.jobsWorkingNow()...)
 }
 
 // workingNow is the task graph's half of the tree. It is nil-safe: a session

@@ -233,3 +233,31 @@ func BenchmarkSSEDecoderOneHugeMessage(b *testing.B) {
 		}
 	})
 }
+
+// TestKeepaliveCommentsReachTheAliveSeam pins the decoder's one report about
+// lines that never become chunks: each SSE comment — the ": OPENROUTER
+// PROCESSING" a router sends while an upstream assembles its answer — is
+// worth one alive() call, and data lines are worth none, because the stall
+// watch already hears those as progress (streamguard.go says what each buys).
+func TestKeepaliveCommentsReachTheAliveSeam(t *testing.T) {
+	alive := 0
+	decoder := newSSEDecoder(strings.NewReader(
+		": OPENROUTER PROCESSING\n\n: OPENROUTER PROCESSING\n\n" +
+			"data: {\"id\":\"one\"}\n\n" +
+			": OPENROUTER PROCESSING\n\n" +
+			"data: [DONE]\n\n"))
+	decoder.alive = func() { alive++ }
+	chunk, err := decoder.DecodeChunk()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if chunk.ID != "one" {
+		t.Fatalf("chunk id = %q, the comments must not eat the data", chunk.ID)
+	}
+	if _, err := decoder.DecodeChunk(); !errors.Is(err, io.EOF) {
+		t.Fatalf("end = %v, want io.EOF", err)
+	}
+	if alive != 3 {
+		t.Fatalf("alive calls = %d, want one per comment line", alive)
+	}
+}
