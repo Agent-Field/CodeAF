@@ -5106,7 +5106,24 @@ func (a *app) interrupt() {
 	a.dropAsks()
 	a.dropConnectAsks()
 	a.dropHarnessAsks()
-	a.note("interrupted")
+	// AND THE LINE IN THE CONVERSATION SAYS IT IN THE SAME WORD THE REST OF THE
+	// SCREEN SAYS IT IN. This note read `interrupted` for as long as that was the
+	// only word the surface had for the act, and after two waves it was the third
+	// one: the status line says `stopping` while the engine lets go (render.go's
+	// [stoppingWord]) and the chip that stands in for the stopped turn says
+	// `stopped by you` two rows above this note (workfold.go's
+	// [app.workfoldLabel]). One keypress narrated in three vocabularies on one
+	// screen reads as three things that happened, and the redundant pair — a chip
+	// and a note about the same stop, drawn together in fold mode — is where it
+	// showed worst. `stopped` is the past tense of the word the other two use and
+	// it is the person's own: they stopped it.
+	//
+	// The STATUS WORD is deliberately left as `interrupted`. That slot is a
+	// documented two-rung ladder of its own — `stopping` while the turn is being
+	// let go, `interrupted` once it is gone (screen.md states both) — and it is
+	// the state the session is IN rather than a line about what happened, which is
+	// what this note is.
+	a.note("stopped")
 	// The session drops its follow-up queue on an interrupt — a stop that was
 	// followed by the session working again is not a stop — so the surface says
 	// so rather than leaving a count above the box for turns that will never run.

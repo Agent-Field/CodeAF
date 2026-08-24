@@ -156,7 +156,7 @@ is stopped and everything it already said is kept.
 
 What happens:
 
-1. The session is told to stop, and a note `interrupted` is added to the conversation.
+1. The session is told to stop, and a note `stopped` is added to the conversation.
 2. The screen stops on the key: every spinner goes, and every call that was running keeps
    the time it ran until you stopped it.
 3. Any queued follow-ups are dropped, and aforge says so — `1 queued message
@@ -166,6 +166,13 @@ What happens:
 5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
+
+**The words aforge uses for one stop.** They are four slots and one key press, so they
+are worth reading together: `stopping` is the status word while the turn is being let go,
+`interrupted` is the status word once it is over, `· stopped` is the note left in the
+conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. If
+you are looking for the word *interrupted* anywhere else on the screen, that is where it
+is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box reads exactly `esc interrupt` — or `enter waits · shift+enter stops and
@@ -1489,7 +1496,7 @@ There is a blank row between the chip and the answer under it.
 **A turn you stopped with `esc` says so instead**, and it collapses whole:
 `▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
 A stopped turn never reached an answer, so there is no answer to leave out of the chip —
-that is the point of the wording. aforge's own lines about the stop (`· interrupted`, and
+that is the point of the wording. aforge's own lines about the stop (`· stopped`, and
 what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is

@@ -178,26 +178,85 @@ func TestTheParkedBlockSaysWhatItIsWaitingForAndWhichKeysMoveIt(t *testing.T) {
 // ONE MESSAGE IS NOT COUNTED. The emptiness law over a number that says nothing
 // the block above it does not.
 func TestOneWaitingMessageIsNotCounted(t *testing.T) {
-	if got := parkedWord(1, 200); strings.HasPrefix(got, "1 ") {
+	if got := parkedWord(1, 200, true); strings.HasPrefix(got, "1 ") {
 		t.Fatalf("one waiting message was counted: %q", got)
 	}
-	if got := parkedWord(2, 200); !strings.HasPrefix(got, "2 wait for this answer") {
+	if got := parkedWord(2, 200, true); !strings.HasPrefix(got, "2 wait for this answer") {
 		t.Fatalf("two waiting messages were not counted: %q", got)
 	}
 }
 
 // A narrow frame drops the pieces from the right and never wraps the line.
 func TestTheParkedLineTrimsFromTheRightOnANarrowFrame(t *testing.T) {
-	full := parkedWord(1, 200)
+	full := parkedWord(1, 200, true)
 	if full != strings.Join(parkedHint, " · ") {
 		t.Fatalf("the whole line is not the whole hint: %q", full)
 	}
-	tight := parkedWord(1, ansi.StringWidth(parkedHint[0]+" · "+parkedHint[1]))
+	tight := parkedWord(1, ansi.StringWidth(parkedHint[0]+" · "+parkedHint[1]), true)
 	if tight != parkedHint[0]+" · "+parkedHint[1] {
 		t.Fatalf("the line did not drop its last piece: %q", tight)
 	}
-	if got := parkedWord(1, 4); got != parkedHint[0] {
+	if got := parkedWord(1, 4, true); got != parkedHint[0] {
 		t.Fatalf("the narrowest line is not what the message is doing: %q", got)
+	}
+}
+
+// AND THE LINE STOPS OFFERING esc THE MOMENT esc STOPS DOING ANYTHING. The turn
+// has been stopped and is winding down (render.go's [app.windingDown]): the
+// message is still parked, but [app.interrupt] returns at its first line and
+// [app.sendParked] stands down while the stream is open, so for those seconds
+// the key does nothing at all. Both lines on the screen that talk about this
+// queue drop the offer together, and what is left of each is still true.
+func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
+	a, agent := streaming(t, "reading the tree. ")
+	typeLine(t, a, "do much more of a deep research please")
+	drive(t, a, frameMsg{})
+
+	if len(a.parks) != 1 {
+		t.Fatalf("the message did not park: %+v", a.parks)
+	}
+	if body := plain(frame(a)); !strings.Contains(body, parkedHint[1]) {
+		t.Fatalf("the parked block never offered the stop:\n%s", body)
+	}
+	if got := a.hintWord(); got != parkedHint[1] {
+		t.Fatalf("the hint slot never offered the stop: %q", got)
+	}
+
+	drive(t, a, key("esc"), frameMsg{})
+
+	if !a.windingDown() {
+		t.Fatal("the surface is not winding down after esc")
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("the message left the queue before the stream closed: %+v", a.parks)
+	}
+	// IT REALLY IS INERT, asked of the road and not only of the words: this is
+	// the fact the two lines below are about.
+	if cmd := a.sendParked(); cmd != nil {
+		t.Fatal("a parked message was sent while the stopped turn was still open")
+	}
+	body := plain(frame(a))
+	if strings.Contains(body, parkedHint[1]) {
+		t.Fatalf("the parked block still offers a key that does nothing:\n%s", body)
+	}
+	if !strings.Contains(body, parkedHint[0]) {
+		t.Fatalf("the parked block dropped the half that is still true:\n%s", body)
+	}
+	if got := a.hintWord(); got == parkedHint[1] {
+		t.Fatalf("the hint slot still offers a key that does nothing: %q", got)
+	}
+
+	// AND THE OFFER COMES BACK WITH THE NEXT TURN, because the queue drains into
+	// one and the message that follows it is parked against a turn esc can stop.
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen}, frameMsg{})
+	typeLine(t, a, "and the tests too")
+	drive(t, a, frameMsg{})
+	if !a.parking() {
+		t.Fatal("the drained message did not open a turn")
+	}
+	if got := a.hintWord(); got != parkedHint[1] {
+		t.Fatalf("the hint slot did not get the stop back: %q", got)
 	}
 }
 

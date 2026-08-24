@@ -238,7 +238,7 @@ func TestAStoppedTurnsChipStatesWhatHappened(t *testing.T) {
 			a.entries[i].cut = true
 		}
 	}
-	a.entries = append(a.entries, entry{kind: entryNote, text: "interrupted", turn: 1})
+	a.entries = append(a.entries, entry{kind: entryNote, text: "stopped", turn: 1})
 	a.touch()
 
 	got := strings.Join(plainRows(a), "\n")
@@ -258,7 +258,7 @@ func TestAStoppedTurnsChipStatesWhatHappened(t *testing.T) {
 	}
 	// EXCEPT THE SURFACE'S OWN NEWS, which is addressed to the person and is
 	// never inside a fold.
-	if !strings.Contains(got, "interrupted") {
+	if !strings.Contains(got, "· stopped") {
 		t.Fatalf("the interrupt's own line was folded away:\n%s", got)
 	}
 }

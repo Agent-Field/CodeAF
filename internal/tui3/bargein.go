@@ -42,7 +42,7 @@ import (
 // down while `a.stream != nil` and the close is the only thing that calls it.
 //
 // What the transcript then reads is the truth with NO NEW CLAIMS ON IT: the
-// partial answer, kept; the `interrupted` note; then the person's message
+// partial answer, kept; the `stopped` note; then the person's message
 // opening the next turn. Every one of those rows is drawn by machinery that was
 // already there.
 //
