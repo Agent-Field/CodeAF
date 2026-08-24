@@ -76,7 +76,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -214,34 +213,35 @@ func taskNameSubject(spec taskSpec) string {
 // caller's only response to that is to leave the title where it was.
 func (a *Agent) taskName(ctx context.Context, subject string) string {
 	a.mu.Lock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleTaskName, a.model)
-	client, closed := a.client, a.closed
+	model, closed, client := a.model, a.closed, a.client
 	a.mu.Unlock()
-	if closed || err != nil || client == nil || strings.TrimSpace(call.Model) == "" {
+	if closed || client == nil {
 		return ""
 	}
 	// IT CARRIES ITS OWN DEADLINE for the shaper's reason: the provider's client
 	// is built with no timeout, so a stalled namer would be a goroutine and a
-	// provider slot held for the life of the session.
+	// provider slot held for the life of the session. Twenty seconds is a fact
+	// about THIS call — two or three words off a brief — and it is tighter than
+	// the low tier's own bound, so it is the one in force (auxiliary.go).
 	ctx, cancel := context.WithTimeout(ctx, taskNameWindow)
 	defer cancel()
 
 	// NO EFFORT IS PUT ON THE REQUEST, and that is the reflex law rather than an
 	// omission: the calls that are told not to think are the ones that sort and
-	// name in a few words, and this is one of them. WithoutStream because nobody
-	// asked for this call and left on a stream it would type into the room.
-	response, callErr := client.CompleteWithMessages(provider.WithoutStream(ctx),
+	// name in a few words, and this is one of them.
+	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, model,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
 		},
-		ai.WithModel(call.Model), ai.WithTemperature(taskNameTemp), ai.WithMaxTokens(taskNameTokens))
+		ai.WithTemperature(taskNameTemp), ai.WithMaxTokens(taskNameTokens))
 	if callErr != nil || response == nil {
 		return ""
 	}
 	// The person pays for it out of the same pocket the session's own title, the
-	// guardian and the shaper come out of, and no turn asked for it.
-	a.addAuxiliaryUsageAs(response, call.Model, 1, auxRoleTaskName)
+	// guardian and the shaper come out of, and no turn asked for it — against the
+	// model that ANSWERED, which is not always the rung the ladder resolved first.
+	a.addAuxiliaryUsageAs(response, named, 1, auxRoleTaskName)
 	return cleanTaskName(response.Text())
 }
 

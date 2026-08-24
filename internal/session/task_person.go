@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -190,22 +189,16 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 	defer cancel()
 
 	a.mu.Lock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RolePlanner, a.model)
+	model := a.model
 	a.mu.Unlock()
-	if err != nil || strings.TrimSpace(call.Model) == "" {
-		return false, nil, ""
-	}
-	if effort, ok := provider.ParseEffort(call.Effort); ok && effort != provider.EffortNone {
-		ctx = provider.WithReasoningEffort(ctx, effort)
-	}
 	messages := []ai.Message{textMessage("system", taskJudgePrompt), textMessage("user", strings.TrimSpace(brief))}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, callErr := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
-			ai.WithModel(call.Model), ai.WithTemperature(taskJudgeTemp), ai.WithMaxTokens(taskJudgeTokens))
+		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages,
+			ai.WithTemperature(taskJudgeTemp), ai.WithMaxTokens(taskJudgeTokens))
 		if callErr != nil || response == nil {
 			return false, nil, ""
 		}
-		a.addAuxiliaryUsage(response, call.Model, 1)
+		a.addAuxiliaryUsage(response, judge, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
 			// A YES IS BANKED AGAINST THE TEXT IT WAS ABOUT, AND IT IS WHAT THE
 			// WHOLE CALL IS FOR NOW. A yes used to raise a card offering a

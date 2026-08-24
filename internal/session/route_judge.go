@@ -42,7 +42,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -175,7 +174,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	a.mu.Lock()
 	a.routeTurns++
 	turn, offered := a.routeTurns, a.routeOffered
-	model, source, closed := a.model, a.config.RolesSource, a.closed
+	model, closed := a.model, a.closed
 	a.mu.Unlock()
 	if closed || usedTools {
 		return
@@ -202,12 +201,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// the conversation's own model rather than refusing — and an install with
 	// nothing anywhere gets no judge at all, which is this feature absent rather
 	// than broken.
-	judge, err := roles.Resolve(roles.Source(source), roles.RoleRouter, model)
-	if err != nil || strings.TrimSpace(judge) == "" {
-		return
-	}
-
-	verdict, ok := a.askRouteJudge(ctx, judge, user.text(), answer)
+	verdict, ok := a.askRouteJudge(ctx, model, user.text(), answer)
 	if !ok || !verdict.Work {
 		return
 	}
@@ -254,23 +248,22 @@ func (a *Agent) canRunShape(shape string) bool {
 // design's whole budget and a second call to rescue it is cheap by comparison.
 // This one is a suggestion nobody asked for, and the honest answer to a judge
 // that could not write eighty bytes of JSON is to say nothing at all.
-func (a *Agent) askRouteJudge(ctx context.Context, judge, asked, answered string) (routeVerdict, bool) {
-	response, err := a.client.CompleteWithMessages(
-		// WithoutStream for the reason the title, the guardian and the compaction
-		// summary use it: this is the session thinking about the conversation, and
-		// left on the turn's stream it would type JSON into the room.
-		provider.WithoutStream(ctx),
+// The judge is a ROLE, so an install with no tiers configured resolves it to the
+// conversation's own model rather than refusing — and an install with nothing
+// anywhere gets no judge at all, which is this feature absent rather than broken.
+func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
+	response, judge, err := a.callRole(ctx, roles.RoleRouter, model,
 		[]ai.Message{
 			textMessage("system", routeJudgeBrief),
 			textMessage("user", routeJudgeQuestion(asked, answered)),
 		},
-		ai.WithModel(judge),
 		ai.WithMaxTokens(routeJudgeTokens),
 		ai.WithTemperature(routeJudgeTemp))
 	if err != nil || response == nil {
 		return routeVerdict{}, false
 	}
-	// The person pays for it, out of the pocket every auxiliary call comes from.
+	// The person pays for it, out of the pocket every auxiliary call comes from,
+	// against the model that answered.
 	a.addAuxiliaryUsage(response, judge, 1)
 
 	// The salvage ladder is internal/subharness's, shared rather than reimplemented
