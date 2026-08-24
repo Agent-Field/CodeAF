@@ -1401,7 +1401,10 @@ Inside a task's room the page is built from the same blocks the conversation is 
 a tool call expands to its diff or output, a reply renders as markdown, and anything you
 steered wears your own hue. History comes off the task's journal, capped at the last 120
 blocks; a missing or unreadable journal is not an error — the room opens on the live edge
-instead. When the task has landed, a foot line reads `task finished — esc to return`.
+instead. When the task has landed, a foot line reads `task finished — esc to return`, and
+a landed room with no journal to read says `this task's transcript is not here any more`
+above it. A finished task's room replays its whole transcript after a restart as well —
+see *A task's room after a restart*.
 
 `pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
 to the live edge. `↑`/`↓` walk your history first and only scroll a line when there is no
