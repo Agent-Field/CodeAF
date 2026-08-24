@@ -456,3 +456,139 @@ func TestTheManualMentionsTheDivisionVerb(t *testing.T) {
 		t.Fatal("this worker was built armed and has no divide_work: the test is checking the wrong belt")
 	}
 }
+
+// ── THE MODEL'S OWN DOOR TAKES THE DIVISION ROAD ────────────────────────────
+//
+// The typed `/task` front door flipped first: a sizing yes there starts one
+// armed worker and never a planner. These pin the other half of it. A chat
+// model that has decided the work in front of it is broad says so on
+// propose_task, and what that starts is ONE task with the road open — not a
+// planner graph, and not three proposals cut up from the request.
+
+func TestTheModelsOwnWideJudgementStartsOneArmedWorker(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = true
+	})
+	graph := stubbedGraph(session, func(*TaskNode) {})
+
+	// A BRIEF THAT ARMS NOTHING BY ITSELF, deliberately: no count, no listing,
+	// nothing the enumeration signal could read. If this node ends up armed, the
+	// model's own word is the only thing that could have armed it.
+	brief := "look into how the pricing pages read across the site and report what is inconsistent"
+	if splitgate.WorthIt(brief) {
+		t.Fatal("this brief arms itself, so it cannot show that the model's own judgement armed it")
+	}
+	answer, isError, err := session.proposeTask(context.Background(), json.RawMessage(fmt.Sprintf(
+		`{"title":"the pricing pages","summary":"s","brief":%q,"deliverable":"d","acceptance":"a","wide":true}`,
+		brief)))
+	if err != nil {
+		t.Fatalf("propose_task: %v", err)
+	}
+	if isError {
+		t.Fatalf("the proposal was refused: %q", answer)
+	}
+
+	graph.mu.Lock()
+	admitted := len(graph.nodes)
+	graph.mu.Unlock()
+	if admitted != 1 {
+		t.Fatalf("%d nodes were admitted, want exactly one task", admitted)
+	}
+	node := graph.node(1)
+	if node == nil {
+		t.Fatalf("no node came out of the proposal: %q", answer)
+	}
+	if !node.dividing() {
+		t.Fatal("the model said this work was wide and the worker it started cannot divide: the model's door is not on the division road")
+	}
+	// AND THE VERB IS ACTUALLY THERE. `dividing` is the decision; the belt is
+	// the consequence, and a decision the worker's hands never hear about is
+	// the road open on paper only.
+	worker, err := newAgent(Config{
+		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM",
+		InTask: true, Divide: true, tasker: graph, taskID: node.id, taskDepth: 1,
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent for the worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	if !beltHas(worker, "divide_work") {
+		t.Fatal("the worker started for wide work has no divide_work on its belt")
+	}
+}
+
+func TestAProposalThatNeverSaidItWasWideIsTheTaskItAlwaysWas(t *testing.T) {
+	// The other side of the same law, and it is what keeps the road free: a
+	// model that said nothing about width gets byte-identically the task it got
+	// before `wide` existed.
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = true
+	})
+	graph := stubbedGraph(session, func(*TaskNode) {})
+	answer, isError, err := session.proposeTask(context.Background(), json.RawMessage(
+		`{"title":"the nil-map crash","summary":"s","brief":"fix the failing reconciler test","deliverable":"d","acceptance":"a"}`))
+	if err != nil || isError {
+		t.Fatalf("propose_task: %v %q", err, answer)
+	}
+	if node := graph.node(1); node == nil || node.dividing() {
+		t.Fatal("a proposal that claimed no width was armed to divide: the road is not free after all")
+	}
+}
+
+// WHAT THE MODEL IS TOLD, WHICH IS THE WHOLE OF WHICH ROAD IT TAKES. The
+// deciding here is the model's — no regular expression watches the person's
+// phrasing (tools_harness.go) — so the descriptions and the prompt ARE the
+// default. A live session announced "a broad multi-source sweep, so I'm
+// launching an adaptive research run" while every one of these read the other
+// way round.
+func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.OrchestrateRunner = neverRuns
+		config.AskConsent = true
+	})
+
+	task, found := onBelt(agent, "propose_task")
+	if !found {
+		t.Fatal("the belt has no propose_task")
+	}
+	for _, want := range []string{"WIDE WORK", "`wide`", "do not reach for a planner"} {
+		if !strings.Contains(task.Description, want) {
+			t.Errorf("propose_task never says %q, so nothing tells the model wide work belongs here", want)
+		}
+	}
+	if !strings.Contains(string(task.Schema), `"wide"`) {
+		t.Errorf("propose_task's schema has no wide argument: %s", task.Schema)
+	}
+
+	run, found := onBelt(agent, "run_adaptive")
+	if !found {
+		t.Fatal("the belt has no run_adaptive")
+	}
+	// IT STAYS, AND IT STAYS EXPLICIT. The exception has to be reachable — a
+	// person who asks for a planned graph gets one — and it has to say that it
+	// is the exception, or width reaches for it again.
+	for _, want := range []string{"THIS IS THE EXCEPTION", "merely WIDE", "propose_task"} {
+		if !strings.Contains(run.Description, want) {
+			t.Errorf("run_adaptive never says %q, so it still reads as the way to parallelize", want)
+		}
+	}
+
+	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
+	// to parallelize while the belt says otherwise.
+	if !strings.Contains(systemPrompt, "WIDE WORK") || !strings.Contains(systemPrompt, "with `wide`") {
+		t.Error("prompts/system.md does not route wide work to propose_task")
+	}
+	if !strings.Contains(systemPrompt, "deliberate exception, not the way to") {
+		t.Error("prompts/system.md does not name run_adaptive as the exception")
+	}
+	// And the sentence that produced the live reflex is gone rather than merely
+	// argued with somewhere else on the page.
+	for _, gone := range []string{
+		"Independent parts that share one goal and one synthesis: ONE adaptive run",
+		"the parallelism is already built",
+	} {
+		if strings.Contains(systemPrompt, gone) {
+			t.Errorf("prompts/system.md still says %q", gone)
+		}
+	}
+}
