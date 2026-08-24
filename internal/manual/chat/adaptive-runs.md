@@ -2,8 +2,8 @@
 
 ## What an adaptive run is
 
-An adaptive run is one big, many-part goal worked on by a planner and a fleet of small
-workers at the same time, beside your conversation.
+An adaptive run is a goal whose graph is **planned before the work starts** — a planner
+model and a fleet of small workers, beside your conversation.
 
 A planner model cuts the goal into small nodes — one question or one artifact each — and a
 scheduler starts every node whose prerequisites are finished, immediately. Each node is a
@@ -15,15 +15,38 @@ declare the goal answered. Nothing waits for it — execution never blocks on th
 watch is the shape of the work crystallising as the planner learns what is there.
 
 Two things bound it: **one fuel tank in dollars** for the whole run, and small nodes.
-Parallelism comes from having many nodes, never from a big one.
+Inside a run, parallelism comes from having many nodes, never from a big one. A run is not
+how aforge works on wide things in general — see *Should this be a run, or one worker that
+splits itself* below.
+
+## Should this be a run, or one worker that splits itself — when I use a run instead of a task
+
+**A run is the exception, not the way broad work is done.** Work that is simply wide — a
+sweep across many files, research across many sources, the same change over many separate
+items — starts as **one task**, and the worker hands the parts out itself once it has
+opened the material and can see how many there are. Each part becomes a worker in its own
+copy of the repository, and the first worker stays and folds their reports into one
+deliverable. That is *When a task turns out to be too wide for one worker*, in *work that
+runs on its own*.
+
+The reason is that nobody can see the parts from the request. A planner asked to cut up
+"audit every package for this pattern" is guessing at how many packages there are and what
+is in them; a worker that has just listed them is not guessing.
+
+So a run is for the other case: the work needs its **structure settled up front** because
+its nodes are genuinely different from each other and the later ones are aimed by what the
+earlier ones find — a migration whose second half depends on what the first half turns up —
+or **you asked for a plan** you can watch and steer. Width on its own is never the reason.
 
 ## How I start one for you
 
 Ask for the work. Deciding whether a request is an adaptive run is the model's judgement,
 made with your whole conversation in view — there is no phrasing you have to learn and no
-keyword that triggers it. When the goal genuinely has independent parts and no known shape
-("audit every package for this pattern", "migrate us off the old client and fix what
-breaks"), the run is started with the `run_adaptive` tool and you are told in one line.
+keyword that triggers it. It is started with the `run_adaptive` tool and you are told in
+one line. What the model is told to reach for it on is the case above: a graph that has to
+be planned before anything starts, or a plan you asked to see. A broad ask by itself gets
+one task instead — "audit every package for this pattern" and "go through the regional
+reports" are one worker that splits itself, not a run.
 
 **`/task adaptive <brief>` is the door you can type**, and it is the only way `/task` opens
 a run. A plain `/task <brief>` never does: it reads the brief for width and then starts one
@@ -258,11 +281,14 @@ asked and the first two lines of what came back, and decides one thing: should t
 been work? A yes raises **one card**, on the same row a harness offer uses:
 
 ```
-? run harness "adaptive run"? · research across every package · [enter] run · [esc] no
+? run harness "task"? · research across every package · [enter] run · [esc] no
 ```
 
-The name in quotes is the **shape** being offered — `adaptive run` or `task` — and the dim
-line beside it is the judge's own sentence about why. The row says `run harness` because it
+The name in quotes is the **shape** being offered — `task` or `adaptive run` — and the dim
+line beside it is the judge's own sentence about why. `task` is what it offers for wide
+work, including a broad sweep like the one above: one worker starts and splits itself if
+the material is wider than one pair of hands. It says `adaptive run` only for a goal whose
+graph has to be planned before anything starts. The row says `run harness` because it
 is the harness offer's row, reused; nothing about a saved harness is involved.
 
 - `enter` or `y` starts it: an adaptive run on the default **$2.00** tank, or one task,
@@ -428,12 +454,15 @@ did get done is still readable.
 
 - Work that can be done in the conversation is done in the conversation.
 - One self-contained piece of work is a **task** (`propose_task`) — one brief, one branch.
-  It usually runs as one worker, but it is not fixed to one: a task that opens the material
-  and finds many separate items in it can split into parts and stay to fold them back
+- **So is wide work**, and this is the one people expect to be a run. A broad sweep, an
+  audit across many packages, research across many sources: all of them are one task. It
+  usually runs as one worker, but it is not fixed to one — a task that opens the material
+  and finds many separate items in it splits into parts and stays to fold them back
   together. See *Work that runs on its own*, under *When a task turns out to be too wide for
   one worker*.
 - A shape of work that will recur is a **sub-harness**: built once, saved, and offered
   again. See *Saved shapes of work*.
 
-A run is for the one-off goal with several genuinely independent parts and no shape known
-in advance.
+A run is for the one-off goal whose graph has to be planned before the work starts, and for
+the plan you asked to see and steer. Several parts on their own are not the reason — those
+are one worker that splits itself.
