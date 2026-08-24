@@ -1402,6 +1402,14 @@ type app struct {
 	// be a render tuned to a test.
 	clock func() time.Time
 
+	// setup is the first-run screen, which precedes the box below on the one
+	// launch that gets it (firstrun.go). Its zero value is every other launch.
+	setup setupFlow
+	// applyAPIKey is the door's live seam for a key handed over after the
+	// launch — on the setup screen or in the settings row — so the running
+	// session's next request rides it ([Options.ApplyAPIKey]). Nil is a surface
+	// whose key lands on the next launch.
+	applyAPIKey func(key string) error
 	// welcome is the box an empty session opens with (welcome.go). It is the
 	// only animation on this surface that is not a spinner, and it runs once.
 	welcome welcome
@@ -1469,6 +1477,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		saveApproval:     opts.SaveApproval,
 		saveBashApproval: opts.SaveBashApproval,
 		saveModel:        opts.SaveModel,
+		applyAPIKey:      opts.ApplyAPIKey,
 		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
@@ -1563,6 +1572,12 @@ func newApp(ctx context.Context, opts Options) *app {
 	// surface says of its own: "empty" has to mean "the conversation is empty",
 	// and every line below this one is the surface talking (welcome.go).
 	a.openWelcome()
+	// AND THE FIRST-RUN SETUP IS DECIDED AT THE SAME POINT, for the same
+	// reason: "empty" has to mean the conversation is empty, and the notes
+	// below are the surface talking. It is drawn over whatever else the first
+	// frame decides — the box, the picker, home — and goes away to reveal
+	// exactly that (firstrun.go).
+	a.openSetup(opts.Setup)
 	if a.linear {
 		// The box still opens; it just opens FINISHED. Its arrival animation is
 		// the one piece of motion on this surface that is not a spinner, and
@@ -1791,6 +1806,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.pasteAt = a.now()
 			return a, nil
 		}
+		// THE SETUP SCREEN TAKES A PASTE WHOLE, because a paste is how the key
+		// arrives (firstrun.go). It is read before the ordinary paste, which
+		// would put the key into a draft box that is not on screen.
+		if a.setupPaste(msg.Content) {
+			return a, nil
+		}
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
@@ -1804,6 +1825,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.pasting = false
 		text := string(a.pasted)
 		a.pasted = a.pasted[:0]
+		if a.setupPaste(text) {
+			return a, nil
+		}
 		return a, a.paste(text)
 
 	case filesLoadedMsg:
@@ -1963,10 +1987,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
-		if a.copy.on {
+		if a.copy.on || a.setup.open {
 			// A click in copy mode acts on nothing: the rows under the pointer are
 			// a FROZEN snapshot, and expanding a call in it would be expanding a
-			// row that is no longer where the conversation says it is.
+			// row that is no longer where the conversation says it is. The setup
+			// screen is the same for the pointer's own reason: it is three
+			// keystrokes, and a press through it would land on a frame that is
+			// not being drawn (firstrun.go).
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {

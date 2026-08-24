@@ -220,6 +220,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.takeMouseBack()
 	}
 
+	// THE FIRST-RUN SETUP OUTRANKS EVERYTHING BUT ctrl+c, and it can afford to:
+	// it is up only on a launch where no turn has run, no question has been
+	// raised and nothing has been typed, so there is nothing under it a key
+	// could be aimed at (firstrun.go). ctrl+c is excepted as it is for every
+	// modal here — leaving is never modal.
+	if a.setup.open && msg.String() != "ctrl+c" {
+		cmd, _ := a.setupKeyPress(msg)
+		return cmd
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can

@@ -736,8 +736,10 @@ func (u Usage) CachedShare() (float64, bool) {
 	return float64(u.CacheRead) / float64(total), true
 }
 
-// Config builds one agent. The zero value is invalid: Workspace, Model,
-// APIKey and BaseURL are required.
+// Config builds one agent. The zero value is invalid: Workspace, Model and
+// BaseURL are required. APIKey may be empty for a session opened before the
+// person has handed one over — the first-run setup's case — and every request
+// refuses until [Agent.SetAPIKey] lands it.
 type Config struct {
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string

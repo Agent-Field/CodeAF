@@ -377,6 +377,32 @@ func (a *Agent) SetModel(model string) {
 	a.mu.Unlock()
 }
 
+// SetAPIKey hands the conversation the key it talks with, after the fact.
+//
+// It exists for one moment: the surface opened on a profile with no key, asked
+// for one on its first screen (internal/tui3's firstrun.go), and the person
+// pasted it — into a session that already exists, holding a client built
+// without one (internal/provider's NewClient states that a keyless client
+// refuses every request until this lands). The config copy is updated too,
+// because every worker this agent spawns — a task node, an audit, a standing
+// firing — is built from `a.config` and would otherwise inherit the empty key
+// the boot had.
+//
+// A client that cannot take a key — a test double — is left alone rather than
+// refused: the config still records the key, which is what the doubles read.
+func (a *Agent) SetAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if keyed, ok := a.client.(interface{ SetAPIKey(string) error }); ok {
+		if err := keyed.SetAPIKey(key); err != nil {
+			return err
+		}
+	}
+	a.config.APIKey = key
+	return nil
+}
+
 // ── reasoning strength ──────────────────────────────────────────────────────
 //
 // How hard the model is asked to think is a CHOICE ABOUT A MODEL, not about a
