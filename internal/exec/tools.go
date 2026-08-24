@@ -1756,10 +1756,26 @@ func clamp(text string, limit int) string {
 	if len(text) <= limit {
 		return text
 	}
-	head := wholeRunesHead(text[:limit*2/3])
-	tail := wholeRunesTail(text[len(text)-(limit-limit*2/3):])
+	return clampWindows(text[:clampHead(limit)], text[len(text)-clampTail(limit):], len(text))
+}
+
+// clampHead and clampTail are the two windows [clamp] keeps, as byte counts, so
+// a caller that has to fetch them before it has the text can ask for exactly
+// what will survive.
+func clampHead(limit int) int { return limit * 2 / 3 }
+func clampTail(limit int) int { return limit - limit*2/3 }
+
+// clampWindows is [clamp]'s cut once the two ends are already in hand and the
+// whole is nothing but a length. It exists for the one caller that MUST NOT
+// HOLD THE WHOLE: a background job's log since the last status call can be a
+// gigabyte, and reading a gigabyte into memory to keep these two windows of it
+// is the read jobs.go's readSince avoids. Every byte of the answer comes from
+// here, so the two paths cannot spell one cut two ways.
+func clampWindows(head, tail string, total int) string {
+	head = wholeRunesHead(head)
+	tail = wholeRunesTail(tail)
 	return head +
-		fmt.Sprintf("\n\n... [%d bytes elided] ...\n\n", len(text)-len(head)-len(tail)) +
+		fmt.Sprintf("\n\n... [%d bytes elided] ...\n\n", total-len(head)-len(tail)) +
 		tail
 }
 

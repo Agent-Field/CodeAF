@@ -1813,6 +1813,19 @@ type eventHub struct {
 	// every event that is not text — so a tool call in the middle of an answer
 	// still lands between the two halves it landed between live.
 	backlog []Event
+	// folding is the text of the run currently folding into the LAST backlog
+	// entry, accumulated instead of concatenated.
+	//
+	// `backlog[last].Text += delta` is the obvious way to fold and it is
+	// quadratic: every delta copies the whole answer so far, so a reply of a
+	// megabyte moves half a terabyte of bytes through this lock while the
+	// provider is still writing. The builder holds the same characters in the
+	// same order and hands them over in one allocation at [eventHub.foldedLocked],
+	// which is called at every point the folded entry can actually be READ — an
+	// attach, and the append that ends the run. Between those points
+	// backlog[last].Text is STALE BY DESIGN and nothing but [foldsInto] may look
+	// at that entry, which is safe because [foldsInto] reads Kind and never Text.
+	folding strings.Builder
 }
 
 func newEventHub() *eventHub { return &eventHub{} }
@@ -1861,6 +1874,7 @@ func (h *eventHub) attach() (*eventStream, bool) {
 		stream.close()
 		return stream, false
 	}
+	h.foldedLocked()
 	for _, event := range h.backlog {
 		stream.send(event)
 	}
@@ -1939,13 +1953,33 @@ func (h *eventHub) send(event Event) {
 	// one funnel, one order, two readers. It is the rule [taskRoom.publish]
 	// already keeps for the same reason one file over.
 	if last := len(h.backlog) - 1; last >= 0 && foldsInto(h.backlog[last], event) {
-		h.backlog[last].Text += event.Text
+		if h.folding.Len() == 0 {
+			h.folding.WriteString(h.backlog[last].Text)
+		}
+		h.folding.WriteString(event.Text)
 	} else {
+		h.foldedLocked()
 		h.backlog = append(h.backlog, event)
 	}
 	for _, stream := range h.subscribers {
 		stream.send(event)
 	}
+}
+
+// foldedLocked settles the accumulated run back into the backlog entry it
+// belongs to, and is a no-op whenever no run is open. It runs at every point the
+// entry can be read — before a new entry is appended over the top of the run,
+// and before [eventHub.attach] copies the backlog out — so what a reader is
+// handed is always the whole folded text, in one string, exactly as the
+// concatenation would have spelled it.
+func (h *eventHub) foldedLocked() {
+	if h.folding.Len() == 0 {
+		return
+	}
+	if last := len(h.backlog) - 1; last >= 0 {
+		h.backlog[last].Text = h.folding.String()
+	}
+	h.folding.Reset()
 }
 
 // foldsInto reports whether a new event may be folded into the one before it in
@@ -1982,6 +2016,10 @@ func (h *eventHub) close() {
 	subscribers := h.subscribers
 	h.subscribers = nil
 	h.backlog = nil
+	// The half-folded run goes with the backlog it belonged to, for the same
+	// reason: nothing can attach to a finished turn, so the characters it holds
+	// are a copy of the reply nobody could ever ask for.
+	h.folding.Reset()
 	h.mu.Unlock()
 	for _, stream := range subscribers {
 		stream.close()
@@ -2258,7 +2296,9 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // one walk rather than ten.
 func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	results := toolResults(messages)
-	entries := make([]DisplayEntry, 0, len(messages))
+	// Sized by [entryRows], which is the rule this loop appends by, so a
+	// transcript full of tool batches is not grown a power of two at a time.
+	entries := make([]DisplayEntry, 0, countEntries(messages))
 	var replyTags []TaskReplyTag
 	for _, msg := range messages {
 		if msg.Role == "system" {
@@ -2303,6 +2343,41 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 		}
 	}
 	return entries
+}
+
+// entryRows is how many rows the shaping above makes of ONE message: none at
+// all for the system message it drops, and otherwise the message's own row plus
+// one for every tool call riding it. It is the rule the loop appends by, written
+// down so it can be read without being run.
+//
+// IT MUST MOVE WHENEVER THAT LOOP DOES. A second rule for how many rows a
+// message makes is a rule that can disagree with the shaping, and the thing that
+// would disagree is a floor — the count [EarlierHistory] hands a surface to
+// splice its scrollback at. TestTheEntryCountAgreesWithTheShaping is what keeps
+// the two honest: a row added or dropped above and not here fails that test
+// rather than moving somebody's history under them.
+func entryRows(msg ai.Message) int {
+	if msg.Role == "system" {
+		return 0
+	}
+	return 1 + len(msg.ToolCalls)
+}
+
+// countEntries is len(shapeEntries(messages, …)) without the shaping.
+//
+// A compaction pass needs exactly that number while it holds the session lock,
+// and building the rows to keep nothing but their count walks the whole
+// transcript's content a second time — every argument compacted and capped,
+// every tool result measured, every picture looked up — to measure a list
+// (loop.go's [Agent.compact]). The journal is not a parameter because it cannot
+// change the answer: it renames one role and finds the paths of pictures, and
+// neither adds nor removes a row.
+func countEntries(messages []ai.Message) int {
+	rows := 0
+	for _, msg := range messages {
+		rows += entryRows(msg)
+	}
+	return rows
 }
 
 // toolResults indexes a run of messages by the call each one answered. A result

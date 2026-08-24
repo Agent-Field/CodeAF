@@ -195,12 +195,13 @@ func readAttachment(root, attachment string) ([]byte, string, error) {
 	return data, name, nil
 }
 
+// readBlob is our copy of an attachment, read ONCE. The store's Get opens the
+// object and Path names it, and this used to do both — one handle opened, never
+// read from, and closed again beside the read that actually happened — so a 25
+// MB attachment cost two opens of the same file for one copy of its bytes. Path
+// is the half that answers the question: it validates the reference, and
+// os.ReadFile sizes its buffer from the file rather than growing one.
 func readBlob(blobs *cas.Store, ref cas.Ref) ([]byte, error) {
-	reader, err := blobs.Get(ref)
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
 	path, err := blobs.Path(ref)
 	if err != nil {
 		return nil, err

@@ -3,6 +3,7 @@
 package bare
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -832,29 +833,26 @@ func (a *outputAccumulator) append(data []byte) {
 	if a.finished {
 		return
 	}
-	decoded := string(data)
-	a.totalDecoded += len(decoded)
+	a.totalDecoded += len(data)
 	a.tailText = append(a.tailText, data...)
 	if len(a.tailText) > a.maxRollingBytes*2 {
 		a.trimTail()
 	}
 
-	newlines := 0
-	lastNewline := -1
-	for i := range decoded {
-		if decoded[i] == '\n' {
-			newlines++
-			lastNewline = i
-		}
-	}
+	// Counted over the bytes as they arrived. This used to run over a string
+	// copy of the chunk, which bought nothing — the only questions asked of it
+	// are how many newlines there are and how far the last one is from the end,
+	// and both are byte questions — while paying a full copy of every pipe read
+	// of a command that may be writing megabytes.
+	newlines := bytes.Count(data, []byte{'\n'})
 	if newlines == 0 {
-		a.currentLineBytes += len(decoded)
+		a.currentLineBytes += len(data)
 		a.hasOpenLine = true
 	} else {
 		a.completedLines += newlines
-		tail := decoded[lastNewline+1:]
-		a.currentLineBytes = len(tail)
-		a.hasOpenLine = len(tail) > 0
+		open := len(data) - bytes.LastIndexByte(data, '\n') - 1
+		a.currentLineBytes = open
+		a.hasOpenLine = open > 0
 	}
 	a.totalLines = a.completedLines
 	if a.hasOpenLine {

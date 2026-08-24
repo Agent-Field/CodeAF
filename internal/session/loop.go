@@ -1052,7 +1052,9 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 	go func() {
 		defer close(warm.done)
 		defer guard.Recover("session early tool " + call.Function.Name)
-		warm.result = a.executeTool(ctx, ep, hub, call)
+		// Rendered in the goroutine, never in [warmBatch.consider]'s own body:
+		// this is called from the provider's read loop, which must not work.
+		warm.result = a.executeTool(ctx, ep, hub, call, argsText(call))
 	}()
 }
 
@@ -1154,12 +1156,24 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub
 // look at a picture by viewLookWindow (tools_view.go). A new tool that blocks
 // without a bound of its own is the one way left to break this.
 func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
-	for _, call := range calls {
+	// THE ARGUMENTS ARE RENDERED ONCE PER CALL, HERE, and the string is carried
+	// to every event this batch sends about that call — the begin it sends here,
+	// the end or the failure below, and the finished event the execution sends
+	// (see [Agent.executeTool]). [argsText] is not free on the calls that matter:
+	// a write or an edit past the cap is brought under it by a bisection that
+	// decodes and re-encodes the whole payload at every step, so rendering the
+	// same 20k write three times is three of those searches for one identical
+	// string. The three events must carry IDENTICAL bytes anyway — a surface
+	// pairs a finished row with the row it has been drawing — so one rendering is
+	// not an optimization of three, it is the honest spelling of them.
+	rendered := make([]string, len(calls))
+	for index, call := range calls {
+		rendered[index] = argsText(call)
 		hub.send(Event{
 			Kind: EventToolBegin,
 			Tool: call.Function.Name,
 			Hint: a.gloss(call),
-			Args: argsText(call),
+			Args: rendered[index],
 		})
 	}
 
@@ -1193,30 +1207,30 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			continue
 		}
 		wg.Add(1)
-		go func(idx int, c ai.ToolCall) {
+		go func(idx int, c ai.ToolCall, args string) {
 			// wg.Done outermost, so a faulted tool still releases the batch:
 			// the slot this goroutine owns keeps its seeded panic result
 			// rather than hanging every sibling behind a Wait that never
 			// returns.
 			defer wg.Done()
 			defer guard.Recover("session tool " + c.Function.Name)
-			results[idx] = a.executeTool(ctx, ep, hub, c)
-		}(index, call)
+			results[idx] = a.executeTool(ctx, ep, hub, c, args)
+		}(index, call, rendered[index])
 	}
 	wg.Wait()
 
-	// The end events carry Args as well as Output. Re-rendering the arguments
-	// here rather than making the surface remember the begin event costs one
-	// compaction of a string already in hand — the call is in scope — and buys
-	// an end event that is self-contained, which is what a surface that renders
-	// a finished row from one event needs.
+	// The end events carry Args as well as Output. Carrying the arguments rather
+	// than making the surface remember the begin event costs nothing — the
+	// rendering is the one done above — and buys an end event that is
+	// self-contained, which is what a surface that renders a finished row from
+	// one event needs.
 	for index, call := range calls {
 		if results[index].isError {
 			hub.send(Event{
 				Kind:   EventToolFailed,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
-				Args:   argsText(call),
+				Args:   rendered[index],
 				Output: capOutput(results[index].text),
 			})
 			continue
@@ -1227,7 +1241,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		hub.send(Event{
 			Kind:   EventToolEnd,
 			Tool:   call.Function.Name,
-			Args:   argsText(call),
+			Args:   rendered[index],
 			Output: capOutput(results[index].text),
 		})
 	}
@@ -1253,11 +1267,17 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // The episode is a required argument for the same reason: a new call site
 // cannot reach a tool without one, so it cannot reach a tool without the plane.
 //
+// `rendered` is [argsText] of this same call, HANDED IN RATHER THAN COMPUTED,
+// because the caller has already rendered it for the events it sends about the
+// call and the three must carry identical bytes (runToolsWarm says why). A call
+// site with nothing in hand renders it itself; there is no path that may pass
+// something else.
+//
 // It sits INSIDE the dispatch loop rather than above it, after the belt has
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
-func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) toolResult {
+func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
@@ -1288,7 +1308,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 			hub.send(Event{
 				Kind:   EventToolFinished,
 				Tool:   call.Function.Name,
-				Args:   argsText(call),
+				Args:   rendered,
 				CallID: call.ID,
 				Took:   time.Since(started),
 			})
@@ -2003,8 +2023,14 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	// appended after this point is new conversation and sits below the floor,
 	// which is why the floor is an index from the START and never moves again
 	// ([EarlierHistory]).
+	//
+	// The floor is COUNTED rather than shaped ([countEntries]), because the count
+	// is the whole of what it is: shaping the rewritten transcript to take
+	// len() of it would walk every argument and every capped result a second
+	// time, under this lock, at the one moment a person is most likely to be
+	// pressing Esc ([Agent.Interrupt] wants the same lock).
 	a.earlier = earlier
-	a.earlierFloor = len(shapeEntries(a.messages, a.file))
+	a.earlierFloor = countEntries(a.messages)
 
 	// The provider's context figure described the request that is now gone.
 	// Zero sends the estimator back to the content until the next response.
