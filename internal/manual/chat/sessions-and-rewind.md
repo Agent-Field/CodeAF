@@ -396,9 +396,9 @@ every conversation in every project, which is the box's four recent rows and mor
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 
-So the box is what a **first run** sees — the launch where home has nothing to say, because
-the only conversation on the machine is the one already on screen. That is the one case
-where the wordmark and `recent sessions` still greet you.
+So the box is what a **first run** sees — the launch home does not greet, because the only
+conversation on the machine is the one already on screen. That is the one case where the
+wordmark and `recent sessions` still greet you; home itself is a `space space` away.
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 

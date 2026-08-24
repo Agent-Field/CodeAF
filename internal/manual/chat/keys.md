@@ -219,7 +219,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
-| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine. Does nothing when the box has words in it, or on a machine with nowhere else to go |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
@@ -802,16 +802,16 @@ meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box holding exactly one space,
 takes both away and opens home — so a leading space you actually wanted is never eaten
-(space then `x` leaves ` x`). It does nothing when the box has words in it, nothing on a
-machine with nowhere else to go, and it is not a paste: text pasted with two leading spaces
-is two spaces.
+(space then `x` leaves ` x`). It does nothing when the box has words in it, it is not bound
+over `--host` where home refuses, and it is not a paste: text pasted with two leading
+spaces is two spaces. A machine with one conversation, or none, opens an empty home.
 
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
-When the box is empty and there is somewhere to go, the legend line above the box says so:
+When the box is empty, the legend line above the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type.
+you type, and it is absent only over `--host`.
 
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
 `up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·

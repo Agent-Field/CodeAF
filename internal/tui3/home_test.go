@@ -1780,8 +1780,10 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	}
 }
 
-// THE EMPTINESS LAW, APPLIED TO A WHOLE SURFACE. A machine whose only
-// conversation is the one this launch opened has nothing home could say.
+// A GREETING NEEDS SOMEWHERE ELSE TO GO. A machine whose only conversation is
+// the one this launch opened is not greeted by home — that is [app.landHome]'s
+// third condition, and it is unchanged by the door being open: being greeted
+// and being able to go there are two questions ([app.homeDoorOpen]).
 func TestAFirstRunGoesStraightToTheChat(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
@@ -1794,6 +1796,10 @@ func TestAFirstRunGoesStraightToTheChat(t *testing.T) {
 	// got.
 	if !a.welcome.open {
 		t.Fatal("the welcome box did not open on a launch home stayed out of")
+	}
+	// But home is one gesture away all the same.
+	if !a.homeDoorOpen() {
+		t.Fatal("a first run that was not greeted has no door to home")
 	}
 }
 
@@ -1901,8 +1907,12 @@ func TestHomeSaysNothingOnAMachineWithNoProjects(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
 	a.openHome()
-	if !strings.Contains(homeText(a), homeEmptyWord) {
-		t.Fatalf("an empty machine does not say so:\n%s", homeText(a))
+	// The sentence stands in the places column now, a clause to a row
+	// ([homeEmptyLines]), so it is looked for clause by clause.
+	for _, part := range homeEmptyLines() {
+		if !strings.Contains(homeText(a), part) {
+			t.Fatalf("an empty machine does not say so (%q):\n%s", part, homeText(a))
+		}
 	}
 }
 
@@ -1912,6 +1922,11 @@ func TestHomeRefusesOverHost(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
 	a.host = "box"
+	// The one place the door stays shut: neither the gesture nor the
+	// advertisement, because what they would open is a refusal.
+	if a.homeDoorOpen() || a.homeDoorShowing() {
+		t.Fatal("the door to home is open over --host")
+	}
 	a.openHome()
 	if a.home.open {
 		t.Fatal("home opened over --host")
@@ -1979,8 +1994,11 @@ func TestReadWorldOnAMissingRootIsAnEmptyWorld(t *testing.T) {
 
 // ── the door home from inside a conversation ────────────────────────────────
 
-// doorLab is a surface sitting in a conversation with somewhere else to go, so
-// the door is open. It is [homeLab.app] plus the one cached fact the door reads.
+// door is a surface sitting in a conversation, launched the way [newApp]
+// launches one, so the door at the foot is in whatever state a real launch
+// leaves it. It is [homeLab.app] plus the landing — which no longer changes the
+// door at all ([app.homeDoorOpen]), and is kept here so these tests stay true to
+// the order a real launch runs in.
 func (l *homeLab) door(standing string) *app {
 	l.t.Helper()
 	a := l.app(standing)
@@ -2108,22 +2126,195 @@ func TestHomesBoxWrapsALongDraftInsteadOfTruncatingIt(t *testing.T) {
 	}
 }
 
-// The door is not offered where there is nowhere to go, and the gesture is
-// inert there too — a door that is drawn is a door that works.
-func TestTheDoorIsShutWhenThereIsNowhereToGo(t *testing.T) {
+// HOME IS ALWAYS REACHABLE. This pin used to say the opposite — that the door
+// was shut and the gesture inert on a machine whose only conversation was this
+// one, because a door that opened on nothing should be neither drawn nor bound.
+// The owner ruled the other way: being greeted by home and being able to GO
+// there are two questions, and an empty home is a designed screen rather than a
+// refusal ([app.homeDoorOpen]). So the reversal is deliberate and pinned here.
+func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	lab := newHomeLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the only one", "/tmp/alpha", time.Now())
+	mine := lab.session("-alpha", "aaaa000000000001", "the only one", lab.workspace("alpha"), time.Now())
 	a := lab.door(mine)
-	if a.homeDoorOpen() || a.homeDoorShowing() {
-		t.Fatal("the door is open on a machine with only this conversation")
+	if !a.homeDoorOpen() || !a.homeDoorShowing() {
+		t.Fatal("the door is shut on a machine whose only conversation is this one")
+	}
+	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+		t.Fatalf("the hint slot reads %q on a one-conversation machine", got)
 	}
 	a.key(key(" "))
 	a.key(key(" "))
-	if a.home.open {
-		t.Fatal("the gesture fired with nowhere to go")
+	if !a.home.open {
+		t.Fatal("two spaces did not open home with only this conversation")
 	}
-	if got := a.input.String(); got != "  " {
-		t.Fatalf("the spaces did not type themselves: %q", got)
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the gesture left %q behind in the box", got)
+	}
+	// And the home that opens is a full home: this project's heading, this
+	// conversation's row, the foot that starts something new.
+	// The row wears its title cased the way every row does ([homeName]), so
+	// the look is case-blind: the claim is that the conversation is there.
+	text := strings.ToLower(homeText(a))
+	for _, want := range []string{"alpha", "the only one", homeFootWord} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, homeEmptyLines()[0]) {
+		t.Fatalf("a home holding this conversation says it holds nothing:\n%s", text)
+	}
+}
+
+// AND ON A MACHINE THAT HOLDS NOTHING AT ALL. The gesture, the advertisement
+// and the click all work on the first minute of a fresh install, and what they
+// open is an empty home rather than nothing.
+func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	if !a.homeDoorOpen() || !a.homeDoorShowing() {
+		t.Fatal("the door is shut on an empty machine")
+	}
+	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+		t.Fatalf("the hint slot reads %q on an empty machine", got)
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("two spaces did not open home on an empty machine")
+	}
+	for _, part := range homeEmptyLines() {
+		if !strings.Contains(homeText(a), part) {
+			t.Fatalf("an empty home does not say so (%q):\n%s", part, homeText(a))
+		}
+	}
+}
+
+// AN EMPTY HOME IS THE SAME SCREEN WITH FEWER ROWS. At every width tier the
+// head, the foot and whatever furniture that tier draws stand where a full home
+// puts them, and `nothing here yet` sits where the rows will be — so a person
+// who opens home on a fresh machine sees a home, not a broken page.
+func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
+	lab := newHomeLab(t)
+	cases := []struct {
+		width int
+		want  []string
+	}{
+		// The columns tier: both zone labels in their own column, each with its
+		// teaching line, and the sentence at the top of the places column.
+		{homeMinColumns, []string{attentionNeedsWord, attentionMovingWord,
+			attentionNeedsTeach, attentionMovingTeach}},
+		// The card tier: the labels stand over the list, then the sentence.
+		{homeMinDetail, []string{attentionNeedsWord, attentionMovingWord}},
+		// The list tier: the zones vanish whole below the wide tier (their own
+		// law), and the sentence is the column.
+		{homeMinDetail - 1, nil},
+	}
+	for _, tc := range cases {
+		a := lab.app("")
+		a.width, a.height = tc.width, 20
+		a.openHome()
+		text := homeText(a)
+		// The sentence is there whole at every tier, a clause to a row, and
+		// never cut to an ellipsis ([homeEmptyLines]).
+		want := append(append(tc.want, homeEmptyLines()...), homeFootWord, "esc close")
+		for _, want := range want {
+			if !strings.Contains(text, want) {
+				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
+			}
+		}
+		if !a.home.resting() && a.home.wide() {
+			t.Fatalf("at %d columns an empty home opened on line %d rather than at rest", tc.width, a.home.cursor)
+		}
+		// The arrows have nothing to land on and must not land on the furniture.
+		drive(t, a, key("down"))
+		drive(t, a, key("down"))
+		if line, ok := a.home.focusedLine(); ok && !line.stop() {
+			t.Fatalf("at %d columns the cursor landed on furniture of kind %v", tc.width, line.kind)
+		}
+		// And the box is live: typing offers a new conversation, exactly as a
+		// full home does.
+		for _, r := range "pricing" {
+			drive(t, a, key(string(r)))
+		}
+		if !strings.Contains(homeText(a), homeStartWord+`: "pricing"`) {
+			t.Fatalf("at %d columns typing on an empty home does not offer a new conversation:\n%s", tc.width, homeText(a))
+		}
+	}
+}
+
+// THE SCREEN IS NEVER EMPTIER THAN THE MACHINE. A fresh launch's folder holds a
+// meta.json nobody has spoken into and no transcript yet, which the world walk
+// skips on purpose — but the window sitting in it is real, so home puts its row
+// back under its project ([app.readWorld], [session.World.Adopt]).
+func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
+	lab := newHomeLab(t)
+	alpha := lab.workspace("alpha")
+	dir := filepath.Join(lab.project("-alpha"), "aaaa000000000001")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(dir, session.Meta{ID: "aaaa000000000001", Workspace: alpha, Created: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	mine := filepath.Join(dir, "transcript.jsonl")
+	if world := session.ReadWorld(lab.root); len(world.Projects) != 0 {
+		t.Fatalf("the walk found %d projects in a folder nobody has spoken in", len(world.Projects))
+	}
+	a := lab.app(mine)
+	a.workspace, a.title = alpha, "first thing"
+	a.openHome()
+	// The row wears the title the way every row does ([homeName] cases it), so
+	// the comparison is case-blind: the claim is that the title is there.
+	text := strings.ToLower(homeText(a))
+	for _, want := range []string{"alpha", "first thing"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, homeEmptyLines()[0]) {
+		t.Fatalf("home says nothing is here while this conversation is:\n%s", text)
+	}
+	a.home.point(mine)
+	if got := a.home.focused().Transcript; got != mine {
+		t.Fatalf("the cursor cannot reach the row this window is in: on %q", got)
+	}
+	// AND THE ADOPTION IS NOT A DUPLICATE. Once the walk can see the
+	// conversation, the world holds it once.
+	seen := lab.session("-alpha", "bbbb000000000001", "spoken in", alpha, time.Now())
+	b := lab.app(seen)
+	b.openHome()
+	rows := 0
+	for _, project := range b.home.world.Projects {
+		for _, row := range project.Sessions {
+			if row.Transcript == seen {
+				rows++
+			}
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("a conversation the walk found is listed %d times", rows)
+	}
+}
+
+// AND IT INVENTS NOTHING OUTSIDE THE ROOT. A journal that is not a session
+// folder's transcript two levels under the places root — a memory-only surface,
+// a fixture standing elsewhere — is not adopted, because the world answers for
+// the root alone.
+func TestAdoptInventsNothingOutsideTheRoot(t *testing.T) {
+	lab := newHomeLab(t)
+	world := session.ReadWorld(lab.root)
+	for _, file := range []string{
+		filepath.Join(t.TempDir(), "next", "transcript.jsonl"),
+		filepath.Join(lab.root, "-alpha", "transcript.jsonl"),
+		filepath.Join(lab.root, "-alpha", "aaaa000000000001", "notes.txt"),
+		"",
+	} {
+		if world.Adopt(lab.root, session.SessionRow{Transcript: file}, time.Now()) {
+			t.Fatalf("adopted %q, which is not a session under the root", file)
+		}
+	}
+	if len(world.Projects) != 0 {
+		t.Fatalf("the world grew %d projects from journals outside it", len(world.Projects))
 	}
 }
 
