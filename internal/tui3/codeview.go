@@ -74,13 +74,19 @@ func (a *app) codeRowsWith(st *tokens.Styler, text, path string, width int) []st
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	// THE ONE CACHE ON THIS PATH, and it is not optional. Tool rows are
-	// deliberately never cached (render.go's [app.entryRows] says why: one of them
-	// is always animating), so this runs on every frame the block is on screen —
-	// and lexing costs about sixty microseconds a row, which is nothing for the
-	// twenty rows of a write and forty milliseconds for the eight hundred a person
-	// gets after clicking "… N more lines" on a large read. Forty milliseconds is
-	// past the whole frame budget.
+	// THE ONE CACHE ON THIS PATH, and it is not optional. Lexing costs about
+	// sixty microseconds a row, which is nothing for the twenty rows of a write
+	// and forty milliseconds for the eight hundred a person gets after clicking
+	// "… N more lines" on a large read. Forty milliseconds is past the whole
+	// frame budget.
+	//
+	// The inline block a tool row hangs has a memo in front of this one now
+	// (toolview.go's [toolBlock]), so the ordinary transcript asks for a given
+	// block once rather than thirty times a second. This still runs per frame for
+	// everything that reaches the renderer another way — the phone's full-frame
+	// sheet redraws from [app.detailBody] on every tick (expand.go), a forming
+	// write is re-lexed as its own body arrives — and it is what keeps the memo's
+	// misses cheap.
 	//
 	// THE KEY IS EVERYTHING THAT DECIDES A ROW. The text, the width and the
 	// language are the obvious three; the Styler and the palette's own dim hue are

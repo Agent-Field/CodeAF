@@ -174,7 +174,22 @@ func (l *homeLab) launch(standing string, landing bool) *app {
 	a.welcome = welcome{}
 	a.openWelcome()
 	a.landHome()
+	// AND THE READING A LAUNCH THAT IS NOT BEING GREETED TAKES OFF THE MODEL LOOP
+	// (home.go's [app.probeWorld]), which [app.Init] arms and the program loop
+	// lands a beat later. It answers nothing for a landing launch, which took its
+	// own reading above.
+	l.settleWorld(a)
 	return a
+}
+
+// settleWorld runs home's deferred reading of the machine and lands it, which is
+// what the program loop does with the command [app.Init] arms. A test that only
+// wants the cached fact should not have to know it arrives as a message.
+func (l *homeLab) settleWorld(a *app) {
+	l.t.Helper()
+	for _, msg := range runCmd(a.probeWorld()) {
+		a.Update(msg)
+	}
 }
 
 // openHomeOn opens home and stands the cursor on one conversation.
@@ -1985,6 +2000,7 @@ func (l *homeLab) door(standing string) *app {
 	l.t.Helper()
 	a := l.app(standing)
 	a.landHome()
+	l.settleWorld(a)
 	return a
 }
 
@@ -2185,6 +2201,45 @@ func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
 	a.key(key(" "))
 	if !a.home.open {
 		t.Fatal("the gesture did not open home")
+	}
+}
+
+// A LAUNCH THAT IS NOT BEING GREETED DOES NOT WALK THE DISK TO GET ITS FIRST
+// FRAME UP. [app.landHome] runs inside [newApp], before bubbletea exists, and
+// the walk behind the door's advertisement is four system calls per session
+// across every project on the machine. So a launch that named a conversation —
+// `--session`, `aforge resume`, `--once`, every headless frame — leaves the
+// question to a command and paints first ([app.probeWorld]).
+func TestALaunchThatIsNotGreetedAsksAboutTheDoorOffTheModelLoop(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.landHome()
+	if a.homeWorth {
+		t.Fatal("the launch walked the disk for a door nothing was waiting on")
+	}
+	probe := a.probeWorld()
+	if probe == nil {
+		t.Fatal("the launch left the door's question unasked")
+	}
+	for _, msg := range runCmd(probe) {
+		a.Update(msg)
+	}
+	if !a.homeWorth {
+		t.Fatal("the deferred reading did not open the door")
+	}
+
+	// AND A GREETED LAUNCH ASKS NOTHING TWICE: it took its own reading, because
+	// the frame it is about to draw is home itself.
+	greeted := lab.launch(mine, true)
+	if !greeted.home.open {
+		t.Fatal("the landing launch was not greeted, so this proves nothing")
+	}
+	if greeted.probeWorld() != nil {
+		t.Fatal("the greeted launch asked the disk a second time")
 	}
 }
 
