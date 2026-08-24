@@ -803,24 +803,45 @@ func hopNotice(cut *provider.StreamCut, next string) string {
 // exactly the condition a reply loses its thread in, which is why the second
 // door is offered at all rather than being general advice.
 func cutFailure(cut *provider.StreamCut, attempts int, hopped []string) error {
-	if cut.Reason == provider.CutBabble {
-		if len(hopped) > 0 {
-			return errors.New("the reply lost its thread " + timesWord(attempts) +
-				" — it came back as repetition and jumbled text, so none of it was kept. " +
-				alsoTried(hopped) + ", so /compact to lighten the conversation")
-		}
-		return errors.New("the reply lost its thread " + timesWord(attempts) +
+	said := ""
+	switch {
+	case cut.Reason == provider.CutBabble && len(hopped) > 0:
+		said = "the reply lost its thread " + timesWord(attempts) +
 			" — it came back as repetition and jumbled text, so none of it was kept. " +
-			"a different model may hold it (/model), or /compact to lighten the conversation")
-	}
-	if len(hopped) > 0 {
-		return fmt.Errorf("%s, %s. %s — /model to pick another one yourself",
+			alsoTried(hopped) + ", so /compact to lighten the conversation"
+	case cut.Reason == provider.CutBabble:
+		said = "the reply lost its thread " + timesWord(attempts) +
+			" — it came back as repetition and jumbled text, so none of it was kept. " +
+			"a different model may hold it (/model), or /compact to lighten the conversation"
+	case len(hopped) > 0:
+		said = fmt.Sprintf("%s, %s. %s — /model to pick another one yourself",
 			cut.Error(), timesWord(attempts), alsoTried(hopped))
+	default:
+		said = fmt.Sprintf("%s, %s. a different model may answer — /model, "+
+			"or set models.fallbacks so this can move on its own",
+			cut.Error(), timesWord(attempts))
 	}
-	return fmt.Errorf("%s, %s. a different model may answer — /model, "+
-		"or set models.fallbacks so this can move on its own",
-		cut.Error(), timesWord(attempts))
+	return &cutGaveUp{cut: cut, said: said}
 }
+
+// cutGaveUp is the sentence WITH the cut still reachable under it.
+//
+// The words are what a person reads; the cut is what a layer further out reads,
+// and it has one question this is the only honest answer to: has the fallback
+// chain already been walked for this failure? It has — every road to this
+// function has spent a budget of cuts and offered the chain first — so a task
+// node that met this error must not spend a whole second worker discovering the
+// same thing (task_run.go's [terminalProviderFailure]). A decision made by
+// matching substrings of a sentence is a decision that breaks the next time
+// somebody rewords it, which is the same reason [provider.StreamCut] is a type.
+type cutGaveUp struct {
+	cut  *provider.StreamCut
+	said string
+}
+
+func (e *cutGaveUp) Error() string { return e.said }
+
+func (e *cutGaveUp) Unwrap() error { return e.cut }
 
 // alsoTried names the models a step actually moved to. It replaces the advice
 // to try another model, because "try another model" said to somebody who has
