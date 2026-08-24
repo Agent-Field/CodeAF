@@ -350,6 +350,32 @@ Two things worth knowing:
   the migration with opus` runs the planner *and* every node on opus; `make a harness for
   triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
 
+## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
+
+The calls aforge makes on its own — the session's name, the two or three words a task is
+called, the judge that reads a turn, the planner sizing a piece of work — used to be
+abandoned outright when the model the ladder picked could not answer: a role pinned to a
+small model that was down cost you the name and said nothing, while the model you were
+talking to sat there able to do it.
+
+Now the call **falls through one rung of the same ladder** and asks again: pin, then the
+class's model, then the model you are talking to. That last rung is the floor, and it is a
+model that demonstrably works — it is the one answering your own turns. The cost lands
+against the model that actually answered, not the one that refused, so `/cost` and the
+usage rows reconcile.
+
+**One rung, and then the failure is real.** A ladder walked to the bottom on every errand
+would turn one bad minute at a provider into three charges and three waits for an answer
+nobody asked for. Nothing is said on screen either way — these are errands you did not ask
+for, and there is no state for "a small thing did not work".
+
+**Each of these calls also has its own patience**, taken from its class rather than from a
+per-call setting: a reflex call has **45s**, a cheap-class call **2m**, a capable-class one
+**5m**, and a mastermind call **10m**. Some calls set something tighter still and keep it —
+the guardian answers in ten seconds or not at all. What this replaced was the ordinary
+five-to-fifteen-minute bound a completion carries, which is right for your own turn and
+absurd for eight words of title.
+
 ## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
 
 `aforge chat --one-model` and `aforge resume --one-model` run **every text call on the model
