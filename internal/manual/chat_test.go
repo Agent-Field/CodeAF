@@ -585,6 +585,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can it use my terminal's light background", "screen"},
 		{"why are the colors the same on every terminal", "screen"},
 		{"the text is too bright on my black terminal", "screen"},
+
+		// The earned hints. Asked the four ways somebody meets them: seeing a
+		// sentence in the border and not knowing what it is, noticing it has
+		// gone, wanting it gone, and wondering what a line about a new build was.
+		{"what was that tip above the message box", "hints-and-tips"},
+		{"why did the hint disappear", "hints-and-tips"},
+		{"how do I turn off hints", "hints-and-tips"},
+		{"stop showing tips", "hints-and-tips"},
+		{"what is a news line", "hints-and-tips"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

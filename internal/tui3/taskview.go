@@ -502,6 +502,7 @@ func (a *app) openTaskSheet() bool {
 	a.standDownFullscreen()
 	a.taskSheet = taskSheet{open: true}
 	a.taskSheetFollow()
+	a.noticeEvent(eventTaskPageOpened)
 	a.touch()
 	return true
 }

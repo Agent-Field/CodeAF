@@ -1175,7 +1175,8 @@ and nothing standing is lost — see *Keeping an eye on things* for the whole of
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
-"timestamps".
+"timestamps", "hints" — the one-line tips above the message box, and the what's-new lines
+with them (see *Hints and tips*).
 
 There is no "chat width" row here. The task roster is a fixed column whose width the
 frame decides — full, slim, or drawn over the conversation on a narrow terminal — so
