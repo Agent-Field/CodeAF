@@ -141,7 +141,7 @@ nowhere, it is one of these:
 Nothing here is a pause you can resume: aforge has no key that suspends a
 session and none that wakes one.
 
-## How long an answer lasts: once, this session, or written down
+## How long an answer lasts: once, this session, or written down — how to make it stop asking every time
 
 - **Once** — `y`, `n`, `esc` and `d` answer this call and nothing else.
 - **For the session** — a "stop asking" answer is kept in memory for the rest of

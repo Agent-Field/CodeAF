@@ -99,12 +99,14 @@ is stopped and everything it already said is kept.
 
 What happens:
 
-1. The session is told to stop, the state becomes `interrupted`, and a note
-   `interrupted` is added to the conversation.
-2. Any queued follow-ups are dropped, and aforge says so — `1 queued message
+1. The session is told to stop, and a note `interrupted` is added to the conversation.
+2. The screen stops on the key: every spinner goes, and every call that was running keeps
+   the time it ran until you stopped it.
+3. Any queued follow-ups are dropped, and aforge says so — `1 queued message
    dropped`, or `N queued messages dropped`.
-3. `interrupted` stays as the status word until the next turn starts.
-4. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
+4. The status word becomes `stopping`, then `interrupted`, and `interrupted` stays as the
+   status word until the next turn starts.
+5. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
@@ -123,6 +125,30 @@ past, and any open list or overlay takes the key before the message box sees it.
 time straight away does not quit either: the press that stopped the turn does not
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
+
+## Why is the turn still finishing after esc — the stopping window
+
+`esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
+`bash` call whose command left something holding its output waits up to three seconds
+before the pipes are forced shut, and a `jobs` kill spends two seconds on a polite signal
+and two more on the one that is not polite. For those seconds the status line reads
+`stopping` rather than `interrupted`, and that is the honest word: the work is being let
+go rather than gone.
+
+**Nothing moves in that window and nothing new is drawn.** The spinners are already gone
+from the status line and from every tool row. Any consent question, account offer or
+harness offer that was open is taken down on the key, because each was about work that is
+now over. Whatever the model says while the turn winds down is not shown — a sentence it
+was still speaking stops where it was, and a call it was half-way through asking for never
+becomes a row. Two things do still land, because neither can draw anything new: a call
+that was **already** on screen reports its own result if it returns in that moment, and
+what the turn spent is still counted.
+
+**No key makes it stop harder, and there is no second stage.** A second `esc` inside half
+a second is the rewind's door and `ctrl+c` is the quit arm, so neither is free — and there
+would be nothing behind a third key: the waits that make this window long are inside a
+tool that has already been cancelled. If something genuinely will not let go, `ctrl+c`
+twice quits and takes it with it.
 
 ## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
