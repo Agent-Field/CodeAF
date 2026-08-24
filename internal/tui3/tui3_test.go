@@ -882,6 +882,13 @@ func TestSettledEntriesAreNotReRendered(t *testing.T) {
 
 // The markdown swap: plain while the words are still arriving, rendered once
 // the turn is done.
+//
+// The streaming rows are plain in the sense that matters here — no markdown has
+// been applied to them, so a heading is still a hash and a bold run is still a
+// pair of asterisks — but they are not unpainted: the growing edge wears the
+// live tier until the turn settles (styles.go's [hueLive]). The want asks
+// [app.liveTail] for those rows rather than spelling the paint out, so this
+// stays a test of the SWAP and settle_test.go stays the test of the ink.
 func TestMarkdownArrivesOnSettle(t *testing.T) {
 	body := "# Title\n\nsome **words** about it"
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
@@ -897,8 +904,14 @@ func TestMarkdownArrivesOnSettle(t *testing.T) {
 	if a.entries[at].settled {
 		t.Fatal("a streaming reply is already settled")
 	}
-	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(wrap(body, a.width)); !sameRows(got, want) {
+	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(a.liveTail(body, a.width)); !sameRows(got, want) {
 		t.Fatalf("a streaming reply is not plain:\n%#v\n%#v", got, want)
+	}
+	// And it really is unrendered: the hash and the asterisks are still there.
+	for _, want := range []string{"# Title", "**words**"} {
+		if !strings.Contains(plain(strings.Join(a.entries[at].rows, "\n")), want) {
+			t.Fatalf("a streaming reply lost %q to the renderer", want)
+		}
 	}
 
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTurnDone}})

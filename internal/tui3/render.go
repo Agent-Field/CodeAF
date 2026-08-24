@@ -729,6 +729,29 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // The index is carried in for one reason, and it is [app.renderEntry]'s: a
 // foot brightens under the pointer, and the pointer is a fact about a POSITION
 // in the list being drawn.
+//
+// ── INK SETTLES WHEN THE TURN ENDS ──────────────────────────────────────────
+//
+// The plain tail below — and ONLY the plain tail — is painted one lightness
+// step above the body, in [palette.live]. It is THE GROWING EDGE: the bytes
+// that arrived since the last promotion, the one thing on this screen that is
+// actually moving, and therefore the one thing THE ACCENT BUDGET (styles.go)
+// says may lead. When the turn settles, [entry.settled] flips, the row cache is
+// dropped with it (see [app.closeLive] and [app.entryRows]) and the same words
+// come back through [app.settledMarkdown] at the calm body tier. The eye is
+// drawn to the edge while it grows and history recedes on its own — no spinner
+// is added and no checkmark, so the emptiness law is kept THROUGH the
+// transition rather than around it.
+//
+// WHY ONLY THE TAIL, AND NOT THE PROMOTED HEAD. The head is
+// [app.renderMarkdown]'s output: already-styled spans, already through prose's
+// sanitizer, carrying headings, code chroma and emphasis of its own. Repainting
+// it would mean either wrapping styled runs in a second foreground — which the
+// inner SGR 39s would tear open halfway down the row — or reaching into the
+// renderer, and the tail is where the honest answer already is. THE HEAD IS THE
+// PART THAT HAS ALREADY STOPPED MOVING: every promotion is the surface deciding
+// those bytes are final enough to format, so the head being calm and the tail
+// being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
 	tags := a.taskReplyTagRows(e.replyTags, width)
 	if e.settled {
@@ -739,8 +762,31 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	if e.mdCut > 0 {
 		out = append(out, a.renderMarkdown(e.text[:e.mdCut], width)...)
 	}
-	out = append(out, wrap(e.text[e.mdCut:], width)...)
+	out = append(out, a.liveTail(e.text[e.mdCut:], width)...)
 	return append(tags, trimBlanks(out)...)
+}
+
+// liveTail is the growing edge of a streaming reply: the bytes since the last
+// markdown promotion, wrapped plain and painted at the live tier.
+//
+// It is a method of its own rather than four lines inside [app.assistantRows]
+// so that a test can ask for the same rows the renderer builds instead of
+// spelling the paint out a second time — a want that reimplements its subject
+// is a want that agrees with the bug.
+func (a *app) liveTail(text string, width int) []string {
+	rows := wrap(text, width)
+	for i, line := range rows {
+		// A ROW WITH NOTHING ON IT IS LEFT ALONE. Painting whitespace paints
+		// nothing a person can see and costs something a person can: [trimBlanks]
+		// decides what to drop by asking whether a row is blank, and a run of
+		// spaces wrapped in an escape stops answering yes — which would leave the
+		// gap at the foot of every reply that ends on a newline.
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		rows[i] = a.pal.live(line)
+	}
+	return rows
 }
 
 // taskReplyTagRows puts the cause immediately above the answer it prompted.

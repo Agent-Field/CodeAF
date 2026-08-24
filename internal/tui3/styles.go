@@ -18,6 +18,9 @@ import (
 //
 //	role    hex       what it paints
 //	ink     #C6CDDA   the body — what was said, and every tool's TARGET
+//	live    #D8DEE9   the body WHILE IT IS STILL BEING SAID: the growing edge of
+//	                  a streaming reply, one lightness step up the reading
+//	                  ladder, which drains back to the ink when the turn settles
 //	accent  #9DC3E6   THE ONE LIVE OR CHOSEN THING ON THE SCREEN — the person's
 //	                  › glyph, the rail, and whatever is currently moving or
 //	                  currently picked. NOT headings (see the accent budget)
@@ -100,11 +103,11 @@ import (
 // Dark: L 61–76. Light: L 39–53. Anything authored into this table from here
 // on owes that check as well as the 256-neighbour one.
 //
-// The READING tiers — ink, muted, dim — answer "how loudly is this being said",
-// and they are a LADDER by construction: the body, the surface's second voice,
-// and the surface talking about itself. Lightness is the whole of their
-// meaning, so the band deliberately does not govern them and the test excludes
-// them by name rather than by silence.
+// The READING tiers — live, ink, muted, dim — answer "how loudly is this being
+// said", and they are a LADDER by construction: the sentence still arriving,
+// the body, the surface's second voice, and the surface talking about itself.
+// Lightness is the whole of their meaning, so the band deliberately does not
+// govern them and the test excludes them by name rather than by silence.
 //
 // #C67173 rather than nord's own #BF616A, which this table carried for four
 // waves, is the one move that band cost. At L 56.5 the minus lines of a diff
@@ -228,7 +231,72 @@ var (
 	// hueInk is the body, and it is held DOWN rather than up: see THE GLARE LAW
 	// above for why 11:1 is a ceiling and not a target, and for the 256 check
 	// that goes with any change to this line.
-	hueInk    = mustHue("#C6CDDA", flat)
+	hueInk = mustHue("#C6CDDA", flat)
+	// hueLive is THE READING TIERS' ONE STEP ABOVE THE BODY, and it exists for a
+	// single moment: the prose of an assistant reply while that reply is still
+	// arriving (render.go's [app.assistantRows]).
+	//
+	// INK SETTLES WHEN THE TURN ENDS. A streaming answer is THE ONE LIVE THING ON
+	// THE SCREEN, which is precisely what THE ACCENT BUDGET above says may lead —
+	// and the budget also says the accent itself may not be spent on it, because
+	// nothing the model writes is ever painted in the person's own hue (render.go
+	// states that law over the user entry). So the live moment is drawn the only
+	// way left that says "this is the growing edge" without saying "this is a
+	// different kind of thing": ONE LIGHTNESS STEP, on the READING ladder, in the
+	// body's own hue. When the turn settles the entry re-renders at the body ink
+	// and the brightness drains away — no spinner, no checkmark, no glyph added
+	// and none taken away, which is the emptiness law kept through a transition
+	// rather than around it.
+	//
+	// It is a READING tier and not a signal, so the fifteen-point isoluminant
+	// band above deliberately does not govern it, exactly as it does not govern
+	// ink, muted and dim: lightness IS the whole of its meaning.
+	//
+	// ── WHY THE HEX IS THE INK'S OWN OLD VALUE ─────────────────────────────────
+	//
+	// #D8DEE9 is what [hueInk] carried before the readability wave calmed the
+	// body down to #C6CDDA, and taking it here is not a coincidence: a tier
+	// defined as "one step above the body" has to be authored RELATIVE to the
+	// body, and the step the body just vacated is the step that was already
+	// measured, already inside the palette's "nothing bright" law, and already
+	// proven readable for four waves. Live is the ink the surface used to speak
+	// in; the settled body is the calmer ink it speaks in now.
+	//
+	// THE DEPENDENCY IS STATED RATHER THAN HIDDEN. This hue is only ever ONE STEP
+	// above whatever [hueInk] carries, and if the two ever meet the effect is
+	// simply ABSENT — a streaming reply then looks exactly as it looked before
+	// this existed. That is the right failure and the tests are written to allow
+	// it (settle_test.go asserts live ≥ ink, not live > ink), because the pair is
+	// one retune: a live tier that leapt above an un-calmed body would be the
+	// "bright" this file's first rule forbids. It is also what the adaptive
+	// derivation does on a ground with no headroom left (adaptive.go).
+	//
+	// ── THE 256 NEIGHBOUR, CHECKED ─────────────────────────────────────────────
+	//
+	// #D8DEE9 resolves to 254, on the GREY RAMP rather than into the colour cube,
+	// which is what a reading tier owes: a body that rounded into a tint would be
+	// prose that looked like it meant something. Against the dark ladder's other
+	// roles 254 is clear by a wide margin — the nearest occupied index in the
+	// whole table is [hueDim]'s 243, and every signal hue lands in the cube
+	// (140, 144, 146, 167, 173, 186, 110). The ONE index it comes near is
+	// [hueInk]'s own, which is 252 now that the body has settled at #C6CDDA —
+	// one clear step down the same grey ramp, which is the collision check
+	// passing exactly when the effect exists and failing into absence when it
+	// does not. #C08FE8's note above is why this check is written down and not
+	// merely done.
+	//
+	// ── DEGRADATION ────────────────────────────────────────────────────────────
+	//
+	// The tier is `flat`, and that is the whole of the ANSI16 answer: BELOW THE
+	// 256 RUNG THE EFFECT IS SIMPLY ABSENT. Every other hue in this table falls
+	// back to weight, and this one may not — WEIGHT BELONGS TO MARKDOWN
+	// (render.go), so bolding a live reply would make a streaming answer
+	// indistinguishable from one whose author opened with a bold lead-in, and
+	// faint would say the opposite of what the tier means. With no hue to spend
+	// there is nothing honest to degrade to, so nothing is drawn. NO_COLOR is the
+	// same answer for the ordinary reason: a terminal told not to style is not
+	// styled halfway.
+	hueLive   = mustHue("#D8DEE9", flat)
 	hueAccent = mustHue("#9DC3E6", heavy)
 	hueMuted  = mustHue("#7FA6C9", flat)
 	hueDim    = mustHue("#6B7280", quiet)
@@ -427,6 +495,10 @@ var lightTaskRing = []hue{
 //	role    dark      light     what changed
 //	ink     #C6CDDA   #3B4252   the body inverts: near-black on the page. Both
 //	                            ends sit inside THE GLARE LAW's 8–11:1 band
+//	live    #D8DEE9   #2E3440   the streaming step travels the other way too:
+//	                            a growing edge LEADS by having more contrast
+//	                            against the ground, which is lighter on a void
+//	                            and DARKER on a page
 //	accent  #9DC3E6   #5E81AC   the pastel blue saturates; a pastel on white
 //	                            is a smudge
 //	muted   #7FA6C9   #8098B8   accent, one step back, on both ladders
@@ -452,7 +524,20 @@ var lightTaskRing = []hue{
 // 256 rung is where an unchecked pair silently becomes one colour. bundle_test
 // asserts it, and any future change here owes the same check.
 var (
-	lightInk    = mustHue("#3B4252", flat)
+	lightInk = mustHue("#3B4252", flat)
+	// lightLive is [hueLive] on a page, and it makes the move the whole light
+	// ladder makes: what led by being LIGHTER than a void leads by being DARKER
+	// than a page. Nord's polar night 0 under the body's polar night 1 — the same
+	// hue at the next authored step, so the settling reads as one ink drying and
+	// never as two colours.
+	//
+	// 237 on the 256 rung, one clear step off [lightInk]'s 238, and on the grey
+	// ramp where every reading tier belongs. Nothing else on this ladder is near
+	// it: the light grounds climb the other end of the ramp (251, 254, 255) and
+	// every light signal lands in the cube. The dark ladder's [hueSelected] is
+	// also 237, and that is not a collision — it is a GROUND on the other ladder,
+	// and the two ladders meet nowhere (see THE GROUND LADDER).
+	lightLive   = mustHue("#2E3440", flat)
 	lightAccent = mustHue("#5E81AC", heavy)
 	lightMuted  = mustHue("#8098B8", flat)
 	lightDim    = mustHue("#9AA3B2", quiet)
@@ -488,10 +573,15 @@ var (
 // the second ladder cost the call sites nothing.
 type ramp struct {
 	ink, accent, muted, dim hue
-	add, del, bad, ask      hue
-	warn                    hue
-	data                    hue
-	violet                  hue
+	// live is the reading ladder's one step ABOVE the body: the prose of a reply
+	// that is still arriving ([hueLive]). It sits beside ink rather than in a
+	// table of its own because it is the same ladder — the body, said louder for
+	// as long as it is still being said.
+	live               hue
+	add, del, bad, ask hue
+	warn               hue
+	data               hue
+	violet             hue
 	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
 	// not here and cannot be: it is the absence of a paint, not a colour.
 	cursor, selected, mark hue
@@ -506,7 +596,7 @@ type ramp struct {
 }
 
 var darkRamp = ramp{
-	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
+	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
 	data: hueData, violet: hueViolet, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
@@ -514,7 +604,7 @@ var darkRamp = ramp{
 }
 
 var lightRamp = ramp{
-	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
+	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
 	data: lightData, violet: hueViolet, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
@@ -806,7 +896,14 @@ func (p palette) paint(s string, h hue) string {
 	}
 }
 
-func (p palette) ink(s string) string    { return p.paint(s, p.ramp.ink) }
+func (p palette) ink(s string) string { return p.paint(s, p.ramp.ink) }
+
+// live is the body ink for as long as the body is still being written: the
+// growing edge of a streaming reply, one lightness step above where the same
+// words will sit the moment the turn settles ([hueLive]). Below the 256 rung it
+// paints nothing at all, which is deliberate and is stated at [hueLive].
+func (p palette) live(s string) string { return p.paint(s, p.ramp.live) }
+
 func (p palette) accent(s string) string { return p.paint(s, p.ramp.accent) }
 func (p palette) muted(s string) string  { return p.paint(s, p.ramp.muted) }
 func (p palette) dim(s string) string    { return p.paint(s, p.ramp.dim) }

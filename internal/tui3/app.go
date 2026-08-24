@@ -3112,6 +3112,14 @@ func (a *app) sampleContext() {
 
 // closeLive ends the assistant block being streamed into. A block nobody is
 // writing any more is a finished document, so it renders as one.
+//
+// THE STALE FLAG IS THE WHOLE OF THE SETTLE, and it is load-bearing rather than
+// tidy. [app.entryRows] hands back the rows it built last time unless something
+// says otherwise, and a settled entry is not one of the shapes that bypass the
+// cache — so without marking it here the block would keep the rows it was drawn
+// with mid-stream: unrendered markdown, and the live ink of render.go's growing
+// edge left bright on an answer that finished minutes ago. Setting both in one
+// statement is deliberate: the two facts are one event.
 func (a *app) closeLive() {
 	if a.live >= 0 && a.live < len(a.entries) {
 		e := &a.entries[a.live]
