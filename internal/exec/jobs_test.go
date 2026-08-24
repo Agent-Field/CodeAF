@@ -466,3 +466,41 @@ func TestBackgroundJobIDsAreUniqueAcrossLeafToolboxes(t *testing.T) {
 		}
 	}
 }
+
+// A JOB'S LOG IS NEVER HELD WHOLE TO BE CUT DOWN. readSince used to read every
+// byte written since the last status call into memory so that [clamp] could
+// throw all but a few kilobytes of it away — a job that wrote a gigabyte between
+// two polls was a gigabyte of resident memory for a status line. It now fetches
+// exactly the two windows clamp keeps, and THE BYTES IT ANSWERS WITH MUST BE THE
+// BYTES IT ALWAYS ANSWERED WITH: this reads the same file both ways and compares
+// the strings, at sizes either side of the limit and at the limit itself.
+func TestReadSinceAnswersExactlyWhatClampingTheWholeLogWould(t *testing.T) {
+	const limit = 600
+	for _, size := range []int{0, 1, limit - 1, limit, limit + 1, limit * 40} {
+		path := filepath.Join(t.TempDir(), "job.log")
+		var builder strings.Builder
+		for builder.Len() < size {
+			builder.WriteString(fmt.Sprintf("line %d of the log\n", builder.Len()))
+		}
+		whole := builder.String()[:size]
+		if err := os.WriteFile(path, []byte(whole), 0o644); err != nil {
+			t.Fatalf("write log: %v", err)
+		}
+
+		var offset int64
+		got, err := readSince(path, &offset, limit)
+		if err != nil {
+			t.Fatalf("size %d: readSince: %v", size, err)
+		}
+		if want := clamp(whole, limit); got != want {
+			t.Fatalf("size %d: readSince gave\n%q\nwant\n%q", size, got, want)
+		}
+		if offset != int64(size) {
+			t.Fatalf("size %d: the offset moved to %d", size, offset)
+		}
+		// And a second call with nothing appended still answers nothing.
+		if again, err := readSince(path, &offset, limit); err != nil || again != "" {
+			t.Fatalf("size %d: a second read gave %q, %v", size, again, err)
+		}
+	}
+}

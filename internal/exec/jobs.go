@@ -598,12 +598,47 @@ func readSince(path string, offset *int64, limit int) (string, error) {
 		*offset = 0 // the model may have truncated the composable log with sh
 	}
 	length := info.Size() - *offset
+	// AND A SNAPSHOT LARGER THAN THE ANSWER IS NEVER HELD. A job that wrote a
+	// gigabyte between two status calls would otherwise be read whole into memory
+	// so that [clamp] could throw all but a few kilobytes of it away. clamp looks
+	// at exactly two windows of what it is given — the head it keeps and the tail
+	// it keeps — and reports the byte count between them, so those two windows
+	// and the length are the whole of what has to be in hand, and the cut itself
+	// is still clamp's own (tools.go's clampWindows).
+	if length > int64(limit) {
+		head, err := readAt(file, *offset, int64(clampHead(limit)))
+		if err != nil {
+			return "", err
+		}
+		tail, err := readAt(file, info.Size()-int64(clampTail(limit)), int64(clampTail(limit)))
+		if err != nil {
+			return "", err
+		}
+		*offset = info.Size()
+		return clampWindows(string(head), string(tail), int(length)), nil
+	}
 	data, err := io.ReadAll(io.NewSectionReader(file, *offset, length))
 	if err != nil {
 		return "", err
 	}
 	*offset = info.Size()
 	return clamp(string(data), limit), nil
+}
+
+// readAt reads one fixed window out of an open file. A short read is the answer
+// rather than an error for [readSince]'s reason: the file is being appended to
+// by a live process, and a window that came back a few bytes light is still the
+// output the person asked for.
+func readAt(file *os.File, at, size int64) ([]byte, error) {
+	if size <= 0 {
+		return nil, nil
+	}
+	window := make([]byte, size)
+	read, err := file.ReadAt(window, at)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return window[:read], nil
 }
 
 func (r *jobRegistry) list() string {
