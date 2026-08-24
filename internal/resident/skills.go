@@ -23,6 +23,22 @@ const (
 	skillFailureBytes       = 400
 )
 
+// Both halves of the shelf are gated on the journal (memo.go), and for the same
+// reason: each of them exists to make the disk agree with the fact shelf, the
+// fact shelf only moves when something is journaled, and neither of them was
+// cheap. Promotion walks every candidate's parent chain back to its top-level
+// job — one node read per generation, per candidate. The bin sync stats and
+// readlinks the whole shelf directory. A tick that runs for a reason unrelated
+// to either — a clock deadline, the standing ceiling — used to pay for both
+// anyway, twice a second, forever, which is what an idle laptop heard as a disk
+// that never spun down.
+//
+// The gates are separate because the two passes do not run back to back and a
+// shared one would let whichever ran first suppress the other. They are in
+// memory rather than durable, unlike the consolidation lane's: the consolidator
+// spends a model call, so a restart buying another one is expensive, whereas a
+// restart here costs one extra read of a shelf that is almost always empty.
+
 type skillRecurrence struct {
 	facts []store.Fact
 	jobs  map[string]bool
@@ -32,6 +48,9 @@ type skillRecurrence struct {
 // may propose a procedure after one job, but only two independent top-level
 // jobs and a green executable check can make it active.
 func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
+	if !r.skillPromotionGate.due(r.store) {
+		return
+	}
 	candidates, err := r.store.SkillFacts(store.FactCandidate, skillCandidateScanLimit)
 	if err != nil || len(candidates) == 0 {
 		return
@@ -364,6 +383,9 @@ func pathsOverlap(first, second string) bool {
 // symlinks this forge owns. Installed directories remain as provenance-bearing
 // evidence after retirement; they simply stop being offered on PATH.
 func (r *Reconciler) syncSkillBins() {
+	if !r.skillBinGate.due(r.store) {
+		return
+	}
 	facts, err := r.store.SkillFacts("", skillCandidateScanLimit)
 	if err != nil {
 		return

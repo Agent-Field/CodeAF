@@ -259,7 +259,7 @@ func appendBoundedAmendment(brief, instruction string) string {
 // Control returns the direct durable control flags for one node.
 func (s *Store) Control(id string) (NodeControl, error) {
 	var control NodeControl
-	if err := s.db.QueryRow(`SELECT cancel_requested, held FROM nodes WHERE id = ?`, id).
+	if err := s.queryRowPrepared(`SELECT cancel_requested, held FROM nodes WHERE id = ?`, id).
 		Scan(&control.CancelRequested, &control.Held); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return NodeControl{}, ErrNotFound
