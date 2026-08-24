@@ -69,6 +69,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},
+		// Written from a live task that compacted fifteen times in six minutes.
+		{"why does it keep compacting", "compacting-over-and-over"},
+		{"it compacts after every step", "compacting-over-and-over"},
+		{"compacting over and over", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
