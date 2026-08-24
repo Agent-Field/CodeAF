@@ -1661,13 +1661,14 @@ func newApp(ctx context.Context, opts Options) *app {
 	// two clauses here are each true whatever is happening — esc stops the turn
 	// when there is one, and two presses of ctrl+c always leave (quitarm.go).
 	//
-	// AND THE TWO KEYS READ AS KEYS (payload.go). This is the first line of the
-	// session and the only thing in it a person has to remember is the two chords,
-	// so the chords step to ink and the verbs around them stay in the note's own
-	// dim. It is spelled in the hint slot's own grammar — chord, then what it does
-	// — and the facts are named rather than recognized, because a note is prose to
-	// this surface and only the line that wrote it knows otherwise.
-	a.noteFacts(landingKeysWord, "esc", "ctrl+c")
+	// AND IT WAITS FOR THE GREETING TO GO. On an empty session the line lands
+	// when the conversation begins rather than above a screen that is asking for
+	// its first sentence (welcome.go's [app.dismissWelcome] says why); a session
+	// that opens on a transcript gets it here, on its first frame, as it always
+	// has.
+	if !a.welcome.open {
+		a.noteLandingKeys()
+	}
 	a.restoreDraft()
 	// LAST, because it reads the surface it opens over: the picker marks the
 	// session this window is already in, and that is not known until the agent,
@@ -1684,6 +1685,17 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.landHome()
 	return a
 }
+
+// noteLandingKeys writes the opening line: the two keys the status line has no
+// room for.
+//
+// THE TWO KEYS READ AS KEYS (payload.go). This is the first line of the
+// conversation and the only thing in it a person has to remember is the two
+// chords, so the chords step to ink and the verbs around them stay in the note's
+// own dim. It is spelled in the hint slot's own grammar — chord, then what it
+// does — and the facts are named rather than recognized, because a note is prose
+// to this surface and only the line that wrote it knows otherwise.
+func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c") }
 
 var _ tea.Model = (*app)(nil)
 
@@ -2262,6 +2274,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// every chrome target is.
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
+			}
+			// AND THE GREETING'S ROWS ACT ON PRESS, with the rest of the chrome
+			// they are built with. They are lifted into the body's region and
+			// centred in its slack (view.go's [welcomeLift]), which can put them
+			// past the end of the conversation's own window — and a press parked
+			// for the body's release is measured against that window and dropped
+			// outside it. A recent session's row is a door, and a door that only
+			// opened when it happened to sit high enough would be the one dead row
+			// on the screen.
+			if a.welcome.open && !a.roomOpen() {
+				if mark, ok := a.chromeAt(msg.Mouse().Y); ok && mark.kind == chromeWelcome {
+					return a, a.welcomeRowPress(mark.index)
+				}
 			}
 			// THE BODY'S CLICK IS PARKED, NOT SPENT. It fires on release — from
 			// [app.dragRelease], where the batch this line used to build now
@@ -4167,7 +4192,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// dismissal means (welcome.go).
 	if a.welcome.open && !a.roomOpen() {
 		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome {
-			return a.welcomePress(a.welcomeSlotAt(mark.index))
+			return a.welcomeRowPress(mark.index)
 		}
 		a.dismissWelcome()
 	}

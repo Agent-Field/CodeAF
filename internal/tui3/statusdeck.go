@@ -229,6 +229,10 @@ func (a *app) deckTitle() string {
 // forty-four the fraction is what the sheet is for.
 func (a *app) deckSpend() (string, string) {
 	var parts []hudPart
+	// Nothing before the first turn, on the wide row's terms ([app.statusQuiet]).
+	if a.statusQuiet() {
+		return "", ""
+	}
 	if cost := dollars(a.cost); cost != "" {
 		parts = append(parts, hudPart{kind: segCost, text: cost})
 	}

@@ -517,9 +517,11 @@ standing, with the door onto the project's record still at its foot. One thing c
 `ctrl+g`, which takes the column off the frame and leaves the work exactly where it was.
 The bottom line of the column says so.
 
-The column is permanent: it stands from the session's first frame, before any task exists,
-at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
-from 100 to 119. Work fills it rather than raising it. A conversation that has run nothing
+The column is permanent: it stands from the session's first keystroke, before any task
+exists, at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24
+columns from 100 to 119. Work fills it rather than raising it. The one frame without it is
+the untouched empty conversation, which opens on a centred greeting and no column at all
+until you type, a task lands, or a standing order reaches it (*The empty screen* page). A conversation that has run nothing
 draws no empty label or absence sentence, **whatever the project has behind it** — the
 typeable `+ /task` door remains, and in a directory whose earlier sessions ran tasks the door
 `ctrl+. earlier` sits at the foot of the column. Under 100 columns there is no
@@ -788,7 +790,9 @@ With the column closed, work is still visible:
 
 `ctrl+g` works whether or not the session has tasks — the column stands empty, so an
 empty column is still a column to close. It does nothing, and is not swallowed, only when there is no roster on the frame at
-all: a frame under 100 columns where nothing has raised the roster over the body.
+all: a frame under 100 columns where nothing has raised the roster over the body. On
+the untouched empty screen, where no column has stood yet, the key is a first keystroke
+first — the greeting goes — and then closes the column as usual.
 
 ## The task bar disappeared — how do I get the task column back
 

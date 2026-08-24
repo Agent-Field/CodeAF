@@ -404,10 +404,26 @@ func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
 
 func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab"})
-	// IT HAS TO BE TRUE ON THE FIRST FRAME, where nothing is running: esc is the
+	a.width, a.height = 90, 30
+	a.touch()
+	// THE EXIT IS TAUGHT AFTER THE ENTRANCE (welcome.go's [app.dismissWelcome]):
+	// the greeting's frame carries no line about leaving, and the line lands the
+	// moment the conversation begins.
+	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
+		t.Fatalf("the greeting teaches the way out before the way in:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("h"))
+	// IT HAS TO BE TRUE ON THAT FRAME, where nothing is running: esc is the
 	// interrupt when there is a turn, and ctrl+c takes two presses always.
 	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
 		t.Fatalf("the hint has to name both doors truthfully:\n%s", plain(frame(a)))
+	}
+	// And a session that opens on a transcript gets it on its first frame.
+	resumed := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hi"}}},
+		Workspace: "/tmp/lab", Resumed: true})
+	resumed.width, resumed.height = 90, 30
+	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c twice quits") {
+		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
 	}
 	if !strings.Contains(helpText(""), "alt+enter") {
 		t.Fatalf("help has to name the newline key:\n%s", helpText(""))
