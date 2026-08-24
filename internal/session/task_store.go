@@ -187,6 +187,16 @@ type taskRecord struct {
 	Worktree string   `json:"worktree,omitempty"`
 	Merge    string   `json:"merge,omitempty"`
 
+	// Journal is where the node's own transcript was written — the file a
+	// person's "open that task" replays (task_room.go's [Agent.TaskJournal]).
+	// It is on the record because the name is MINTED WITH A TIMESTAMP
+	// ([taskJournalPath]) and cannot be recomputed: a resumed session that did
+	// not carry it opened every finished task on an empty page with the whole
+	// transcript sitting on disk beside it. Absent in every checkpoint written
+	// before the field existed, and then [Agent.TaskJournal] finds the file by
+	// its id in the session's own tasks/ directory ([findTaskJournal]).
+	Journal string `json:"journal,omitempty"`
+
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
@@ -563,6 +573,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Branch:      n.branch,
 		Worktree:    n.worktree,
 		Merge:       n.merge,
+		Journal:     n.journal,
 		Model:       n.spec.model,
 		MaxSteps:    n.spec.maxSteps,
 		NoProgress:  n.spec.noProgress,
@@ -1021,6 +1032,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		branch:      record.Branch,
 		worktree:    record.Worktree,
 		merge:       record.Merge,
+		journal:     record.Journal,
 		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
 		cost:        record.CostUSD,
 		input:       record.Input,

@@ -403,6 +403,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			}
 			blocks = append(blocks, entry{
 				kind: entryAssistant, text: text, turn: turn, settled: true,
+				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 
 		case "tool":

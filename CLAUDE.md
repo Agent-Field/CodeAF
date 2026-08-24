@@ -17,8 +17,21 @@ v3 is a **session you sit in front of**. The resident is an employee that keeps 
 while the terminal is closed. They share a repository and almost nothing else — do not
 carry vocabulary or assumptions between them.
 
-Build with `make build` → `bin/aforge`. Rebuild after every merge; the user runs that
-binary.
+## Build and ship — the owner's standing orders
+
+- **Always build with `make build`**, which writes `bin/aforge`. Never a bare
+  `go build -o` to some other path: `bin/aforge` is the ONE binary the owner
+  runs, and every stray copy becomes a shadow that rolls them back silently
+  (the root `./aforge` did it once, `~/.agentfield/bin/aforge` did it again on
+  2026-08-24 — if a shipped feature "stopped working", run `which -a aforge`
+  and `shasum` before debugging anything).
+- Rebuild after every merge. Never `cp` over a binary that may be running —
+  `rm` first, then install — or the next launch dies with `Killed: 9`.
+- **Finished work is committed and pushed to `origin chat-v3-task`** in the
+  same wave — never left sitting on a local branch or an unpushed worktree. If
+  the shared checkout is dirty with another session's work, merge and push
+  through a temporary detached worktree (`git worktree add --detach … origin/chat-v3-task`)
+  rather than touching their tree.
 
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 

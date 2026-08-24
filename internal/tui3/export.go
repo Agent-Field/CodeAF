@@ -166,6 +166,7 @@ func (a *app) exportDone(msg exportedMsg) {
 	switch {
 	case msg.err == nil:
 		a.note("exported · " + short + here)
+		a.noticeEvent(eventDeliverableMade)
 	case errors.Is(msg.err, fs.ErrExist):
 		a.note(short + " is already there · /export <path> writes it somewhere else")
 	default:

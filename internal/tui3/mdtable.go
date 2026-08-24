@@ -146,7 +146,7 @@ func (a *app) settledMarkdown(at int, e *entry, width int) []string {
 	if layoutTier(width) == tierPhone || !strings.Contains(e.text, "|") {
 		return rows
 	}
-	out, feet := a.openableTables(markdownStyler(), at, e, rows, width)
+	out, feet := a.openableTables(a.styler(), at, e, rows, width)
 	e.feet = feet
 	return out
 }

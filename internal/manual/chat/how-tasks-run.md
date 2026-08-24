@@ -1,5 +1,24 @@
 # How work on its own actually runs
 
+## What happens when I type /task
+
+`/task <brief>` first raises one forming block at the transcript tail. Its dim `▏ `
+hairline joins the word `task`, your verbatim quoted brief, and the live phase. The phase
+begins as `sizing it up…` for the plain sized form and advances in place to
+`shaping the brief…`; `/task solo`, `/task adaptive`, and the preset `single` road skip
+straight to shaping. The spinner and count-up keep moving on the same frame clock as the
+other live rows. When the start succeeds, the block is replaced in that same frame by
+the normal started-task row and the task appears on its rail. When it fails, the block is
+replaced by the error sentence. The hairline never remains on settled work.
+
+The same block appears when you say yes to a task the model proposed on its card:
+approving is followed by the same short pause while the brief is prepared, so the block
+rises with the task's name on it — unquoted, because the name is aforge's word rather
+than something you typed — and it collapses the moment the task appears on the rail.
+Saying no, or redirecting the proposal, raises nothing. One forming look for both ways a
+task begins; only the card, which asks before the model spends your money, is particular
+to the proposed one.
+
 ## Does a task touch my working copy?
 
 No. Each task gets its own checkout of the repository, on its own branch, so you can keep
@@ -124,6 +143,26 @@ work in place of the work, and so is narrating what it did to get there.
 
 When the report is too thin to answer from, aforge reads the deliverable and answers out of
 what is in it. The message is the answer; the file is the deep dive.
+
+## Why did the chat reply on its own
+
+A finished task can arrive while you are not typing. Its landing note starts the turn
+that answers the work, so the answer may appear on its own. Immediately above that reply,
+aforge draws a dim line with the task's identity mark, its name, and the exact words you
+originally asked it to handle. That line is part of the transcript and returns when you
+resume the conversation. The finished-task card still stays above the input as before.
+
+An ordinary reply to something you typed has no such line. If an old task has no recorded
+request, the line shows its identity mark and name alone rather than an empty quotation.
+If several tasks arrive before one answer, their lines are stacked in arrival order above
+that answer.
+
+## Which task is this answer about
+
+Read the dim line immediately above the answer. Its task mark and short name are the same
+identity used for that task in the task column and its finished card; the quoted text is
+your original request verbatim, not the more detailed brief prepared for the worker. More
+than one line means the answer is responding to all of those finished tasks, top to bottom.
 
 **Every file aforge names you is named by its full absolute path** — after a task and
 everywhere else in the conversation. A relative path like `research/notes.md` is one you
@@ -746,7 +785,10 @@ the closing write-up cost on their own.
 
 Beside each one sit `…_<id>-audit-<6 hex>.jsonl` per check and `…_<id>-repair1.jsonl` per
 correction round. A task's own pointer stays on the **first** file — the run that is the
-task itself.
+task itself. A conversation that has a session folder keeps them inside it instead, under
+`<session folder>/tasks/`, and that pointer is written on the conversation's task
+checkpoint, which is what lets a finished task's room replay its transcript after a
+restart.
 
 ## What happens when a task fails
 

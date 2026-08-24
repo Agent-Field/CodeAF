@@ -542,6 +542,29 @@ type Options struct {
 	// just asked for by name is the door second-guessing them.
 	Landing bool
 
+	// Setup says this launch may open the first-run setup — the three-step
+	// screen that asks for a key, a crew and a daily ceiling (firstrun.go) —
+	// if the profile is missing any of the three and has never been shown it.
+	//
+	// IT IS AN OPT-IN FOR [Options.Landing]'s REASON: only a person sitting at
+	// a full terminal with no particular conversation in mind is asked, and
+	// every other door — --once, --host, the picker, a named session, a test,
+	// a pipe — leaves it false by saying nothing. The one door that sets it is
+	// `aforge` and `aforge chat` bare on a TTY (cmd/aforge's chatv3.go), which
+	// is also the one launch the door lets open with no key at all.
+	Setup bool
+
+	// ApplyAPIKey hands a key the person just gave — on the setup screen or in
+	// the settings row — to the running session, so the next request rides it
+	// without a relaunch. The surface has already written it to the profile
+	// through the settings registry by the time this is called; this is the
+	// live half only.
+	//
+	// Nil is a surface whose key lands on the next launch, and the setup says
+	// nothing different: the profile is still the record. A test, and a door
+	// with no process behind it, are that surface.
+	ApplyAPIKey func(key string) error
+
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says
 	// it still says — the difference is that it says all of it in words and

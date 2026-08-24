@@ -1,5 +1,15 @@
 # What is on the screen
 
+## Why is there a line next to my task
+
+After you send `/task <brief>`, the transcript tail temporarily shows one dim forming
+block. Each row begins with the thin `▏ ` hairline: the word `task`, your own brief
+verbatim in quotes, and the live `sizing it up…` or `shaping the brief…` spinner and
+clock. Long briefs are fitted to about two rows. The phase changes inside that same
+block. As soon as the task starts, the whole scaffold and hairline collapse into the
+ordinary started-task row; if it fails, they collapse into the error line instead. No
+forming block is drawn when a task command is not in flight.
+
 ## What the frame draws, top to bottom
 
 aforge draws one screen in a fixed order every frame. From the top: the pinned room
@@ -11,7 +21,11 @@ menu, completion), and the status line last.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's very first frame, before any tasks exist. It carries `tasks`, the
+from the session's first keystroke, before any tasks exist. An untouched empty
+conversation opens without it: no column, no doors, no rule, no telemetry, just the
+centred greeting with the message box inside it (see *The empty screen* page); the
+column stands the moment you type, or at once if a standing order or a task is already
+here. It carries `tasks`, the
 roster of work, and `standing`, the orders standing over this conversation. A section's
 dim lowercase label appears only when that section has rows. Work fills the column
 rather than raising it, and the work it fills with is **this conversation's alone**.
@@ -225,8 +239,14 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
-`esc interrupt` while a turn is running, `esc stops and sends` while a message of yours is
-waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+`esc interrupt` while a turn is running, `enter waits · shift+enter stops and sends` while
+a turn is running and you have typed something, `esc stops and sends` while a message of
+yours is waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+
+It only ever names a key that **works right now**, and that includes the terminal: the
+`shift+enter` line is not drawn on a terminal that cannot tell that chord apart from a
+plain `enter`, because a hint for a key that could never arrive would be the surface
+lying to you. See the keys page, "Interrupt and say something new in one key".
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -235,16 +255,17 @@ compete. It is the same in every hint the slot carries, in home's foot hint, in 
 legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
-**At rest it carries the two doors out of the conversation.** With an empty box and
-somewhere else on the machine to go, it reads exactly:
+**At rest it carries the two doors out of the conversation.** With an empty box, it reads
+exactly:
 
 ```
 space space home · / commands
 ```
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
-words does the same; `/` opens the command list. The home half is dropped when there is
-nowhere else to go, leaving just `/ commands`, and the whole slot gives way the moment you
+words does the same; `/` opens the command list. It is there on a fresh machine from the
+first minute — an empty home is still a home. The home half is dropped only over `--host`,
+where home refuses, leaving just `/ commands`, and the whole slot gives way the moment you
 type or a state above claims it. It costs no row either way — this line is on the frame
 regardless.
 
@@ -301,7 +322,7 @@ What steps up, in the lines you will see it in:
 
 | Line | What is drawn brighter |
 | --- | --- |
-| the crew line after `/crew` | the three model ids — `brain`, `hands` and `checks` stay grey |
+| the crew line after `/crew` | the three crew model ids and the model you are still talking to — `brain`, `hands`, `checks` and `you are still talking to` stay grey |
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
@@ -348,6 +369,15 @@ If the answer is just the word `aforge`, this conversation has no project — it
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
 prints where that actually is.
 
+## The task name above an answer that appeared on its own
+
+A reply that begins because a task finished has a dim task line immediately above it in
+the transcript. The line uses the same identity mark and name as the task column and quotes
+your original request. Several finished tasks answered by one turn make several lines in
+arrival order. A reply to something you just typed has no task line, and a task with no
+recorded request shows its name without an empty quote. These lines return with the reply
+after `/resume`; the finished-task strip above the input is unchanged.
+
 ## The status line at the bottom
 
 One row at the bottom of the frame, in two clusters. **Identity on the left** — which
@@ -373,6 +403,12 @@ is a claim about now; the attribution alone goes silent after **10 minutes**.
 Pressing the model segment opens the model picker, and it brightens under the pointer to
 say so.
 
+Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
+`crew frugal`, or `crew custom` when you pinned one of the four yourself — so the two model
+dials sit side by side: the model you talk to on the left, the preset the four models aforge
+uses on its own behalf are on to its right. It is absent on a session with no profile, and
+it is one of the first segments a narrow row drops.
+
 While a task **room** is open the cluster renames itself to the room chip and the room's
 model — `task <model>` — and **pressing it moves that task**, not the conversation: the
 same picker opens aimed at that node, and the task switches from its next turn onward. One
@@ -388,20 +424,21 @@ survives, the identity is not drawn, and nothing on the row is pressable.
 
 ## What each part of the status line means
 
-Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
+Eleven segments, right to left of the identity, joined by ` · ` in a fixed order:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
-| 0 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
-| 1 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
-| 2 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
-| 3 | cost | `$0.14` | the session's running spend | never empty |
-| 4 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
-| 5 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
-| 6 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
-| 7 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
-| 8 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
-| 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
+| 0 | crew | `crew max` | which preset the four models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent on a session with no profile |
+| 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
+| 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
+| 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
+| 4 | cost | `$0.14` | the session's running spend | never empty |
+| 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
+| 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
+| 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
+| 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
+| 9 | yolo | `YOLO` | the approval gate is set to `allow` | empty in every other posture — absence is the safe state |
+| 10 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
@@ -469,9 +506,12 @@ A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown conte
 window, an unpriced cache — every one of them draws nothing rather than a zero.
 
 The spend segment is the one deliberate exception. The status line and the phone status
-deck **do print `$0.00`** on a session that has spent nothing. The reason is that the
-status row is a live row: a segment that came into existence on the first priced turn
-would shove every segment beside it sideways.
+deck **do print `$0.00`** on a session that has sent a turn and spent nothing. The reason
+is that the status row is a live row: a segment that came into existence on the first
+priced turn would shove every segment beside it sideways. **While the empty screen's
+greeting is up there is no spend segment and no context meter at all** — the row is
+the name, the model and `idle`, and the numbers arrive with your first keystroke (see
+*The empty screen* page).
 
 The commands keep the law instead. `/status` filters the spend line out when the cost is
 zero, and `/cost` only adds it when the cost is above zero — so the two commands say
@@ -483,7 +523,7 @@ Other honest silences: the context percentage is dropped below 1% rather than sh
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
 fraction of a cent is not rounded away to nothing.
 
-## The state word: idle, working, waiting
+## The state word: idle, working, stopping, waiting
 
 The last segment of the status line is the one thing true of the whole row. The exact
 words:
@@ -493,14 +533,36 @@ words:
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
-| `interrupted` | the last turn was stopped by hand | the bad hue |
+| `stopping` | you pressed `esc` and the turn has not finished letting go yet | dim |
+| `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
-`waiting · your call` outranks `working`. Copy mode outranks everything, because it is
-the only state about the keyboard rather than about the turn.
+`stopping` outranks `waiting · your call`, and `waiting · your call` outranks `working`.
+Copy mode outranks everything, because it is the only state about the keyboard rather
+than about the turn.
 
 The spinner turns on the same 4-tick grid the tool rows use, so nothing on screen beats
 against anything else. In the screen-reader tier the spinner is a still `*`.
+
+## What the word stopping means in the status line, and why it is not interrupted yet
+
+Because it has not finished stopping. `esc` cancels the turn instantly, but the turn does
+not close instantly: a `bash` call whose command left something holding its output waits
+up to three seconds before the pipes are forced shut, and a `jobs` kill spends two seconds
+on a polite signal and two more on the one that is not polite. For those few seconds the
+turn is being let go rather than gone, and the word says so.
+
+Nothing moves during that window. The spinner is gone from the status line and from every
+tool row, every running call already carries the time it ran until you stopped it, and
+nothing new is drawn — a reply the model was still speaking and a call it was half-way
+through asking for both stop where they were rather than landing under the `interrupted`
+line. The word becomes `interrupted` the moment the turn is actually over.
+
+**There is no second, harder stop, and there is no key to press.** `esc` again is the
+rewind's door (see the sessions and rewind page) and `ctrl+c` is the quit arm, so neither
+is free — and there would be nothing behind a third key anyway: the waits that make this
+window long are inside a tool that has already been told to stop. What you have if it
+will not let go is the program's own door, `ctrl+c` twice.
 
 ## What the status line drops when it is narrow
 
@@ -508,10 +570,12 @@ When the segments do not fit, they are removed one at a time in a fixed order, b
 actionable each one is:
 
 ```
-delta → open → cache → eta → burn → ambient → cost → context
+delta → crew → open → cache → eta → burn → ambient → cost → context
 ```
 
-`open` goes early because it is the one segment that is not about the conversation in
+`crew` goes second because it is a setting rather than a measurement — it changes only when
+you change it, and `/status`, bare `/crew` and the hint under the model picker all say it in
+full. `open` goes early because it is the one segment that is not about the conversation in
 front: at forty columns what you need is what **this** conversation is doing.
 
 The **state word and the `YOLO` badge are not in that list at all**. One is why you are
@@ -613,7 +677,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
-| welcome box | not drawn below height 12 or width 40 |
+| the empty screen's greeting (wordmark, model line, centred message box, try line, recent sessions) | not drawn below height 12 or width 40 |
 | consent bottom sheet at phone width | width 16 |
 | the size in a tool row's right column | dropped unless the target keeps 7 cells |
 | tool preview and expansion | nothing below width 8 |
@@ -747,6 +811,70 @@ whole block is rendered at once.
 The offer to open a wide table is only drawn on the settled render. A half-arrived table
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
+
+## The reply dims when it finishes — brighter while streaming, calmer when done
+
+That is deliberate, and it is the only thing that says the turn is over. There is no
+spinner at the end of an answer and no tick mark.
+
+While a reply is arriving, its plain tail — the part below the last promoted line, which
+is the part still growing — is painted **one step brighter** than the body. The moment
+the turn finishes the whole block is re-rendered as markdown at the ordinary body ink,
+and the brightness drains away. Nothing is added to the screen and nothing is taken off
+it; the ink dries.
+
+Only the growing tail is brighter. The prefix already promoted to markdown carries its
+own styling and is left as it is, so the calm part of an answer is the part this screen
+has already decided is final.
+
+The whole effect needs 256 colours. On a terminal with sixteen, and with `NO_COLOR` set,
+a streaming reply is drawn exactly like a settled one — bolding it instead would make it
+look like a reply that opened in bold, which is a different thing.
+
+## Why is part of the reply grey, and where is the actual answer
+
+Because that part was never the answer. It was aforge saying what it was about to do.
+
+A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
+work start under it in the same turn is narration** — "let me check the config first" —
+and the moment the next tool call opens, that paragraph visibly steps back: it moves into
+the same two-column gutter the tool rows use, and drops one shade below the body text.
+
+**The answer is the last thing the turn says, and it is the only flush-left, full-ink
+block in it.** So: scan down the left edge. Text that starts at the margin was said to
+you. Text that starts two columns in was done for you. There is one blank row above the
+answer whenever the turn did any work, so it stands away from the machinery.
+
+Grey narration carries **no markdown** — no bold, no headings, no code colouring. That is
+deliberate: a bold heading inside working notes would be heavier than the answer under it,
+and the loudest thing on screen would be the part you did not ask for.
+
+Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
+what came after what — so it is the same on a conversation you resume as it was live, and
+the same on a task's own page.
+
+Below 60 columns the gutter is dropped and the shading alone carries the difference. With
+no colour at all, the gutter alone does.
+
+## I pressed esc and the reply stayed grey — why nothing became the answer
+
+That is the screen telling you the truth: **an interrupted turn never reached an answer.**
+
+Press `esc` while a turn is running and whatever had been written stays on screen,
+because the session keeps it — but it stays at the working shade, in the working column, for good. The missing
+flush-left paragraph *is* the statement that you did not get an answer, so nothing has to
+be added to say it. Asking something else afterwards does not promote it later.
+
+The turn also collapses to a chip that says who stopped it —
+`▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
+`ctrl+e` over an empty message box, or a click on the chip, opens it again. aforge's own
+lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
+the chip.
+
+One limit worth knowing: the session file keeps the words a stopped turn managed to say
+and keeps no mark saying it was stopped. So if you close aforge and **resume** that
+conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
+as an answer again.
 
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
@@ -1075,6 +1203,11 @@ At most **3** calls of a turn stay on screen. The rest fold into one line readin
 `↳ 1 earlier tool call · ctrl+o` or `↳ N earlier tool calls · ctrl+o`. Press `ctrl+o`
 or click the line to unfold. Three is the number you can hold without reading: the call
 that is running and the two it followed.
+
+A **task's page** keeps more — as many calls as the window is tall — and its fold line
+reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there scrolling up at the
+top of the page opens it too. The conversation's fold only ever opens with `ctrl+o` or a
+click.
 
 ## What a tool row says, part by part
 
@@ -1569,7 +1702,8 @@ hand that types chords.
 
 The column beside the conversation carries the two things that govern a conversation.
 A section with rows earns a dim lowercase label; an empty section keeps only its dim `+`
-door:
+door. (An untouched empty conversation has no column at all until the first keystroke,
+a task, or a standing order — *The empty screen* page says why.) Once it stands:
 
 ```
 tasks
@@ -1641,15 +1775,52 @@ goes lighter** — the meta tier recedes toward the page. The question hue is in
 rather than dimmed, because a question has to lead on a page too. No two roles resolve
 to the same 256 index.
 
-**The theme is auto-detected only. There is no theme setting to change.** aforge reads
-`COLORFGBG` and nothing else — its last field is read as an ANSI index, where 0–6 and 8
-mean dark and everything else means light. **Unset means dark.** The code can accept
-`dark`, `light` or auto, but the settings row that would carry your choice does not
-exist yet. It is a stated seam, one call away from being wired, and until it is wired
-the answer comes from the environment.
+**Which of the two you get is detected, not configured. There is no theme setting to
+change.** The best answer comes from the terminal itself: on the first frame aforge asks
+what colour its background is, and a terminal that answers picks the ladder outright —
+a light background gets the light palette, whatever anything else says. See *How the
+colors tune themselves to your terminal's background*.
 
-OSC 11 is deliberately not queried. That would be a round trip inside a constructor that
-must not block, to decide something a person who cares can pin.
+Where the terminal does not answer, `COLORFGBG` is read instead: its last field is taken
+as an ANSI index, where 0–6 and 8 mean dark and everything else means light. **Unset
+means dark**, which is what most terminals are.
+
+The code can accept `dark`, `light` or auto, but the settings row that would carry your
+choice does not exist yet. It is a stated seam, one call away from being wired, and until
+it is wired the answer comes from your terminal and its environment. A pin, when it
+lands, will outrank the terminal's own answer.
+
+## How the colors tune themselves to your terminal's background
+
+**aforge asks your terminal what colour its background is, and tunes the palette to the
+answer.** The question goes out on the first frame and nothing waits for it. If your
+terminal answers — and many do — the reply arrives like any other event and the screen
+repaints in colours measured against your real background rather than an assumed one.
+
+Four things are re-aimed when it lands:
+
+- **The three background bands** — the row under the pointer, the chosen row, and a
+  copy-mode selection — are built out of your own background colour, moved away from
+  itself by a fixed amount. They inherit your terminal's tint, and on a 256-colour
+  terminal they still land on greys, never on a hue.
+- **The reading tiers** — ink, muted, dim — are checked against the real background and
+  moved only if they are outside the range they were aimed at. **A value already in range
+  is left exactly as authored**, so on an ordinary terminal you will not see a
+  difference. On a pure black screen the body steps back from the glare it had; on a
+  tinted page the tiers that were sliding out of sight come back. **The answers
+  themselves move with the body ink**, and so does the brighter step a streaming reply
+  wears: the growing edge stays one step above the settled text.
+- **The role colours** — accent, add, del, bad, warn, the question hue and the datum
+  cyan — are checked for legibility and, if the background has crowded them, all of them
+  move together by the same step, never one on its own.
+- **The light or dark ladder itself**, which is the exact answer described above.
+
+**A terminal that does not report a background gets the built-in palette, and that is
+not a degraded mode.** It is the same palette every earlier version shipped, authored by
+hand against the range real terminals sit in. There is no timer, no waiting and no
+fallback path to take: silence simply means the built-in colours stand. Pipes,
+recordings and terminals without the query all take that road, and so does every frame
+drawn before a reply arrives.
 
 ## Box-drawing glyphs, and when they are dropped
 

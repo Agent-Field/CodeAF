@@ -380,14 +380,17 @@ One thing is refused loudly: a file written by a newer aforge.
 session file: <path> was written by a newer aforge (format version 3; this build reads 2)
 ```
 
-**The welcome box.** On the first frame of an empty session, aforge offers the four most
-recent conversations under the heading `recent sessions` (`no recent sessions` on a fresh
-machine). With the draft empty, `↑`/`↓` walk the list and `enter` opens the highlighted one;
-a click on a row opens it too. The hint slot says `↑↓ recent · enter open`. Each row is a
-name and a coarse age (`now`, `12m`, `3h`, `5d`, then a date like `16 Aug`). The box shows
+**The empty screen's greeting.** On the first frame of an empty session, aforge draws one
+centred group — the wordmark, the model line, the message box itself and a line of things
+to try — and, when this folder has earlier conversations, up to four of them under the
+heading `recent sessions` beneath it. On a fresh machine that list is simply absent: no
+heading, no `no recent sessions` line. With the draft empty, `↑`/`↓` walk the list and
+`enter` opens the highlighted one; a click on a row opens it too. Each row is a name and a
+coarse age (`now`, `12m`, `3h`, `5d`, then a date like `16 Aug`). The greeting shows
 **once** — the first submit, key or click retires it for the life of the surface, and
 nothing brings it back. It never shows over a resumed conversation, and it draws nothing at
-all on a frame under 12 rows or under 40 columns.
+all on a frame under 12 rows or under 40 columns. *The empty screen* page has the whole
+of it.
 
 **When home greets you instead, there is no welcome box at all.** On a machine that holds
 a conversation other than the one your launch opened, the first frame is the home screen
@@ -396,9 +399,11 @@ every conversation in every project, which is the box's four recent rows and mor
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 
-So the box is what a **first run** sees — the launch where home has nothing to say, because
-the only conversation on the machine is the one already on screen. That is the one case
-where the wordmark and `recent sessions` still greet you.
+So the greeting is what a **first run** sees — the launch where home has nothing to say,
+because the only conversation on the machine is the one already on screen. That is the one
+case where the wordmark and the centred message box greet you; home itself is still a
+`space space` away. On a profile with nothing configured yet, the once-only setup screen
+comes first (the getting-started page), and the greeting arrives the moment it closes.
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 

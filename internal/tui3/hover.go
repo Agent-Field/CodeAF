@@ -410,7 +410,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// pointer is
 			// on is a question about the column, and a row that lit as a whole would
 			// promise that pressing anywhere on it did something (tasksettle.go).
-			if card := a.doneCardAt(r.entry); card != nil {
+			//
+			// A ROOM'S FOOT IS THE SAME ROW WITH NO ENTRY UNDER IT, so the card is
+			// asked for through the seam that knows which of the two it is
+			// (tasksettle.go's [app.settleCardOf]).
+			if card := a.settleCardOf(r.entry); card != nil {
 				for i, chip := range card.chips {
 					if chip.span.holds(x) {
 						return hoverAt{kind: hoverSettle, entry: r.entry, index: i}

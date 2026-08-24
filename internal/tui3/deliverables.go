@@ -415,6 +415,7 @@ func madeNote(row deliverable, home string, width, label int) string {
 // /permissions read theirs: a picture generated four turns ago wrote a row this
 // list has to know about, and asking costs one small file read.
 func (a *app) openFiles() {
+	a.noticeEvent(eventFilesOpened)
 	list := readDeliverables(a.artifactsIndex())
 	if len(list) == 0 {
 		a.note(filesNothingWord)

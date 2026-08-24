@@ -17,7 +17,10 @@ import (
 // above every choice: if a colour could be described as "bright", it is wrong.
 //
 //	role    hex       what it paints
-//	ink     #D8DEE9   the body — what was said, and every tool's TARGET
+//	ink     #C6CDDA   the body — what was said, and every tool's TARGET
+//	live    #D8DEE9   the body WHILE IT IS STILL BEING SAID: the growing edge of
+//	                  a streaming reply, one lightness step up the reading
+//	                  ladder, which drains back to the ink when the turn settles
 //	accent  #9DC3E6   THE ONE LIVE OR CHOSEN THING ON THE SCREEN — the person's
 //	                  › glyph, the rail, and whatever is currently moving or
 //	                  currently picked. NOT headings (see the accent budget)
@@ -29,7 +32,7 @@ import (
 //	del     #C67173   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
 //	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
-//	data    #88C0D0   the payload rule's datum — a model id, a figure, a key
+//	data    #91C5D4   the payload rule's datum — a model id, a figure, a key
 //	                  chord inside a quiet line (see [hueData])
 //
 // The three backgrounds are a ladder of their own and are stated under THE
@@ -100,11 +103,11 @@ import (
 // Dark: L 61–76. Light: L 39–53. Anything authored into this table from here
 // on owes that check as well as the 256-neighbour one.
 //
-// The READING tiers — ink, muted, dim — answer "how loudly is this being said",
-// and they are a LADDER by construction: the body, the surface's second voice,
-// and the surface talking about itself. Lightness is the whole of their
-// meaning, so the band deliberately does not govern them and the test excludes
-// them by name rather than by silence.
+// The READING tiers — live, ink, muted, dim — answer "how loudly is this being
+// said", and they are a LADDER by construction: the sentence still arriving,
+// the body, the surface's second voice, and the surface talking about itself.
+// Lightness is the whole of their meaning, so the band deliberately does not
+// govern them and the test excludes them by name rather than by silence.
 //
 // #C67173 rather than nord's own #BF616A, which this table carried for four
 // waves, is the one move that band cost. At L 56.5 the minus lines of a diff
@@ -115,6 +118,76 @@ import (
 // red, one clear step from [hueBad]'s 173. The obvious alternative, L 62, lands
 // on 168 — a pink — and a diff whose minus lines went pink on every
 // 256-colour terminal is the fallback nobody looked at, again.
+//
+// ── THE GLARE LAW ───────────────────────────────────────────────────────────
+//
+// THE BODY MAY NOT BE THE BRIGHTEST THING ON THE SCREEN. The reading tier's top
+// rung is the one colour a person looks at for minutes at a time, and on a dark
+// terminal a white much above 11:1 stops being legible and starts being a lamp:
+// the strokes halate, the counters fill in, and everything quieter beside it
+// reads as switched off. Comfortable long-read contrast on the assumed grounds
+// is 8–11:1, and TestTheBodyInkDoesNotGlare holds BOTH ladders to it.
+//
+// THERE IS EXACTLY ONE EXCEPTION AND IT IS NAMED: [hueLive], the tier a reply
+// wears WHILE IT IS STILL ARRIVING, stands above the ceiling on purpose. The law
+// is about a colour somebody reads for MINUTES; the live tier is transient by
+// construction — it exists for the seconds a turn is streaming and drains back
+// to the body ink the moment the turn settles, which is the only reason a
+// paragraph is allowed to lead at all (THE ACCENT BUDGET above). An exception
+// with no bound of its own is a hole rather than an exception, so live carries a
+// ceiling of its own: IT MAY NEVER CLIMB BACK INTO THE WHITE THIS WAVE TOOK
+// AWAY. tokens' own body tier #E6E6F0 measures 13.79:1 against the middle of the
+// assumed dark range and is the glare this whole law was written about;
+// TestTheLiveTierIsTheGlareLawsOneException holds live under it, and holds the
+// STEP itself — live over ink — inside adaptive.go's [liveStep], so a future
+// retune cannot push the streaming text into glare by widening the gap either.
+//
+// #C6CDDA rather than the #D8DEE9 this table carried for five waves. At 14.05:1
+// against #101014 the ink was half again as bright as the person's own accent
+// (9.26:1 at the middle of the range), so the loudest thing on a surface whose
+// accent budget is ONE LIT ELEMENT PER SCREEN was the paragraph — and the budget
+// bought nothing, because whatever it was spent on was outshone by the text
+// around it. The move is the smallest one that fixes that: THE HUE IS HELD at
+// 219°, the lightness comes down L 88.0 → 81.6, and the saturation eases 28 →
+// 21 because a body white is the one colour here with no identity to carry, and
+// a tint nobody can name is a tint paid for in contrast.
+//
+//	ground    #101014  #1a1b26  #1e1e2e
+//	#D8DEE9   14.05    12.65    12.14   was: a lamp
+//	#C6CDDA   11.88    10.70    10.27   is:  a page
+//
+// The 256 neighbour was re-checked, because that is where an unchecked change
+// silently becomes a different colour. #C6CDDA resolves to 252, and 252 is
+// claimed by nothing on either ladder. The near misses are worth naming: the old
+// ink's own 254 is the LIGHT ladder's selected ground and 255 is its cursor
+// step, so a body ink that drifted back up a rung would be sharing an index with
+// furniture. Any future change here owes the same check.
+//
+// THE LADDER STILL READS AS A LADDER, which is the other half of the law: ink
+// 10.70, muted 6.67, dim 3.54 against the middle of the assumed range — three
+// clear steps, ink still a wide step above the second voice. Coming down far
+// enough to be comfortable without arriving on top of [hueMuted] is the whole
+// width of the move.
+//
+// The LIGHT ladder's body ink is untouched at #3B4252 — 10.06:1 against #FFFFFF
+// and 8.73:1 against nord's #ECEFF4. It was measured against the same band and
+// was already inside it, and A VALUE IN BAND IS NOT TOUCHED, which is the rule
+// THE GROUND LADDER's own retune stated. The law's test walks both ladders
+// regardless, so the light side cannot drift out of band unnoticed either.
+//
+// ── AND THE TRANSCRIPT REACHES IT THROUGH A SEAM ──
+//
+// Authoring the ink here is only half the fix. A model's markdown is rendered by
+// internal/tui2/prose, which resolves every colour on the row from
+// internal/tui2/tokens, whose body tier is #E6E6F0 — brighter again than the
+// white this table used to carry. Two whites shared one screen and the louder
+// one painted the thing people read most.
+//
+// So markdown.go hands prose a Styler carrying THIS ink
+// ([tokens.Styler.WithBodyInk]; [hue.tokenColor] below is the conversion), and a
+// reply's paragraphs, its headings and its inline code spans all come back
+// wearing the value above. The v2 surface keeps tokens' own white, because the
+// override travels on the Styler and never touches the table.
 //
 // ── THE ACCENT BUDGET ───────────────────────────────────────────────────────
 //
@@ -152,10 +225,92 @@ type hue struct {
 	tier tier16
 }
 
+// tokenColor is one authored hue said in internal/tui2/tokens' own vocabulary.
+//
+// It exists for the ONE seam that crosses — [tokens.Styler.WithBodyInk], which
+// is how a model's markdown comes back in this palette's body ink rather than in
+// tokens' brighter own (see THE GLARE LAW above, and markdown.go). Nothing else
+// in this package hands a colour out; the palette is closed in both directions.
+//
+// The 256 index is deliberately NOT handed across with it. tokens resolves the
+// neighbour itself, with its own metric, and the two answers have to agree or a
+// 256-colour terminal is back to two whites — so the agreement is ASSERTED, by
+// TestTheTranscriptBodyWearsTheSurfacesOwnInk, rather than papered over by
+// shipping our answer to a question we were not asked.
+func (h hue) tokenColor() tokens.Color { return tokens.Color{R: h.r, G: h.g, B: h.b} }
+
 // The table. Changing a colour is changing one line here, and nothing else in
 // the package holds an escape sequence.
 var (
-	hueInk    = mustHue("#D8DEE9", flat)
+	// hueInk is the body, and it is held DOWN rather than up: see THE GLARE LAW
+	// above for why 11:1 is a ceiling and not a target, and for the 256 check
+	// that goes with any change to this line.
+	hueInk = mustHue("#C6CDDA", flat)
+	// hueLive is THE READING TIERS' ONE STEP ABOVE THE BODY, and it exists for a
+	// single moment: the prose of an assistant reply while that reply is still
+	// arriving (render.go's [app.assistantRows]).
+	//
+	// INK SETTLES WHEN THE TURN ENDS. A streaming answer is THE ONE LIVE THING ON
+	// THE SCREEN, which is precisely what THE ACCENT BUDGET above says may lead —
+	// and the budget also says the accent itself may not be spent on it, because
+	// nothing the model writes is ever painted in the person's own hue (render.go
+	// states that law over the user entry). So the live moment is drawn the only
+	// way left that says "this is the growing edge" without saying "this is a
+	// different kind of thing": ONE LIGHTNESS STEP, on the READING ladder, in the
+	// body's own hue. When the turn settles the entry re-renders at the body ink
+	// and the brightness drains away — no spinner, no checkmark, no glyph added
+	// and none taken away, which is the emptiness law kept through a transition
+	// rather than around it.
+	//
+	// It is a READING tier and not a signal, so the fifteen-point isoluminant
+	// band above deliberately does not govern it, exactly as it does not govern
+	// ink, muted and dim: lightness IS the whole of its meaning.
+	//
+	// ── WHY THE HEX IS THE INK'S OWN OLD VALUE ─────────────────────────────────
+	//
+	// #D8DEE9 is what [hueInk] carried before the readability wave calmed the
+	// body down to #C6CDDA, and taking it here is not a coincidence: a tier
+	// defined as "one step above the body" has to be authored RELATIVE to the
+	// body, and the step the body just vacated is the step that was already
+	// measured, already inside the palette's "nothing bright" law, and already
+	// proven readable for four waves. Live is the ink the surface used to speak
+	// in; the settled body is the calmer ink it speaks in now.
+	//
+	// THE DEPENDENCY IS STATED RATHER THAN HIDDEN. This hue is only ever ONE STEP
+	// above whatever [hueInk] carries, and if the two ever meet the effect is
+	// simply ABSENT — a streaming reply then looks exactly as it looked before
+	// this existed. That is the right failure and the tests are written to allow
+	// it (settle_test.go asserts live ≥ ink, not live > ink), because the pair is
+	// one retune: a live tier that leapt above an un-calmed body would be the
+	// "bright" this file's first rule forbids. It is also what the adaptive
+	// derivation does on a ground with no headroom left (adaptive.go).
+	//
+	// ── THE 256 NEIGHBOUR, CHECKED ─────────────────────────────────────────────
+	//
+	// #D8DEE9 resolves to 254, on the GREY RAMP rather than into the colour cube,
+	// which is what a reading tier owes: a body that rounded into a tint would be
+	// prose that looked like it meant something. Against the dark ladder's other
+	// roles 254 is clear by a wide margin — the nearest occupied index in the
+	// whole table is [hueDim]'s 243, and every signal hue lands in the cube
+	// (140, 144, 146, 167, 173, 186, 110). The ONE index it comes near is
+	// [hueInk]'s own, which is 252 now that the body has settled at #C6CDDA —
+	// one clear step down the same grey ramp, which is the collision check
+	// passing exactly when the effect exists and failing into absence when it
+	// does not. #C08FE8's note above is why this check is written down and not
+	// merely done.
+	//
+	// ── DEGRADATION ────────────────────────────────────────────────────────────
+	//
+	// The tier is `flat`, and that is the whole of the ANSI16 answer: BELOW THE
+	// 256 RUNG THE EFFECT IS SIMPLY ABSENT. Every other hue in this table falls
+	// back to weight, and this one may not — WEIGHT BELONGS TO MARKDOWN
+	// (render.go), so bolding a live reply would make a streaming answer
+	// indistinguishable from one whose author opened with a bold lead-in, and
+	// faint would say the opposite of what the tier means. With no hue to spend
+	// there is nothing honest to degrade to, so nothing is drawn. NO_COLOR is the
+	// same answer for the ordinary reason: a terminal told not to style is not
+	// styled halfway.
+	hueLive   = mustHue("#D8DEE9", flat)
 	hueAccent = mustHue("#9DC3E6", heavy)
 	hueMuted  = mustHue("#7FA6C9", flat)
 	hueDim    = mustHue("#6B7280", quiet)
@@ -181,12 +336,38 @@ var (
 	// hue of its own — the syntax-highlighting contract every calm terminal
 	// theme already keeps: greyscale for prose, colour for identifiers.
 	//
-	// Nord's frost cyan, at L 67.5 inside the fifteen-point signal band, so a
+	// Nord's frost cyan, at L 70.0 inside the fifteen-point signal band, so a
 	// line full of data still reads as one quiet field until somebody looks.
-	// 110 on the 256 rung — one clear step from the accent's 146, which is the
-	// collision that would matter: a datum painted the person's own colour
-	// would spend the budget forty times a minute by rounding.
-	hueData = mustHue("#88C0D0", heavy)
+	//
+	// ── WHY L 70 AND NOT NORD'S OWN L 67.5 ─────────────────────────────────────
+	//
+	// #88C0D0 is the hex nord authors and this table carried for four waves, and
+	// on the rung where hues are rounded it was not a cyan at all: it resolves to
+	// xterm-256 110, which is #87afd7 — A STEEL BLUE, and the SAME INDEX
+	// [hueMuted] rounds to. So on every 256-colour terminal the datum wore the
+	// second voice's own colour, which is the one thing a hue given out for
+	// IDENTITY may not do: the payload rule lifts a model id out of a dim line by
+	// giving it a hue of its own, and a lifted datum painted in the tier it was
+	// lifted out of is the rule doing nothing while appearing to work.
+	//
+	// The move is the smallest one that fixes it and it is THE MOVE THIS FILE
+	// ALWAYS MAKES: the hue is held at 193°, the saturation at 43%, and only the
+	// LIGHTNESS rises, L 67.5 → 70.0. That crosses onto 116 — #87d7d7, which is
+	// an actual cyan and is claimed by nothing on either ladder — and it is the
+	// first index above #88C0D0 that is: L 69.0 still rounds to 110 and L 73.0 has
+	// gone on to 152. The signal band is unmoved, because the spread it measures
+	// is [hueDel]'s L 61.0 to [hueAccent]'s L 75.9 and this value sits inside
+	// both ends. Contrast against the middle of the assumed dark range goes 8.54
+	// → 9.07, which leaves it under the accent's 9.26 — a datum may not outrank
+	// the person's own hue.
+	//
+	// 116 is also one clear step from the accent's 146, which was the collision
+	// this line was originally checked against and remains the one that would
+	// matter most: a datum painted the person's own colour would spend the accent
+	// budget forty times a minute by rounding. Both checks are now written down
+	// rather than merely done — TestNoTwoRolesShareA256Index walks the whole
+	// table on both ladders, which is what would have caught this one.
+	hueData = mustHue("#91C5D4", heavy)
 	// hueViolet was the SHELL OPERATOR's hue until the transcript restraint
 	// greyed shell grammar down to the reading tiers (shellx.go) — it is held
 	// in the table, currently unspent, and it is deliberately NOT the question
@@ -233,22 +414,43 @@ var (
 // itself reaching for a third has found a state this ladder does not have
 // rather than a colour this table is missing.
 //
-// ── WHY THE STEPS ARE AUTHORED AND NOT DERIVED ──────────────────────────────
+// ── WHY THE STEPS ARE AUTHORED, AND WHEN THEY ARE DERIVED INSTEAD ───────────
+//
+// THE STEPS BELOW ARE DERIVED WHEN THE TERMINAL ANSWERS AND AUTHORED WHEN IT
+// DOES NOT, and both halves exist because the two are answers to two different
+// questions rather than a good way and a bad way of doing one thing.
 //
 // The honest way to build this ladder is the way a compositor builds it: take
-// the foreground colour, composite it over the background at a stated alpha,
-// and let every step inherit the theme's own hue for free. We cannot. THE
-// TERMINAL'S OWN BACKGROUND IS UNKNOWN TO US — there is no variable that says
-// it and no query this constructor may block on (see [detectTheme] for the same
-// wall, met from the other side) — so there is nothing to composite over. The
-// steps are therefore AUTHORED per ladder, dark and light, as fixed colours.
+// the background, move it away from itself at a stated ratio, and let every step
+// inherit the theme's own hue for free. That needs a background, and for four
+// waves this file had none. There is no variable that states it, and the one
+// query that would — OSC 11 — is a round trip on a terminal that may never
+// answer, which is not something a CONSTRUCTOR may wait on (see [detectTheme]
+// for the same wall, met from the other side).
 //
-// What is authored is aimed rather than guessed. The assumed ground is the
-// range real dark terminals actually sit in, #101014 through #1e1e2e, and the
-// aim is the band a wide reading of calm terminal palettes converges on: the
-// cursor step at ≈1.1–1.2:1 against that ground, the selected step at
-// ≈1.35–1.5:1, and the marked span louder again because it is transient and
-// spans many rows at once. Measured, at the middle of the assumed range:
+// What changed is not the wall, it is the door beside it. A background reply is
+// an EVENT: [app.Init] asks with tea.RequestBackgroundColor and the answer, if
+// there is one, arrives as a tea.BackgroundColorMsg on the same lane as every
+// keystroke. Nothing blocks, there is no timer, and there is no deadline to get
+// wrong. adaptive.go turns that one colour into this whole ladder —
+// [adaptRamp] — and the surface repaints.
+//
+// So the values below are THE PERMANENT FALLBACK, and they are load-bearing:
+// they are what a terminal that stays silent paints, which is every terminal
+// that does not implement the query, every pipe, every recording, and every
+// frame drawn between startup and the reply. A silent terminal is not a degraded
+// one — it gets exactly the surface four waves of authorship aimed at it — and
+// that is the whole reason the question can be asked at all.
+//
+// What is authored is aimed rather than guessed, and the aim is what adaptive.go
+// derives AGAINST: it is the same three ratios either way, measured against a
+// real ground when there is one and against an assumed range when there is not.
+// The assumed ground is the range real dark terminals actually sit in, #101014
+// through #1e1e2e, and the aim is the band a wide reading of calm terminal
+// palettes converges on: the cursor step at ≈1.1–1.2:1 against that ground, the
+// selected step at ≈1.35–1.5:1, and the marked span louder again because it is
+// transient and spans many rows at once. Measured, at the middle of the assumed
+// range:
 //
 //	step      dark      #101014  #1a1b26  #1e1e2e   256
 //	cursor    #242932    1.30     1.17     1.09     235
@@ -260,11 +462,13 @@ var (
 //	selected  #D8DEE9    1.35     1.17              254
 //	mark      #B7C0D1    1.83     1.59              251
 //
-// The cost of authoring is stated rather than hidden: a fixed ground reads one
-// notch louder on a blacker terminal and one notch quieter on a lighter one,
-// and on a tinted page like nord's own #ECEFF4 the whole light ladder drops
-// close to invisible. That is the price of not knowing, and it is cheaper than
-// a query that hangs.
+// The cost of authoring is stated rather than hidden, and it is exactly the cost
+// a reply pays off: a fixed ground reads one notch louder on a blacker terminal
+// and one notch quieter on a lighter one, and on a tinted page like nord's own
+// #ECEFF4 the whole light ladder drops close to invisible. That is the price of
+// not knowing. It is still cheaper than a query that hangs — which is why the
+// query does not hang, and why these values remain what a terminal that will not
+// say gets.
 //
 // Two things survived this retune unchanged and both were deliberate. #2E3440
 // is the value this file has drawn under the pointer since the day it first
@@ -343,7 +547,7 @@ var lightTaskRing = []hue{
 //
 // The table above is dark-terminal first and was, for four waves, the only
 // table there was. A person on a white terminal got soft pastels authored
-// against black: #D8DEE9 body ink on #FFFFFF is very nearly invisible, and the
+// against black: #C6CDDA body ink on #FFFFFF is very nearly invisible, and the
 // dim tier below it is invisible outright.
 //
 // So there is a second ladder, authored the same way and against the same law —
@@ -352,7 +556,12 @@ var lightTaskRing = []hue{
 // than the background now carries by being DARKER than it.
 //
 //	role    dark      light     what changed
-//	ink     #D8DEE9   #3B4252   the body inverts: near-black on the page
+//	ink     #C6CDDA   #3B4252   the body inverts: near-black on the page. Both
+//	                            ends sit inside THE GLARE LAW's 8–11:1 band
+//	live    #D8DEE9   #2E3440   the streaming step travels the other way too:
+//	                            a growing edge LEADS by having more contrast
+//	                            against the ground, which is lighter on a void
+//	                            and DARKER on a page
 //	accent  #9DC3E6   #5E81AC   the pastel blue saturates; a pastel on white
 //	                            is a smudge
 //	muted   #7FA6C9   #8098B8   accent, one step back, on both ladders
@@ -365,7 +574,7 @@ var lightTaskRing = []hue{
 //	                            it has to lead on a page too
 //	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
 //	                            wants the same warning as dark amber
-//	data    #88C0D0   #2C8A9E   the datum's cyan, deepened for the page the
+//	data    #91C5D4   #2C8A9E   the datum's cyan, deepened for the page the
 //	                            way the accent was
 //	violet  #8F6FA8   #8F6FA8   the shared one (above)
 //
@@ -378,7 +587,20 @@ var lightTaskRing = []hue{
 // 256 rung is where an unchecked pair silently becomes one colour. bundle_test
 // asserts it, and any future change here owes the same check.
 var (
-	lightInk    = mustHue("#3B4252", flat)
+	lightInk = mustHue("#3B4252", flat)
+	// lightLive is [hueLive] on a page, and it makes the move the whole light
+	// ladder makes: what led by being LIGHTER than a void leads by being DARKER
+	// than a page. Nord's polar night 0 under the body's polar night 1 — the same
+	// hue at the next authored step, so the settling reads as one ink drying and
+	// never as two colours.
+	//
+	// 237 on the 256 rung, one clear step off [lightInk]'s 238, and on the grey
+	// ramp where every reading tier belongs. Nothing else on this ladder is near
+	// it: the light grounds climb the other end of the ramp (251, 254, 255) and
+	// every light signal lands in the cube. The dark ladder's [hueSelected] is
+	// also 237, and that is not a collision — it is a GROUND on the other ladder,
+	// and the two ladders meet nowhere (see THE GROUND LADDER).
+	lightLive   = mustHue("#2E3440", flat)
 	lightAccent = mustHue("#5E81AC", heavy)
 	lightMuted  = mustHue("#8098B8", flat)
 	lightDim    = mustHue("#9AA3B2", quiet)
@@ -414,10 +636,15 @@ var (
 // the second ladder cost the call sites nothing.
 type ramp struct {
 	ink, accent, muted, dim hue
-	add, del, bad, ask      hue
-	warn                    hue
-	data                    hue
-	violet                  hue
+	// live is the reading ladder's one step ABOVE the body: the prose of a reply
+	// that is still arriving ([hueLive]). It sits beside ink rather than in a
+	// table of its own because it is the same ladder — the body, said louder for
+	// as long as it is still being said.
+	live               hue
+	add, del, bad, ask hue
+	warn               hue
+	data               hue
+	violet             hue
 	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
 	// not here and cannot be: it is the absence of a paint, not a colour.
 	cursor, selected, mark hue
@@ -432,7 +659,7 @@ type ramp struct {
 }
 
 var darkRamp = ramp{
-	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
+	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
 	data: hueData, violet: hueViolet, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
@@ -440,7 +667,7 @@ var darkRamp = ramp{
 }
 
 var lightRamp = ramp{
-	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
+	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
 	data: lightData, violet: hueViolet, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
@@ -504,10 +731,13 @@ func themeFromRow(row string) theme {
 // index: 0-6 and 8 are the dark half of the sixteen, everything else is light.
 //
 // The other way to ask — OSC 11, a query and a reply parsed off the input
-// stream — is deliberately not done here. It is a round trip on a terminal that
-// may never answer, in a constructor that must not block, to decide a colour
-// that a person who cares can pin outright. Unset means dark, which is what
-// this surface has always assumed and what most terminals are.
+// stream — is still deliberately not done HERE, and for the reason it never was:
+// it is a round trip on a terminal that may never answer, and this is a
+// constructor. It is asked one layer out instead, where an answer is an EVENT
+// and silence costs nothing (adaptive.go's [app.groundReply]), and this function
+// is what paints until it lands and what keeps painting if it never does. Unset
+// means dark, which is what this surface has always assumed and what most
+// terminals are.
 func detectTheme(env func(string) string) theme {
 	if env == nil {
 		return themeDark
@@ -545,11 +775,14 @@ func rampFor(t theme, env func(string) string) ramp {
 // as an OPACITY GRADIENT instead: the oldest visible line furthest toward the
 // background, the newest at the dim tier it will keep when it settles.
 //
-// The stops are the dim ink at three opacities over black — a terminal will not
-// say what its background is, and every terminal this palette was authored for
-// is dark, so black is the honest anchor. Naming the opacities rather than the
-// colours is the point: change hueDim and the fade follows it, which is what
-// stops the gradient drifting off the tier it belongs to.
+// The stops are the dim ink at three opacities over black — for a terminal that
+// has not said what its background is, and every terminal this palette was
+// authored for is dark, so black is the honest anchor. Where one DOES say, the
+// same three opacities are composited over the colour it named instead
+// (adaptive.go's [fadeToward]), and the gradient ends on the real page rather
+// than near it. Naming the opacities rather than the colours is what makes that
+// swap one line: change hueDim, or measure a ground, and the fade follows either
+// way, which is what stops the gradient drifting off the tier it belongs to.
 //
 //	35%  #25282D  the oldest line — read already, on its way out
 //	60%  #40444D  the middle
@@ -649,6 +882,20 @@ type palette struct {
 	ascii bool
 	// ramp is the ladder this palette paints from — dark, or light.
 	ramp ramp
+	// pin is the theme this palette was CONSTRUCTED with, kept rather than
+	// discarded so that a measured background can be told apart from a person.
+	// A reply from the terminal re-derives every value on the ladder either way,
+	// but it may only choose WHICH ladder when the answer was auto — somebody who
+	// said "light" out loud outranks a terminal that reports otherwise
+	// (adaptive.go's [app.groundReply]).
+	pin theme
+	// ground is the terminal's own background once it has said what it is, and
+	// measured says it has. They are the seam between the authored palette and
+	// the derived one: unset is the honest state of every terminal that has not
+	// answered and of every terminal that never will, and it is the state the
+	// whole of styles.go was written for.
+	ground   measuredGround
+	measured bool
 	// linear is the screen-reader tier (Options.Linear): no motion, no pointer.
 	// It gates the two paints that mean neither of those things to a reader —
 	// the thinking window's gradient and the hover background — because a
@@ -668,6 +915,7 @@ func newPalette(p tokens.Profile, ascii bool) palette {
 func newThemedPalette(p tokens.Profile, ascii bool, t theme, env func(string) string) palette {
 	pal := newPalette(p, ascii)
 	pal.ramp = rampFor(t, env)
+	pal.pin = t
 	return pal
 }
 
@@ -732,7 +980,14 @@ func (p palette) paint(s string, h hue) string {
 	}
 }
 
-func (p palette) ink(s string) string    { return p.paint(s, p.ramp.ink) }
+func (p palette) ink(s string) string { return p.paint(s, p.ramp.ink) }
+
+// live is the body ink for as long as the body is still being written: the
+// growing edge of a streaming reply, one lightness step above where the same
+// words will sit the moment the turn settles ([hueLive]). Below the 256 rung it
+// paints nothing at all, which is deliberate and is stated at [hueLive].
+func (p palette) live(s string) string { return p.paint(s, p.ramp.live) }
+
 func (p palette) accent(s string) string { return p.paint(s, p.ramp.accent) }
 func (p palette) muted(s string) string  { return p.paint(s, p.ramp.muted) }
 func (p palette) dim(s string) string    { return p.paint(s, p.ramp.dim) }

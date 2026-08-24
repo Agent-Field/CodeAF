@@ -931,6 +931,7 @@ func (a *app) switchModel(id string, window int) {
 	// already knows they asked for; the id is the one thing here they cannot see
 	// anywhere else at this moment, so it steps to ink and the label stays dim.
 	a.noteFacts("model · "+a.model, a.model)
+	a.noticeEvent(eventModelSwitched)
 }
 
 // rememberModel writes the choice down, so the NEXT launch opens on the model
