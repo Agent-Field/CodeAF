@@ -443,17 +443,29 @@ const (
 	// kind leaves that dead card up; a surface that draws it takes the card down
 	// and says so.
 	EventSubharnessProposalOff
+	// EventTaskReplyTags names the finished tasks whose notes the next words
+	// answer. TaskReplyTags carries them in note order.
+	EventTaskReplyTags
 )
+
+// TaskReplyTag is the task identity a surface places beside the answer its
+// completion prompted. Request is the person's original text, not the brief.
+type TaskReplyTag struct {
+	ID      uint64 `json:"id"`
+	Title   string `json:"title"`
+	Request string `json:"request,omitempty"`
+}
 
 // Event is one observable thing in a turn. A Submit returns a channel of
 // them, closed after EventTurnDone or EventError.
 type Event struct {
-	Kind  EventKind
-	Text  string
-	Tool  string
-	Hint  string
-	Err   error
-	Usage Usage
+	Kind          EventKind
+	Text          string
+	Tool          string
+	Hint          string
+	Err           error
+	Usage         Usage
+	TaskReplyTags []TaskReplyTag
 
 	// Args is the tool call's arguments rendered for display: the JSON the
 	// model sent, compacted to one line and capped. It is set on
@@ -1594,6 +1606,9 @@ type Agent struct {
 	// words (task_brief.go), and it is deliberately the WHOLE message rather than
 	// a summary of it.
 	personAsk string
+	// replyTags are finished-task identities placed in the transcript but not
+	// yet handed to the surface. They persist across the turn-end seam.
+	replyTags []TaskReplyTag
 	// divisibleAsk is the text the sizing judge last answered YES about
 	// (task_person.go's [Agent.judgeDecomposable]) — the one signal that arms
 	// the division road for a task somebody then starts as a single worker
