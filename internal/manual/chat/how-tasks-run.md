@@ -1,5 +1,16 @@
 # How work on its own actually runs
 
+## What happens when I type /task
+
+`/task <brief>` first raises one forming block at the transcript tail. Its dim `▏ `
+hairline joins the word `task`, your verbatim quoted brief, and the live phase. The phase
+begins as `sizing it up…` for the plain sized form and advances in place to
+`shaping the brief…`; `/task solo`, `/task adaptive`, and the preset `single` road skip
+straight to shaping. The spinner and count-up keep moving on the same frame clock as the
+other live rows. When the start succeeds, the block is replaced in that same frame by
+the normal started-task row and the task appears on its rail. When it fails, the block is
+replaced by the error sentence. The hairline never remains on settled work.
+
 ## Does a task touch my working copy?
 
 No. Each task gets its own checkout of the repository, on its own branch, so you can keep

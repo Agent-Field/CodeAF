@@ -881,7 +881,7 @@ here`. Pressing the words row puts the command in your box rather than running i
 ## /task — start work you can walk away from
 
 `/task <brief>` starts work directly from the words after the command; the brief does not
-pass through the conversation model. aforge briefly shows `sizing it up…` while a small
+pass through the conversation model. aforge briefly shows a forming block while a small
 judge reads the words for width, and then **one worker starts, whatever the answer was —
 nothing is asked of you**. If the work is meaningfully parallel, one dim line says so
 (`the work looks wide · one worker starts, and it can split as it goes`) and that worker
@@ -901,9 +901,10 @@ answer worth giving.
 Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
 into the fuller brief the worker is given — your sentence kept word for word, with the
 constraints and the done-condition written around it, **and the name the roster will call
-the work**. Both waiting lines carry a spinning mark and a climbing clock while they run
-(`⠙ shaping the brief… · 6s`), so you can see the wait is alive rather than stuck, and both
-disappear as the task starts. The *work that runs on its own* page has this in full, under
+the work**. The forming block carries a spinning mark and a climbing clock while it runs,
+so you can see the wait is alive rather than stuck. It collapses into the ordinary
+started-task row when the work starts, or into the honest error line if it cannot start.
+The *work that runs on its own* page has this in full, under
 *Why my task's brief is longer than what I typed* and *Why my task is called something I did
 not type*.
 
@@ -917,6 +918,31 @@ without asking whenever there is anything to split, and `single` always starts o
 and does not size the work at all. `solo` and `adaptive` typed on the command line override
 the row either way. The row's old fourth answer `ask`, and the two-choice list it opened,
 are both gone; a profile still set to it reads as `sized`.
+
+## What happens when I type /task
+
+While `/task <brief>` is being sized and shaped, one dim block appears at the transcript
+tail. Every row has the same thin left line and one space of padding:
+
+```text
+▏ task
+▏ "fix the flaky auth test and add coverage for the retry path"
+▏ ⠙ sizing it up… · 3s
+```
+
+The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
+The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
+`/task solo <brief>`, `/task adaptive <brief>`, and a `single` starting setting begin at
+shaping because they skip sizing. When work starts, the thin line and scaffold disappear
+in the same frame and the normal started-task row takes their place. If starting fails,
+only the error sentence remains.
+
+## Why is there a line next to my task
+
+The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the live phase
+into one thing being formed. It is a single left hairline, not a box or a task-status
+border. It exists only while a `/task` command is in flight and disappears when that
+command becomes the ordinary started-task row or an error line.
 
 ## /history — the task history command: past tasks, every task this project has run
 

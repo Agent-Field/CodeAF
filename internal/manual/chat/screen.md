@@ -1,5 +1,15 @@
 # What is on the screen
 
+## Why is there a line next to my task
+
+After you send `/task <brief>`, the transcript tail temporarily shows one dim forming
+block. Each row begins with the thin `▏ ` hairline: the word `task`, your own brief
+verbatim in quotes, and the live `sizing it up…` or `shaping the brief…` spinner and
+clock. Long briefs are fitted to about two rows. The phase changes inside that same
+block. As soon as the task starts, the whole scaffold and hairline collapse into the
+ordinary started-task row; if it fails, they collapse into the error line instead. No
+forming block is drawn when a task command is not in flight.
+
 ## What the frame draws, top to bottom
 
 aforge draws one screen in a fixed order every frame. From the top: the pinned room

@@ -276,29 +276,36 @@ func TestExplicitFormsOverrideTheRow(t *testing.T) {
 	}
 }
 
-// THE WAIT IS NAMED AND THEN IT LEAVES. Shaping the brief is a model call of its
-// own, so a command that looked like it had done nothing for several seconds
-// would read as a command that never registered — and a note still standing
-// after the task started would be the transcript saying something untrue.
-func TestTheShapingWaitIsShownAndThenTakenAway(t *testing.T) {
+// THE FORMING BLOCK IS REPLACED WHEN THE TASK LANDS. The same update that writes
+// the settled row clears the scaffold, so there is no intermediate frame where
+// finished work still claims to be shaping.
+func TestTheShapingBlockCollapsesIntoTheSettledRow(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := taskStartApp(t, f, config.TaskStartSingle)
 	cmd := a.slash("/task write the release notes")
-	if got := lastNote(t, a); got != taskShapingNote {
-		t.Fatalf("the wait note reads %q, want %q", got, taskShapingNote)
+	before := plainRowsText(a.preflightRows(60))
+	if !strings.Contains(before, "▏ task") || !strings.Contains(before, `▏ "write the release notes"`) {
+		t.Fatalf("the forming block lost the command:\n%s", before)
 	}
 	_, _ = a.Update(cmd())
-	for _, entry := range a.entries {
-		if entry.kind == entryNote && entry.text == taskShapingNote {
-			t.Fatal("the shaping note outlived the task it was about")
-		}
-	}
 	if got := lastNote(t, a); !strings.Contains(got, "task 7 started") {
 		t.Fatalf("last note = %q", got)
+	}
+	frame := plainRowsText(a.preflightRows(60))
+	if frame != "" {
+		t.Fatalf("the scaffold survived in the settled frame: %q", frame)
 	}
 	if a.wait.live() {
 		t.Fatal("the wait's clock outlived the wait")
 	}
+}
+
+func plainRowsText(rows []string) string {
+	var out []string
+	for _, row := range rows {
+		out = append(out, plain(row))
+	}
+	return strings.Join(out, "\n")
 }
 
 // THE WAIT IS ALIVE WHILE IT IS RUNNING, and that is the whole defect: shaping a
@@ -314,15 +321,13 @@ func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
 	a.clock = func() time.Time { return base }
 	_ = a.slash("/task write the release notes")
 
-	// SIX SECONDS IN, WITHOUT ANYTHING MARKING THE ROW STALE. The row is kept out
-	// of the cache exactly as a running compaction is, because a cached row is a
-	// still photograph of an animation.
+	// SIX SECONDS IN, the tail is rebuilt with the shared animation grid.
 	a.clock = func() time.Time { return base.Add(6 * time.Second) }
-	line := findRow(t, a, taskShapingNote)
+	line := plainRowsText(a.preflightRows(60))
 	if !strings.Contains(line, "· 6s") {
 		t.Fatalf("the wait has no clock: %q", line)
 	}
-	painted := rowHolding(t, a, taskShapingNote)
+	painted := strings.Join(a.preflightRows(60), "\n")
 	if !strings.ContainsAny(painted, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
 		t.Fatalf("the wait has no spinner: %q", plain(painted))
 	}
@@ -336,17 +341,14 @@ func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
 	// spelling every other live clock on this surface uses.
 	a.clock = func() time.Time { return base }
 	a.touch()
-	if got := findRow(t, a, taskShapingNote); strings.Contains(got, "0s") {
+	if got := plainRowsText(a.preflightRows(60)); strings.Contains(got, "0s") {
 		t.Fatalf("a wait that has just started is timing itself: %q", got)
 	}
 }
 
-// AND IT IS ONE BLOCK AT EVERY WIDTH. The complaint that produced this was a
-// ragged clump of half-sentences with nothing lined up, so the wait keeps the
-// note lane's hanging indent: the spinner stands where the `· ` would, two
-// cells, and every continuation lines up under the words rather than falling
-// back to column zero.
-func TestTheShapingWaitHangsItsIndentAtNarrowWidths(t *testing.T) {
+// EVERY ROW CARRIES THE ONE HAIRLINE, and the quoted brief never takes more
+// than two rows even when the terminal is narrow.
+func TestTheShapingBlockKeepsItsHairlineAtNarrowWidths(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := taskStartApp(t, f, config.TaskStartSingle)
 	base := time.Now()
@@ -354,33 +356,57 @@ func TestTheShapingWaitHangsItsIndentAtNarrowWidths(t *testing.T) {
 	_ = a.slash("/task write the release notes")
 	a.clock = func() time.Time { return base.Add(3 * time.Minute) }
 
-	var wrapped bool
 	for _, width := range []int{24, 30, 40, 60} {
-		body := a.preflightRows(&entry{kind: entryNote, text: taskShapingNote}, width)
+		body := a.preflightRows(width)
 		if len(body) == 0 {
 			t.Fatalf("width %d drew no wait at all", width)
 		}
-		wrapped = wrapped || len(body) > 1
+		if len(body) > 4 {
+			t.Fatalf("width %d drew %d rows, want at most four", width, len(body))
+		}
 		for i, row := range body {
 			line := plain(row)
 			if got := ansi.StringWidth(line); got > width {
 				t.Fatalf("width %d row %d is %d cells wide: %q", width, i, got, line)
 			}
-			if i == 0 {
-				if !strings.ContainsAny(line[:3], "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
-					t.Fatalf("width %d: the first row does not open with the spinner: %q", width, line)
-				}
-				continue
-			}
-			// EVERY CONTINUATION IS INDENTED UNDER THE WORDS, never flush left.
-			if !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "   ") {
-				t.Fatalf("width %d row %d lost the hanging indent: %q", width, i, line)
+			if !strings.HasPrefix(line, "▏ ") {
+				t.Fatalf("width %d row %d lost the hairline: %q", width, i, line)
 			}
 		}
 	}
-	// AND THE INDENT ASSERTION ABOVE IS NOT VACUOUS: at least one of those widths
-	// has to have wrapped, or the loop pinned nothing at all.
-	if !wrapped {
-		t.Fatal("no width wrapped the wait, so nothing above tested a continuation")
+}
+
+func TestTaskPhasesAdvanceInsideOneBlockAndNeverEnterNotes(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(f)
+	cmd := a.slash("/task fix the flaky auth test")
+	if got := plainRowsText(a.preflightRows(60)); !strings.Contains(got, taskSizingNote) {
+		t.Fatalf("sizing block = %q", got)
+	}
+	if holdsNote(a, taskSizingNote) || holdsNote(a, taskShapingNote) {
+		t.Fatalf("a live phase entered the notes lane: %q", noteTexts(a))
+	}
+	_, _ = a.Update(cmd())
+	if got := plainRowsText(a.preflightRows(60)); !strings.Contains(got, taskShapingNote) || strings.Contains(got, taskSizingNote) {
+		t.Fatalf("shaping did not replace sizing in place: %q", got)
+	}
+}
+
+func TestTaskErrorCollapsesTheBlockToTheErrorLine(t *testing.T) {
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, err: errors.New("unknown brief")}
+	a := taskStartApp(t, f, config.TaskStartSingle)
+	_, _ = a.Update(a.slash("/task impossible work")())
+	if a.wait.live() || len(a.preflightRows(60)) != 0 {
+		t.Fatal("the forming block outlived an error")
+	}
+	if got := lastNote(t, a); got != "could not start the task · unknown brief" {
+		t.Fatalf("error line = %q", got)
+	}
+}
+
+func TestNoTaskCommandDrawsNoFormingBlock(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	if got := a.preflightRows(60); len(got) != 0 {
+		t.Fatalf("idle surface drew a forming block: %q", plainRowsText(got))
 	}
 }
