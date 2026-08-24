@@ -278,6 +278,15 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	if node == nil {
 		return stopTarget{}
 	}
+	// A BACKGROUND JOB IS NOT STOPPABLE FROM HERE, AND SO NO ✕ IS DRAWN ON IT.
+	// The id on a job's row is the roster's own and names nothing [session.Agent.Cancel]
+	// can find (session's TaskKindJob says so out loud), so a key wired to it
+	// would raise a card whose only possible answer was the engine refusing. A
+	// capability that cannot work is absent, not broken: the row draws no ✕, `x`
+	// aims past it, and the way to end a job is the `jobs` tool's own kill.
+	if node.kind == session.TaskKindJob {
+		return stopTarget{}
+	}
 	switch node.state {
 	case session.TaskQueued, session.TaskRunning:
 		return stopTarget{

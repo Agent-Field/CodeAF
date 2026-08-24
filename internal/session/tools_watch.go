@@ -478,7 +478,7 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 	// Code 0: a watch has no exit status of its own to report. Its ending was
 	// either asked for (settle reads that and says "killed") or already said in
 	// a note, and statusText renders the rest as "stopped".
-	watched.settle(0)
+	r.settled(watched, 0)
 }
 
 // watchTick runs the command once and decides what, if anything, to say. The

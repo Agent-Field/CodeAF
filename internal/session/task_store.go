@@ -297,6 +297,13 @@ type runRecord struct {
 	Node   string `json:"node,omitempty"`
 	Parent uint64 `json:"parent,omitempty"`
 	Title  string `json:"title,omitempty"`
+	// Kind is what sort of row this is, and "" is a run's — which is what every
+	// record written before background jobs had rows carries, and the honest
+	// reading of a field an older file does not have. It has to survive because
+	// it is the one fact that decides how the row is DRAWN: a job's row shows its
+	// log where a run's shows how its branch came home, and it refuses the ✕ that
+	// a run's row offers (session's TaskKindJob, internal/tui3's task.go).
+	Kind TaskKind `json:"kind,omitempty"`
 
 	State   TaskState `json:"state"`
 	Stopped bool      `json:"stopped,omitempty"`
@@ -447,6 +454,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Node:      notice.Node,
 		Parent:    notice.Parent,
 		Title:     notice.Title,
+		Kind:      notice.Kind,
 		State:     notice.State,
 		Stopped:   notice.Stopped,
 		Report:    notice.Report,
@@ -478,6 +486,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Node:    record.Node,
 		Parent:  record.Parent,
 		Title:   record.Title,
+		Kind:    record.Kind,
 		State:   record.State,
 		Stopped: record.Stopped,
 		Report:  record.Report,
@@ -487,10 +496,31 @@ func runRowNotice(record runRecord) TaskNotice {
 	}
 	if !notice.State.settled() {
 		notice.State, notice.Stopped = TaskFailed, true
-		notice.Report = orchestrateEndedReport
+		notice.Report = endedReportFor(record.Kind)
 	}
 	return notice
 }
+
+// endedReportFor is the sentence a row still moving as aforge closed says for
+// itself, chosen by what the row IS.
+//
+// ONE SENTENCE, ONE NOUN CHANGED. The register is the same on purpose — the
+// clause a person reads first is identical, because what happened to the two is
+// identical — and what differs is the only thing that differs about the work:
+// a run leaves a journal of what it got through, and a background job leaves the
+// log it was writing (jobrow.go). Naming a job's journal would send somebody
+// looking for a file that was never written.
+func endedReportFor(kind TaskKind) string {
+	if kind == TaskKindJob {
+		return jobEndedReport
+	}
+	return orchestrateEndedReport
+}
+
+// jobEndedReport is [orchestrateEndedReport] for a background job's row, and it
+// is the whole of what such a row can say for itself afterwards: the process it
+// was is gone, and the file it was writing is not.
+const jobEndedReport = "it ended when aforge closed; its log is kept"
 
 // orchestrateEndedReport is what a row of an adaptive run says for itself when
 // it was still moving as aforge closed.

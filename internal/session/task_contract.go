@@ -62,6 +62,27 @@ const TaskKindHarness TaskKind = "harness"
 // — the row, the room, the id, the stop — it has for free.
 const TaskKindSubharness TaskKind = "subharness"
 
+// TaskKindJob is a piece of BACKGROUND WORK this session started that is not an
+// agent at all (jobrow.go): a command running under `bash background:true`, a
+// foreground command that reached its bound and was promoted (promote.go), a
+// watch, a video render. It has a log file and an exit code, and no worktree, no
+// branch, no room and no report anybody wrote.
+//
+// IT IS ON THE ROSTER BECAUSE OF WHERE WORK SHOWS, NOT BECAUSE IT IS A TASK.
+// The law is that work this conversation started shows on the right, whatever
+// door started it — and a background job was, until this kind existed, the one
+// kind of work with no row anywhere: the registry knew about it, the `jobs` tool
+// could list it, and the column beside the conversation stayed empty while a
+// nine-minute sweep ran. A person watching that column had no way to tell a
+// session that was working from one that had quietly stopped.
+//
+// WHAT THAT COSTS, said plainly, is the same price an adaptive run's rows pay
+// (orchestrate.go's family seam): the id on the row names nothing in the task
+// graph, so a surface that offers to open a node's room or stop it by id will
+// find no node there. A job is read with the `jobs` tool and stopped with
+// `jobs kill`, and its row is a row.
+const TaskKindJob TaskKind = "job"
+
 // TaskState is where one node is in its life.
 type TaskState string
 

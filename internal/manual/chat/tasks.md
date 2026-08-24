@@ -501,8 +501,10 @@ The roster is the **top section of the column on the right**, under a dim lowerc
 reading `tasks`. (Under it the same column carries a second section labelled `standing` —
 the orders standing over this conversation. The standing orders page has that half.)
 
-The roster holds every task **this conversation** has admitted,
-not just the live ones — and no other work. Tasks *other* sessions ran are not on it; the
+The roster holds every task **this conversation** has admitted, not just the live ones —
+and, beside them, every **background job** this conversation started, because work shows on
+the right whatever door started it (see *Background jobs on the column* below). Tasks
+*other* sessions ran are not on it; the
 page `/history` opens is the one that has them, and one dim line at the foot of the column,
 `ctrl+. earlier`, is the door onto it. Work finishing never puts the column away, and
 neither does `/new` — that takes this session's tasks with it and leaves the column
@@ -597,6 +599,61 @@ colour; idle, parked and finished names are muted, the tree connectors and every
 line are dim, and the room you are standing in is the one row in the accent. Nothing is
 hidden by this — the column is a record and keeps everything — but a glance at it lands on
 what is moving.
+
+## Background jobs on the column — why a long command shows on the right, the row for a server, build or watch
+
+**A background job gets a row on the roster, the same column your tasks are on.** It is
+there from the moment the job starts until the moment it ends. This covers everything the
+`jobs` tool can list except a task's own worker, which already has a row of its own:
+
+- a command run with `bash background:true` — a server, a long build, a sweep
+- a foreground command that ran past its bound and became a job (`still running as job 3`),
+  including one you sent there yourself with `ctrl+g`
+- a `watch`, whose row reads `watch <name>`
+- a video render, which is a job while it renders
+
+The row's name is the command itself — `npm run dev` — or the watch's or render's own
+label where it has one, cut to three words like every other name on this column. Under it,
+one dim line: `job 3 · log /path/to/.aforge-v3/jobs/3.log`, cut to the column's width. That
+line is the whole handle back to the work: the number is what `jobs output 3` and `jobs kill
+3` take, and the path is a file you can open yourself.
+
+**It settles where it stands.** A job that exits cleanly reads as finished and drops into
+the column's done fold; a job that exits non-zero, and a job that was killed, read as
+incomplete and lead that fold. Nothing else happens: **no card is written into the
+conversation** when a job ends, because a job has no report anybody wrote — what it left is
+its log. Aforge itself is still told, on its own side, at the next step boundary
+(`job 3 exited 1: make: *** [build] Error 1`).
+
+**A running job counts as working.** It is in the `tasks · 4 working` tail on the section
+label, and in the `3 running` line in the footer, exactly as a task worker is.
+
+Three things a job's row deliberately does **not** have, because a job has none of them:
+
+- **no room.** `→` on the row opens nothing — there is no agent inside a job and no
+  transcript to read. The log file named under the row is where you read it.
+- **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
+  `jobs kill`; every running job is also killed when the conversation closes.
+- **no branch, no changed-files list and no price.** A job runs in the workspace itself,
+  and nothing measures what it costs, because it costs nothing but time.
+
+**Zero jobs draws nothing at all** — no label, no empty row, no "0 jobs". A conversation
+that has started none looks exactly as it did before jobs had rows.
+
+**The rows come back; the jobs do not.** Switching away to home or another conversation and
+coming back redraws every job this conversation started, live ones in the state they are in
+right now. Reopening the conversation tomorrow redraws them as **history**: a job that
+exited comes back as it ended, and one still going when aforge closed comes back stopped,
+reading
+
+```
+it ended when aforge closed; its log is kept
+```
+
+A job is a child of the aforge process and dies with it, so **nothing is restarted** — no
+restored row is running, none of them is counted on the status line, and none can be
+stopped, because there is nothing left to stop. The log file it was writing is still under
+`<workspace>/.aforge-v3/jobs/`.
 
 ## The + /task row at the foot of the column — starting a task from the side
 
