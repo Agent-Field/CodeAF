@@ -218,6 +218,9 @@ type Catalog struct {
 	// exists. [Catalog.rows] blocks on the future; [Catalog.rowsNow] reads this
 	// and takes "not yet" for an answer.
 	warm atomic.Pointer[rows]
+	// blocking counts the questions asked through [Catalog.rows] — the door that
+	// can wait. See [Catalog.BlockingReads].
+	blocking atomic.Int64
 }
 
 // rows is one resolved catalog: the cleaned model list every listing walks,
@@ -322,6 +325,14 @@ func (c *Catalog) rows() *rows {
 	if c == nil {
 		return nil
 	}
+	// THIS IS THE DOOR THAT CAN WAIT, and the count of who came through it is
+	// what lets a launch path be held to never coming through it at all. See
+	// [Catalog.BlockingReads]: on a lazy catalog the first caller here pays a
+	// network fetch with a fifteen-second ceiling, and whether it actually paid
+	// on any given run is a race with the warming goroutine — so the fact worth
+	// counting is the QUESTION, not the wait it happened to cost. One
+	// uncontended atomic add against a map lookup and, sometimes, a GET.
+	c.blocking.Add(1)
 	if c.ready != nil {
 		return c.ready
 	}
@@ -329,6 +340,24 @@ func (c *Catalog) rows() *rows {
 		return c.resolve()
 	}
 	return nil
+}
+
+// BlockingReads is how many questions this catalog has been asked through the
+// door that can wait ([Catalog.rows]), as against the ones asked through
+// [Catalog.ModelsNow] and its neighbours, which never can.
+//
+// IT EXISTS SO THAT A LAUNCH PATH CAN BE HELD TO A NUMBER. "Nothing before the
+// first frame resolves the catalog" is a law about the shape of the code, and
+// the only honest way to test it is to count the blocking questions a launch
+// asks and pin the total: a wall-clock assertion would pass or fail on whether
+// the warming goroutine happened to land first, which is a fact about the
+// network and not about the change under review. cmd/aforge's launch pins read
+// this; nothing inside this package does.
+func (c *Catalog) BlockingReads() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.blocking.Load()
 }
 
 // rowsNow is [Catalog.rows] for a caller that must not wait: it answers nil

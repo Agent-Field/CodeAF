@@ -20,6 +20,10 @@ carry vocabulary or assumptions between them.
 Build with `make build` → `bin/aforge`. Rebuild after every merge; the user runs that
 binary.
 
+`make check` is vet, the tests, the build, and the binary-size ratchet in `SIZE-BUDGET`.
+The performance laws it and the suite enforce — and the rule that changing any cap
+changes the doc in the same commit — are in [PERF.md](PERF.md).
+
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 
 `internal/manual/chat/` is v3's own account of itself, compiled into the binary. The

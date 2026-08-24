@@ -45,7 +45,24 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
+
+// unpacks counts every folder this process has decompressed. See [Unpacks].
+var unpacks atomic.Int64
+
+// Unpacks is how many packed folders this process has decompressed since it
+// started, across every corpus in the binary.
+//
+// IT EXISTS SO THAT "THE LAUNCH READS NONE OF THIS" CAN BE A TEST. The package
+// doc above states that law in prose — declaring a folder reads nothing, and
+// `aforge --version` decompresses none of it — and prose is what a change
+// quietly breaks: one manual lookup moved onto the launch path costs a megabyte
+// of gunzip before the first frame, and nothing would say so. A caller takes the
+// reading either side of the construction it is holding to the law and asserts
+// the difference is zero; counting rather than timing is what makes that
+// assertion the same assertion on every machine.
+func Unpacks() int64 { return unpacks.Load() }
 
 // Folder is one packed folder, still compressed until something reads it.
 type Folder struct {
@@ -102,6 +119,7 @@ func (f *Folder) Glob(pattern string) ([]string, error) {
 // of it in the test beside each corpus, so a corruption that reaches a build is
 // a build that could not have passed — it is not a runtime mode.
 func (f *Folder) unpack() {
+	unpacks.Add(1)
 	f.files = map[string][]byte{}
 	stream, err := gzip.NewReader(bytes.NewReader(f.archive))
 	if err != nil {
