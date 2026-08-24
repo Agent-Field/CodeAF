@@ -195,8 +195,16 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err != nil {
 		return nil, err
 	}
+	// THE MODEL IS BUILT INTO THE SESSION AND NOT SET ON IT A MOMENT LATER,
+	// which is the whole of what carrying it in the hello bought. The surface
+	// used to open the conversation and then switch it (chatv3_host.go's old
+	// applyHostChoices), and every turn a person could type rode the model they
+	// asked for — but the session file's first line named the model the session
+	// was BORN on, which was the wrong one. Nobody on the screen could see the
+	// difference. The journal could, and the journal is the record.
 	launch, err := openV3Launch(proc, v3Options{
 		Workspace: workspace,
+		Model:     strings.TrimSpace(hello.Model),
 		Session:   firstEngineWord(hello.Session, sessionFlag),
 	})
 	if err != nil {
@@ -289,6 +297,14 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, session.New)
 	if err != nil {
 		return nil, err
+	}
+	// The boot override for how hard this session's model is asked to think,
+	// landed the same way every local door lands it (chatv3.go's SetReasoning)
+	// and on the same model — the one this session opened on. A level the
+	// person did not name leaves the session on whatever the profile says,
+	// which is what an empty string already means everywhere else.
+	if level := strings.TrimSpace(hello.Level); level != "" {
+		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
 	if notice != "" {
