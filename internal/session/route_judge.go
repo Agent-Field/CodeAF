@@ -122,8 +122,12 @@ or
 
   {"work": true, "shape": "adaptive", "goal": "...", "why": "..."}
 
-  shape  "adaptive" when the goal has independent parts that fan out and want one
-         answer at the end; "task" when it is ONE self-contained linear job.
+  shape  "task" is the default and covers WIDE work too — a sweep across many
+         files, research across many sources, a goal with several independent
+         parts. One worker starts on it and hands the parts out itself once it
+         has opened the material. Answer "adaptive" only when the work needs its
+         graph planned before anything starts, or the person asked for a plan
+         they can watch and steer. Width alone is not that.
   goal   self-contained. Whoever reads it cannot see this conversation, so fold in
          what the person's words were pointing at: the subject, the files, the
          checks, what a finished answer looks like.
