@@ -3517,10 +3517,13 @@ type roomFake struct {
 	// [taskCatchup]). It is kept per node and never drained, because that is what
 	// makes it survive a room being left and re-opened — the fact this fake would
 	// otherwise quietly lose.
-	catchup  map[uint64][]session.Event
-	steered  []steerLine
-	steerErr error
-	watchErr error
+	catchup map[uint64][]session.Event
+	steered []steerLine
+	// steerWaiting is the engine answering that the node was PARKED ON ITS OWN
+	// PIECES when it took the line (internal/session's [Agent.SteerTask]).
+	steerWaiting bool
+	steerErr     error
+	watchErr     error
 	// retargeted is every explicit model pick this fake was handed, in order, and
 	// retargetErr is the engine refusing one — a node that settled between the
 	// frame and the press (internal/session's [Agent.RetargetTask]).
@@ -3584,12 +3587,14 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	}
 }
 
-func (f *roomFake) SteerTask(id uint64, text string) error {
+func (f *roomFake) SteerTask(id uint64, text string) (bool, error) {
 	if f.steerErr != nil {
-		return f.steerErr
+		return false, f.steerErr
 	}
 	f.steered = append(f.steered, steerLine{id: id, text: text})
-	return nil
+	// steerWaiting is the engine's own second answer: the node had handed its
+	// pieces out and was parked on their reports, so this line is what wakes it.
+	return f.steerWaiting, nil
 }
 
 // RetargetTask is the room's fourth door: one running node moved onto another
@@ -3886,6 +3891,49 @@ func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
 			t.Fatalf("row %d changed across the room:\n%q\n%q",
 				i, plain(before[i].text), plain(after[i].text))
 		}
+	}
+}
+
+// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS SO WHEN IT TAKES
+// THE LINE. Such a node has handed its work out and parked on the reports
+// (internal/session's task_room.go): it is not in a step, so the line is what
+// wakes it, and a page that drew the person's words and went quiet is the page
+// they would see if the words had gone nowhere at all.
+func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerWaiting = true
+	clickRail(t, a, 0)
+
+	a.input.setText("the config lives under etc/")
+	drive(t, a, key("enter"))
+
+	if len(agent.steered) != 1 {
+		t.Fatalf("enter steered %d times, want 1: %+v", len(agent.steered), agent.steered)
+	}
+	body := roomText(a)
+	if !strings.Contains(body, "the config lives under etc/") {
+		t.Fatalf("the steered line is not in the room:\n%s", body)
+	}
+	if !strings.Contains(plain(body), steerWokeWord) {
+		t.Fatalf("the room took a line into a parked node and said nothing about it:\n%s", body)
+	}
+	// AND IT IS THE ROOM'S OWN DIM LINE, not a second thing the node said.
+	if countKind(a, entryNote) != 0 {
+		t.Fatal("the note went into the conversation instead of the room")
+	}
+}
+
+// A NODE THAT IS TAKING STEPS IS NOT ANNOUNCED, because there is nothing to say:
+// the line lands at its next step, which is what a room that keeps moving shows
+// on its own.
+func TestSteeringAWorkingNodeSaysNothingExtra(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	a.input.setText("the config lives under etc/")
+	drive(t, a, key("enter"))
+	if strings.Contains(plain(roomText(a)), steerWokeWord) {
+		t.Fatalf("a working node's room claims the line woke it:\n%s", roomText(a))
 	}
 }
 

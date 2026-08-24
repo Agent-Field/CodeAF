@@ -677,6 +677,15 @@ type userMessage struct {
 	// harness's own line in the harness's own lane (sessionfile.go's
 	// [sessionEntry.Note]).
 	authored bool
+
+	// steered marks THE PERSON'S WORDS TYPED INTO A RUNNING NODE (task_room.go's
+	// [Agent.SteerTask]). They ride this queue because a node's turns are its
+	// runner's to start and this is the only lane into one — and this is how they
+	// are told apart again where it matters: a node's runner must not close the
+	// agent with a line on the queue that no request has carried (task_run.go's
+	// [runTaskChild]). It is also why such a line is NOT `authored`: the session
+	// wrote every other note on here, and it did not write this one.
+	steered bool
 }
 
 // userText is the ordinary case: a message that is only words.
@@ -689,6 +698,13 @@ func userText(text string) userMessage {
 // finished task produce a sentence instead of a card nobody replies to.
 func wakeNote(text string) userMessage {
 	return userMessage{message: textMessage("user", text), wake: true}
+}
+
+// steerNote is a line the PERSON said into a running node. It owes an answer
+// like every wake note does, and it is not the session's own words, which is the
+// whole of the difference (see [userMessage.steered]).
+func steerNote(text string) userMessage {
+	return userMessage{message: textMessage("user", text), wake: true, steered: true}
 }
 
 // empty reports whether there is nothing here to record. It is the shape a
@@ -1388,27 +1404,78 @@ func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
 }
 
-func (a *Agent) enqueueNote(note userMessage) {
+// enqueueSteeredLine is THE PERSON'S OWN WORDS into a running node, and it is
+// the one thing on this queue that somebody is standing there waiting for
+// ([Agent.SteerTask]).
+//
+// It answers whether the line was TAKEN, because the alternative is the defect:
+// a closed agent drops every note silently, and a node that finished a
+// half-second before the person pressed enter would swallow their sentence and
+// leave the room saying it had arrived. The caller turns a false into a refusal
+// they can read.
+//
+// AND IT RELEASES WHOEVER IS WAITING ON THE NODE. A parent that handed part of
+// its work out is parked on its pieces' reports (task_run.go's [runTaskChild]),
+// and nothing else on this queue can move it: [Agent.wakeLocked] declines inside
+// a task, so a line queued here would sit until a piece happened to report, and
+// be dropped outright if none ever did. This is the same release a report makes
+// ([Agent.postTaskNews]) without the report — the runner wakes, finds a line on
+// the queue and re-enters the model with it.
+func (a *Agent) enqueueSteeredLine(text string) bool {
+	return a.enqueueNote(steerNote(text))
+}
+
+// steeringHeld reports whether a line the PERSON typed is on this agent's queue
+// with no request having carried it yet. It is what stops a node's runner
+// closing the agent on top of somebody's words (task_run.go's [runTaskChild]);
+// every drain empties the queue, so it answers false again the moment the line
+// is in front of the model.
+func (a *Agent) steeringHeld() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, message := range a.steering {
+		if message.steered {
+			return true
+		}
+	}
+	return false
+}
+
+// enqueueNote is the queue itself, and it reports whether the note was taken:
+// false is a closed agent, whose queue nothing will ever drain again.
+func (a *Agent) enqueueNote(note userMessage) bool {
 	text := strings.TrimSpace(note.text())
 	if text == "" {
-		return
+		return false
 	}
 	note.message = textMessage("user", text)
-	// Both kinds of note are the SESSION's words. It is set here, at the one door
-	// both of them come through, rather than at the two constructors above.
-	note.authored = true
+	// Both kinds of SESSION note are the session's words. It is set here, at the
+	// one door they come through, rather than at the two constructors above —
+	// and a line the person steered in is neither, which is what [steerNote]
+	// says.
+	if !note.steered {
+		note.authored = true
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
-		return
+		return false
 	}
 	a.steering = append(a.steering, note)
+	if note.steered {
+		// A NODE'S RUNNER IS WAITING TO BE TOLD, and this is the same release a
+		// report makes without being a report ([Agent.postTaskNews]). It is done
+		// under the lock the append is done under so there is no instant in
+		// which the line is queued and the waiter has not been woken for it.
+		a.releaseTaskWaitLocked()
+	}
 	if note.wake {
 		// A turn already running is the coalescing case and needs nothing done:
 		// wakeLocked declines, and the note lands in that turn at its next step
 		// boundary exactly as a person's steering does.
 		a.wakeLocked()
 	}
+	return true
 }
 
 // takesNotes reports whether this agent can still read anything it is handed. A
@@ -1435,11 +1502,20 @@ func (a *Agent) takesNotes() bool {
 func (a *Agent) postTaskNews() {
 	a.mu.Lock()
 	a.taskNotes++
+	a.releaseTaskWaitLocked()
+	a.mu.Unlock()
+}
+
+// releaseTaskWaitLocked ends the wait a node's runner is holding, for callers
+// already holding a.mu. It is separate from the count above because a report is
+// not the only thing a parked parent has to wake for: the person's own steered
+// line is the other, and it is news without being a report
+// ([Agent.enqueueSteeredLine]).
+func (a *Agent) releaseTaskWaitLocked() {
 	if a.taskNews != nil {
 		close(a.taskNews)
 		a.taskNews = nil
 	}
-	a.mu.Unlock()
 }
 
 // taskNewsWait is the generation a runner takes BEFORE it asks whether anything

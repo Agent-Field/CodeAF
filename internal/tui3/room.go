@@ -89,7 +89,13 @@ type taskRoomAgent interface {
 	// SteerTask puts the person's words into a running node's loop. It errors
 	// when the node is unknown, not running, or has no worker up yet — all three
 	// are "there is nobody in there to talk to", and all three are worth saying.
-	SteerTask(id uint64, text string) error
+	//
+	// The bool is whether the node was WAITING ON ITS OWN PIECES when the line
+	// was taken. It arrives either way; what changes is that a parked node has no
+	// step coming to read it at, so the line is what wakes it, and a room that
+	// said nothing would leave the person watching a page that does not move
+	// (internal/session's task_room.go).
+	SteerTask(id uint64, text string) (bool, error)
 	// WatchTask subscribes to the node's live events, FROM NOW: no history is
 	// replayed, and the channel closes at the node's final state. A finished node
 	// answers with an already-closed channel rather than an error.
@@ -1366,7 +1372,8 @@ func (a *app) steer() tea.Cmd {
 		a.roomNote(roomUnavailableWord)
 		return nil
 	}
-	if err := doors.SteerTask(room.id, line); err != nil {
+	waiting, err := doors.SteerTask(room.id, line)
+	if err != nil {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
 		// surface that flattened them to "could not steer" would be throwing
@@ -1399,8 +1406,24 @@ func (a *app) steer() tea.Cmd {
 	// rather than work being watched (turncontext.go). It is taken here, at the
 	// instant the engine took the words, because that is when it is true.
 	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn, context: a.turnContext()})
+	// AND WHEN THE NODE WAS WAITING ON ITS OWN PIECES, THE ROOM SAYS SO. Such a
+	// node has said everything it had to say and parked on the work it handed out
+	// (internal/session's task_room.go): the line wakes it rather than landing in
+	// a step it was about to take, so the page goes quiet for a moment first. A
+	// room that drew the person's line and nothing else here is the same page
+	// they would see if the words had gone nowhere.
+	if waiting {
+		a.roomNote(steerWokeWord)
+	}
 	return a.edited()
 }
+
+// steerWokeWord is what the room says when the line it just took is the thing
+// that woke the node. It is the surface's own dim line and not the engine's
+// sentence, because it is about this page: what the person is looking at is a
+// task with nothing running in it, and the next thing they see will be their own
+// words being read.
+const steerWokeWord = "it was waiting on its pieces — your line wakes it"
 
 // ── the steer guard ─────────────────────────────────────────────────────────
 //

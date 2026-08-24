@@ -431,10 +431,21 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		if err := a.SteerTask(id, say); err != nil {
+		waiting, err := a.SteerTask(id, say)
+		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
 		}
-		return fmt.Sprintf("said to task %s: %s\nIt arrives in its loop as the person's own words. Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say), false, nil
+		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
+		// pieces out is parked on their reports and has no step coming
+		// (task_run.go's [TaskGraph.park]), so the line wakes it instead of
+		// riding a turn already running — which is the difference between an
+		// answer now and an answer the model would otherwise expect at the next
+		// step of a task that is not taking one.
+		arrival := "It arrives in its loop as the person's own words."
+		if waiting {
+			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
+		}
+		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran

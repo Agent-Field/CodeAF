@@ -477,7 +477,7 @@ func TestAPieceCanBeSteeredFromTheConversationAndFromItsParent(t *testing.T) {
 
 	// The conversation's own door: one graph, so the person reaches a piece
 	// exactly as they reach the task that handed it out.
-	if err := nest.session.SteerTask(kid.id, "mind the lock order"); err != nil {
+	if _, err := nest.session.SteerTask(kid.id, "mind the lock order"); err != nil {
 		t.Fatalf("the person cannot say anything to a piece: %v", err)
 	}
 	// And the parent's, through the tool it was given for it.
@@ -549,4 +549,114 @@ func waitQuiet(t *testing.T, a *Agent) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("the turn never ended")
+}
+
+// ── steering a parent that is waiting on its pieces ──────────────────────────
+
+// A PARKED PARENT IS STILL SOMEBODY YOU CAN TALK TO. It has said everything it
+// had to say and handed its lane back, and [Agent.wakeLocked] declines inside a
+// task — so the person's line has no turn of its own to land in and nothing on
+// the queue can start one. It used to sit there for as long as the slowest piece
+// ran, and be dropped outright when the last report closed the loop, while the
+// tool that took it said "it arrives in its loop as the person's own words".
+//
+// Now the line IS the news: it releases the wait, the runner re-enters the model
+// with it, and the door says the node was waiting so a surface can tell the
+// person what they are about to see.
+func TestSteeringAParkedParentWakesItAndArrivesInItsNextTurn(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan uint64, 4)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", "propose_task", string(pieceArgs("read the law"))), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("handed the reading out"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("noted, I will hold it to that"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("folded it in"), nil
+		},
+	}}
+	nest := newNest(t, completer, func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		started <- node.id
+		go func() {
+			<-release
+			node.finish("the law is in section four", nil, "", "")
+			node.graph.complete(node, TaskDone)
+		}()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = runTaskChild(context.Background(), nest.node, nest.parent,
+			"do the whole job", nest.node.config.Workspace,
+			taskLimits{maxSteps: taskMaxSteps, noProgress: taskNoProgress}, nil, io.Discard)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the piece never started")
+	}
+	waitFor(t, "the parent to park on its piece", nest.parent.waitingOnItsPieces)
+
+	waiting, err := nest.session.SteerTask(nest.parent.id, "the config lives under etc/")
+	if err != nil {
+		t.Fatalf("the person cannot say anything to a parked parent: %v", err)
+	}
+	if !waiting {
+		t.Fatal("the door answered that the parent was working, so every surface would promise the line lands at a step it is not going to take")
+	}
+
+	// The whole claim: a third request, with the person's words in it, and no
+	// piece has reported anything.
+	waitRequests(t, completer, 3)
+	said := userTextIn(completer.request(2))
+	if !strings.Contains(said, "the config lives under etc/") {
+		t.Fatalf("the turn the line woke reads %q, want the person's own words in it", said)
+	}
+	if nest.graph.children(nest.parent.id)[0].stateNow().settled() {
+		t.Fatal("the piece landed first, so this proves nothing about the line waking anything")
+	}
+
+	// AND THE PARENT IS BACK TO WAITING, not finished: answering the person is
+	// not the same as being done with the work it handed out.
+	waitFor(t, "the parent to park again", nest.parent.waitingOnItsPieces)
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the task never ended after its piece reported")
+	}
+}
+
+// AND A LINE NOBODY CAN READ ANY MORE IS REFUSED OUT LOUD. The worker closes the
+// instant its last piece is folded in; a sentence handed to it after that goes
+// onto a queue nothing will ever drain, and the person has to hear that rather
+// than watch a room that says it arrived.
+func TestALineSteeredAtAClosedWorkerIsRefusedRatherThanSwallowed(t *testing.T) {
+	nest := newNest(t, nil, nil)
+	if err := nest.node.Close(); err != nil {
+		t.Fatalf("closing the worker: %v", err)
+	}
+	waiting, err := nest.session.SteerTask(nest.parent.id, "one more thing")
+	if err == nil {
+		t.Fatal("the person's line was taken by an agent that will never read it")
+	}
+	if waiting {
+		t.Fatal("a refused line was reported as one that woke something")
+	}
+	if !strings.Contains(err.Error(), "nobody left to say it to") {
+		t.Fatalf("the refusal reads %q, want it to say there is nobody in there", err)
+	}
+	if steeringContains(nest.node, "one more thing") {
+		t.Fatal("the line was queued on the closed worker anyway")
+	}
 }
