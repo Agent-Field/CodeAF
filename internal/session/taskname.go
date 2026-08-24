@@ -350,12 +350,19 @@ func (f *orchestrateFamily) rename(name string) {
 	republish := f.title != name && !f.settled
 	f.title = name
 	root, run, model := f.root, f.run, f.model
+	// AND IT CARRIES THE PHASE THE ROW IS ALREADY IN. A name lands a second or
+	// two after the run is minted, which is squarely inside the minute the
+	// opening planner call takes, so a row republished bare here would take the
+	// forming line off a run that is still forming — the one gap that line exists
+	// to fill (orchestrate.go's [orchestrateFamily.formingLocked]). It is read
+	// under the lock the title was written under, so the two cannot disagree.
+	doing := f.formingLocked()
 	f.mu.Unlock()
 	if !republish {
 		return
 	}
-	f.agent.emitTaskUpdate(TaskNotice{
-		ID: root, Run: run, Title: name, State: TaskRunning, Model: model,
+	f.publish(TaskNotice{
+		ID: root, Run: run, Title: name, State: TaskRunning, Model: model, Doing: doing,
 	})
 }
 

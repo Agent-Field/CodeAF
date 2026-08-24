@@ -206,6 +206,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"nothing happens for a minute after a run starts", "adaptive-runs"},
 		// And a person reading a column of ids. These are asked with the ids
 		// themselves in the question, because that is what the screen handed them.
+		// And a person who came back to a conversation and looked at the column.
+		// The rows are there now, settled — the question used to be about a
+		// column that was empty, and it is still the question they ask.
+		{"where did my run's rows go", "adaptive-runs"},
+		{"my run disappeared from the task column when I switched away", "adaptive-runs"},
+		{"do run rows come back when I reopen a conversation", "adaptive-runs"},
 		{"my run's rows are called r1 r2 r3", "adaptive-runs"},
 		{"why is a subtask called synth", "adaptive-runs"},
 		{"the tasks under my run have ids instead of names", "adaptive-runs"},

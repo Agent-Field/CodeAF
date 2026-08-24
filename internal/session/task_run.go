@@ -526,6 +526,75 @@ type TaskGraph struct {
 	// node to the surface, and the agent that runs the ones nobody else owns. It
 	// is nil in the scripted graphs the tests build, which replace `run` whole.
 	home *Agent
+
+	// runs is the ADAPTIVE RUNS' rows — one entry per run, keyed by the id of the
+	// run's own row and holding the last notice published for every row of that
+	// family, in the order they were first drawn. runRuns is the order the runs
+	// themselves arrived in, because a map has none and a column must not
+	// shuffle.
+	//
+	// THEY ARE KEPT HERE AND THEY ARE STILL NOT NODES. Nothing in this map is in
+	// `nodes`, has a spec, holds a lane, or can ever be scheduled — the family
+	// seam's own law is that a run REGISTERS and does not admit (orchestrate.go),
+	// and that law is the whole reason a run's row cannot be stopped by id or
+	// opened as a room. What the graph adds is the two things only the graph can
+	// do: the rows are REPLAYED to a lane that opens late
+	// ([Agent.replayTaskRoster]), and they are WRITTEN DOWN with the graph
+	// (task_store.go), so a conversation reopened tomorrow redraws the runs it
+	// started rather than showing an empty column beside a transcript full of
+	// them.
+	//
+	// KEYED BY THE ROOT ROW'S ID AND NEVER BY THE RUN'S NAME. A run's name is a
+	// counter on the Agent ([Agent.RunOrchestrate]) that starts again at 1 in
+	// every process, so the first run of a resumed conversation would land on top
+	// of yesterday's rows; a row id comes from `seq`, which the checkpoint
+	// carries across lives, so it is unique for as long as the conversation is.
+	//
+	// EVERY SLICE IN HERE IS IMMUTABLE. The family builds a fresh one per publish
+	// and never touches it again, so this map may be read under the graph's lock
+	// alone — and the graph never takes the family's lock, which is what keeps
+	// the two lock orders from meeting.
+	runs    map[uint64][]TaskNotice
+	runRuns []uint64
+}
+
+// keepRunRows takes one adaptive run's rows and writes the graph down.
+//
+// It is the family's way in and the family's only way in: the rows arrive
+// already built as the notices a surface was sent, so there is no second shape
+// of a run's row anywhere in this package.
+//
+// THE GRAPH'S LOCK IS RELEASED BEFORE THE CHECKPOINT, because the checkpoint
+// takes the store's lock and then the graph's, and a caller holding the graph's
+// would close that cycle (task_store.go says the ordering out loud).
+func (g *TaskGraph) keepRunRows(root uint64, rows []TaskNotice) {
+	if g == nil || root == 0 {
+		return
+	}
+	g.mu.Lock()
+	if g.runs == nil {
+		g.runs = make(map[uint64][]TaskNotice, 1)
+	}
+	if _, held := g.runs[root]; !held {
+		g.runRuns = append(g.runRuns, root)
+	}
+	g.runs[root] = rows
+	g.mu.Unlock()
+	g.checkpoint()
+}
+
+// runRowsLocked is every run's rows in one flat walk, runs in arrival order and
+// each run's own row ahead of its workers — which is the order they were first
+// published in, and the order a tree wants to hang them in.
+func (g *TaskGraph) runRowsLocked() []TaskNotice {
+	if len(g.runRuns) == 0 {
+		return nil
+	}
+	out := make([]TaskNotice, 0, len(g.runRuns))
+	for _, root := range g.runRuns {
+		out = append(out, g.runs[root]...)
+	}
+	return out
 }
 
 func newTaskGraph() *TaskGraph {
@@ -1956,8 +2025,9 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			nodes = append(nodes, node)
 		}
 	}
+	runs := len(graph.runRuns)
 	graph.mu.Unlock()
-	if len(nodes) == 0 {
+	if len(nodes) == 0 && runs == 0 {
 		return
 	}
 	costs := make([]float64, len(nodes))
@@ -1969,6 +2039,22 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
+	}
+	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
+	// with one difference: a run's row is not rebuilt here, it is REPLAYED. The
+	// notices in [TaskGraph.runs] are the notices a live watcher was sent, kept
+	// by the family that sent them (orchestrate.go's [orchestrateFamily.publish]),
+	// so a replayed row and a live row cannot disagree about anything — including
+	// the forming line a run wears before it has any workers, which no rebuilt row
+	// would have known to carry.
+	//
+	// A run whose rows were restored from a checkpoint is in here too, settled
+	// (task_store.go's [runRecord]), and it replays through this same line: one
+	// roster door, one row-space, whether the run is happening now or happened
+	// yesterday.
+	for _, notice := range graph.runRowsLocked() {
+		row := notice
+		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }
 
