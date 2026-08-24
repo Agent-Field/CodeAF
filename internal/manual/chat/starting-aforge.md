@@ -44,8 +44,9 @@ in them — with the conversation this directory would have opened loaded and re
 underneath it. `esc`, or `enter` on the row the cursor starts on, drops into that
 conversation; everything after that is the chat exactly as it always was. Home
 stays out of the way when you name a conversation, on a `--once` or `--host` run,
-and on a machine whose only conversation is the one already open. The home page
-covers the whole of it.
+and on a machine whose only conversation is the one already open — though it is
+still there to go to: `space` twice on an empty box, or `/home`, opens it on that
+machine too. The home page covers the whole of it.
 
 Run it in the directory you want it to work in. That directory is what it reads
 and writes, and it is shown in the status line so you can always tell.
