@@ -2640,6 +2640,28 @@ func (a *app) hintWord() string {
 		// and that is no longer only a stop. It is spelled exactly as the block's
 		// own dim line spells it, so the two lines on one screen agree.
 		return parkedHint[1]
+	case a.bargeOffered():
+		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches
+		// the two things enter's neighbourhood now means — it waits, or the chord
+		// stops the answer and sends it (bargein.go). It is the ONE state this line
+		// is drawn in, which is the emptiness law: over an empty box there is
+		// nothing to send, at rest there is nothing to stop, and in either the line
+		// would be a permanent cheatsheet in the slot this surface stopped keeping
+		// one in.
+		//
+		// It ranks UNDER the parked block above, which is the slot's ordering law
+		// rather than an exception to it: while a message is already waiting, what
+		// the next esc does is the fact a person needs, and the block on screen is
+		// drawing its own dim line about the queue besides. Somebody who has parked
+		// a message has already found the queue; this line is for somebody who has
+		// not.
+		//
+		// AND IT IS ABSENT WHERE THE CHORD IS. [app.bargeOffered] asks the terminal
+		// before it asks anything else, so on a terminal that cannot spell
+		// `shift+enter` this case never fires and the plain interrupt below keeps
+		// the slot — the capability law reaching the advertisement and not only the
+		// key.
+		return bargeHint
 	case a.state == stateWorking:
 		return "esc interrupt"
 	case a.spell.asking:

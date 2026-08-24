@@ -1017,6 +1017,18 @@ type app struct {
 	pasting bool
 	pasted  []rune
 	pasteAt time.Time
+	// keysDisambiguated says THIS TERMINAL ANSWERED THE KEYBOARD-ENHANCEMENT
+	// QUERY, which is the one honest way to know whether a chord like
+	// `shift+enter` can reach this program at all rather than arriving as a bare
+	// `enter` (bargein.go). Bubble Tea asks on every frame and hands the answer
+	// back as a tea.KeyboardEnhancementsMsg; a terminal that cannot speak the
+	// protocol simply never replies, and false is what that silence means.
+	//
+	// IT GATES AN ADVERTISEMENT AND NOT ONLY A KEY. The capability law's harder
+	// half is that a hint naming a chord the terminal will never deliver teaches
+	// a person that this surface lies to them, so [app.bargeOffered] reads this
+	// before anything else it asks.
+	keysDisambiguated bool
 	// follows are the messages typed with ctrl+q while a turn ran, each holding
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
@@ -1760,6 +1772,24 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.BlurMsg:
 		a.focused, a.seenFocus = false, true
+		return a, nil
+
+	case tea.KeyboardEnhancementsMsg:
+		// THE TERMINAL SAID WHICH CHORDS IT CAN SPELL. Bubble Tea enables basic
+		// key disambiguation on every frame and asks the terminal to report what
+		// it took; this is that report, and a non-zero set of flags is the whole
+		// of what [app.keysDisambiguated] means — `shift+enter` arrives here as
+		// itself rather than as a bare `enter` (bargein.go).
+		//
+		// IT IS RECORDED AND NOTHING IS REQUESTED. Nothing on this surface is
+		// bound to a key RELEASE or a repeat, which is deliberate — a chord that
+		// needs one is a chord a person behind a multiplexer does not have — so
+		// there is no enhancement to ask for beyond the one already on.
+		//
+		// Nothing repaints for it: it lands in the first moments of a session,
+		// before there is a turn to run or a draft to hint about, and the frame
+		// that reads it is whatever frame comes next.
+		a.keysDisambiguated = msg.SupportsKeyDisambiguation()
 		return a, nil
 
 	case tea.PasteStartMsg:
