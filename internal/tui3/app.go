@@ -866,9 +866,9 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
-	// wait is the pre-flight a task command is standing in — the sizing call or
-	// the shaping call — and the moment it started (taskcommand.go). It is what
-	// turns that note's spinner and its count-up.
+	// wait is the forming block a task command is standing in — its verbatim
+	// brief, present phase, and clock (taskcommand.go). It keeps that live region
+	// out of the notes lane while driving its shared spinner and count-up.
 	wait preflight
 	// memPanel is /memory's filterable view of the durable memory store.
 	memPanel memoryPanel
