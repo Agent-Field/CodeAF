@@ -24,6 +24,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
+		// A finished task's room after aforge was closed and opened again: the
+		// blank page people met, asked the three ways they meet it.
+		{"task page is empty", "task-rooms-after-restart"},
+		{"task finished but no chat shown", "task-rooms-after-restart"},
+		{"see what a task did after restarting", "task-rooms-after-restart"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
