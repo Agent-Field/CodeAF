@@ -79,6 +79,56 @@ func TestCancelCutsARunningTask(t *testing.T) {
 	}
 }
 
+// THE STOP IS PUBLISHED WHEN IT IS TAKEN, and not whenever the accounting next
+// says something. A running node stays RUNNING for as long as its child takes to
+// wind up, which is why the line above promises "stopping" — so the news arrives
+// on a notice that carries no state change at all, and a surface with nothing to
+// go on drew "working" over work a person had just ended for the whole of that
+// window.
+func TestARunningNodeSaysItIsStoppingBeforeItLands(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	var (
+		started = make(chan struct{})
+		hold    = make(chan struct{})
+	)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		ctx, stop := context.WithCancel(context.Background())
+		node.setCancel(stop)
+		defer stop()
+		close(started)
+		<-ctx.Done()
+		// THE CHILD WINDS UP SLOWLY, which is the whole state this test is about:
+		// a `bash` holding a leaked pipe or a `jobs` kill spends seconds here.
+		<-hold
+		node.finish("stopped before it finished", nil, "task/one", mergeAborted)
+		node.graph.complete(node, TaskFailed)
+	})
+	updates := agent.TaskUpdates()
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the long one", brief: "work", acceptance: "done"})
+	waitSignal(t, started, "the node to start")
+
+	if _, err := agent.Cancel("task:" + itoa64(id)); err != nil {
+		t.Fatal(err)
+	}
+	notice := awaitNotice(t, updates, id, func(n TaskNotice) bool { return n.Stopped })
+	if notice.State != TaskRunning {
+		t.Fatalf("the stop was only published once the node had moved to %v", notice.State)
+	}
+	// AND A SECOND PRESS IS A PERSON LEANING ON A KEY. The answer is what is
+	// already happening, in the same word.
+	line, err := agent.Cancel("task:" + itoa64(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "already stopping") {
+		t.Fatalf("the second stop answers %q", line)
+	}
+	close(hold)
+	awaitNotice(t, updates, id, func(n TaskNotice) bool { return n.State == TaskFailed })
+}
+
 // TestCancelDropsAQueuedTaskInstantly: nothing is running, so nothing has to
 // come home first — and the slot the running node holds is not handed back
 // under it.

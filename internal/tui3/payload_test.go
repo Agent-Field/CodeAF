@@ -83,8 +83,8 @@ func TestANoteThatNamesNoFactsIsDrawnExactlyAsItWas(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width = 200
 
-	rows := noteRows(a, "interrupted")
-	if len(rows) != 1 || rows[0] != a.pal.dim("· interrupted") {
+	rows := noteRows(a, "stopped")
+	if len(rows) != 1 || rows[0] != a.pal.dim("· stopped") {
 		t.Fatalf("a note with no facts is not the plain dim line it was:\n%q", rows)
 	}
 }
@@ -263,6 +263,10 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",
 			[]string{"enter", "ctrl+r", "ctrl+y", "esc"}},
 		{"ctrl+enter keeps this true", []string{"ctrl+enter"}},
+		// TWO KEYS IN ONE LINE, one per segment — the barge-in hint teaches the
+		// safe meaning and the urgent one together, so both have to lift or the
+		// line reads as prose with a chord buried in it (bargein.go).
+		{bargeHint, []string{"enter", bargeKey}},
 		{"ctrl+g tasks", []string{"ctrl+g"}},
 		{"x stop", []string{"x"}},
 		{"nothing to rewind", nil},

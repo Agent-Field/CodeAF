@@ -171,7 +171,13 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 // longer there.
 func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	a := dragApp(t)
-	a.width, a.height = 80, 14
+	// Fifteen rows and not fourteen: the eight blocks that land below are one
+	// turn's prose, so THE ANSWER HIERARCHY demotes all but the last of them and
+	// opens one blank above the one it promotes (hierarchy.go's [answerBreath]).
+	// That row is the difference between the pressed block scrolling two rows up
+	// — which is what this test is about — and scrolling clean off the top,
+	// which is a different case with a test of its own below.
+	a.width, a.height = 80, 15
 	a.touch()
 
 	// The click: press the thinking block, let eight more rows land and the

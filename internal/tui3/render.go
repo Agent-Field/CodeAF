@@ -197,6 +197,13 @@ func (a *app) visible(width int) []row {
 //   - ONE blank after a cluster, before the text that follows it.
 //   - ONE blank before each user message: the turn boundary, the only
 //     structural silence this surface has.
+//   - ONE blank above THE ANSWER of a turn that did work (hierarchy.go's
+//     [answerBreath]). The rule above it covers the commonest shape and only
+//     that shape — an answer after a cluster — while a turn that thought and
+//     then answered, and a turn whose whole machinery collapsed into one chip,
+//     both put the answer hard against the row above it. The silence belongs to
+//     the ANSWER rather than to whatever preceded it. A turn with no work in it
+//     is given nothing and renders exactly as it did before the rule existed.
 //
 // Two rules can ask for the same gap — a cluster ending a turn, then the next
 // user message — and a gap asked for twice is still one gap, which is why each
@@ -256,6 +263,13 @@ func (a *app) layout(width int) []row {
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
 	folds := a.deckFolds(d)
+	// THE ANSWER HIERARCHY IS DECIDED BEFORE A SINGLE BLOCK DRAWS (hierarchy.go).
+	// Which prose was narration and which was the answer is a fact about this
+	// LIST, and it is settled here — over the deck, so the conversation, a room
+	// and a node's transcript inside a run's page all get it from one pass — so
+	// that [app.renderEntry] can paint one block at a time without ever asking
+	// what surrounds it.
+	stampHierarchy(es, folds)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -357,7 +371,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			continue
 		}
 		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask ||
-			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) {
+			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
+			// [answerBreath]). It is asked HERE, inside the same condition as the
+			// four rules above it, because [gap] is not idempotent: two calls are
+			// two blank rows, and the commonest promoted answer follows a cluster
+			// that has already asked for the same silence.
+			answerBreath(es, i) {
 			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
 			// surface that interrupts a reply to ask something, and a question
 			// wedged against the sentence above it reads as part of that sentence.
@@ -750,6 +770,29 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
 	tags := a.taskReplyTagRows(e.replyTags, width)
+	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
+	//
+	// A block that more work opened under is narration, and it is drawn as what
+	// it is: the model's own words in the work column, one lightness step BELOW
+	// the body, with no markdown on them at all (hierarchy.go states the law and
+	// [app.workingProse] does the paint).
+	//
+	// It is asked BEFORE [entry.settled] because a demoted block has no live tail
+	// worth keeping. [entry.mdCut] — the promotion boundary a still-streaming
+	// block was cut at — stops mattering the instant the block stops being the
+	// answer: it is a bookkeeping mark about how much of a growing edge had been
+	// formatted, and there is no growing edge here. The whole text is wrapped at
+	// one tier, so a block demoted mid-sentence cannot come back as half rendered
+	// markdown and half plain.
+	//
+	// AND ITS TABLE FEET GO WITH IT. A foot is an offer to open something, and
+	// the affordances belong to the answer: [entry.feet] is keyed by row, these
+	// are different rows, and a stale foot would put a door on somebody else's
+	// line (mdtable.go).
+	if e.demoted {
+		e.feet = nil
+		return append(tags, a.workingProse(e.text, width)...)
+	}
 	if e.settled {
 		return append(tags, a.settledMarkdown(at, e, width)...)
 	}
@@ -2094,6 +2137,15 @@ func (a *app) stateWord() (string, string) {
 	if word := a.dragWord(); word != "" {
 		return word, a.pal.accent(word)
 	}
+	// AND THE STOP OUTRANKS THE QUESTION, on that same reading turned around. A
+	// card still standing between the esc and the stream's close is asking about
+	// a call the cancellation has already released (session's consent.go), so
+	// "waiting · your call" would be this line naming the person as the thing
+	// holding up a turn they themselves stopped. What is true and actionable at
+	// that moment is neither — it is that the work is being let go.
+	if a.windingDown() {
+		return stoppingWord, a.pal.dim(stoppingWord)
+	}
 	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
 	// of view: the turn is technically working — the propose_task call is parked
 	// inside it — and what is true about it that a person can act on is that it
@@ -2114,6 +2166,28 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+// stoppingWord is what the status line says between a person's esc and the
+// engine letting go of the turn ([app.windingDown]).
+//
+// IT IS THE PRESENT TENSE, AND THAT IS THE WHOLE OF WHAT IT ADDS. The line has
+// always gone straight to "interrupted" on the key, which is the truth about the
+// turn and reads, for the three or four seconds a real teardown can take, as a
+// claim that everything is over — so a person watching a tool that has not quite
+// let go presses the key again, harder, on a surface that already heard them.
+// "stopping" says the stop landed AND that the letting go is still happening,
+// and "interrupted" arrives behind it the moment it has.
+//
+// IT IS DIM, where "interrupted" is the soft red and "working" the accent. The
+// hues on this line are its loudness, and winding down is the quietest thing the
+// surface ever does: nothing is wrong, nothing is wanted, nothing is being
+// waited on by anybody but the machine. It carries NO SPINNER for the reason it
+// carries no colour — [app.stateSegment] draws the mark only in stateWorking, so
+// the line stills on the key and stays stilled, which is the whole point.
+//
+// IT NAMES NO KEY, and there is no line about it in the hint slot, because there
+// is no second key to name. See [app.interrupt] for why there is no hard stop.
+const stoppingWord = "stopping"
 
 // ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────
 //
@@ -2609,14 +2683,44 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
-	case len(a.parks) > 0:
+	case len(a.parks) > 0 && a.parking():
 		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
 		// more thing than it did: it stops the turn AND sends what is parked
 		// (park.go). It outranks the plain interrupt below for the reason the
 		// armed rewind outranks it — the slot promises what the NEXT esc does,
 		// and that is no longer only a stop. It is spelled exactly as the block's
 		// own dim line spells it, so the two lines on one screen agree.
+		//
+		// AND IT ASKS [app.parking] AS WELL AS THE QUEUE, which is that agreement
+		// made structural rather than left to two authors. A message stays parked
+		// through the whole of the wind-down window ([app.windingDown]) and esc is
+		// inert for every frame of it, so the queue alone would keep this line
+		// standing over a key that does nothing — the one thing A HINT MAY ONLY
+		// NAME A KEY THAT WORKS forbids. The block's own dim line drops the same
+		// piece on the same question (park.go's [parkedWord]).
 		return parkedHint[1]
+	case a.bargeOffered():
+		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches
+		// the two things enter's neighbourhood now means — it waits, or the chord
+		// stops the answer and sends it (bargein.go). It is the ONE state this line
+		// is drawn in, which is the emptiness law: over an empty box there is
+		// nothing to send, at rest there is nothing to stop, and in either the line
+		// would be a permanent cheatsheet in the slot this surface stopped keeping
+		// one in.
+		//
+		// It ranks UNDER the parked block above, which is the slot's ordering law
+		// rather than an exception to it: while a message is already waiting, what
+		// the next esc does is the fact a person needs, and the block on screen is
+		// drawing its own dim line about the queue besides. Somebody who has parked
+		// a message has already found the queue; this line is for somebody who has
+		// not.
+		//
+		// AND IT IS ABSENT WHERE THE CHORD IS. [app.bargeOffered] asks the terminal
+		// before it asks anything else, so on a terminal that cannot spell
+		// `shift+enter` this case never fires and the plain interrupt below keeps
+		// the slot — the capability law reaching the advertisement and not only the
+		// key.
+		return bargeHint
 	case a.state == stateWorking:
 		return "esc interrupt"
 	case a.spell.asking:

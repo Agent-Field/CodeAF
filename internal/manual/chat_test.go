@@ -40,6 +40,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"how do I stop it mid answer", "keys"},
+		// BARGE-IN, asked the four ways people meet it: wanting to correct a
+		// running answer, seeing the chord in the hint slot and not knowing what
+		// it is, pressing it and finding nothing happened, and asking whether the
+		// key that used to do nothing does something now.
+		{"how do I interrupt it and say something else", "keys"},
+		{"stop it and tell it something different at the same time", "keys"},
+		{"what does shift+enter do", "keys"},
+		{"shift enter does nothing for me", "keys"},
 		{"why did it ask permission before running that", "permissions"},
 		{"what does always mean when I press a", "permissions"},
 		{"how do I connect my google account", "accounts"},
@@ -396,6 +404,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the answer that was on screen go", "screen"},
 		{"the text it was writing disappeared", "screen"},
 		{"stuck on waiting for the model", "screen"},
+		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
+		// now recedes into the work column at a quieter shade and only the block
+		// the turn ended on is drawn as the answer, so somebody looking at a reply
+		// half in one tier and half in another asks the first three of these — and
+		// somebody who pressed esc and watched nothing turn into an answer asks the
+		// last two. They are the screen's, because every word of the question is
+		// about what is on it.
+		{"why is part of the reply grey", "screen"},
+		{"why is some of the answer dimmer than the rest", "screen"},
+		{"where is the actual answer in all this", "screen"},
+		{"I stopped it and the text stayed grey", "screen"},
+		{"nothing became the answer after I pressed esc", "screen"},
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},

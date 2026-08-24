@@ -835,16 +835,78 @@ func worldHasElsewhere(world session.World, here string) bool {
 	return false
 }
 
+// trueUpHomeDoor asks that question again, and it is called from the one place
+// this window changes WHICH CONVERSATION IT IS IN (switcher.go's
+// [app.attachConversation]).
+//
+// THE CACHED FACT HAD NO WAY BACK TO TRUE, and that is the defect this repairs.
+// [app.homeWorth] is read on every frame, so the walk behind it must not happen
+// there ([app.landHome] says why) — and it was written at the launch's own walk
+// and then only while home was OPEN ([app.refreshHome], [app.closeHome]). That
+// is a loop with no entrance. A launch that found nowhere else to go shuts the
+// door; the door is the only way home opens; so the first `/new` — or a row
+// picked off the welcome box, or a conversation opened by name — made
+// "somewhere else" TRUE and nothing ever asked again. The door stayed shut for
+// the rest of the session while the status line said `2 open`.
+//
+// IT IS ALSO THE MOMENT THE QUESTION ITSELF CHANGES, which is why this is the
+// right seam rather than a convenient one: the fact is about a conversation
+// OTHER THAN THE ONE THIS SURFACE IS IN, and the conversation this surface is
+// in has just become a different one.
+//
+// WHAT IT STILL CANNOT SEE is a second conversation minted by ANOTHER window
+// while this one sits idle, and that is deliberate: an idle surface has no
+// wakeups at all (app.go's [app.Init]), and waking one every minute to walk a
+// directory would cost every session in the world what a rare launch is worth.
+// A person in that state is one `/new` or one resume away from the door
+// arriving, and home's own tick trues it up from the inside once it is open.
+func (a *app) trueUpHomeDoor() {
+	if a.hosted() || !a.canOpen() {
+		// The door's other two conditions ([app.homeDoorOpen]), asked here for
+		// [app.landHome]'s reason: where home cannot be reached at all, the walk
+		// behind this fact is work nothing will read.
+		return
+	}
+	a.noteHomeWorth(session.ReadWorld(a.placesRoot()))
+}
+
+// noteHomeWorth writes the door's cached fact from a reading of the machine, and
+// it is the ONE place that fact is written after the launch's own walk.
+//
+// AN EMPTY READING IS NOT EVIDENCE. [session.ReadWorld] answers an empty world
+// both for a machine that holds nothing and for a walk that could not be taken
+// — a bucket being groomed out from under it, a descriptor it could not get —
+// and the two are indistinguishable from here. Somebody mid-session is sitting
+// IN a conversation, so "this machine holds nothing" is a reading about the walk
+// rather than about the machine, and believing it once would shut the door for
+// the rest of the session with no way back ([app.trueUpHomeDoor] says why there
+// is no way back). [app.closeHome] has always made this exception in passing; it
+// is stated here once and made true of every reading instead.
+//
+// A reading that found projects is believed either way, including into FALSE:
+// somebody who put every other conversation away while home was open has left
+// themselves nowhere to go, and a door still advertised there would open onto
+// their own row.
+//
+// The LAUNCH is the one caller that may write false from an empty world, and it
+// does so inline ([app.landHome]): a machine that has never held a conversation
+// is the one case home exists to stay away from.
+func (a *app) noteHomeWorth(world session.World) {
+	if len(world.Projects) == 0 {
+		return
+	}
+	a.homeWorth = worldHasElsewhere(world, a.file)
+}
+
 // THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
 // this home from re-arming itself into the next one ([homeTickMsg]).
 func (a *app) closeHome() {
 	a.homeGen++
 	// The world in hand on the way out is the freshest reading there will be
 	// until home opens again, so the door's advertisement is trued up here
-	// rather than left as it was at boot.
-	if len(a.home.world.Projects) > 0 {
-		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
-	}
+	// rather than left as it was at boot ([app.noteHomeWorth] carries the rule
+	// about a reading that found nothing).
+	a.noteHomeWorth(a.home.world)
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
@@ -886,7 +948,7 @@ func (a *app) refreshHome() {
 		return
 	}
 	a.home.world = session.ReadWorld(a.placesRoot())
-	a.homeWorth = worldHasElsewhere(a.home.world, a.file)
+	a.noteHomeWorth(a.home.world)
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
