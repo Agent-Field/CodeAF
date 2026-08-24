@@ -1232,6 +1232,14 @@ It does not appear at all on a machine whose only conversation is the one you ar
 same rule that keeps home from greeting a first run. A door that is drawn is a door that
 goes somewhere.
 
+**And it arrives the moment there is somewhere to go.** The question is asked again every
+time this window moves you to another conversation, so the first `/new` — or a row opened
+off the welcome box — brings both the gesture and the line, in the session you are already
+sitting in. It used to be asked only at launch and while home was open, which meant a
+launch that found nowhere to go shut the door for the rest of the session even after you
+had started a second conversation yourself. A second conversation minted by *another*
+window while this one sits idle is still not noticed until this one moves.
+
 ## Is there a key for home?
 
 `/home` opens it, and **space twice on an empty box** goes there from inside a conversation
