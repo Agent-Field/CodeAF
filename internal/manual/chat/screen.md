@@ -314,10 +314,10 @@ What steps up, in the lines you will see it in:
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
 
-- **A tinted background is always a slash command** and never anything else — `/model`,
-  `/standing`, `/help` wherever they are written, in the box, in your sent message and in
-  these lines alike. Nothing else on the screen borrows it, so a tinted run of cells is
-  always a word you can type back.
+- **A tinted background on your words is always a slash command that acts** — a command
+  at the start or a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
+  rows chip their leading command too. Nothing else borrows the mark, so it never
+  highlights a slash word the send path will ignore.
 - **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
   tier; they do not get a chip.
 - **Nothing here is ever drawn in the accent.** The accent marks the one live or chosen
@@ -1503,11 +1503,11 @@ Hue carries identity; weight carries markdown. Your message is accent whole behi
 own glyph, and nothing the model writes is ever painted accent. On a 16-colour terminal
 that accent degrades to bold, which is the only marker left there.
 
-One thing inside your own words is painted differently: a slash command aforge
-recognizes — `/task`, `/compact`, `/clear` — wears a **chip**, the selection band's tint
-behind the letters of the command, in the message box and in the sent message alike. A
-background is not a role on this surface, so a lifted run of cells reads as "this is not
-prose" wherever it turns up. Nothing the model writes is ever chipped.
+One thing inside your own words is painted differently: a slash command at the start, or
+a live `/task`, `/standing`, or `/orders` tag later in the sentence, wears a **chip** —
+the selection band's tint behind its letters. The chip promises Enter will act on that
+word. Other mid-sentence commands and tags made plain with backspace have no chip.
+Nothing the model writes is ever chipped.
 
 Six mid-tone hues form a separate identity ring, spent on exactly one cell: the glyph at
 the head of a task row. No role ever paints that column, so a ring hue cannot be misread

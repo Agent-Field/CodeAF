@@ -596,7 +596,16 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			// asked for. Every row of a wrapped message opens at a boundary: the
 			// wrap breaks on spaces, and a word too long to break on one is not a
 			// command either.
-			out = append(out, lead+paintCommands(line, a.pal, a.pal.accent, true))
+			// Sent tag ranges are stored on the unwrapped message. Wrapped rows
+			// cannot reuse those offsets, so a line away from the head may chip a
+			// send door only when this entry records that one acted.
+			spans := transcriptCommandSpans([]rune(line), e.actedTags)
+			if len(e.actedTags) > 0 && i > 0 {
+				// Wrapping changes offsets; routed messages are ordinarily one line,
+				// while the scanner still safely recognizes their door on this row.
+				spans = commandSpans([]rune(line), true)
+			}
+			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.accent))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
 		// one here is not typed at all: an `@task` mention leaves a footnote
@@ -2534,6 +2543,11 @@ func (a *app) hintWord() string {
 		// line and this is the line answering (spellout.go). It ranks above the two
 		// offers below because it is not an offer: it is something happening.
 		return a.spellWorkingWord()
+	case a.slashTagHint() != "":
+		// A LIVE TAG OWNS ENTER, so its line outranks the two optional chords
+		// below. A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
+		// only state where enter has the promised alternate meaning.
+		return a.slashTagHint()
 	case a.standMarkOffered():
 		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the chord that makes
 		// it one (standmark.go). It ranks HERE — under the running turn, over the

@@ -87,7 +87,10 @@ func (a *app) pasteImages(text string) bool {
 		a.attach(path)
 		marks = append(marks, imageToken(a.chipNumber(path)))
 	}
-	a.input.insert(a.spacedTokens(marks))
+	inserted := a.spacedTokens(marks)
+	at := a.input.cursor
+	a.input.insert(inserted)
+	a.editTags(at, at, len([]rune(inserted)))
 	a.touch()
 	return true
 }
