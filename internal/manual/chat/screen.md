@@ -767,6 +767,25 @@ The offer to open a wide table is only drawn on the settled render. A half-arriv
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
 
+## The reply dims when it finishes — brighter while streaming, calmer when done
+
+That is deliberate, and it is the only thing that says the turn is over. There is no
+spinner at the end of an answer and no tick mark.
+
+While a reply is arriving, its plain tail — the part below the last promoted line, which
+is the part still growing — is painted **one step brighter** than the body. The moment
+the turn finishes the whole block is re-rendered as markdown at the ordinary body ink,
+and the brightness drains away. Nothing is added to the screen and nothing is taken off
+it; the ink dries.
+
+Only the growing tail is brighter. The prefix already promoted to markdown carries its
+own styling and is left as it is, so the calm part of an answer is the part this screen
+has already decided is final.
+
+The whole effect needs 256 colours. On a terminal with sixteen, and with `NO_COLOR` set,
+a streaming reply is drawn exactly like a settled one — bolding it instead would make it
+look like a reply that opened in bold, which is a different thing.
+
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
 It cannot any more. A message of yours is never drawn inside a streaming answer, never
@@ -1660,15 +1679,52 @@ goes lighter** — the meta tier recedes toward the page. The question hue is in
 rather than dimmed, because a question has to lead on a page too. No two roles resolve
 to the same 256 index.
 
-**The theme is auto-detected only. There is no theme setting to change.** aforge reads
-`COLORFGBG` and nothing else — its last field is read as an ANSI index, where 0–6 and 8
-mean dark and everything else means light. **Unset means dark.** The code can accept
-`dark`, `light` or auto, but the settings row that would carry your choice does not
-exist yet. It is a stated seam, one call away from being wired, and until it is wired
-the answer comes from the environment.
+**Which of the two you get is detected, not configured. There is no theme setting to
+change.** The best answer comes from the terminal itself: on the first frame aforge asks
+what colour its background is, and a terminal that answers picks the ladder outright —
+a light background gets the light palette, whatever anything else says. See *How the
+colors tune themselves to your terminal's background*.
 
-OSC 11 is deliberately not queried. That would be a round trip inside a constructor that
-must not block, to decide something a person who cares can pin.
+Where the terminal does not answer, `COLORFGBG` is read instead: its last field is taken
+as an ANSI index, where 0–6 and 8 mean dark and everything else means light. **Unset
+means dark**, which is what most terminals are.
+
+The code can accept `dark`, `light` or auto, but the settings row that would carry your
+choice does not exist yet. It is a stated seam, one call away from being wired, and until
+it is wired the answer comes from your terminal and its environment. A pin, when it
+lands, will outrank the terminal's own answer.
+
+## How the colors tune themselves to your terminal's background
+
+**aforge asks your terminal what colour its background is, and tunes the palette to the
+answer.** The question goes out on the first frame and nothing waits for it. If your
+terminal answers — and many do — the reply arrives like any other event and the screen
+repaints in colours measured against your real background rather than an assumed one.
+
+Four things are re-aimed when it lands:
+
+- **The three background bands** — the row under the pointer, the chosen row, and a
+  copy-mode selection — are built out of your own background colour, moved away from
+  itself by a fixed amount. They inherit your terminal's tint, and on a 256-colour
+  terminal they still land on greys, never on a hue.
+- **The reading tiers** — ink, muted, dim — are checked against the real background and
+  moved only if they are outside the range they were aimed at. **A value already in range
+  is left exactly as authored**, so on an ordinary terminal you will not see a
+  difference. On a pure black screen the body steps back from the glare it had; on a
+  tinted page the tiers that were sliding out of sight come back. **The answers
+  themselves move with the body ink**, and so does the brighter step a streaming reply
+  wears: the growing edge stays one step above the settled text.
+- **The role colours** — accent, add, del, bad, warn, the question hue and the datum
+  cyan — are checked for legibility and, if the background has crowded them, all of them
+  move together by the same step, never one on its own.
+- **The light or dark ladder itself**, which is the exact answer described above.
+
+**A terminal that does not report a background gets the built-in palette, and that is
+not a degraded mode.** It is the same palette every earlier version shipped, authored by
+hand against the range real terminals sit in. There is no timer, no waiting and no
+fallback path to take: silence simply means the built-in colours stand. Pipes,
+recordings and terminals without the query all take that road, and so does every frame
+drawn before a reply arrives.
 
 ## Box-drawing glyphs, and when they are dropped
 
