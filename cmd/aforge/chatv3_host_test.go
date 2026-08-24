@@ -377,3 +377,45 @@ func waitFor(done func() bool) bool {
 	}
 	return false
 }
+
+// ── the connection, as the person meets it ──────────────────────────────────
+
+// WHO ELSE IS IN THE ROOM IS SAID, AND AN EMPTY ROOM SAYS NOTHING. The count is
+// the engine's, because only the machine holding the session can know it, and
+// zero draws nothing at all rather than a reassuring line about being alone.
+func TestTheEntryNoticeSaysWhoElseIsOnTheConversation(t *testing.T) {
+	for _, row := range []struct {
+		welcome remote.Welcome
+		want    string
+	}{
+		{remote.Welcome{}, ""},
+		{remote.Welcome{Attached: 1}, "another window is on this conversation"},
+		{remote.Welcome{Attached: 3}, "3 other windows are on this conversation"},
+		{remote.Welcome{Note: "session open elsewhere — started a new one"}, "session open elsewhere — started a new one"},
+		{
+			remote.Welcome{Note: "session open elsewhere — started a new one", Attached: 1},
+			"session open elsewhere — started a new one · another window is on this conversation",
+		},
+	} {
+		if got := hostEntryNotice(row.welcome); got != row.want {
+			t.Errorf("a welcome with %d attached and note %q reads %q, wanted %q",
+				row.welcome.Attached, row.welcome.Note, got, row.want)
+		}
+	}
+}
+
+// THE SEAMS ARE READY AND THE SURFACE HAS NOWHERE TO PUT THEM YET. The client
+// answers all three today; internal/tui3 has no option that reads a live link
+// note, a one-shot notice, or a question raised while nobody was attached. This
+// pins the shapes so that wiring them is one line in hostOptions rather than one
+// rediscovery, and fails the moment the client's side of any of them changes.
+func TestTheConnectionSeamsAreTheShapesTheSurfaceWillAskFor(t *testing.T) {
+	var client *remote.Client
+	seams := newHostSeams(client)
+	var _ func() string = seams.Link
+	var _ func() string = seams.Notice
+	var _ func() ([]remote.HeldQuestion, error) = seams.Held
+	if seams.Link == nil || seams.Notice == nil || seams.Held == nil {
+		t.Fatal("a seam that is not filled is a seam nobody can wire")
+	}
+}
