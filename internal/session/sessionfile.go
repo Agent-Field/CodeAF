@@ -97,7 +97,8 @@ type sessionEntry struct {
 	// the same note ([Agent.wakeLocked], tui3's startFollow). It is absent from
 	// every file written before it existed, and those lines replay exactly as
 	// they always did.
-	Note bool `json:"note,omitempty"`
+	Note      bool           `json:"note,omitempty"`
+	ReplyTags []TaskReplyTag `json:"replyTags,omitempty"`
 
 	// Compaction fields.
 	//
@@ -314,7 +315,8 @@ type sessionFile struct {
 	// distinguishes it from a line somebody typed — the mark is on the journal's
 	// line, so the journal is what a surface asks (see [sessionEntry.Note] and
 	// [shapeEntries]).
-	notes map[string]bool
+	notes     map[string]bool
+	replyTags map[string][]TaskReplyTag
 
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
@@ -440,6 +442,29 @@ func (s *sessionFile) isNote(message ai.Message) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.notes[key]
+}
+
+// taskReplyTags returns the typed identities stored beside a completion note.
+func (s *sessionFile) taskReplyTags(message ai.Message) []TaskReplyTag {
+	if s == nil {
+		return nil
+	}
+	key := noteKey(message)
+	if key == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]TaskReplyTag(nil), s.replyTags[key]...)
+}
+
+func rememberReplyTags(index map[string][]TaskReplyTag, message ai.Message, tags []TaskReplyTag) {
+	if len(tags) == 0 {
+		return
+	}
+	if key := noteKey(message); key != "" {
+		index[key] = append([]TaskReplyTag(nil), tags...)
+	}
 }
 
 // rememberNote marks one message as the session's own, in a map the caller owns
@@ -570,6 +595,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.id = replayed.id
 	journal.images = replayed.images
 	journal.notes = replayed.notes
+	journal.replyTags = replayed.replyTags
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -658,6 +684,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	notes := make(map[string]bool)
+	replyTags := make(map[string][]TaskReplyTag)
 	scanner := bufio.NewScanner(file)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
@@ -708,6 +735,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
+				rememberReplyTags(replyTags, message, entry.ReplyTags)
 			}
 			messages = append(messages, message)
 		case "compaction":
@@ -795,7 +823,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	repaired := repairTranscript(messages)
 	// The overlap was counted against the lines the file holds and is applied to
@@ -814,14 +842,15 @@ func replaySessionFile(path string) (replayedSession, error) {
 		// draw with nothing above it either way, and two shapings of one journal
 		// that disagreed about which lines are real would be the seam lying in a
 		// second way.
-		earlier: repairTranscript(earlier),
-		overlap: overlap,
-		title:   title,
-		id:      id,
-		images:  images,
-		notes:   notes,
-		usage:   spent,
-		existed: lines > 0,
+		earlier:   repairTranscript(earlier),
+		overlap:   overlap,
+		title:     title,
+		id:        id,
+		images:    images,
+		notes:     notes,
+		replyTags: replyTags,
+		usage:     spent,
+		existed:   lines > 0,
 	}, nil
 }
 
@@ -981,6 +1010,8 @@ type replayedSession struct {
 	// notes is which of those messages the session wrote itself, keyed by
 	// [noteKey] — the index [sessionFile.notes] is opened holding.
 	notes map[string]bool
+	// replyTags is the typed identity stored on task completion notes.
+	replyTags map[string][]TaskReplyTag
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.
@@ -1113,11 +1144,11 @@ func (s *sessionFile) messageRef(message ai.Message) string {
 // one because exactly one caller has the answer — [Agent.recordUserLocked],
 // which is holding the [userMessage] the mark comes off — and every other call
 // site should stay the call it was.
-func (s *sessionFile) appendNote(message ai.Message) {
-	s.append(message, true, nil)
+func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
+	s.append(message, true, nil, tags...)
 }
 
-func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) {
+func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, tagSets ...[]TaskReplyTag) {
 	// Indexed as it is written, not only as it is replayed: a picture attached
 	// an hour ago is one a rewind or a /compact can put back through the display
 	// shaping in THIS process, long before anybody resumes the file. The same is
@@ -1130,6 +1161,12 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 			s.notes = make(map[string]bool, 4)
 		}
 		rememberNote(s.notes, message)
+		if len(tagSets) > 0 && len(tagSets[0]) > 0 {
+			if s.replyTags == nil {
+				s.replyTags = make(map[string][]TaskReplyTag)
+			}
+			rememberReplyTags(s.replyTags, message, tagSets[0])
+		}
 		s.mu.Unlock()
 	}
 	// The single text part is what nearly every message is, and its text is
@@ -1155,8 +1192,16 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 		ToolCallID: message.ToolCallID,
 		Parts:      refs,
 		Note:       note,
+		ReplyTags:  firstReplyTags(tagSets),
 		Timestamp:  stamp(),
 	})
+}
+
+func firstReplyTags(tagSets [][]TaskReplyTag) []TaskReplyTag {
+	if len(tagSets) == 0 {
+		return nil
+	}
+	return tagSets[0]
 }
 
 // appendCompaction journals one pass: the marker, then the whole rebuilt window
@@ -1197,7 +1242,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// mark would come back from the next resume as the person's words — this
 		// pass is the one place a message is journaled twice.
 		if s.isNote(message) {
-			s.appendNote(message)
+			s.appendNote(message, s.taskReplyTags(message))
 			continue
 		}
 		s.appendMessage(message)

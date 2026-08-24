@@ -730,8 +730,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // foot brightens under the pointer, and the pointer is a fact about a POSITION
 // in the list being drawn.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
+	tags := a.taskReplyTagRows(e.replyTags, width)
 	if e.settled {
-		return a.settledMarkdown(at, e, width)
+		return append(tags, a.settledMarkdown(at, e, width)...)
 	}
 	e.feet = nil
 	var out []string
@@ -739,7 +740,34 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 		out = append(out, a.renderMarkdown(e.text[:e.mdCut], width)...)
 	}
 	out = append(out, wrap(e.text[e.mdCut:], width)...)
-	return trimBlanks(out)
+	return append(tags, trimBlanks(out)...)
+}
+
+// taskReplyTagRows puts the cause immediately above the answer it prompted.
+// The request is copied as-is from the task record and omitted when empty.
+func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string {
+	var out []string
+	for _, tag := range tags {
+		title := taskTitleOf(tag.Title, tag.Request, tag.ID)
+		body := title
+		if tag.Request != "" {
+			body += " · \"" + tag.Request + "\""
+		}
+		ident := identFor(tag.ID)
+		glyph := ident.glyph
+		if a.pal.ascii || a.linear {
+			glyph = ident.ascii
+		}
+		rows := wrap(glyph+" "+body, width)
+		for i, line := range rows {
+			if i == 0 && strings.HasPrefix(line, glyph) {
+				out = append(out, a.taskMark(ident)+a.pal.dim(strings.TrimPrefix(line, glyph)))
+				continue
+			}
+			out = append(out, a.pal.dim(line))
+		}
+	}
+	return out
 }
 
 // stillWorking is how long a turn has to be silent before the indicator says

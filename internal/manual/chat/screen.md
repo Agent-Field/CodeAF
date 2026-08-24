@@ -348,6 +348,15 @@ If the answer is just the word `aforge`, this conversation has no project — it
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
 prints where that actually is.
 
+## The task name above an answer that appeared on its own
+
+A reply that begins because a task finished has a dim task line immediately above it in
+the transcript. The line uses the same identity mark and name as the task column and quotes
+your original request. Several finished tasks answered by one turn make several lines in
+arrival order. A reply to something you just typed has no task line, and a task with no
+recorded request shows its name without an empty quote. These lines return with the reply
+after `/resume`; the finished-task strip above the input is unchanged.
+
 ## The status line at the bottom
 
 One row at the bottom of the frame, in two clusters. **Identity on the left** — which

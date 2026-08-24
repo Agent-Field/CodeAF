@@ -1813,7 +1813,11 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 			}
 		}
 	}
-	reader.enqueueSteering(note)
+	message := wakeNote(note)
+	message.replyTags = []TaskReplyTag{{
+		ID: node.id, Title: node.title(), Request: node.request(),
+	}}
+	reader.enqueueNote(message)
 	reader.postTaskNews()
 }
 

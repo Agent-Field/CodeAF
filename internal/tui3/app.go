@@ -219,6 +219,9 @@ type entry struct {
 	// were stripped from the payload. Mid-sentence slash prose has no ranges,
 	// so a demoted tag stays plain in the transcript as promised.
 	actedTags []segment
+	// replyTags are the finished tasks this assistant block answers. They are
+	// empty for every ordinary person-prompted reply.
+	replyTags []session.TaskReplyTag
 
 	// facts are the LOAD-BEARING DATA inside a note's own words, named by the
 	// text they are spelled with and in the order they appear in it — the model
@@ -533,6 +536,8 @@ type app struct {
 	previews map[string]imagePreview
 
 	entries []entry
+	// pendingReplyTags arrived before the first words of the answer they label.
+	pendingReplyTags []session.TaskReplyTag
 	// live is the assistant entry currently being streamed into, or -1.
 	live int
 	// turn counts the person's messages. It groups tool calls into clusters
@@ -2671,6 +2676,14 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	}
 
 	switch ev.Kind {
+	case session.EventTaskReplyTags:
+		a.pendingReplyTags = append(a.pendingReplyTags, ev.TaskReplyTags...)
+		if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].kind == entryAssistant {
+			a.entries[a.live].replyTags = append(a.entries[a.live].replyTags, a.pendingReplyTags...)
+			a.pendingReplyTags = nil
+			a.entries[a.live].stale = true
+		}
+
 	case session.EventTextDelta:
 		a.appendText(ev.Text)
 		a.lastDelta = time.Now()
@@ -3205,7 +3218,9 @@ func (a *app) appendText(text string) {
 		return
 	}
 	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
-		a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn})
+		a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn,
+			replyTags: append([]session.TaskReplyTag(nil), a.pendingReplyTags...)})
+		a.pendingReplyTags = nil
 		a.live = len(a.entries) - 1
 		a.mdAt = time.Now()
 	}

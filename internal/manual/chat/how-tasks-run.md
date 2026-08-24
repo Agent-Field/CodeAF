@@ -125,6 +125,26 @@ work in place of the work, and so is narrating what it did to get there.
 When the report is too thin to answer from, aforge reads the deliverable and answers out of
 what is in it. The message is the answer; the file is the deep dive.
 
+## Why did the chat reply on its own
+
+A finished task can arrive while you are not typing. Its landing note starts the turn
+that answers the work, so the answer may appear on its own. Immediately above that reply,
+aforge draws a dim line with the task's identity mark, its name, and the exact words you
+originally asked it to handle. That line is part of the transcript and returns when you
+resume the conversation. The finished-task card still stays above the input as before.
+
+An ordinary reply to something you typed has no such line. If an old task has no recorded
+request, the line shows its identity mark and name alone rather than an empty quotation.
+If several tasks arrive before one answer, their lines are stacked in arrival order above
+that answer.
+
+## Which task is this answer about
+
+Read the dim line immediately above the answer. Its task mark and short name are the same
+identity used for that task in the task column and its finished card; the quoted text is
+your original request verbatim, not the more detailed brief prepared for the worker. More
+than one line means the answer is responding to all of those finished tasks, top to bottom.
+
 **Every file aforge names you is named by its full absolute path** — after a task and
 everywhere else in the conversation. A relative path like `research/notes.md` is one you
 would have to work out a root for, and a task that ran in its own copy of the repository

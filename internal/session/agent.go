@@ -655,6 +655,9 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 type userMessage struct {
 	message ai.Message
 	refs    []journalPart
+	// replyTags names finished tasks whose reports this message carries. It is
+	// empty on every person's message and every other authored note.
+	replyTags []TaskReplyTag
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit or a watch's delta
@@ -1249,7 +1252,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// the one bit that says nobody typed it, so a resume can draw it where the
 		// live surface drew it (sessionfile.go's [sessionEntry.Note]). A note
 		// carries no pictures, which is why this door takes none.
-		a.file.appendNote(user.message)
+		a.file.appendNote(user.message, user.replyTags)
 		return
 	}
 	a.file.appendMessage(kept, user.refs...)
@@ -1355,6 +1358,7 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
+		a.replyTags = append(a.replyTags, message.replyTags...)
 		// A STEERING MESSAGE IS STILL THE PERSON ASKING. It arrives mid-turn and
 		// is often the correction the work about to be handed off must carry, so
 		// the newest thing they typed is what a proposal made after this drain
@@ -1374,6 +1378,15 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 		owed = owed || message.wake || !message.authored
 	}
 	return len(queued), owed
+}
+
+// takeReplyTags hands the surface each finished-task identity exactly once.
+func (a *Agent) takeReplyTags() []TaskReplyTag {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	tags := append([]TaskReplyTag(nil), a.replyTags...)
+	a.replyTags = nil
+	return tags
 }
 
 // enqueueSteering puts one line the SESSION authored — a task node landing
@@ -2133,6 +2146,9 @@ type DisplayEntry struct {
 	// the paths are the JOURNAL's record, and a conversation that lives only in
 	// memory never wrote one.
 	ImageRefs []string
+	// ReplyTags label the assistant entry that answers finished task notes. They
+	// are nil on every ordinary reply.
+	ReplyTags []TaskReplyTag
 }
 
 // Transcript returns the conversation so far as display entries, oldest
@@ -2217,6 +2233,7 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	results := toolResults(messages)
 	entries := make([]DisplayEntry, 0, len(messages))
+	var replyTags []TaskReplyTag
 	for _, msg := range messages {
 		if msg.Role == "system" {
 			continue
@@ -2232,11 +2249,18 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// It is NOT "note": that role is the compaction marker a surface draws
 			// as a rule of its own, and these two are not one shape.
 			role = "aside"
+			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
+		}
+		var tags []TaskReplyTag
+		if role == "assistant" && len(replyTags) > 0 {
+			tags = append([]TaskReplyTag(nil), replyTags...)
+			replyTags = nil
 		}
 		entries = append(entries, DisplayEntry{
 			Role:      role,
 			Text:      messageContentText(msg),
 			ImageRefs: journal.imageRefs(msg),
+			ReplyTags: tags,
 		})
 		for _, call := range msg.ToolCalls {
 			entries = append(entries, DisplayEntry{

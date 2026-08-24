@@ -361,6 +361,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// Steering lands here, between batches: the transcript tail is a tool
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering()
+		if tags := a.takeReplyTags(); len(tags) > 0 {
+			hub.send(Event{Kind: EventTaskReplyTags, TaskReplyTags: tags})
+		}
 
 		// NOTHING TOO BIG TO FIT IS SENT AND HOPED OVER. The last thing before
 		// the wire, after steering has landed, because steering is part of the
