@@ -82,6 +82,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run tests for me", "what-i-can-do"},
 		{"can you start a dev server", "what-i-can-do"},
 		{"how do I see what a background job printed", "what-i-can-do"},
+		// The jobs-on-the-column wave. A person watching an empty right-hand
+		// column while a long command ran asks about the COLUMN, not about the
+		// jobs tool, so these have to land on the page that owns the column.
+		{"why is nothing showing on the right while a command is running", "tasks"},
+		{"does a background job show up on the task column", "tasks"},
+		{"what is the row for my dev server on the right", "tasks"},
+		{"can I stop a background job from the sidebar", "tasks"},
 		{"do you ask before running rm", "permissions"},
 		{"what is yolo mode", "permissions"},
 		{"how do I make it stop asking every time", "permissions"},

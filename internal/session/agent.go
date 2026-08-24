@@ -117,6 +117,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// are both work the person asked the harness to do FOR THEM, and the answer
 	// they are owed is a sentence, not a line in a transcript nobody is reading.
 	agent.jobs = newJobRegistry(config.Workspace, config.Place, agent.enqueueSteering)
+	// And the registry gets the ROSTER lane as well as the waking one. A job is
+	// work this conversation started, so it shows on the right the way every
+	// other kind of work does — a quiet row while it runs, settled when it ends
+	// (jobrow.go). It is set here rather than passed to the constructor because
+	// it closes over the agent the constructor is building.
+	agent.jobs.announce = agent.announceJobRow
 	// And the accounts seam before the belt for the belt's own reason: the two
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
