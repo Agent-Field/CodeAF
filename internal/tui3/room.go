@@ -1677,6 +1677,14 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.roomApprovalKey(msg) {
 		return nil, true
 	}
+	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
+	// guard for the same reason, and only ever over an EMPTY box: the box in here
+	// steers the worker, and a letter that decided somebody's work was finished
+	// on the first keystroke of a sentence would be unforgivable
+	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
+	if a.roomSettleKey(msg) {
+		return nil, true
+	}
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -1797,6 +1805,13 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
+	case a.roomSettleAsking():
+		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
+		// landed, so nothing above this is live, and the three answers are
+		// printed on the foot as well — but the foot is at the far end of a page
+		// somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke (tasksettle.go).
+		return roomSettleHint
 	}
 	return ""
 }
@@ -2745,7 +2760,15 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
+		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
+		// said "finished": the same two rows its landed card draws, answering to
+		// the same keys and the same pointer, and the same receipt once answered
+		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
+		// foot it has.
+		var asked bool
+		if out, asked = a.roomSettleRows(out, width); !asked {
+			out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
+		}
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
