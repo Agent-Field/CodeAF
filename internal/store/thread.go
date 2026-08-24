@@ -360,6 +360,12 @@ CREATE TABLE IF NOT EXISTS messages (
 	parts       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(parts))
 );
 CREATE INDEX IF NOT EXISTS messages_session_seq ON messages (session_id, seq);
+-- A worker's steering mailbox is read by node id and journal cursor at every
+-- turn boundary of every leaf, and without this the read is a scan of every
+-- message the store has ever held. node_id is a base column, so — unlike
+-- messages_question_seq, whose column arrives by migration — the index belongs
+-- beside its table, where every open re-executes it.
+CREATE INDEX IF NOT EXISTS messages_node_seq ON messages (node_id, seq);
 
 CREATE TABLE IF NOT EXISTS commands (
     seq         INTEGER PRIMARY KEY REFERENCES events(seq),
@@ -688,7 +694,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.Query(`
+	rows, err := s.queryPrepared(`
 		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress, parts
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
@@ -959,7 +965,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 }
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
-	rows, err := s.db.Query(`
+	rows, err := s.queryPrepared(`
 		SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, context, attachments, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
