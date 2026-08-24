@@ -148,6 +148,12 @@ func (a *Agent) belt() []bare.Tool {
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
+	// The workspace's own history — restore points over the FILES, forks to try
+	// something risky in, and the merge that lands one (tools_workspace.go).
+	// They are furrow's verbs and they are absent on a machine that does not
+	// have it, which is the same absence law `stand` and the memory pair are
+	// built on and is stated at length where they are built.
+	tools = append(tools, a.workspaceTools()...)
 	// search_conversations (tools_conversations.go) is the other half of memory
 	// and is conditional for the same reason `remember` is: what it reads is the
 	// FTS index over every message ever posted, which lives in the store, and

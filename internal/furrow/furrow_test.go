@@ -72,14 +72,14 @@ exec)
 merge)
   if [ "$mode" = "checkfail" ]; then
     echo "Error: merge check failed with exit status: 1" >&2
-    echo "FAIL	./pkg  0.2s" >&2
+    echo "FAIL ./pkg 0.2s" >&2
     exit 1
   fi
   if [ "$mode" = "conflict" ]; then
     echo '{"fork":"risky","base_snapshot":"b","ours_snapshot":"o","theirs_snapshot":"t","ours_tree":"ot","theirs_tree":"tt","result_snapshot":null,"changes":0,"conflicts":[{"path":[46,101,110,118],"kind":"modify_modify"}],"check":null,"check_output":null,"preview_digest":"d"}'
     exit 1
   fi
-  echo '{"fork":"risky","base_snapshot":"b","ours_snapshot":"o","theirs_snapshot":"t","ours_tree":"ot","theirs_tree":"tt","result_snapshot":"aaaabbbbcccc00ff","changes":4,"conflicts":[],"check":"go test ./...","check_output":"ok  	./...	0.4s","preview_digest":"d"}'
+  echo '{"fork":"risky","base_snapshot":"b","ours_snapshot":"o","theirs_snapshot":"t","ours_tree":"ot","theirs_tree":"tt","result_snapshot":"aaaabbbbcccc00ff","changes":4,"conflicts":[],"check":"go test ./...","check_output":"ok ./... 0.4s","preview_digest":"d"}'
   ;;
 forks)
   echo '[{"fork_id":"f1","name":"risky","destination":"/w.furrow-forks/risky","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009","tier":"clone","files":1,"directories":1,"symlinks":0,"fifos":0,"skipped_special":0,"logical_bytes":1,"cloned_bytes":1,"copied_bytes":0,"hardlinked_files":0,"elapsed_ms":9,"created_at":1700000300}]'
