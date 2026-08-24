@@ -233,7 +233,7 @@ func (a *app) stopSay(line string) {
 // be resting on behind them.
 func (a *app) stopHere() stopTarget {
 	if run := a.orchOf(); run != nil {
-		return stopRunTarget(run.id, run.snap)
+		return stopRunTarget(run.id, run.snap, run.known)
 	}
 	if a.room != nil {
 		return a.stopTaskTarget(a.tasks[a.room.id])
@@ -255,8 +255,16 @@ func (a *app) railFocusNode() *taskNode {
 // target for a run that is already over — a ✕ on a finished run is a dead cell,
 // and a card raised over one would be a question with no answer that does
 // anything.
-func stopRunTarget(id string, snap orchestrate.Snapshot) stopTarget {
-	if strings.TrimSpace(id) == "" || snap.Done || snap.Stopped {
+//
+// AND A RUN THIS SESSION CANNOT SEE IS OFFERED NOTHING EITHER, which is what
+// `known` is for. A run whose rows were restored from yesterday's checkpoint
+// draws a page and no shape (roomorch.go's orchUnknownWord): the session holds
+// no orchestrator for that id, so its snapshot is the zero one — neither Done
+// nor Stopped — and without this clause the ✕ was drawn over it and answered
+// "there is no run … in this session" (session's cancel.go). The rows are
+// history the column keeps; history is not stoppable.
+func stopRunTarget(id string, snap orchestrate.Snapshot, known bool) stopTarget {
+	if strings.TrimSpace(id) == "" || !known || snap.Done || snap.Stopped {
 		return stopTarget{}
 	}
 	return stopTarget{id: session.CancelRun + ":" + id, noun: stopRunNoun, detail: stopRunDetail}
@@ -268,6 +276,15 @@ func stopRunTarget(id string, snap orchestrate.Snapshot) stopTarget {
 // question and not this one.
 func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	if node == nil {
+		return stopTarget{}
+	}
+	// A BACKGROUND JOB IS NOT STOPPABLE FROM HERE, AND SO NO ✕ IS DRAWN ON IT.
+	// The id on a job's row is the roster's own and names nothing [session.Agent.Cancel]
+	// can find (session's TaskKindJob says so out loud), so a key wired to it
+	// would raise a card whose only possible answer was the engine refusing. A
+	// capability that cannot work is absent, not broken: the row draws no ✕, `x`
+	// aims past it, and the way to end a job is the `jobs` tool's own kill.
+	if node.kind == session.TaskKindJob {
 		return stopTarget{}
 	}
 	switch node.state {

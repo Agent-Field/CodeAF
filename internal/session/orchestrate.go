@@ -1325,6 +1325,18 @@ func (c Config) WorktreePath(jobID string) string {
 // will find no node there. The run's own page is where a node is read and
 // steered ([Agent.OrchestrateSnapshot], [Agent.SteerOrchestrate]), and the row
 // is a row.
+//
+// WHAT THE GRAPH DOES HOLD IS THE ROWS THEMSELVES, and that is not admission.
+// Every notice this family publishes goes through one door
+// ([orchestrateFamily.publish]) which hands the family's rows to
+// [TaskGraph.keepRunRows] — not as nodes, which would make them schedulable, but
+// as the last thing said about each row. That buys the two things a row that
+// exists only at the instant it moves cannot have: it is REPLAYED to a lane that
+// opens late ([Agent.replayTaskRoster]), so a surface that detached and came back
+// gets the family whole; and it is WRITTEN DOWN with the graph (task_store.go's
+// [runRecord]), so a conversation reopened tomorrow redraws yesterday's runs
+// settled instead of showing an empty column beside a transcript full of them.
+// The run itself still does not survive the process — nothing here resumes one.
 
 // orchestrateFamily is one run's rows: the root, the id minted for each node,
 // and the last state each was published in — which is the whole of what makes
@@ -1401,6 +1413,82 @@ type orchestrateFamily struct {
 	// advances except a worker actually arriving.
 	born   int
 	formed bool
+
+	// rows is the LAST NOTICE published for every row of this family, and shown
+	// is the order those rows were first published in — the run's own row, then
+	// each worker as it was minted.
+	//
+	// THEY EXIST BECAUSE THE NOTICE IS THE ONLY RECORD THIS FAMILY EVER HAD. A
+	// run's rows are not nodes in the task graph (the section header at the top
+	// of this seam says why they are not), so nothing walks them the way
+	// [Agent.replayTaskRoster] walks the graph: they existed only at the instant
+	// they moved, and a surface that detached and came back — home switched away
+	// and switched back, a conversation reopened tomorrow — held a column with a
+	// live run's whole family missing from it and no way to ask for it again.
+	//
+	// So the family REMEMBERS WHAT IT SAID, and that memory is what both answers
+	// are built from: the replay is these notices sent again, and the checkpoint
+	// is these notices written down (task_store.go's [runRecord]). Remembering
+	// the notice rather than rebuilding one is the whole of what makes a replayed
+	// row and a live row impossible to tell apart — there is no second builder to
+	// drift.
+	rows  map[uint64]TaskNotice
+	shown []uint64
+
+	// say serializes PUBLISHING, which f.mu deliberately does not.
+	//
+	// f.mu guards this family's bookkeeping and is released before anything slow.
+	// This one is held across the whole of [orchestrateFamily.publish], so the
+	// order rows reach a watcher is the order they reach the disk, and a snapshot
+	// built a moment earlier can never overtake a fresher one on the way out. A
+	// run publishes from several goroutines at once — the frontier's own, and the
+	// namer that answers a second or two late (taskname.go) — which is exactly
+	// that race.
+	say sync.Mutex
+}
+
+// publish is this family's ONE DOOR onto the roster: it remembers the notice,
+// sends it, and hands the family's rows to the graph that writes them down.
+//
+// THE ORDER OF THOSE THREE IS NOT ARBITRARY. The notice is remembered first so
+// that a lane opening in the same breath replays a row no older than the one
+// live watchers just saw; the send is next because a person watching is owed the
+// news before a file is; the keep is last because it touches the disk.
+//
+// THE LOCKS GO ONE WAY: say, then f.mu, then the agent's, then the graph's —
+// with the store's between the last two on a write ([taskStore] spells that
+// half). Nothing holds f.mu across the send or the keep, and NOTHING IN THE
+// GRAPH OR THE STORE EVER TAKES EITHER OF THIS FAMILY'S LOCKS: the family pushes
+// its rows outward and the graph never reaches in for them, which is what leaves
+// [TaskGraph.document] and [Agent.replayTaskRoster] free to walk those rows under
+// the graph's own lock and closes no cycle.
+func (f *orchestrateFamily) publish(notice TaskNotice) {
+	if f == nil || f.agent == nil {
+		return
+	}
+	f.say.Lock()
+	defer f.say.Unlock()
+	f.mu.Lock()
+	if f.rows == nil {
+		f.rows = make(map[uint64]TaskNotice, 8)
+	}
+	if _, drawn := f.rows[notice.ID]; !drawn {
+		f.shown = append(f.shown, notice.ID)
+	}
+	f.rows[notice.ID] = notice
+	// The slice handed out is BUILT FRESH AND NEVER TOUCHED AGAIN, which is what
+	// lets the graph hold it without a copy: every publish makes a new one, so
+	// what the graph is holding is a snapshot of one instant rather than a window
+	// onto a map that keeps moving.
+	rows := make([]TaskNotice, 0, len(f.shown))
+	for _, id := range f.shown {
+		rows = append(rows, f.rows[id])
+	}
+	root := f.root
+	f.mu.Unlock()
+
+	f.agent.emitTaskUpdate(notice)
+	f.agent.graph().keepRunRows(root, rows)
 }
 
 // newOrchestrateFamily takes the run's own row. It is minted before the first
@@ -1425,7 +1513,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		names:   make(map[string]string, 8),
 		drew:    make(map[string]string, 8),
 	}
-	a.emitTaskUpdate(TaskNotice{
+	family.publish(TaskNotice{
 		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
 		// AND IT SAYS SO FROM ITS FIRST BREATH. The row is minted here, before the
 		// opening planner call, so this is the moment the forming line has to start
@@ -1457,6 +1545,37 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	return family
 }
 
+// reserveRunNames pushes this session's run counter past every run a restored
+// checkpoint remembers, so no run of this life wears the name of one already on
+// the column.
+//
+// A RUN'S NAME IS NOT A ROW ID. Rows come from the graph's `seq`, which the
+// checkpoint carries across lives; a run's name is [Agent.orchestrateSeq], which
+// starts at one in every process because a run has never before outlived one.
+// Now that yesterday's rows come back, run 1 of today would sit beside run 1 of
+// yesterday under two different roots — and, worse, would write its nodes'
+// journals into that run's folder ([orchestrateJournalPath] keys on the
+// conversation and the name). One line at recovery keeps the names unique for as
+// long as the conversation is.
+func (a *Agent) reserveRunNames(records []runRecord) {
+	var highest uint64
+	for _, record := range records {
+		// Anything that is not a number is a run a test named by hand; there is
+		// nothing to reserve past it and nothing to be confused by.
+		if named, err := strconv.ParseUint(strings.TrimSpace(record.Run), 10, 64); err == nil && named > highest {
+			highest = named
+		}
+	}
+	if highest == 0 {
+		return
+	}
+	a.mu.Lock()
+	if a.orchestrateSeq < highest {
+		a.orchestrateSeq = highest
+	}
+	a.mu.Unlock()
+}
+
 func orchestrateFamilyURI(session, run string) string {
 	path := orchestrateJournalPath(session, run, "node")
 	if path == "" {
@@ -1486,7 +1605,7 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 		if !moved && !renamed {
 			continue
 		}
-		f.agent.emitTaskUpdate(TaskNotice{
+		f.publish(TaskNotice{
 			ID:     id,
 			Run:    f.run,
 			Node:   node.ID,
@@ -1540,7 +1659,7 @@ func (f *orchestrateFamily) sayForming() {
 	}
 	line, title := f.formingLocked(), f.title
 	f.mu.Unlock()
-	f.agent.emitTaskUpdate(TaskNotice{
+	f.publish(TaskNotice{
 		ID: f.root, Run: f.run, Title: title, State: TaskRunning, Model: f.model, Doing: line,
 	})
 }
@@ -1723,7 +1842,7 @@ func (f *orchestrateFamily) retire(live map[string]bool) {
 		// as ([orchestrateFamily.names]). Without it the last thing a surface heard
 		// about this row was nameless, and a row that lost its name at the moment it
 		// stopped is the row a person is most likely to be asking about.
-		f.agent.emitTaskUpdate(TaskNotice{
+		f.publish(TaskNotice{
 			ID: row.id, Run: f.run, Node: row.node, Parent: f.root,
 			Title: f.name(row.node, ""), State: TaskFailed, Stopped: true,
 		})
@@ -1765,7 +1884,7 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 			notice.Report = err.Error()
 		}
 	}
-	f.agent.emitTaskUpdate(notice)
+	f.publish(notice)
 	// AND THE PROJECT'S RECORD IS CLOSED IN THE SAME BREATH. The roster reads the
 	// notice above and the roster dies with the window; the index outlives it, and
 	// until this row is appended the file still says this run is running — which

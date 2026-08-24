@@ -25,7 +25,13 @@ import (
 // backgroundSentence is the one sentence the wrapper adds to pi's bash
 // description. One sentence, not a paragraph: the tool is pi's, and a model
 // that has read pi's description already knows what bash is.
-const backgroundSentence = " Run long-lived commands (servers, watchers) with background:true and query them with the jobs tool."
+// AND WHAT THE PERSON GETS OUT OF IT, because that is the fact that decides
+// whether this door is the right one. A job leaves a log and an exit code; a
+// task leaves a room, a row that says what the work is, and a report. A model
+// that only knows background:true exists will reach for it for any long thing,
+// which is how a multi-part research sweep became a shell command nobody could
+// watch.
+const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and query them with the jobs tool. A background job gives the person a quiet row on the right while it runs and leaves them its log and an exit code, and nothing else — work whose outcome is a deliverable somebody reads belongs to propose_task instead, which leaves them a room to watch and a report."
 
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
@@ -195,7 +201,7 @@ const (
 	jobsMaxTail     = 200
 )
 
-const jobsDescription = "Inspect background work: commands started with bash background:true, and watches started with the watch tool. Actions: 'list' — every job this session started, with id, kind, command, status (running, exited(N), killed, stopped) and elapsed time; 'output' — the last lines of one job's output (default 50, maximum 200) from an in-memory buffer of its last 64KB, which for a watch is the accumulated output of its ticks; 'kill' — SIGTERM the job's process group, then SIGKILL after 2 seconds, or stop a watch. The complete log of every job is a file on disk, named when the job started: read it with the read tool when the tail is not enough."
+const jobsDescription = "Inspect background work: commands started with bash background:true, and watches started with the watch tool. Actions: 'list' — every job this session started, with id, kind, command, status (running, exited(N), killed, stopped) and elapsed time; 'output' — the last lines of one job's output (default 50, maximum 200) from an in-memory buffer of its last 64KB, which for a watch is the accumulated output of its ticks; 'kill' — SIGTERM the job's process group, then SIGKILL after 2 seconds, or stop a watch. The complete log of every job is a file on disk, named when the job started: read it with the read tool when the tail is not enough. Every running job is also a row on the person's screen, beside the conversation, naming the command and its log — so they can see that something is going without asking, and they can see it settle when it ends."
 
 const jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"What to do: list, output, or kill","enum":["list","output","kill"]},"id":{"type":"number","description":"Job id (required for output and kill)"},"tail":{"type":"number","description":"Number of trailing output lines to return (default: 50, maximum: 200)"}},"required":["action"],"additionalProperties":false}`
 

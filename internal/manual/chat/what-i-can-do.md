@@ -207,6 +207,21 @@ Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).
 job is sent SIGTERM, given a shared 2-second grace, then killed. The log files
 under `<workspace>/.aforge-v3/jobs/` stay on disk for you to read afterwards.
 
+**You can see a job without asking.** Every job this conversation starts is also a row on
+the task column on the right, from the moment it starts until it ends — the command as its
+name, and `job 3 · log <path>` under it. A running job counts in the column's `N working`
+tail. It has no room to walk into and no `✕`: the log is where a job is read, and `jobs
+kill` is how one is ended. The tasks page has the whole of it under *Background jobs on the
+column*.
+
+**A job is the wrong door for work whose result is a deliverable.** What a background job
+can leave you is a log file and an exit code — there is nobody inside it writing anything,
+nothing to steer, and no report at the end. So a long command whose finishing *is* the
+outcome belongs here, and gathering, deciding, writing or checking something — however many
+parts it has, and however long it takes — belongs to a task instead, which gives you a room
+to watch and a report you can read. If a multi-part piece of work was started as a
+background command, say so: it can be handed to a task instead.
+
 ## Can you keep an eye on something and tell me when it changes?
 
 Yes. The `watch` tool runs a command on a timer and speaks **only when there is

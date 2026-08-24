@@ -404,7 +404,9 @@ Ten segments, right to left of the identity, joined by ` · ` in a fixed order:
 | 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
-still counted, because nothing on the wire says otherwise.
+still counted, because nothing on the wire says otherwise. For the state of one job rather
+than a tally, read the task column on the right: every job has a row there while it runs and
+settles when it ends — the tasks page has it under *Background jobs on the column*.
 
 The `open` count is read from the conversations themselves and not from the files other
 terminals leave behind, so it never lags: a conversation that stops on a question while you

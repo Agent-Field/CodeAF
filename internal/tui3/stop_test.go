@@ -380,6 +380,29 @@ func runStopApp(t *testing.T) (*app, *stopFake) {
 	return base, agent
 }
 
+// A RUN THIS SESSION CANNOT SEE OFFERS NOTHING TO STOP.
+//
+// A conversation reopened tomorrow redraws the rows of the runs it started, as
+// history (session's task_store.go). The session holds no orchestrator behind
+// them, so the page opens with no shape and the snapshot is the zero one —
+// neither done nor stopped — and the ✕ used to be drawn over it and answer
+// "there is no run … in this session".
+func TestARunThatEndedWithTheLastProcessOffersNoStop(t *testing.T) {
+	a, _ := runStopApp(t)
+	a.openOrchRoom("r9", "audit the pricing code")
+	a.touch()
+	run := a.orchOf()
+	if run == nil {
+		t.Fatal("the run's page did not open")
+	}
+	if run.known {
+		t.Fatalf("the page for a run this session never held came up knowing its shape")
+	}
+	if a.stopOffered() {
+		t.Fatal("a run that ended with the last process is still offering a stop")
+	}
+}
+
 // ── a stopped task, afterwards ──────────────────────────────────────────────
 
 // A NODE A PERSON STOPPED IS NOT A NODE THAT FAILED, in either place a person
