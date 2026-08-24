@@ -1081,7 +1081,7 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 // with the one line they already had.
 func (a *app) orchTranscriptDeck() deck {
 	run := a.orchOf()
-	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true}
+	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true, toolTail: a.roomToolTail()}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.
