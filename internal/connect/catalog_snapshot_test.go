@@ -103,14 +103,14 @@ func project(t *testing.T, info *ampsdk.ProviderInfo) *ampcatalog.ProviderInfo {
 // just the catalog's share of it.
 //
 // The snapshot changed where the keyed services' data comes from and nothing
-// else, so the browser-connected services — Google and the five tool servers,
+// else, so the browser-connected services — Google and the 26 tool servers,
 // registered by google.go and mcp_catalog.go and never near the catalog — must
 // still be there, by name. This is the assertion that would catch a change to
 // init ordering or to Register that a catalog-only test would sail past.
 //
 // The numbers are the census taken at this wave's merge base and are meant to
-// be hard to change by accident: 99 keyed services from the catalog, six
-// browser services, 105 in all.
+// be hard to change by accident: 99 keyed services from the catalog, 27
+// browser services, 126 in all.
 func TestRegistryStillHoldsEveryService(t *testing.T) {
 	byAuth := map[string]int{}
 	browser := []string{}
@@ -126,11 +126,17 @@ func TestRegistryStillHoldsEveryService(t *testing.T) {
 	if got := byAuth[AuthKey]; got != 99 {
 		t.Errorf("keyed services registered: %d, want 99", got)
 	}
-	wantBrowser := []string{"atlassian", "google", "linear", "notion", "sentry", "slack"}
+	wantBrowser := []string{
+		"airtable", "atlassian", "buildkite", "calendly", "canva", "circleci",
+		"clickup", "cloudflare", "gitlab", "google", "grafana", "heroku",
+		"huggingface", "klaviyo", "launchdarkly", "linear", "miro", "neon",
+		"netlify", "notion", "paypal", "posthog", "railway", "sanity", "sentry",
+		"supabase", "todoist",
+	}
 	if !reflect.DeepEqual(browser, wantBrowser) {
 		t.Errorf("browser services registered: %v, want %v", browser, wantBrowser)
 	}
-	if got := len(Registered()); got != 105 {
-		t.Errorf("services registered: %d, want 105", got)
+	if got := len(Registered()); got != 126 {
+		t.Errorf("services registered: %d, want 126", got)
 	}
 }

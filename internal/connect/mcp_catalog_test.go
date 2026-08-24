@@ -17,10 +17,15 @@ var machineryWords = []string{
 	"mcp", "protocol", "server", "token", "client id", "registration",
 }
 
-// The five, and the laws that hold for every one of them.
+// The 26, and the laws that hold for every one of them.
 func TestTheToolServersAreUsableAsTheyStand(t *testing.T) {
 	entries := mcpCatalog()
-	want := []string{"atlassian", "linear", "notion", "sentry", "slack"}
+	want := []string{
+		"airtable", "atlassian", "buildkite", "calendly", "canva", "circleci",
+		"clickup", "cloudflare", "gitlab", "grafana", "heroku", "huggingface",
+		"klaviyo", "launchdarkly", "linear", "miro", "neon", "netlify", "notion",
+		"paypal", "posthog", "railway", "sanity", "sentry", "supabase", "todoist",
+	}
 	var got []string
 	for _, entry := range entries {
 		got = append(got, entry.service.ID)
@@ -74,19 +79,23 @@ func TestTheToolServerLinesUseNoMachineryVocabulary(t *testing.T) {
 	}
 }
 
-// Slack's one extra fact is in front of the person before they try, because it
-// is the reason their sign-in may be refused by somebody who is not Slack.
-func TestSlackSaysWhoElseHasToAgree(t *testing.T) {
+// GitLab and Airtable put their one extra fact in front of the person before
+// they try, because it is the reason their sign-in may be refused by somebody
+// other than the person signing in.
+func TestGitLabAndAirtableSayWhoElseHasToAgree(t *testing.T) {
+	want := map[string]bool{"gitlab": true, "airtable": true}
 	for _, entry := range mcpCatalog() {
-		if entry.service.ID != "slack" {
+		if !want[entry.service.ID] {
 			continue
 		}
 		if !strings.Contains(strings.ToLower(entry.service.Blurb), "admin") {
-			t.Errorf("the line does not mention who else has to agree: %q", entry.service.Blurb)
+			t.Errorf("%s: the line does not mention who else has to agree: %q", entry.service.ID, entry.service.Blurb)
 		}
-		return
+		delete(want, entry.service.ID)
 	}
-	t.Fatalf("Slack is not in the list")
+	if len(want) != 0 {
+		t.Fatalf("the list is missing caveats for %v", want)
+	}
 }
 
 // They are on the one registry with everybody else, they are browser services,
@@ -137,11 +146,32 @@ func TestTheToolServersAreOnTheOneRegistry(t *testing.T) {
 // than a quiet edit nobody reviews.
 func TestTheAddressesAreTheOnesTheVendorsPublish(t *testing.T) {
 	want := map[string]string{
-		"notion":    "https://mcp.notion.com/mcp",
-		"linear":    "https://mcp.linear.app/mcp",
-		"sentry":    "https://mcp.sentry.dev/mcp",
-		"atlassian": "https://mcp.atlassian.com/v1/mcp/authv2",
-		"slack":     "https://mcp.slack.com/mcp",
+		"airtable":     "https://mcp.airtable.com/mcp",
+		"atlassian":    "https://mcp.atlassian.com/v1/mcp/authv2",
+		"buildkite":    "https://mcp.buildkite.com/mcp",
+		"calendly":     "https://mcp.calendly.com",
+		"canva":        "https://mcp.canva.com/mcp",
+		"circleci":     "https://mcp.circleci.com/v1/mcp",
+		"clickup":      "https://mcp.clickup.com/mcp",
+		"cloudflare":   "https://mcp.cloudflare.com/mcp",
+		"gitlab":       "https://gitlab.com/api/v4/mcp",
+		"grafana":      "https://mcp.grafana.com/mcp",
+		"heroku":       "https://mcp.heroku.com/mcp",
+		"huggingface":  "https://huggingface.co/mcp",
+		"klaviyo":      "https://mcp.klaviyo.com/mcp",
+		"launchdarkly": "https://mcp.launchdarkly.com/mcp/launchdarkly",
+		"linear":       "https://mcp.linear.app/mcp",
+		"miro":         "https://mcp.miro.com",
+		"neon":         "https://mcp.neon.tech/mcp",
+		"netlify":      "https://netlify-mcp.netlify.app/mcp",
+		"notion":       "https://mcp.notion.com/mcp",
+		"paypal":       "https://mcp.paypal.com/http",
+		"posthog":      "https://mcp.posthog.com/mcp",
+		"railway":      "https://mcp.railway.com/",
+		"sanity":       "https://mcp.sanity.io",
+		"sentry":       "https://mcp.sentry.dev/mcp",
+		"supabase":     "https://mcp.supabase.com/mcp",
+		"todoist":      "https://ai.todoist.net/mcp",
 	}
 	for _, entry := range mcpCatalog() {
 		if got := entry.address; got != want[entry.service.ID] {
