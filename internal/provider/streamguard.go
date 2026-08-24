@@ -26,6 +26,21 @@ import (
 //     What this counts instead is the model WRITING: a token of answer, a token
 //     of reasoning, a fragment of a tool call. Nothing else moves the clock.
 //
+//     BUT AN ENDPOINT SPEAKING IS NOT AN ENDPOINT GONE. Keepalive comments do
+//     not move the clock — they BUY PATIENCE instead, up to a hard cap. The
+//     distinction was measured on 2026-08-24: five of the sixteen endpoints
+//     serving one production model assemble a whole tool call server-side and
+//     deliver it as a lump, keepalives flowing the entire time; the largest gap
+//     seen was fifty seconds on a fourteen-kilobyte call that then FINISHED.
+//     Cutting those streams at the plain bound turned every big write into a
+//     guaranteed failure, three retries deep, while the answer was seconds from
+//     landing. So a quiet stream whose endpoint is still speaking is given
+//     [bufferedQuietBound] in total, and a quiet stream whose endpoint has
+//     stopped speaking too is cut at the plain bounds — that one really is a
+//     connection that is not coming back. The cap is what keeps the colon
+//     trickler from owning this loop forever: patience is bounded, and the
+//     bound is stated once, below.
+//
 //   - DEGENERATION. The model loses the thread and writes soup — a run of one
 //     letter, a paragraph repeated until the token budget is gone, words with
 //     three alphabets inside them. It is a real thing that happened to this
@@ -61,6 +76,14 @@ const (
 	// started writing has finished deciding, and forty-five seconds between two
 	// tokens of one sentence is a connection that is not coming back.
 	midStreamGapBound = 45 * time.Second
+	// bufferedQuietBound is the TOTAL quiet a stream may accumulate while its
+	// endpoint is still sending keepalives — the buffering case the header
+	// describes, where the answer is being assembled server-side and will land
+	// whole. Two and a half minutes covers every buffered delivery measured on
+	// 2026-08-24 (the slowest healthy one took eighty-six seconds end to end)
+	// with room for the bigger writes production makes, and it is still a
+	// bound: an endpoint that speaks forever and answers never is cut here.
+	bufferedQuietBound = 150 * time.Second
 )
 
 // stallFirstBound and stallGapBound are what the watchdog actually reads. The
@@ -68,8 +91,9 @@ const (
 // for the sentence a cut is named with — and these exist only so a test can
 // prove the machinery in milliseconds rather than in minutes.
 var (
-	stallFirstBound = firstDeltaBound
-	stallGapBound   = midStreamGapBound
+	stallFirstBound    = firstDeltaBound
+	stallGapBound      = midStreamGapBound
+	stallBufferedBound = bufferedQuietBound
 )
 
 // CutReason says which of the two things went wrong, and it is the only thing
@@ -94,8 +118,11 @@ const (
 type StreamCut struct {
 	Reason CutReason
 	// Waited is how long the stream was quiet, on the two silence reasons, and
-	// zero on CutBabble. It is the constant that fired rather than a measurement:
-	// the timer is what decided, so the timer's own bound is the honest figure.
+	// zero on CutBabble. It is the constant that fired rather than a measurement
+	// — the plain bound on an outright silence, [bufferedQuietBound] when
+	// keepalives bought the stream its full patience and it still never wrote —
+	// because the timer is what decided, and the timer's own bound is the
+	// honest figure.
 	Waited time.Duration
 }
 
@@ -166,24 +193,39 @@ func babbleGuardOn(ctx context.Context) bool {
 //
 // One timer, reset by the model writing anything. It fires at most once — the
 // cancel it pulls is the attempt's, and pulling it twice would be a second cut
-// of a stream that is already dead.
+// of a stream that is already dead. Keepalives never reset the timer: they are
+// weighed only when it fires, which is what keeps the hot read loop free of
+// timer traffic for lines that carry no answer.
 type stallWatch struct {
-	mu      sync.Mutex
-	timer   *time.Timer
-	cancel  context.CancelFunc
-	spoken  bool
-	tripped *StreamCut
+	mu     sync.Mutex
+	timer  *time.Timer
+	cancel context.CancelFunc
+	// clock exists so a test can hold time still while the timer machinery
+	// runs at millisecond bounds; everything real reads time.Now through it.
+	clock  func() time.Time
+	spoken bool
+	// quietSince is when the model last wrote — the birth of the watch until
+	// it has — and it is what the buffered cap is measured against: the cap
+	// bounds ACCUMULATED quiet, not the gap between two keepalives.
+	quietSince time.Time
+	// lastAlive is when the endpoint last said anything that was not an
+	// answer — a keepalive comment. Zero is an endpoint that never has.
+	lastAlive time.Time
+	tripped   *StreamCut
 }
 
 func newStallWatch(cancel context.CancelFunc) *stallWatch {
-	watch := &stallWatch{cancel: cancel}
+	watch := &stallWatch{cancel: cancel, clock: time.Now}
+	watch.quietSince = watch.clock()
 	watch.timer = time.AfterFunc(stallFirstBound, func() { watch.fire() })
 	return watch
 }
 
 // progress says the model wrote something. It restarts the clock at the
 // mid-stream bound, because from the first token onwards the question is about
-// gaps rather than about the wait to be served.
+// gaps rather than about the wait to be served — and it restarts the buffered
+// cap too, because the cap is about one quiet stretch, not about the whole
+// stream.
 func (w *stallWatch) progress() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -191,7 +233,21 @@ func (w *stallWatch) progress() {
 		return
 	}
 	w.spoken = true
+	w.quietSince = w.clock()
 	w.timer.Reset(stallGapBound)
+}
+
+// alive says the endpoint spoke without answering — a keepalive line. It only
+// stamps the time: whether that buys the stream anything is decided when the
+// timer fires, against the cap, so a trickle of comments can never hold the
+// watch open by itself.
+func (w *stallWatch) alive() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.tripped != nil {
+		return
+	}
+	w.lastAlive = w.clock()
 }
 
 func (w *stallWatch) fire() {
@@ -200,10 +256,38 @@ func (w *stallWatch) fire() {
 		w.mu.Unlock()
 		return
 	}
+	now := w.clock()
+	bound := stallFirstBound
 	if w.spoken {
-		w.tripped = &StreamCut{Reason: CutStalled, Waited: stallGapBound}
+		bound = stallGapBound
+	}
+	// THE EXTENSION, and its two conditions. The endpoint must still be
+	// speaking — a keepalive inside the bound that just elapsed — and the
+	// accumulated quiet must still be inside the cap. Both true, the timer is
+	// re-armed for the shorter of another bound and what remains of the cap;
+	// either false, the cut below is the answer. The re-arm happens with the
+	// lock held and the timer already fired, so it cannot race a second fire.
+	allowance := w.quietSince.Add(stallBufferedBound).Sub(now)
+	if now.Sub(w.lastAlive) <= bound && allowance > 0 {
+		wait := bound
+		if allowance < wait {
+			wait = allowance
+		}
+		w.timer.Reset(wait)
+		w.mu.Unlock()
+		return
+	}
+	// Waited is the figure that actually decided: the plain bound when the
+	// endpoint went silent outright, the cap when patience was extended and
+	// ran out — so the sentence a person reads matches the wait they watched.
+	waited := bound
+	if allowance <= 0 {
+		waited = stallBufferedBound
+	}
+	if w.spoken {
+		w.tripped = &StreamCut{Reason: CutStalled, Waited: waited}
 	} else {
-		w.tripped = &StreamCut{Reason: CutSilent, Waited: stallFirstBound}
+		w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	}
 	cancel := w.cancel
 	w.mu.Unlock()
