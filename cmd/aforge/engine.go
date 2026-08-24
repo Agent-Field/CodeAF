@@ -76,7 +76,11 @@ func runRemoteEngine(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path]")
+		// --daemon is deliberately not named here. It is how a host is started
+		// and nothing a person accomplishes by typing it, so the usage line
+		// offers the two flags somebody might mean and stays quiet about the
+		// one they would only ever mean by accident.
+		return fmt.Errorf("usage: aforge engine [--workspace path] [--session path] [--no-host]")
 	}
 
 	if *daemon {
