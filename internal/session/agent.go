@@ -347,10 +347,17 @@ func (a *Agent) Model() string {
 	return a.model
 }
 
-// SetModel swaps the model for subsequent turns. A turn in flight finishes on
-// the model it started on: runTurn latches the model once at the start and
-// every step and retry of that turn rides the latched value, so a swap made
-// while the agent is working lands at the next Submit.
+// SetModel swaps the model for subsequent turns. A swap made while the agent is
+// working lands at the next Submit: runTurn latches the model once at the start
+// and every step and retry of that turn rides the latched value, so nothing a
+// person types mid-turn changes the model the turn in flight is talking to.
+//
+// THE TURN ITSELF MAY STILL MOVE, and this is the one thing that moves it. A
+// step whose stream is cut over and over spends a budget and then hops to the
+// next model in the chain, announced, and the rest of that turn finishes there
+// (loop.go's completeWithRetry). It is a rescue and not a preference: what a
+// person set here is untouched, so the NEXT turn starts on the model they
+// picked, and the only way this field changes is somebody calling this.
 //
 // AND IT IS WHERE THE PICTURES ARE MADE SAFE. A conversation carrying attached
 // images carries them as base64 in the live transcript, re-sent on every step
@@ -405,9 +412,13 @@ func (a *Agent) ReasoningFor(model string) string {
 }
 
 // SetReasoning sets the level for the model now in use, for subsequent turns.
-// A turn in flight finishes on the level it started with, exactly as it
-// finishes on the model it started on: runTurn latches both once (loop.go), so
-// a change made while the agent is working lands at the next Submit.
+// A turn in flight keeps the level it started with, exactly as it keeps the
+// model it started on: runTurn latches both once (loop.go), so a change made
+// while the agent is working lands at the next Submit. The one thing that moves
+// either mid-turn moves BOTH — a step that hops to a fallback model re-reads the
+// level held for that model, because a level is a choice about a model and
+// carrying one across would be asking the new model for something nobody set on
+// it (see [Agent.SetModel]).
 //
 // An unrecognized level is ignored rather than cleared. The two callers are a
 // picker that can only produce the four it draws and a flag the door has
@@ -1078,6 +1089,22 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// FallbackModels passes the adapter's chain through, and answers nil for an
+// inner completer that has none ([modelChain]).
+//
+// The wrapper is the one thing every request this agent makes goes through,
+// which makes it the one thing standing between the turn loop and the models the
+// adapter would move to. A wrapper that quietly swallowed the chain would leave
+// a person who wrote a `models.fallbacks` row watching a turn die on a model
+// that could not answer it.
+func (f sessionCompleter) FallbackModels(model string) []string {
+	chain, ok := f.inner.(modelChain)
+	if !ok {
+		return nil
+	}
+	return chain.FallbackModels(model)
 }
 
 // Close ends the session: an in-flight turn is cancelled and waited for,

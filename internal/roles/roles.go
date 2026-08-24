@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Role is one named auxiliary LLM call.
@@ -396,23 +397,113 @@ func Resolve(src Source, role Role, sessionDefault string) (string, error) {
 // of the ladder, and [Resolve] is this function with the level dropped — which
 // is the correct behaviour for every caller that has no way to send one.
 func ResolveCall(src Source, role Role, sessionDefault string) (Call, error) {
+	rungs, err := Ladder(src, role, sessionDefault)
+	if err != nil {
+		return Call{}, err
+	}
+	return rungs[0], nil
+}
+
+// Ladder is the WHOLE of [ResolveCall]'s ladder — every rung that resolves,
+// most specific first — rather than only the rung that wins.
+//
+// It exists because the ladder answers two questions, not one. "Which model
+// answers this call" is the first rung and is what almost every caller wants.
+// "AND WHAT IF THAT MODEL CANNOT ANSWER AT ALL" is the rest of the list, and it
+// is a real question: a role pinned to a small model that is down, or a tier
+// pointing at a slug an account has lost access to, used to fail the errand
+// outright while the model the person is talking to sat there able to do it.
+//
+// Repeats are removed, so a rung naming the model a higher rung already named
+// is not a rung — falling through to the same id is one more identical request
+// and a second identical failure. That is also why this is the fall-through and
+// not a list of every configured model: what follows a rung is what the person
+// configured to follow it, not a guess.
+//
+// The first rung is exactly what [ResolveCall] used to compute, so a caller that
+// only wants that is byte-for-byte where it was. A non-empty slice or an error:
+// never both, never neither.
+func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 	tier, ok := TierOf(role)
 	if !ok {
-		return Call{}, fmt.Errorf("%w: %q", ErrUnknownRole, role)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownRole, role)
+	}
+	var rungs []Call
+	seen := map[string]bool{}
+	add := func(candidate Call) {
+		model := strings.TrimSpace(candidate.Model)
+		if model == "" || seen[model] {
+			return
+		}
+		seen[model] = true
+		rungs = append(rungs, candidate)
 	}
 	if value, ok := read(src, PinKey(role)); ok {
-		return call(value), nil
+		add(call(value))
 	}
 	if value, ok := read(src, TierKey(tier)); ok {
-		return call(value), nil
+		add(call(value))
 	}
 	// THE SESSION MODEL IS NOT SPLIT. It is the id a running conversation is on,
 	// and whatever effort that conversation was dialled to belongs to the person
 	// who typed into it, not to an errand this package is routing.
-	if model := strings.TrimSpace(sessionDefault); model != "" {
-		return Call{Model: model}, nil
+	add(Call{Model: strings.TrimSpace(sessionDefault)})
+	if len(rungs) == 0 {
+		return nil, fmt.Errorf("%w for role %q", ErrNoModel, role)
 	}
-	return Call{}, fmt.Errorf("%w for role %q", ErrNoModel, role)
+	return rungs, nil
+}
+
+// ── how long one call on a tier is worth waiting for ────────────────────────
+
+// Patience is the OUTER BOUND on one call of a role's tier, and it exists
+// because the adapter's own bound cannot be one: a completion is bounded by a
+// figure scaled off its output cap, between five and fifteen minutes
+// (internal/provider's adaptiveCompletionTimeout), which is the right answer for
+// a person's turn and an absurd one for the eight words a session names itself.
+// A title that has not arrived in two minutes is not a title that is coming.
+//
+// IT IS DERIVED FROM THE TIER AND NEVER FROM THE ROLE. A tier is already the
+// statement of what a class of call is worth — cheap and constant, or few and
+// worth thinking about — and a table of per-role seconds would be a second
+// place saying the same thing, drifting the first time somebody adds a role.
+//
+// It is an OUTER bound, not a budget. A caller that knows its own call is
+// tighter still says so and wins, because two deadlines on one context leave the
+// nearer one in force: the guardian's ten seconds and the task namer's twenty
+// are facts about those calls that no tier can know.
+func Patience(tier Tier) time.Duration {
+	switch tier {
+	case TierReflex:
+		// Twice per exchange, forever, in front of a person who is waiting for
+		// their own turn behind it. A reflex call that takes a minute has
+		// already cost more than the answer is worth.
+		return 45 * time.Second
+	case TierHigh:
+		// Long enough for a compaction summary over a full window — the one
+		// call on this tier that legitimately reads a great deal before it
+		// writes anything.
+		return 5 * time.Minute
+	case TierMastermind:
+		// A planner reading a whole run, or a designer writing a page everybody
+		// afterwards runs. These are the calls worth waiting for, and this is
+		// still a bound.
+		return 10 * time.Minute
+	default:
+		return 2 * time.Minute
+	}
+}
+
+// PatienceFor is [Patience] for a role, and the ordinary way to ask. An
+// unregistered role gets the cheap tier's answer rather than no bound at all:
+// the caller is already about to fail on [Ladder]'s ErrUnknownRole, and a
+// missing bound is the one outcome worse than a short one.
+func PatienceFor(role Role) time.Duration {
+	tier, ok := TierOf(role)
+	if !ok {
+		return Patience(TierLow)
+	}
+	return Patience(tier)
 }
 
 // Pinned reports a role's explicit pin — rung 1 of the ladder on its own, for

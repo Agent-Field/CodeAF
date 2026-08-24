@@ -124,6 +124,20 @@ type StreamCut struct {
 	// because the timer is what decided, and the timer's own bound is the
 	// honest figure.
 	Waited time.Duration
+	// Rerouted says the ledger ACTED on this cut: the endpoint that went quiet
+	// was named on the wire and struck out of the (model, endpoint) lane, so the
+	// very next attempt is encoded away from it (velocity.go's noteCutProvider).
+	//
+	// It exists for one question a layer above has to answer before it moves a
+	// turn to another MODEL — has endpoint diversity actually been tried? Two
+	// different things make the answer no and both land here as false: `routing
+	// off`, where the ledger is switched off by the person's own instruction,
+	// and a stream that died before any chunk named its provider, where there
+	// was nothing to strike. In both, asking the same model again lands on the
+	// same lane deterministically, and the honest move is to stop asking it
+	// sooner. The decision itself is not this package's — internal/session's
+	// loop.go states the rule — and this is the one fact it cannot see.
+	Rerouted bool
 }
 
 func (c *StreamCut) Error() string {

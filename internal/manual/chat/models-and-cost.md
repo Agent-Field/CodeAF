@@ -343,10 +343,38 @@ Two things worth knowing:
 
 - **A change is live.** The next call aforge makes on its own uses it — whether you changed
   it in the panel, with `/crew`, or by asking. It used to land on the next session, and it no
-  longer does. A turn already in flight finishes on what it started with.
+  longer does. A turn already in flight finishes on what it started with: nothing you change
+  lands in the middle of one. The one thing that *can* move a turn mid-flight is aforge
+  rescuing it from a model that has stopped answering — see *The model went quiet*.
 - Naming a model in the sentence outranks all of it for that piece of work. `orchestrate
   the migration with opus` runs the planner *and* every node on opus; `make a harness for
   triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
+
+## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
+
+The calls aforge makes on its own — the session's name, the two or three words a task is
+called, the judge that reads a turn, the planner sizing a piece of work — used to be
+abandoned outright when the model the ladder picked could not answer: a role pinned to a
+small model that was down cost you the name and said nothing, while the model you were
+talking to sat there able to do it.
+
+Now the call **falls through one rung of the same ladder** and asks again: pin, then the
+class's model, then the model you are talking to. That last rung is the floor, and it is a
+model that demonstrably works — it is the one answering your own turns. The cost lands
+against the model that actually answered, not the one that refused, so `/cost` and the
+usage rows reconcile.
+
+**One rung, and then the failure is real.** A ladder walked to the bottom on every errand
+would turn one bad minute at a provider into three charges and three waits for an answer
+nobody asked for. Nothing is said on screen either way — these are errands you did not ask
+for, and there is no state for "a small thing did not work".
+
+**Each of these calls also has its own patience**, taken from its class rather than from a
+per-call setting: a reflex call has **45s**, a cheap-class call **2m**, a capable-class one
+**5m**, and a mastermind call **10m**. Some calls set something tighter still and keep it —
+the guardian answers in ten seconds or not at all. What this replaced was the ordinary
+five-to-fifteen-minute bound a completion carries, which is right for your own turn and
+absurd for eight words of title.
 
 ## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
 
@@ -361,8 +389,12 @@ where **one model has to answer for the whole run** — comparing two models aga
 other, timing a benchmark cell, or attributing a cost.
 
 It settles four things on your model: the four crew classes, any role you pinned, the model
-that work leaving the conversation runs on, and the fallback chain aforge would otherwise hop
-to when a model refuses the request outright.
+that work leaving the conversation runs on, and the fallback chain aforge would otherwise
+move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
+not on a reply that keeps stalling, not on rate limiting that will not clear — because a
+run whose cost is being attributed to one model cannot have finished a single reply on
+another. That includes the catalog's own guess: with no `fallback models` row written, an
+ordinary run falls back to the nearest same-class model, and this flag withholds that too.
 
 **It changes no setting and writes nothing.** Your crew rows and pins are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
@@ -424,17 +456,78 @@ A cut request is asked again **twice**. When the router named the endpoint that 
 quiet, that endpoint is avoided on the retry so another endpoint serving the same model
 can answer. The screen says `trying again · 12s` while it is (see *What is on the
 screen*), and a dim line lands saying `nothing came back from the model — asking again`
-or `the model went quiet mid-reply — asking again`. If all three attempts come back with
-nothing, the turn ends:
+or `the model went quiet mid-reply — asking again`.
+
+**If all three attempts come back with nothing, aforge finishes the reply on another
+model** — the next one in your `fallback models` row, or the nearest same-class model in
+the catalog when you have written no row. It is said out loud before it happens, naming
+where the rest of the answer is coming from:
 
 ```
-error: nothing came back from the model in 1m30s, three times. a different model may answer — /model
+the model kept going quiet mid-reply — finishing this one on openai/gpt-5-mini
+```
+
+The turn finishes there and the cost lands against the model that actually answered. **It
+is a rescue, not a choice you made**: your model is untouched, `/status` still shows it,
+and your next message goes back to it. If it keeps stalling, `/model` is how you move for
+good.
+
+Only when there is nowhere to go — you are on `--one-model`, or no chain resolves — does
+the turn end instead:
+
+```
+error: nothing came back from the model in 1m30s, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
+```
+
+And when the fallbacks could not finish it either, the sentence says so rather than
+repeating advice already taken:
+
+```
+error: nothing came back from the model in 1m30s, three times. openai/gpt-5-mini and anthropic/claude-sonnet-4 could not finish it either — /model to pick another one yourself
 ```
 
 These retries are **their own budget**. A request nobody answered is not evidence that the
 endpoint is failing, so it does not spend the three retries a real provider error gets.
 
-## The model was printing garbage — a reply that repeats itself or comes back as gibberish
+**Sometimes it moves after two attempts instead of three.** Three attempts are worth
+making only when they can reach *different* endpoints. If the stream died before naming
+which endpoint served it, or you have set `routing` to `off` on the **Providers** tab, then
+nothing is being routed around and the next attempt lands in exactly the same place — so
+aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
+switches off **endpoint** steering; it does not switch off moving to another model.
+
+## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
+
+A provider that answers `429` is pacing aforge, not failing. That is not an error, so the
+call waits and comes back rather than giving up: up to **six attempts** or **two minutes**,
+whichever runs out first, for a turn you are sitting in front of. Work that left the
+conversation gets far more — see *How a task actually runs*.
+
+Two things happen while it waits. If the refusal names *which* endpoint hit its limit —
+routers often do, when the limit is one provider's shared pool rather than your account —
+that endpoint is avoided on every request after it, so the next attempt queues somewhere
+else. And the wait itself is capped at a minute however long the provider asked for, so a
+provider naming tomorrow morning does not park your turn.
+
+**When that patience runs out, aforge tries the next model in your `fallback models` row**
+rather than handing you the refusal. It says so on the same line a refusal uses:
+
+```
+Retry 1/1: Falling back to openai/gpt-5-mini
+```
+
+With no chain to move to, you get the provider's own words and the status, which is what
+this did before:
+
+```
+error: after 6 attempts: API error (429): rate limit exceeded
+```
+
+This only covers *pacing*. A server fault — a `500`, a `503`, a torn connection — keeps the
+short patience it always had and never moves your model: a broken endpoint is not a claim
+that the model cannot answer.
+
+## The model was printing garbage — a reply that repeats itself, started repeating the same line over and over, or comes back as gibberish
 
 A model can lose the thread and stop writing language: one line or one letter repeated
 until the token budget is gone, or words with two and three alphabets inside them. It
@@ -445,8 +538,14 @@ So aforge watches the reply as it arrives and cuts it where it went wrong. **Non
 text is kept**: it is not in the conversation, not in the session file, not sent back to
 the model, and it comes off your screen. A dim line says so —
 `the reply lost its thread — that text was dropped, asking again` — and the same question
-is asked **once** more. If the second reply comes apart too, the turn ends in the sentence
-that says what to do about it:
+is asked **once** more. If the second reply comes apart too, aforge finishes it on the next
+model in your `fallback models` row, saying so first:
+
+```
+the reply kept losing its thread — finishing this one on openai/gpt-5-mini
+```
+
+With nowhere to go, the turn ends in the sentence that says what to do about it instead:
 
 ```
 error: the reply lost its thread twice — it came back as repetition and jumbled text, so none of it was kept. a different model may hold it (/model), or /compact to lighten the conversation
@@ -454,7 +553,8 @@ error: the reply lost its thread twice — it came back as repetition and jumble
 
 Both doors are real. A different model is different weights on the same conversation;
 `/compact` is the same weights on a shorter one, and length is the condition this happens
-in.
+in — which is why `/compact` is still worth doing even after a fallback model has rescued
+the turn.
 
 **What it will not cut.** Fenced code blocks are never judged, so a page of zeros, a long
 test log, a generated table or a big JSON dump is safe however repetitive it is. Neither

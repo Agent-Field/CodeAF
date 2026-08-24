@@ -184,7 +184,12 @@ func TestANameThatNeverArrivesLeavesTheRowAsItWas(t *testing.T) {
 		{"the path handed straight back", apath},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			client := &scriptedCompleter{steps: []step{tc.step}}
+			// BOTH RUNGS ANSWER THE SAME WAY. An errand that fails falls
+			// through the roles ladder once (auxiliary.go), so "never arrives"
+			// is the tier's model and then the session's, and a script with one
+			// step in it would be testing the fall-through landing rather than
+			// the row being left alone.
+			client := &scriptedCompleter{steps: []step{tc.step, tc.step}}
 			agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
 			ran := make(chan uint64, 4)
 			graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node.id })
@@ -363,5 +368,95 @@ func waitForNamedRow(updates <-chan Event, id uint64, name string) bool {
 		case <-deadline:
 			return false
 		}
+	}
+}
+
+// ── THE LADDER FALLS THROUGH ONCE ───────────────────────────────────────────
+//
+// A role pinned to a model that is down used to cost the errand outright, with
+// the model the person is talking to sitting there able to do it. It now costs
+// one rung.
+
+func TestAnErrandFallsThroughToTheNextRungAndBillsTheModelThatAnswered(t *testing.T) {
+	const sentence = "read /Users/me/src and say what the parser does"
+	var asked []string
+	record := func(model string, fail bool) step {
+		return func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			asked = append(asked, model)
+			if fail {
+				return nil, errors.New("that model is down")
+			}
+			return textResponse("parser recon"), nil
+		}
+	}
+	client := &scriptedCompleter{steps: []step{
+		record("cheap/model", true),
+		record("test/model", false),
+	}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+	ran := make(chan uint64, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node.id })
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: sentence, summary: "read the parser", brief: "Read the parser.", acceptance: "a note",
+	})
+	select {
+	case <-ran:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the admitted node never ran")
+	}
+	if !nameLanded(func() bool { return graph.node(id).title() == "parser recon" }) {
+		t.Fatalf("the name never landed; the row reads %q", graph.node(id).title())
+	}
+	// THE RUNGS, IN ORDER: the tier's model, then the model the conversation is
+	// on — and never a third, because one fall-through is the whole budget.
+	if len(asked) != 2 || client.model(0) != "cheap/model" || client.model(1) != "test/model" {
+		t.Fatalf("the calls rode %v; want the tier's model then the session's",
+			[]string{client.model(0), client.model(1)})
+	}
+}
+
+// AND THE ANSWERING MODEL IS WHAT THE CALLER BILLS. Every caller of callRole
+// hands the returned id to addAuxiliaryUsage, so a charge on the row of a model
+// no request ever reached is a bill nobody could reconcile.
+func TestCallRoleReportsTheModelThatAnswered(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, errors.New("down") },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("ok"), nil },
+	}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+
+	response, answered, err := agent.callRole(context.Background(), roles.RoleTaskName, "test/model",
+		[]ai.Message{textMessage("user", "name this")})
+	if err != nil || response == nil {
+		t.Fatalf("the fall-through did not land: %v", err)
+	}
+	if answered != "test/model" {
+		t.Fatalf("the call reports %q, want the rung that actually answered", answered)
+	}
+	// AND ONE RUNG IS THE WHOLE BUDGET: a ladder walked to the bottom on every
+	// errand would turn one bad minute at a provider into three charges.
+	failing := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, errors.New("down") },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, errors.New("down") },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("late"), nil },
+	}}
+	stubborn, _ := newTestAgent(t, failing, func(c *Config) {
+		c.RolesSource = func(key string) (string, bool) {
+			switch key {
+			case roles.PinKey(roles.RoleTaskName):
+				return "pinned/model", true
+			case roles.TierKey(roles.TierLow):
+				return "cheap/model", true
+			}
+			return "", false
+		}
+	})
+	if _, _, err := stubborn.callRole(context.Background(), roles.RoleTaskName, "test/model",
+		[]ai.Message{textMessage("user", "name this")}); err == nil {
+		t.Fatal("a third rung answered; one fall-through is the whole budget")
+	}
+	if failing.requests() != 2 {
+		t.Fatalf("requests = %d, want the resolved rung and exactly one below it", failing.requests())
 	}
 }

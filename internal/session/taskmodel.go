@@ -338,5 +338,37 @@ func taskModelRescueNote(model, fallback string) string {
 // rather than a repair round's. A repair says what gap it is closing, in the
 // work's own words; only this one is about a model.
 func isTaskModelRescueNote(note string) bool {
-	return strings.HasPrefix(note, "model ") && strings.Contains(note, taskModelRescueSays)
+	if !strings.HasPrefix(note, "model ") {
+		return false
+	}
+	// BOTH RESCUES, because both are this machinery's own sentence about a model
+	// and both are things a person's explicit pick takes back down. A repair
+	// round's `mend` says what gap it is closing, in the work's own words, and is
+	// neither of these.
+	return strings.Contains(note, taskModelRescueSays) || strings.Contains(note, taskModelMovedSays)
+}
+
+// ── the move, and its own sentence ──────────────────────────────────────────
+
+// taskModelMovedSays is the middle of [taskModelMovedNote], and it is the whole
+// of what recognising one costs — the same bargain [taskModelRescueSays] makes.
+const taskModelMovedSays = " could not answer; using "
+
+// taskModelMovedNote is the line a node's row carries after its worker died on
+// a provider that could not answer and the work was run again somewhere else
+// (task_run.go's [Agent.workTaskNode]). It is the rescue note's twin: same
+// shape, same reader, a different reason.
+func taskModelMovedNote(model, next string) string {
+	return "model " + model + taskModelMovedSays + next
+}
+
+// taskModelMovedSentence is the same fact for the REPORT rather than the row —
+// the paragraph a person reads on the card when the work lands, or on the
+// failure when it does not.
+//
+// It names BOTH models on purpose. A card whose cost, voice and quality all
+// belong to a model the person never chose and is never told about is a card
+// they cannot reconcile against anything.
+func taskModelMovedSentence(from, to string) string {
+	return from + " stopped answering, so this ran again on " + to
 }

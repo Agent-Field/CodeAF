@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -20,6 +21,34 @@ import (
 // The schedule is 2s, 4s, 8s (baseDelayMs=2000 * 2**(attempt-1)).
 const maxRetries = 3
 const retryBaseDelay = 2 * time.Second
+
+// ── what a cut stream is worth asking again ─────────────────────────────────
+//
+// A stream the guard cut (internal/provider's streamguard.go) is a different
+// kind of failure from a torn connection: the request never failed, so there is
+// nothing to back off from, and the transport's three attempts are the wrong
+// budget for it. The figures are internal/session's, SPELLED THE SAME WAY here
+// rather than shared, because that package imports this one and the reverse
+// would be a cycle — the reason every constant in this file is a copy of one.
+//
+// A cut used to end a bare run outright: its text matches no retryable pattern,
+// so it fell through to the "this will never work" branch and the whole run died
+// on an endpoint that had simply gone quiet.
+//
+// WHAT IS DELIBERATELY NOT HERE is the model hop internal/session makes when
+// this budget is spent. A hop is only honest if it is ANNOUNCED — the rest of
+// the answer arrives in a different voice, at a different price — and this loop
+// has no lane to announce anything on. An unannounced model change is the one
+// thing that layer's law forbids, so a spent budget here is the error it was.
+const (
+	silentRetries = 2
+	babbleRetries = 1
+	// blindRetries is the budget when nothing was routed away from the endpoint
+	// that went quiet: `routing off`, or a stream that died before naming its
+	// provider. Two attempts that could only land in the same place are one
+	// attempt with a wait in front of it.
+	blindRetries = 1
+)
 
 // ── compaction constants (pi spec §5) ────────────────────────────────────────
 
@@ -294,6 +323,11 @@ func (l *loopState) toolDefinitions() []ai.ToolDefinition {
 // _prepareRetry pops the failing assistant message from agent.state.messages).
 func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinition) (*ai.Response, error) {
 	var lastErr error
+	// cuts counts the attempts the STREAM GUARD ended, apart from the transport
+	// attempts: a cut is not evidence that the endpoint is failing, so it must
+	// not shorten the patience a real fault gets. rerouted says at least one of
+	// them took an endpoint out of the ledger, which is what decides the budget.
+	cuts, rerouted := 0, false
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		response, err := l.client.CompleteWithMessages(ctx, l.messages, ai.WithTools(defs))
 		if err == nil {
@@ -304,6 +338,22 @@ func (l *loopState) completeWithRetry(ctx context.Context, defs []ai.ToolDefinit
 		// Context cancelled — stop immediately.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+
+		// THE GUARD'S CUT, ANSWERED HERE. The transcript is append-only and the
+		// failing response was never appended, so a cut re-enters this loop
+		// through the same door a fault does with nothing of the dead attempt
+		// left behind.
+		if cut, isCut := provider.CutFrom(err); isCut {
+			if cut.Rerouted {
+				rerouted = true
+			}
+			if cuts >= cutBudget(cut, rerouted) {
+				return nil, err
+			}
+			cuts++
+			attempt--
+			continue
 		}
 
 		// Classify the error.
@@ -566,4 +616,22 @@ func snip(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// cutBudget is how many times a cut of this kind is worth asking again, given
+// whether anything was routed away from the endpoint that failed. It is
+// internal/session's rule, spelled the same way for the reason the constants
+// above are: this package cannot import that one.
+//
+// Degeneration is the one reason the endpoint question says nothing about: soup
+// is a claim about the transcript and the weights reading it, never about which
+// endpoint delivered it.
+func cutBudget(cut *provider.StreamCut, rerouted bool) int {
+	if cut.Reason == provider.CutBabble {
+		return babbleRetries
+	}
+	if !rerouted {
+		return blindRetries
+	}
+	return silentRetries
 }
