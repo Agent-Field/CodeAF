@@ -32,15 +32,17 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many services can be connected
 
-**105 services register in this build: 99 are connected with a pasted key, and 6 are
+**126 services register in this build: 99 are connected with a pasted key, and 27 are
 connected in a browser.**
 
-The six browser ones are **Google** (Gmail and Calendar) and the five tool servers
-**Notion, Linear, Sentry, Atlassian** and **Slack**. The 99 key services come from
-the bundled connectors catalog and are filed under eleven categories: `crm`,
-`support`, `billing`, `marketing`, `sales & outreach`, `calls & meetings`,
-`analytics`, `hr & recruiting`, `developer`, `productivity`, `communication`. A
-service with none of these is shown under `other`.
+The 27 browser ones are **Google** (Gmail and Calendar) and the 26 tool servers
+**Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
+GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro, Neon,
+Netlify, Notion, PayPal, PostHog, Railway, Sanity, Sentry, Supabase** and **Todoist**.
+The 99 key services come from the bundled connectors catalog and are filed under
+eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
+`calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
+`communication`. A service with none of these is shown under `other`.
 
 Every menu is ordered by name, case-insensitive — never registration order.
 
@@ -65,9 +67,9 @@ Google's consent screen is forced every time, because Google only issues a refre
 key on a fresh grant. A connection short of a permission is not a connection: you are
 put back through the sign-in rather than left to fail at the far end.
 
-**Notion, Linear, Sentry, Atlassian and Slack need nothing registered first.** aforge
-introduces itself to the service at connect time and is issued an identity on the
-spot, then makes the same browser trip.
+**The 26 tool servers listed below need nothing registered first.** aforge introduces
+itself to the service at connect time and is issued an identity on the spot, then
+makes the same browser trip.
 
 **With a key.** Nothing opens and nothing renews; the key is as good as the day it
 was made. Most services want one key and nothing else. A few whose address contains
@@ -242,26 +244,51 @@ of you. A tool server appears in `/connect` as a browser connection like any oth
 connected with the same sign-in, forgotten with the same disconnect, and its keys live
 in the same store file.
 
-Five ship, each at the address on the vendor's own page:
+Twenty-six ship, each at the address on the vendor's own page:
 
 | Service | Address | What it brings |
 | --- | --- | --- |
-| Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
-| Linear | `https://mcp.linear.app/mcp` | your issues, projects and cycles |
-| Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
+| Airtable | `https://mcp.airtable.com/mcp` | your bases, tables and records |
 | Atlassian | `https://mcp.atlassian.com/v1/mcp/authv2` | Jira issues and Confluence pages |
-| Slack | `https://mcp.slack.com/mcp` | your channels, messages and search |
+| Buildkite | `https://mcp.buildkite.com/mcp` | your pipelines, builds and logs |
+| Calendly | `https://mcp.calendly.com` | your event types, availability and scheduled meetings |
+| Canva | `https://mcp.canva.com/mcp` | your designs, folders and brand kits |
+| CircleCI | `https://mcp.circleci.com/v1/mcp` | your pipelines, workflows and build logs |
+| ClickUp | `https://mcp.clickup.com/mcp` | your tasks, lists and docs |
+| Cloudflare | `https://mcp.cloudflare.com/mcp` | your zones, DNS records and Workers |
+| GitLab | `https://gitlab.com/api/v4/mcp` | your projects, issues and merge requests |
+| Grafana | `https://mcp.grafana.com/mcp` | your dashboards, queries and alerts |
+| Heroku | `https://mcp.heroku.com/mcp` | your apps, dynos and add-ons |
+| Hugging Face | `https://huggingface.co/mcp` | your models, datasets and Spaces |
+| Klaviyo | `https://mcp.klaviyo.com/mcp` | your campaigns, flows and audiences |
+| LaunchDarkly | `https://mcp.launchdarkly.com/mcp/launchdarkly` | your feature flags, segments and environments |
+| Linear | `https://mcp.linear.app/mcp` | your issues, projects and cycles |
+| Miro | `https://mcp.miro.com` | your boards, frames and notes |
+| Neon | `https://mcp.neon.tech/mcp` | your projects, branches and queries |
+| Netlify | `https://netlify-mcp.netlify.app/mcp` | your sites, deploys and domains |
+| Notion | `https://mcp.notion.com/mcp` | your pages, databases and search |
+| PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
+| PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
+| Railway | `https://mcp.railway.com/` | your projects, services and deployments |
+| Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
+| Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
+| Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
+| Todoist | `https://ai.todoist.net/mcp` | your tasks, projects and labels |
 
-Slack's own line adds: "Your workspace admin may have to approve it first."
+GitLab's own line adds: "Your GitLab admin may have to turn its AI features on first."
+Airtable's adds: "An enterprise admin may have to allow it first."
 
-**All five work with zero registration.** aforge introduces itself to the service at
+**All 26 work with zero registration.** aforge introduces itself to the service at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one service cannot be spent at another.
 
 **GitHub is deliberately not shipped** — its sign-in does not let a program introduce
-itself, so it would need an application registered by hand. Any service whose sign-in
-refuses that introduction cannot be connected this way at all, and aforge says so in
-one sentence the moment you ask.
+itself, and its maintainers say that will not change, so it can return only with an
+application registered by hand in a later wave. **Slack is deliberately not shipped
+either** — Slack says its sign-in does not yet let a program introduce itself. It can
+return if Slack allows that introduction, or with an application registered by hand in
+a later wave. Any service whose sign-in refuses that introduction cannot be connected
+this way at all, and aforge says so in one sentence the moment you ask.
 
 An identity is reused only when the service address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
