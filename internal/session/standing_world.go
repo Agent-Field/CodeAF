@@ -27,10 +27,41 @@ import (
 // names for the same orders and the person has none.
 const standingWorldHeading = "Standing orders"
 
-// standingWorldIntro is the sentence under the heading, and it is the whole of
-// what a model has to understand about the lines below it: WHOSE they are, that
-// they did not arrive with this piece of work, and that they are not advice.
-const standingWorldIntro = "These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within them."
+// ── THE TWO REGISTERS, AND WHY AN ORDER'S KIND PICKS ONE ────────────────────
+//
+// ONE INTRO OVER EVERY KIND WAS A SENTENCE THAT WAS TRUE OF ONE OF THEM. A HOLD
+// is the only kind that never wakes: "always use tabs here" has no moment, no
+// rhythm and no probe, and its whole work is done at birth — here, riding into
+// the world of the work that starts ([standing.WhenHold] says exactly that). It
+// IS a condition over this place, and the binding sentence below is the honest
+// one for it. The other five kinds are APPOINTMENTS: a moment, a rhythm, a file
+// that changed, a quiet machine, a look at the world. Each of them is answered
+// by the pass on its own clock and none of them is a rule anybody is working
+// under, so "remind me at 6 to check the deploy" arriving in a worker's brief as
+// a condition it must work within made every task in the project more cautious
+// for a reason the person never asked for.
+//
+// SO THE KIND DECIDES THE SENTENCE AND NOTHING ELSE DOES. No status, no
+// altitude, no second reading of reach — which of these orders govern this place
+// is [standing.Store.Applicable]'s one question (this file's header) and asking
+// any part of it again here would be the drift that header exists to prevent.
+// What is read is ONE FIELD against ONE NAME, and everything that is not a hold
+// takes the softer register: an order whose kind this build cannot read is not a
+// house rule.
+
+// standingWorldHolding is the sentence a HOLD rides under, and it is the whole
+// of what a model has to understand about the lines below it: WHOSE they are,
+// that they did not arrive with this piece of work, and that they are not
+// advice.
+const standingWorldHolding = "These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within them."
+
+// standingWorldWaiting is the sentence every other kind rides under. It says
+// the same two things about whose they are and how long they last, and then it
+// says the one thing the binding sentence must not say about an appointment:
+// that it is not asking this worker for anything. A reminder is worth knowing
+// about — it is what the person has going on around this work — and it is not a
+// condition on the work.
+const standingWorldWaiting = "These are the person's own standing orders over this place, each waiting on a moment, a rhythm or a change of its own. They are here so you know what stands; none of them is a condition over this work and none asks anything of you now."
 
 // standingWorldReport is the closing line a TASK's section carries and a
 // conversation's does not. A node works with nobody to ask, so an order it
@@ -43,21 +74,32 @@ const standingWorldReport = "If you cannot honour one of these, say so in your r
 // forty orders over a project has a working agreement, not a preamble.
 const standingWorldMost = 8
 
-// renderStandingWorld is the section itself: the heading, the sentence that says
-// whose these are, one order per line, and the caller's closing line.
+// renderStandingWorld is the section itself: the heading, the orders that hold
+// under the sentence that binds, the orders that are waiting under the sentence
+// that does not, and the caller's closing line.
 //
 // THE EMPTINESS LAW. No orders is NO SECTION — not an empty heading, not "none"
 // — because a brief that says nothing stands over it has spent tokens saying
-// there is nothing to say.
+// there is nothing to say. A tier with nothing in it is the same law one level
+// down: no rows, no sentence introducing them.
 //
-// LONGEST-STANDING FIRST, AND THAT IS THIS SECTION'S ORDER AND NOT THE PAGE'S.
-// The /standing page leads with what the person touched most recently, because
-// a page is about what they are thinking about now. A world section is about
-// what the work must obey, and there the settled conditions lead: an order that
-// has stood for months is the house rule, and the one made this morning is
-// already in the conversation above. It is also what makes the clip honest —
-// when there are more than [standingWorldMost], the ones that survive are the
-// ones that have been true the longest.
+// THE HOLDS LEAD, AND THAT IS THE ONE THING THE TIERS REORDER. A worker reads
+// what it must obey before it reads what the person has going on, because the
+// first is the only half of this section that can change what it does.
+//
+// LONGEST-STANDING FIRST WITHIN EACH TIER, AND THAT IS THIS SECTION'S ORDER AND
+// NOT THE PAGE'S. The /standing page leads with what the person touched most
+// recently, because a page is about what they are thinking about now. A world
+// section is about what the work must obey, and there the settled conditions
+// lead: an order that has stood for months is the house rule, and the one made
+// this morning is already in the conversation above.
+//
+// AND WHEN SOMETHING MUST GO, IT IS NEVER A HOLD. The clip exists because a
+// preamble has a budget ([standingWorldMost]), and the rows that must survive it
+// are the ones that govern the work — eight reminders crowding out the one rule
+// in the project would be this section spending its whole allowance on the half
+// that asks for nothing. Within the holds, and within what room is left for the
+// rest, the longest-standing still survive.
 //
 // ONE ORDER IS ONE LINE. A compiled prompt may be written across several lines,
 // and a list whose rows are paragraphs is a list nothing can count, so the
@@ -65,25 +107,52 @@ const standingWorldMost = 8
 func renderStandingWorld(items []standing.Item, closing string) string {
 	kept := append([]standing.Item(nil), items...)
 	sort.SliceStable(kept, func(a, b int) bool { return kept[a].Created.Before(kept[b].Created) })
-	lines := make([]string, 0, len(kept))
+	var holding, waiting []string
 	for _, item := range kept {
-		if folded := strings.Join(strings.Fields(item.Prompt()), " "); folded != "" {
-			lines = append(lines, folded)
+		folded := strings.Join(strings.Fields(item.Prompt()), " ")
+		if folded == "" {
+			continue
 		}
+		if item.When.Kind == standing.WhenHold {
+			holding = append(holding, folded)
+			continue
+		}
+		waiting = append(waiting, folded)
 	}
-	if len(lines) == 0 {
+	if len(holding)+len(waiting) == 0 {
 		return ""
 	}
 
-	var out strings.Builder
-	out.WriteString(standingWorldHeading + ":\n\n" + standingWorldIntro + "\n\n")
 	over := 0
-	if len(lines) > standingWorldMost {
-		over = len(lines) - standingWorldMost
-		lines = lines[:standingWorldMost]
+	if total := len(holding) + len(waiting); total > standingWorldMost {
+		over = total - standingWorldMost
+		if len(holding) > standingWorldMost {
+			holding, waiting = holding[:standingWorldMost], nil
+		} else {
+			waiting = waiting[:standingWorldMost-len(holding)]
+		}
 	}
-	for _, line := range lines {
-		out.WriteString("- " + line + "\n")
+
+	var out strings.Builder
+	out.WriteString(standingWorldHeading + ":\n\n")
+	written := false
+	for _, tier := range []struct {
+		intro string
+		lines []string
+	}{{standingWorldHolding, holding}, {standingWorldWaiting, waiting}} {
+		if len(tier.lines) == 0 {
+			continue
+		}
+		if written {
+			// The tiers are separated by a blank line, so the second sentence
+			// reads as an opening and not as one more row of the list above it.
+			out.WriteString("\n")
+		}
+		written = true
+		out.WriteString(tier.intro + "\n\n")
+		for _, line := range tier.lines {
+			out.WriteString("- " + line + "\n")
+		}
 	}
 	if over > 0 {
 		out.WriteString("…" + strconv.Itoa(over) + " more\n")
