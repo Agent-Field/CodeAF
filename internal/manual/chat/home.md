@@ -56,11 +56,14 @@ Four ways, and each of them is you saying which conversation you mean:
 | `aforge chat --once "text"` | one reply, printed; no surface at all |
 | `aforge --host <machine>` | the far machine's session, no home |
 
-And on a machine with only one conversation — a first run — home stays out of the way by
-itself. There is no setting for this and no flag to turn it off: whether home greets you
-follows from how you launched and what the machine holds, both of which answer themselves.
+And on a machine with only one conversation — a first run — home does not greet you.
+There is no setting for this and no flag to turn it off: whether home greets you follows
+from how you launched and what the machine holds, both of which answer themselves.
 
-Once you are in a conversation, `/home` opens the screen whenever you want it.
+Not being greeted is not the same as being out of reach. Once you are in a conversation,
+`/home` — or `space` twice on an empty box — opens the screen whenever you want it, on a
+machine with one conversation and on one with none; what opens there is an empty home
+rather than nothing (see *Home is empty — what an empty home shows*).
 
 ## Everything I have ever worked on — what home shows
 
@@ -264,8 +267,11 @@ Neither line ever announces that something is missing; nothing on this surface d
 `? ask here` and `+ start a new conversation` against it, at every width — no strips, no
 headings, no tiers.
 
-A machine with no conversations on it yet has neither strip: it says
-`nothing here yet — say something and this fills up` and nothing else.
+A machine with no conversations on it yet keeps both strips wherever a width draws them —
+at 110 columns and wider each label stands in its own column with its teaching line under
+it — and the places column says `nothing here yet — say something and this fills up`
+where the first project's rows will be, over two rows split at the dash. An empty home is
+the same screen with fewer rows, never a different screen.
 
 ## The three columns on a wide home — needs you, the projects, the card
 
@@ -1207,13 +1213,14 @@ space is all there is.
 It works with a turn running. Home takes the frame the way the settings panel does, and the
 answer goes on streaming underneath — `esc` puts you back in it, still running.
 
-Two things it will not do: it does nothing when the box already has words in it, and it
-does nothing on a machine with nowhere else to go.
+Two things it will not do: it does nothing when the box already has words in it, and it is
+not bound at all over `--host`, where home refuses (*Home on a fresh machine, and over
+--host*). It works on a machine with one conversation, and on one with none — what opens
+there is an empty home.
 
 ## What does pressing space twice do — the home door at the foot of a conversation
 
-When the box is empty and there is somewhere else to go, the dim line between the
-conversation and the box reads exactly:
+When the box is empty, the dim line between the conversation and the box reads exactly:
 
 ```
 space space home · / commands
@@ -1228,17 +1235,72 @@ advertised.
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
 
-It does not appear at all on a machine whose only conversation is the one you are in — the
-same rule that keeps home from greeting a first run. A door that is drawn is a door that
-goes somewhere.
+It appears on a fresh machine too, from the first minute: a machine with one conversation
+or with none still has a home to go to, and a door that is drawn is a door that goes
+somewhere. The one session it never appears in is one over `--host`, where home refuses.
+The rule that keeps home from *greeting* a first run is a different rule — not being
+greeted by home and not being able to reach it are two different things.
 
-**And it arrives the moment there is somewhere to go.** The question is asked again every
-time this window moves you to another conversation, so the first `/new` — or a row opened
-off the welcome box — brings both the gesture and the line, in the session you are already
-sitting in. It used to be asked only at launch and while home was open, which meant a
-launch that found nowhere to go shut the door for the rest of the session even after you
-had started a second conversation yourself. A second conversation minted by *another*
-window while this one sits idle is still not noticed until this one moves.
+## space space does nothing — why the gesture did not open home
+
+Four reasons, and the machine holding nothing is not one of them any more:
+
+- **The box had something in it.** The gesture fires only when the second space arrives to
+  find a box holding exactly one space. ` x` and then two spaces is three characters.
+- **It was a paste.** Pasted text arrives whole and never reaches the key router, so two
+  leading spaces in a paste are two spaces (*Is there a key for home?*).
+- **The session is over `--host`.** Home refuses there — the projects it would read are on
+  this computer and the work is on the other — so the gesture is not bound and the foot
+  does not advertise it.
+- **Home is already open.** On home, space is a character in the search box.
+
+A machine with one conversation, or with none, opens home all the same: an empty home is
+a screen (*Home is empty — what an empty home shows*), not a refusal. It used to be
+otherwise — the gesture stayed inert until the machine held a second conversation — and
+that rule is gone.
+
+## how do I get back to home with one chat
+
+Three ways, and they all work from the first minute on a fresh machine:
+
+- `space` twice on an empty message box
+- `/home`
+- a click on the words `space space home` in the dim line above the box
+
+The launch itself does not greet you with home while the only conversation on the machine
+is the one it just opened — that is a rule about greeting, not about reach — so on a
+machine with one chat, home is something you go to rather than something you land on.
+What you find there is that chat, under its project, with its card on the right saying
+`open here`.
+
+## home is empty — what an empty home shows
+
+A machine that has held nothing yet draws the same screen a full one does, with nothing in
+its rows:
+
+- the top line, with the time on the right
+- at 80 columns and wider, `needs you` and `moving` standing where they always stand; at
+  110 and wider each in its own column with its teaching line — `questions and landed
+  work`, `turns, tasks and watches`
+- `nothing here yet — say something and this fills up` where the first project's rows
+  will be, dim, in the places column — over two rows, split at the dash, so the column
+  never cuts it short
+- the box at the foot reading `type to search or start something new · ↑↓ pick · enter
+  open`, and the key line under it
+
+Typing there works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
+conversation: "…"` rise out of the box, and `enter` starts the conversation. The arrows
+have nothing to land on until there is a row; `esc` goes back to the conversation.
+
+A machine with one conversation — the one you are in — is not empty, and home does not
+say it is: the conversation is on the list under its project, from its first minute and
+before anything has been said in it, with `open here` on its card. The conversation on
+this terminal is always on the list.
+
+**And the door never waits for a second conversation.** The gesture and the line are there
+from the first minute on this machine, whatever it holds, and stay there through every
+`/new` and every row opened off the welcome box; the only things that shut the door are
+`--host` and home being already open (*space space does nothing*).
 
 ## Is there a key for home?
 
@@ -1385,8 +1447,11 @@ is. Nothing at all is said when nobody has it.
 
 ## Home on a fresh machine, and over --host
 
-A machine that has held nothing yet draws one line:
-`nothing here yet — say something and this fills up`.
+A machine that has held nothing yet draws an empty home — the top line, the two strips
+wherever the width draws them, `nothing here yet — say something and this fills up` where
+the rows will be, and the box and keys at the foot (*home is empty — what an empty home
+shows* has the whole screen). The conversation you opened it from is on it as soon as
+there is one.
 
 Over `--host` home refuses to open and says
 `home shows this machine's projects, and this session is on another`. The projects it

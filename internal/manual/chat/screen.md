@@ -255,16 +255,17 @@ compete. It is the same in every hint the slot carries, in home's foot hint, in 
 legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
-**At rest it carries the two doors out of the conversation.** With an empty box and
-somewhere else on the machine to go, it reads exactly:
+**At rest it carries the two doors out of the conversation.** With an empty box, it reads
+exactly:
 
 ```
 space space home · / commands
 ```
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
-words does the same; `/` opens the command list. The home half is dropped when there is
-nowhere else to go, leaving just `/ commands`, and the whole slot gives way the moment you
+words does the same; `/` opens the command list. It is there on a fresh machine from the
+first minute — an empty home is still a home. The home half is dropped only over `--host`,
+where home refuses, leaving just `/ commands`, and the whole slot gives way the moment you
 type or a state above claims it. It costs no row either way — this line is on the frame
 regardless.
 
