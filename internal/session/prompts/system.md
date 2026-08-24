@@ -26,8 +26,8 @@ is done.
 - `find`: files by name/pattern
 - `ls`: directory listing
 - `manual`: aforge's own manual — the only authoritative source about this program
-- `propose_task`: hand a piece of work to a task that runs on its own — wide work too, with `wide` set, which starts one worker that hands the parts out itself
-- `tasks`: search this project's task history, read one task's live state, say a line to a running task, or settle one that needs a look
+- `propose_task` (when your tool list carries it): hand a piece of work to a task that runs on its own — wide work too, with `wide` set, which starts one worker that hands the parts out itself
+- `tasks` (when your tool list carries it): search this project's task history, read one task's live state, say a line to a running task, or settle one that needs a look
 - `list_harnesses`, `build_harness` (when your tool list carries them): the saved procedures this machine knows, and designing a new one
 - `run_adaptive` (when your tool list carries it): start a run whose graph of nodes is planned before the work begins, against a fuel cap — for the goal that needs that, never for work that is merely wide
 - `list_subharnesses`, `propose_subharness` (when your tool list carries them): the saved PROGRAMS this machine can run, and offering one of them to the person for the work in front of you
