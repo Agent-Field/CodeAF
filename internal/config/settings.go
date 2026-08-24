@@ -221,24 +221,25 @@ const (
 	// The silence watchdog beside it has no row: a request that produced nothing
 	// at all has failed by any reading.
 	KeyReplyGuard = "reply.guard"
-	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
-	// or a planner cutting the work into pieces that run at once (internal/tui3's
-	// taskcommand.go). Shipped, it starts ONE WORKER — a small sizing call reads
-	// the brief first, and a yes from it arms that worker to hand the work out
-	// mid-run once it has opened the material and found the width is real
-	// (internal/session's task_divide.go).
+	// KeyTaskStart is what a bare `/task <brief>` COSTS TO SHAPE, and it is no
+	// longer a question about shape at all (internal/tui3's taskcommand.go).
+	// Every answer starts ONE WORKER. What the answers differ in is whether a
+	// small sizing call reads the brief first, because a yes from that call is
+	// what arms the worker to hand the work out mid-run once it has opened the
+	// material and found the width is real (internal/session's task_divide.go).
 	//
 	// It is a row because the question is not really about one task. Somebody who
-	// wants the work planned into pieces before anybody starts wants that every
-	// time; somebody who does not want the sizing call on their bill is refusing
-	// it every time. Both are a preference stated once, and the row is where you
-	// state it.
+	// does not want the sizing call on their bill is refusing it every time, and
+	// that is a preference stated once rather than on every `/task`.
 	//
-	// NOBODY IS ASKED ANY MORE, whichever answer is set. The row used to decide
-	// who chose the shape, because a two-row card opened on a yes; the card is
-	// gone and a wide task divides itself as it runs, so what is left here is
-	// which shape starts and what it costs to find out — `single` skips the
-	// sizing call outright and takes one worker on the brief's own words.
+	// THE PLANNED-GRAPH ANSWER IS GONE, and with it the last way a preference
+	// could open an adaptive run behind somebody's back. A `/task` takes one road
+	// now — one worker that divides itself from the material — and the planner
+	// road is reached only by somebody typing a request for a run outright, which
+	// the session reads off an anchored cue in the message itself (internal/session's
+	// orchestrate.go). No stored preference is on that road at all. A profile still
+	// holding the retired word reads as the default, silently, the way any word
+	// this build does not know reads ([TaskStartAt]).
 	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router
@@ -508,33 +509,40 @@ var TaskSettleModes = []string{TaskSettleAsk, TaskSettleAuto}
 // DefaultTaskSettle is ask.
 const DefaultTaskSettle = TaskSettleAsk
 
-// The three answers to [KeyTaskStart], and they are not three settings but one
-// question asked once instead of on every `/task`: what a bare `/task` starts,
-// and what it pays to find out.
+// The two answers to [KeyTaskStart], and they are not two settings but one
+// question asked once instead of on every `/task`: what a bare `/task` pays to
+// find out before its one worker starts.
 //
 //	sized      one worker, with the sizing call read over the brief first. A yes
 //	           from it arms that worker to hand the work out as it goes, once it
 //	           has opened the material and found the width is real — so wide work
 //	           runs wide without a planner ever being asked to guess at it.
-//	adaptive   a planner, without asking: parts found, the adaptive run starts;
-//	           none found, one worker starts, because a planner over work that
-//	           cannot be split is a whole extra model deciding nothing.
 //	single     one worker, and the sizing call is not made at all. The work can
 //	           still divide itself, but only off what its own brief already says
 //	           (internal/splitgate), because nothing was read over it.
 //
-// THE OLD FOURTH ANSWER WAS `ask`, and it is gone with the card it named: a yes
-// from the sizing call used to raise a two-row chooser, and now it starts the
-// one worker armed. A profile still holding the word reads as the default, which
-// is the same one worker it would have got by dismissing that card.
+// THERE WERE FOUR, AND BOTH THE RETIRED ONES NAMED A CARD OR A ROAD THAT IS
+// GONE. `ask` went with the two-row chooser a yes from the sizing call used to
+// raise; `adaptive` went with the planned-graph road itself, which a chat turn
+// may no longer open at all. Neither retirement is allowed to be felt: a profile
+// still holding either word reads as the default, silently, because [TaskStartAt]
+// treats a word this build does not know as no answer at all — and being told
+// that a preference set months ago is now an error is the one thing a retirement
+// must never do.
+// NEITHER RETIRED WORD IS SPELLED HERE, and `ask` set that precedent: a constant
+// for a word nothing may write, nothing may offer and nothing may resolve to is a
+// name the next reader has to be told is not a mode. The retirement needs no
+// constant to work — it is [TaskStartModes] not containing the word, which is
+// what the sheet, [writeChoice] and [TaskStartAt] all read.
 const (
-	TaskStartSized    = "sized"
-	TaskStartAdaptive = "adaptive"
-	TaskStartSingle   = "single"
+	TaskStartSized  = "sized"
+	TaskStartSingle = "single"
 )
 
-// TaskStartModes lists them, the default first.
-var TaskStartModes = []string{TaskStartSized, TaskStartAdaptive, TaskStartSingle}
+// TaskStartModes lists what may be chosen, the default first. The retired word
+// is not in it, and that absence is the whole mechanism — the sheet's choices,
+// the writer's validation and the resolver all read this one list.
+var TaskStartModes = []string{TaskStartSized, TaskStartSingle}
 
 // DefaultTaskStart is sized: one worker that knows whether it is allowed to
 // divide, which is the shape the measured road is built around.
@@ -1474,13 +1482,11 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
 			Label: "starting a task", Choices: TaskStartModes,
-			Hint: "what /task <brief> starts. sized is the default: the brief is read for " +
-				"width first and one worker starts either way, and a brief with parts in it " +
-				"starts a worker that can hand them out once it has opened the material. " +
-				"adaptive plans the pieces up front instead, and starts one worker when there " +
-				"is nothing to split. single starts one worker and skips the reading " +
-				"altogether. /task solo and /task adaptive still say so outright whatever " +
-				"this is set to.",
+			Hint: "what /task <brief> pays to find out. sized is the default: the brief " +
+				"is read for width first and one worker starts either way, and a brief with " +
+				"parts in it starts a worker that can hand them out once it has opened the " +
+				"material. single starts that one worker and skips the reading altogether. " +
+				"/task solo still says so outright whatever this is set to.",
 			read:  func() string { return TaskStartAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},
@@ -2818,6 +2824,12 @@ func TaskSettleAt(profileDir string) string {
 // value this build does not recognise reads as the default rather than as an
 // error, because the row decides what a command does and a typo in a config file
 // must not be a command that refuses.
+//
+// THAT RULE IS ALSO HOW A RETIREMENT IS PAID FOR. `adaptive` and `ask` were both
+// answers here once; taking a word out of [TaskStartModes] is the whole of
+// retiring it, because a profile that still holds one falls through this loop
+// and reads as [DefaultTaskStart] — no migration, no error, and nothing said to
+// somebody about a preference they set months ago.
 func TaskStartAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyTaskStart); ok {
 		value = strings.ToLower(strings.TrimSpace(value))

@@ -792,17 +792,12 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 		t.Errorf("propose_task's schema has no wide argument: %s", task.Schema)
 	}
 
-	run, found := onBelt(agent, "run_adaptive")
-	if !found {
-		t.Fatal("the belt has no run_adaptive")
-	}
-	// IT STAYS, AND IT STAYS EXPLICIT. The exception has to be reachable — a
-	// person who asks for a planned graph gets one — and it has to say that it
-	// is the exception, or width reaches for it again.
-	for _, want := range []string{"THIS IS THE EXCEPTION", "merely WIDE", "propose_task"} {
-		if !strings.Contains(run.Description, want) {
-			t.Errorf("run_adaptive never says %q, so it still reads as the way to parallelize", want)
-		}
+	// AND THERE IS NOTHING ELSE ON THE BELT TO REACH FOR. `run_adaptive` used to
+	// sit beside propose_task carrying a paragraph about being the exception, and
+	// a paragraph is a weaker instrument than an absence: the verb is off the belt
+	// now (tools_harness.go), so width has nowhere else to go.
+	if _, found := onBelt(agent, "run_adaptive"); found {
+		t.Error("run_adaptive is back on the belt, so wide work has a planner to reach for again")
 	}
 
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
@@ -810,14 +805,23 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	if !strings.Contains(systemPrompt, "WIDE WORK") || !strings.Contains(systemPrompt, "with `wide`") {
 		t.Error("prompts/system.md does not route wide work to propose_task")
 	}
-	if !strings.Contains(systemPrompt, "deliberate exception, not the way to") {
-		t.Error("prompts/system.md does not name run_adaptive as the exception")
+	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
+	// planner was the exception, which is a sentence that only makes sense while
+	// the verb is there to be excepted; the verb is gone, so what the prompt owes
+	// the model is the plain fact plus the road that replaced it.
+	if !strings.Contains(systemPrompt, "THERE IS NO PLANNER ON YOUR BELT") {
+		t.Error("prompts/system.md does not tell the model it has no planner")
 	}
-	// And the sentence that produced the live reflex is gone rather than merely
-	// argued with somewhere else on the page.
+	if !strings.Contains(systemPrompt, "Wide\nwork is one task that hands its own parts out once the material shows the width\nis real") {
+		t.Error("prompts/system.md does not name the road that replaced the planner")
+	}
+	// And the sentences that produced the live reflex are gone rather than merely
+	// argued with somewhere else on the page — the verb itself included, because a
+	// prompt that still spells it is a prompt promising a hand the belt withheld.
 	for _, gone := range []string{
 		"Independent parts that share one goal and one synthesis: ONE adaptive run",
 		"the parallelism is already built",
+		"run_adaptive",
 	} {
 		if strings.Contains(systemPrompt, gone) {
 			t.Errorf("prompts/system.md still says %q", gone)

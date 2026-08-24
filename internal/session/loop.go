@@ -442,11 +442,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.maybeCompact(ctx, hub)
 			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
 			// in words alone: should that have been WORK? A second small model reads
-			// what was asked and the shape of what came back, and a yes raises one
-			// card offering to start it (route_judge.go). It launches nothing on its
-			// own, it is silent when it cannot work, and it is asked before the turn
-			// is sealed so that the card lives exactly as long as the turn does —
-			// which is how every other question this loop can raise behaves.
+			// what was asked and the shape of what came back, and a yes STARTS it as
+			// a task and says so on the transcript (route_judge.go). It is silent
+			// when it cannot work, it is rate-limited to one start every few turns,
+			// and it is asked before the turn is sealed so that the work it starts is
+			// on the rail by the time the person reads the answer.
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:

@@ -5,14 +5,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // THE ROUTE JUDGE, on the two questions it exists to get right: does it fire at
-// all, and does the card it raises start the thing it named.
+// all, and does a yes actually START the work rather than offering it.
 //
 // The completer here dispatches on the SYSTEM PROMPT rather than on request
 // order, because a turn is not one call any more — the answer, the judge, and
@@ -81,19 +80,19 @@ func ordinaryRequests(completer *scriptedCompleter) int {
 	return ordinary
 }
 
-// routeRun is the adaptive runner as these tests hold it: what it was asked for,
-// and how much of somebody's money it was handed.
+// routeRun is the adaptive runner as these tests hold it. IT EXISTS TO STAY
+// EMPTY: there is one road out of the judge now, and a runner wired behind every
+// one of these sessions is what makes "nothing reached the planner" an assertion
+// rather than an assumption about how the agent happened to be built.
 type routeRun struct {
 	mu    sync.Mutex
 	goals []string
-	caps  []float64
 }
 
-func (r *routeRun) start(_ context.Context, goal, _ string, capDollars float64) (string, error) {
+func (r *routeRun) start(_ context.Context, goal, _ string, _ float64) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.goals = append(r.goals, goal)
-	r.caps = append(r.caps, capDollars)
 	return "1", nil
 }
 
@@ -103,53 +102,81 @@ func (r *routeRun) started() []string {
 	return append([]string(nil), r.goals...)
 }
 
-// routeAgent is a watched conversation with an adaptive runner behind it.
-func routeAgent(t *testing.T, completer Completer) (*Agent, *routeRun) {
+// routeAgent is a watched conversation with an adaptive runner behind it and a
+// graph that runs its nodes instantly, which is every yes-shaped test's setup:
+// the judge admits straight to the graph now, so an un-stubbed one would spin up
+// a real worker on a scripted completer.
+func routeAgent(t *testing.T, completer Completer) (*Agent, *routeRun, *ran) {
 	t.Helper()
 	runs := &routeRun{}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.OrchestrateRunner = runs.start
 	})
-	return agent, runs
+	nodes := &ran{}
+	stubbedGraph(agent, func(node *TaskNode) {
+		nodes.add(node.id)
+	})
+	return agent, runs, nodes
 }
 
-// drainAnsweringRoute drains one turn, answering every offer as it arrives.
-func drainAnsweringRoute(t *testing.T, agent *Agent, events <-chan Event, run bool) []Event {
+// ran is the set of nodes a stubbed graph actually started, read under a lock
+// because the frontier turns on a goroutine of its own.
+type ran struct {
+	mu  sync.Mutex
+	ids []uint64
+}
+
+func (r *ran) add(id uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ids = append(r.ids, id)
+}
+
+func (r *ran) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.ids)
+}
+
+// noCard fails if anything on the stream asked the person a question. THE CARD
+// IS GONE and its absence is the point of the wave: a surface that still drew
+// one would mean somebody has to press a key before work that has already
+// started.
+func noCard(t *testing.T, collected []Event) {
 	t.Helper()
-	var collected []Event
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case event, open := <-events:
-			if !open {
-				return collected
-			}
-			collected = append(collected, event)
-			if event.Kind == EventHarnessOffer {
-				agent.ResolveHarness(event.ID, run, "")
-			}
-		case <-deadline:
-			t.Fatalf("the turn never finished; events so far: %v", kinds(collected))
-			return nil
-		}
+	if _, ok := firstOfKind(collected, EventHarnessOffer); ok {
+		t.Fatalf("a card was raised: %v", kinds(collected))
+	}
+	if _, ok := firstOfKind(collected, EventTaskProposal); ok {
+		t.Fatalf("a proposal was raised: %v", kinds(collected))
 	}
 }
 
-const routeYes = `{"work": true, "shape": "adaptive", "goal": "audit every package's pricing code and report what is wrong", "why": "research across every package"}`
+// routeNotice is the told-after line, or "" if the turn never said anything.
+func routeNotice(collected []Event) string {
+	for _, event := range collected {
+		if event.Kind == EventNotice && strings.Contains(event.Text, "task ") {
+			return event.Text
+		}
+	}
+	return ""
+}
 
-// A WORDY TURN ABOUT REAL WORK: the judge is asked, one card is raised, and a
-// yes reaches the same runner run_adaptive reaches — on the default tank,
-// because nobody named one.
-func TestTheJudgeOffersAfterAToolLessTurn(t *testing.T) {
+const routeYes = `{"work": true, "goal": "audit every package's pricing code and report what is wrong", "why": "research across every package"}`
+
+// A WORDY TURN ABOUT REAL WORK: the judge is asked, the task STARTS, and the
+// person is told it started. Nobody was offered anything and nobody pressed a
+// key.
+func TestTheJudgeStartsWorkAfterAToolLessTurn(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
-	agent, runs := routeAgent(t, completer)
+	agent, runs, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	collected := drainAnsweringRoute(t, agent, events, true)
+	collected := collect(t, events)
 
 	if completer.asked() != 1 {
 		t.Fatalf("the judge was asked %d times", completer.asked())
@@ -160,44 +187,67 @@ func TestTheJudgeOffersAfterAToolLessTurn(t *testing.T) {
 		!strings.Contains(question, "Here is what I would look at.") {
 		t.Fatalf("the judge was shown %q", question)
 	}
-	offer, ok := firstOfKind(collected, EventHarnessOffer)
-	if !ok {
-		t.Fatalf("no card was raised; events: %v", kinds(collected))
+	noCard(t, collected)
+	// The admission STARTS the node on its own goroutine (TaskGraph.runFrontier),
+	// so this is something another goroutine will do shortly — polled to a
+	// deadline rather than read on the beat the stream closed, which is a race
+	// the test loses whenever the machine is busy enough to schedule it late.
+	waitFor(t, "the task the judge started to run", func() bool { return nodes.count() == 1 })
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
 	}
-	if offer.Text != "adaptive run" || offer.Hint != "research across every package" {
-		t.Fatalf("the card says %q / %q", offer.Text, offer.Hint)
+	// The brief is the judge's goal, whole: whoever runs it cannot see this
+	// conversation.
+	if node.spec.brief != "audit every package's pricing code and report what is wrong" {
+		t.Fatalf("the node's brief is %q", node.spec.brief)
 	}
-	started := runs.started()
-	if len(started) != 1 || !strings.HasPrefix(started[0], "audit every package's pricing code") {
-		t.Fatalf("the runner was handed %v", started)
+	if strings.TrimSpace(node.spec.acceptance) == "" {
+		t.Fatal("a node was admitted with no acceptance at all")
 	}
-	runs.mu.Lock()
-	cap := runs.caps[0]
-	runs.mu.Unlock()
-	if cap != orchestrateDefaultCap {
-		t.Fatalf("the run opened on $%v, want the default tank", cap)
+	// AND THEY ARE TOLD, in one line that says why work began that they did not
+	// ask for.
+	notice := routeNotice(collected)
+	if !strings.Contains(notice, "this looked like work") || !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the turn said %q about the work it started", notice)
+	}
+	if started := runs.started(); len(started) != 0 {
+		t.Fatalf("the judge reached a planner: %v", started)
 	}
 	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
 		t.Fatalf("the turn never ended: %v", kinds(collected))
 	}
 }
 
-// A NO IS FREE: the card came down, nothing started, and the turn is the turn
-// the person already had.
-func TestANoOnTheCardStartsNothing(t *testing.T) {
-	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
-	agent, runs := routeAgent(t, completer)
+// AN "ADAPTIVE" ANSWER IS NOT A SHAPE ANY MORE. The word came off the wire with
+// the road it named, so a judge that still writes one is answering a question
+// this brief does not ask: the field is dropped, the yes is still a yes, and the
+// task it starts is the same task any other yes starts. Nothing reaches a
+// planner, because from here nothing can.
+func TestAnAdaptiveShapedVerdictIsNoLongerAShape(t *testing.T) {
+	const verdict = `{"work": true, "shape": "adaptive", "goal": "audit every package's pricing code and report what is wrong", "why": "research across every package"}`
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: verdict}
+	agent, runs, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	collected := drainAnsweringRoute(t, agent, events, false)
-	if _, ok := firstOfKind(collected, EventHarnessOffer); !ok {
-		t.Fatalf("no card was raised; events: %v", kinds(collected))
+	collected := collect(t, events)
+
+	noCard(t, collected)
+	waitFor(t, "the task an adaptive-shaped yes started", func() bool { return nodes.count() == 1 })
+	if node := agent.graph().node(1); node == nil {
+		t.Fatal("an adaptive-shaped yes admitted nothing")
 	}
 	if started := runs.started(); len(started) != 0 {
-		t.Fatalf("a no started %v", started)
+		t.Fatalf("the word \"adaptive\" still opened a planner: %v", started)
+	}
+	// And the brief the judge was given never taught it the word in the first
+	// place — a field the code ignores is a field the prompt must not ask for.
+	if strings.Contains(routeJudgeBrief, "adaptive") || strings.Contains(routeJudgeBrief, "shape") {
+		t.Fatal("the judge's brief still teaches a shape nothing reads")
 	}
 }
 
@@ -205,21 +255,22 @@ func TestANoOnTheCardStartsNothing(t *testing.T) {
 // feature costs a conversation of short questions exactly nothing.
 func TestTheJudgeIgnoresATrivialTurn(t *testing.T) {
 	completer := &routeCompleter{answer: "Any time.", verdict: routeYes}
-	agent, runs := routeAgent(t, completer)
+	agent, _, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), "thanks, that helps")
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	collected := drainAnsweringRoute(t, agent, events, true)
+	collected := collect(t, events)
 	if completer.asked() != 0 {
 		t.Fatalf("the judge was asked about a three-word turn")
 	}
-	if _, ok := firstOfKind(collected, EventHarnessOffer); ok {
-		t.Fatalf("a card was raised on a trivial turn: %v", kinds(collected))
+	noCard(t, collected)
+	if nodes.count() != 0 {
+		t.Fatal("a trivial turn started work")
 	}
-	if started := runs.started(); len(started) != 0 {
-		t.Fatalf("a trivial turn started %v", started)
+	if agent.graph().node(1) != nil {
+		t.Fatal("a trivial turn admitted a node")
 	}
 }
 
@@ -228,141 +279,90 @@ func TestTheJudgeIgnoresATrivialTurn(t *testing.T) {
 // answer.
 func TestATurnWithToolCallsIsNeverJudged(t *testing.T) {
 	completer := &scriptedCompleter{steps: oneCallThenAnswer("call-1", "read")}
-	agent, runs := routeAgent(t, completer)
+	agent, _, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	collected := drainAnsweringRoute(t, agent, events, true)
+	collected := collect(t, events)
 	for index := 0; index < completer.requests(); index++ {
 		if messages := completer.request(index); len(messages) > 0 && messageText(messages[0]) == routeJudgeBrief {
 			t.Fatalf("the judge was asked about a turn that called tools")
 		}
 	}
-	if _, ok := firstOfKind(collected, EventHarnessOffer); ok {
-		t.Fatalf("a card was raised after a turn with tools: %v", kinds(collected))
-	}
-	if started := runs.started(); len(started) != 0 {
-		t.Fatalf("a turn with tools started %v", started)
+	noCard(t, collected)
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a turn with tools started work of its own")
 	}
 }
 
-// A REPLY THAT IS NOT JSON IS SILENCE. No card, no note, no error: the judge
+// A REPLY THAT IS NOT JSON IS SILENCE. No task, no note, no error: the judge
 // answered badly, and the person never asked it anything.
 func TestAJudgeThatCannotAnswerIsSilent(t *testing.T) {
 	completer := &routeCompleter{
 		answer:  "Here is what I would look at.",
-		verdict: "I think that probably should have been an adaptive run, yes.",
+		verdict: "I think that probably should have been a task, yes.",
 	}
-	agent, runs := routeAgent(t, completer)
+	agent, _, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	collected := drainAnsweringRoute(t, agent, events, true)
+	collected := collect(t, events)
 	if completer.asked() != 1 {
 		t.Fatalf("the judge was asked %d times", completer.asked())
 	}
 	for _, event := range collected {
 		switch event.Kind {
-		case EventHarnessOffer:
-			t.Fatalf("prose raised a card")
 		case EventError, EventNotice:
 			t.Fatalf("a salvage failure said %q out loud", event.Text)
 		}
 	}
-	if started := runs.started(); len(started) != 0 {
-		t.Fatalf("prose started %v", started)
+	noCard(t, collected)
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("prose started work")
 	}
 }
 
-// THE RATE LIMIT: one card, then three turns of quiet, whatever the judge says.
-// It is also the whole of the "never twice in a row" rule — two consecutive
-// turns can never both offer.
-func TestTheOfferRateLimitHolds(t *testing.T) {
+// THE RATE LIMIT: one task, then three turns of quiet, whatever the judge says.
+// It is also the whole of the "never twice in a row" rule — and auto-start is
+// what makes it load-bearing rather than a courtesy, because there is no longer
+// a keypress between a judge that likes every turn and a rail full of work.
+func TestTheRateLimitHolds(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
-	agent, _ := routeAgent(t, completer)
+	agent, _, _ := routeAgent(t, completer)
 
-	offers := 0
+	starts := 0
 	for turn := 1; turn <= 4; turn++ {
 		events, err := agent.Submit(context.Background(), routeAsk)
 		if err != nil {
 			t.Fatalf("submit %d: %v", turn, err)
 		}
-		collected := drainAnsweringRoute(t, agent, events, false)
-		if _, raised := firstOfKind(collected, EventHarnessOffer); raised {
-			offers++
+		collected := collect(t, events)
+		noCard(t, collected)
+		if routeNotice(collected) != "" {
+			starts++
 			if turn != 1 && turn != routeJudgeGap+1 {
-				t.Fatalf("a card was raised on turn %d, inside the gap", turn)
+				t.Fatalf("work started on turn %d, inside the gap", turn)
 			}
 		}
 	}
-	if offers != 2 {
-		t.Fatalf("%d cards over four turns, want one on turn 1 and one on turn %d", offers, routeJudgeGap+1)
+	if starts != 2 {
+		t.Fatalf("%d tasks over four turns, want one on turn 1 and one on turn %d", starts, routeJudgeGap+1)
 	}
 }
 
-// A TASK-SHAPED YES ADMITS A NODE, through the graph's own admission rather
-// than through a second proposal nobody answered.
-func TestATaskShapedYesAdmitsANode(t *testing.T) {
-	const verdict = `{"work": true, "shape": "task", "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
-	completer := &routeCompleter{answer: "Here is what I would do.", verdict: verdict}
-	agent, _ := routeAgent(t, completer)
-	var ran []uint64
-	var mu sync.Mutex
-	stubbedGraph(agent, func(node *TaskNode) {
-		mu.Lock()
-		ran = append(ran, node.id)
-		mu.Unlock()
-		node.graph.complete(node, TaskDone)
-	})
-
-	events, err := agent.Submit(context.Background(), routeAsk)
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	collected := drainAnsweringRoute(t, agent, events, true)
-
-	offer, ok := firstOfKind(collected, EventHarnessOffer)
-	if !ok {
-		t.Fatalf("no card was raised; events: %v", kinds(collected))
-	}
-	if offer.Text != "task" {
-		t.Fatalf("the card offered %q", offer.Text)
-	}
-	// The admission STARTS the node on its own goroutine (TaskGraph.runFrontier),
-	// so this is something another goroutine will do shortly — polled to a
-	// deadline rather than read on the beat the stream closed, which is a race
-	// the test loses whenever the machine is busy enough to schedule it late.
-	waitFor(t, "the node the person said yes to to run", func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(ran) == 1
-	})
-	// The brief is the judge's goal, whole: whoever runs it cannot see this
-	// conversation.
-	node := agent.graph().node(1)
-	if node == nil {
-		t.Fatal("no node was admitted")
-	}
-	if node.spec.brief != "port the pricing tests to the new fixture" {
-		t.Fatalf("the node's brief is %q", node.spec.brief)
-	}
-	if strings.TrimSpace(node.spec.acceptance) == "" {
-		t.Fatal("a node was admitted with no acceptance at all")
-	}
-}
-
-// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK ITS CARD STARTS. This was the one
+// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. This was the one
 // model-decided door for wide work that admitted UNARMED: the judge is asked for
 // a self-contained goal and never for a count, so the only signal reaching
 // [Agent.armDivision] here was the text gate — which reads a number only beside
 // one of eighteen item-nouns and therefore counts zero on almost every goal a
-// judge writes. The verdict now carries the judgement it was already making.
+// judge writes. The verdict now carries the judgement it was already making, and
+// `wide` is the only place breadth is said at all.
 func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
-	const verdict = `{"work": true, "shape": "task", "wide": true, "goal": "research the pricing tiers of every major cloud provider and say where they differ", "why": "research across many sources"}`
+	const verdict = `{"work": true, "wide": true, "goal": "research the pricing tiers of every major cloud provider and say where they differ", "why": "research across many sources"}`
 	// THE GOAL ARMS NOTHING BY ITSELF, deliberately: if the node comes out armed,
 	// the judge's own word is the only thing that could have armed it.
 	const goal = "research the pricing tiers of every major cloud provider and say where they differ"
@@ -371,15 +371,14 @@ func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
 	}
 
 	completer := &routeCompleter{answer: "Here is what I would do.", verdict: verdict}
-	agent, _ := routeAgent(t, completer)
+	agent, _, _ := routeAgent(t, completer)
 	agent.config.Divide = true
-	stubbedGraph(agent, func(node *TaskNode) { node.graph.complete(node, TaskDone) })
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	drainAnsweringRoute(t, agent, events, true)
+	collect(t, events)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -389,7 +388,7 @@ func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
 		t.Fatal("the judge said the work was wide and the spec did not carry it")
 	}
 	if !node.dividing() {
-		t.Fatal("the judge's wide yes did not arm the task its card started")
+		t.Fatal("the judge's wide yes did not arm the task it started")
 	}
 }
 
@@ -397,17 +396,16 @@ func TestTheJudgesWideVerdictArmsTheTaskItStarts(t *testing.T) {
 // judge's own reading and never a default: work that is one job however long it
 // takes starts one worker with the belt it has always had.
 func TestARouteYesWithoutWidthArmsNothing(t *testing.T) {
-	const verdict = `{"work": true, "shape": "task", "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
+	const verdict = `{"work": true, "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
 	completer := &routeCompleter{answer: "Here is what I would do.", verdict: verdict}
-	agent, _ := routeAgent(t, completer)
+	agent, _, _ := routeAgent(t, completer)
 	agent.config.Divide = true
-	stubbedGraph(agent, func(node *TaskNode) { node.graph.complete(node, TaskDone) })
 
 	events, err := agent.Submit(context.Background(), routeAsk)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	drainAnsweringRoute(t, agent, events, true)
+	collect(t, events)
 
 	node := agent.graph().node(1)
 	if node == nil {
@@ -418,9 +416,9 @@ func TestARouteYesWithoutWidthArmsNothing(t *testing.T) {
 	}
 }
 
-// AND THE GATES: no surface to answer a card is no judge at all, whatever the
-// turn said. It is the same posture the harness offer keeps — a headless run
-// must never pay for a question nobody will be shown.
+// AND THE GATES: nobody watching is no judge at all, whatever the turn said. It
+// is the same posture the harness offer keeps — a headless run must never pay a
+// model to start work nobody will see appear.
 func TestAnUnwatchedSessionNeverJudges(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
@@ -434,5 +432,8 @@ func TestAnUnwatchedSessionNeverJudges(t *testing.T) {
 	collect(t, events)
 	if completer.asked() != 0 {
 		t.Fatalf("an unwatched session paid for %d judge calls", completer.asked())
+	}
+	if agent.graph().node(1) != nil {
+		t.Fatal("an unwatched session started work anyway")
 	}
 }

@@ -410,12 +410,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"two windows working on the same files", "tasks"},
 
 		// And the question the division road left standing on the other page.
-		// A run used to be what broad work reached for; it is the exception now,
-		// and somebody who expected a planner and watched one worker start asks
-		// it in front of that worker.
+		// A run used to be what broad work reached for; a chat turn cannot open
+		// one at all now, and somebody who expected a planner and watched one
+		// worker start asks it in front of that worker.
 		{"should this be an adaptive run or one worker", "adaptive-runs"},
 		{"why didn't you start an adaptive run for this", "adaptive-runs"},
 		{"when do you use a run instead of a task", "adaptive-runs"},
+		{"how do I start an adaptive run", "adaptive-runs"},
+
+		// The one-road wave: work now STARTS on its own after a words-only turn,
+		// with a line on the transcript and no card to answer. Every one of these
+		// is asked by somebody looking at a task they did not ask for, in the
+		// words the transcript handed them.
+		{"why did a task start on its own", "tasks"},
+		{"this looked like work so task started", "tasks"},
+		{"aforge started work I did not ask for", "tasks"},
+		{"how do I stop it starting tasks by itself", "tasks"},
+		{"what happened to the card asking whether to run it", "tasks"},
 
 		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
 		// writes four class models and the session picks them up on its next

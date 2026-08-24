@@ -16,9 +16,14 @@ import (
 // gate ([session.Agent.RunOrchestrate]). What it does NOT ship is a way for a
 // turn to reach it. Config.OrchestrateRunner is the seam, the session checks it
 // for nil before it offers anything, and until this file existed nothing filled
-// it — so the engine had no caller outside its own tests, and both doors onto it
-// (the anchored cue in a turn, the model's run_adaptive hand) were switched off
-// in every build that ships.
+// it — so the engine had no caller outside its own tests, and the doors onto it
+// were switched off in every build that ships.
+//
+// THERE IS ONE DOOR LEFT ABOVE THIS SEAM AND IT IS A PERSON'S OWN SENTENCE: the
+// anchored cue a turn is read for ("orchestrate the migration", orchestrate.go).
+// The model's `run_adaptive` hand was the other and is off the belt entirely, so
+// filling this seam no longer gives the model a verb — it gives the cue somewhere
+// to land.
 //
 // WHY A SEAM AT ALL, when the thing it reaches is a method on the very agent
 // being built: because the config is what BUILDS the agent, so nothing here has
