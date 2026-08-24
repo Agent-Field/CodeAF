@@ -344,6 +344,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// And the half of division a person meets from the other side: they walk
+		// into the parent's room, type, and the page does not move — because the
+		// task is waiting on its own pieces and their line is what wakes it.
+		{"I typed into a task and nothing happened", "tasks"},
+		{"my task is waiting on its pieces", "tasks"},
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
 

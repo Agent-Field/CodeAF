@@ -291,7 +291,7 @@ func TestASteeredLineIsAnsweredInTheDesignRoom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the design's room could not be entered: %v", err)
 	}
-	if err := agent.SteerTask(node.id, "would this work for the nightly build?"); err != nil {
+	if _, err := agent.SteerTask(node.id, "would this work for the nightly build?"); err != nil {
 		t.Fatalf("the design's room refused a line: %v", err)
 	}
 	waitForTurn(t, watching)

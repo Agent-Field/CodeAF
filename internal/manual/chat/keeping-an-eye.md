@@ -307,6 +307,23 @@ One firing's work is bounded at **60 tool calls** unless the card said otherwise
 and by a quiet per-run backstop. Crossing either cuts the turn where it stands;
 whatever it already did stands with it.
 
+**And a firing that turns out to be wide can split itself.** If the brief you
+banked already names many separate items — "every night, bring the eleven
+adapters up to the new interface" — the firing starts as one worker that is
+allowed to hand the parts out under itself, exactly as a task you typed can (the
+tasks page, *a task that splits itself*). The same two tests apply and neither is
+skipped because nobody is watching: the parts must be genuinely many, and there
+has to be a lane free for them. A brief that names nothing to count never gets
+the option, and a run that is refused simply carries on as one worker. The firing
+does not finish until its parts are home, their work is folded into the one
+account you read in the morning, and everything they spent is on this run's cost
+row.
+
+What a firing gets is the read of its own words and nothing else. There is no
+sizing call before an unattended run: asking a model every night whether a
+sentence that has not changed since yesterday is wide would be a bill you never
+agreed to.
+
 ## Always, never, we do it this way — a rule with nothing to wake it
 
 The rules above all have a trigger in them: a PR opening, a push, main going red.

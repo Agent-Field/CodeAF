@@ -1103,6 +1103,19 @@ func (g *TaskGraph) announce(node *TaskNode) {
 	}
 }
 
+// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
+// is built, which is the shape a standing firing's own graph has: the session
+// that is going to own it cannot be constructed until the graph is in its config
+// (standing_run.go's [standingWideWork]). A conversation's graph binds the
+// method directly ([Agent.graph]) because by then there is an agent to bind to;
+// this reads the same field one moment later and answers nothing before there
+// is one.
+func (g *TaskGraph) reportHome(node *TaskNode) {
+	if g != nil && g.home != nil {
+		g.home.reportTaskNode(node)
+	}
+}
+
 // node looks one up by id.
 func (g *TaskGraph) node(id uint64) *TaskNode {
 	g.mu.Lock()
@@ -1258,6 +1271,38 @@ func (n *TaskNode) limits() taskLimits {
 		noProgress: thresholdOr(n.spec.noProgress, taskNoProgress),
 		deadline:   taskDeadline,
 	}
+}
+
+// familyPlace is the SESSION FOLDER a node's work belongs in, and it is the
+// CONVERSATION'S rather than whichever agent happens to own the node.
+//
+// Every path a running node needs is arithmetic on one Place: the worktree it
+// works in ([prepareTaskTree]), the transcript it writes ([taskJournalPath]) and
+// the file its merge takes the repository's lock on (task_lock.go). There is
+// exactly one right answer to which Place that is — the session that
+// commissioned the family — and reading it off the OWNER was that answer only
+// for as long as every node's owner was the conversation.
+//
+// A NODE THAT HANDS PART OF ITS WORK FURTHER OUT BREAKS THAT. A part's owner is
+// its parent's WORKER, whose config carries no Place at all (see
+// [Agent.newTaskAgent], which deliberately does not make a node into a second
+// session), so a part's worktree landed in the person's own repository under the
+// legacy flat layout while its parent's sat inside the session folder (Decision
+// 26) — and the two halves of one family took the git root's lock on two
+// different files, which is the one thing task_lock.go says must never happen.
+//
+// The zero Place is still the legacy layout and still answers "" to everything;
+// what this fixes is a family disagreeing with itself about which layout it is
+// in.
+func (a *Agent) familyPlace(node *TaskNode) Place {
+	if node != nil && node.graph != nil {
+		// home is written once, before any node can run, and read without the
+		// graph's lock exactly as [TaskGraph.runner] reads it.
+		if home := node.graph.home; home != nil {
+			return home.config.Place
+		}
+	}
+	return a.config.Place
 }
 
 func (a *Agent) taskLimits(node *TaskNode) taskLimits {
@@ -2254,6 +2299,20 @@ func (n *TaskNode) unpark() {
 	n.graph.unpark(n)
 }
 
+// waitingOnItsPieces reports whether this node has handed its lane back and is
+// waiting on the work it handed out. It is what lets a room say which kind of
+// wait a steered line is landing in ([Agent.SteerTask]): a node in the middle of
+// a step reads the line at its next one, and a node parked here has no step
+// coming until somebody wakes it.
+func (n *TaskNode) waitingOnItsPieces() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.parked
+}
+
 // stopChildren ends every unsettled node one parent handed out, exactly as
 // `jobs kill` ends one ([TaskGraph.stop]): the child's branch is kept, its
 // report says a person's stop did it, and its dependents cascade. A child that
@@ -2272,10 +2331,15 @@ func (g *TaskGraph) stopChildren(parent uint64) {
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	tree, resumed := node.resumeTree(a.config.Place, a.config.Workspace)
+	// The FAMILY'S place and the OWNER'S workspace, which are two different
+	// questions: where this session keeps things ([Agent.familyPlace]) and which
+	// checkout this node's branch comes off, which for a part is its parent's
+	// worktree.
+	place := a.familyPlace(node)
+	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTree(a.config.Place, a.config.Workspace, a.journalID(), node.id, node.title())
+		tree, err = prepareTaskTree(place, a.config.Workspace, a.journalID(), node.id, node.title())
 	}
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
@@ -2863,15 +2927,27 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	// A tripped threshold or a cut context ends this exactly as it ends the
 	// turn above: the children are stopped with the parent (see
 	// [TaskGraph.stopChildren]) and their branches are kept.
+	//
+	// AND THE PERSON CAN STILL REACH IT WHILE IT WAITS. A parent parked on its
+	// pieces has no turn running, and [Agent.wakeLocked] declines inside a task —
+	// so a line steered into its room (task_room.go) has nothing of its own to
+	// land in. It is held on the same queue the reports ride and it is READ HERE:
+	// `held` keeps this loop from parking on top of somebody's words and from
+	// closing the child while they are still queued, and the resumeTurn below is
+	// the turn that puts them in front of the model. Without it the sentence sat
+	// there for as long as the slowest piece ran and was dropped outright when
+	// the last report came in, having been accepted with a note saying it had
+	// arrived.
 	for stopped == "" && runCtx.Err() == nil {
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := child.taskNewsWait()
 		owed, working := child.taskNewsOwed(), child.childrenOutstanding()
-		if owed == 0 && !working {
+		held := child.steeringHeld()
+		if owed == 0 && !held && !working {
 			break
 		}
-		if owed == 0 {
+		if owed == 0 && !held {
 			// The lane goes back for exactly as long as the wait lasts
 			// ([TaskGraph.park]).
 			node.park()
@@ -3403,8 +3479,18 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// has. Compacting early costs a summary; overflowing costs the turn.
 		window = 0
 	}
+	// AND THE PROVIDER REPAIR TRAVELS WITH THE CLIENT, WHICH IS WHY IT IS NOT IN
+	// THE LITERAL BELOW. Routing, ModelFallbacks and NearestModels are read in
+	// exactly one place — [New], where they are handed to the provider client
+	// (agent.go) — and this hands the node THAT CLIENT. So a worker asks through
+	// the person's own routing strategy, falls back down the person's own list,
+	// and gets the catalog's nearest-model rescue when there is no list, without
+	// carrying a copy of any of the three: they are facts about the connection,
+	// and there is one connection. Copying them onto the node's Config would be
+	// three fields nothing reads. What a node must NOT share is the request
+	// wrapper around that client — see [unwrapCompleter] for the cache lineage.
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, suffix)
+	journal := taskJournalPath(a.familyPlace(node), a.sessionID(), node.id, suffix)
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
@@ -3464,9 +3550,25 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		// off every other belt (harness_task.go's reviseDoor).
 		reviseDesign:   node.reviseDoor(),
 		SupportsImages: parent.SupportsImages,
-		RolesSource:    parent.RolesSource,
-		SearchProvider: parent.SearchProvider,
-		SearchFetcher:  parent.SearchFetcher,
+		// AND THE ANSWER TO "CAN THIS MODEL HOLD A TOOL", without which the
+		// rescue above works exactly one level deep. It is read at the top of
+		// THIS constructor, off the parent's config, so a worker that did not
+		// carry it built its own pieces with no check at all: a part, or a
+		// propose_task child of a node, would start on a model that cannot call
+		// a tool and spend a whole run discovering it. It is the same catalog
+		// row the picker filters on, and a node is the same worker doing the
+		// same job somewhere quieter.
+		SupportsParameter: parent.SupportsParameter,
+		// The leash's checkpoint seam travels for the reason a seam exists at
+		// all: it stands in for the read-only checker on the agent that OWNS the
+		// node ([Agent.taskProgress]), and a part's owner is its parent's worker.
+		// Production leaves it nil and asks the real checker either way; a seam
+		// that stopped one level short meant a part's leash was the one threshold
+		// nothing could put a deterministic answer behind.
+		TaskProgressCheck: parent.TaskProgressCheck,
+		RolesSource:       parent.RolesSource,
+		SearchProvider:    parent.SearchProvider,
+		SearchFetcher:     parent.SearchFetcher,
 		// The person's connected accounts travel too, for the reason the search
 		// pair does: a node is the same worker doing the same job somewhere
 		// quieter, and work briefed around a mailbox needs the mailbox. What a
