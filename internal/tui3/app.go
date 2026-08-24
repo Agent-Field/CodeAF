@@ -338,6 +338,44 @@ type entry struct {
 	settled bool
 	mdCut   int
 
+	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
+	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
+	// (hierarchy.go states the law and [stampHierarchy] writes this field).
+	//
+	// It is DERIVED and never authored: a block is narration exactly when more
+	// work opened after it inside the same turn, which is a fact about the entry
+	// list's shape and about nothing else. So it is re-derived on every layout
+	// from the list itself — a resumed conversation, a rewound one and the live
+	// one all reach the same answer — and stored here only because
+	// [app.renderEntry] paints one block at a time and must not walk the list to
+	// find out which kind of block it is holding.
+	//
+	// FLIPPING IT INVALIDATES THE ROW CACHE, which is why nothing sets it by
+	// hand: the demoted rendering and the promoted one are different rows, and a
+	// block that changed tier while holding the rows it drew in the other one
+	// would keep them ([app.entryRows] hands back the cache unless [entry.stale]
+	// says otherwise).
+	demoted bool
+	// cut says THE TURN THIS BLOCK BELONGS TO WAS STOPPED BY THE PERSON, and it
+	// is the one part of the hierarchy that cannot be read off the list's shape:
+	// a stopped turn and a finished one end with exactly the same blocks in
+	// exactly the same order, and only the moment of the interrupt knows which
+	// happened ([app.cutTurn] writes it, [app.interrupt] and [app.settle] call
+	// it).
+	//
+	// AN INTERRUPTED TURN PROMOTES NOTHING. The turn ended without producing a
+	// structural answer, so its trailing prose keeps the working tier for good —
+	// the absence of a flush, full-ink block under the work is itself the
+	// statement that no answer was reached.
+	//
+	// IT IS A FACT ABOUT THIS WINDOW. The journal keeps the words a stopped turn
+	// managed to say and keeps no mark saying it was stopped, so a session
+	// resumed later rebuilds that turn from its shape alone and reads its last
+	// paragraph as an answer. That is the honest limit of a structural rule: the
+	// alternative is a heuristic over the text, and this surface does not sniff
+	// text to decide what a block is.
+	cut bool
+
 	// tables is which of this answer's markdown tables the person has opened,
 	// by the ordinal they appear in (mdtable.go). Nil means every one of them is
 	// closed, which is what an answer with no table in it stays.
@@ -3007,6 +3045,14 @@ func (a *app) settle() tea.Cmd {
 	// the questions above are dropped — except that this one is CHECKED rather
 	// than assumed, because the clock may have answered it (task.go).
 	a.syncTaskAsk()
+	// AND A TURN THE PERSON STOPPED IS MARKED AGAIN, over whatever the dying
+	// stream appended after the keypress (hierarchy.go's [app.cutTurn]). It is
+	// asked while [app.state] can still answer it — the line below is where the
+	// working state is dropped, and stateInterrupted survives to here precisely
+	// so this question has an answer.
+	if a.state == stateInterrupted {
+		a.cutTurn(a.turn)
+	}
 	if a.state == stateWorking {
 		a.state = stateIdle
 	}
@@ -4949,6 +4995,11 @@ func (a *app) interrupt() {
 	// followed by the session working again is not a stop — so the surface says
 	// so rather than leaving a count above the box for turns that will never run.
 	a.dropFollows()
+	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
+	// on the blocks at the keypress so the demotion is on screen the moment the
+	// person presses esc, and again when the stream finally closes ([app.settle]),
+	// because events in flight land between the two.
+	a.cutTurn(a.turn)
 }
 
 // ── the paste bracket ───────────────────────────────────────────────────────

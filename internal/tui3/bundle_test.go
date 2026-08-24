@@ -548,11 +548,16 @@ func yank(t *testing.T, a *app) string {
 func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.pal = newPalette(tokens.TrueColor, false)
+	// THE CALL COMES BEFORE THE ANSWER, which is the order a turn actually runs
+	// in and the order THE ANSWER HIERARCHY reads (hierarchy.go): prose with more
+	// work under it in the same turn is narration and is drawn at the working
+	// tier, so an answer written above its own tool call would be demoted here —
+	// and this test is about copying the ANSWER's fence.
 	a.entries = append(a.entries,
 		entry{kind: entryUser, text: "how do I print?"},
-		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 		entry{kind: entryTool, tool: "read", text: "main.go", status: toolOK, open: true,
 			detail: toolDetail{Output: "line one\nline two"}},
+		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 	)
 	a.touch()
 	drive(t, a, ctrlKey('b'))
@@ -571,7 +576,9 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	drive(t, a, key("a"))
 	drive(t, a, key("a"))
 	got := yank(t, a)
-	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "  That is all.") {
+	// Flush at both ends: this is the turn's ANSWER, so it carries no work
+	// gutter for the yank to have to strip (hierarchy.go).
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
 		t.Fatalf("the second press did not widen to the answer: %q", got)
 	}
 	if strings.Contains(got, tokens.GlyphCodeGutter) {
