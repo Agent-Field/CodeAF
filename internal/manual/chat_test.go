@@ -315,6 +315,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I accept a task", "tasks"},
 		{"can the chat decide on its own", "tasks"},
 		{"stop asking me about tasks", "tasks"},
+		// And the same state met from inside the task's room, where the owner sat
+		// with `look it over` on the roster and nothing to press on the page.
+		{"how do I approve a task", "tasks"},
+		{"task needs my look but there is no button", "tasks"},
+		{"accept a finished task", "tasks"},
+		{"can I accept the task from inside the room", "tasks"},
 		{"why am I not being asked about the sub tasks", "how-tasks-run"},
 
 		// The twelfth wave, from the key that stopped doing what the habit
