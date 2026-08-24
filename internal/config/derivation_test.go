@@ -242,6 +242,7 @@ var settingReaders = map[string]string{
 	// rather than the mapping they share, so a row that stops being read
 	// cannot be proven by its neighbours' call site.
 	KeySearchProvider: "SearchProviderAt",
+	KeyAPIKey:         "APIKeyAt",
 	KeyExaKey:         "ExaKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
 	// The Google pair is read by the v3 door, which turns it into the manager

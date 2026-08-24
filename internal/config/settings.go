@@ -1276,6 +1276,22 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
 		},
+		// THE KEY EVERY MODEL CALL RIDES. It is a row for the reason the first-run
+		// setup exists: a person with no key in their shell has to be able to
+		// hand one over somewhere, and "export it and start again" is not a
+		// somewhere. It masks like every credential, the environment outranks
+		// it as it always has (apikey.go's resolution order), and a write lands
+		// on the RUNNING session through the surface's Applied hook rather than
+		// waiting for the next launch — the row this was modelled on says "on the
+		// next session" because search is an accessory; this is the conversation.
+		Setting{
+			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
+			Hint: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+				"Set in the shell it outranks this row. A change lands on this conversation at once.",
+			read:  func() string { return maskCredential(APIKeyAt(dir)) },
+			write: func(raw string) error { return writeCredential(dir, KeyAPIKey, raw, APIKeyAt(dir)) },
+		},
 		Setting{
 			Key: KeyExaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "exa key", Env: "EXA_API_KEY", EmptyLabel: "not set",
