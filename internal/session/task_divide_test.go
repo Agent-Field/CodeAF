@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
@@ -85,6 +86,17 @@ const wideEvidence = "the adapters directory holds 11 files, one interface each:
 
 // narrowEvidence names too few items to pay for a division.
 const narrowEvidence = "there are 3 bugs in the reconciler"
+
+// heldGovernor is a machine that is over its load ceiling and stays there. It
+// reads a fixed sample rather than the host, so the answer does not depend on
+// what else is running on the box the suite is on.
+func heldGovernor() *admissionGovernor {
+	return &admissionGovernor{
+		maxLoad: 1.5,
+		read:    func() (machineReading, bool) { return machineReading{loadPerCore: 4}, true },
+		now:     time.Now,
+	}
+}
 
 // divideArgs is one well-formed divide_work call with n parts.
 func divideArgs(evidence string, n int) json.RawMessage {
@@ -177,6 +189,126 @@ func TestTheRoadOffLeavesTheWorkerExactlyAsItWas(t *testing.T) {
 	}
 }
 
+// ── THE ROAD, THROUGH THE CONSTRUCTOR THAT ACTUALLY BUILDS THE WORKERS ──────
+//
+// Every test above this line hands the worker a Config with `Divide: true`
+// written into it by hand, which is exactly how a whole road stayed inert in
+// production while eighteen tests passed over it: the person's setting was put
+// on the CONVERSATION, and [Agent.newTaskAgent] — the one production constructor
+// for every agent that can divide, called from the frontier, the repair rounds
+// and the design door — copied about thirty fields from the parent and not that
+// one. So `mayDivide` was false for every agent in the running program:
+// divideTools returned nil, prompts/divide.md was left out, and the roster line,
+// the schema and three manual pages promised a road nothing could take.
+//
+// THESE THREE GO THROUGH THE REAL DOOR AND NEVER AROUND IT. Nothing below
+// writes a Config literal.
+
+// workerFor builds one worker the way the running program builds it: admit a
+// spec through the graph's own arming door, then ask the production constructor
+// for the agent that IS the node.
+func workerFor(t *testing.T, session *Agent, spec taskSpec) (*Agent, *TaskNode) {
+	t.Helper()
+	graph := session.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, spec)
+	node := graph.node(id)
+	worker, err := session.newTaskAgent(context.Background(), t.TempDir(), node, "")
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	return worker, node
+}
+
+func TestTheProductionConstructorCarriesTheRoadOntoTheWorker(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = true
+	})
+	worker, node := workerFor(t, session, taskSpec{
+		title: "the whole job", request: personSentence, brief: wideBrief, acceptance: "a", depth: 1,
+	})
+
+	if !node.dividing() {
+		t.Fatalf("a brief naming %d items was not armed at admission; the floor is %d",
+			splitgate.Items(wideBrief), splitgate.Floor)
+	}
+	if !worker.config.Divide {
+		t.Fatal("the person's own yes did not travel from the conversation to the worker it built")
+	}
+	if !worker.mayDivide() {
+		t.Fatal("the worker was armed and built by the real constructor and still may not divide")
+	}
+	if !beltHas(worker, "divide_work") {
+		t.Fatal("a worker built by newTaskAgent for armed work has no divide_work on its belt")
+	}
+	// AND THE PAGE THAT SAYS WHAT THE VERB IS FOR. The belt and the prompt are
+	// built from one predicate on purpose, and a verb with no page is a model
+	// improvising a tool it was never taught.
+	if !strings.Contains(renderSystem(worker.config), "divide_work") {
+		t.Fatal("a worker built armed is handed the verb and never told what it is for")
+	}
+}
+
+// A HARNESS DESIGN IS A PAGE WRITER AND IS NEVER HANDED THE VERB. Its goal is
+// free text, so a goal saying "a harness that checks the 8 endpoint files"
+// enumerates enough items for the evidence signal — and a design thread has a
+// tasker and a depth, so it satisfies every other condition. Without the kind
+// guard, switching the road on would hand divide_work to the one node kind that
+// has no worktree, no parts and nothing to hand out.
+func TestAHarnessDesignIsNeverArmedToDivide(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = true
+	})
+	goal := "a harness that checks the 8 endpoint files and reports what each returned"
+	if !splitgate.WorthIt(goal) {
+		t.Fatal("this goal arms nothing by itself, so it cannot show that the kind guard is what refused it")
+	}
+	worker, node := workerFor(t, session, taskSpec{
+		title: "a checker", brief: goal, acceptance: "a", depth: 1,
+		design: &harnessDesignSpec{goal: goal},
+	})
+
+	if node.dividing() {
+		t.Fatal("a harness design was armed for division by its own goal text")
+	}
+	if worker.mayDivide() {
+		t.Fatal("a page writer may divide")
+	}
+	if beltHas(worker, "divide_work") {
+		t.Fatal("a harness design's thread carries divide_work, which spawns workers in worktrees")
+	}
+	if strings.Contains(renderSystem(worker.config), "divide_work") {
+		t.Fatal("a harness design's thread is told about a verb it does not have")
+	}
+}
+
+// THE WAY OUT STILL WORKS, THROUGH THE SAME DOOR. With the road off, the worker
+// the constructor builds is byte-identical to the pre-division one however wide
+// its brief reads.
+func TestTheRoadOffProducesWorkersWithoutTheVerb(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Divide = false
+	})
+	worker, node := workerFor(t, session, taskSpec{
+		title: "the whole job", request: personSentence, brief: wideBrief, acceptance: "a", depth: 1,
+	})
+
+	if node.dividing() {
+		t.Fatal("the road is off and the node was armed anyway")
+	}
+	if worker.config.Divide || worker.mayDivide() {
+		t.Fatal("the road is off and the worker it built may still divide")
+	}
+	if beltHas(worker, "divide_work") {
+		t.Fatal("the road is off and the worker carries divide_work")
+	}
+	if strings.Contains(renderSystem(worker.config), "divide_work") {
+		t.Fatal("the road is off and the worker's prompt still describes the verb")
+	}
+}
+
 // ── the two gates ───────────────────────────────────────────────────────────
 
 func TestADivisionTheEvidenceDoesNotSupportChangesNothingAtAll(t *testing.T) {
@@ -231,23 +363,85 @@ func TestADivisionNobodyIsFreeToPickUpIsDeferredRatherThanTaken(t *testing.T) {
 		t.Fatalf("with the only lane held there are %d free hands, want none", free)
 	}
 	answer := nest.divide(t, divideArgs(wideEvidence, 3))
-	if !strings.Contains(answer, "no free hand") {
-		t.Fatalf("the worker was told %q, want the wait named as a free hand", answer)
+	if !strings.Contains(answer, "one task at a time") {
+		t.Fatalf("the worker was told %q, want the person's own cap named", answer)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
 		t.Fatalf("%d parts were born with nobody free to run them", len(kids))
 	}
 
-	// AND IT IS A DEFERRAL AND NOT A VERDICT. The same request goes through the
-	// moment a hand comes free, which is why the refusal says to ask again.
-	if !strings.Contains(answer, "ask again later") {
-		t.Fatalf("the refusal does not invite the worker back: %q", answer)
+	// AND IT DOES NOT INVITE THE WORKER BACK TO A DOOR THAT NEVER OPENS. With
+	// the cap at one there is no second pair of hands in this session and there
+	// never will be — the asker's own lane is deliberately not counted — so
+	// "ask again later" would be a sentence that is simply untrue.
+	if strings.Contains(answer, "ask again") && !strings.Contains(answer, "asking again will not change this") {
+		t.Fatalf("a permanent refusal invites the worker back: %q", answer)
 	}
 	nest.graph.mu.Lock()
 	nest.graph.running = 0
 	nest.graph.mu.Unlock()
 	if answer := nest.divide(t, divideArgs(wideEvidence, 3)); !strings.Contains(answer, "split into 3 parts") {
 		t.Fatalf("with a hand free the worker was told %q, want the division taken", answer)
+	}
+}
+
+// A CAP ABOVE ONE IS A WAIT AND SAYS SO. The lanes are all busy now and one
+// frees the moment something finishes, so the honest thing to tell the worker is
+// to come back — which is the opposite of what the one-lane case says, and the
+// two must not be one sentence.
+func TestADivisionHeldByBusyLanesInvitesTheWorkerBack(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 2)
+	nest.graph.mu.Lock()
+	nest.graph.running = 2
+	nest.graph.mu.Unlock()
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 3))
+	if !strings.Contains(answer, "every lane is busy") {
+		t.Fatalf("the worker was told %q, want the busy lanes named", answer)
+	}
+	if !strings.Contains(answer, "ask again once something finishes") {
+		t.Fatalf("a refusal that can lift does not invite the worker back: %q", answer)
+	}
+	if strings.Contains(answer, "one task at a time") {
+		t.Fatalf("a session with two lanes was told it runs one task at a time: %q", answer)
+	}
+}
+
+// THE MACHINE'S OWN HOLD IS NOT A REFUSAL, and this is the asymmetry the audit
+// found: a loaded box made the DEFAULT road for wide work fail closed while the
+// exception — work admitted through propose_task — merely queued, announced
+// `machine busy`, and lifted itself five seconds later. The division takes the
+// same road now: the parts are admitted, the frontier holds them, and the
+// receipt says so instead of sending the worker away to remember to re-ask.
+func TestABusyMachineHoldsTheDivisionsPartsRatherThanRefusingIt(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	// A governor that is holding, with no lane cap at all: every lane in this
+	// session is empty, which is exactly the state the old refusal described as
+	// "no free hand".
+	nest.graph.governor = heldGovernor()
+
+	if free := nest.graph.freeHands(); free <= 0 {
+		t.Fatalf("a busy machine took the lanes away: %d free hands with no cap set", free)
+	}
+	answer := nest.divide(t, divideArgs(wideEvidence, 3))
+	if !strings.Contains(answer, "split into 3 parts") {
+		t.Fatalf("a busy machine refused the division: %q", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
+		t.Fatalf("%d parts were born, want 3 waiting on the machine", len(kids))
+	}
+	// AND THE RECEIPT SAYS THEY ARE WAITING, in a person's words, without naming
+	// the machinery that decided or asking the worker to come back.
+	if !strings.Contains(answer, "machine is busy") {
+		t.Fatalf("the receipt does not say the parts are waiting: %q", answer)
+	}
+	if !strings.Contains(answer, "start themselves") {
+		t.Fatalf("the receipt does not say the wait lifts by itself: %q", answer)
+	}
+	for _, banned := range []string{"governor", "gate", "quorum", "armed", "ask again"} {
+		if strings.Contains(strings.ToLower(answer), banned) {
+			t.Fatalf("the receipt says %q, which is machinery or a false invitation: %q", banned, answer)
+		}
 	}
 }
 
@@ -364,6 +558,44 @@ func TestWhatAPartSpendsIsFoldedIntoTheWorkItCameOutOf(t *testing.T) {
 	if got := nest.node.Usage(); got.CostUSD <= beforeParent.CostUSD {
 		t.Fatalf("the work that divided shows %v spent, unchanged from %v: a part's money never reached it",
 			got.CostUSD, beforeParent.CostUSD)
+	}
+}
+
+// AND IT STILL REACHES THE SESSION WHEN THE PARENT WAS STOPPED FIRST. On a stop,
+// threshold or deadline ending the parent's own agent is closed and folded
+// before [TaskGraph.stopChildren] cuts the parts, so every part folding
+// afterwards was folding into books nobody was ever going to read again: the
+// money sat on the part's row, visible and uncounted, and the session ledger was
+// short by a whole part on exactly the path somebody takes when they are worried
+// about spending. A closed hop is skipped, not paid into.
+func TestAStoppedPartsSpendStillReachesTheSessionLedger(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	nest.divide(t, divideArgs(wideEvidence, 2))
+	kids := nest.graph.children(nest.parent.id)
+
+	worker, err := newAgent(Config{Workspace: t.TempDir(), Model: "test/model", System: "S"}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent for the part's worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	cost := 0.25
+	worker.addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+		PromptTokens: 10, CompletionTokens: 20, Cost: &cost,
+	}}, "test/model", 1)
+
+	// The parent has finished and closed its books, which is the whole of the
+	// ordering: the part is only cut down after this has happened.
+	_ = nest.node.Close()
+
+	before := nest.session.Usage()
+	nest.node.foldTaskUsage(kids[0], worker)
+
+	if got := kids[0].spend(); got != 0.25 {
+		t.Fatalf("the part shows %v spent, want what its worker cost", got)
+	}
+	if got := nest.session.Usage(); got.CostUSD-before.CostUSD != 0.25 {
+		t.Fatalf("the session ledger moved by %v over a stopped part that cost $0.25: one ledger means every road folds into it",
+			got.CostUSD-before.CostUSD)
 	}
 }
 
