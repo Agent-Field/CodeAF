@@ -217,6 +217,10 @@ func (a *app) enterStanding() tea.Cmd {
 // answer they are parked with the mark on them, exactly as the chord's are
 // (park.go).
 func (a *app) standingSay(text string) tea.Cmd {
+	return a.standingSayShown(text, text)
+}
+
+func (a *app) standingSayShown(text, shown string) tea.Cmd {
 	if !a.standingHere() {
 		// The same absence the chord answers with, said in the same words: there
 		// is nothing here that could hold one.
@@ -226,7 +230,7 @@ func (a *app) standingSay(text string) tea.Cmd {
 	if a.parking() {
 		return a.park(text, true)
 	}
-	return a.submitStanding(text)
+	return a.submitStandingShown(text, shown)
 }
 
 // submitStanding sends one marked message. It is [app.submit] with the other
@@ -234,6 +238,10 @@ func (a *app) standingSay(text string) tea.Cmd {
 // the call talks to a lock and possibly a provider, and the Update loop is not a
 // place to wait.
 func (a *app) submitStanding(text string) tea.Cmd {
+	return a.submitStandingShown(text, text)
+}
+
+func (a *app) submitStandingShown(text, shown string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
-	return a.submitting(text, func() (<-chan session.Event, error) { return agent.SubmitStanding(ctx, text) })
+	return a.submittingShown(text, shown, func() (<-chan session.Event, error) { return agent.SubmitStanding(ctx, text) })
 }

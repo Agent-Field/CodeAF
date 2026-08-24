@@ -215,6 +215,10 @@ type entry struct {
 	kind entryKind
 	text string
 	turn int
+	// actedTags are send-door words kept in the displayed sentence after they
+	// were stripped from the payload. Mid-sentence slash prose has no ranges,
+	// so a demoted tag stays plain in the transcript as promised.
+	actedTags []segment
 
 	// facts are the LOAD-BEARING DATA inside a note's own words, named by the
 	// text they are spelled with and in the order they appear in it — the model
@@ -3684,6 +3688,13 @@ func (a *app) submit(text string) tea.Cmd {
 // The second door is a picked harness, which is a turn in every respect except
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
+	return a.submittingShown(text, text, start)
+}
+
+// submittingShown separates the words a door receives from the honest line
+// the transcript keeps. Slash tags are stripped from the payload but remain in
+// the person's message as the chipped token that explains which door acted.
+func (a *app) submittingShown(text, shown string, start func() (<-chan session.Event, error)) tea.Cmd {
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -3714,7 +3725,15 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	// conversation. It is asked rather than assumed so that the day the engine
 	// routes a conversation's turn into a named thread, the line that says so is
 	// already being drawn — one mechanism, keyed off what the session exposes.
-	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now(), context: a.turnContext()})
+	var acted []segment
+	if shown != text {
+		for _, s := range commandSpans([]rune(shown), true) {
+			if s.from > 0 {
+				acted = append(acted, s)
+			}
+		}
+	}
+	a.said(entry{kind: entryUser, text: shown, turn: a.turn, actedTags: acted, began: a.now(), context: a.turnContext()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
@@ -5068,7 +5087,9 @@ func (a *app) paste(text string) tea.Cmd {
 	// (imagepaste.go). Anything else falls through and is inserted as the text
 	// it plainly is.
 	if !a.pasteImages(text) {
+		at := a.input.cursor
 		a.input.insert(text)
+		a.editTags(at, at, len([]rune(text)))
 	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard
@@ -5131,6 +5152,13 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter":
 		if a.menu.open {
+			// A COMPLETE LIVE TAG OWNS ENTER, even while the spelling list is
+			// still visible under it. Choosing the row merely rewrote the word in
+			// the old mention doctrine; the chip now promises this send instead.
+			if len(a.liveTags()) > 0 || len(a.input.demotedTags) > 0 {
+				a.menu.close()
+				return a.enter(), true
+			}
 			if _, ok := a.menu.choice(); !ok {
 				// Nothing matched what was typed. The line is still a line, and
 				// enter is still submit — /nonsense gets its answer.

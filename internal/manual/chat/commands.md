@@ -20,8 +20,9 @@ with an argument is a line being written rather than a command being chosen.
 Moving in it:
 
 - ↑ / ctrl+p and ↓ / ctrl+n move.
-- enter takes the row under the cursor. Whether that *runs* the command depends on where
-  the word sits — see "What runs, and what is only a mention".
+- enter takes the row under the cursor. Whether that *runs* or completes a live tag
+  depends on where the word sits — see "Use /standing or /task in the middle of a
+  sentence".
 - esc closes the list and seals that word: it does not come back on the next letter you
   type. Start another word and it opens again. The text you typed stays.
 
@@ -75,36 +76,63 @@ It happens in two places: **live in the message box as you type**, and in your m
 after it is sent, where it stays for as long as the conversation is scrolled back
 through.
 
-Only a command this surface actually runs gets one. The word is resolved through the
-same table the dispatch uses, so every alias is chipped too — `/clear`, `/q`, `/?` — and
-a typo is not: `/tsak` stays plain text, which is how you find out it is not a command
-before you press enter rather than after. A path is never chipped, for the reasons in
+Only a command this surface will act on gets one. At the start of the box that is every
+recognized command. In the middle or at the end it is one of the two send-door tags,
+`/standing` or `/task`, including `/orders`. Other commands there are plain words. A typo
+is plain too: `/tsak` stays ordinary text. A path is never chipped, for the reasons in
 "Why a file path does not pop up the command list".
 
-The chip never changes the text and never adds a cell. What you typed is exactly what
-gets sent.
+The chip never adds a cell. A leading command runs in its usual form. A live send-door
+tag is removed from the words handed through its door, while your transcript keeps the
+tag and its chip so it is clear why that door acted.
 
 Below the 256-colour rung there is no background to draw, and the command reads as
 **bold** instead. On a NO_COLOR terminal there is no mark at all.
 
-## What runs, and what is only a mention
+## Use /standing or /task in the middle of a sentence
 
-A slash command **runs** only when the slash is the first character of your message. That
-is the whole rule, and it has not changed:
+A slash command at the start still runs normally. Two commands are also **send-door
+tags** anywhere else in a draft:
 
-- `/compact` on its own line runs the command.
-- `later I will run /compact on this` is an ordinary message. The `/compact` is a
-  **mention**: it wears the chip so you can see aforge knows the word, and it travels to
-  the model as the literal text you typed, exactly the way an `@path` does.
+- `keep the tests green /standing` removes `/standing` from the sentence and sends
+  `keep the tests green` through the standing-order door. `/orders` is the same tag.
+- `please investigate the flaky test /task` removes `/task` and sends the remaining
+  brief through the task sizing road.
+
+Both roads stop at something you can see and answer: standing raises its ratification
+card, and task raises its sizing choice when there is a choice to make. A pasted tag does
+not silently do work. With no other words, each tag behaves like that command's existing
+bare form. With two live tags aforge sends nothing, leaves the draft in the box, and says
+`one tag per send — backspace one to make it plain words`.
+
+Other commands remain ordinary prose away from the start. `later I will run /compact on
+this` is sent literally, and `/compact` is plain rather than chipped.
+
+## Backspace after a slash tag makes it plain words
+
+With the caret immediately after a live `/standing`, `/orders`, or `/task` tag, the first
+backspace removes its chip but deletes no letter. The word is now plain prose and Enter
+sends it to the conversation normally. A second backspace edits the word as usual.
+
+Editing the demoted word makes aforge recognize its current spelling afresh. Edits before
+it merely move the annotation with the text. Emptying or sending the draft forgets all
+demotions.
+
+## Slash command did nothing
+
+A command in the middle of a sentence acts only when it is `/standing`, `/orders`, or
+`/task`, and a chip is the promise that it will act. `/clear`, `/model`, `/compact` and
+the other commands are plain prose there. Put one of those commands at the start if you
+want to run it. If a send-door word is plain, it was demoted with backspace; edit it or
+type it again to make it live.
 
 The command list follows that rule when you choose a row from it:
 
 - If the word is at the very start of the box and there is nothing else in it, enter runs
   the command — or, for a row that takes an argument, writes `/model ` into the box.
-- Anywhere else — inside a sentence, or over a command whose argument you have already
-  typed — enter **replaces just that word** with the command's name, parks the caret
-  after it, and runs nothing. `before you answer, /comp` becomes `before you answer,
-  /compact`, and the rest of your line is untouched.
+- Anywhere else, choosing a non-door row replaces just that word with the command's name,
+  parks the caret after it, and runs nothing. Choosing `/standing` or `/task` completes a
+  live tag; Enter on the finished tag routes the send as described above.
 
 So the list can never send a message you did not send yourself, and choosing a row mid
 sentence is a way of spelling a word rather than a second way of running a command.
@@ -821,6 +849,10 @@ leads — making an order is what the command exists for; the page is the follow
 /standing always run the tests before you say you are done
 ```
 
+The tag form works in the middle or at the end too: `always run the tests /standing` and
+`always /orders run the tests` hand the remaining sentence through the same door. Press
+backspace immediately after the tag to make it plain words instead.
+
 They go through the same deliberate door `ctrl+enter` opens: aforge is told to shape the
 sentence into a standing order's card — when it wakes, what it does, how far it reaches —
 and it never carries the sentence out as one-off work as well. Nothing stands until you
@@ -854,6 +886,10 @@ judge reads the words for width, and then **one worker starts, whatever the answ
 nothing is asked of you**. If the work is meaningfully parallel, one dim line says so
 (`the work looks wide · one worker starts, and it can split as it goes`) and that worker
 may hand the parts out once it has opened the material. Otherwise the task starts silently.
+
+`/task` is also a live tag in the middle or at the end: `investigate the flaky test /task`
+strips the tag and takes the remaining words through this same sizing road. Backspace
+immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
@@ -956,8 +992,8 @@ crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen
 **The three model ids are drawn brighter than the words around them.** `crew →`, the
 preset word and `brain`/`hands`/`checks` stay at the grey every note is written in; the
 ids step up into the body ink, because they are what the command was typed to find out.
-`/model` at the end wears the same tinted chip a slash command wears everywhere else. See
-"Why is one word in a line brighter than the rest" on the screen page.
+`/model` at the end is plain because it is explanatory prose, not a command that will act.
+See "Why is one word in a line brighter than the rest" on the screen page.
 
 The last clause is there because nothing else on the frame moves: the model named on the
 status line is the **conversation's** model, and `/crew` never touches it. To read the crew
