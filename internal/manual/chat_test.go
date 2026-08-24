@@ -163,6 +163,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
+		// The onboarding wave: home is always reachable, and an empty home is a
+		// designed screen. Each of these is asked on a fresh machine, by
+		// somebody who tried the gesture on day one.
+		{"space space does nothing", "home"},
+		{"home is empty", "home"},
+		{"how do I get back to home with one chat", "home"},
+		{"why is home empty", "home"},
+		{"can I open home with only one conversation", "home"},
 		{"does closing one conversation quit aforge", "commands"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},

@@ -401,9 +401,9 @@ lands you on the ordinary prompt.
 
 So the greeting is what a **first run** sees — the launch where home has nothing to say,
 because the only conversation on the machine is the one already on screen. That is the one
-case where the wordmark and the centred message box greet you. On a profile with nothing
-configured yet, the once-only setup screen comes first (the getting-started page), and the
-greeting arrives the moment it closes.
+case where the wordmark and the centred message box greet you; home itself is still a
+`space space` away. On a profile with nothing configured yet, the once-only setup screen
+comes first (the getting-started page), and the greeting arrives the moment it closes.
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 
