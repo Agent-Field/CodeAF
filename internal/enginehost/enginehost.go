@@ -153,12 +153,10 @@ func Attach(workspace string, spawn func() error) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	held, err := takeLock(filepath.Join(dir, lockName))
-	switch {
-	case err != nil:
-		// Busy: somebody else is already the host, or is starting one. Waiting
-		// for their socket is the whole of what this branch has to do.
-	default:
+	// A lock that is BUSY is an answer and not a failure: somebody else is
+	// already the host or is starting one, and waiting for their socket is all
+	// this connection has left to do.
+	if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
 		// The lock is released BEFORE the spawn rather than after it, because
 		// the host we are about to start wants this very lock for its own life.
 		// The window that opens is the one described above, and it costs at

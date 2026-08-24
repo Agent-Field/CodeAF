@@ -104,8 +104,17 @@ type muxStream struct {
 	incoming chan []byte
 	rest     []byte
 
+	// closed is THIS END letting go, and incoming being closed is the FAR END
+	// letting go. THE TWO ARE DELIBERATELY NOT THE SAME SIGNAL, and conflating
+	// them was a real bug: a reader selecting on both picks between two ready
+	// cases at random, so a stream that was written to and then closed lost its
+	// last frames about half the time — which is exactly the shape of a
+	// refusal, written and then hung up on. A far end that has finished
+	// speaking closes only the queue, so a reader drains what arrived and THEN
+	// sees the end.
 	closeOnce sync.Once
 	closed    chan struct{}
+	endOnce   sync.Once
 }
 
 func newMuxStream(id uint64, c *carrier) *muxStream {
@@ -179,11 +188,12 @@ func (s *muxStream) deliver(payload []byte) {
 	}
 }
 
-// finish is the far end closing this stream: the queue is closed so a reader
-// blocked on it sees EOF once it has drained what already arrived.
+// finish is the far end closing this stream. It closes the QUEUE and not the
+// stream, so a reader drains everything that already arrived and only then sees
+// the end — see the note on [muxStream.closed].
 func (s *muxStream) finish() {
-	s.closeOnce.Do(func() {
-		close(s.closed)
+	s.endOnce.Do(func() {
+		close(s.incoming)
 		s.carrier.forget(s.id)
 	})
 }
@@ -314,7 +324,6 @@ func (c *carrier) pump() {
 			}
 		case opClose:
 			if stream := c.lookup(id); stream != nil {
-				close(stream.incoming)
 				stream.finish()
 			}
 		case opPing:

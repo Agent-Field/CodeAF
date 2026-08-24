@@ -59,22 +59,6 @@ var commands = []command{
 	{name: "model", desc: "pick a model · or press its name in the status line"},
 	{name: "model", args: "<slug>", desc: "switch the model"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
-	// THE SAME TRAY FOR EVERYTHING THAT IS NOT A PICTURE (attach.go). It sits
-	// directly under /image because the two are one errand — putting a thing
-	// into the message you are writing — and a person hunting either reads both
-	// rows on the way past.
-	//
-	// It is NOT a second spelling of /image and the rows say so in their own
-	// words: a picture is looked at, a file is read. A picture handed to /attach
-	// still goes on as a picture, because somebody who learned one word should
-	// not have to find out this build has two.
-	//
-	// /upload is here because it is the word people bring from every chat
-	// program they have used. /file is deliberately NOT an alias: it shares four
-	// characters with /files, which opens the list of what has been MADE for you,
-	// and a word that narrowed the list to both errands at once is the near-miss
-	// /history was renamed to avoid.
-	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
 	// now because the table is the one place: a word the surface accepts and the
@@ -283,6 +267,28 @@ var commands = []command{
 	// recognizes by title, and a title a model wrote is not a thing anybody
 	// types back correctly.
 	{name: "files", desc: "what has been made for you · open, reveal or copy one"},
+	// AND THE ONE THAT GOES THE OTHER WAY: those four take something out of this
+	// conversation and this one puts something INTO it — a log, a CSV, a PDF, on
+	// the same tray a picture rides and read rather than looked at (attach.go).
+	//
+	// IT BELONGS DIRECTLY UNDER /image, and it sits down here instead for the
+	// reason /permissions and /harness do, which is a fact about the LIST rather
+	// than about the command: [menuRows] shows eight rows at once, position in
+	// this table is a claim about frequency, and a row inserted beside /image
+	// would push /compact — which people reach for daily — into a scroll.
+	// standingpage_test.go pins exactly that. So it lands with the doors onto
+	// moving a file, which is the other errand it shares.
+	//
+	// It is NOT a second spelling of /image, and the two rows say so in their own
+	// words: a picture is looked at, a file is read. A picture handed to /attach
+	// still goes on as a picture, because somebody who learned one word should
+	// not have to find out this build has two.
+	//
+	// /upload is here because it is the word people bring from every chat program
+	// they have used. /file is deliberately NOT an alias: it shares four
+	// characters with /files one row above, and a word that narrowed the list to
+	// both errands at once is the near-miss /history was named to avoid.
+	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
