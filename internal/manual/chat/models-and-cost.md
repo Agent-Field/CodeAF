@@ -412,10 +412,12 @@ thinks for a minute before its first token, and cutting a request that was about
 costs the whole prompt again. The second is shorter because the question is different — a
 model that has started writing has finished deciding.
 
-A cut request is asked again **twice**. The screen says `trying again · 12s` while it is
-(see *What is on the screen*), and a dim line lands saying `nothing came back from the
-model — asking again` or `the model went quiet mid-reply — asking again`. If all three
-attempts come back with nothing, the turn ends:
+A cut request is asked again **twice**. When the router named the endpoint that went
+quiet, that endpoint is avoided on the retry so another endpoint serving the same model
+can answer. The screen says `trying again · 12s` while it is (see *What is on the
+screen*), and a dim line lands saying `nothing came back from the model — asking again`
+or `the model went quiet mid-reply — asking again`. If all three attempts come back with
+nothing, the turn ends:
 
 ```
 error: nothing came back from the model in 1m30s, three times. a different model may answer — /model
