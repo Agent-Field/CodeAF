@@ -1129,7 +1129,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		return err
 	}
 	defer node.releaseSettle()
-	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
+	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
 	}
@@ -1176,7 +1176,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if !a.config.TaskAudit {
 		return errors.New("task.audit is off, so there is no auditor to ask — accept it or refute it")
 	}
-	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
+	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
 	}
