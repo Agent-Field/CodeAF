@@ -764,6 +764,10 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
 		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
 		"warn": lightWarn, "data": lightData, "hover": lightCursor, "violet": hueViolet,
+		// The streaming step is a role on this ladder like any other, and it owes
+		// the same rounding check — see [lightLive], and settle_test.go for what it
+		// is for.
+		"live": lightLive,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d", name, other, h.idx)
