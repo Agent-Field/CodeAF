@@ -7,10 +7,12 @@ package session
 // move can land without a flag day.
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -129,5 +131,58 @@ func TestANodeJournalFollowsItsSession(t *testing.T) {
 	legacy := taskJournalPath(Place{}, "aaaa1111aaaa1111", 4, "")
 	if want := filepath.Join(state, "v3", "tasks", "aaaa1111aaaa1111"); filepath.Dir(legacy) != want {
 		t.Fatalf("the legacy journal is in %q, want %q", filepath.Dir(legacy), want)
+	}
+}
+
+// AND A PIECE OF THAT NODE'S WORK IS IN THE SAME FOLDER AS THE NODE.
+//
+// Every path a running node needs is arithmetic on one Place, and the Place used
+// to be read off the agent that OWNED the node — which is the conversation for
+// the work it proposed itself and the parent's WORKER for a part it handed
+// further out. A worker carries no Place (it is not a session), so a part's
+// worktree landed in the person's own repository under the legacy layout while
+// its parent's sat inside the session folder, and one family took the git root's
+// lock on two different files. [Agent.familyPlace] is the one answer both halves
+// now ask.
+func TestAPieceOfATasksWorkKeepsToTheSameSessionFolder(t *testing.T) {
+	repo := newTestRepo(t)
+	state := t.TempDir()
+	t.Setenv(home.EnvVar, state)
+	place := Place{Dir: filepath.Join(state, "v3", "projects", "-repo", "aaaa1111aaaa1111"), Workspace: repo}
+
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+	})
+	// Built by the production constructor, in the repository the node would be
+	// working in — everything below hangs off what THAT agent knows.
+	worker, node := workerFor(t, session, taskSpec{
+		title: "the whole job", brief: "b", acceptance: "a", depth: 1,
+	})
+	if worker.config.Place.Dir != "" {
+		t.Fatal("a worker was made into a second session; the point of this test is that it is not one")
+	}
+	piece := pieceOf(t, session.graph(), node, worker, "one part of it")
+
+	// The two lines [Agent.workTaskNode] runs for a node it is about to start.
+	tree, err := prepareTaskTree(worker.familyPlace(piece), repo, worker.journalID(), piece.id, piece.title())
+	if err != nil {
+		t.Fatalf("prepareTaskTree for a piece: %v", err)
+	}
+	if want := filepath.Join(place.Trees(), strconv.FormatUint(piece.id, 10)); tree.dir != want {
+		t.Fatalf("the piece works in %q, want %q — inside the session that commissioned the family", tree.dir, want)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".aforge-v3")); !os.IsNotExist(err) {
+		t.Fatalf("a piece littered the person's repository anyway (%v)", err)
+	}
+	// AND ITS TRANSCRIPT SITS BESIDE ITS PARENT'S, which is the same question
+	// asked of the same Place through the real constructor.
+	part, err := worker.newTaskAgent(context.Background(), tree.dir, piece, "")
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a piece's worker: %v", err)
+	}
+	t.Cleanup(func() { _ = part.Close() })
+	if got := filepath.Dir(part.config.SessionFile); got != place.NodeJournals() {
+		t.Fatalf("the piece's transcript is in %q, want %q", got, place.NodeJournals())
 	}
 }
