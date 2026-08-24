@@ -661,9 +661,10 @@ cancel`.
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
 
-**Welcome box:** it takes only two keys, and only over an empty message box —
-`up`/`down` walk the recent sessions and `enter` opens the selected one. Every other
-key dismisses the box and then does whatever it normally does.
+**The empty screen's greeting:** it takes only two keys, and only over an empty message
+box — `up`/`down` walk the recent sessions listed under it and `enter` opens the selected
+one. Every other key dismisses the greeting and then does whatever it normally does; the
+first letter you type lands in the box, which is drawn inside the greeting until then.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
@@ -933,7 +934,10 @@ The key falls through and does nothing only when there is no roster on the frame
 close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
 `ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
-empty column is still a column to close.
+empty column is still a column to close. On the untouched empty screen there is no
+column yet; there `ctrl+g` is a first keystroke like any other — the greeting goes and
+the key then closes the column it would just have raised, so a second press brings it
+back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for

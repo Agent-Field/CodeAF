@@ -2637,11 +2637,34 @@ func (a *app) railColumns(width int) int {
 // gets instead is one dim line at the foot of the column naming the page that
 // holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
-	if a.railAway {
+	if a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
 	return a.railColumns(width) > 0
+}
+
+// railQuiet reports whether the column has nothing true to say yet: the
+// greeting is up, this conversation has run nothing, and nothing stands over
+// it.
+//
+// THE COLUMN IS ABSENT UNTIL IT HAS CONTENT OR THE CONVERSATION HAS BEGUN. It is
+// still permanent in the sense that matters — it stands from the first
+// keystroke on, before any work exists, so the place is learned before it is
+// needed — but on the empty screen it was a bordered column of `+ /task` and
+// `+ /standing` beside nothing, and `❯ ctrl+g hide` under them, on a frame whose
+// only other content was a greeting (welcome.go). Furniture drawn to mark an
+// absence is the one thing this surface does not draw. The doors are one `/`
+// away and the greeting's own line says so.
+//
+// It answers false — the column stands — the moment there is a task or a
+// standing order to put on it, so a session with orders over it meets the
+// column on its first frame exactly as before. And it is only ever true while
+// the greeting is open: neither the closed column's edge nor the column itself
+// is on the frame, so nothing here can be pressed ([app.railStowed] asks it
+// too).
+func (a *app) railQuiet() bool {
+	return a.welcome.open && !a.railAvail() && len(a.marginStanding()) == 0
 }
 
 // railAvail reports whether there is a roster to raise at all, at ANY width.
@@ -2702,7 +2725,7 @@ func (a *app) railRoom() int {
 // positive — so the right-hand strip of the frame always belongs to the roster
 // in one of its two shapes, and never to nobody.
 func (a *app) railStowed() bool {
-	if !a.railAway {
+	if !a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
