@@ -96,6 +96,25 @@ type routeVerdict struct {
 	Shape string `json:"shape"`
 	Goal  string `json:"goal"`
 	Why   string `json:"why"`
+	// Wide is THE JUDGE'S OWN READING OF BREADTH, and it arms the task this
+	// card starts ([taskSpec.wide], task.go).
+	//
+	// It is here because this door had no honest place to put the judgement it
+	// was already making. The judge is asked for a self-contained goal and never
+	// for a count, so the only signal reaching [Agent.armDivision] from here was
+	// the text gate — which reads a number only where it stands beside one of
+	// eighteen item-nouns, and therefore counts zero on almost every goal a judge
+	// writes ("research the pricing tiers of every major cloud provider" is
+	// zero). The one model-decided door for wide work admitted unarmed.
+	//
+	// A WRONG YES COSTS NOTHING, which is why it is free to take. Arming only
+	// means the worker MAY discover it is wide; the evidence gate still refuses a
+	// division the material does not support (task_divide.go). And giving the
+	// judge somewhere to say "wide" removes its reason to reach for `adaptive` in
+	// order to express it — nothing in code inspects WHY the judge said adaptive,
+	// so that reach was a planner opened for breadth alone, which is the one
+	// thing law 2 forbids.
+	Wide bool `json:"wide"`
 }
 
 // routeJudgeBrief is what the judge is told, and it is the work-or-words law in
@@ -120,7 +139,7 @@ Answer with ONE JSON object and nothing else — no prose, no code fence:
 
 or
 
-  {"work": true, "shape": "adaptive", "goal": "...", "why": "..."}
+  {"work": true, "shape": "task", "wide": true, "goal": "...", "why": "..."}
 
   shape  "task" is the default and covers WIDE work too — a sweep across many
          files, research across many sources, a goal with several independent
@@ -128,6 +147,11 @@ or
          has opened the material. Answer "adaptive" only when the work needs its
          graph planned before anything starts, or the person asked for a plan
          they can watch and steer. Width alone is not that.
+  wide   true when the work is BROAD — many files, many sources, several
+         independent parts — so the one worker that starts on it is allowed to
+         hand the parts out once it has opened the material. Leave it out for
+         work that is one job however long it takes. This is where breadth is
+         said; it is never a reason to answer "adaptive".
   goal   self-contained. Whoever reads it cannot see this conversation, so fold in
          what the person's words were pointing at: the subject, the files, the
          checks, what a finished answer looks like.
@@ -406,6 +430,11 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 		brief:      verdict.Goal,
 		acceptance: "the goal above is met, and the report says what was done and how it was checked",
 		model:      a.resolveTaskModel("").model,
+		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK ITS CARD STARTS. It is the
+		// same judgement the sizing judge is asked at the typed door and the same
+		// one propose_task carries in `wide` — see [routeVerdict.Wide] for why
+		// this door had nothing else to arm with.
+		wide: verdict.Wide,
 	}
 	if spec.summary == "" {
 		spec.summary = spec.title

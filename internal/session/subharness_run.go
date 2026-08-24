@@ -194,7 +194,7 @@ func (a *Agent) runSubharnessNode(ctx context.Context, node *TaskNode, listed *j
 		if runErr != nil {
 			because = runErr.Error()
 		}
-		result, runErr = a.deoptSubharness(ctx, node, room, journal, registry, spec, because)
+		result, runErr = a.deoptSubharness(ctx, node, room, journal, registry, manifest, spec, because)
 	}
 
 	// WHAT THE RUN SPENT IS FOLDED ONCE, HERE, and never per call. The doors of
@@ -244,22 +244,29 @@ func (a *Agent) runSubharnessNode(ctx context.Context, node *TaskNode, listed *j
 // failed, a guard rejected their input, or a fallback was triggered: from their
 // side the work is being done, and the only thing that changed is how. The
 // sentence is [exec.DeoptLine] and it is the only one.
+//
+// EXCEPT WHERE THE LONG WAY WOULD REACH PAST THE CEILING SOMEBODY APPROVED, and
+// then it is the other one. [exec.DeoptLineFor] picks between them from the
+// program's own manifest, and it is asked BEFORE the room and the journal are
+// told anything: announcing "handled it the long way" over a run that is about
+// to stop would be this file saying the opposite of what happened.
 func (a *Agent) deoptSubharness(ctx context.Context, node *TaskNode, room *taskRoom,
-	journal *subharnessJournal, registry *exec.Registry, spec *subharnessRunSpec, because string,
+	journal *subharnessJournal, registry *exec.Registry, manifest exec.Manifest,
+	spec *subharnessRunSpec, because string,
 ) (exec.RunResult, error) {
-	line := exec.DeoptLine(because)
+	line := exec.DeoptLineFor(manifest, because)
 	// The note goes into the journal first, because the journal is the record
 	// that outlives the room — and a run read back tomorrow has to say why its
 	// second half looks nothing like its first.
 	_ = exec.Record(journal, exec.JournalEntry{Call: exec.CallLog, Ref: spec.name, Note: line})
-	node.doingNow(clip(exec.DeoptWord, hintLimit))
+	node.doingNow(clip(exec.DeoptWordFor(manifest), hintLimit))
 	if room != nil {
 		room.publish(Event{Kind: EventNotice, Text: line})
 	}
 	// THE INPUT IS THE ORIGINAL INPUT. Falling back means doing the job as it
 	// stood before any program touched it, which is the whole of what the long
 	// way promises.
-	return exec.Deopt(ctx, registry, spec.input, journal.env, because)
+	return exec.Deopt(ctx, registry, manifest, spec.input, journal.env, because)
 }
 
 // runSpend is what the run cost, read from the one place that can say.

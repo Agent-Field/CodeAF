@@ -3194,13 +3194,51 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// requests to that model, and folding it in as a single call on the model the
 	// person is chatting to would put a number in the session's books that never
 	// happened.
-	a.addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+	a.spendLedger(node).addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+}
+
+// spendLedger is WHICH SET OF BOOKS this node's spend goes into: the agent that
+// owns the node, or — when that agent has already closed its own — the
+// conversation at the root of the graph.
+//
+// THE ONE-LEDGER LAW HAS AN ORDERING PROBLEM AND THIS IS THE ANSWER TO IT. On
+// the ordinary path a part folds into its parent worker and the parent later
+// folds whole into the session, and the order is safe because the parent's tail
+// loop waits on every part's report before it exits (see [runTaskChild]). A
+// STOPPED PARENT DOES NOT WAIT. Its own agent is closed and folded in
+// [Agent.workTaskNode]'s defer, and only after that does [Agent.runTaskNode]
+// reach [TaskGraph.stopChildren] — so every part cut down with it would fold
+// into an agent whose total nobody is ever going to read again, and the money
+// would sit on the node's row, visible and uncounted, while the session ledger
+// was short by a whole part. That is the failure on exactly the path somebody
+// takes when they are worried about what this is costing, and it was never
+// division-specific: a propose_task child stopped with its parent lost the same
+// way. Threshold and deadline endings take the same road.
+//
+// SKIPPING A CLOSED HOP IS THE SAME TOTAL BY A SHORTER ROUTE. The money is the
+// person's either way; the only thing the parent's books add on the way past is
+// a line in the parent's own journal, and a parent that has finished reading is
+// not going to read it.
+func (a *Agent) spendLedger(node *TaskNode) *Agent {
+	if a == nil {
+		return a
+	}
+	a.mu.Lock()
+	closed := a.closed
+	a.mu.Unlock()
+	if !closed || node == nil || node.graph == nil {
+		return a
+	}
+	if home := node.graph.home; home != nil && home != a {
+		return home
+	}
+	return a
 }
 
 // ── the child agent ─────────────────────────────────────────────────────────
@@ -3380,6 +3418,22 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		tasker:     tasker,
 		taskID:     nodeID,
 		taskDepth:  depth,
+		// AND THE ROAD ITSELF, WITHOUT WHICH IT IS OPEN ON PAPER ONLY. Divide is
+		// the person's own setting for whether wide work may hand its parts out
+		// (cmd/aforge's chatv3.go, config's Swarm), and it is set on the
+		// CONVERSATION — which can never divide, because [Config.mayDivide] also
+		// wants mayFanOut and a conversation is not in a task. Every agent that
+		// CAN divide is built right here, so a constructor that did not carry the
+		// setting down was a decision the worker's hands never heard about:
+		// divideTools returned nil and renderSystemAt left prompts/divide.md out,
+		// for every worker in the running program, while the roster line, the
+		// schema and three manual pages all promised the road.
+		//
+		// It is copied bare rather than gated here on purpose: whether THIS node
+		// may divide is one question with one reader ([Config.mayDivide]), which
+		// asks the node it was armed on. This line is only the person's yes
+		// travelling with the work.
+		Divide: parent.Divide,
 	}, client)
 }
 

@@ -127,6 +127,23 @@ needed a closer look — handled it the long way
 with the program's own reason after it where it gave one. You get your answer; it just was
 not the fast path. This is the same in the chat and headless.
 
+## When the long way is not taken — the ceiling holds
+
+The general worker that does the job the long way has a shell, the files and the web, and
+that belt cannot be narrowed. So the long way is only taken where the program's own tool
+list already reaches a shell — because that is what you approved. A program approved to
+read files and nothing else does **not** quietly become a shell agent in your workspace
+because a check did not pass. Instead the run stops **incomplete** and says:
+
+```
+needed a closer look, and the long way would reach further than this program was allowed to — so nothing else was tried
+```
+
+again with the program's own reason after it. Nothing is lost: the run's journal is kept,
+and you decide what happens next — run it again with different material, hand the job to
+the chat yourself, or widen what the program may use. The ceiling you agreed to is never
+widened without you.
+
 ## What a run costs
 
 Everything a run spends — its model calls, and any tool call that costs model tokens —

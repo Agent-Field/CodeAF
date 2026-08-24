@@ -90,6 +90,17 @@ func theProgram() exec.Manifest {
 	}
 }
 
+// theOpenProgram is [theProgram] with a ceiling that already reaches a shell, so
+// the long way stays inside what its card promised ([exec.DeoptHeld] carries the
+// argument). The deopt tests need one, because a program approved to read files
+// and nothing else is a program whose fallback must NOT quietly become a shell
+// agent — which is what the held test below pins.
+func theOpenProgram() exec.Manifest {
+	manifest := theProgram()
+	manifest.Whitelist = []string{"read", "bash"}
+	return manifest
+}
+
 // registryWith builds a registry with the generalist behind it and one scripted
 // program on it.
 func registryWith(t *testing.T, general *fakeGeneralist, runners ...exec.Runner) *exec.Registry {
@@ -359,7 +370,7 @@ func TestAFinishedRunLeavesTheNoteTheNextListDraws(t *testing.T) {
 // input, and the person is told the step needed a closer look — never that
 // anything failed.
 func TestAProgramThatNeededACloserLookIsHandledTheLongWay(t *testing.T) {
-	program := &fakeRunner{manifest: theProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+	program := &fakeRunner{manifest: theOpenProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
 		return exec.RunResult{FellBack: "there is no test name in this"}, nil
 	}}
 	general := &fakeGeneralist{}
@@ -395,7 +406,7 @@ func TestAProgramThatNeededACloserLookIsHandledTheLongWay(t *testing.T) {
 // broken program rather than a program that decided something, and either way
 // the work still has to get done.
 func TestARunThatCouldNotBeMadeToHappenIsAlsoHandledTheLongWay(t *testing.T) {
-	program := &fakeRunner{manifest: theProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+	program := &fakeRunner{manifest: theOpenProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
 		return exec.RunResult{}, errors.New("the bundle is not a program")
 	}}
 	general := &fakeGeneralist{}
@@ -411,6 +422,42 @@ func TestARunThatCouldNotBeMadeToHappenIsAlsoHandledTheLongWay(t *testing.T) {
 	}
 	if node.State != TaskDone || !strings.Contains(node.Report, exec.DeoptWord) {
 		t.Fatalf("the run settled %s: %q", node.State, node.Report)
+	}
+}
+
+// THE CEILING A PERSON APPROVED SURVIVES THE FALLBACK. A program whose card said
+// it may read files and nothing else does NOT become an unrestricted shell agent
+// in the person's workspace because a guard did not pass: the work stops
+// incomplete, in the person's own register, and the generalist is never reached.
+func TestALongWayThatWouldReachPastTheCeilingIsNotTaken(t *testing.T) {
+	program := &fakeRunner{manifest: theProgram(), run: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+		return exec.RunResult{FellBack: "there is no test name in this"}, nil
+	}}
+	general := &fakeGeneralist{}
+	agent := agentWithPrograms(t, registryWith(t, general, program), nil)
+
+	id, _, err := agent.SubharnessRun(context.Background(), "flake-triage",
+		json.RawMessage(`{"brief":"work out why TestFoo is flaky"}`))
+	if err != nil {
+		t.Fatalf("the run did not start: %v", err)
+	}
+	node := waitForSettled(t, agent, id)
+
+	if took := general.took(); len(took) != 0 {
+		t.Fatalf("a program approved to read files reached the generalist anyway: %v", took)
+	}
+	if !strings.Contains(node.Report, exec.DeoptHeldWord) {
+		t.Fatalf("the person was not told why nothing else was tried: %q", node.Report)
+	}
+	if strings.Contains(node.Report, exec.DeoptWord) {
+		t.Fatalf("the run claimed it was handled the long way: %q", node.Report)
+	}
+	// THE VOCABULARY LAW REACHES THIS SENTENCE TOO. A bound that held is not a
+	// fault, and nothing here may name the machinery that decided.
+	for _, banned := range []string{"failed", "error", "whitelist", "policy", "refus"} {
+		if strings.Contains(strings.ToLower(node.Report), banned) {
+			t.Fatalf("the held line reads as machinery or a fault (%q): %q", banned, node.Report)
+		}
 	}
 }
 
