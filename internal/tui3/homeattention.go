@@ -303,16 +303,18 @@ func (h *homeView) buildAttention() {
 	if h.searching() {
 		return
 	}
-	// AN EMPTY MACHINE HAS NO GEOGRAPHY TO KEEP STABLE. A machine that has never
-	// held a conversation draws ONE sentence — `nothing here yet` ([homeList]) —
-	// and two labels over the top of it would be a screen laying out a map of a
-	// place that does not exist yet. The stable-geography law is about a working
-	// machine, where the zones are where you look; this is the emptiness law
-	// applied to the whole surface, which is [app.landHome]'s third condition
-	// said again one floor down.
-	if len(h.world.Projects) == 0 && len(h.bare) == 0 && len(h.exchanges) == 0 {
-		return
-	}
+	// AN EMPTY MACHINE KEEPS THE SAME GEOGRAPHY AS A FULL ONE. This used to stand
+	// down whole when nothing had been said on the machine yet, on the argument
+	// that two labels over one sentence were a map of a place that did not
+	// exist. The ruling went the other way: home is always reachable now
+	// ([app.homeDoorOpen]), so the first home a person ever sees may well be an
+	// empty one, and it has to READ as home — the labels where they will always
+	// be, each saying what would fill it ([homeZone.teach]), the places column
+	// saying `nothing here yet` where the rows will be ([homeEmptyRow]). A screen
+	// that showed one dim sentence instead was a refusal wearing the skeleton's
+	// clothes, and a person could not tell it from a broken page. The zones keep
+	// their own emptiness law inside this one: below the wide tier a label with
+	// nothing under it still vanishes ([homeView.attentionZone]).
 	for _, zone := range homeZones {
 		h.attentionZone(zone)
 	}
