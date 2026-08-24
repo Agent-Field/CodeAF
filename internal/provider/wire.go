@@ -178,11 +178,14 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// because the model can be pinned per request by the router and the learned
 	// refusal below can change the answer mid-run.
 	dialect := c.dialectFor(model)
-	messages, err := encodeMessages(scrubbed.Messages, dialect)
+	// Through the memo rather than straight at the encoders: the answer is the
+	// same bytes either way, and the unchanged prefix of a transcript this
+	// client has already sent is not re-derived to produce them (memo.go).
+	messages, err := c.encodes.encodeMessages(scrubbed.Messages, dialect)
 	if err != nil {
 		return nil, err
 	}
-	tools, err := encodeTools(scrubbed.Tools, dialect)
+	tools, err := c.encodes.encodeTools(scrubbed.Tools, dialect)
 	if err != nil {
 		return nil, err
 	}
