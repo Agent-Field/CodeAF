@@ -160,14 +160,14 @@ func (n *TaskNode) dividing() bool {
 // TWO SIGNALS, AND BOTH ARE FREE — no model call is made here, because this
 // question is asked of every task that is ever admitted.
 //
-//   - THE JUDGE ALREADY SAID SO. `/task` asks a sizing judge whether the work
-//     parallelizes and offers the person a choice (task_person.go's
-//     [Agent.judgeDecomposable], internal/tui3's chooser). Somebody who picks
-//     `single` over `adaptive` has not said the work is narrow — they have said
-//     they do not want a planner and a fleet — so a yes from that judge arms
-//     this road for the task they then start. THAT IS THE POINT OF THE WAVE:
-//     the upfront choice matters less, because a single worker that turns out
-//     to be holding six jobs can now say so.
+//   - THE JUDGE ALREADY SAID SO. `/task <brief>` asks a sizing judge whether
+//     the work parallelizes (task_person.go's [Agent.judgeDecomposable]) and
+//     then starts ONE WORKER whatever the answer was — a yes arms that worker
+//     rather than opening a planner, and the surface says so in one dim line
+//     (internal/tui3's taskcommand.go). THAT IS THE POINT OF THE WAVE, and it
+//     is now the shape wide work takes by default: the upfront choice is gone
+//     because a single worker that turns out to be holding six jobs can say so
+//     from the material instead of from the brief.
 //   - THE WORK'S OWN TEXT ENUMERATES ENOUGH ITEMS. This is
 //     cmd/aforge/cooperative.go's plan-time gate asked of a task instead of a
 //     plan: a brief that already names eleven adapters is a brief that may

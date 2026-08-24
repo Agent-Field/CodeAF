@@ -300,7 +300,6 @@ func (a *app) clearConversation() {
 // it closes itself on the keystroke that did (home.go).
 func (a *app) closeForSwitch() {
 	a.pick.close()
-	a.taskPick.close()
 	a.memPanel.close()
 	a.permPanel.close()
 	// AND THE STANDING PAGE, which is a door onto what stands over the
