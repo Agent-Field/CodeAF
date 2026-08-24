@@ -40,6 +40,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"how do I stop it mid answer", "keys"},
+		// BARGE-IN, asked the four ways people meet it: wanting to correct a
+		// running answer, seeing the chord in the hint slot and not knowing what
+		// it is, pressing it and finding nothing happened, and asking whether the
+		// key that used to do nothing does something now.
+		{"how do I interrupt it and say something else", "keys"},
+		{"stop it and tell it something different at the same time", "keys"},
+		{"what does shift+enter do", "keys"},
+		{"shift enter does nothing for me", "keys"},
 		{"why did it ask permission before running that", "permissions"},
 		{"what does always mean when I press a", "permissions"},
 		{"how do I connect my google account", "accounts"},

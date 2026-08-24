@@ -7,8 +7,9 @@
 `alt+enter` opens a new line inside the message without sending. `ctrl+j` does the
 same thing — it is a second spelling for terminals that swallow `alt+enter`.
 
-`shift+enter` is **not bound** anywhere in the v3 chat. If you press it, nothing
-happens. Use `alt+enter` or `ctrl+j`.
+`shift+enter` does **not** open a line. While a turn is running it **stops the answer
+and sends what you have typed** — see "Interrupt and say something new in one key"
+below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -49,6 +50,7 @@ reply. The box is cleared, so you can keep typing.
 | the answer finishes | the waiting message sends itself as an ordinary new turn |
 | several are waiting | one per finished turn, oldest first, in the order you typed them |
 | `esc` | stops the answer and sends the waiting message immediately |
+| `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
 | `enter` again | holds the edited sentence again |
@@ -69,6 +71,61 @@ whose last request has already gone out has no boundary left, so a message pushe
 it would land in the transcript with nothing coming to answer it. Waiting for the turn
 to end means the message always gets a reply, and it is what makes the message editable
 until it goes.
+
+## Interrupt and say something new in one key — barge in, stop it and tell it something else
+
+`shift+enter` while a turn is running **stops the answer and sends what is in the box**,
+as one gesture. It is the two keys `enter` then `esc` collapsed into one, for the moment
+you are watching an answer go the wrong way and want to say "no — the other file" *now*
+rather than after it finishes.
+
+What happens, in order:
+
+1. Your sentence goes onto the waiting queue exactly as plain `enter` would put it there.
+2. The turn is interrupted: everything it already said is **kept**, and the note
+   `interrupted` is added, exactly as `esc` does it.
+3. When that turn has actually finished stopping, your message opens the **next** turn.
+
+Nothing is sent into the turn you stopped. The transcript reads in the order it
+happened: the partial answer, the `interrupted` note, then your message.
+
+**The box is cleared** the moment you press it, and the draft file it came from is done
+with — from your side you have said the thing. Attachments in the tray go with it.
+
+**What it does not do.** A `/`-command is run at once and the turn is **left running** —
+a slash command is something you said to aforge rather than to the model, so there is
+nothing to interrupt for. The same is true of a live `/task` or `/stand` tag, of a picked
+harness, and of a refusal. The rule is simple: the turn is stopped only if the key
+actually queued a message.
+
+**With an empty box it does nothing at all** — not even a plain interrupt. Use `esc` for
+that. With nothing running it also does nothing: `enter` already sends.
+
+**It marks nothing.** `ctrl+enter` is the chord that means "keep this true"; this one
+means "instead of that". One key does not do both.
+
+**Where it does not exist.** Inside a **task room** there is nothing for it to mean —
+`enter` in a room steers the node there and then, with no queue to jump, and a room's way
+of ending work is `x` and a card that asks first. The chord is ignored there.
+
+**Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
+can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
+modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
+and your message simply **waits**, which is the safe half of the same meaning; nothing is
+lost and nothing breaks. On those terminals aforge also **never advertises the chord**:
+the line under the box keeps saying `esc interrupt`. If you never see
+`shift+enter stops and sends` there, that is why — use `enter` then `esc` instead, which
+works everywhere.
+
+**The line that teaches it.** While a turn is running and you have typed something, the
+right end of the row under the message box reads exactly:
+
+```
+enter waits · shift+enter stops and sends
+```
+
+It is shown only in that state — a turn running, something in the box, and a terminal that
+can deliver the chord. Over an empty box it goes back to `esc interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
@@ -111,9 +168,15 @@ What happens:
    something is waiting.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
-yours is waiting for the answer to finish. On the very first frame of a session the
-conversation carries the note `esc interrupts · ctrl+c twice quits`.
+message box reads exactly `esc interrupt` — or `enter waits · shift+enter stops and
+sends` while you have typed something and this terminal can deliver that chord, or `esc
+stops and sends` while a message of yours is already waiting for the answer to finish. On
+the very first frame of a session the conversation carries the note
+`esc interrupts · ctrl+c twice quits`.
+
+**Stopping it and saying something new at once.** `shift+enter` does both in one key —
+see "Interrupt and say something new in one key" above. `esc` on its own stops without
+sending anything you have not already committed with `enter`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
 the interrupt last: a history recall is cancelled first, rewind is armed on the way
@@ -232,9 +295,12 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
 | `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
-`shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
+`shift+enter` does **not** open a line — use `alt+enter` or `ctrl+j` for that. It needs a
+terminal that can tell it apart from a plain `enter`; where it cannot, the key arrives as
+an ordinary `enter` and the message waits instead.
 
 ## Keys in the message box: opening things and moving the view
 
@@ -1312,7 +1378,7 @@ answer:
 
 | Chord | Status |
 |---|---|
-| `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
+| `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
