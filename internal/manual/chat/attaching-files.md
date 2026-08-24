@@ -170,7 +170,7 @@ them — the file arrived with no usable name, or with a name that was really a 
 
 ```
 engine: an attached file arrived with no name
-engine: "../../.ssh/authorized_keys" is a path and not a name — an attachment names itself and the engine chooses where it goes
+engine: "../../etc/passwd" is a path and not a name — an attachment names itself and the engine chooses where it goes
 ```
 
 ## Attaching a picture is a different thing

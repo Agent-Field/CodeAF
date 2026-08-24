@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
+	filippo.io/cpace v0.0.0-20210101143347-24d601e2e469
 	github.com/AOShei/go-fast-pdf v0.1.1
 	github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886
 	github.com/alecthomas/chroma/v2 v2.27.0
@@ -17,12 +18,14 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
+	github.com/flynn/noise v1.1.0
 	github.com/int128/listener v1.3.0
 	github.com/int128/oauth2cli v1.18.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/muesli/termenv v0.16.0
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/yuin/goldmark v1.8.5
+	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0
@@ -33,7 +36,6 @@ require (
 )
 
 require (
-	filippo.io/cpace v0.0.0-20210101143347-24d601e2e469 // indirect
 	github.com/amp-labs/amp-common v0.0.0-20260814191756-775714ec2997 // indirect
 	github.com/antchfx/xmlquery v1.5.1 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect
@@ -61,7 +63,6 @@ require (
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/flynn/noise v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -99,7 +100,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect

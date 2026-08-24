@@ -59,11 +59,12 @@ const (
 	engineName  = "aforge-e2e-engine"
 	surfaceName = "aforge-e2e-surface"
 
-	// baseImage is alpine because the binaries are built CGO_ENABLED=0 and are
-	// therefore statically linked — verified, and asserted by [buildStatic]
-	// rather than assumed, because the day something in this tree needs cgo the
-	// failure would otherwise be a container that exits with "not found" on a
-	// binary that is plainly there.
+	// baseImage is alpine because [buildStatic] builds with CGO_ENABLED=0 and
+	// this tree's only sqlite is modernc.org's, which is pure Go — so the
+	// binaries are statically linked and musl is not in the picture at all. The
+	// day something here does need cgo, the symptom is a container reporting
+	// "not found" for a binary that is plainly there, and the fix is a glibc
+	// base image (debian:bookworm-slim) plus apt instead of apk.
 	baseImage = "alpine:3.20"
 )
 
@@ -449,59 +450,77 @@ func (w *remoteWorld) anAttachmentLandsOverThere(t *testing.T) {
 
 // ── scenario 5 — two surfaces at once ───────────────────────────────────────
 
-// twoSurfacesAtOnce is lane A's fan-out: two surfaces attached to ONE
-// conversation, each seeing the other's turn.
+// twoSurfacesAtOnce is the session host's fan-out: two windows in ONE
+// conversation, the second walking in while the first's turn is still running
+// and being handed the rest of it.
 //
-// IT CANNOT BE PROVED WITHOUT A PERSISTENT ENGINE, and saying so is the useful
-// answer. `aforge engine` on a pipe is one process per connection by
-// construction (cmd/aforge's engine.go hands remote.Serve its own stdin and
-// stdout), so two `--host` launches are two engines and two conversations —
-// there is no room in which a second window could be. What this scenario does
-// today is prove the honest consequence rather than skip in silence: two
-// concurrent surfaces both work, and they land in DIFFERENT conversations,
-// which is exactly what a non-persistent engine promises.
+// IT CANNOT BE PROVED WITHOUT A PERSISTENT ENGINE, and it asks the engine
+// rather than assuming. `aforge engine` on a pipe is one process per connection
+// by construction — remote.Serve gets that process's own stdin and stdout — so
+// two `--host` launches would be two engines and two conversations, and there
+// would be no room for a second window to walk into. On that shape the scenario
+// still proves the honest consequence (a lone surface works) and then skips
+// saying exactly what is missing, rather than asserting something weaker under
+// the same name.
 func (w *remoteWorld) twoSurfacesAtOnce(t *testing.T) {
-	// THE SAME CONVERSATION, NAMED, because that is what the scenario is about:
-	// two windows in one room rather than two windows that merely both worked.
-	first := w.launch(t, engineWorkspace, engineTalks+"/fanout.jsonl", markerEcho+" first window speaking")
-	second := w.launch(t, engineWorkspace, engineTalks+"/fanout.jsonl", markerEcho+" second window speaking")
+	if !w.enginePersistent(t) {
+		single := w.chatOnce(t, engineWorkspace, markerEcho+" a lone window")
+		if single.err != nil {
+			t.Errorf("even a single surface failed on this build: %v\n%s", single.err, tail(single.errOut, 1200))
+		}
+		t.Skip("fan-out to ONE conversation needs the session host (internal/enginehost) wired into " +
+			"`aforge engine`; on a pipe engine two surfaces are two engines")
+	}
+
+	// ONE NAMED CONVERSATION, TWO WINDOWS. Naming it is what makes this a room
+	// rather than a coincidence: both hellos ask for the same session, and
+	// cmd/aforge's engine.go hands both the same one — "which is the whole of
+	// 'sit down somewhere else and be in it'".
+	shared := engineTalks + "/fanout.jsonl"
+
+	// The first window starts a SLOW turn, so that when the second one arrives
+	// there is provably a turn in flight for it to walk in on. A pair of quick
+	// turns would have made "did the second window see the first's answer" a
+	// race, and a racing assertion is a flake with a moral.
+	first := w.launch(t, engineWorkspace, shared, markerSlow+" the first window is thinking")
+	if !waitFor(20*time.Second, func() bool { return strings.Contains(first.snapshot(), slowTop) }) {
+		first.stop()
+		w.diagnose(t)
+		t.Fatalf("the first window's turn never began.\nstdout:\n%s\nstderr:\n%s",
+			first.snapshot(), tail(first.snapshotErr(), 2000))
+	}
+	second := w.launch(t, engineWorkspace, shared, markerEcho+" second window speaking")
+
 	a := first.wait(t, 3*time.Minute)
 	b := second.wait(t, 3*time.Minute)
+	t.Logf("first window stdout: %q", a.out)
+	t.Logf("second window stdout: %q", b.out)
 
 	if a.err != nil || b.err != nil {
 		w.diagnose(t)
 		t.Fatalf("two concurrent surfaces did not both complete.\nfirst err=%v stderr:\n%s\nsecond err=%v stderr:\n%s",
 			a.err, tail(a.errOut, 2000), b.err, tail(b.errOut, 2000))
 	}
-	// BOTH REPLIES ARRIVED, AND WHICH SCREEN EACH LANDED ON IS NOT ASSERTED.
-	// That is the point of one room rather than a gap in the test: the engine
-	// fans a stream to every attached surface, so a window can legitimately
-	// watch the other window's turn go past. What must be true is that neither
-	// message was lost.
-	t.Logf("first window stdout: %q\nfirst window stderr: %s", a.out, tail(a.errOut, 1200))
-	t.Logf("second window stdout: %q\nsecond window stderr: %s", b.out, tail(b.errOut, 1200))
 
-	if !w.enginePersistent(t) {
-		t.Skip("fan-out to ONE conversation needs the session host (internal/enginehost) wired into " +
-			"`aforge engine`; on a pipe engine two surfaces are two engines, which is what just happened")
+	// THE SECOND WINDOW WATCHED A TURN IT DID NOT START, which is the whole
+	// feature seen from a screen: it attached while the first window's reply was
+	// still arriving and was given the rest of it (remote.Welcome's Live, and
+	// the stream the client resumes on it). A surface that only ever saw its own
+	// turns would be a second conversation wearing the same name.
+	if !strings.Contains(b.out, slowEnd) {
+		t.Errorf("the second window never saw the turn the first window started.\nwant %q in its stdout, got: %q",
+			slowEnd, b.out)
 	}
 
-	// WITH A HOST IN PLACE THE TWO WINDOWS ARE IN ONE ROOM, and the proof is on
-	// the engine's disk rather than on either screen. Neither surface named a
-	// session, and cmd/aforge's engine.go reads that as "this workspace's
-	// latest-or-new" for both — "which is the whole of 'sit down somewhere else
-	// and be in it'" — so ONE journal carries both messages. The count of files
-	// is deliberately not asserted: earlier scenarios have left their own
-	// conversations on that disk, and what matters is that these two share one.
-	shared := engineTalks + "/fanout.jsonl"
-	found := w.exec(t, engineName, nil, 40*time.Second, "sh", "-c",
-		"grep -c 'window speaking' "+shared+" 2>/dev/null || echo 0")
-	if strings.TrimSpace(found.out) == "0" {
+	// AND BOTH MESSAGES ARE IN ONE JOURNAL ON THE ENGINE. The screens are the
+	// surface's business; this is the fact on the machine that owns the work,
+	// and it is the one that would survive both windows being closed.
+	whole := w.exec(t, engineName, nil, 40*time.Second, "sh", "-c", "cat "+shared+" 2>/dev/null")
+	if strings.TrimSpace(whole.out) == "" {
 		w.diagnose(t)
 		t.Fatalf("neither window reached the shared conversation at %s", shared)
 	}
-	whole := w.exec(t, engineName, nil, 40*time.Second, "sh", "-c", "cat "+shared)
-	for _, words := range []string{"first window speaking", "second window speaking"} {
+	for _, words := range []string{"the first window is thinking", "second window speaking"} {
 		if !strings.Contains(whole.out, words) {
 			w.diagnose(t)
 			t.Errorf("the shared conversation %s does not hold %q — the two windows were not in one room", shared, words)
@@ -810,7 +829,6 @@ func (w *remoteWorld) chatOnce(t *testing.T, workspace, text string) said {
 	t.Helper()
 	return w.chatOnceBackground(t, workspace, text).wait(t, 3*time.Minute)
 }
-
 
 // running is a `--once` launch that has not finished yet, so a scenario can cut
 // the link out from under it.
