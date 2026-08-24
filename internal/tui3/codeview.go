@@ -58,7 +58,7 @@ const codeTier = tokens.TextTertiary
 // the same bargain internal/tui2's record rows make, and it is the only one
 // available to a preview whose first line has not arrived yet.
 func (a *app) codeRows(text, path string, width int) []string {
-	return a.codeRowsWith(markdownStyler(), text, path, width)
+	return a.codeRowsWith(a.styler(), text, path, width)
 }
 
 // codeRowsWith is [app.codeRows] against a stated Styler, split off for

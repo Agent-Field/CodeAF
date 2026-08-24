@@ -1701,7 +1701,9 @@ Four things are re-aimed when it lands:
   moved only if they are outside the range they were aimed at. **A value already in range
   is left exactly as authored**, so on an ordinary terminal you will not see a
   difference. On a pure black screen the body steps back from the glare it had; on a
-  tinted page the tiers that were sliding out of sight come back.
+  tinted page the tiers that were sliding out of sight come back. **The answers
+  themselves move with the body ink**, and so does the brighter step a streaming reply
+  wears: the growing edge stays one step above the settled text.
 - **The role colours** — accent, add, del, bad, warn, the question hue and the datum
   cyan — are checked for legibility and, if the background has crowded them, all of them
   move together by the same step, never one on its own.

@@ -93,6 +93,37 @@ var (
 	dimBand   = band{2.6, 4.4}
 )
 
+// liveStep is THE FOURTH READING TIER'S BAND, and it is the one band in this
+// file that is not a contrast at all: it is a MULTIPLE of whatever contrast the
+// ink ends up carrying.
+//
+// [hueLive] means one thing — "the body, still arriving" (styles.go) — and a
+// tier whose whole meaning is a RELATION cannot be held to an absolute number.
+// An ink pushed down off a black screen takes live down with it or the step
+// stops being a step; an ink lifted off a mid grey takes live up with it or the
+// growing edge disappears into the settled text beside it. So the band handed to
+// [holdInBand] for this tier is built at derivation time, out of the ink derived
+// in the same call.
+//
+// 1.15 to 1.30 is the authored pair read back as a ratio and given room on
+// either side. The dark ladder stands its live tier over its body ink at 1.18×
+// against the middle of the assumed dark range, and the light ladder stands its
+// own at 1.24× against white — so both authored pairs are INSIDE this band, and
+// A VALUE IN BAND IS NOT TOUCHED keeps them byte-identical on the grounds they
+// were aimed at, which is the same restraint the three tiers above get. The two
+// numbers themselves live in styles.go, where the palette is authored, and are
+// asserted against this band by TestTheLiveTierIsTheGlareLawsOneException.
+//
+// The ceiling is the half that is load-bearing, and THE GLARE LAW is why: live
+// is the one tier deliberately allowed above the ink's own ceiling, and an
+// exception with no bound of its own is not an exception, it is a hole. A step
+// is what the tier means; a LEAP is a second body white, and a second body white
+// on one screen is the exact defect this whole wave removed. So the ceiling is
+// the width of a step and nothing more, and the authored table carries a second,
+// absolute bound of its own beside it (styles.go's THE GLARE LAW, and
+// TestTheLiveTierIsTheGlareLawsOneException, which holds both).
+var liveStep = band{1.15, 1.30}
+
 // signalFloor is the least contrast a SIGNAL hue may have against the measured
 // ground before the whole signal set is moved.
 //
@@ -373,6 +404,54 @@ func holdInBand(base hue, ground float64, up bool, at band) hue {
 	return hue{r: r, g: g, b: b, idx: nearest256(r, g, b), tier: base.tier}
 }
 
+// liveOver holds THE LIVE TIER one clear step above the ink that was derived
+// beside it, in [liveStep]'s band.
+//
+// It is [holdInBand] with the band computed rather than looked up, and it takes
+// the derived ink rather than the authored one on purpose: live means "the body,
+// still arriving", so the thing it is a step above is the body THIS TERMINAL is
+// going to be reading, not the body some other terminal was authored for.
+//
+// ── AND WHERE THERE IS NO STEP TO TAKE, THE TIER IS ABSENT ──────────────────
+//
+// A ground can run out of room above the ink — a mid grey that can barely carry
+// the reading ladder at all, or a body already pinned at the top of what the
+// screen can reach. The honest answer there is the INK ITSELF, which is what
+// styles.go's [hueLive] note already says the tier degrades to: a streaming
+// reply then looks exactly as it looked before this effect existed, no glyph
+// added and none taken away. settle_test.go asserts live ≥ ink rather than live
+// > ink for exactly this reason — equal is a legal reading of the law, and
+// settling for a step too small to see would be the effect claiming to have
+// been delivered when it was not.
+//
+// The 256 rung is left to follow and is deliberately NOT forced apart. This tier
+// keeps its own hue and saturation and moves only its lightness, exactly as the
+// three tiers above do, and every value the reading ladder authors is near
+// neutral — so live and ink round onto the same grey ramp rather than one of
+// them drifting into the colour cube, which is the discipline that matters here.
+// Where the two land on the SAME index the effect is simply gone on that
+// terminal, and that is the same honest absence a step too small to see already
+// is (styles.go's [hueLive] states it as the collision check passing exactly
+// when the effect exists). Nudging an index to manufacture a difference the
+// colour does not have would be the surface lying about a step it did not take.
+func liveOver(base, ink hue, ground float64, up bool) hue {
+	at := contrastOn(ink, ground)
+	want := band{low: at * liveStep.low, high: at * liveStep.high}
+	if reachOf(ground, up) < want.low {
+		return ink
+	}
+	out := holdInBand(base, ground, up, want)
+	// THE LADDER IS ASSERTED RATHER THAN ASSUMED. Every path above lands at or
+	// over a multiple of the ink greater than one, so this cannot fire on the
+	// arithmetic — but the landing is quantized to a byte a channel
+	// ([atLuminance]), and live ≥ ink is a law of the surface rather than a
+	// property of the rounding.
+	if contrastOn(out, ground) < at {
+		return ink
+	}
+	return out
+}
+
 // groundStep derives one step of THE GROUND LADDER from the measured ground.
 //
 // This is the compositor's move styles.go names and could not make: the step is
@@ -622,6 +701,7 @@ func adaptRampFrom(base ramp, m measuredGround) ramp {
 	out.ink = holdInBand(base.ink, ground, up, inkBand.scaled(scale))
 	out.muted = holdInBand(base.muted, ground, up, mutedBand.scaled(scale))
 	out.dim = holdInBand(base.dim, ground, up, dimBand.scaled(scale))
+	out.live = liveOver(base.live, out.ink, ground, up)
 
 	// THE SIGNAL HUES, verified and moved only as one. The order the set is
 	// gathered in does not matter — the answer is a single step for all of them —
@@ -699,14 +779,15 @@ func (a *app) groundReply(msg tea.BackgroundColorMsg) tea.Cmd {
 	return nil
 }
 
-// repaintPalette drops every row this surface has painted and kept.
+// repaintPalette re-aims everything that HOLDS a colour at the ladder that has
+// just changed, and then drops every row this surface has painted and kept.
 //
 // It is the resize path's discipline aimed at a different fact. A cached row is
 // a finished string with escape sequences already inside it, so a palette that
 // changed under one is a row that will keep drawing yesterday's colours until
 // something else happens to make it stale — and on a transcript that is scrolled
-// back through, "something else" may be never. Three caches hold painted text and
-// all three are named here rather than trusted to expire:
+// back through, "something else" may be never. Four caches hold painted text and
+// all four are named here rather than trusted to expire:
 //
 //   - every entry on every deck reachable right now (render.go's build/width/
 //     stale key). The conversation, the open room's page, and a run's journal are
@@ -715,7 +796,21 @@ func (a *app) groundReply(msg tea.BackgroundColorMsg) tea.Cmd {
 //     by text and width and nothing else
 //   - the laid-out screen list itself, dropped by width so the next frame
 //     rebuilds unconditionally
+//   - the ROOM'S laid-out list, which is its own cache and not that one
+//     (room.go's [app.roomRows])
+//
+// AND THE ONE THING THAT IS NOT A CACHE: THE STYLER PROSE PAINTS A REPLY WITH.
+// A model's markdown is rendered by internal/tui2/prose, which resolves colour
+// from internal/tui2/tokens, and the only reason it comes back in THIS palette's
+// body white is that markdown.go states the ink on the Styler it hands over
+// ([tokens.Styler.WithBodyInk], and styles.go's THE GLARE LAW). That statement
+// was made against the ladder in force at startup. Dropping the rows without
+// re-making it would repaint the whole surface against the measured ground and
+// leave the answer itself on the assumed one — the two-whites defect the wave
+// removed, arriving through the door the wave added. So it is re-made here,
+// once per measurement, and every row rebuilt afterwards is rebuilt through it.
 func (a *app) repaintPalette() {
+	a.mdStyler = markdownStyler().WithBodyInk(a.pal.ramp.ink.tokenColor())
 	stale := func(entries []entry) {
 		for i := range entries {
 			entries[i].stale = true
@@ -727,6 +822,16 @@ func (a *app) repaintPalette() {
 		if a.room.orch != nil {
 			stale(a.room.orch.journal)
 		}
+		// AND THE ROOM'S OWN LAID-OUT LIST, which is a SECOND list rather than a
+		// view of the one dropped below. [app.roomRows] hands back its cache before
+		// it asks a single entry for its rows, so marking the page's blocks stale is
+		// invisible until something makes the ROOM dirty — and a reply that arrived
+		// while somebody was standing in a node's page would leave that page in
+		// yesterday's ladder for as long as they stayed on it. The flag is set here
+		// rather than through [app.roomTouched] because a repaint is not a change to
+		// what the page CONTAINS: the row count is the same, so the reader's offset
+		// is still the offset they chose.
+		a.room.dirty = true
 	}
 	a.codeCache.drop()
 	a.rows, a.rowsWidth = nil, 0

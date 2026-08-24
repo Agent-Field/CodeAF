@@ -112,6 +112,30 @@ func newMarkdownStyler(env func(string) string) *tokens.Styler {
 		WithBodyInk(rampFor(themeAuto, env).ink.tokenColor())
 }
 
+// styler is the painter THIS surface hands prose, and it is the seam where the
+// two halves of the readability wave meet.
+//
+// [markdownStyler] above carries the ink the palette was CONSTRUCTED with, which
+// is the ink an assumed ground was authored for. adaptive.go re-derives that ink
+// the moment a terminal says what colour it actually is, and a styler that kept
+// the startup value would put the two-whites defect straight back — the whole
+// surface repainted against the measured ground while the one thing a person
+// reads most stayed on the ladder nobody measured.
+//
+// So the door is a METHOD rather than a package function: a surface with a
+// measured ground reads its own styler, and every surface without one — which is
+// most of them, and every test that never answers — reads the process-wide one
+// and pays nothing. The rebuild happens once per measurement, in
+// [app.repaintPalette], because a Styler is a value worth caching per pane and
+// not per frame ([tokens.Styler]) and a streaming reply asks for one thirty
+// times a second.
+func (a *app) styler() *tokens.Styler {
+	if a.mdStyler != nil {
+		return a.mdStyler
+	}
+	return markdownStyler()
+}
+
 // renderMarkdown renders model-written markdown into screen rows, one string
 // per row, each at most width printable cells, with the package's typographic
 // hierarchy applied: headings promoted by tier (accent, h1 bold), fenced code
@@ -133,7 +157,7 @@ func renderMarkdown(text string, width int) []string {
 }
 
 func (a *app) renderMarkdown(text string, width int) []string {
-	return renderMarkdownWithCode(markdownStyler(), text, width, a.plainCodePath)
+	return renderMarkdownWithCode(a.styler(), text, width, a.plainCodePath)
 }
 
 // renderMarkdownWith is [renderMarkdown] against a stated Styler. It is the

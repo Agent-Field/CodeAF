@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -859,6 +860,12 @@ type app struct {
 	sizing bool
 
 	pal palette
+	// mdStyler is the painter prose is handed when this surface has MEASURED its
+	// terminal, and nil is the whole of "it has not" — every surface that never
+	// hears back from its terminal reads [markdownStyler]'s process-wide one, for
+	// the reasons that function states. See [app.styler]: this field is the seam
+	// THE GLARE LAW crosses when the ground stops being assumed.
+	mdStyler *tokens.Styler
 	// codeCache is the painted rows of the last few source blocks this surface
 	// lexed (codeview.go). Tool rows are drawn fresh on every frame by design, and
 	// this is what stops that from meaning "lex eight hundred lines thirty times a

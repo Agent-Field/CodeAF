@@ -429,6 +429,10 @@ const glareInkOverMuted = 1.25
 // A future retune that pushes the body back up fails here with the number it
 // chose, which is the whole point — the last one was undone by nothing louder
 // than somebody wanting the text to "pop".
+//
+// THE LIVE TIER IS NOT WALKED HERE, and its absence is a decision rather than an
+// omission: [hueLive] is the law's one stated exception and has a ceiling of its
+// own, in [TestTheLiveTierIsTheGlareLawsOneException] below.
 func TestTheBodyInkDoesNotGlare(t *testing.T) {
 	for _, ladder := range []struct {
 		name            string
@@ -471,6 +475,88 @@ func TestTheBodyInkDoesNotGlare(t *testing.T) {
 					trimFloat(glareInkOverMuted))
 			}
 		})
+	}
+}
+
+// oldBodyWhite is [tokens.TextPrimary]'s own hex — the white internal/tui2/prose
+// painted a reply in until this wave threaded the body ink through the Styler,
+// and the exact glare THE GLARE LAW was written about.
+//
+// It is spelled here rather than reached for because tokens does not hand its
+// table out as colours (styles.go's [hue.tokenColor] crosses that seam in one
+// direction only, and the reverse trip would be this package taking a second
+// colour authority). What that costs is a hex that could drift from tokens', and
+// what it buys is a bound with a MEANING: whatever the number, the live tier may
+// not climb back into the territory the two-whites defect occupied. Its own
+// escape sequence is asserted against tokens directly, in
+// [TestTheTranscriptBodyWearsTheSurfacesOwnInk] below, so the drift that would
+// matter is caught where it matters.
+const oldBodyWhite = "#E6E6F0"
+
+// THE LIVE TIER IS THE GLARE LAW'S ONE EXCEPTION, AND AN EXCEPTION HAS A BOUND.
+//
+// [hueLive] sits above the ceiling the law holds [hueInk] under, deliberately: it
+// paints a reply only while that reply is still arriving (render.go's
+// [app.liveTail]) and drains back to the body ink the moment the turn settles.
+// The law is about a colour somebody reads for MINUTES, and this one is gone in
+// seconds — which is precisely why THE ACCENT BUDGET lets a paragraph lead here
+// and nowhere else.
+//
+// An exception with nothing holding it is a hole. Two things hold this one:
+//
+//   - THE ABSOLUTE CEILING. Live may not reach the white this wave took away.
+//     #E6E6F0 is what prose used to paint every reply in, on every terminal, all
+//     the time; a live tier that arrived there would have restored the defect and
+//     merely renamed it "the streaming text".
+//   - THE STEP. Live is defined as ONE step above the body, and adaptive.go's
+//     [liveStep] is where that step's width is written down. Holding the authored
+//     pairs inside it is what stops a future retune from buying the effect by
+//     widening the gap — a leap is not a step, and a leap that started under the
+//     ceiling would still end over it the first time the ink came down.
+//
+// Both ladders are walked, because the light one travels the other way: on a page
+// a growing edge leads by being DARKER, so the step is measured as a ratio of
+// contrasts and the arithmetic is the same in both directions.
+func TestTheLiveTierIsTheGlareLawsOneException(t *testing.T) {
+	glare := contrastOf(mustHue(oldBodyWhite, flat), darkMid)
+	for _, ladder := range []struct {
+		name      string
+		mid       string
+		ink, live hue
+	}{
+		{"dark", darkMid, hueInk, hueLive},
+		{"light", lightMid, lightInk, lightLive},
+	} {
+		t.Run(ladder.name, func(t *testing.T) {
+			ink := contrastOf(ladder.ink, ladder.mid)
+			live := contrastOf(ladder.live, ladder.mid)
+			// THE TIER EXISTS, OR IS HONESTLY ABSENT. Equal is legal and means the
+			// effect is not drawn at all (styles.go's [hueLive]); quieter than the
+			// body is neither.
+			if live < ink {
+				t.Fatalf("the %s ladder's live tier is %s:1 against %s and its body ink is %s:1 — "+
+					"a streaming reply may not be QUIETER than the settled text beside it",
+					ladder.name, trimFloat(live), ladder.mid, trimFloat(ink))
+			}
+			if step := live / ink; step > liveStep.high {
+				t.Fatalf("the %s ladder stands live %s× its body ink, want at most %s× — "+
+					"THE LIVE TIER IS ONE STEP AND NOT A LEAP (adaptive.go's [liveStep]). "+
+					"A gap this wide reads as two kinds of text rather than as one kind "+
+					"still being written, and it is how a retune walks the streaming "+
+					"paragraph back into glare without ever touching the ceiling",
+					ladder.name, trimFloat(step), trimFloat(liveStep.high))
+			}
+		})
+	}
+	// AND THE ABSOLUTE CEILING, which is a DARK-LADDER statement because the white
+	// it names is one: #E6E6F0 on a page is not glare, it is invisible. The light
+	// ladder's live tier is a near-black and is held by the step above.
+	if live := contrastOf(hueLive, darkMid); live >= glare {
+		t.Fatalf("the live tier is %s:1 against %s, which is the %s:1 of tokens' own %s — "+
+			"THE GLARE LAW's one exception may not climb back into the white this wave "+
+			"took away (styles.go). Lower [hueLive]'s LIGHTNESS, hold its hue, and "+
+			"re-check its xterm-256 neighbour afterwards",
+			trimFloat(live), darkMid, trimFloat(glare), oldBodyWhite)
 	}
 }
 

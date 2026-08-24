@@ -128,6 +128,20 @@ import (
 // reads as switched off. Comfortable long-read contrast on the assumed grounds
 // is 8–11:1, and TestTheBodyInkDoesNotGlare holds BOTH ladders to it.
 //
+// THERE IS EXACTLY ONE EXCEPTION AND IT IS NAMED: [hueLive], the tier a reply
+// wears WHILE IT IS STILL ARRIVING, stands above the ceiling on purpose. The law
+// is about a colour somebody reads for MINUTES; the live tier is transient by
+// construction — it exists for the seconds a turn is streaming and drains back
+// to the body ink the moment the turn settles, which is the only reason a
+// paragraph is allowed to lead at all (THE ACCENT BUDGET above). An exception
+// with no bound of its own is a hole rather than an exception, so live carries a
+// ceiling of its own: IT MAY NEVER CLIMB BACK INTO THE WHITE THIS WAVE TOOK
+// AWAY. tokens' own body tier #E6E6F0 measures 13.79:1 against the middle of the
+// assumed dark range and is the glare this whole law was written about;
+// TestTheLiveTierIsTheGlareLawsOneException holds live under it, and holds the
+// STEP itself — live over ink — inside adaptive.go's [liveStep], so a future
+// retune cannot push the streaming text into glare by widening the gap either.
+//
 // #C6CDDA rather than the #D8DEE9 this table carried for five waves. At 14.05:1
 // against #101014 the ink was half again as bright as the person's own accent
 // (9.26:1 at the middle of the range), so the loudest thing on a surface whose

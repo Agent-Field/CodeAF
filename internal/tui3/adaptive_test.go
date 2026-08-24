@@ -211,7 +211,25 @@ func TestAReadingTierInsideItsBandIsNotTouched(t *testing.T) {
 		{"#FFFFFF", "light ink", lightInk, func(r ramp) hue { return r.ink }},
 		{"#1a1b26", "dark muted", hueMuted, func(r ramp) hue { return r.muted }},
 		{"#1a1b26", "dark dim", hueDim, func(r ramp) hue { return r.dim }},
-		{"#282828", "dark ink", hueInk, func(r ramp) hue { return r.ink }},
+		// #1e1e2e rather than the #282828 this case was first written against, and
+		// the swap is THE GLARE LAW arriving in the same wave as this file. #282828
+		// was picked as a dark ground the authored ink cleared comfortably — and it
+		// did, at 10.91:1, while the ink was the brighter white the law came down
+		// from. The calmed ink measures 9.23:1 there, under [inkBand]'s floor, so
+		// the derivation LIFTS it and is right to: a body under nine and a half to
+		// one on a grey-black screen is the "leaning toward the screen" end of the
+		// band, and holding the case would have meant asserting that the correction
+		// stays switched off exactly where it is wanted. #1e1e2e is catppuccin's own
+		// background, inside the assumed range styles.go authored against, and the
+		// calmed ink clears it at 10.27:1 — which is what this case was ever
+		// testing: a ground the authored value already fits.
+		{"#1e1e2e", "dark ink", hueInk, func(r ramp) hue { return r.ink }},
+		// AND THE LIVE TIER IS HELD BY THE SAME RULE, on the ground its own step was
+		// authored against. It is a RELATIVE band ([liveStep]) rather than one of
+		// the three above, so "in band is not touched" has to be shown to survive
+		// the extra arithmetic rather than assumed to.
+		{"#1a1b26", "dark live", hueLive, func(r ramp) hue { return r.live }},
+		{"#FFFFFF", "light live", lightLive, func(r ramp) hue { return r.live }},
 	} {
 		got := held.got(adaptRamp(groundOf(t, held.ground)))
 		if got.r != held.was.r || got.g != held.was.g || got.b != held.was.b {
@@ -229,6 +247,63 @@ func TestAReadingTierInsideItsBandIsNotTouched(t *testing.T) {
 	nord := adaptRamp(groundOf(t, "#ECEFF4"))
 	if nord.cursor == lightCursor || nord.selected == lightSelected || nord.mark == lightMark {
 		t.Fatal("the ground ladder did not move on a tinted page, which is the defect styles.go names")
+	}
+}
+
+// THE LIVE TIER FOLLOWS THE INK IT IS A STEP ABOVE, ON EVERY GROUND.
+//
+// [hueLive] is the one reading tier defined as a RELATION rather than as a
+// contrast: it means "the body, still arriving", so what it owes is a stated
+// distance from whatever the body ends up being on THIS terminal, not a number
+// of its own. adaptive.go's [liveOver] is that rule, and this is the table that
+// holds it — including the two answers that are degradations rather than
+// failures.
+//
+// EQUAL IS A LEGAL READING. Where a ground has no headroom left above its body
+// ink the tier is ABSENT, which styles.go's own note says is the right failure:
+// a streaming reply looks exactly as it looked before the effect existed, rather
+// than taking a step too small to see and calling it delivered.
+func TestTheLiveTierFollowsTheDerivedInk(t *testing.T) {
+	for _, ground := range groundCases {
+		t.Run(ground.name, func(t *testing.T) {
+			m := groundOf(t, ground.hex)
+			at := luminanceOf(m.r, m.g, m.b)
+			got := adaptRamp(m)
+			ink := contrastOn(got.ink, at)
+			live := contrastOn(got.live, at)
+			if live < ink {
+				t.Fatalf("the live tier is %s:1 against %s and the body ink is %s:1 — "+
+					"a reply that is still arriving may never be QUIETER than the settled "+
+					"text beside it (%s)",
+					trimFloat(live), ground.hex, trimFloat(ink), ground.notes)
+			}
+			if got.live == got.ink {
+				// The absence. It is only honest where the ground really has run out,
+				// so the claim is checked rather than accepted.
+				if reachOf(at, groundIsDark(m)) >= ink*liveStep.low {
+					t.Fatalf("the live tier collapsed onto the body ink against %s, "+
+						"which still reaches %s:1 — there was room for a step and none "+
+						"was taken", ground.hex, trimFloat(reachOf(at, groundIsDark(m))))
+				}
+				return
+			}
+			// A byte's worth of rounding, for the reason every band in this file
+			// allows one: the ratio is solved by bisection onto an eight-bit channel.
+			const slack = 0.02
+			if step := live / ink; step < liveStep.low-slack || step > liveStep.high+slack {
+				t.Fatalf("the live tier stands %s× the body ink against %s, want %s-%s× — %s",
+					trimFloat(step), ground.hex,
+					trimFloat(liveStep.low), trimFloat(liveStep.high), ground.notes)
+			}
+			// AND IT STAYS A READING TIER. The reading ladder is grey by
+			// construction, and a live tier that rounded into the colour cube would
+			// be a paragraph that looked like it meant something.
+			if got.live.idx < 232 && got.ink.idx >= 232 {
+				t.Fatalf("against %s the body ink rounds to the grey ramp (%d) and its "+
+					"live tier rounds into the colour cube (%d)",
+					ground.hex, got.ink.idx, got.live.idx)
+			}
+		})
 	}
 }
 
@@ -472,6 +547,19 @@ func TestABackgroundReplyDropsEveryCachedRow(t *testing.T) {
 			t.Fatalf("entry %d was never cached, so this test proves nothing", i)
 		}
 	}
+	// AND THE OTHER TWO LISTS A PERSON CAN BE LOOKING AT. The transcript is not
+	// the only place this surface draws a conversation: a node's room and a run's
+	// node journal are separate lists drawn by the same renderers (room.go,
+	// roomorch.go), so a repaint that reached only [app.entries] would leave
+	// yesterday's colours on whichever page somebody had open.
+	a.room = &taskRoom{
+		id: 7, live: -1, think: -1,
+		unfolded: map[int]bool{}, workOpen: map[int]bool{},
+		entries: []entry{{kind: entryAssistant, text: "what the node said", built: true}},
+		orch: &orchRun{
+			journal: []entry{{kind: entryAssistant, text: "what a node in the run said", built: true}},
+		},
+	}
 
 	a.Update(replyOf(t, "#FFFFFF"))
 
@@ -483,11 +571,25 @@ func TestABackgroundReplyDropsEveryCachedRow(t *testing.T) {
 			t.Fatalf("entry %d kept rows painted in the old ladder's colours", i)
 		}
 	}
+	if !a.room.entries[0].stale {
+		t.Fatal("a node's page kept rows painted in the old ladder's colours")
+	}
+	if !a.room.orch.journal[0].stale {
+		t.Fatal("a run's node journal kept rows painted in the old ladder's colours")
+	}
 	if _, held := a.codeCache.get("a key"); held {
 		t.Fatal("a highlighted block survived the palette that painted it")
 	}
 	if a.rows != nil || a.rowsWidth != 0 {
 		t.Fatal("the laid-out screen list survived the palette that painted it")
+	}
+	// AND THE ROOM'S OWN LIST, which is the one that hides behind the entries.
+	// [app.roomRows] returns its cache before it asks any entry for its rows, so a
+	// page whose blocks were marked stale but whose LIST was not would keep
+	// drawing the old ladder for as long as somebody stood on it.
+	if !a.room.dirty {
+		t.Fatal("a node's page kept its laid-out row list, so marking its blocks stale " +
+			"changes nothing a reader standing in that room can see")
 	}
 }
 
@@ -508,5 +610,64 @@ func TestARepeatedReplyDoesNotRepaintTheSurface(t *testing.T) {
 	a.Update(replyOf(t, "#FFFFFF"))
 	if !a.entries[0].stale {
 		t.Fatal("a changed background left yesterday's paint on screen")
+	}
+}
+
+// AND THE ONE THING THAT IS NOT A ROW: THE STYLER THE REPLY ITSELF IS PAINTED
+// WITH.
+//
+// A model's markdown is rendered by internal/tui2/prose, which resolves colour
+// from internal/tui2/tokens, and the only reason a reply comes back in THIS
+// palette's body white is markdown.go's seam — the ink is stated on the Styler
+// prose is handed ([tokens.Styler.WithBodyInk]). That statement is made once,
+// against the ladder in force at the time. Deriving a new ladder without
+// re-making it would repaint every row on the surface against the measured
+// ground and leave the ANSWER on the assumed one: the two-whites defect the
+// readability wave removed, walking back in through the door the wave added.
+//
+// The rungs are switched on rather than skipped. [markdownStyler] detects its
+// profile from the process environment, so which branch runs here depends on the
+// terminal the suite is run in — and both branches are a real law:
+// [tokens.Styler.WithBodyInk] states that ANSI16 and NoColor take NO override at
+// all, because the sixteen are the user's own theme and an authored hex has no
+// honest form there.
+func TestTheAdaptedInkReachesTheReplyThatWearsIt(t *testing.T) {
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: t.TempDir()})
+	a.width, a.height = 80, 24
+	before := a.styler()
+	if before != markdownStyler() {
+		t.Fatal("a surface that has measured nothing must read the process-wide styler")
+	}
+
+	// A black terminal: the ground the authored ink overshoots, so the ladder
+	// really moves and this test has something to prove.
+	a.Update(replyOf(t, "#000000"))
+	if a.pal.ramp.ink == hueInk {
+		t.Fatal("the ink did not move on a black terminal, so this test proves nothing")
+	}
+	after := a.styler()
+	if after == before {
+		t.Fatal("the reply re-derived the palette and left the markdown styler on the " +
+			"ink the surface started with — the body of every reply is now the one " +
+			"thing on screen still painted against the assumed ground")
+	}
+
+	got := after.Fg(tokens.TextPrimary)
+	switch p := after.Profile(); p {
+	case tokens.TrueColor, tokens.ANSI256:
+		want := tokens.NewStyler(p, tokens.FocusNormal).
+			WithBodyInk(a.pal.ramp.ink.tokenColor()).Fg(tokens.TextPrimary)
+		if got != want {
+			t.Fatalf("the reply's body is painted %q, want the DERIVED ink %q", got, want)
+		}
+		if stale := before.Fg(tokens.TextPrimary); got == stale {
+			t.Fatalf("the body ink is unchanged at %q after the ladder moved", got)
+		}
+	default:
+		// No colour to spend, and therefore no override to carry: the answer is
+		// the token's own, exactly as it was before the terminal spoke.
+		if got != before.Fg(tokens.TextPrimary) {
+			t.Fatalf("at %v the styler took an override it has no honest form for: %q", p, got)
+		}
 	}
 }
