@@ -264,11 +264,30 @@ func (w *stallWatch) alive() {
 	w.lastAlive = w.clock()
 }
 
+// fire is the timer's callback, and it is two things on purpose: a decision
+// taken entirely under the lock, and a cancellation taken entirely outside it.
+//
+// THE CANCEL MAY NOT RUN UNDER THIS LOCK. Cancelling a context runs whatever is
+// waiting on it, in this goroutine, before the call returns — so holding the
+// watch's lock across it would put this mutex underneath somebody else's
+// ordering. That is why the unlock used to sit in the middle of the reasoning,
+// and [stallWatch.verdict] is the same code with the whole critical section
+// wrapped in a function, so the unlock can be a defer that no future early
+// return can slip past (internal/guard's lockdefer_test.go states the law).
 func (w *stallWatch) fire() {
+	if cancel := w.verdict(); cancel != nil {
+		cancel()
+	}
+}
+
+// verdict is the whole of fire's reasoning, under the lock from first line to
+// last. It answers with the cancellation the caller owes the stream, or nil when
+// the watch re-armed instead and the stream lives.
+func (w *stallWatch) verdict() context.CancelFunc {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.tripped != nil {
-		w.mu.Unlock()
-		return
+		return nil
 	}
 	now := w.clock()
 	bound := stallFirstBound
@@ -288,8 +307,7 @@ func (w *stallWatch) fire() {
 			wait = allowance
 		}
 		w.timer.Reset(wait)
-		w.mu.Unlock()
-		return
+		return nil
 	}
 	// Waited is the figure that actually decided: the plain bound when the
 	// endpoint went silent outright, the cap when patience was extended and
@@ -303,9 +321,7 @@ func (w *stallWatch) fire() {
 	} else {
 		w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	}
-	cancel := w.cancel
-	w.mu.Unlock()
-	cancel()
+	return w.cancel
 }
 
 // cut is the trip, or nil. It is read after the stream has died, to tell a
@@ -316,11 +332,21 @@ func (w *stallWatch) cut() *StreamCut {
 	return w.tripped
 }
 
+// stop ends the watch. The timer is READ under the lock and stopped outside it,
+// for [stallWatch.fire]'s reason one function up: Stop is somebody else's code
+// and this lock stays underneath none of it. [stallWatch.heldTimer] is that read
+// as its own function, so the unlock is a defer rather than a line in the middle.
 func (w *stallWatch) stop() {
+	if timer := w.heldTimer(); timer != nil {
+		timer.Stop()
+	}
+}
+
+// heldTimer is the watch's timer, read under the lock.
+func (w *stallWatch) heldTimer() *time.Timer {
 	w.mu.Lock()
-	timer := w.timer
-	w.mu.Unlock()
-	timer.Stop()
+	defer w.mu.Unlock()
+	return w.timer
 }
 
 // ── the degeneration guard ──────────────────────────────────────────────────
