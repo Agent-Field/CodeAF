@@ -99,21 +99,26 @@ type harnessPickRow struct {
 	// and the emptiness law forbids inventing a timing for a thing that has
 	// never happened.
 	ran bool
+	// last is that run as every list in this product spells it
+	// ([subharness.LastRunLine]). The zero value is a page nobody has run, and it
+	// draws nothing.
+	last subharness.LastRun
 }
 
-// note is the dim tail: what it is for, and when it last ran.
+// note is the dim tail: what it is for, and what the last run did.
+//
+// THE LAST RUN IS SPELLED WHERE BOTH DOORS CAN REACH IT and never here: this
+// list, the panel behind it and `/subharness` all say the same fact about the
+// same program, and three spellings of it is three lists that behave alike until
+// the day one of them is edited. `never run` is gone with the same move — the
+// emptiness law: a program nobody has run says what it is for and stops.
 func (r harnessPickRow) note() string {
 	parts := make([]string, 0, 2)
 	if desc := strings.TrimSpace(r.desc); desc != "" {
 		parts = append(parts, desc)
 	}
-	switch {
-	case r.ran:
-		if word := harnessAgo(r.when); word != "" {
-			parts = append(parts, word)
-		}
-	default:
-		parts = append(parts, "never run")
+	if line := subharness.LastRunLine(r.last, time.Now()); line != "" {
+		parts = append(parts, line)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -372,6 +377,7 @@ func (a *app) harnessPickList() []harnessPickRow {
 			// newest is the last one.
 			if trace, err := a.harn.LoadRun(paths[len(paths)-1]); err == nil {
 				row.when, row.ran = trace.Started, true
+				row.last = subharness.TraceRun(trace)
 			}
 		}
 		if !row.ran {

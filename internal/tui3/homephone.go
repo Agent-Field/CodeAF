@@ -581,8 +581,15 @@ func (a *app) homePhoneList(width, room int, pal palette) []homeDrawn {
 }
 
 // headingKind reports whether a line NAMES rows rather than being one.
+//
+// A zone's label is one of them, which is why it is in a list that started as
+// the phone's: the same question is asked by [homeView.markedSection], where the
+// answer has to hold for every section on the column and not only for the ones a
+// phone draws (homesection.go). A strip's label names its rows exactly as a
+// project's name names the conversations under it.
 func headingKind(kind homeRowKind) bool {
-	return kind == homePhoneSection || kind == homeHeading || kind == homeElsewhereRule
+	return kind == homePhoneSection || kind == homeHeading || kind == homeElsewhereRule ||
+		kind == homeAttentionZone
 }
 
 // homePhoneRow is one line of the column as the lines it takes.

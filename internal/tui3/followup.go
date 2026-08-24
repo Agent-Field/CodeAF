@@ -122,7 +122,12 @@ func (a *app) startFollow() tea.Cmd {
 	// else about the turn is identical: it is the next thing that happens in the
 	// conversation, and it is drawn as one.
 	if !next.woken {
-		a.entries = append(a.entries, entry{kind: entryUser, text: next.text, turn: a.turn})
+		// The context the turn runs in rides with it, for [app.submitting]'s reason
+		// (turncontext.go): a follow-up is the person's own sentence arriving one
+		// turn late, and where it goes is the same fact about it either way.
+		a.entries = append(a.entries, entry{
+			kind: entryUser, text: next.text, turn: a.turn, context: a.turnContext(),
+		})
 	}
 	a.state = stateWorking
 	a.lastDelta = time.Now()

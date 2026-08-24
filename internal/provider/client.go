@@ -18,16 +18,16 @@ import (
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
 // decide a request's economics without ever performing I/O on the hot path.
+// It carries no attribution fields on purpose: who this binary reports itself
+// as is a constant (attribution.go), and a config field for it is exactly how a
+// caller ends up sending a different app — or none.
 type Config struct {
-	APIKey         string
-	BaseURL        string
-	Model          string
-	Temperature    float64
-	MaxTokens      int
-	Timeout        time.Duration
-	SiteURL        string
-	SiteName       string
-	SiteCategories string
+	APIKey      string
+	BaseURL     string
+	Model       string
+	Temperature float64
+	MaxTokens   int
+	Timeout     time.Duration
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
@@ -107,8 +107,8 @@ func NewClient(config Config) (*Client, error) {
 		Temperature: config.Temperature,
 		MaxTokens:   config.MaxTokens,
 		Timeout:     config.Timeout,
-		SiteURL:     config.SiteURL,
-		SiteName:    config.SiteName,
+		SiteURL:     AppURL,
+		SiteName:    AppName,
 	})
 	if err != nil {
 		return nil, err
@@ -738,7 +738,7 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
 	if c.isOpenRouter() {
-		applyAttribution(httpRequest.Header, c.config)
+		ApplyAttribution(httpRequest.Header)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
 	// still honour a session header, and a router that honours neither is

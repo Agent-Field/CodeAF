@@ -58,14 +58,17 @@ option pattern becomes available to *every* compiler askback (the generic
 "meta-prompting" surface — questions arrive with choices whenever choices
 are enumerable, because picking beats composing).
 
-**What shipped (v3):** the card is right, the words moved, and the third chip is
-not always there. The answers are `1 yes, set it up`, `2 change when` and
-`3 once, not standing`, with esc as the decline — and **a one-off reminder
-offers only the first two**, because "once, not standing" said of a thing that
-already fires once and retires is a chip that does nothing. `change when` is
-never one of the engine's answers: it opens the box for the person's own
-correction, and the hint under the card names exactly the keys the card drew
-(`1 yes · 2 change when · esc no`). The model is also told the clock — a `Now:`
+**What shipped (v3):** the card is right, the words moved, and the third numbered
+chip is not always there. The answers are `1 yes, set it up`,
+`2 change when or where`, `3 just once` and `0 no` — the decline is a drawn chip
+and never the row's own casualty, and esc says the same thing beside it — and
+**a one-off reminder offers no `3`**, because doing "once, now" a thing that
+already fires once and retires is a chip that does nothing.
+`2 change when or where` is never one of the engine's answers: it opens the box
+for the person's own correction, to the schedule or the reach alike, and the hint
+under the card names exactly the keys the card drew
+(`1 yes · 2 change when or where · 0 or esc, no`). Under the row is one dim line
+saying what the picked answer will do, assembled from the proposal's own fields. The model is also told the clock — a `Now:`
 line, refreshed inside a live session, plus `when.in` for a distance from right
 now — and a moment already past is refused with the time it is, never moved on
 to tomorrow.

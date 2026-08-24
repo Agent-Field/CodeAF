@@ -39,19 +39,17 @@ type Transcriber interface {
 	Transcribe(context.Context, []byte, TranscriptionOptions) (Transcript, error)
 }
 
+// ClientConfig carries no attribution values, and that absence is the fix for
+// a real drift: this package used to take a site URL and an app name of its
+// own, wrote two headers out by hand from them, and so reported spoken input as
+// a different, category-less app while every word a person typed was attributed
+// correctly. The app is a constant in internal/provider now, and a transcriber
+// stamps it the same way the chat adapter does.
 type ClientConfig struct {
-	APIKey   string
-	BaseURL  string
-	SiteURL  string
-	SiteName string
-	// SiteCategories is the OpenRouter app category, and it was missing here
-	// while every other endpoint aforge posts to carried it. Spoken input goes
-	// to the same router under the same key as typed input, so a transcription
-	// that arrived without it was the same app reporting itself two different
-	// ways on one dashboard.
-	SiteCategories string
-	Timeout        time.Duration
-	HTTPClient     *http.Client
+	APIKey     string
+	BaseURL    string
+	Timeout    time.Duration
+	HTTPClient *http.Client
 }
 
 type Client struct {
@@ -116,12 +114,8 @@ func (c *Client) Transcribe(ctx context.Context, wav []byte, options Transcripti
 	request.Header.Set("Content-Type", "application/json")
 	// The whole attribution set, through the one helper that owns it. This used
 	// to be two hand-written headers here and it drifted from the rest of the
-	// binary the moment a third was added; see [provider.Attribution].
-	provider.Attribution{
-		SiteURL:        c.config.SiteURL,
-		SiteName:       c.config.SiteName,
-		SiteCategories: c.config.SiteCategories,
-	}.Apply(request.Header)
+	// binary the moment a third was added; see [provider.ApplyAttribution].
+	provider.ApplyAttribution(request.Header)
 	response, err := c.http.Do(request)
 	if err != nil {
 		return Transcript{}, fmt.Errorf("voice transcription: %w", err)

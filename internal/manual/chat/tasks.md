@@ -533,13 +533,12 @@ open. Settled families and families containing only parked work start folded to 
 root; the root then carries the family's aggregate state glyph and a `▸ +N` badge for the
 hidden descendants.
 
-Live children working inside a task are a smaller preview under that task's row, unfolded
-by default so the hands at work are visible. Each child is one mark and a short title:
-running work moves on the rail's one spinner, waiting work uses a dim `·`, and work that
-just finished uses `✓`. The preview draws at most five child rows; if more exist, one dim
-`view more · +N` row follows them. Press that row, or press → on the task, to enter the
-task's room and see the full work. Press ← to fold the preview. A fold is remembered for
-the rest of the session.
+**Workers under a task are the family's own rows and nothing else** — there is no second,
+smaller list of hands drawn beneath a row. A task that split itself into parts, and an
+adaptive run and its workers, each announce themselves as tasks with a parent, so every one
+of them is an ordinary row of the forest above: its own state glyph, its own name, its own
+`#id`, reachable with `↑`/`↓` and openable with `→`. A worker you can see is a row you can
+walk to.
 
 When two or more workers are running anywhere in the live work, the section label carries
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
@@ -1809,6 +1808,13 @@ its row reads `finished — look it over`.
 
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
+
+**It also stands on home**, in the `needs you` strip, named after the task and saying
+`landed` and how long it has been waiting — from any project, in any conversation, whether
+or not that conversation is open. Pressing that row opens the conversation that ran the
+work **with the task's own record card in front of it**, so you land on the thing you
+pressed rather than at the live edge of the transcript. It stays on the strip for as long
+as it takes: nothing ages it out, and only your decision moves it.
 
 The landing card then asks, in as many words, and offers the answers under it:
 

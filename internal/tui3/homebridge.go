@@ -29,7 +29,9 @@ package tui3
 //
 //   - HOME OPENS AT REST, so the first thing on the screen is that machine card
 //     — the morning glance is the default view and not a place you navigate to
-//     ([app.openHome]). The first ↓ or the first tab lands in `needs you`.
+//     ([app.openHome]). The first ↓ lands at the top of the PLACES column —
+//     FOCUS WAKES AT THE CENTER OF MASS ([homeView.wake]) — and the first tab in
+//     `needs you`, which is the key named for it.
 //
 //   - ONE CURSOR, IN READING ORDER. The three columns are ONE line list drawn in
 //     two places ([homeView.zoneSplit] says where it is cut), so ↑ and ↓ walk the
@@ -191,9 +193,14 @@ func homeLeftColumns(left int) (zone, places int) {
 // how MANY there are is a question about two strips, a fold and whatever they
 // gathered, and a number computed here would be a second answer to it that goes
 // wrong the first time a zone learns a new kind of row.
+//
+// EVERY LINE THE ZONES OWN IS NAMED HERE, the ones that draw nothing included.
+// The blank between two strips is [homeAttentionGap] and not a plain
+// [homeBlank] precisely so that this loop can tell it from the blank that opens
+// the places column: a strip's own furniture belongs to the strip.
 func (h *homeView) zoneSplit() int {
 	for at, line := range h.lines {
-		if line.kind == homeAttentionZone || line.kind == homeAttentionMore || line.zone != nil {
+		if attentionOwns(line) {
 			continue
 		}
 		return at
@@ -215,6 +222,23 @@ func (h *homeView) placesFrom() int {
 	return at
 }
 
+// placesTop is the first row of the places column A CURSOR MAY STAND ON, and
+// [homeRest] on a column with no such row at all.
+//
+// It is one function because two keys land on it and they must land on the same
+// line: tab's last stop ([homeView.tabStops]) and — the reason it was named —
+// the first `↓` off rest at this tier ([homeView.wake]). `→` off a zone row
+// prefers the same live object first and only then falls back to this same first
+// row, which is why [homeView.crossColumns] keeps a walk of its own.
+func (h *homeView) placesTop() int {
+	for at := h.placesFrom(); at < len(h.lines); at++ {
+		if h.lines[at].stop() {
+			return at
+		}
+	}
+	return homeRest
+}
+
 // ── opening ─────────────────────────────────────────────────────────────────
 
 // openAt is where the cursor stands the moment home appears.
@@ -222,8 +246,10 @@ func (h *homeView) placesFrom() int {
 // HOME OPENS AT REST (docs/HOME-BRIDGE.md). The morning glance is what this
 // screen is FOR when nobody is pointing at anything yet, so it is the default
 // view and not a state to navigate to: nothing is highlighted, the card on the
-// right is the machine's own, and the first ↓ or the first tab lands in `needs
-// you` ([homeView.move] and [homeView.tab] are the two ways in).
+// right is the machine's own, and there are two ways in — [homeView.move], whose
+// first step wakes in the column the layout declares primary ([homeView.wake]),
+// and [homeView.tab], which enters `needs you` because that is what it is named
+// for.
 //
 // AND ONLY WHERE THERE IS A CARD TO OPEN ONTO. Under [homeMinDetail] the frame
 // has no second column at all, so a cursor on nothing would be a screen with
@@ -374,20 +400,55 @@ func (h *homeView) tabStops() []int {
 			}
 		}
 	}
-	for at := h.placesFrom(); at < len(h.lines); at++ {
-		if h.lines[at].stop() {
-			stops = append(stops, at)
-			break
-		}
+	if at := h.placesTop(); at != homeRest {
+		stops = append(stops, at)
 	}
 	return stops
 }
 
+// wake is where the cursor lands the first time a person presses `↓` from rest
+// at the three-column tier: THE TOP OF THE LIST, whatever the zones hold.
+//
+// ── FOCUS WAKES AT THE CENTER OF MASS (docs/DESIGN-LANGUAGE.md) ──────────────
+//
+// This tier spends every signal it has declaring the middle column primary. It
+// is the widest column at every width [homeThreeColumns] can be asked about, it
+// holds every conversation on the machine where the flanks hold a summary and a
+// card, and it sits in the centre of the frame. Then the cursor used to wake in
+// the LEFT column, because the zones are drawn first and `↓` walked the one line
+// list in reading order — a screen saying "this is the main thing" with three
+// hundred cells and "but start over here" with the only cursor on it.
+//
+// AND THE LANDING WAS STATE-DEPENDENT, which is the half that cannot be argued
+// with. With something waiting, `↓` reached `needs you`; with nothing waiting the
+// zones held no row to stop on and the same key reached the list. A landing that
+// moves with what the machine happens to hold this morning is a landing nobody
+// can build a habit on, and a habit is the whole return on a fixed one.
+//
+// THE FLANKS ARE REACHED BY POINTING AT THEM. `←` crosses into the zones from
+// the top of the list ([homeView.crossColumns]) and `tab` — the named triage key
+// — still enters `needs you` from rest ([homeView.tab]), so nothing became
+// unreachable; what changed is which of them is the DEFAULT.
+//
+// THE NARROWER TIERS ARE UNTOUCHED. There the zones are strips standing OVER the
+// list, so walking down into them first is what the geometry itself promises,
+// and this function is never asked.
+func (h *homeView) wake() int {
+	if !h.columns() {
+		return homeRest
+	}
+	return h.placesTop()
+}
+
 // tab moves the cursor to the next zone, and round again from the last.
 //
-// FROM REST IT ENTERS THE FIRST ZONE, which is the same landing the first ↓
-// makes: home opens on the machine's card with the cursor on nothing, and either
-// key is a person saying "now show me what needs me" ([homeRest]).
+// FROM REST IT ENTERS THE FIRST ZONE, AND IT IS THE ONLY KEY THAT DOES. tab is
+// the NAMED SEMANTIC key here — the foot spells it `tab next zone` — so pressing
+// it from rest is a person saying "now show me what needs me", and the landing
+// it makes is the thing the key is called after. The first ↓ goes somewhere else
+// on purpose ([homeView.wake] holds the law and the reason): an arrow is a
+// direction rather than a subject, so it wakes where the layout's own hierarchy
+// points, and the named key keeps the flank.
 func (h *homeView) tab() {
 	stops := h.tabStops()
 	if len(stops) == 0 {

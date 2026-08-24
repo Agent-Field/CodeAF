@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,8 +10,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/substore"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 )
 
 // THE SUBHARNESS SIDE OF ONE CONVERSATION: the programs it can reach, where they
@@ -59,7 +58,11 @@ type v3Subharness struct {
 // v3Subharnesses builds that. The workspace is the directory this conversation
 // works in, which is both what a file guard is asked about and what decides
 // whether there is a project store to consult at all.
-func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, workspace string) v3Subharness {
+//
+// pages is the page store this conversation's designs are written to, handed in
+// so the last-run reading can consult it. See [subharnessLastRun] for why one
+// reader has to ask two stores.
+func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, workspace string, pages *subharness.Store) v3Subharness {
 	off := v3Subharness{}
 	space, err := exec.NewWorkspace(strings.TrimSpace(workspace))
 	if err != nil {
@@ -75,13 +78,10 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// are a backstop against a wedged endpoint on a non-streamed call, and a
 	// second number here would be the one that drifts.
 	client, err := provider.NewClient(provider.Config{
-		APIKey:         settings.APIKey,
-		BaseURL:        settings.BaseURL,
-		Model:          model,
-		Timeout:        harnessTimeout,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
+		APIKey:  settings.APIKey,
+		BaseURL: settings.BaseURL,
+		Model:   model,
+		Timeout: harnessTimeout,
 	})
 	if err != nil {
 		return off
@@ -148,10 +148,34 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 		// it would be committed into everybody else's checkout as though they had
 		// learnt it too.
 		Memory:  storeMemory{store: homeStore},
-		LastRun: subharnessLastRun(homeStore, time.Now),
+		LastRun: subharnessLastRun(homeStore, pages, time.Now),
 		Record:  subharnessRecordRun(homeStore),
 		Belt:    belt,
 	}
+}
+
+// UsePages puts the page store in front of this conversation's registry — the
+// third place a program can live, beside the two bundle stores above.
+//
+// IT IS THE SAME LIST AND NOT A SECOND ONE. A program a person had designed sat
+// in that store reachable only by saying something that matched it; from here it
+// is a row on `/subharness` like any other, marked `yours` like anything else of
+// theirs, and run through the door every row is run through.
+//
+// IT IS WIRED LATE, and that is the whole reason it is a method rather than a
+// line inside [v3Subharnesses]: what runs a page is the seam the surface builds
+// after governance and the media pair have landed (chatv3.go), and a registry
+// assembled before that would have to build a second runner for the same store.
+// One store, one runner, one path in.
+//
+// A build with either half missing wires nothing, which is the same silence
+// every other seam on this path keeps: no registry is subharnesses off, and no
+// runner is a store with nothing to run its pages with.
+func (s v3Subharness) UsePages(store *subharness.Store, run subharness.RunPage) {
+	if s.Registry == nil {
+		return
+	}
+	s.Registry.UseBundles(exec.LayerPages, store.Source(run))
 }
 
 // storeMemory is [substore.Store] seen through the door internal/session spells:
@@ -170,62 +194,60 @@ func (m storeMemory) Recall(ctx context.Context, subharness, query string) ([]ex
 	return m.store.Memory(subharness).Recall(ctx, query)
 }
 
-// subharnessLastRun is the DIM NOTE UNDER A ROW, and rendering it is this
-// surface's job rather than the store's: [substore.RunNote] keeps the facts and
-// says outright that it renders nothing, because the emptiness law, the word for
-// an unfinished run and how a cost is drawn are all decided here and in one
-// place.
-func subharnessLastRun(store *substore.Store, now func() time.Time) func(string) string {
-	if store == nil {
+// subharnessLastRun is the DIM NOTE UNDER A ROW: when this program last ran, how
+// it went, and what it cost.
+//
+// ── TWO STORES, ONE ANSWER, AND WHY IT IS READ RATHER THAN WRITTEN ──
+//
+// A subharness has two doors, and until this reading merged them the two doors
+// disagreed about the same program:
+//
+//   - Every run started through `/subharness` — the only road a bundle or a
+//     compiled-in worker has — leaves a one-line note in the HOME STORE, written
+//     by internal/session the moment the run lands (its subharness_run.go).
+//   - Every run of a PAGE — whichever list started it — leaves a whole trace in
+//     the PAGE STORE, written by the one run door this surface builds
+//     ([v3RunHarness]), because that door is what `/harness` and `/subharness`
+//     both end up calling.
+//
+// So a page run from `/harness` was invisible to `/subharness`: the note was
+// never written, and the row went on saying nothing about a program that had run
+// four times that afternoon.
+//
+// THE FIX IS ON THE READ SIDE AND DELIBERATELY SO. The obvious alternative — the
+// `/harness` road also writing a home-store note — would give ONE fact TWO
+// writers, and the second of them would be writing into a store it has no other
+// business in. Neither store can see the other's runs (a bundle has no trace to
+// save; a page's own trace is what its history IS), so each stays the authority
+// for what it can actually observe and this reader asks both and answers with
+// WHICHEVER IS NEWER. A run that wrote to both — a page started from
+// `/subharness` — describes the same run twice and either answer is true; the
+// note is the later stamp of the two and so it wins, which keeps the cost the
+// trace never carried.
+//
+// The words are neither store's ([subharness.LastRunLine]): `/harness` draws
+// this same sentence about this same program from its own trace, and one
+// vocabulary is what makes the two lists one surface.
+func subharnessLastRun(home *substore.Store, pages *subharness.Store, now func() time.Time) func(string) string {
+	if home == nil && pages == nil {
 		return nil
 	}
 	return func(name string) string {
-		note, ok := store.LastRun(name)
-		if !ok {
-			return ""
+		var newest subharness.LastRun
+		if home != nil {
+			if note, ok := home.LastRun(name); ok {
+				newest = subharness.LastRun{At: note.At, Finished: note.Finished, CostUSD: note.CostUSD}
+			}
 		}
-		return subharnessRunLine(note, now())
+		if pages != nil {
+			if trace, ok := pages.LastTrace(name); ok {
+				if run := subharness.TraceRun(trace); run.At.After(newest.At) {
+					newest = run
+				}
+			}
+		}
+		return subharness.LastRunLine(newest, now())
 	}
-}
-
-// subharnessRunLine is that note as one short line: when, how it went, and what
-// it cost.
-//
-// NO HISTORY IS THE EMPTY STRING. Never "never run", never "0 runs" — the
-// emptiness law, and a row with nothing to say says nothing. A zero cost is not
-// drawn for the same reason: a provider that published no figure left "nobody
-// said" behind and not "free".
-//
-// THE WORD FOR A RUN THAT DID NOT FINISH IS "incomplete". It is one of the five
-// sanctioned words for the state of work and nothing here may call it a failure.
-// The run's own sentence about what ran out is NOT on this line: it was written
-// to be read in full, this is one dim line under a name, and a row that wrapped
-// would cost the list the scannability the note exists for.
-func subharnessRunLine(note substore.RunNote, now time.Time) string {
-	when := reltime.Short(note.At, now)
-	if when == "" {
-		return ""
-	}
-	parts := []string{when, "incomplete"}
-	if note.Finished {
-		parts[1] = "finished"
-	}
-	if note.CostUSD > 0 {
-		parts = append(parts, subharnessCost(note.CostUSD))
-	}
-	return strings.Join(parts, " · ")
-}
-
-// subharnessCost is what a run cost, in the cells a dim row can spare. Cents
-// while a run is cheap, so a program that spent a fraction of one is not drawn as
-// though it had spent nothing — which is the same ladder the status line's own
-// reading takes, minus its zero rung: a zero never reaches here, because a cost
-// nobody reported is not drawn at all.
-func subharnessCost(usd float64) string {
-	if usd < 0.01 {
-		return fmt.Sprintf("$%.4f", usd)
-	}
-	return fmt.Sprintf("$%.2f", usd)
 }
 
 // subharnessRecordRun is the write half of the note above, in the vocabulary

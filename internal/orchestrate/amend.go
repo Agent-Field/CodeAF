@@ -355,12 +355,33 @@ func (o *Orchestrator) apply(amendment Amendment) {
 	for _, cancel := range amendment.Cancel {
 		o.dropLocked(strings.TrimSpace(cancel.ID))
 	}
+	var unnamed []*NodeStatus
 	for _, node := range amendment.Add {
 		node.ID = strings.TrimSpace(node.ID)
+		// EVERY NODE ON THE FRONTIER HAS A NAME, settled here, once, at the only
+		// place the frontier is written. A missing title is FILLED and never
+		// refused: the planner's judgement about what work exists is the expensive
+		// part of this call, and throwing a whole amendment away over three words
+		// would lose that to buy a name [NodeTitle] can build from the id anyway.
+		needsName := o.namer != nil && NodeNeedsName(node)
+		node.Title = NodeTitle(node)
+		if needsName {
+			// AND AN ID IS NOT A NAME, so it is not what a person is shown while the
+			// namer is out. The title goes out EMPTY and every surface draws its own
+			// answer for work nobody has named yet — which is the emptiness law's
+			// answer and not the machine's filing: `r1` on a row is the thing this
+			// whole seam exists to keep off the screen, and it is worse than a blank
+			// because it looks like an answer. The id comes back only if the namer
+			// answers nothing ([Orchestrator.nameNode]).
+			node.Title = ""
+		}
 		status := &NodeStatus{Node: node, State: Queued}
 		status.Needs = append(status.Needs, o.collisionsLocked(node)...)
 		o.nodes = append(o.nodes, status)
 		o.index[status.ID] = status
+		if needsName {
+			unnamed = append(unnamed, status)
+		}
 	}
 	if amendment.Done != nil {
 		plan := *amendment.Done
@@ -371,6 +392,51 @@ func (o *Orchestrator) apply(amendment Amendment) {
 
 	o.publish()
 	o.note(amendment.Note)
+	// THE NAMING IS ASKED FOR AFTER THE PUBLISH, and that order is the promise
+	// that execution never waits on it: the frontier already holds these nodes,
+	// the scheduler may already have launched them, and what follows is a column
+	// of rows catching up with itself.
+	for _, status := range unnamed {
+		go o.nameNode(status)
+	}
+}
+
+// nameNode replaces one node's missing name with the one the seam answers.
+//
+// IT IS THE SECOND WRITER OF A NODE ON THE FRONTIER and the only one, and what
+// it writes is three words. [Orchestrator.apply] owns the SHAPE of the graph —
+// which nodes exist, what they need — and nothing here touches any of that: a
+// node being named is not a node changing, which is why this cannot race with a
+// cancel in any way that matters. A node the planner dropped while the namer was
+// out is named in a struct nothing holds any more, and that costs nothing.
+//
+// A NAME THAT NEVER ARRIVES COSTS A GOOD NAME AND NOTHING ELSE — the seam that
+// timed out, the model that answered with its own instruction, the run with no
+// conversation behind it. The node falls back to the name [NodeTitle] builds
+// from its id, which is where it would have been standing all along.
+func (o *Orchestrator) nameNode(status *NodeStatus) {
+	o.mu.Lock()
+	node, namer := status.Node, o.namer
+	o.mu.Unlock()
+	if namer == nil {
+		return
+	}
+	// THE CONTEXT IS NOT THE RUN'S. A name is wanted for a row a person is
+	// looking at now, and the seam carries its own deadline (the session's namer
+	// gives it twenty seconds); a call cancelled with the run would only ever
+	// land for nodes added at the very start of one.
+	name := clipWords(namer(context.Background(), node), NameWords)
+	o.mu.Lock()
+	if name == "" {
+		name = NodeTitle(status.Node)
+	}
+	if status.Title == name {
+		o.mu.Unlock()
+		return
+	}
+	status.Title = name
+	o.mu.Unlock()
+	o.publish()
 }
 
 // dropLocked removes one pending node, and every pending node that was only

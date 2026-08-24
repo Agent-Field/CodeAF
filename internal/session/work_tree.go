@@ -219,8 +219,15 @@ func (a *Agent) runsWorkingNow() []WorkNode {
 		}
 		for _, node := range snap.Nodes {
 			row.Children = append(row.Children, WorkNode{
-				ID:    CancelRun + ":" + ids[i] + "/" + node.ID,
-				Title: clip(firstLine(node.Goal), titleLimit),
+				ID: CancelRun + ":" + ids[i] + "/" + node.ID,
+				// THE NODE'S OWN NAME, never its brief and never its id. A planned
+				// node's goal is written to a worker in the second person and runs to a
+				// paragraph (internal/orchestrate's law 4), so a row cut from its head
+				// named every worker of a wide run "You are a". The frontier settles
+				// this field once and the run's namer writes into the same one, so this
+				// tree reads it rather than deriving a second answer that would never
+				// hear about the first.
+				Title: node.Title,
 				State: runWorkState(node.State),
 			})
 		}

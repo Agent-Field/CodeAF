@@ -41,6 +41,37 @@ said nothing.
 with the mouse or with `↓`, the row they are on is the row they are on, and it
 does not change appearance depending on which hand they used.
 
+### THE SECTION HOLDING THE CURSOR MARKS ITS OWN HEADING
+
+> **The heading of the section the cursor is standing in wears a ground, and one
+> heading per frame wears it.**
+
+The ladder's steps mark a ROW, and a screen made of several regions — home's
+three columns are the case that provoked this — needs the same fact one scale
+up. The cursor step is deliberately faint, so a frame where every region is at
+rest and one row somewhere in it is faintly lifted answers *which row* and never
+*which region*. Saying it twice, at two scales, in the channel the ladder already
+has, costs no new colour and no fifth step: the block and the row inside it.
+
+**The heading takes the cursor step, not a rung of its own.** What a marked
+heading says is "the cursor is in here", which is the cursor step's own sentence
+read at the scale of a section. It is senior to the row it stands over by being
+NEW — a heading has never worn a ground at all — rather than by being louder.
+Where the selected step is unspent on a screen it is the better candidate, being
+the container of the chosen thing; on home it is not, because the conversation
+this terminal holds already wears it in the same column, and one step carrying
+two meanings is what the refusal of a fifth step exists to prevent.
+
+**One heading, or none.** Two marked headings would be two answers to a question
+that has one. None at rest, and none while a list is being filtered — a heading
+over a search result groups rows rather than naming a place a person is standing.
+And it follows the KEYBOARD only: the pointer previews without selecting, so a
+hover moves the card and never the mark.
+
+**The heading's text does not move.** Headings are furniture and stay `muted` or
+`dim` — THE ACCENT BUDGET below forbids lighting them, and a lit heading is the
+same defect arriving from the other side. The ground alone carries the fact.
+
 ### THE EMPHASIS LAW
 
 > **A row is emphasized by raising its ground and turning its leading text
@@ -334,6 +365,44 @@ And when it does appear, it appears as **a shape before a number**. A spinner
 says a call is running; the elapsed seconds are for when you want them. The one
 deliberate exception is the live status line, which keeps `$0.00` so its segments
 do not jump sideways as they update.
+
+**Where a label does hold ground over nothing, it teaches.** Home's two zones are
+the one place on this surface that keeps a heading with no rows under it — a map
+that redraws itself is not a map — and on the frame wide enough to give them a
+column of their own they carry one dim line naming what arrives there. That line
+says what the region is FOR; it never says that the region is empty. `no tasks
+yet` and every sentence like it are the emptiness law inverted into words and
+they stay banned. The exception is the label, not the announcement.
+
+## FOCUS WAKES AT THE CENTER OF MASS
+
+> **The first movement key lands the cursor in the region the layout itself
+> declares primary.**
+
+A screen with several regions has already said which one is the main thing,
+before a person touches a key: it said it with width, with density, and with
+where on the frame it put each region. Focus is the fourth signal, and its only
+job is to agree with the other three. A layout that says *this is the main
+thing* with three hundred cells and *but start over here* with the one cursor on
+it has spent its whole hierarchy arguing with itself, and a person cannot obey
+both.
+
+**The landing is fixed, and never a function of machine state.** Whatever the
+flanks happen to hold this morning, the first key goes to the same place — the
+whole return on a landing is that it becomes a habit, and a landing that moves
+with what is running is one nobody can learn. This is the rule that bites: home
+used to wake in `needs you` when something was waiting and in the list when
+nothing was, which is two screens wearing one set of keys.
+
+**The flanks are reached by pointing at them, or by a named key.** `←` and `→`
+follow the geography, and a key with a *semantic* name — `tab next zone` — enters
+the region it is named after. Neither is diminished by not being the default;
+what a default buys is one less decision on the way in, and it can only be spent
+once.
+
+Reading order is not an argument. A line list built flank-first is an
+implementation detail of how the screen was assembled, and letting it choose
+where focus wakes is the assembly order leaking through the design.
 
 ## THE SPACING LADDER
 

@@ -89,6 +89,20 @@ const (
 	// It carries the key of the strip it belongs to ([attentionFoldKey]), so
 	// there is one kind however many strips there are.
 	homeAttentionMore homeRowKind = 221
+	// homeAttentionTeach is THE ONE DIM LINE UNDER A ZONE THAT GATHERED NOTHING,
+	// and it is not a cursor stop for [homeAttentionZone]'s reason: it belongs to
+	// the label above it rather than standing for a thing of its own. It carries
+	// its zone's word, exactly as the label and the fold do, and the sentence
+	// itself is read off [homeZone.teach] at the draw so the words live in one
+	// place ([homeZones]).
+	homeAttentionTeach homeRowKind = 222
+	// homeAttentionGap is the one blank row between two strips — THE SPACING
+	// LADDER's block step, owned by this file rather than taken from
+	// [homeView.blank]. A plain [homeBlank] would end the zones as far as
+	// [homeView.zoneSplit] is concerned and cut the left column short of its
+	// second strip, so the row that separates two zone blocks is a zone line like
+	// the rest of them.
+	homeAttentionGap homeRowKind = 223
 )
 
 // The two labels, in the order they are drawn. Each is one dim lowercase
@@ -96,6 +110,28 @@ const (
 const (
 	attentionNeedsWord  = "needs you"
 	attentionMovingWord = "moving"
+)
+
+// What a zone with nothing in it TEACHES — one dim line under the label, naming
+// the kinds of thing that arrive in that region.
+//
+// IT SAYS WHAT THE REGION IS FOR AND NEVER THAT IT IS EMPTY. `no tasks yet` and
+// every sentence like it were taken off this surface on purpose: the emptiness
+// law's whole claim is that absence occupies no cells, and a line announcing
+// absence is that law inverted into words. What is left when the announcement
+// goes is the only thing a person standing in front of a label they have not met
+// wants — what would be here, and how it would get here. So the line names the
+// SOURCES, which is the one fact the label above it cannot carry: `needs you`
+// says what the zone means and `questions and landed work` says what fills it.
+//
+// AND THEY ARE MEASURED AGAINST THE COLUMN THEY DRAW IN. The zones' column is
+// [homeAttentionCol] wide and does not grow (homebridge.go says why), so a
+// sentence that outran it would arrive on the screen with an ellipsis through
+// it — `TestTheTeachingLinesFitTheZoneColumnAndNameNoAbsence` holds both of
+// these facts, the width and the words.
+const (
+	attentionNeedsTeach  = "questions and landed work"
+	attentionMovingTeach = "turns, tasks and watches"
 )
 
 // attentionMovingShown is how many things in flight the moving zone draws
@@ -124,6 +160,9 @@ type homeZone struct {
 	// everywhere else: the fold's key, the row's [homeAttention.word], the
 	// manual's spelling.
 	word string
+	// teach is the one dim line the label wears when the strip gathered nothing,
+	// at the columns tier alone ([homeView.attentionZone]).
+	teach string
 	// gather is everything this strip stands for, in any order, and order is how
 	// that becomes a reading order.
 	gather func(h *homeView) []homeLine
@@ -143,12 +182,14 @@ type homeZone struct {
 // to do, and something moving is something you check on.
 var homeZones = []homeZone{{
 	word:   attentionNeedsWord,
+	teach:  attentionNeedsTeach,
 	gather: (*homeView).attentionNeeds,
 	order:  func(a, b *homeAttention) bool { return attentionOlder(a.at, b.at) },
 	mark:   func(ascii bool) string { return attentionPick(ascii, homeAskGlyph, homeAskASCII) },
 	ink:    func(pal palette, s string) string { return pal.askBold(s) },
 }, {
 	word:   attentionMovingWord,
+	teach:  attentionMovingTeach,
 	gather: (*homeView).attentionMoving,
 	// BUSIEST FIRST, AND OLDEST WITHIN A TIER. The count is what makes one row
 	// worth more of a five-row strip than another; the age settles ties in the
@@ -171,6 +212,21 @@ func attentionPick(ascii bool, glyph, plain string) string {
 		return plain
 	}
 	return glyph
+}
+
+// attentionOwns reports that a line belongs to the strips: a label, a teaching
+// line, the blank between two strips, a fold, or a row one of them gathered.
+//
+// IT IS THE ONE ANSWER TO "WHERE DO THE ZONES END", asked by [homeView.zoneSplit]
+// and therefore by the whole three-column arrangement. A furniture row this
+// forgot would cut the left column short of everything under it, so the list
+// lives here, beside the constants it names.
+func attentionOwns(line homeLine) bool {
+	switch line.kind {
+	case homeAttentionZone, homeAttentionTeach, homeAttentionGap, homeAttentionMore:
+		return true
+	}
+	return line.zone != nil
 }
 
 // attentionZoneOf is one strip by its label, for the two readers that hold a row
@@ -272,6 +328,14 @@ func (h *homeView) buildAttention() {
 // the list is decided once per width rather than argued about per row. It holds
 // over the zones' own column at [homeTierColumns] as well: a label with nothing
 // under it is where a person LOOKS for the thing that is not there.
+//
+// AND AT THE COLUMNS TIER IT ALSO TEACHES. A label standing alone over its own
+// column names a region a person may never have seen filled, and the one thing
+// it cannot say by itself is what would fill it — so the empty label takes
+// [homeZone.teach] under it ([attentionNeedsTeach] holds the whole argument).
+// ONLY THERE: at the two narrower tiers the strips stand OVER the list at its
+// full width, where a sentence of explanation would be a line of prose across
+// the top of an index rather than a caption in a column of its own.
 func (h *homeView) attentionZone(zone homeZone) {
 	rows := zone.gather(h)
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -280,7 +344,14 @@ func (h *homeView) attentionZone(zone homeZone) {
 	if len(rows) == 0 && !h.wide() {
 		return
 	}
+	h.attentionGap()
 	h.lines = append(h.lines, homeLine{kind: homeAttentionZone, project: zone.word})
+	if len(rows) == 0 {
+		if h.columns() && zone.teach != "" {
+			h.lines = append(h.lines, homeLine{kind: homeAttentionTeach, project: zone.word})
+		}
+		return
+	}
 	if zone.shown <= 0 || len(rows) <= zone.shown {
 		h.lines = append(h.lines, rows...)
 		return
@@ -301,6 +372,24 @@ func (h *homeView) attentionZone(zone homeZone) {
 		kind: homeAttentionMore, project: zone.word, dir: key,
 		quiet: len(rows) - zone.shown, folded: folded,
 	})
+}
+
+// attentionGap opens a strip with one blank row when another strip already
+// stands above it, and with nothing at the very top.
+//
+// ONE BLANK ROW IS THE BLOCK STEP OF THE SPACING LADDER (spacing.go's
+// [spacingBlockRows], docs/DESIGN-LANGUAGE.md's table), and two strips are two
+// blocks: each is a label and the rows that belong to it. Without the row they
+// read as one four-line list with two dim words loose in it, and an empty zone's
+// teaching line — a dim sentence directly above the next dim label — is where
+// that stops being a matter of taste. THE GAP IS ASKED FOR BY THE BLOCK THAT
+// ARRIVES, which is [separated]'s own idempotence: a strip that stands down for
+// having gathered nothing at a narrow tier leaves no row behind it.
+func (h *homeView) attentionGap() {
+	if len(h.lines) == 0 {
+		return
+	}
+	h.lines = append(h.lines, homeLine{kind: homeAttentionGap})
 }
 
 // attentionNeeds is every blocked thing on the machine, in one order, whatever
@@ -343,12 +432,14 @@ func (h *homeView) attentionNeeds() []homeLine {
 			// [taskStateWord] owns the words) and it is as stopped on a person as
 			// any card: nothing else will happen to that work until somebody reads
 			// it. The row is named by the TASK and its door is the conversation
-			// that ran it, which is where looking happens.
+			// that ran it, ARRIVING ON THAT TASK'S OWN RECORD — which is where
+			// looking happens, and what the bare conversation could not be in a
+			// session with forty-five other pieces of work in it.
 			for _, entry := range row.Tasks.Rows {
 				if entry.Status != string(session.TaskUnverified) {
 					continue
 				}
-				rows = append(rows, attentionChat(project, row, &homeAttention{
+				rows = append(rows, attentionTask(project, row, entry, &homeAttention{
 					word: attentionNeedsWord, name: homeTaskText(entry),
 					at:   entry.EndedAt,
 					lead: homeLandedWord, leadInk: attentionLanded,
@@ -431,6 +522,20 @@ func attentionChat(project session.Project, row session.SessionRow, zone *homeAt
 	return homeLine{
 		kind: homeSession, project: project.Name, dir: project.Dir, row: row, zone: zone,
 	}
+}
+
+// attentionTask is one TASK INSIDE a conversation as a zone row: the line
+// [attentionChat] builds, carrying the record row the zone named it after so
+// that pressing it arrives on that piece of work rather than on the live edge of
+// the conversation that ran it ([app.homeLandOnTask], home.go).
+//
+// THE ENTRY IS TAKEN BY VALUE AND ITS ADDRESS IS THIS ROW'S OWN. The rows are
+// gathered by walking a session's index, and a pointer into that walk would be
+// a row whose door aimed at whichever task the loop finished on.
+func attentionTask(project session.Project, row session.SessionRow, entry session.TaskIndexEntry, zone *homeAttention) homeLine {
+	line := attentionChat(project, row, zone)
+	line.task = &entry
+	return line
 }
 
 // attentionItem is one standing item as a zone row, on the item row's own line
@@ -666,7 +771,25 @@ func (a *app) attentionLine(line homeLine, at, width int, pal palette) (string, 
 		// beside it: no count, no rule, no age. The rows below carry their own
 		// facts, and a label that spent a second column on decoration would cost
 		// more than the zone it names.
-		return "  " + pal.dim(fit(line.project, width-2)), true
+		//
+		// AND IT WEARS A GROUND WHILE THE CURSOR IS STANDING IN THIS STRIP, which
+		// is how the wide frame says which of its three columns the keyboard is in
+		// — the one heading a frame marks (homesection.go holds the whole law).
+		// The word stays dim: THE ACCENT BUDGET forbids lighting a label, and the
+		// ground alone carries the fact.
+		return h.sectionGround("  "+pal.dim(fit(line.project, width-2)), at, width, pal), true
+	case line.kind == homeAttentionTeach:
+		// THE SAME DIM AS THE LABEL IT HANGS UNDER, in the same indent, with no
+		// mark and no chip. It is a caption on the label rather than a row of its
+		// own, and a second weight here would make an empty region the loudest
+		// thing in the column ([attentionNeedsTeach] holds the rest of the law).
+		zone, ok := attentionZoneOf(line.project)
+		if !ok {
+			return "", true
+		}
+		return "  " + pal.dim(fit(zone.teach, width-2)), true
+	case line.kind == homeAttentionGap:
+		return "", true
 	case line.kind == homeAttentionMore:
 		return overlayRow(homeFoldMark(line.folded, pal)+" "+homeMoreProjectsWord(line), "",
 			at == h.cursor, false, at == h.hover, width, pal), true

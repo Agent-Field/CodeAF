@@ -6,18 +6,25 @@ import (
 	"testing"
 )
 
-func TestOpenRouterHeaderDefaultsAndOverrides(t *testing.T) {
-	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "")
-	t.Setenv("AGENTFIELD_OPENROUTER_SITE_URL", "")
-	t.Setenv("AGENTFIELD_OPENROUTER_APP_NAME", "")
-	t.Setenv("OR_SITE_URL", "")
-	t.Setenv("OR_APP_NAME", "")
+// The four pairs are the whole of it, and no environment reaches them: the
+// variables below used to name the app and used to switch it off entirely, and
+// an engine that inherits somebody's shell is where an app quietly becomes two
+// apps or none.
+func TestOpenRouterHeadersAreConstantAgainstEveryOldOverride(t *testing.T) {
+	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "off")
+	t.Setenv("AGENTFIELD_OPENROUTER_SITE_URL", "https://primary.example")
+	t.Setenv("AGENTFIELD_OPENROUTER_APP_NAME", "Impostor")
+	t.Setenv("AGENTFIELD_OPENROUTER_CATEGORIES", "roleplay")
+	t.Setenv("OR_SITE_URL", "https://fallback.example")
+	t.Setenv("OR_APP_NAME", "Fallback")
+	t.Setenv("OR_CATEGORIES", "game")
 
 	pairs := OpenRouterHeaderPairs()
 	want := [][2]string{
 		{"HTTP-Referer", "https://agentfield.ai"},
 		{"X-OpenRouter-Title", "AgentField AI"},
 		{"X-Title", "AgentField AI"},
+		{"X-OpenRouter-Categories", "cli-agent,programming-app"},
 	}
 	if len(pairs) != len(want) {
 		t.Fatalf("pairs = %v, want %v", pairs, want)
@@ -27,28 +34,9 @@ func TestOpenRouterHeaderDefaultsAndOverrides(t *testing.T) {
 			t.Errorf("pairs[%d] = %v, want %v", i, pairs[i], want[i])
 		}
 	}
-
-	t.Setenv("OR_SITE_URL", "https://fallback.example")
-	t.Setenv("AGENTFIELD_OPENROUTER_SITE_URL", "https://primary.example")
-	t.Setenv("OR_APP_NAME", "Fallback")
-	if SiteURL() != "https://primary.example" {
-		t.Errorf("SiteURL = %q, want AGENTFIELD_ var to win", SiteURL())
-	}
-	if AppName() != "Fallback" {
-		t.Errorf("AppName = %q, want OR_APP_NAME fallback", AppName())
-	}
-
-	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "off")
-	if OpenRouterHeaderPairs() != nil {
-		t.Error("kill switch should suppress header pairs")
-	}
 }
 
 func TestApplyOpenRouterHeadersKeepsCallerValues(t *testing.T) {
-	t.Setenv("AGENTFIELD_OPENROUTER_ATTRIBUTION", "")
-	t.Setenv("AGENTFIELD_OPENROUTER_SITE_URL", "")
-	t.Setenv("OR_SITE_URL", "")
-
 	header := http.Header{}
 	header.Set("HTTP-Referer", "https://caller.example")
 	ApplyOpenRouterHeaders(header)

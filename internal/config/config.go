@@ -34,13 +34,17 @@ const (
 	DefaultBaseURL = "https://openrouter.ai/api/v1"
 
 	// DefaultSiteURL, DefaultSiteName and DefaultSiteCategories are the
-	// OpenRouter app-attribution values (HTTP-Referer, X-OpenRouter-Title,
-	// X-OpenRouter-Categories). They mirror the agentfield SDK's attribution
-	// defaults exactly, so every AgentField product reports usage under the
-	// same app on the OpenRouter dashboard.
-	DefaultSiteURL        = "https://agentfield.ai"
-	DefaultSiteName       = "AgentField AI"
-	DefaultSiteCategories = "cli-agent,programming-app"
+	// OpenRouter app-attribution values this binary reports under
+	// (HTTP-Referer, X-OpenRouter-Title, X-OpenRouter-Categories). They are
+	// INTERPOLATED FROM internal/provider AND NOT RE-SPELLED, because the
+	// package that writes the headers is the one place the values may live;
+	// two copies of an app's identity is how one product's usage ends up on
+	// two dashboard pages. Nothing resolves them from settings or the
+	// environment — the app a request names is a fact about the product, not
+	// an operator's preference.
+	DefaultSiteURL        = provider.AppURL
+	DefaultSiteName       = provider.AppName
+	DefaultSiteCategories = provider.AppCategories
 	// Preserve the names master exposed before the chat-v2 rollout, for any
 	// caller still reaching them by the old spelling.
 	OpenRouterAppURL  = DefaultSiteURL
@@ -204,9 +208,6 @@ type Config struct {
 	Temperature       float64
 	MaxTokens         int
 	Timeout           time.Duration
-	SiteURL           string
-	SiteName          string
-	SiteCategories    string
 	Reasoning         provider.Effort
 	ExecReasoning     provider.Effort
 	SpineSamples      int
@@ -290,9 +291,6 @@ func Load() (Config, error) {
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
-		SiteURL:           firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
-		SiteName:          firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
-		SiteCategories:    firstNonEmpty(os.Getenv("AFORGE_SITE_CATEGORIES"), os.Getenv("AGENTFIELD_OPENROUTER_CATEGORIES"), os.Getenv("OR_CATEGORIES"), DefaultSiteCategories),
 		Reasoning:         DefaultReasoning,
 		ExecReasoning:     DefaultExecReasoning,
 		SpineSamples:      DefaultSpineSamples,
@@ -725,15 +723,12 @@ func (c Config) DocumentClient() (*provider.Client, error) {
 
 func (c Config) providerConfig(model string) provider.Config {
 	return provider.Config{
-		APIKey:         c.APIKey,
-		BaseURL:        c.BaseURL,
-		Model:          model,
-		Temperature:    c.Temperature,
-		MaxTokens:      c.MaxTokens,
-		Timeout:        c.Timeout,
-		SiteURL:        c.SiteURL,
-		SiteName:       c.SiteName,
-		SiteCategories: c.SiteCategories,
+		APIKey:      c.APIKey,
+		BaseURL:     c.BaseURL,
+		Model:       model,
+		Temperature: c.Temperature,
+		MaxTokens:   c.MaxTokens,
+		Timeout:     c.Timeout,
 		// The published answer to "does this model take this field", from rows
 		// already in memory. A nil catalog and a catalog still warming both say
 		// "unknown", which the adapter treats as "send nothing on your own

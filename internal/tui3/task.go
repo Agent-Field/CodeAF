@@ -247,6 +247,23 @@ type taskNode struct {
 	// is the person's. So the phase takes the word, and the state underneath is
 	// untouched.
 	doing string
+	// context is the NAMED WORKING CONTEXT this node's room is, in the engine's
+	// own person-facing words — "designing subharness flake-triage" — and empty for an
+	// ordinary node, whose room is work being watched rather than a place somebody
+	// is inside (session's TaskNotice.Context).
+	//
+	// IT IS THE ONE THING ON THIS NODE THE PERSON'S OWN LINE IS DRAWN FROM
+	// (turncontext.go). Everything else here describes the work; this describes
+	// what a sentence typed in here is part of, which is what a transcript owes
+	// the person reading it back.
+	//
+	// It is KEPT AND NEVER UNSET, the way the kind and the branch are: a node that
+	// named a context is in that context for the rest of its life, and an update
+	// quiet about it has not left the context. A LATER, BETTER NAME REPLACES IT —
+	// a design says "designing a subharness" until its page has a name and
+	// "designing subharness flake-triage" afterwards — which is the same non-monotonic naming
+	// [taskRenames] exists for, and [taskRenamesContext] is its second half.
+	context string
 	// mending is the one plain line naming the gap the node is closing right
 	// now, as the engine published it (session's TaskNotice.Mending), and it is
 	// empty at every other moment of the node's life.
@@ -309,6 +326,20 @@ func (n *taskNode) liveLines() taskLive {
 func taskRenames(notice *session.TaskNotice, node *taskNode) bool {
 	title := strings.TrimSpace(notice.Title)
 	return title != "" && title != node.label
+}
+
+// taskRenamesContext reports whether an update names a WORKING CONTEXT this node
+// does not have. It is [taskRenames]'s law applied to the other name a node
+// carries, and it is a separate question for the same reason that one is: the
+// naming is not monotonic. A design says "designing a subharness" from the
+// moment it is admitted and "designing subharness flake-triage" the moment its page has a
+// name, both while it is running — so a guard that only ever looked at the state
+// would throw away the one update that carries the real name, and every line the
+// person typed afterwards would be marked with the placeholder for the rest of
+// the conversation. An EMPTY context is never a rename, for taskRenames' reason.
+func taskRenamesContext(notice *session.TaskNotice, node *taskNode) bool {
+	word := strings.TrimSpace(notice.Context)
+	return word != "" && word != node.context
 }
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
@@ -2229,10 +2260,6 @@ func (a *app) railToggle(node *taskNode) { a.railSetOpen(node, a.railShut(node))
 // it hangs.
 type railEntry struct {
 	node *taskNode
-	// work is the live hands the engine reports under this task. It is a preview
-	// rather than a second roster: the task remains the row the cursor reaches,
-	// and its room is where the whole tree can be walked.
-	work []session.WorkNode
 	// stems is the ancestry as the connectors need it: one entry per level, true
 	// where that level's node still has siblings to come. Its length is the
 	// node's depth, so a root's is empty and a root has no connector.
@@ -2251,31 +2278,23 @@ type railEntry struct {
 	worst  *taskNode
 }
 
-// workingNowAgent is the one engine door this surface needs for the live-hand
-// preview. Each surface asserts only the slice it reads, so an engine without
-// the door draws the byte-identical roster it drew before the door existed.
+// workingNowAgent is the engine door behind the ONE NUMBER this surface takes
+// from the live work tree: how many hands are moving right now, which the
+// column's head quotes (margin.go's [app.marginHead]). Each surface asserts
+// only the slice it reads, so an engine without the door draws the
+// byte-identical roster it drew before the door existed.
+//
+// IT IS A COUNT AND NOT A SECOND ROSTER, and that is the whole of the rule this
+// column keeps about live work. Every worker [session.WorkingNow] reports —
+// a node of the task graph, an adaptive run, one planned node inside one —
+// publishes a TaskNotice naming who spawned it, and this column grows its
+// families out of exactly those notices ([app.railForest]). So a worker already
+// has a row here by the time the engine can be asked about it, and a preview
+// hung under that row would be the same family drawn twice, one copy of it
+// carrying less than the other. What the engine's tree can say that the rows
+// cannot is how MANY of them are moving at once, so that is what is taken.
 type workingNowAgent interface {
 	WorkingNow() []session.WorkNode
-}
-
-const railWorkShown = 5
-
-func (a *app) railWorkingNow() map[string][]session.WorkNode {
-	agent, ok := a.agent.(workingNowAgent)
-	if !ok {
-		return nil
-	}
-	trees := agent.WorkingNow()
-	if len(trees) == 0 {
-		return nil
-	}
-	out := make(map[string][]session.WorkNode, len(trees))
-	for _, tree := range trees {
-		if len(tree.Children) > 0 {
-			out[tree.ID] = tree.Children
-		}
-	}
-	return out
 }
 
 // railSpot names a row by IDENTITY rather than by index, and it is what the
@@ -2528,36 +2547,32 @@ func (a *app) railTwigLive(t *railTwig) bool {
 
 // railEntries is the roster's row model: every family, whole, under its own
 // root, with the folded ones standing at one row each.
+//
+// THE FOREST IS THIS COLUMN'S WHOLE ACCOUNT OF WHO IS WORKING, and nothing is
+// hung under it from the engine's live tree. It used to be: a second, smaller
+// list of the same hands was attached beneath each row from
+// [session.Agent.WorkingNow], keyed by the row's bare id — and it never once
+// drew, because that door spells a worker `task:7`, `run:2` or `run:2/plan`
+// (session's work_tree.go) and this column was asking it for "7". Fixing the
+// spelling would not have fixed the surface, it would have started the double
+// draw the broken key had been hiding: every worker in that tree ALREADY has a
+// row of its own here. A graph node announces itself with the id of whatever
+// spawned it (session's task_run.go) and an adaptive run registers a row for
+// itself and one per planned node (its family seam), so both halves of the
+// engine's tree arrive here as ordinary notices and [app.railForest] hangs them
+// on their parents. The preview could only ever have restated them, in one mark
+// and a name, under the fuller row that was already there.
+//
+// So the ownership rule, stated once: A WORKER IS DRAWN BY THE FAMILY THAT
+// OWNS IT, on the row its own notice minted. The live tree is still read — for
+// the count in the column's head, which is the one thing about it a row cannot
+// say (see [workingNowAgent]).
 func (a *app) railEntries() []railEntry {
 	out := make([]railEntry, 0, len(a.taskOrder))
 	for _, tree := range a.railForest() {
 		out = a.railWalk(out, tree, nil)
 	}
-	working := a.railWorkingNow()
-	if len(working) == 0 {
-		return out
-	}
-	for i := range out {
-		kids := working[itoa(int(out[i].node.id))]
-		if len(kids) == 0 {
-			continue
-		}
-		out[i].work = kids
-		out[i].root = true
-		if open, said := a.railOpen[out[i].node.id]; said && !open {
-			out[i].folded = true
-			out[i].hidden = railWorkCount(kids)
-		}
-	}
 	return out
-}
-
-func railWorkCount(nodes []session.WorkNode) int {
-	n := 0
-	for _, node := range nodes {
-		n += 1 + railWorkCount(node.Children)
-	}
-	return n
 }
 
 // railWalk lays one family out, depth first.
@@ -2839,8 +2854,6 @@ type railLine struct {
 	// know whether it was asked to widen the column, to hide it, or to leave it
 	// for a page that holds work this session never ran.
 	more bool
-	// workMore is the bounded live-hand preview's door onto the task room.
-	workMore bool
 	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
 	// the `+` row at the foot of each section (margin.go). It is the word itself
 	// rather than a flag because there are two of them and they type two different
@@ -2878,62 +2891,8 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 			}
 			out = append(out, line)
 		}
-		if len(entries[i].work) > 0 && !entries[i].folded {
-			out = append(out, a.railWorkLines(i, entries[i].work, width)...)
-		}
 	}
 	return out
-}
-
-func (a *app) railWorkLines(entry int, nodes []session.WorkNode, width int) []railLine {
-	flat := railWorkFlatten(nodes, nil)
-	shown := min(len(flat), railWorkShown)
-	spin := railWorkSpinner(flat[:shown])
-	out := make([]railLine, 0, shown+1)
-	for i := 0; i < shown; i++ {
-		out = append(out, railLine{text: a.railWorkLine(flat[i], i == spin, width), entry: entry})
-	}
-	if hidden := len(flat) - shown; hidden > 0 {
-		word := "view more · +" + itoa(hidden)
-		out = append(out, railLine{text: a.pal.dim(fit(word, width)), entry: entry, workMore: true})
-	}
-	return out
-}
-
-func railWorkFlatten(nodes, out []session.WorkNode) []session.WorkNode {
-	for _, node := range nodes {
-		out = append(out, node)
-		out = railWorkFlatten(node.Children, out)
-	}
-	return out
-}
-
-func railWorkSpinner(nodes []session.WorkNode) int {
-	at := -1
-	var born time.Time
-	for i, node := range nodes {
-		if node.State == session.WorkRunning && (at < 0 || homeSpinNewer(born, node.Born)) {
-			at, born = i, node.Born
-		}
-	}
-	return at
-}
-
-func (a *app) railWorkLine(node session.WorkNode, spins bool, width int) string {
-	mark := a.pal.dim("·")
-	paint := a.pal.dim
-	switch node.State {
-	case session.WorkRunning:
-		glyph := glyphRunASCII
-		if spins && !a.linear && !a.pal.ascii {
-			glyph = tokens.Spinner(a.paints / spinnerStep)
-		}
-		mark, paint = a.pal.muted(glyph), a.pal.ink
-	case session.WorkDone:
-		mark, paint = a.pal.add(glyphDone), a.pal.muted
-	}
-	lead := "  " + mark + " "
-	return lead + paint(fit(strings.TrimSpace(node.Title), max(0, width-ansi.StringWidth("  · "))))
 }
 
 // railView is the whole column at a height: the window over the entries, the
@@ -3498,10 +3457,6 @@ func (a *app) railOut() {
 		return
 	}
 	e := entries[at]
-	if railWorkCount(e.work) > railWorkShown {
-		a.openRoomFor(e.node.id, e.node.title)
-		return
-	}
 	if !e.root {
 		return
 	}
@@ -4025,13 +3980,6 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 // all the way down.
 func (a *app) railLead(e railEntry) (string, string) {
 	glyph := a.railTreeGlyph(e.node)
-	// THE PREVIEW OWNS THIS TASK'S ONE SPINNER WHILE IT IS OPEN. The task row
-	// still says running with a still dot, leaving exactly one moving child to
-	// show which hand was most recently active. Folding returns the spinner to
-	// the task row because the moving child is no longer on the frame.
-	if len(e.work) > 0 && !e.folded && e.node.state == session.TaskRunning && !a.linear {
-		glyph = a.taskStateInk(e.node)(glyphRunASCII)
-	}
 	if e.folded && e.worst != nil {
 		// A FOLDED ROOT WEARS THE WORST THING UNDER IT. The row is standing for a
 		// whole subtree, so the one cell it has says what that subtree's news is
@@ -4827,7 +4775,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// only chance this surface gets to learn what the work is called.
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
-			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node)) {
+			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
+			!taskRenamesContext(notice, node)) {
 			return nil
 		}
 	}
@@ -4937,6 +4886,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// an update that says nothing about it has not changed it.
 	if notice.Kind != "" {
 		node.kind = notice.Kind
+	}
+	// AND SO IS THE WORKING CONTEXT, on the same rule and for the same reason: a
+	// node that named one is in it for the rest of its life, and an update quiet
+	// about it has not taken the person out of it. A better name replaces the one
+	// that stood, which is the whole of what [taskRenamesContext] lets through.
+	if word := strings.TrimSpace(notice.Context); word != "" {
+		node.context = word
 	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.

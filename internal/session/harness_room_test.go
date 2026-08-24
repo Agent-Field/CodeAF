@@ -109,7 +109,7 @@ func TestADesignsMilestonesAreKeptInTheNodesJournal(t *testing.T) {
 	// THE CARD IS FENCED OR IT IS NOT A CARD. The room renders this as markdown,
 	// which folds single newlines into prose — and single newlines are the whole
 	// of a card's alignment.
-	if !strings.Contains(draft, "```\n"+subharness.Card(page)+"\n```") {
+	if !strings.Contains(draft, "```"+harnessCardFence+"\n"+subharness.Card(page)+"\n```") {
 		t.Fatalf("the card is not fenced in the milestone: %q", draft)
 	}
 	// AND NONE OF THE ENVELOPE SURVIVES. `"harness"` is the key the page hangs off
@@ -209,7 +209,7 @@ func TestTheRoomsCopyOfThePageIsTheFencedCardAlone(t *testing.T) {
 	}
 
 	recorded := harnessPageThread(page)
-	if !strings.Contains(recorded, "The page is written.\n\n```\n"+subharness.Card(page)+"\n```") {
+	if !strings.Contains(recorded, "The page is written.\n\n```"+harnessCardFence+"\n"+subharness.Card(page)+"\n```") {
 		t.Fatalf("the card is not fenced: %q", recorded)
 	}
 	if strings.Contains(recorded, "```yaml") || strings.Contains(recorded, "```json") {

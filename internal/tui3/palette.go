@@ -1152,7 +1152,7 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.standPage.open:
 		return a.standPage.draw(width, n, a.pal, hover, a.now())
 	case a.subPage.open:
-		return a.subPage.draw(width, n, a.pal, hover)
+		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:

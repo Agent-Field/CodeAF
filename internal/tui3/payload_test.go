@@ -250,7 +250,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"y yes · r redirect · n no", []string{"y", "r", "n"}},
 		// `0 or esc, no` names two keys for one answer, and the comma after the
 		// second is punctuation rather than part of it.
-		{"1 yes · 2 change when · 3 once · 0 or esc, no", []string{"1", "2", "3", "0", "esc"}},
+		{standProposalHint, []string{"1", "2", "3", "0", "esc"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · w wide · esc",

@@ -227,6 +227,23 @@ type entry struct {
 	// note is drawn exactly as it was drawn before the rule existed.
 	facts []string
 
+	// block says this note's OWN LINE STRUCTURE is what it means, so the frame
+	// fits each line to the width rather than re-flowing the paragraph
+	// ([app.noteBlock] says why, and a subharness card is the only shape that
+	// asks for it). It is false on every other note, which is nearly all of them.
+	block bool
+
+	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
+	// engine's own person-facing words (session's TaskNotice.Context) — and empty
+	// for every ordinary turn, which is nearly all of them. It is set on the
+	// person's own block and read by nothing else (turncontext.go states the law).
+	//
+	// IT IS TAKEN AT THE MOMENT THE TURN STARTS AND NEVER DERIVED AFTERWARDS. The
+	// context a sentence went into is a fact about the past, and a transcript that
+	// asked the live session where its old lines had gone would re-label a whole
+	// history every time the person walked into a different room.
+	context string
+
 	// Tool fields.
 	tool   string
 	status toolState
@@ -724,7 +741,7 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
-	// stripHarn is where the running sub-harness's chip was last drawn, or the
+	// stripHarn is where the running subharness's chip was last drawn, or the
 	// zero span when none is running (harnesspanel.go). It is kept apart from
 	// stripSpans because it opens a different door: a node chip opens that
 	// node's room, and this one opens the registry.
@@ -907,7 +924,7 @@ type app struct {
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
-	// THE HARNESS SIDE (harness.go). harnessAsks are the sub-harness offers
+	// THE HARNESS SIDE (harness.go). harnessAsks are the subharness offers
 	// waiting for an answer, oldest first — a question about the TURN rather
 	// than about a call or an account, one row under the connect offer and
 	// owning the keyboard on the same terms. harnessTaps is where that row's two
@@ -920,7 +937,7 @@ type app struct {
 	// drawn on an earlier frame (roomapproval.go). There is no queue beside it —
 	// a room stands in front of one design and no more.
 	roomApprovalTaps []roomApprovalTap
-	// harnessStep is the step a running sub-harness last finished, as one line
+	// harnessStep is the step a running subharness last finished, as one line
 	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
@@ -943,7 +960,7 @@ type app struct {
 	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
-	// harn is the sub-harness registry (Options.Harnesses) and harnPanel the
+	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
 	// it, because that path runs entirely on session events (harness.go).
@@ -3605,19 +3622,36 @@ func (a *app) note(text string) { a.noteFacts(text) }
 // It is the same door and not a second one, because a note is a note — what
 // changes is only that this one knows which of its own words the person came for.
 // A builder that names nothing gets exactly the line it always got.
-func (a *app) noteFacts(text string, facts ...string) {
+func (a *app) noteFacts(text string, facts ...string) { a.noteWritten(text, false, facts) }
+
+// noteBlock is a note whose LINE STRUCTURE IS ITS MEANING, and it exists for
+// exactly one shape: a subharness card printed into the conversation
+// (harnesspanel.go). The card says which step belongs to which lane by INDENTING
+// it, so the ordinary note's wrap — which re-flows every paragraph to the frame
+// — took a nested lane and laid it flat against the margin, and a person reading
+// the result could not tell a step of the run from a step of one arm of a
+// choice.
+//
+// A LINE TOO WIDE IS CUT, NEVER RE-FLOWED. Half a step's detail with an ellipsis
+// after it still sits in its own lane; the same detail wrapped is two rows, the
+// second of which claims to be a row of the card.
+func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
+
+// noteWritten is the one body behind both, so the repeat rule, the fact list and
+// the block flag cannot disagree about what a note is.
+func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.closeLive()
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
 		// The repeat is brought back into view rather than written again (above),
 		// and its data are refreshed with it: the same sentence built a second time
 		// may have been built from a different reading, and a stale fact list would
 		// lift the words of the frame before this one.
-		a.entries[n-1].facts = facts
+		a.entries[n-1].facts, a.entries[n-1].block = facts, block
 		a.follow()
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts})
+	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts, block: block})
 	a.follow()
 	a.touch()
 }
@@ -3675,7 +3709,12 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	// WALL-CLOCK moment rather than a duration: it is where a sitting starts,
 	// and it is what the gap and day marks above it are measured from
 	// (timestamps.go).
-	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
+	// AND THE BLOCK CARRIES THE CONTEXT THE TURN RUNS IN (turncontext.go), which
+	// out here is nothing: a message typed into the conversation goes to the
+	// conversation. It is asked rather than assumed so that the day the engine
+	// routes a conversation's turn into a named thread, the line that says so is
+	// already being drawn — one mechanism, keyed off what the session exposes.
+	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now(), context: a.turnContext()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.

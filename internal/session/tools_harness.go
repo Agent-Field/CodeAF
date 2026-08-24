@@ -51,7 +51,7 @@ const buildHarnessSchemaJSON = `{"type":"object","properties":{` +
 	`"goal":{"type":"string","description":"What the harness must do, self-contained. The designer never sees this conversation, so fold in whatever the person's words were pointing at: the work, the files, how a good result is checked."}` +
 	`},"required":["goal"],"additionalProperties":false}`
 
-const listHarnessesDescription = "List the sub-harnesses saved on this machine: each one's name, version and what it is for, and — for the ones this conversation designed — the task their design thread is in. Call it before build_harness — a harness that already does the work is one to run rather than design again — and whenever the person asks what shapes of work are saved here. A saved harness has no command that runs it: it is offered by the turn itself when somebody's words match it closely enough, and the person answers that card. So the useful thing to do with a name from this list is to say it in the conversation."
+const listHarnessesDescription = "List the sub-harnesses saved on this machine: each one's name, version and what it is for, and — for the ones this conversation designed — the task their design thread is in. Call it before build_harness — a harness that already does the work is one to run rather than design again — and whenever the person asks what shapes of work are saved here. A saved one is a subharness like any other: it is on `/subharness` and runs from there, and it is also offered by the turn itself when somebody's words match it closely enough, and the person answers that card. So a name from this list is one to say in the conversation or to hand to `/subharness`."
 
 const listHarnessesSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 
@@ -262,7 +262,7 @@ func (a *Agent) listHarnessesTool() bare.Tool {
 				}
 				out.WriteString("\n")
 			}
-			out.WriteString("\nThere is no command that runs one: a harness is offered by the turn itself when the person's words match it, and they answer that card.")
+			out.WriteString("\nEach of these is on `/subharness` and runs from there, and each is offered by the turn itself when the person's words match it, and they answer that card.")
 			return out.String(), false, nil
 		},
 	}

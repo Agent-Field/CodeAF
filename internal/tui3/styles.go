@@ -793,14 +793,7 @@ func (p palette) underline(s string) string {
 // there is no hue — the sixteen, and NO_COLOR — the whole window comes back at
 // the dim tier, unfaded, which is what it wore before this ramp existed.
 func (p palette) fade(s string, stop int) string {
-	switch p.profile {
-	case tokens.TrueColor, tokens.ANSI256:
-	default:
-		return p.dim(s)
-	}
-	// The linear tier takes the same answer the sixteen do: a gradient is an
-	// animation held still, and it says nothing to a reader.
-	if p.linear {
+	if !p.fading() {
 		return p.dim(s)
 	}
 	if stop < 0 {
@@ -810,6 +803,22 @@ func (p palette) fade(s string, stop int) string {
 		stop = len(p.ramp.fade) - 1
 	}
 	return p.paint(s, p.ramp.fade[stop])
+}
+
+// fading reports whether this terminal has a gradient to spend at all, so a
+// caller that draws its OWN ramp degrades exactly where [palette.fade] does
+// rather than guessing at the same two conditions a second time.
+//
+// The gradient is a COLOUR question and so it asks the profile and not the
+// glyph tier — a truecolor terminal in a C locale is still a truecolor
+// terminal — and the linear tier takes the same answer the sixteen do: a
+// gradient is an animation held still, and it says nothing to a reader.
+func (p palette) fading() bool {
+	switch p.profile {
+	case tokens.TrueColor, tokens.ANSI256:
+		return !p.linear
+	}
+	return false
 }
 
 // ask is the question hue: the consent block, and nothing else on this surface.

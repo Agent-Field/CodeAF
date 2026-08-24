@@ -28,8 +28,8 @@ would have opened is loaded and waiting underneath it: `esc` drops straight into
 effect the launch is the launch you always had, with home already open on top of it.
 
 **The cursor starts on no row at all** — home opens at rest, so the first thing you see is
-the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` or
-`tab` walks into the list; `esc` goes on with what you were doing.
+the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` walks
+into the projects list, `tab` into `needs you`; `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -155,8 +155,54 @@ chat that asked for a reminder, exactly as it does on the row further down the s
 card on the right is that thing's card, and where the question can be answered from home,
 `1`, `2` and `3` answer it from this row too (see *Answer a question from home*).
 
+**A row named after a task opens on that task**, not on the bare conversation — see *What
+happens when I press a landed row* below.
+
 **A row appears in the strip and under its project both.** They are two views of one live
 thing, not two things — pressing `enter` on either goes to the same place.
+
+## What happens when I press a landed row — I clicked a needs you row and it opened the chat, and the task's own record with it
+
+A `needs you` row that says `landed` is named after **one piece of work**, not after the
+conversation it ran in. Pressing `enter` on it, or clicking it twice, does two things at
+once:
+
+- the **conversation that ran the task opens**, exactly as any other row on home opens it —
+  whatever project it belongs to, with the conversation you were in left running behind it;
+- and **that task's own record card is raised in front of it**: what the work was called,
+  what it came to, what it cost, how many files it changed, the branch or worktree it left
+  them on, and the last thing it said.
+
+`esc` backs out of the card to the project's list of work, and `esc` again leaves the
+conversation on the screen. `ctrl+.` closes the whole page from inside the card.
+
+This matters in a conversation that has run a lot of tasks: the row names one of forty, and
+landing on the conversation alone would drop you at the live edge of a transcript with no
+trace of the thing you pressed.
+
+**A row that is not a task opens the plain door.** A conversation stopped on a question, a
+reminder, an `ask here` errand — those stand for no single piece of work, so nothing is
+raised over them. And a row this window cannot open still refuses first: a conversation
+another window is sitting on says `open in another window — go there, or start a new
+conversation here`, and no card is raised over a conversation you never walked into.
+
+## How do I clear a needs your look row — settling work from the conversation
+
+Work that landed needing a look **stays on the strip until you decide about it**, however
+many days that is. It is not stale and it does not age out: nothing more will happen to
+that work until somebody accepts it or sends it back.
+
+Two ways to settle it, and they are the same door:
+
+- **the landing card in the conversation** — `[a] accept`, `[l] look again`, `[n] not
+  right`, `[d] decide these for me`;
+- **just say so.** "accept task 7", "that one isn't finished", "have another look at task
+  7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
+  says `already answered`.
+
+Accepting merges the task's branch and unblocks everything queued behind it. The moment it
+is settled the row leaves `needs you`. The tasks page has the whole of it under *Why is the
+task waiting for me*.
 
 ## What is running everywhere — the moving strip
 
@@ -200,12 +246,19 @@ goes to the most recent, and those are two different questions on purpose.
 
 In screen-reader (linear) mode nothing turns at all.
 
-## Are the strips there when nothing is happening
+## Are the strips there when nothing is happening — an empty needs you or moving zone
 
 At **80 columns and wider** the two labels are always drawn, even with nothing under them —
 an empty `needs you` is the good news, and a screen whose shape moves every time a task
 lands is not a screen you can learn. Under 80 columns, where every row is dear, an empty
 strip is not drawn at all.
+
+**At 110 columns and wider a label with nothing under it says what would be there.** One
+dim line under `needs you` reads `questions and landed work`, and one under `moving` reads
+`turns, tasks and watches` — the kinds of thing that arrive in that region, so a label you
+have never seen filled still tells you what it is for. It is a caption, not a row: the
+cursor walks straight past it and it goes the moment the zone has anything real to show.
+Neither line ever announces that something is missing; nothing on this surface does.
 
 **Typing takes both strips away.** A search is the matches rising out of the box with
 `? ask here` and `+ start a new conversation` against it, at every width — no strips, no
@@ -225,9 +278,9 @@ made of alignment and space:
  ──────────────────────────────────────────────────────────────────────────────────────────
   needs you                    aforge                         keeping an eye on
   ▲ approve schema      2h     ● odysseys wave 4      ⠹ 8m    ◦ tests sweep            in 2h
-  moving                       ○ rename plan      yesterday   hands
-  ● port sweep          8m     hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
-                               ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
+                               ○ rename plan      yesterday   agents
+  moving                       hax-sdk                        ⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀
+  ● port sweep          8m     ▲ schema migration        2h   ⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈
                                ─ elsewhere ─                  since you left
                                                               ◆ 2 tasks landed        aforge
                                                               today
@@ -248,9 +301,10 @@ made of alignment and space:
   the machine's own with the cursor on no row.
 
 **`tab` moves between the zones** — `needs you`, then `moving`, then the list, then round
-again — and lands on the first row of each. A zone with nothing in it is skipped, because
-its label is not a row. The foot names the key at this width: `tab next zone`. `esc` still
-closes home from wherever the cursor is.
+again — and lands on the first row of each. **From rest it enters `needs you`**, which is
+the key's whole job: it is named for the zones, so it is the one that takes you to them. A
+zone with nothing in it is skipped, because its label is not a row. The foot names the key
+at this width: `tab next zone`. `esc` still closes home from wherever the cursor is.
 
 **`→` and `←` cross the columns too, the way the geography reads**: `→` off a row in
 `needs you` or `moving` crosses the gutter into the list, and `←` off a conversation in
@@ -260,8 +314,15 @@ first row otherwise. On a zone's `…N more` line the arrows stay the fold's, op
 closing it, because the cursor is standing on the fold itself. With something typed the
 arrows are the caret's, as everywhere on this screen.
 
-`↑` and `↓` walk **every** row on the page in reading order — down through the zones on the
-left, then into the list — so nothing needs `tab` to be reachable.
+**The first `↓` from rest lands at the top of the projects list**, in the middle — not in
+`needs you`, and not somewhere that depends on what the machine happens to be doing. The
+middle column is the widest thing on the screen and holds everything, so it is where the
+cursor wakes; `←` or `tab` is one key away when what you want is the flank. After that `↑`
+and `↓` walk **every** row on the page in reading order — the zones on the left, then the
+list — so nothing needs `tab` to be reachable.
+
+**One blank row separates `needs you` from `moving`.** They are two blocks, and a block
+boundary on this surface is one empty row.
 
 The narrower shapes are the same screen folded down:
 
@@ -271,6 +332,53 @@ The narrower shapes are the same screen folded down:
 | 80–109 | the zones as two strips **above** the list, and the card beside it |
 | 60–79 | the list alone, full width — no card, no strips over nothing |
 | under 60 | the phone shape: one stacked column and a sheet (*Home on a phone*) |
+
+## Which column am I in — the highlighted heading over the section your cursor is in
+
+Home has several regions on one screen, and the row your cursor is on wears a very quiet
+background — enough to say *which row*, not enough to say *which region*. So the region
+says it too: **the heading over the section holding the cursor is highlighted**, with the
+same faint background the row itself wears.
+
+```
+  needs you                    aforge
+  ▲ approve schema      2h   ██████████████████████████
+                             ›● odysseys wave 4      8m ██
+  moving                       ○ rename plan   yesterday
+  ● port sweep          8m
+```
+
+Move into a project's conversations and that **project's name** lights up its background.
+Move into `needs you` or `moving` and **that word** does instead. It works the same way on
+a narrower frame, where the strips sit above the list rather than beside it.
+
+- **Exactly one heading is marked at a time.** If `needs you` is marked, no project name
+  is, and the other way round — which is the whole point: one heading marked in one
+  column is the answer to "where are my arrow keys".
+- **Nothing is marked when home is at rest.** Home opens on no row at all, so no section
+  is marked either; the first `↓` or `tab` puts the cursor somewhere and a heading lights
+  up with it.
+- **Nothing is marked while you are searching.** With something typed the column is a
+  list of matches and its headings are just grouping.
+- **The mouse never moves it.** Hovering a row previews its card on the right without
+  moving the selection, and it leaves the marked heading where your cursor put it. The
+  marked heading always answers *where the keyboard is*.
+- **The heading's word does not change colour** — it stays the same dim grey it always
+  is. Only the background behind it moves.
+- Some sections have no heading to mark. `▸ archive · 4 put away` is a section of one
+  line and nothing lights up above it.
+
+## Why is the needs you heading highlighted — the section your cursor is standing in
+
+Because your cursor is on a row inside that strip. Press `→` or `tab` to cross into the
+projects list and the highlight moves with you: `needs you` goes back to plain and the
+name of the project you land in takes the background instead. It is not a warning and it
+is not saying anything about the rows underneath — it is the screen telling you which of
+its regions your arrow keys are in.
+
+The same is true when a **project name** on home looks highlighted: your cursor is on one
+of that project's conversations. Press `esc` to close home, or walk out of the block, and
+it goes back to plain.
 
 ## Why are most projects collapsed on home — the elsewhere block
 
@@ -407,11 +515,22 @@ open, and the right side is **the machine's own card** — what is keeping an ey
 what happened since you left, what the day has come to. The morning glance is the default
 view rather than somewhere you navigate to.
 
-The first `↓` — or `tab` — walks into the top of `needs you`, or into the list where
-nothing is waiting. `↑` off the top row of the list comes back out to rest again, and the
-three-second rescan leaves the cursor where you left it either way. On a frame too narrow
-for a card (under 80 columns) home opens on the conversation this window is in, because
-there is no card there to open onto.
+**The first `↓` lands at the top of the projects list** on a frame 110 columns or wider —
+always, whether or not anything is waiting. The middle column is the widest thing on the
+screen and holds everything, so that is where the cursor wakes, and it wakes in the same
+place every morning so the first key can become a habit. The flanks are one key away: `←`
+crosses into `needs you` and `moving`, and `tab` — the key named for them — enters `needs
+you` from rest exactly as it always did.
+
+Below 110 columns the zones are strips standing **over** the list rather than a column
+beside it, so the first `↓` walks down into the top of `needs you` there, which is what
+that shape reads like. Where nothing is waiting the strip has no row to stop on and the
+key carries on into the list.
+
+`↑` off the top row of the list comes back out to rest again, and the three-second rescan
+leaves the cursor where you left it either way. On a frame too narrow for a card (under 80
+columns) home opens on the conversation this window is in, because there is no card there
+to open onto.
 
 `esc` from rest does what `esc` always does here: back to the conversation you came from.
 
@@ -430,9 +549,8 @@ keeping an eye on
 ◦ tests sweep                in 2h
 ◦ weekly review            mon 8am
 
-hands
-⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
-⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
+agents · in flight, the last few minutes
+▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 
 since you left
 ◆ 2 tasks landed             aforge
@@ -448,11 +566,12 @@ today
   rather than a thing being watched, and it belongs with the rest of what needs you. Paused
   and stopped things are not here either. Past four, the rest fold to
   `▸ …3 more keeping an eye`.
-- **`hands`** — a small **chart**, two rows of braille dots, of how many things this
-  machine has had running over the last few minutes, oldest on the left and **newest on
-  the right**. It prints no number: the figure is on the pulse line at the top of the
-  screen (`3 working`) and this is the shape it came from. See below for the whole of how
-  it behaves.
+- **`agents`** — a small **chart**, one row of bars, of how many things this machine has
+  had running over the last few minutes, oldest on the left and **newest on the right**.
+  The heading says what it is — `agents · in flight, the last few minutes` — and the chart
+  itself prints no number: the figure is on the pulse line at the top of the screen
+  (`3 working`) and this is the shape it came from. See below for the whole of how it
+  behaves.
 - **`since you left`** — everything that happened across all your projects while you were
   not looking: news a standing thing left in a conversation or a project, and work that
   landed after you last spoke there. It is the same list the phone-shaped home shows under
@@ -472,38 +591,48 @@ machine nobody has touched today has no `today` band at all — never `0 chats �
 $0.00`. A machine with nothing standing, no news and an untouched day shows an empty right
 side, which is the good news said with space.
 
-## The dotted chart on home — the hands spark, and what the little dots mean
+## The little chart on home — the agents band, and what the bars mean
 
-The `hands` band on the machine's own card is the one **chart** anywhere in aforge: two
-rows of braille dots tracing how many things this machine has had running over the last
-few minutes.
+The `agents` band on the machine's own card is the one **chart** anywhere in aforge: one row
+of bars tracing how many things this machine has had running over the last few minutes.
 
 ```
-hands
-⢀⡠⠔⠒⠑⠢⡀⠀⠀⢀⠔⠊⠉⠉⠑⠢⢄⡀⠀⠀⠀⠀
-⠊⠁⠀⠀⠀⠀⠈⠑⠒⠁⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠒⠒
+agents · in flight, the last few minutes
+▁▁▁▂▂▃▅▇▇▅▃▂▁▁▁▁▂▂▂▁▁▁
 ```
 
-- **One dot is one reading**, taken every three seconds — the same beat home rescans the
+- **The heading says what the shape is.** `agents · in flight, the last few minutes` — the
+  chart is a mark and the clause beside it is the word that says what the mark is about.
+  There is no figure in that clause, on purpose: this band prints no numbers at all.
+- **One bar is one reading**, taken every three seconds — the same beat home rescans the
   disk on. Sixty readings fit, so the chart is about **three minutes** wide. Oldest on the
   left, **newest at the right**.
-- **The top of the chart is the busiest moment in that window** and the bottom is nothing
-  at all. There is no fixed ceiling on how many things a machine may run, so it scales to
-  its own peak: the chart is about **change**, not about size. The size is the pulse line's
+- **The bars fade backwards in time.** The newest bars, on the right, are drawn in the same
+  quiet colour aforge paints everything that is working right now; older bars step back
+  through fainter shades toward the background. That gradient is the only thing the colour
+  means here — it tells you which end is which. It never changes colour with the count, and
+  on a terminal with no colours to spend the whole row is drawn in one shade.
+- **The tallest bar is the busiest moment in that window** and the shortest is nothing at
+  all. There is no fixed ceiling on how many things a machine may run, so it scales to its
+  own peak: the chart is about **change**, not about size. The size is the pulse line's
   `3 working`, said once, at the top of the screen.
 - **It moves because the work moves.** There is no animation in it. While something runs
-  the readings differ and the line slides one dot every three seconds; while the machine is
-  quiet the readings are all the same and the line lies **flat and still**.
+  the readings differ and the line slides one bar every three seconds; while the machine is
+  quiet the readings are all the same and the line lies **flat and still** along the floor.
 - **It disappears when it has nothing to show.** A machine that has run nothing for the
-  whole window draws no `hands` band at all — not a heading over a flat line on the floor.
+  whole window draws no `agents` band at all — not a heading over a flat line on the floor.
   The first thing that runs brings it back.
+- **And it does not draw half a chart.** The readings are kept only in memory, so for the
+  first half-minute of a fresh aforge there are two or three of them — which is a smudge
+  rather than a shape. The band stays away until it has enough readings to draw a line you
+  can read, and then it appears.
 - **The readings live only in this run of aforge.** Nothing is written to disk and no
-  history is kept between runs: quit and start again and the chart is empty until the next
+  history is kept between runs: quit and start again and the chart is absent until the next
   few beats fill it in.
 - **It needs the room to be a chart.** On a frame too narrow for a card at all (under 80
-  columns) there is no `hands` band, and the count on the pulse line is what you keep. In
-  plain-text mode and with fancy glyphs turned off it is not drawn either — braille read
-  aloud is a row of noise — and again the count is what stays.
+  columns) there is no `agents` band, and the count on the pulse line is what you keep. In
+  plain-text mode and with fancy glyphs turned off it is not drawn either — a row of bars
+  read aloud is a row of noise — and again the count is what stays.
 
 ## The pane on the right of home — the preview of the session under the cursor or pointer
 
@@ -1181,7 +1310,7 @@ The chips are the ones the question has:
 - It is **waiting for permission to run something**: `1 allow once · 2 always · 3 deny`.
 - It is **asking whether to start a task**: `1 yes · 2 no`.
 - It is **asking whether to keep an eye on something**:
-  `1 yes · 3 once, not standing · 0 not set up` — or `1 yes · 0 not set up`, when what it
+  `1 yes · 3 just once · 0 not set up` — or `1 yes · 0 not set up`, when what it
   is asking about is a **one-off reminder**, which has no `once` answer at all (the
   reminders page says why). **`0` is how you say no from home**, and it is on every
   standing card there is: nothing is set up, nothing is run, and the card in that window
@@ -1189,9 +1318,9 @@ The chips are the ones the question has:
   conversation are numbered by their position — a `4` would move under your hand the day a
   card drew one chip fewer — and `esc` cannot be borrowed here, because `esc` on home
   closes home.
-  There is no `2 change when` here, on purpose: that answer is a request for a text box,
-  and a card in a column has no box. To say a different when, open the conversation: the
-  card is still standing there, because a standing card never times out.
+  There is no `2 change when or where` here, on purpose: that answer is a request for a
+  text box, and a card in a column has no box. To say a different time or place, open the
+  conversation: the card is still waiting there, because this card never times out.
 
 `2 always` means what it means in the window: **that session stops asking about that
 tool** for the rest of its life. It does not write a permission rule into your settings —
@@ -1435,19 +1564,22 @@ standup note" — a card appears in the conversation and **nothing is set up unt
 you answer it**:
 
 ```
-╭─ ? ◦ every Monday at 9, post the standup ─────────────────
+╭─ ? ◦ every Monday at 9, post the standup ──────────────────────────────────
 │ every Monday at 9, post the standup note from the git log
 │ when · Mondays at 9am
+│ where · for this project
 │ costs · about $0.02 a run, at most once a day
-│ [ 1 yes, set it up ]  [ 2 change when ]  [ 3 once, not standing ]
-╰───────────────────────────────────────────────────────────
+│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
+│ I'll keep doing this Mondays at 9am, for this project, until you stop it
+╰────────────────────────────────────────────────────────────────────────────
 ```
 
-Two bands make it different from the card that proposes a task: **`when ·`**, in
-the words you said or the words it worked out, and **`costs ·`** — what one run
-may spend and how often it may run. A watch that has to *look* at something adds
-`checked every 5 minutes`, because that is when the looking happens; a reminder
-does not, because nothing is examined between now and Monday.
+Three bands make it different from the card that proposes a task: **`when ·`**, in
+the words you said or the words it worked out; **`where ·`**, how far it reaches;
+and **`costs ·`** — what one run may spend and how often it may run. A watch that
+has to *look* at something adds `checked every 5 minutes`, because that is when
+the looking happens; a reminder does not, because nothing is examined between now
+and Monday.
 
 If it made the timing up rather than reading it off what you said, the band asks
 instead of stating: `Mondays at 9am — you didn't say, so that's my guess.
@@ -1455,21 +1587,34 @@ Right?`
 
 **The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
 
-- `1 yes, set it up` — it stands.
-- `2 change when` — the box below becomes a place to say when instead; `enter`
-  sends your words back and nothing is set up until a new card comes.
-- `3 once, not standing` — do it now and leave nothing behind.
-- `0 not set up` — no. Nothing is created and nothing is run, and the row settles
-  as `not set up`. `0` is not a chip: it is a key, named in the hint beside `esc`,
-  and it is the same key on home's answer band and in home's `ask here` pane,
-  which are the two places that have no `esc` to spare.
+- `1 yes, set it up` — it gets set up and starts happening.
+- `2 change when or where` — the box below becomes a place to say the **time or
+  the place** you want instead: "make it 8", "only in this project", "everywhere".
+  `enter` sends your words back and nothing is set up until a new card comes with
+  them in it. This is the one door for **both** — the `where ·` band is changed
+  through it exactly as the `when ·` band is.
+- `3 just once` — do it now and leave nothing behind.
+- `0 no` — nothing is set up, nothing is run, and the row settles as
+  `not set up`. `esc` does exactly the same thing.
 
-A **one-off reminder's card draws only the first two chips**, and `3` does nothing
-on it: "do it now" for a line meant for six o'clock is not a smaller version of
-the reminder, it is the wrong thing at the wrong moment. Watches, rules, routines
-and overnight work keep all three. `0` is on both. The hint under the box says
-which digits are really there — `1 yes · 2 change when · 3 once · 0 or esc, no`,
-or `1 yes · 2 change when · 0 or esc, no`.
+**The line under the answers says what the one you are on will actually do**, and
+it is written out of this card's own facts rather than being a fixed sentence:
+`I'll keep doing this Mondays at 9am, for this project, until you stop it` on the
+yes, `I'll do it now, this once — nothing is kept and nothing happens later` on
+`3`, `nothing is set up yet — type the time or the place you want, then enter` on
+`2`, and `nothing is set up and nothing happens later` on `0`. Walk the row with
+`←`/`→` and the line follows the answer you are on, so you can read what each one
+does before you take it. The answer under the cursor is the one `enter` takes;
+it is lit and lifted, and its digit is the key that takes it outright.
+
+A **one-off reminder's card draws no `3`**: "do it now" for a line meant for six
+o'clock is not a smaller version of the reminder, it is the wrong thing at the
+wrong moment. Watches, rules, routines and overnight work keep it. **The `0` is on
+every one of them** — a way to say no is never missing, and on a narrow card the
+words shorten to `yes`, `change`, `once` and `no` rather than any answer being
+dropped. The hint under the box says which digits are really there —
+`1 yes · 2 change when or where · 3 just once · 0 or esc, no`, or
+`1 yes · 2 change when or where · 0 or esc, no`.
 
 `esc` says no, and so does `0`. **There is no clock on this one**: no bar, no countdown, and no
 moment where it answers on your behalf — it waits while you read it. That is the
@@ -1480,8 +1625,9 @@ it says `ended · nothing was set up`, and nothing was.
 
 **An answered card stays where it is.** It does not vanish: it settles, the frame
 goes grey, and the bottom edge carries the answer and what it came to —
-`yes, set it up · set up`, `once, not standing`, `not set up`,
-`you asked for a different when`, `ended · nothing was set up`. That is true of a card in a conversation and of a
+`yes, set it up · set up`, `just once · done now, nothing kept`, `not set up`,
+`change when or where · you asked for something different`,
+`ended · nothing was set up`. That is true of a card in a conversation and of a
 card in home's `ask here` pane alike; it is one card with one renderer.
 
 **The first time you ever set one up** the machine's own timer goes on, without

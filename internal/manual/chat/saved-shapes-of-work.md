@@ -9,16 +9,20 @@ may use, and its own bounds.
 You build one by asking for it in a sentence. You keep it by approving a card. Afterwards
 it lives on disk and shows up in a list.
 
-**A harness is not a subharness.** They used to be one word, and they are not any more.
-`/harness` and `/harnesses` open the saved shapes of work this page is about. `/subharness`
-and `/sub` open something else — the typed programs, each with an input schema and an
-intake card you settle before it runs. See the *Subharnesses* page for those.
+**A harness is a subharness.** One system, one name for it — *subharness* — and several
+doors onto it. `/harness` and `/harnesses` open the saved shapes of work this page is
+about. `/subharness` and `/sub` open the whole list: these, the ones built into aforge, and
+the ones written as bundles on disk, all in one list with nothing marking which is which
+except where it was found. See the *Subharnesses* page for that list and the card you
+settle before one runs.
 
-**There are two ways to run one.** aforge offers one by itself when what you typed matches
+**There are three ways to run one.** aforge offers one by itself when what you typed matches
 a saved harness closely enough — that is the road for somebody who does not know the
-registry has the thing they are describing. And you can pick one yourself: type `/harness `
-with a space, choose it from the list that opens, and then type the request. See *Picking a
-harness yourself* below. `/harness` with nothing after it lists what you have.
+registry has the thing they are describing. You can pick one yourself: type `/harness `
+with a space, choose it from the list that opens, and then type the request. Or open
+`/subharness`, put the cursor on its row, say what the run is about in the one field its
+card asks for, and press `enter` on `run it`. See *Picking a harness yourself* below.
+`/harness` with nothing after it lists what you have.
 
 Three rules govern that offer:
 
@@ -230,7 +234,7 @@ leaving a blank screen. Attempts, draft checking, and truncated-versus-malformed
 are named there too.
 
 ```
-⠿ harness · designing · attempt 1/3
+⠿ subharness · designing · attempt 1/3
 ```
 
 That number is the whole of what a design gained: it is a real task, with a row on the
@@ -317,7 +321,8 @@ real retry phase; it never invents completion.
 The settle card is the ordinary one a task lands with, and its outcome line is one of:
 
 ```
-harness "triage-flake" v1 saved
+subharness "triage-flake" v1 saved
+/subharness runs it, and it offers itself when what you say matches.
 harness "triage-flake" was designed and not saved
 harness "triage-flake" was designed; the card went unanswered, so nothing was saved
 harness "triage-flake" could not be saved: <err>
@@ -326,8 +331,11 @@ the design ran out of time before it finished; nothing was saved
 harness design stopped; nothing was saved
 ```
 
-A saved design's card reads `v1` even for a first version, because "v1" is the news that it
-is the first of them. A design that failed settles as a failed task; one you declined settles
+A saved design's card is **two lines** — the name and the version it landed as, then where it
+is now. It reads `v1` even for a first version, because "v1" is the news that it is the first
+of them. What it saved is a subharness like any other: it is on `/subharness` from that
+moment, it runs from there, and it is still offered by the turn itself when what you say
+matches. A design that failed settles as a failed task; one you declined settles
 as **done**, because you were asked and you answered — nothing went wrong. So does one whose
 card you never got to: the page was written, and not keeping it is not a fault.
 
@@ -424,6 +432,47 @@ Once you answer, the row reads `saved as <name> v1` or `dropped` for the moment 
 task's settle card arrives. While a rewrite is being written there is nothing to approve, so
 the row is gone.
 
+## How do I know a message went into a subharness design — the dim words after my own line
+
+**Your own line says what it was part of.** A sentence typed into a design's room is not a
+remark to the conversation — it can rewrite the page — so the transcript marks it, dim, on
+the line you typed:
+
+```
+› use models dynamically in it · designing subharness flake-triage
+```
+
+The words after the `·` are the design you are inside. They are quiet on purpose: the mark
+is a fact about where the sentence went, not a summons, so it never takes the bright colour
+this surface saves for the one live thing on a screen.
+
+| What you see | What it means |
+| --- | --- |
+| nothing after your line | an ordinary message, to the conversation — this is nearly every message |
+| `· designing a subharness` | it went into a design whose page has not been written yet, so it has no name to give you |
+| `· designing subharness <name>` | it went into that design, and the page it has written is called `<name>` |
+
+**The name is the real one, and it arrives when it exists.** For the first minute of a
+design there is no page and no name, so the mark says `designing a subharness` and nothing
+more — aforge does not guess a name for something that has not been written. The moment the
+page is written the mark reads `designing subharness <name>`, on new lines and on the ones
+already above them, because the room is read back from one place.
+
+**Where it appears:** every line you type into a design's room, and the design's opening
+brief at the top of that room, so the history reads back with the mark on it. Walking into
+the room again later shows the same marks — they are not a live decoration.
+
+**Where it does not appear:** an ordinary task's room. A task is work you handed over and
+walked away from, not a place you are inside, so there is nothing to name and nothing is
+drawn — the same rule that keeps `$0.00` and `0 tok` off this surface.
+
+**How the flow begins and ends is already said, and is not said twice.** When a design
+starts, the conversation writes one dim line naming it and the task it is running as; when
+it lands, the task's settle card says what became of it. The room's own header carries the
+task the whole time you are standing in it. This mark is the part that lives in the
+transcript itself, so the exchange still says what it was when you scroll back to it or
+export it.
+
 ## Why does a harness design say "needs you" instead of "running"
 
 Because it is not running. A design at `awaiting your look` has finished everything a
@@ -466,8 +515,9 @@ JSON envelope, and an envelope arriving a character at a time is not something a
 read or act on. What you get instead is the reasoning while it writes, and then — **the
 moment each stage finishes, while you are still standing there** — a plain account of what
 it did: any attempt that was refused, in the validator's own sentence; the accepted draft
-with its name, its step count, why it is shaped that way, and **the card itself, drawn as
-the boxes-and-arrows diagram**; and what the review pass changed or left alone. The same
+with its name, its step count, why it is shaped that way, and **the card itself** — the
+numbered steps in plain words, in a fenced block, exactly as *How to read a harness card*
+below describes it; and what the review pass changed or left alone. The same
 accounts are what the journal keeps, so watching live and reopening the design tomorrow
 read as the same story — see *What a design writes into its thread* below.
 
@@ -482,7 +532,7 @@ see *Seeing the whole conversation inside a task* on the tasks page.
 **While a reasoning model thinks, there may genuinely be nothing to show.** Some models
 answer in one burst at the end rather than streaming, and until that burst arrives the room
 has the brief at the top and one dim line at the bottom saying what is happening —
-`harness · designing · attempt 1/3 · thinking · 52s`. That line replaces itself in place
+`subharness · designing · attempt 1/3 · thinking · 52s`. That line replaces itself in place
 and is never written to the journal. When the burst lands, the whole reply appears at once.
 
 **A call that failed outright does say so in the room**, as `error: <reason>`. A design you
@@ -499,7 +549,7 @@ that need it: the model answering your questions in the design thread, and the r
 written to if you approve it. Both are handed it out of sight, as a message no surface draws.
 
 **The conversation gets one line, which is a different question.** In the chat feed the same
-design is a single live block that replaces itself: `⠿ harness · designing · attempt 1/3`,
+design is a single live block that replaces itself: `⠿ subharness · designing · attempt 1/3`,
 then `naming it: research-helper`, `4 steps so far`, `thinking · 52s`. A feed you are
 holding a conversation in wants one line that stays a line; a room you walked into in order
 to watch wants to be told what is happening.
@@ -555,6 +605,62 @@ Nothing is saved yet — the card is up, and it is saved only if it is approved.
 That line is the truth about the clock as well: the 30-minute window was on the *writing*,
 and it stopped when the page landed. The card below it waits with no clock at all — see
 *Why a design timed out even though the page was there* below.
+
+## How to read a harness card — what the steps, the indented lanes and the last lines mean
+
+The same block is drawn everywhere: on the card in the conversation that asks you to keep
+a design, after `The page is written.`, under `/harness` and `enter`, and in a design's own
+room. It is written to be read without knowing anything about how aforge works, so no step
+ever names the machinery behind it.
+
+**There is no box around it and no diagram above it.** The card in the conversation used to
+draw its own picture — `[plan]──▶[fetch]──▶[verify]`, a bullet per step, and two rows
+reading `verify: report` and `tools: read · grep` — inside a bordered frame. All of that is
+gone: those were names from inside aforge, shown to somebody who has never seen inside it,
+and what stands there now is exactly the block below with `[enter] save   [e] change it
+[esc] drop` under it.
+
+```
+triage-flake · v2 · chase a flaky test to a fix
+
+1  start    starts when you run it  · takes since, label
+
+2  name-it  name the test that failed and why  · reads files, searches inside files · up to 8 turns
+
+3  pick
+   if contains flaky → rerun
+     ·  rerun    runs a command — go test -run TestFoo -count 20
+     ·  tries    repeat until ok (up to 3 times)
+     ·  check    check — go test ./...
+     ·  land     asks you — land the fix?
+   otherwise → explain
+     ·  explain  say why it is not flaky
+
+can use · reads files · searches inside files · runs commands
+may pick its own way as it runs, up to 4 times
+checks its own work and fixes what it finds
+```
+
+- **The head** is the name, the version — or `draft` while nothing has saved it — and the
+  one-line description.
+- **The numbers are the run's own order**, top to bottom, so reading them is reading the
+  run. Each step is its name and what it does; the quiet tail after `·` is what that step
+  may reach and how many turns it has.
+- **`side by side, one lane each:`** heads work that happens at the same time. Each lane is
+  indented under it with a `·` and appears exactly once. Where the lanes come back together
+  there is no row at all — the indent simply ends.
+- **`if … → name`** and **`otherwise → name`** are a choice. Steps that only one arm reaches
+  are indented under that arm rather than numbered as steps of the whole run.
+- **`repeat until … (up to N times)`** is a bounded loop, **`asks you — …`** is a stop that
+  waits for your answer, and **`check — …`** is the harness testing its own output.
+- **The last lines are the bounds**: what it can use, what it may decide for itself while it
+  runs, how hard it checks itself, and what it was tried on. A bound that is not in force
+  prints nothing, so a short foot means a narrow harness. `can use · nothing` means it
+  reaches no tools at all.
+
+Nothing on the card is a name from inside aforge. The tool names on a page — `bash`,
+`generate_image` — are shown as what they do (`runs commands`, `makes images`); a tool this
+build has never heard of is printed as its own name instead.
 
 ## What happens to a design when aforge closes or restarts — does a design survive closing the chat
 
@@ -637,7 +743,7 @@ the goal is worth trying again, or worth saying in fewer parts.
 
 **A design card waits as long as you do.** There is no timeout on it, no expiry, and nothing
 sweeps it. Go to lunch, come back an hour later, press `enter`: the harness is saved as `v1`
-and the design's task settles `harness "triage-flake" v1 saved`, exactly as it would have a
+and the design's task settles `subharness "triage-flake" v1 saved`, exactly as it would have a
 second after the page landed. The only clock in a design is the 30-minute one on **writing**
 the page, and it stops the moment the page exists.
 
@@ -692,6 +798,12 @@ because nobody is standing there for it.
 
 ## Where harnesses are stored
 
+A subharness can live in one of several places, and this is one of them: the pages a design
+writes. (The others are the ones built into aforge, `~/.aforge/subharnesses`, and the
+project's own `.aforge/subharnesses` — the *Subharnesses* page lists all four.) They are one
+list wherever they came from; where a program lives decides only the mark on its row, and a
+page written here is marked `yours`.
+
 Under the state root, one directory per harness, with immutable version pages and the runs
 beside them:
 
@@ -729,11 +841,12 @@ for a version other than the next one, a version past the cap, and `subharness: 
 Type `/harness` **with a space after it** and a filtering list opens under the box, latest
 first — the harness that ran most recently at the top, and one that has never run sorted by
 when its page was written. Keep typing and it narrows. `/harnesses ` opens exactly the same
-list; `/subharness ` and `/sub ` do not, and open the typed programs instead.
+list. `/subharness ` and `/sub ` open the other door onto the same programs: one list of
+everything runnable here, and an intake card instead of a chip and a typed request.
 
 ```
-◆ triage-flake     chase a flaky test · 2h ago
-◆ review-diff      read a diff · never run
+◆ triage-flake     chase a flaky test · 2h · finished
+◆ review-diff      read a diff
   Browse the registry →
 ```
 
@@ -772,14 +885,15 @@ Limits worth knowing:
 ## /harness — the list of what you have
 
 Type `/harness` or `/harnesses` with nothing after them. Both open the same panel. (A space
-after the word opens the picker above instead.) `/subharness` and `/sub` no longer open
-this panel — they open the typed programs and their intake card.
+after the word opens the picker above instead.) `/subharness` and `/sub` do not open this
+panel — they open the other door onto the same programs: everything this conversation can
+run, in one list, with an intake card behind each row.
 
 A short list opens under the message box, at most **10** lines:
 
 ```
-◆ triage-flake       v3 · 6 runs · last ok, 2h ago
-◆ review-diff        v1 · never run
+◆ triage-flake       v3 · chase a flaky test · 6 runs · 2h · finished
+◆ review-diff        v1 · read a diff
 ```
 
 (`#` instead of `◆` on the linear palette.)
@@ -792,16 +906,28 @@ A short list opens under the message box, at most **10** lines:
 | `esc` | close the panel |
 
 The name and version sit together on the left, because "triage-flake v3" is the sentence
-people say. The description and the history are the dim tail. Ages are coarse: `just now`,
-`12m ago`, `3h ago`, `5d ago`. `1 run` is spelled singular. A harness that has never run
-says so. A row whose trace could not be read shows the count alone rather than a shrug.
+people say. The description, the run count and the last run are the dim tail. `1 run` is
+spelled singular.
+
+**The last run is spelled the way `/subharness` spells it**, because it is the same fact
+about the same program: `2h · finished`, or `2h · incomplete` when it did not reach the end
+it promised. There is no third word — declined at a gate, stopped, or ended by an error are
+all `incomplete`, and none of them is called a failure. Ages come off the one clock the
+whole product reads with: `now`, `12s`, `5m`, `2h`, `yesterday`, `mon`, `aug 3`.
+
+Nothing is drawn there for a harness with no history — not `never run`, not `0 runs`. An
+unreadable newest trace still shows the count, because "ran, and I cannot read the trace"
+is a different fact from "never ran".
 
 The registry is read on the keystroke, not held from boot, so a harness registered in
 another window shows up. Each row reads the **head** version.
 
 `enter`, or a click on a row, closes the panel and prints the harness's card **into the
 conversation** — its steps and its bounds, with the last run's card under it when there is
-one. The transcript is where prose lives and can be scrolled and copied.
+one. The transcript is where prose lives and can be scrolled and copied. **The card keeps
+its own indentation there**: every line lands in the column the card put it in, and one too
+wide for the frame is cut with a `…` rather than folded onto a second row, because the
+indent under a lane is what says the step belongs to that lane.
 
 Limits:
 
@@ -829,7 +955,8 @@ What follows from that:
 
 So if a harness used to be offered when you described the work, and now it is not, nothing
 is broken and nothing was lost. Name it, and it will be offered. Or type `/harness ` with a
-space, pick it out of the list, and run it on purpose.
+space, pick it out of the list, and run it on purpose — or open `/subharness`, which lists
+it beside everything else you can run here, and start it from its card.
 
 ## Things that are not available in this build
 
