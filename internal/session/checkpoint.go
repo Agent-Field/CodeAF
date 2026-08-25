@@ -1783,7 +1783,24 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 // It reports whether the turn CARRIES ON, and whether it is OVER: a re-open that
 // crossed the ceiling is a turn that ended by being handed over, which is neither
 // of the two ordinary answers and belongs to the caller's `return true`.
-func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model, said string) (again, over bool) {
+// AND THE LAW THAT COST THE MEASURED RUN ITS EVENING ─────────────────────────
+//
+// A TURN THAT ENDED IN AN ERROR IS NEVER READ FOR WHAT REMAINS. THE ERROR IS
+// WHAT REMAINS, and the retry ladder above already owns it.
+//
+// SWE-Marathon run s2, 22:45 UTC: three calls in fifteen seconds came back with
+// no content, no tool call and no usage — failed calls, dressed as empty answers
+// (loop.go) — and each one looked to this function exactly like a turn that had
+// stopped short. It read the remains three times at mark-reader prices, re-opened
+// three times, and the turn then died on the refusal that had been underneath all
+// along. Re-opening a broken turn buys a fourth identical failure; what a broken
+// turn needs is the error path, which is the one thing a re-open takes it away
+// from. So [turnBroke] is asked before anything is spent.
+func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, response *ai.Response) (again, over bool) {
+	if turnBroke(response) {
+		return false, false
+	}
+	said := response.Text()
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -1808,6 +1825,37 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	hub.send(Event{Kind: EventNotice, Text: checkpointCarryOnNote})
 	a.record(textMessage("user", checkpointCarryOnLead+remains))
 	return true, false
+}
+
+// turnBroke reports that the step which ended this turn FAILED rather than
+// finished, which is the one ending the remains-reader must never be shown.
+//
+// TWO SIGNS, AND BOTH ARE THE CALL'S OWN ACCOUNT OF ITSELF rather than a reading
+// of what the model wrote:
+//
+//   - the provider SAID it stopped on an error — `error`, `network_error` — which
+//     is a finish reason and not a judgement about content
+//   - or the step is EMPTY: no words, no tool call. A model that answers nothing
+//     has not stopped short of the ask, it has not answered at all, and on the
+//     measured run three of these in a row were an upstream that had already
+//     started refusing (internal/provider's sse.go now makes that refusal an
+//     error where the router sends one; this stands behind it for the endpoints
+//     that send a bare empty 200 instead)
+//
+// A missing finish reason is NOT one of the signs. Plenty of endpoints simply do
+// not send one, and reading their silence as breakage would switch this whole
+// feature off against them.
+//
+// A nil response is broken by definition: nothing at all came back.
+func turnBroke(response *ai.Response) bool {
+	if response == nil {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(provider.FinishReason(response))) {
+	case "error", "network_error":
+		return true
+	}
+	return strings.TrimSpace(response.Text()) == "" && len(response.ToolCalls()) == 0
 }
 
 // readRemains asks the mark's own reader the one question the end of a turn

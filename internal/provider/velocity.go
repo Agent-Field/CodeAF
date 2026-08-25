@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -531,6 +532,40 @@ func (c *Client) noteCutProvider(model, served string) bool {
 	return c.velocity.pace(model, served, 0)
 }
 
+// refuseUpstream takes the lane away from an endpoint that REFUSED this request,
+// so the next encode routes around it, and reports whether it struck.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s2 died on `after 3 retries: API error (400): Provider
+// returned error`. Three retries, and nothing between them moved: releasing the
+// pin (affinity.go) only stops this process ASKING for that endpoint — it does
+// not stop the router choosing it again, and a router with a warm pool chooses
+// the same member every time. The three attempts were three deliveries of the
+// same request to the same upstream, and the turn ended with five hours of the
+// ask unspent.
+//
+// THE LAW: AN UPSTREAM THAT REFUSED IS ROUTED AROUND, NOT ASKED AGAIN. It is
+// the same verdict a 429 that names its pool earns and the same one a cut stream
+// earns — a lane this process has decided not to send to — and it travels the
+// same way, in `provider.ignore` on every request encoded after it.
+//
+// IT ONLY EVER FIRES ON AN UPSTREAM'S REFUSAL. A 4xx the router answered for
+// itself names no provider ([APIError.OurRequest]) and strikes nothing: there is
+// no lane to blame for a request that is malformed, and refusing endpoints over
+// our own bytes would empty the ledger one attempt at a time. A 429 is left to
+// [Client.notePacedProvider], which knows the wait the provider named.
+func (c *Client) refuseUpstream(model string, err error) bool {
+	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+		return false
+	}
+	refusal, ok := RefusalFrom(err)
+	if !ok || !refusal.FromUpstream() || refusal.Status == http.StatusTooManyRequests {
+		return false
+	}
+	return c.velocity.pace(model, refusal.Provider, 0)
+}
+
 // pacedProviderName reads which endpoint a 429 came from, "" when the body
 // does not say. OpenRouter names the upstream in the error's metadata when the
 // limit is one provider's shared pool rather than this account — exactly the
@@ -641,8 +676,14 @@ type lane struct {
 	strikes int
 	// ignoredUntil is when a refusal expires. Zero is not refused.
 	ignoredUntil time.Time
-	seen         int
-	last         Sighting
+	// refused says the lane was taken away because IT DID NOT SERVE — a 429 that
+	// named its pool, a stream that went quiet, an upstream that answered 4xx —
+	// rather than because it served SLOWLY. The two are different claims and the
+	// "never condemn everything" rule in [velocityLedger.preferences] treats them
+	// differently; see the law stated there.
+	refused bool
+	seen    int
+	last    Sighting
 }
 
 // velocityLedger is what this process has measured, in memory, per model.
@@ -739,6 +780,10 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 		entry.strikes++
 		if entry.strikes >= ignoreAfter {
 			entry.ignoredUntil = sighting.At.Add(ignoreCooldown)
+			// A SLOWNESS VERDICT, and it says so: this lane answered, three times,
+			// too slowly. That is a different claim from a lane that refused, and
+			// [velocityLedger.preferences] is allowed to weigh it differently.
+			entry.refused = false
 		}
 	case entry.strikes > 0:
 		// A fast answer pays a strike back. It also lifts a refusal, which can
@@ -746,6 +791,7 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 		// that retry succeeding is exactly the evidence the refusal was for.
 		entry.strikes--
 		entry.ignoredUntil = time.Time{}
+		entry.refused = false
 	}
 	return sighting
 }
@@ -785,14 +831,20 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].seen < ranked[j].seen })
 
 	var healthy, demoted []string
+	// refusedSomething says at least one of the names going into `ignore` is
+	// there because it DID NOT SERVE rather than because it served slowly. The
+	// rule below turns on it.
+	refusedSomething := false
 	for _, entry := range ranked {
 		if !entry.ignoredUntil.IsZero() {
 			if now.Before(entry.ignoredUntil) {
 				ignore = append(ignore, entry.provider)
+				refusedSomething = refusedSomething || entry.refused
 				continue
 			}
 			entry.ignoredUntil = time.Time{}
 			entry.strikes = ignoreAfter - 1
+			entry.refused = false
 		}
 		if entry.strikes >= demoteAfter {
 			demoted = append(demoted, entry.provider)
@@ -800,14 +852,27 @@ func (l *velocityLedger) preferences(model string) (order []string, ignore []str
 		}
 		healthy = append(healthy, entry.provider)
 	}
-	// THE LEDGER MAY NEVER REFUSE EVERYTHING IT KNOWS. On a model with one
-	// provider — and single-provider models are common — three slow answers
-	// used to put that one name in `ignore` and turn every request for five
-	// minutes into an instant "All providers have been ignored" 404. A verdict
-	// that condemns the whole set is not a preference, it is an outage this
-	// process built for itself; when nothing is left to prefer, the honest
-	// answer is no verdict at all, and the sort word chooses among slow lanes.
-	if len(healthy) == 0 && len(demoted) == 0 {
+	// THE LEDGER MAY NEVER CONDEMN EVERYTHING IT KNOWS OVER SPEED. On a model
+	// with one provider — and single-provider models are common — three slow
+	// answers used to put that one name in `ignore` and turn every request for
+	// five minutes into an instant "All providers have been ignored" 404. A
+	// SLOWNESS verdict that condemns the whole set is not a preference, it is an
+	// outage this process built for itself; when nothing is left to prefer, the
+	// honest answer is no verdict at all, and the sort word chooses among slow
+	// lanes.
+	//
+	// BUT A LANE THAT REFUSED IS NOT A SLOW LANE, and this is where the measured
+	// failure of SWE-Marathon run s2 lived. One endpoint answered 400 "Provider
+	// returned error"; it was the only lane the ledger held for that model; the
+	// rule above then dropped the verdict entirely, so the next request went
+	// straight back to the endpoint that had just refused, three times, fifteen
+	// seconds apart, and the turn died with five hours of the ask unspent.
+	// Sending to a lane already known to refuse is not a fallback, it is the same
+	// failure again — and the case this rule was written for is answered a rung
+	// higher anyway: a request that ignored everybody comes back "no endpoints
+	// found", and the refusal ladder re-sends it with the ignores taken off
+	// ([relaxedPreferences], endpoints.go).
+	if len(healthy) == 0 && len(demoted) == 0 && !refusedSomething {
 		return nil, nil
 	}
 	if len(healthy) == 0 {
@@ -857,5 +922,9 @@ func (l *velocityLedger) pace(model, served string, wait time.Duration) bool {
 	}
 	entry.strikes = ignoreAfter
 	entry.ignoredUntil = l.now().Add(wait)
+	// AND IT IS MARKED AS A LANE THAT DID NOT SERVE, which is what every caller
+	// of pace has in common: a 429 naming its pool, a stream that went quiet, an
+	// upstream that answered 4xx. The distinction is read in [preferences].
+	entry.refused = true
 	return true
 }

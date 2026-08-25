@@ -601,6 +601,49 @@ This only covers *pacing*. A server fault — a `500`, a `503`, a torn connectio
 short patience it always had and never moves your model: a broken endpoint is not a claim
 that the model cannot answer.
 
+## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
+
+`Provider returned error` is your router saying that **somebody else refused** — it handed
+your request to one endpoint, that endpoint said no, and the router is passing the refusal
+along. On its own it explains nothing, so aforge now shows what came with it: the name of
+the endpoint that refused, and the first sentence of what *it* said.
+
+```
+error: API error (400): Provider returned error (via Baidu: input length 97445 exceeds the maximum this endpoint accepts)
+```
+
+**An endpoint that refuses is routed around.** Its name goes on the same five-minute
+refusal list a rate-limited or silent endpoint earns, so the next attempt is sent to a
+different machine serving the same model. Before this, three attempts in a row could be
+three deliveries of the same request to the same endpoint — a measured run lost an evening
+to exactly that.
+
+**And a refusal that names no endpoint is not retried at all.** If the router refused on
+its own account, it read the request aforge built and said no to it — every endpoint alive
+would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
+three times. The turn ends immediately with the refusal instead. That is the whole rule:
+**named an endpoint → try another one; named nobody → stop**. It is not a list of status
+codes, so it works the same on a `400`, a `403` or anything else a router invents.
+
+**Where to read it afterwards.** Every failed request now writes a line into the session
+file — the model, the endpoint, the status, the endpoint's name, its own words, which
+attempt it was and how big the request was. Nothing like this was written down before, so a
+turn that died left the file saying only that it had ended.
+
+## My reply stopped and nothing was retried — a reply that broke is not carried on
+
+A reply that ends **because a call failed** is not a reply that stopped early, and aforge no
+longer treats it as one. Two endings count as broken: the provider said it stopped on an
+error, and a reply that came back completely empty — no words, no tool call, nothing
+counted.
+
+Neither is read by the second reader that carries a reply on (see *How tasks and adaptive
+runs work*), because there is nothing left to carry on *to*: the failure is what is left,
+and the retry above already owns it. A measured run read a broken reply three times in
+fifteen seconds, paid a thinking-tier model each time, and re-opened a reply that could not
+move. An empty reply is also written down as a **failed request** rather than as an empty
+answer from the model, so what is on the file matches what happened.
+
 ## The model was printing garbage — a reply that repeats itself, started repeating the same line over and over, or comes back as gibberish
 
 A model can lose the thread and stop writing language: one line or one letter repeated
