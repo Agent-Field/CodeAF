@@ -418,6 +418,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"when do you use a run instead of a task", "adaptive-runs"},
 		{"how do I start an adaptive run", "adaptive-runs"},
 
+		// And the door that closed after them: the typed cue. Somebody who
+		// learned the words asks in the words they learned, and the page has to
+		// say the absence out loud — there is nothing to refuse them with.
+		{"I typed orchestrate and it just answered me", "adaptive-runs"},
+		{"what words open an adaptive run", "adaptive-runs"},
+		{"can I still type orchestrate to start a planned run", "adaptive-runs"},
+
 		// The one-road wave: work now STARTS on its own after a words-only turn,
 		// with a line on the transcript and no card to answer. Every one of these
 		// is asked by somebody looking at a task they did not ask for, in the

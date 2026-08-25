@@ -27,9 +27,8 @@ package session
 //
 // THE FLIP FINISHED: run_adaptive is off the belt outright, so this is not the
 // wider of two hands the model chooses between — it is the ONLY hand the model
-// has for work with parts in it. A planned graph is now something a person names
-// in so many words (orchestrate.go's anchored cue) and nothing a turn reaches for
-// on width.
+// has for work with parts in it. No chat door opens a planned graph at all any
+// more (loop.go says where the last one stood); width is always this hand.
 //
 // ── AND A TASK MAY HAND PART OF ITS OWN WORK OUT ──
 //

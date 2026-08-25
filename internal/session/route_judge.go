@@ -43,9 +43,17 @@ package session
 //     each of those is one turn that behaves exactly as it did before this file
 //     existed. Nothing is started and nothing is said about a judgement nobody
 //     made.
-//   - IT IS CHEAP. RoleRouter sits on the low tier (internal/roles) because it
-//     reads one turn and answers one bounded question, and a wrong no costs a
-//     task that was never started rather than money.
+//   - IT IS CHEAP WHERE IT IS BUSY AND DEAR WHERE IT DECIDES. RoleRouter sits
+//     on the low tier (internal/roles) because it SCREENS: it is asked after
+//     every substantial wordy turn, which is volume, and volume belongs on the
+//     cheap model. A wrong no there still costs only a task that was never
+//     started. A wrong YES is the one that changed when the card went away — it
+//     now spends a task's money — so a yes is never taken from the cheap model
+//     alone. It is put ONCE MORE, in the same words and a fresh context, on the
+//     tier that thinks ([Agent.confirmRouteWork]), and only both-yes starts
+//     anything. The confirm is asked on nothing else, so what it costs over a
+//     conversation is nearly nothing and what it stands in front of is a whole
+//     task's spend.
 
 import (
 	"context"
@@ -57,6 +65,13 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// The confirm is registered here, beside the call it belongs to, exactly as the
+// auditor and the shaper are (internal/roles states the open-registry law). The
+// SCREEN is not: RoleRouter is one of the handful of roles the registry assigns
+// itself, because its tier and the worker's are one balance rather than two
+// opinions — cheap where the volume is, dear where the decision is.
+func init() { roles.Register(roles.RoleRouterConfirm, roles.TierMastermind) }
 
 const (
 	// routeJudgeGap is how many turns must pass between two of these starts.
@@ -212,7 +227,26 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	if !ok || !verdict.Work {
 		return
 	}
+	// THE CONFIRM, and it is asked HERE — after the yes and before anything is
+	// admitted — because that is the only place it costs anything at all.
+	if !a.confirmRouteWork(ctx, model, user.text(), answer) {
+		return
+	}
 
+	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE, which is why this line
+	// stands below the confirm rather than above it. The gap is a person's
+	// patience: it exists because work appearing over the top of a conversation
+	// is an interruption, and three turns of quiet afterwards is what stops the
+	// second one from being a nuisance ([routeJudgeGap]). A confirmed no started
+	// nothing and said nothing, so there is no interruption for the next three
+	// turns to be protected from, and silencing the screen over work that never
+	// existed would hand the mistake a second cost.
+	//
+	// WHAT THAT COSTS IS BOUNDED AND WORTH IT: a stretch of turns the screen
+	// likes and the confirm refuses pays one mastermind call each, rather than
+	// one every three. It is bounded by the screen saying yes at all, which is
+	// the rare half of the rare case, and the alternative is a conversation
+	// going deaf for three turns because a cheap model was wrong once.
 	a.mu.Lock()
 	a.routeOffered = turn
 	a.mu.Unlock()
@@ -237,7 +271,56 @@ func routeSubstantial(text string) bool {
 // conversation's own model rather than refusing — and an install with nothing
 // anywhere gets no judge at all, which is this feature absent rather than broken.
 func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	response, judge, err := a.callRole(ctx, roles.RoleRouter, model,
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, asked, answered)
+	if !ok {
+		return routeVerdict{}, false
+	}
+	if verdict.Goal == "" {
+		// A yes with nothing to run is not a yes. Whoever would be handed this
+		// cannot see the conversation, so an empty goal would start work nobody
+		// could describe.
+		return routeVerdict{}, false
+	}
+	return verdict, true
+}
+
+// confirmRouteWork puts the screen's yes ONCE MORE, on the mastermind tier.
+//
+// SAME BRIEF, SAME CONTRACT, FRESH CONTEXT. It is not shown the cheap judge's
+// answer and is not asked to review it: a second reader handed the first
+// reader's verdict is a reader agreeing with it, and what this is for is a
+// second INDEPENDENT reading of the same turn. So it is the identical question,
+// put to a model that can afford to think about it.
+//
+// A NO IS SILENCE AND SO IS A FAILURE, which is the file's fourth law applied
+// where it now matters most. There is no note, no card, no retry and no repair
+// turn — the person never asked either of these models anything, and a yes
+// nobody could confirm is exactly the yes this call exists to hold back. It is
+// the opposite posture from the division review (task_divide.go), which admits
+// its parts when it cannot answer: that plan had already earned its way past
+// two measured gates, and this one has earned nothing but a cheap model's
+// opinion.
+//
+// IT IS NEVER ASKED ABOUT A NO, and that is the whole economy of the cascade:
+// the trivial turns, the turns that called tools and the plain nos are all
+// screened out before this line is reached, so the mastermind is billed once
+// per yes and a yes is rare.
+//
+// THE GOAL IS NOT REQUIRED HERE. The work runs on the goal the screen wrote —
+// this call decides one bit and nothing else, and refusing a confirm that
+// answered `{"work": true}` would be refusing the answer the brief asks for.
+func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) bool {
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, asked, answered)
+	return ok && verdict.Work
+}
+
+// putRouteQuestion is the one call both readings are made of: ask the role, bill
+// the person, salvage the object. It is shared rather than spelled twice
+// because the brief, the wire contract and the budget are the SAME question —
+// two spellings of it would be two questions, and the confirm would slowly stop
+// confirming what the screen answered.
+func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, asked, answered string) (routeVerdict, bool) {
+	response, judge, err := a.callRole(ctx, role, model,
 		[]ai.Message{
 			textMessage("system", routeJudgeBrief),
 			textMessage("user", routeJudgeQuestion(asked, answered)),
@@ -264,12 +347,6 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 	}
 	verdict.Goal = clip(strings.TrimSpace(verdict.Goal), routeGoalBytes)
 	verdict.Why = clip(firstLine(verdict.Why), routeWhyBytes)
-	if verdict.Goal == "" {
-		// A yes with nothing to run is not a yes. Whoever would be handed this
-		// cannot see the conversation, so an empty goal would start work nobody
-		// could describe.
-		return routeVerdict{}, false
-	}
 	return verdict, true
 }
 

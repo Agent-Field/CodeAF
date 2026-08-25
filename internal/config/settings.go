@@ -234,12 +234,12 @@ const (
 	//
 	// THE PLANNED-GRAPH ANSWER IS GONE, and with it the last way a preference
 	// could open an adaptive run behind somebody's back. A `/task` takes one road
-	// now — one worker that divides itself from the material — and the planner
-	// road is reached only by somebody typing a request for a run outright, which
-	// the session reads off an anchored cue in the message itself (internal/session's
-	// orchestrate.go). No stored preference is on that road at all. A profile still
-	// holding the retired word reads as the default, silently, the way any word
-	// this build does not know reads ([TaskStartAt]).
+	// now — one worker that divides itself from the material — and there is no
+	// second road left to prefer: no chat door reaches the planner at all, not a
+	// setting, not a hand on the belt, and not a form of words somebody types
+	// (internal/session's loop.go). A profile still holding the retired word reads
+	// as the default, silently, the way any word this build does not know reads
+	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router

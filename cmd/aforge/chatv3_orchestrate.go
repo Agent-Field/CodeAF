@@ -19,11 +19,14 @@ import (
 // it — so the engine had no caller outside its own tests, and the doors onto it
 // were switched off in every build that ships.
 //
-// THERE IS ONE DOOR LEFT ABOVE THIS SEAM AND IT IS A PERSON'S OWN SENTENCE: the
-// anchored cue a turn is read for ("orchestrate the migration", orchestrate.go).
-// The model's `run_adaptive` hand was the other and is off the belt entirely, so
-// filling this seam no longer gives the model a verb — it gives the cue somewhere
-// to land.
+// AND THERE IS NO DOOR LEFT ABOVE THIS SEAM AT ALL. The model's `run_adaptive`
+// hand went first; the anchored cue a turn was read for ("orchestrate the
+// migration") followed it, because a conversation may not open a planned graph
+// (internal/session's loop.go carries the whole statement). So filling this seam
+// arms nothing today: it is kept wired because the session's own run seams — the
+// gate, the steering, the roster family and the room that draws them — are built
+// against a bound agent, and a surface that could start a run the room cannot
+// then find is the defect this arrangement exists to prevent.
 //
 // WHY A SEAM AT ALL, when the thing it reaches is a method on the very agent
 // being built: because the config is what BUILDS the agent, so nothing here has

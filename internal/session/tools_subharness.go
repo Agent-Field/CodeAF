@@ -47,7 +47,8 @@ package session
 // description names the other two.
 //
 // THERE WERE FOUR, and the fourth was run_adaptive. It is off the belt entirely
-// (tools_harness.go): a chat turn may not open a planned graph any more, so no
+// (tools_harness.go), and so is every other way in: a chat turn may not open a
+// planned graph any more, by any hand and by any words (loop.go), so no
 // description here may send the model at one.
 
 import (

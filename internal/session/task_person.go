@@ -127,9 +127,10 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 // NOTHING WAS LOST WITH IT. The shaping and naming above are the same two calls
 // [Agent.StartTask] makes, on the road that survived; the planner ENGINE is
 // untouched and still shipped ([Agent.RunOrchestrate], orchestrate.go), reached
-// by the anchored cue in a turn and by cmd/harness-design's own driver. What went
-// is one command's approach road to it, and a door with no caller is a door the
-// next reader assumes somebody walks through.
+// today by cmd/harness-design's own driver — no conversation reaches it at all
+// since the anchored cue went the same way this command's word did (loop.go).
+// What went here is one command's approach road, and a door with no caller is a
+// door the next reader assumes somebody walks through.
 
 // taskName settles what a person's task is called: the shaper's name where it
 // wrote one, and the mechanical cut of their own opening words where it did not.
