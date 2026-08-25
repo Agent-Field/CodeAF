@@ -624,7 +624,7 @@ func TestNonRepositoryRunsInPlace(t *testing.T) {
 	if tree.merge != mergeInPlace || tree.branch != "" {
 		t.Fatalf("tree = %+v, want inplace with no branch", tree)
 	}
-	if merge, _ := tree.comeHome("do the thing"); merge != mergeInPlace {
+	if merge, _ := tree.comeHome("do the thing", nil); merge != mergeInPlace {
 		t.Fatalf("comeHome = %q, want inplace", merge)
 	}
 }
@@ -644,7 +644,7 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
-	merge, detail := tree.comeHome("edit the shared file")
+	merge, detail := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}

@@ -2285,7 +2285,8 @@ never done for you, because only work that was checked reaches your branch.
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds —
 or it finished and held, and one of the files it wrote was changed by other work while it
-was running, which the how-tasks-run page covers on its own.
+was running — or it finished and held and its branch would not merge cleanly, because the
+same file changed on both sides. The how-tasks-run page covers the last two on their own.
 It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
 on it stays waiting until somebody decides. Its family rises to the top of the roster, and
 its row reads `finished — look it over`.
@@ -2320,7 +2321,9 @@ question: answer in either and both show the receipt.
 
 - **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
   exactly as checked work does, and everything queued behind it unblocks. The report leads
-  `you looked at this yourself and took it as done`.
+  `you looked at this yourself and took it as done`. If that merge conflicts nothing is
+  forced: your checkout is left exactly as it was, the branch is kept, and the task stays
+  waiting on you with the clashing files named.
 - **`[l] look again`** — a fresh check runs against the same working copy. It answers on its
   own, minutes later, and until it does the task **still** needs a look: what goes away is
   the choices, not the state. If `check task work` is off there is no checker to ask, so
