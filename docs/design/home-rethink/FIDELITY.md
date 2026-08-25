@@ -52,6 +52,43 @@ listed at the bottom and stays flagged to the owner.
     tasks, standing (when it fired) and memory (when it was learned) — memory and standing get
     `placeWindow` too.
 
+## Type and ground — what the design specifies, and what a terminal can honour
+
+What the .dc.html actually sets: `font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace`,
+weights **400 and 700 only** (71 bold spans — bold is the tier-1 device), body 14px at 21px line
+height; the small 11.5px runs are the canvas's own captions, not screen content. Mockup grounds:
+`#12121A` page ground (18 blocks), `#262633` selection band (25), `#E6E6F0` three inverted chips,
+`#0a0a0e` only the canvas behind the artboards. No italics anywhere in the mockups.
+
+11. **Font — recommend, verify, never pretend.** A TUI cannot set the terminal's font. So:
+    (a) the manual (`screen.md`, and the first-run page) states the design font plainly —
+    *"aforge is drawn for JetBrains Mono, regular and bold; any monospace with the block and
+    box-drawing ranges works"* — with one line on where to set it in iTerm2/Terminal.app/kitty/
+    alacritty/ghostty; (b) every glyph a place draws must render in JetBrains Mono, Menlo, SF Mono
+    and DejaVu Sans Mono — audit the place surfaces against `tokens/glyph.go` slots (all current
+    slots are standard ranges; keep it that way — nothing from nerd-font private use on places);
+    (c) the existing capability floors stay live on places: `DetectGlyphSet`'s plain-ASCII floor
+    and `detectASCII`'s veto must produce a legible place at TERM=linux and NO_COLOR — add the
+    every-place-at-the-plain-floor test.
+12. **Weight and style discipline, from the file itself:** bold marks tier 1 (the subject, the
+    selected tab word, a key name in a hint) and nothing else; **no italics on any place** (the
+    design uses none); no third weight exists, so emphasis beyond bold is brightness, case, indent
+    or air (screen 2a) — never underline (links/OSC 8 excepted where the codebase already does).
+    One font size: the 11.5px captions map to the dim tier, not to a smaller face.
+13. **Ground — paint it, exactly, scoped.** Home and the places paint `#12121A` as their page
+    ground and `#262633` as the selection band, at TrueColor as authored and at ANSI256 as the
+    nearest cube indexes (stated in the table, not computed at the call site); the NoColor/plain
+    profile paints no ground at all and the layout must not depend on one. The conversation surface
+    keeps the terminal's own ground — the painted ground begins and ends with the switcher and its
+    places. `styles.go`'s "rest is not a colour" comment block and the
+    `TestOnlyTheGroundLadderPaintsABackground` law are UPDATED DELIBERATELY (owner-signed): the
+    place ground joins the ladder as its floor step, cursor and selection derive from it at the
+    stated ratios, and the reason the old comment gave (an unknowable terminal background) is
+    answered by not needing to know it — the places bring their own.
+14. **Terminal adaptation checks:** the first-run note (and `screen.md`) carries the design's own
+    open item — macOS terminals need "use option as meta" for the `alt` class; say which setting,
+    per terminal, and what `esc`-prefix behaviour looks like when it is off.
+
 ## Deviations that remain, and why (each flagged to the owner)
 
 - **"Hold alt" (3b)** — a terminal cannot see a held modifier; the map is `alt+.` (dismissed by the
