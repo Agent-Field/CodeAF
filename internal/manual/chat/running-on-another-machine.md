@@ -1,6 +1,6 @@
 # Running on another machine
 
-## What --host is
+## What --host is — running this on my dev box, over ssh
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -75,6 +75,38 @@ host aliases, your keys, your jump hosts and your ssh agent all apply unchanged.
 passphrase prompt, an unknown-host-key question, or a version mismatch between the two
 builds are plain text on a plain terminal, not a dialog inside a full-screen surface.
 ssh's own stderr is printed as it arrives.
+
+## Trying it against your own machine first — `--host localhost`
+
+You do not need a second machine to rehearse this. If `ssh localhost` works on the machine
+you are sitting at, `--host localhost` is a real connection over a real ssh pipe, and it
+exercises every part of this page except one:
+
+```
+aforge chat --host localhost:code/app
+```
+
+The engine starts over there — which is here — through ssh, the session lives in its own
+project folder, and dropping the link behaves exactly as it does against a machine across
+the room. It is the fastest way to see what a dropped connection looks like before it
+happens to you for real.
+
+**What it cannot prove** is that the two halves do not quietly share a disk. Over
+`localhost` they do: the same home directory, the same `~/.aforge`, the same files. So a
+path that only works because both ends are one filesystem will pass here and fail against
+a real machine. For that, use a machine you actually ssh to.
+
+**To see a drop and a recovery on purpose,** ask for something slow, and from another
+terminal kill the ssh child this session started:
+
+```
+pkill -f "ssh -T localhost aforge engine"
+```
+
+The status line grows its `connection` segment, the surface redials itself, and the answer
+continues rather than restarting. Send something while it is down and the message is not
+lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
+in a moment`, and pressing enter again once it is back sends it.
 
 ## When the connection cannot be made
 

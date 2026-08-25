@@ -48,7 +48,19 @@ surface) that share **no path, no home directory and no credential**, and runs t
 binary across them. It takes about a minute. **It skips green wherever docker is absent** —
 so if it finishes in under a second, it skipped; check `docker info` and start `dockerd`.
 
-Last full run: 4 pass, 1 skip, 60s.
+The binaries it copies in are built **for this machine's architecture**, because docker
+starts the containers on it. If you see
+
+```
+setsid: can't execute '/usr/local/bin/modelstub': Exec format error
+```
+
+you are on a build of this harness that pinned `GOARCH=amd64`; it is fixed, and
+`AFORGE_E2E_ARCH` overrides the choice if you are ever running containers of another
+architecture on purpose.
+
+Last full runs: **4 pass, 1 skip, 60s** on darwin/arm64 → linux/amd64 containers, and
+**46s** on linux/arm64.
 
 | Scenario | What it proves |
 | --- | --- |
@@ -70,6 +82,46 @@ TestTheLegacyWorktreeStaysUnderTheRepository`. `cmd/aforge`'s two `TestTick*` ne
 
 You need a second machine you can already `ssh` into, with `aforge` on the PATH that a
 **non-login** ssh command sees (test with `ssh devbox aforge version`).
+
+### 3.0 Without a second machine: `--host localhost`
+
+Everything below except the shared-disk law can be exercised against your own machine, and
+this is how the wave was checked by hand. It is a real ssh pipe and a real second process;
+what it cannot prove is that the two halves do not share a filesystem — over `localhost`
+they do.
+
+```sh
+ssh localhost true                       # the only prerequisite
+cp bin/aforge <somewhere on the PATH a non-login ssh sees>
+ssh localhost aforge version             # both ends must be the SAME build
+aforge chat --host localhost:code/app --model deepseek/deepseek-v4-flash
+```
+
+Driving the real surface without a keyboard, which is what an agent has to do:
+
+```sh
+tmux new-session -d -s dx -x 200 -y 50 \
+  "bin/aforge chat --host localhost:code/app --session new --model deepseek/deepseek-v4-flash"
+tmux send-keys -t dx "use the bash tool: sleep 45 && echo done" Enter
+tmux capture-pane -p -t dx | tail -4          # read the screen back
+```
+
+To drop the link on purpose, kill the ssh child this session started — and kill it **by
+pid**, because a pattern wide enough to match `aforge engine` also matches the shell you
+typed it in:
+
+```sh
+kill -9 $(pgrep -f "^ssh -T localhost aforge engine" | head -1)
+```
+
+**Verified this way, on this tree:** a turn mid-`bash` survives the kill and completes
+(`worked 1m03s · 1 tool call`, the tool's output on screen); the redial lands back in the
+**same** conversation, not a new one; the `connection` segment reads
+`reconnecting to localhost — trying for up to 5 minutes` for exactly as long as the link is
+down and vanishes on its own; `/attach` puts the bytes in the far session's
+`attachments/20260824-203246-<hash>-<name>` and the model reads the file by path; a message
+submitted during the gap is refused visibly with
+`submit failed: reconnecting to localhost — try that again in a moment` rather than lost.
 
 ### 3a. The basic connection
 
@@ -250,8 +302,12 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 
 ### Gaps a tester will actually hit
 7. **`/attach` has no automated two-machine coverage** (scenario 4 skips). It is covered by
-   unit tests on both halves, but nobody has proved the whole path in a container. **A pty or
-   tmux driver would close this** — `internal/e2e/tmux_test.go` is prior art.
+   unit tests on both halves, and it has now been driven by hand through the real surface
+   over a real connection (§3.0: tray, wire, far-side `attachments/`, the model reading the
+   path) — but that run was `--host localhost`, where the two halves share a disk, so
+   nothing yet proves the bytes had to travel. **A pty or tmux driver inside the container
+   harness would close this** — `internal/e2e/tmux_test.go` is prior art, and §3.0's tmux
+   recipe is the driving half of it.
 8. **`aforge serve` spawns `aforge engine` as a child, one per connection**, and does not use
    the session host. So over `--at` the *persistence* story is weaker than over `--host`.
    Worth confirming what `Welcome.Persistent` reports there before trusting it.
@@ -268,6 +324,13 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 ### Housekeeping
 12. ~~`internal/pair/zz_probe_scratch_test.go` — scratch probe file~~ — deleted in this branch.
 13. `gofmt -l` flags `cmd/aforge/chat.go`, unformatted on a clean tree and untouched here.
+14. ~~A refused handshake printed its sentence **twice** — once by the engine's own stderr,
+    which ssh puts on the person's terminal, and once by the surface reading the refusal off
+    the wire.~~ Fixed on the merge: `remote.Refusal` is typed, and the engine door exits
+    quietly on one because the reason has already been delivered
+    (`cmd/aforge/engine.go`'s `quietRefusal`). The exit code is still 1.
+15. ~~`make test-remote` built its container binaries for `amd64` unconditionally~~ — fixed;
+    it follows the host, which is what docker starts the containers as.
 
 ---
 
