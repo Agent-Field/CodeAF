@@ -1752,13 +1752,20 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 //     harness answering a question that was addressed to somebody else. It is read
 //     structurally ([endsAskingThePerson]) and never by keyword, because a rule
 //     that knew what "shall I" looked like would be a rule about English.
-//   - A TURN THAT TOUCHED NOTHING IS NOT READ AT ALL. The gate is the meter's own
-//     currency — one finished tool round — and it is a cost gate rather than a
-//     content one, exactly like every other trigger in this file. A conversational
-//     turn that answered in words alone had no work in it to leave half-done, and
-//     charging every such turn a mastermind call would be the bill this file's own
-//     digest exists to prevent. route_judge.go already reads that turn and asks
-//     the other question about it.
+//   - A TURN THE METER NEVER THOUGHT WORTH ONE READING IS NOT WORTH A
+//     REMAINS-READING EITHER. The gate is the mark ladder's FIRST RUNG
+//     ([checkpointMeter.markAt]), which keeps this a cost gate in the meter's own
+//     currency rather than a content one, exactly like every other trigger in this
+//     file — and keeps it on the SAME number, from the same constant, that already
+//     decides when a running turn has become dear enough to interrupt. It was one
+//     finished round until that was measured: `bash ls` is one round, so EVERY
+//     small turn that touched a tool paid a mastermind call — $0.001 to $0.002, a
+//     third to a half of a tiny ask's whole bill — and in eight of nine measured
+//     runs the call re-opened nothing. A turn the ladder has not yet charged a
+//     single reading for has not done enough work to have left any of it
+//     half-done, and charging it a mastermind call anyway would be the bill this
+//     file's own digest exists to prevent. route_judge.go already reads the turn
+//     that answered in words alone and asks the other question about it.
 //   - AND THE METER IS THE ONLY COUNTER. A re-open is charged as a ROUND, through
 //     the ordinary [Agent.checkpointRound], which is what "on the same meter"
 //     has to mean if it is to mean anything: the marks still fire, a re-opened
@@ -1780,7 +1787,7 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
-	if meter == nil || meter.rounds == 0 {
+	if meter == nil || meter.rounds < meter.markAt(1) {
 		return false, false
 	}
 	if endsAskingThePerson(said) {

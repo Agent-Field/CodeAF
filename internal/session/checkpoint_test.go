@@ -2227,7 +2227,9 @@ func TestATurnThatStopsShortOfTheAskIsReopened(t *testing.T) {
 	const remains = "the handlers are not wired and the golden tests have never been run"
 
 	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: stoppingSteps(20, stopped, func() string {
+	// Past the ladder's first rung, which is what arms the reader at all: a turn
+	// the meter never charged one reading for is never read at its end either.
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(2), stopped, func() string {
 		if remainsAsks.Add(1) == 1 {
 			return remains
 		}
@@ -2264,7 +2266,9 @@ func TestATurnThatStopsShortOfTheAskIsReopened(t *testing.T) {
 // would be a rule about English.
 func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
 	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: stoppingSteps(20,
+	// Past the first rung, so the reader is armed and the question is the only
+	// thing left that can be keeping the turn shut.
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(2),
 		"Two schemas would both work here. **Which one should I use?**", func() string {
 			remainsAsks.Add(1)
 			return checkpointNothingLeft
@@ -2305,9 +2309,9 @@ func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
 func TestAReopenedTurnStillMarksOnTheSameMeter(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	var remainsAsks atomic.Int64
-	// Nine tool rounds and then words: the re-open is the round that crosses the
-	// first mark, which stands at the handoff price.
-	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(1)-1,
+	// One short of the SECOND mark and then words: the turn is past the first rung,
+	// so the reader is armed, and the re-open is the round that crosses the second.
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(2)-1,
 		"I've finished the parser, next I'll wire the handlers", func() string {
 			if remainsAsks.Add(1) == 1 {
 				return "the handlers are not wired"
@@ -2324,13 +2328,55 @@ func TestAReopenedTurnStillMarksOnTheSameMeter(t *testing.T) {
 	collect(t, events)
 
 	marks := journaledMarks(t, path)
-	if len(marks) == 0 {
-		t.Fatalf("a re-opened turn was never read at a mark; the reader was asked %d times about the ask",
-			remainsAsks.Load())
+	if len(marks) < 2 {
+		t.Fatalf("a re-opened turn was read at %d marks, want the rung it climbed and the one the "+
+			"re-open crossed; the reader was asked %d times about the ask", len(marks), remainsAsks.Load())
 	}
-	if marks[0].Rounds != checkpointMarkAt(1) {
-		t.Errorf("the mark fired at round %d, want the price %d — a re-open is a round",
-			marks[0].Rounds, checkpointMarkAt(1))
+	if marks[1].Rounds != checkpointMarkAt(2) {
+		t.Errorf("the second mark fired at round %d, want %d — a re-open is a round",
+			marks[1].Rounds, checkpointMarkAt(2))
+	}
+}
+
+// AND A TURN THE METER NEVER THOUGHT WORTH ONE READING IS NOT READ AT THE END OF
+// IT EITHER.
+//
+// The gate is the mark ladder's first rung, and it is there because one `bash ls`
+// is one round: gated on a single finished round, EVERY small turn that touched a
+// tool paid a mastermind call worth a third to a half of its own bill, and in
+// eight of nine measured runs that call re-opened nothing.
+func TestATurnShorterThanTheFirstMarkIsNeverReadForWhatRemains(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	var remainsAsks atomic.Int64
+	// One short of the first rung, and the reader would say there is work left if
+	// anybody asked it — so nothing but the gate can be keeping the turn shut.
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(1)-1,
+		"I've finished the parser, next I'll wire the handlers", func() string {
+			remainsAsks.Add(1)
+			return "the handlers are not wired"
+		})}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "list the folder and tell me what is in it")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a turn that never reached the first rung was read %d times for what remains", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("a turn cheaper than one reading was carried on: %q", noticeTexts(collected))
+	}
+	// AND THE BILL IS THE POINT, so it is the bill that is pinned: no reader line in
+	// the journal at all, which is the whole of what the measurement said was wasted.
+	for _, call := range journaledCalls(t, path) {
+		if call.Role == string(roles.RoleMarkReader) {
+			t.Errorf("a turn of %d rounds paid the mark reader %q (%.5f USD)",
+				checkpointMarkAt(1)-1, call.Model, call.CostUSD)
+		}
 	}
 }
 
