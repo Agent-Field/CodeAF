@@ -74,11 +74,16 @@ const (
 	// waves, and the copy that was not the binding said keys that did not exist.
 	homeItemPauseWord = "pause"
 	homeItemStopWord  = "stop"
+	// homeItemEnterWord is what enter does to a standing item, wherever one is
+	// drawn. It is its own constant because the standing place builds its hint
+	// line from the verbs the row under the cursor actually has and needs this
+	// half without the other two ([standPage.hint]).
+	homeItemEnterWord = "enter open where it was asked"
 	// homeItemActions is the dim line at the foot of an item's card: the three
 	// things this screen can do to one. The two letters are real now — they are
 	// the row's `→` strip (verbstrip.go), which is what "no key does anything
 	// that isn't drawn on screen right now" costs and buys.
-	homeItemActions = "enter open where it was asked · → " + homeItemPauseWord + " · " + homeItemStopWord
+	homeItemActions = homeItemEnterWord + " · → " + homeItemPauseWord + " · " + homeItemStopWord
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is

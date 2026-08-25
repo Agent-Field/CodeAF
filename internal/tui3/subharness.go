@@ -100,7 +100,7 @@ const (
 	// subNotStartedWord leads a refusal from the launching door. What comes back
 	// from there is a sentence written for a person ("there is nothing here to
 	// run"), so it is said as it stands rather than wrapped in a second sentence
-	// about a key that did not work ([app.standPageWrite] states the law).
+	// about a key that did not work ([standPage.ask] states the law).
 	subNotStartedWord = "did not start · "
 
 	// ── THE THIRD DOOR: THE CARD CHAT ITSELF RAISED ─────────────────────────

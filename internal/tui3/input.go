@@ -398,7 +398,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// matters here: opened by a command, nothing being typed under it, and esc
 	// leaving the conversation exactly as it was (standingpage.go). Being modal
 	// is what frees a bare p, s and n to mean pause, stop and not here.
-	if a.standPage.open && msg.String() != "ctrl+c" {
+	if a.standPage.up && msg.String() != "ctrl+c" {
 		return a.standPageKey(msg)
 	}
 

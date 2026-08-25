@@ -259,7 +259,7 @@ func (a *app) frame() (string, int, int) {
 	// they became places; a place that has no body of its own yet draws what it
 	// is FOR (teachplace.go). All three go through [placeFrame], so what differs
 	// between them is a body and nothing else.
-	if a.standPage.open {
+	if a.standPage.up {
 		lines, _, caretX, caretY := a.standPageFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}

@@ -11,196 +11,390 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-func standingPlaceFixture(t *testing.T) ([]StandingItemView, map[string]standing.Spend, time.Time) {
-	t.Helper()
-	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.Local)
-	item := func(id, words, workspace string) standing.Item {
-		return standing.Item{
-			ID: id, Words: words, Workspace: workspace, Status: standing.StatusActive,
-			When: standing.When{Kind: standing.WhenEvery, Words: "hourly"},
-		}
-	}
-	asking := item("asking", "file anything from gmail that looks like an invoice", "/work/mail")
-	asking.NeedsPerson = "send this invoice?"
-	firing := item("firing", "watch every agentfield repo and summarise what merged", "/work/aforge")
-	firing.Grant = "may summarise changes without asking"
-	quiet := item("quiet", "at 6am, tell me what changed in aforge overnight", "/work/aforge")
-	quiet.Brief.Title = "the 6am watch"
-	quiet.When.Words = "daily"
-	quiet.LastFired = now.Add(-3 * time.Hour)
-	quiet.LastChecked = quiet.LastFired
-	quiet.LastCheckLine = "nothing had changed since yesterday"
-	paused := item("paused", "keep the top-movers sheet fresh before the open", "/work/markets")
-	paused.Status = standing.StatusPaused
-	paused.When.Words = "weekdays · 8:30am"
-	extra := item("extra", "remind me to read the weekly report", "/work/aforge")
-	extra.When.Words = "weekdays"
-	more := item("more", "watch the release feed", "/work/aforge")
-	last := item("last", "keep the changelog index fresh", "/work/aforge")
-	return []StandingItemView{
-			{Item: quiet}, {Item: paused}, {Item: asking}, {Item: extra},
-			{Item: firing, Running: true}, {Item: more}, {Item: last},
-		}, map[string]standing.Spend{
-			"quiet": {USD: 0.003, Fired: 1},
-		}, now
-}
+// THE STANDING PLACE'S READING, ON ITS OWN.
+//
+// Everything here is asserted against plain data and a palette — no app, no
+// clock, no disk — because that is what the reading layer IS. What a person
+// does to the place, and which seam answered which row, is place_standing_test.go's.
 
-// The order is the place's triage promise, and stable sorting inside a state
-// keeps equally quiet records from jumping whenever home takes a new reading.
-func TestTheStandingPlacePutsNeedsAndMovingBeforeQuiet(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	if got := []string{r.views[0].Item.ID, r.views[1].Item.ID, r.views[2].Item.ID, r.views[3].Item.ID}; strings.Join(got, ",") != "asking,firing,quiet,paused" {
-		t.Fatalf("standing order = %v", got)
-	}
-	rows := r.rows(200, -1, newPalette(tokens.NoColor, false))
-	if !strings.HasPrefix(rows[1], tokens.GlyphNeedsHuman) || !strings.HasPrefix(rows[2], tokens.GlyphWorking) ||
-		!strings.HasPrefix(rows[3], tokens.GlyphQueued) || !strings.HasPrefix(rows[4], tokens.GlyphPaused) {
-		t.Fatalf("state glyphs = %q", rows[1:5])
-	}
-}
+// standingNow is the pinned instant every fixture here is read at. A clause
+// counted in hours cannot be tested by waiting.
+var standingNow = time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
 
-func TestTheStandingHeaderSaysOnlyCountsTheRecordCanSupport(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	if got, want := r.header, "things aforge does without being asked. 7 standing, 1 waiting to be stood up."; got != want {
-		t.Fatalf("header = %q, want %q", got, want)
-	}
-	views[2].Item.NeedsPerson = ""
-	if got := readStanding(views, week, now).header; strings.Contains(got, "waiting") {
-		t.Fatalf("header invented a waiting count: %q", got)
-	}
-	if got := readStanding(nil, nil, now).rows(120, 0, newPalette(tokens.NoColor, false)); got != nil {
-		t.Fatalf("empty reading drew %q", got)
-	}
-}
-
-func TestTheStandingRowsUseTheSharedRopeCadenceAndCostWords(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	rows := readStanding(views, week, now).rows(200, -1, newPalette(tokens.NoColor, false))
-	joined := strings.Join(rows, "\n")
-	for _, word := range []string{"asks first", "on its own", "daily · fired 6am", "weekdays · 8:30am", "under a cent"} {
-		if !strings.Contains(joined, word) {
-			t.Errorf("rows do not contain %q:\n%s", word, joined)
-		}
-	}
-}
-
-func TestTheStandingFoldSaysWhetherItsHiddenRowsWereQuiet(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	rows := r.rows(120, -1, newPalette(tokens.NoColor, false))
-	if got := rows[5]; got != "▸ 3 more, all quiet this week" {
-		t.Fatalf("quiet fold = %q", got)
-	}
-	week["extra"] = standing.Spend{USD: 1, Fired: 1}
-	rows = readStanding(views, week, now).rows(120, -1, newPalette(tokens.NoColor, false))
-	if got := rows[5]; got != "▸ 3 more" {
-		t.Fatalf("active fold = %q", got)
-	}
-}
-
-func TestTheStandingLastLookFollowsTheCursorAndKeepsQuietWhenUnknown(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	rows := r.rows(120, 3, newPalette(tokens.NoColor, false))
-	joined := strings.Join(rows, "\n")
-	if !strings.Contains(joined, "the 6am watch, last look · 3h") ||
-		!strings.Contains(joined, "fired 3h ago · nothing had changed since yesterday") {
-		t.Fatalf("last look did not follow quiet row:\n%s", joined)
-	}
-	if got := len(r.rows(120, 4, newPalette(tokens.NoColor, false))); got != 6 {
-		t.Fatalf("a row with no last look drew detail; got %d rows", got)
-	}
-}
-
-func TestTheStandingReadingStopsOnlyOnItems(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	for _, row := range []int{0, 5, 6, -1} {
-		if _, ok := r.at(row); ok {
-			t.Errorf("row %d became a stop", row)
-		}
-	}
-	if got, ok := r.at(1); !ok || got.Item.ID != "asking" {
-		t.Fatalf("first item = %q, %v", got.Item.ID, ok)
-	}
-}
-
-func TestTheStandingVerbsBelongToTheRowsOwnState(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	words := func(row int) string {
-		verbs := r.verbs(row)
-		parts := make([]string, 0, len(verbs))
-		for _, verb := range verbs {
-			parts = append(parts, string(verb.key)+" "+verb.word)
-		}
-		return strings.Join(parts, " · ")
-	}
-	if got, want := words(1), "y let it · n not this time · p pause · t trust it alone · x retire"; got != want {
-		t.Fatalf("asking verbs = %q, want %q", got, want)
-	}
-	if got, want := words(2), "p pause · x retire"; got != want {
-		t.Fatalf("trusted moving verbs = %q, want %q", got, want)
-	}
-	if got, want := words(4), "r resume · t trust it alone · x retire"; got != want {
-		t.Fatalf("paused verbs = %q, want %q", got, want)
-	}
-	if got := r.verbs(0); got != nil {
-		t.Fatalf("header verbs = %v", got)
-	}
-}
-
-func TestTheStandingPlaceHoldsAtEveryWidth(t *testing.T) {
-	views, week, now := standingPlaceFixture(t)
-	r := readStanding(views, week, now)
-	for _, width := range []int{60, 80, 120, 200} {
-		for _, row := range r.rows(width, 3, newPalette(tokens.NoColor, false)) {
-			if got := ansi.StringWidth(row); got > width {
-				t.Errorf("width %d drew %d cells: %q", width, got, row)
-			}
-		}
-	}
-	rows := r.rows(60, -1, newPalette(tokens.NoColor, false))
-	if strings.Contains(rows[1], "hourly") {
-		t.Fatalf("narrow row kept cadence: %q", rows[1])
-	}
-}
-
-func TestAStandingRowFitsAuthoredUnicodeAndAnUnboundedCadence(t *testing.T) {
-	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.Local)
-	item := standing.Item{ID: "wide", Words: strings.Repeat("東京🧭", 30), Status: standing.StatusActive,
-		When: standing.When{Kind: standing.WhenEvery, Words: strings.Repeat("界", 250)}}
-	r := readStanding([]StandingItemView{{Item: item}}, nil, now)
-	for _, width := range []int{40, 60, 80, 120, 200} {
-		for _, row := range r.rows(width, -1, newPalette(tokens.TrueColor, false)) {
-			if got := ansi.StringWidth(row); got > width {
-				t.Fatalf("width %d drew %d cells: %q", width, got, ansi.Strip(row))
-			}
-		}
-	}
-}
-
-func TestTheStandingPlaceObeysTheEmptinessLaw(t *testing.T) {
-	views, _, now := standingPlaceFixture(t)
-	rows := readStanding(views, nil, now).rows(120, -1, newPalette(tokens.NoColor, false))
-	if got := strings.Join(rows, "\n"); strings.Contains(got, "$0.00") || strings.Contains(got, "0 standing") {
-		t.Fatalf("empty figures reached the place:\n%s", got)
-	}
-	if teach := standingTeach(newPalette(tokens.NoColor, false)); len(teach) != 3 {
-		t.Fatalf("empty teaching has %d lines", len(teach))
-	}
-}
-
-func TestStandingChangedSinceCountsFiringsAfterTheLook(t *testing.T) {
-	seen := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
-	a := &app{}
-	a.home.items = map[string][]StandingItemView{"p": {
-		{Item: standing.Item{ID: "new", LastFired: seen.Add(time.Minute)}},
-		{Item: standing.Item{ID: "old", LastFired: seen.Add(-time.Minute)}},
+// standingView is one order as a row needs it.
+func standingView(id, title string, level standing.Altitude) StandingItemView {
+	return StandingItemView{Item: standing.Item{
+		ID:       id,
+		Words:    title + ", every time, without me asking",
+		Brief:    standing.Brief{Title: title},
+		Altitude: level,
+		When:     standing.When{Kind: standing.WhenEvery, Words: "Mondays at 9am", Every: "168h"},
+		Status:   standing.StatusActive,
 	}}
-	if got := a.standingChangedSince(seen); got != 1 {
-		t.Fatalf("changed standing items = %d, want 1", got)
+}
+
+// standingFixture is one plausible reading: something over this conversation,
+// something over its project, something everywhere, one order kept out of here,
+// and two more the machine holds somewhere else.
+func standingFixture() (stand, excepted, elsewhere []StandingItemView) {
+	stand = []StandingItemView{
+		standingView("c1", "keep the tests green", standing.AltitudeConversation),
+		standingView("p1", "draft the weekly update", standing.AltitudeProject),
+		standingView("m1", "never touch the public API", standing.AltitudeMachine),
+	}
+	excepted = []StandingItemView{
+		standingView("x1", "post the standup", standing.AltitudeMachine),
+	}
+	elsewhere = []StandingItemView{
+		standingView("f1", "watch the release feed", standing.AltitudeProject),
+		standingView("f2", "keep the changelog index fresh", standing.AltitudeProject),
+		// The machine's list holds this conversation's own orders as well — they
+		// are documents in folders like every other — so the reading has to sift
+		// them out rather than trusting its caller to.
+		standingView("p1", "draft the weekly update", standing.AltitudeProject),
+	}
+	return stand, excepted, elsewhere
+}
+
+// standingPaint is the reading painted into `room` rows at `width`, as plain
+// text with the ink stripped.
+func standingPaint(t *testing.T, rows []standRow, cursor, width, room int) ([]string, []int) {
+	t.Helper()
+	lines, owner, _, _ := standingLines(rows, cursor, 0, width, room, -1,
+		newPalette(tokens.NoColor, false), standingNow)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, strings.TrimRight(plain(line), " "))
+	}
+	return out, owner
+}
+
+// ── the shelves ─────────────────────────────────────────────────────────────
+
+// FOUR SHELVES, IN THE ORDER A PERSON READS OUTWARD FROM WHERE THEY STAND: this
+// conversation, this project, everywhere, and then everything else the machine
+// is holding.
+func TestTheReadingFilesFourShelvesOutward(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	var order []string
+	for _, row := range rows {
+		if row.kind == standRowShelf {
+			order = append(order, row.shelf)
+		}
+	}
+	want := []string{standInHereWord, standProjectWord, standEverywhereWord, standOtherWord}
+	if strings.Join(order, "|") != strings.Join(want, "|") {
+		t.Fatalf("the shelves are %v, want %v", order, want)
+	}
+}
+
+// AN EMPTY SHELF DRAWS NOTHING AT ALL — not the heading, not a line saying it is
+// empty. It is the emptiness law at its most literal, and it is what keeps the
+// place one line long on the ordinary conversation with one order over it.
+func TestTheReadingDropsAnEmptyShelfWhole(t *testing.T) {
+	rows := standingShelves(
+		[]StandingItemView{standingView("p1", "draft the weekly update", standing.AltitudeProject)},
+		nil, nil)
+	if len(rows) != 2 || rows[0].kind != standRowShelf || rows[0].shelf != standProjectWord {
+		t.Fatalf("one order made %d rows: %+v", len(rows), rows)
+	}
+	// AND A READING WITH NOTHING IN IT IS NO ROWS AT ALL, which is what lets the
+	// place refuse to open rather than opening onto a heading.
+	if got := standingShelves(nil, nil, nil); len(got) != 0 {
+		t.Fatalf("an empty reading made %d rows", len(got))
+	}
+}
+
+// A PLACE AN ORDER DOES NOT REACH IS ONE LINE UNDER THE SHELF IT WOULD HAVE BEEN
+// ON, and it is not a row: no mark about what it is doing, no clause about where
+// it stands, and no cursor.
+func TestTheReadingFilesAnExceptedOrderUnderItsShelf(t *testing.T) {
+	stand, excepted, _ := standingFixture()
+	rows := standingShelves(stand, excepted, nil)
+	at := -1
+	for i, row := range rows {
+		if row.kind == standRowNotHere {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("the excepted order is not on the page")
+	}
+	if rows[at].view.Item.ID != "x1" {
+		t.Fatalf("the not-here line is about %q", rows[at].view.Item.ID)
+	}
+	pal := newPalette(tokens.NoColor, false)
+	if got, want := standRowNotHereLine(rows[at], pal),
+		standNotHereGlyph+" "+standNotHereWord+": post the standup"; got != want {
+		t.Fatalf("the line reads %q, want %q", got, want)
+	}
+	// It has no tail and no label, which is what makes it one line at every
+	// width and unreachable by the cursor.
+	if note := standRowNote(rows[at], 200, standingNow); note != "" {
+		t.Fatalf("a not-here line grew a tail: %q", note)
+	}
+	if label := standRowLabel(rows[at], pal); label != "" {
+		t.Fatalf("a not-here line grew a label: %q", label)
+	}
+}
+
+// THE MACHINE'S SHELF IS DEDUPLICATED AGAINST THE THREE ABOVE IT, BY ITEM. An
+// order over this conversation is a document in a folder like any other, so
+// filing it twice would put one order on two shelves of one screen under two
+// different claims about where it stands.
+func TestTheReadingDeduplicatesTheMachineAgainstTheThreeShelves(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	seen := map[string]int{}
+	for _, row := range rows {
+		if row.kind != standRowShelf {
+			seen[row.view.Item.ID]++
+		}
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Fatalf("%q is on the page %d times", id, n)
+		}
+	}
+	var far []string
+	for _, row := range rows {
+		if row.elsewhere {
+			far = append(far, row.view.Item.ID)
+		}
+	}
+	if strings.Join(far, ",") != "f1,f2" {
+		t.Fatalf("the machine's shelf holds %v", far)
+	}
+}
+
+// AND AN ORDER KEPT OUT OF HERE IS ACCOUNTED FOR TOO. The person excepted it on
+// purpose; pushing it down to "in other projects" would answer that gesture by
+// redrawing the thing they had just pushed away.
+func TestAnExceptedOrderIsNotRefiledOnTheMachinesShelf(t *testing.T) {
+	excepted := []StandingItemView{standingView("x1", "post the standup", standing.AltitudeMachine)}
+	rows := standingShelves(nil, excepted, []StandingItemView{
+		standingView("x1", "post the standup", standing.AltitudeMachine),
+	})
+	for _, row := range rows {
+		if row.elsewhere {
+			t.Fatalf("an excepted order came back as another project's: %+v", row)
+		}
+	}
+}
+
+// THE CURSOR STOPS ONLY ON ORDERS. A heading and a `not here` line are things to
+// READ, and a selection on one is a selection no verb has anything to do with.
+func TestTheReadingStopsOnlyOnOrders(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	stops := standRowStops(rows)
+	if len(stops) != 5 {
+		t.Fatalf("%d rows are cursor-legal, want 5", len(stops))
+	}
+	for _, at := range stops {
+		if rows[at].kind != standRowItem {
+			t.Fatalf("row %d is a %v and is offered as a stop", at, rows[at].kind)
+		}
+	}
+}
+
+// ── the paint ───────────────────────────────────────────────────────────────
+
+// EVERY ROW IS DRAWN IN ONE GRAMMAR: the mark every aforge screen agrees on
+// ([standing.Item.Glyph]), what the order is called, and home's own clause
+// ([standRollup]) — on the machine's shelf exactly as on the three above it.
+func TestTheReadingDrawsEveryShelfInOneGrammar(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	lines, _ := standingPaint(t, rows, -1, 120, 20)
+	screen := strings.Join(lines, "\n")
+	for _, want := range []string{
+		standHeading,
+		standWaitGlyph + " keep the tests green",
+		standWaitGlyph + " watch the release feed",
+		"Mondays at 9am",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the reading does not draw %q:\n%s", want, screen)
+		}
+	}
+	// AND NOTHING ON IT SPEAKS THE MACHINERY'S OWN WORDS.
+	for _, banned := range []string{"altitude", "scope", "machine", "conversation altitude"} {
+		if strings.Contains(strings.ToLower(screen), banned) {
+			t.Fatalf("the reading says the machinery's word %q:\n%s", banned, screen)
+		}
+	}
+}
+
+// AND IT DRAWS NO FOLD. The list showed four rows and hid the rest behind a
+// `▸ N more` line no key answered — a door onto nothing. A place takes the whole
+// terminal, so the window is whatever the frame had room for and the cursor
+// walks the rest.
+func TestTheReadingDrawsNoFold(t *testing.T) {
+	var elsewhere []StandingItemView
+	for _, one := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+		elsewhere = append(elsewhere, standingView(one, "watch the "+one+" thing", standing.AltitudeProject))
+	}
+	rows := standingShelves(nil, nil, elsewhere)
+	lines, _ := standingPaint(t, rows, 1, 120, 20)
+	screen := strings.Join(lines, "\n")
+	if strings.Contains(screen, "▸") || strings.Contains(screen, " more") {
+		t.Fatalf("the reading folded rows behind a line no key answers:\n%s", screen)
+	}
+	for _, one := range []string{"a", "g"} {
+		if !strings.Contains(screen, "watch the "+one+" thing") {
+			t.Fatalf("a frame with room for every order did not draw %q:\n%s", one, screen)
+		}
+	}
+}
+
+// THE WINDOW FOLLOWS THE CURSOR, so a cursor past the bottom of the window
+// scrolls the list rather than walking off the screen.
+func TestTheReadingScrollsToTheRowTheCursorIsOn(t *testing.T) {
+	var elsewhere []StandingItemView
+	for _, one := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+		elsewhere = append(elsewhere, standingView(one, "watch the "+one+" thing", standing.AltitudeProject))
+	}
+	rows := standingShelves(nil, nil, elsewhere)
+	last := len(rows) - 1
+	lines, _, top, shown := standingLines(rows, last, 0, 120, 4, -1,
+		newPalette(tokens.NoColor, false), standingNow)
+	if shown < 1 || top == 0 {
+		t.Fatalf("a four-row frame did not scroll (top %d, window %d)", top, shown)
+	}
+	screen := ""
+	for _, line := range lines {
+		screen += plain(line) + "\n"
+	}
+	if !strings.Contains(screen, "watch the g thing") {
+		t.Fatalf("the row under the cursor is not on the frame:\n%s", screen)
+	}
+}
+
+// ONE LAYOUT ANSWERS BOTH THE PAINT AND THE POINTER. Every line records the row
+// it belongs to, in the order it was emitted, so a press can never land on the
+// row above — and a heading, a `not here` line and a `last look` paragraph
+// answer to no row at all.
+func TestTheReadingsOwnerMapMatchesTheLinesItPainted(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	lines, owner := standingPaint(t, rows, 1, 120, 20)
+	if len(owner) != len(lines) {
+		t.Fatalf("%d lines and %d owners", len(lines), len(owner))
+	}
+	for i, at := range owner {
+		if at < 0 {
+			continue
+		}
+		if at >= len(rows) || rows[at].kind != standRowItem {
+			t.Fatalf("line %d claims row %d, which is not an order", i, at)
+		}
+		if name := strings.TrimSpace(rows[at].view.Item.Title()); !strings.Contains(lines[i], name) {
+			t.Fatalf("line %d is owned by %q but reads %q", i, name, lines[i])
+		}
+	}
+	for i, line := range lines {
+		if strings.TrimSpace(line) == standHeading || strings.TrimSpace(line) == standOtherWord {
+			if owner[i] != -1 {
+				t.Fatalf("the heading on line %d answers to row %d", i, owner[i])
+			}
+		}
+	}
+}
+
+// THE LAST LOOK FOLLOWS THE CURSOR AND SAYS NOTHING WHEN THERE IS NOTHING TO
+// SAY: no heading, no blank line, no "never run".
+func TestTheReadingsLastLookFollowsTheCursor(t *testing.T) {
+	looked := standingView("looked", "the 6am watch", standing.AltitudeProject)
+	looked.Item.When = standing.When{Kind: standing.WhenProbe, Words: "daily"}
+	looked.Item.LastChecked = standingNow.Add(-3 * time.Hour)
+	looked.Item.LastCheckLine = "nothing had changed since yesterday"
+	never := standingView("never", "watch the release feed", standing.AltitudeProject)
+	rows := standingShelves(nil, nil, []StandingItemView{looked, never})
+
+	lines, _ := standingPaint(t, rows, 1, 120, 20)
+	screen := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"the 6am watch, last look",
+		"looked 3h ago · nothing had changed since yesterday, so nothing was done",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the reading does not say %q:\n%s", want, screen)
+		}
+	}
+	lines, _ = standingPaint(t, rows, 2, 120, 20)
+	if screen = strings.Join(lines, "\n"); strings.Contains(screen, "last look") {
+		t.Fatalf("an order that has never been looked at drew a last look:\n%s", screen)
+	}
+}
+
+// ── every width ─────────────────────────────────────────────────────────────
+
+// THE READING HOLDS AT EVERY TIER, phone included: no line wider than the frame,
+// exactly the rows it was promised, and the headings and the orders still
+// readable.
+func TestTheReadingHoldsAtEveryWidth(t *testing.T) {
+	rows := standingShelves(standingFixture())
+	for _, width := range []int{44, 60, 80, 120, 200} {
+		for _, room := range []int{6, 20} {
+			lines, owner := standingPaint(t, rows, 1, width, room)
+			if len(lines) != room {
+				t.Fatalf("at %d×%d the reading drew %d lines", width, room, len(lines))
+			}
+			if len(owner) != room {
+				t.Fatalf("at %d×%d the map has %d entries for %d lines", width, room, len(owner), room)
+			}
+			for _, line := range lines {
+				if got := ansi.StringWidth(line); got > width {
+					t.Fatalf("at %d a line is %d cells: %q", width, got, line)
+				}
+			}
+			if room < 20 {
+				continue
+			}
+			screen := strings.Join(lines, "\n")
+			for _, want := range []string{standHeading, standInHereWord, standOtherWord, "keep the tests green"} {
+				if !strings.Contains(screen, want) {
+					t.Fatalf("at %d the reading is missing %q:\n%s", width, want, screen)
+				}
+			}
+		}
+	}
+}
+
+// AND SO DOES A ROW WHOSE AUTHOR WROTE IT IN WIDE CHARACTERS WITH AN UNBOUNDED
+// CADENCE. The person's own words are kept whole in the record; what a narrow
+// frame does is clip them for the drawing, never overflow.
+func TestTheReadingFitsAuthoredUnicodeAndAnUnboundedCadence(t *testing.T) {
+	wide := StandingItemView{Item: standing.Item{
+		ID: "wide", Words: strings.Repeat("東京🧭", 30), Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenEvery, Words: strings.Repeat("界", 250)},
+	}}
+	rows := standingShelves(nil, nil, []StandingItemView{wide})
+	for _, width := range []int{44, 60, 80, 120, 200} {
+		lines, _ := standingPaint(t, rows, 1, width, 12)
+		for _, line := range lines {
+			if got := ansi.StringWidth(line); got > width {
+				t.Fatalf("width %d drew %d cells: %q", width, got, line)
+			}
+		}
+	}
+}
+
+// THE EMPTINESS LAW REACHES EVERY FIGURE THE READING CAN DRAW — no `$0.00`, no
+// count of what a person can already see beside the heading, and no shelf over
+// nothing.
+func TestTheReadingObeysTheEmptinessLaw(t *testing.T) {
+	rows := standingShelves(nil, nil, []StandingItemView{
+		standingView("f1", "watch the release feed", standing.AltitudeProject),
+	})
+	lines, _ := standingPaint(t, rows, 1, 120, 20)
+	screen := strings.Join(lines, "\n")
+	for _, banned := range []string{
+		"$0.00", "0 tok", "1 standing", "waiting to be stood up",
+		standInHereWord, standProjectWord, standEverywhereWord,
+	} {
+		if strings.Contains(screen, banned) {
+			t.Fatalf("the reading draws %q over nothing:\n%s", banned, screen)
+		}
+	}
+	if !strings.Contains(screen, standHeading) {
+		t.Fatalf("the reading lost its heading:\n%s", screen)
 	}
 }

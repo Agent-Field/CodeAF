@@ -237,7 +237,7 @@ func TestPressingTheKeepingSegmentOpensTheStandingPage(t *testing.T) {
 	a, _ := standDoorLab(t)
 	x, y := standDoorAt(t, a)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-	if !a.standPage.open {
+	if !a.standPage.up {
 		t.Fatalf("the door did not open the page:\n%s", plain(frame(a)))
 	}
 }
@@ -248,7 +248,7 @@ func TestPressingBesideTheKeepingSegmentOpensNothing(t *testing.T) {
 	a, _ := standDoorLab(t)
 	_, y := standDoorAt(t, a)
 	drive(t, a, tea.MouseClickMsg{X: 0, Y: y, Button: tea.MouseLeft})
-	if a.standPage.open {
+	if a.standPage.up {
 		t.Fatal("the whole status row acted as the door")
 	}
 }

@@ -1,280 +1,314 @@
 package tui3
 
-// THE STANDING PLACE IS A PURE READING OF RECORDS THE HOME CLOCK ALREADY HOLDS.
-// It never reaches through the standing seam and never reads time for itself,
-// so moving the cursor can redraw this place without touching disk or making
-// two ages on one frame disagree.
+// THE STANDING PLACE'S READING: WHAT IS TRUE, TURNED INTO ROWS AND THEN INTO
+// LINES.
+//
+// This file is PURE. It never sees the surface itself, never asks the clock,
+// and never touches the disk — everything it needs arrives as data assembled by
+// place_standing.go, so a cursor move can redraw the whole screen without
+// reaching a seam and two rows of one frame can never be two ages apart.
+//
+//	  standing orders
+//	  in this conversation
+//	› ▲ keep the tests green        needs your look · the fix touches migrations
+//	  for this project
+//	  ◦ draft the weekly update                                  Mondays at 9am
+//	  everywhere
+//	  ◦ never touch the public API                                        holds
+//	  ─ not here: post the standup
+//	  in other projects
+//	  ◦ watch the release feed                                   Mondays at 9am
+//
+// Four decisions, and three of them are borrowed rather than invented:
+//
+//   - THE SHELVES ARE THE THREE REACHES, in the order a person reads outward
+//     from where they are standing: this conversation, this project,
+//     everywhere. Each one is a heading and no more — the rows under it are what
+//     the shelf is about, and a heading with a count beside it would be the
+//     screen counting what a person can see.
+//   - AND A FOURTH SHELF IS THE REST OF THE MACHINE. The three reaches answer
+//     "what is true HERE"; a person who came to this screen to find the order
+//     they set up last week in another project was shown a page that did not
+//     have it and did not say so. So what stands outside this conversation is
+//     drawn under a heading of its own, at the bottom, after everything that
+//     reaches where the person is sitting — the same outward reading carried one
+//     step further.
+//   - AN EMPTY SHELF DRAWS NOTHING AT ALL. Not the heading, not a "nothing
+//     here", not a rule where the rows would have been. That is the emptiness
+//     law at its most literal, and it is what makes this page one line long on
+//     the ordinary conversation with one order over it.
+//   - THE STATUS CLAUSE IS HOME'S OWN ([standRollup]). An item's tail — needs
+//     your look, checking now, paused, the cadence, what the last look found —
+//     is one derivation with one set of words, and a page that wrote a second
+//     one would be two screens disagreeing about the same item in front of the
+//     same person.
+//
+// AND THERE IS NO FOLD. The list showed four rows and hid the rest behind a
+// `▸ N more` line no key answered; a place takes the whole terminal, so the
+// window is whatever the frame had room for and the cursor walks the rest.
 
 import (
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// standingShown is the number of rows the place shows before quiet records
-// become one door. Four leaves room for the selected item's last look without
-// turning a reference place into another scrolling sheet.
-const standingShown = 4
+// The mark a "not here" line leads with, and its stand-in on a terminal that
+// cannot draw it. It is a RULE and not a glyph out of [standing.Item.Glyph]'s
+// four: those four say what an order is doing, and this line is about an order
+// that is doing nothing at all here — the shelf it would have been on, with the
+// place struck through.
+const (
+	standNotHereGlyph = "─"
+	standNotHereASCII = "-"
+)
 
-type standingReading struct {
-	views  []StandingItemView
-	week   map[string]standing.Spend
-	now    time.Time
-	header string
+// standRowKind is what one line of the page is. A shelf heading and a "not
+// here" line are drawn and never chosen; only an order is a row a verb can act
+// on.
+type standRowKind uint8
+
+const (
+	standRowShelf standRowKind = iota
+	standRowItem
+	standRowNotHere
+)
+
+// standRow is one line of the page: a shelf's heading, an order, or an order
+// that deliberately does not reach here.
+type standRow struct {
+	kind standRowKind
+	// shelf is the heading's words, on a heading row and nowhere else.
+	shelf string
+	// view is the order as a row needs it, on the other two kinds. It is
+	// [StandingItemView] and not a bare item so that the clause this page draws
+	// is the clause home draws, from the same input.
+	view StandingItemView
+	// elsewhere marks a row on the FOURTH shelf: an order this machine holds
+	// that does not reach this conversation at all.
+	//
+	// IT DECIDES WHICH VERBS THE ROW HAS AND NOTHING ELSE. Everything a person
+	// reads on such a row — the mark, the name, the clause — is drawn by the
+	// same three functions every other row is drawn by, because one grammar is
+	// the whole point of filing them on one page. What cannot be the same is
+	// what a key can do to it: the conversation seam has never heard of this
+	// order, so its three writes are not available and the store's two are
+	// ([standPage.verbs]).
+	elsewhere bool
 }
 
-// standingVerb is one action the shared verb strip may put behind a visible
-// key. The router owns effects; this reading owns only which words are true of
-// the row it drew.
-type standingVerb struct {
-	key  rune
-	word string
-}
-
-// The shared table is the one vocabulary both state selection and future
-// routing adapters can use. Keeping keys beside their
-// words prevents a receipt and its visible invitation from drifting apart.
-var standingVerbWords = map[rune]string{
-	'p': "pause",
-	'r': "resume",
-	't': "trust it alone",
-	'x': "retire",
-	'y': "let it",
-	'n': "not this time",
-}
-
-// readStanding adopts and orders a snapshot without changing the caller's
-// slice. Needs-you and moving rows stay above quiet rows because the glyph and
-// the row's position are two statements of the same fact.
-func readStanding(views []StandingItemView, week map[string]standing.Spend, now time.Time) standingReading {
-	ordered := append([]StandingItemView(nil), views...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return standingPlaceRank(ordered[i]) > standingPlaceRank(ordered[j])
-	})
-	r := standingReading{views: ordered, week: week, now: now}
-	if len(ordered) == 0 {
-		return r
-	}
-	waiting := 0
-	for _, view := range ordered {
-		if strings.TrimSpace(view.Item.NeedsPerson) != "" {
-			waiting++
+// standingShelves lays the whole page out: the three shelves over this
+// conversation, and under them the fourth of what stands elsewhere on this
+// machine. Each shelf is dropped whole when nothing is on it.
+//
+// THE CALLER'S ORDER IS KEPT INSIDE A SHELF. The engine answers recent first
+// within each reach (internal/session's StandingHere) and the store's bands
+// arrive in home's own triage order ([standTriage]); a reading that sorted
+// again would be a second authority on rows two other surfaces have already
+// ordered.
+//
+// THE FOURTH SHELF IS DEDUPLICATED AGAINST THE THREE, BY ITEM. An order over
+// this conversation is a document in a project's folder like any other, so
+// filing it twice would put one order on two shelves of one screen under two
+// different claims about where it stands. A `not here` line accounts for its
+// order too: the person excepted it from here on purpose, and pushing it down
+// to "in other projects" would answer that gesture by redrawing the thing they
+// had just pushed away.
+func standingShelves(stand, excepted, elsewhere []StandingItemView) []standRow {
+	var rows []standRow
+	seen := make(map[string]bool, len(stand)+len(excepted))
+	file := func(view StandingItemView) {
+		if id := strings.TrimSpace(view.Item.ID); id != "" {
+			seen[id] = true
 		}
 	}
-	r.header = "things aforge does without being asked. " + itoa(len(ordered)) + " standing"
-	if waiting > 0 {
-		r.header += ", " + itoa(waiting) + " waiting to be stood up"
+	for _, level := range []standing.Altitude{
+		standing.AltitudeConversation, standing.AltitudeProject, standing.AltitudeMachine,
+	} {
+		var shelf []standRow
+		for _, view := range stand {
+			if view.Item.Level() != level {
+				continue
+			}
+			file(view)
+			shelf = append(shelf, standRow{kind: standRowItem, view: view})
+		}
+		for _, view := range excepted {
+			if view.Item.Level() != level {
+				continue
+			}
+			// A PLACE AN ORDER DOES NOT REACH IS NOT A ROW, it is a footnote to
+			// the shelf: nothing about it is running, nothing about it is due,
+			// and the only fact worth a line is that it was excepted from here.
+			file(view)
+			shelf = append(shelf, standRow{kind: standRowNotHere, view: view})
+		}
+		if len(shelf) == 0 {
+			// THE EMPTINESS LAW REACHES THE WHOLE SHELF, heading and all.
+			continue
+		}
+		rows = append(rows, standRow{kind: standRowShelf, shelf: standShelfWord(level)})
+		rows = append(rows, shelf...)
 	}
-	r.header += "."
-	return r
+	var far []standRow
+	for _, view := range elsewhere {
+		id := strings.TrimSpace(view.Item.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		far = append(far, standRow{kind: standRowItem, view: view, elsewhere: true})
+	}
+	if len(far) == 0 {
+		return rows
+	}
+	return append(append(rows, standRow{kind: standRowShelf, shelf: standOtherWord}), far...)
 }
 
-func standingPlaceRank(view StandingItemView) int {
-	switch {
-	case strings.TrimSpace(view.Item.NeedsPerson) != "":
-		return 3
-	case view.Running:
-		return 2
-	default:
-		return 1
+// standRowStops is which rows a cursor may come to rest on: the orders, and
+// nothing else. A heading, a "not here" line and a "last look" paragraph are
+// things to READ — furniture the page chose — and a selection on one would be a
+// selection no verb has anything to do with.
+func standRowStops(rows []standRow) []int {
+	var stops []int
+	for at, row := range rows {
+		if row.kind == standRowItem {
+			stops = append(stops, at)
+		}
 	}
+	return stops
 }
 
-// rows composes fixed columns from the widest edge inward. At narrow widths
-// cadence gives way first and rope second, preserving the person's words and
-// the measured cost while the one shared ellipsis grammar clips the subject.
-func (r standingReading) rows(width int, cursor int, pal palette) []string {
-	if width < 1 || len(r.views) == 0 {
+// standRowLabel is an order's own half of its row: the mark every aforge screen
+// agrees on ([standing.Item.Glyph] is the authority), and what the order is
+// called.
+func standRowLabel(row standRow, pal palette) string {
+	if row.kind != standRowItem {
+		return ""
+	}
+	glyph := standGlyph(row.view.Item, row.view.Running, false, pal.ascii)
+	return glyph + " " + strings.TrimSpace(row.view.Item.Title())
+}
+
+// standRowNote is the dim tail: where the order stands, in [standRollup]'s words
+// and never in a second set of them. A heading and a "not here" line have no
+// tail at all, which is also what makes them one line at every width
+// ([overlayItemLines] counts the tail).
+//
+// THE WORDS OUTRANK THE ROLLUP, exactly as they do on home's own row
+// ([standFitNote] is that clip): the tail can be a whole sentence a run stopped
+// on, and a row that spent all of a narrow frame on it would be a page of
+// clauses with nothing to tell the orders apart. At [tierPhone] the tail has a
+// line of its own and is left whole.
+func standRowNote(row standRow, width int, now time.Time) string {
+	if row.kind != standRowItem {
+		return ""
+	}
+	note := standRollup(row.view, now)
+	if phoneList(width) {
+		return note
+	}
+	return standFitNote(note, width)
+}
+
+// standRowNotHereLine is the footnote under a shelf: one order that deliberately
+// does not reach this place.
+func standRowNotHereLine(row standRow, pal palette) string {
+	glyph := standNotHereGlyph
+	if pal.ascii {
+		glyph = standNotHereASCII
+	}
+	return glyph + " " + standNotHereWord + ": " + strings.TrimSpace(row.view.Item.Title())
+}
+
+// standLastLook is what the order under the cursor did the last time it looked,
+// in the sentence [standing.LastLookLine] composes from the three facts a firing
+// leaves on the record.
+//
+// IT IS THE ONE THING A PLACE CAN SAY THAT AN OVERLAY COULD NOT. The row's own
+// tail is a clause and has to stay one — it is drawn on every row and shares its
+// line with the order's name — while this is the whole account of what was
+// actually seen, which needs a paragraph and only ever belongs to the row a
+// person stopped on.
+//
+// AN ORDER THAT WAS NEVER LOOKED AT SAYS NOTHING AT ALL: no heading, no blank
+// line, no "never run". That is the emptiness law, and it is also what keeps a
+// page of rules — which are never examined and never fire — exactly as short as
+// it was before this paragraph existed.
+func standLastLook(view StandingItemView, width int, pal palette, now time.Time) []string {
+	line := standing.LastLookLine(view.Item, now)
+	if line == "" {
 		return nil
 	}
-	out := []string{pal.dim(fit(r.header, width))}
-	shown := min(standingShown, len(r.views))
-	for i := 0; i < shown; i++ {
-		out = append(out, r.row(r.views[i], width, pal))
+	head := strings.TrimSpace(view.Item.Title()) + ", last look"
+	if age := sinceAt(view.Item.LastFired, now); age != "" {
+		head += " · " + age
 	}
-	if folded := len(r.views) - shown; folded > 0 {
-		clause := ""
-		quiet := true
-		for _, view := range r.views[shown:] {
-			if r.week[view.Item.ID].Fired > 0 {
-				quiet = false
-				break
-			}
-		}
-		if quiet {
-			clause = "all quiet this week"
-		}
-		word := foldLine(folded, clause)
-		out = append(out, pal.dim(fit(word, width)))
-	}
-	if view, ok := r.at(cursor); ok {
-		if line := standing.LastLookLine(view.Item, r.now); line != "" {
-			out = append(out, "")
-			name := strings.TrimSpace(view.Item.Title())
-			section := name + ", last look"
-			if age := sinceAt(view.Item.LastFired, r.now); age != "" {
-				section += " · " + age
-			}
-			out = append(out, pal.dim(fit(section, width)), pal.ink(fit(line, width)))
-		}
-	}
-	return out
+	return []string{"", pal.dim(fit("  "+head, width)), pal.ink(fit("  "+line, width))}
 }
 
-func (r standingReading) row(view StandingItemView, width int, pal palette) string {
-	item := view.Item
-	glyph, glyphInk := tokens.GlyphQueued, pal.dim
-	switch {
-	case strings.TrimSpace(item.NeedsPerson) != "":
-		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
-	case view.Running:
-		glyph, glyphInk = tokens.GlyphWorking, pal.accent
-	case item.Status == standing.StatusPaused:
-		glyph = tokens.GlyphPaused
+// standingLines paints the rows into exactly the `room` lines the frame reserved
+// for them, and answers the map a click resolves against, the top it scrolled
+// to, and the window it had room for.
+//
+// ONE LAYOUT ANSWERS BOTH THE PAINT AND THE POINTER. Every line emitted records
+// the row it belongs to, in the order it was emitted, so a press can never land
+// on the row above: the map is not a second walk of the list that has to agree
+// with this one, it IS this one.
+//
+// AND THE WINDOW IS WHATEVER IS LEFT, which is the whole of what promotion
+// bought this list: the frame says how many rows there are, the cursor is
+// followed within them, and nothing is behind a fold.
+func standingLines(rows []standRow, cursor, top, width, room, hover int, pal palette, now time.Time) (
+	lines []string, owner []int, scrolled, shown int) {
+	if room <= 0 || width < 1 {
+		return nil, nil, top, 0
 	}
-	rope := standing.RopeWord(item)
-	ropeInk := pal.dim
-	if rope == standing.RopeAsksFirst {
-		ropeInk = pal.ink
-	}
-	cadence := standingCadence(item)
-	cost := standing.CostPerRunWord(r.week[item.ID])
-	if width < 80 {
-		cadence = ""
-		if standingPlaceMinimum(item.Words, rope, cost) > width {
-			rope = ""
-		}
-	}
-
-	// Each optional cell pays for its own separating space. The remaining room
-	// belongs to the verbatim sentence, which is the row's permanent identity.
-	tails := []struct {
-		word string
-		ink  func(string) string
-	}{{rope, ropeInk}, {cadence, pal.dim}, {cost, placeMoneyInk(pal)}}
-	// An authored tail is still optional prose, so it first fits the frame and
-	// then yields whole cells in the same cadence, rope, cost order as narrow
-	// rows. This keeps an unusually long schedule from consuming the title.
-	for i := range tails {
-		tails[i].word = fit(tails[i].word, max(0, width-ansi.StringWidth(glyph)-1-8))
-	}
-	for standingTailWidth(tails)+ansi.StringWidth(glyph)+1+8 > width {
-		dropped := false
-		for _, at := range []int{1, 0, 2} {
-			if tails[at].word != "" {
-				tails[at].word = ""
-				dropped = true
-				break
+	shown = overlayItems(room-1, width)
+	scrolled = listTop(cursor, top, len(rows), shown)
+	fill := newOverlayFill(width, room, pal, hover)
+	// THE HEADINGS ARE [overlayFill.plain] LINES, which is what makes them
+	// unpressable without anything downstream having to know they are headings:
+	// plain records the line as belonging to row -1, and the pointer's own
+	// resolver already swallows -1.
+	fill.plain(pal.dim(fit("  "+standHeading, width)))
+	for at := scrolled; at < len(rows) && fill.room(); at++ {
+		row := rows[at]
+		var fitted bool
+		switch row.kind {
+		case standRowShelf:
+			fitted = fill.plain(pal.dim(fit("  "+row.shelf, width)))
+		case standRowNotHere:
+			fitted = fill.plain(pal.dim(fit("  "+standRowNotHereLine(row, pal), width)))
+		default:
+			fitted = fill.add(at, standRowLabel(row, pal), standRowNote(row, width, now), at == cursor, false)
+			if fitted && at == cursor {
+				// THE PARAGRAPH ANSWERS TO NO CURSOR. It is drawn about the row
+				// above it and belongs to that row's selection, not to a line of
+				// its own — so it goes in as a plain line and a click on it is
+				// swallowed, exactly as a heading's is.
+				for _, line := range standLastLook(row.view, width, pal, now) {
+					if !fill.plain(line) {
+						fitted = false
+						break
+					}
+				}
 			}
 		}
-		if !dropped {
+		if !fitted {
 			break
 		}
 	}
-	tailWidth := 0
-	for _, tail := range tails {
-		if tail.word != "" {
-			tailWidth += 1 + ansi.StringWidth(tail.word)
-		}
+	lines, owner = fill.done()
+	// THE BLOCK IS EXACTLY THE HEIGHT IT WAS PROMISED (palette.go's
+	// [overlayFill.done] says why the frame depends on it). This reading pads it
+	// itself because it draws lines the fill cannot count for it — the heading
+	// above the list, the shelf headings between the rows, and the paragraph
+	// under the cursor — so the rows can run out well before the frame's do.
+	for len(lines) < room {
+		lines = append(lines, "")
+		owner = append(owner, -1)
 	}
-	leadWidth := ansi.StringWidth(glyph) + 1
-	words, wordsWidth := fitWidth(strings.TrimSpace(item.Words), max(0, width-leadWidth-tailWidth))
-	line := glyphInk(glyph) + " " + pal.ink(words)
-	used := leadWidth + wordsWidth
-	for _, tail := range tails {
-		if tail.word == "" {
-			continue
-		}
-		line += " " + tail.ink(tail.word)
-		used += 1 + ansi.StringWidth(tail.word)
-	}
-	if cost != "" && used < width {
-		// Money is the right edge's stable landmark, so any spare cells sit
-		// immediately before it rather than after the row.
-		costPainted := " " + placeMoneyInk(pal)(cost)
-		line = strings.TrimSuffix(line, costPainted) + strings.Repeat(" ", width-used) + costPainted
-	}
-	return fit(line, width)
-}
-
-func standingTailWidth(tails []struct {
-	word string
-	ink  func(string) string
-}) int {
-	width := 0
-	for _, tail := range tails {
-		if tail.word != "" {
-			width += 1 + ansi.StringWidth(tail.word)
-		}
-	}
-	return width
-}
-
-func standingPlaceMinimum(words, rope, cost string) int {
-	return 2 + ansi.StringWidth(fit(strings.TrimSpace(words), standWordsFloor)) +
-		1 + ansi.StringWidth(rope) + 1 + ansi.StringWidth(cost)
-}
-
-// standingCadence repeats the item's authored cadence and adds the one firing
-// clock a daily row can know. Other schedules keep their own words rather than
-// having a cron expression translated differently on a second surface.
-func standingCadence(item standing.Item) string {
-	words := strings.TrimSpace(item.When.Words)
-	if strings.EqualFold(words, "daily") && !item.LastFired.IsZero() {
-		return words + " · fired " + standingClock(item.LastFired)
-	}
-	return words
-}
-
-func standingClock(at time.Time) string {
-	word := strings.ToLower(at.Format("3:04pm"))
-	return strings.Replace(word, ":00", "", 1)
-}
-
-// at resolves only rows a cursor may stop on. The header and fold are doors or
-// prose, while detail rows are consequences of the selected item and never
-// acquire an identity of their own.
-func (r standingReading) at(i int) (StandingItemView, bool) {
-	at := i - 1 // The header is row zero.
-	if at < 0 || at >= min(standingShown, len(r.views)) {
-		return StandingItemView{}, false
-	}
-	return r.views[at], true
-}
-
-func (r standingReading) verbs(i int) []standingVerb {
-	view, ok := r.at(i)
-	if !ok {
-		return nil
-	}
-	verbs := make([]standingVerb, 0, 5)
-	if strings.TrimSpace(view.Item.NeedsPerson) != "" {
-		verbs = append(verbs,
-			standingVerb{key: 'y', word: standingVerbWords['y']},
-			standingVerb{key: 'n', word: standingVerbWords['n']})
-	}
-	if view.Item.Status == standing.StatusPaused {
-		verbs = append(verbs, standingVerb{key: 'r', word: standingVerbWords['r']})
-	} else {
-		verbs = append(verbs, standingVerb{key: 'p', word: standingVerbWords['p']})
-	}
-	if standing.RopeWord(view.Item) == standing.RopeAsksFirst {
-		verbs = append(verbs, standingVerb{key: 't', word: standingVerbWords['t']})
-	}
-	return append(verbs, standingVerb{key: 'x', word: standingVerbWords['x']})
-}
-
-// standingTeach spends an empty place on the three facts that let somebody
-// make the first standing order, without drawing a count or an empty heading.
-func standingTeach(pal palette) []string {
-	return []string{
-		pal.dim("standing orders are reminders, watches, routines and rules."),
-		pal.dim("they keep working after the chat that made them ends."),
-		pal.dim("make one by asking in any chat."),
-	}
+	return lines, owner, scrolled, shown
 }

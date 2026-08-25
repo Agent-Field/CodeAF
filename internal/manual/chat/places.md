@@ -137,12 +137,21 @@ the composer.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
-The orders that fire on their own: this conversation's, this project's, and the machine's,
-each under its own heading. `/standing` and `/orders` open it, and so does `alt+3`.
+The orders that fire on their own, on four shelves each under its own heading: this
+conversation's, this project's, the machine's, and then `in other projects` — everything
+else standing on this computer that does not reach the conversation you are in.
+`/standing` and `/orders` open it, and so does `alt+3`.
 
 `enter` opens where an order was asked for. `→` opens the row's verbs — `p pause`, `s stop`,
-`n not here`. Those three used to be bare letters; they moved onto the strip when standing
-became a place with a composer under it, because every printable key belongs to the composer.
+and `n not here` on the three shelves that reach this conversation. Those three used to be
+bare letters; they moved onto the strip when standing became a place with a composer under
+it, because every printable key belongs to the composer. On the `in other projects` shelf
+only `p` and `s` are offered: `n` names an exception in a place that order never reached,
+so it is not there at all.
+
+Nothing is behind a fold — `↑ ↓` walks every order and the list scrolls with the cursor.
+Under the row you are on, an order that has been looked at adds a short `last look`
+paragraph. The standing orders page has the whole of it.
 
 ## memory — what is held true
 

@@ -188,7 +188,7 @@ func TestTheStandingPageDrawsThreeShelvesOutward(t *testing.T) {
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
-	if !a.standPage.open {
+	if !a.standPage.up {
 		t.Fatal("/standing opened nothing")
 	}
 	screen := standPageScreen(a)
@@ -276,7 +276,7 @@ func TestAnExceptedOrderIsOneLineUnderItsShelf(t *testing.T) {
 func TestStandingOnNothingSaysOneLineAndOpensNothing(t *testing.T) {
 	a, _ := standPageApp(t, nil, nil)
 	typeLine(t, a, "/standing")
-	if a.standPage.open {
+	if a.standPage.up {
 		t.Fatal("a conversation nothing stands over opened a page anyway")
 	}
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
@@ -312,7 +312,7 @@ func TestASessionWithNoAmbientSideOpensNoPage(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	typeLine(t, a, "/standing")
-	if a.standPage.open {
+	if a.standPage.up {
 		t.Fatal("a session with no ambient side opened a page")
 	}
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standNothingWord) {
@@ -371,7 +371,7 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 		t.Fatalf("no receipt for the stop:\n%s", text)
 	}
 	// AND AN EMPTIED PAGE STAYS OPEN, with its heading and nothing under it.
-	if !a.standPage.open {
+	if !a.standPage.up {
 		t.Fatal("the page closed itself out from under the person")
 	}
 }
@@ -419,7 +419,7 @@ func TestEscLeavesTheStandingPage(t *testing.T) {
 	}, nil)
 	typeLine(t, a, "/standing")
 	drive(t, a, key("esc"))
-	if a.standPage.open {
+	if a.standPage.up {
 		t.Fatal("esc left the page open")
 	}
 	if a.overlayHeight() != 0 {
@@ -467,7 +467,7 @@ func TestEnterOnAnOrderWithNoConversationSaysSo(t *testing.T) {
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, homeItemNoDoor) {
 		t.Fatalf("enter on an order with no door said nothing:\n%s", text)
 	}
-	if !a.standPage.open {
+	if !a.standPage.up {
 		t.Fatal("a door that led nowhere closed the page")
 	}
 }
@@ -484,7 +484,7 @@ func TestEnterOnThisConversationsOwnOrderSaysYouAreInIt(t *testing.T) {
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standHereWord) {
 		t.Fatalf("enter on this conversation's own order said nothing:\n%s", text)
 	}
-	if a.standPage.open {
+	if a.standPage.up {
 		t.Fatal("the page stayed up over the conversation it pointed at")
 	}
 }
@@ -501,7 +501,7 @@ func TestTheStandingPageHoldsAtEveryWidth(t *testing.T) {
 		}, []standing.Item{standOrder("m1", "never touch the public API", standing.AltitudeMachine)})
 		a.width, a.height = width, 30
 		typeLine(t, a, "/standing")
-		if !a.standPage.open {
+		if !a.standPage.up {
 			t.Fatalf("at %d the page did not open", width)
 		}
 		// IT IS A PLACE NOW, SO IT IS EXACTLY THE WHOLE TERMINAL — the law every
@@ -576,7 +576,7 @@ func TestTheStandingPageSaysARuleHolds(t *testing.T) {
 	rule.Does, rule.Rails = standing.Action{}, standing.Rails{}
 	a, _ := standPageApp(t, []standing.Item{rule}, nil)
 	typeLine(t, a, "/standing")
-	if !a.standPage.open {
+	if !a.standPage.up {
 		t.Fatal("/standing opened nothing")
 	}
 	screen := standPageScreen(a)
