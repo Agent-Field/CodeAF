@@ -579,6 +579,16 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// model a local conversation starts on because somebody switched models on
 		// a remote one. The switch itself still takes — it goes over the wire like
 		// everything else — it simply does not outlive the session.
+		//
+		// AND THE FILE DOOR IS NOT A SEAM HERE EITHER, which is worth saying
+		// because it looks like an omission and is not. Remote files — the links
+		// in a reply, the browse page /files opens, the fetch behind opening one
+		// — ride the CLIENT under this agent: the surface asserts `Client()` on
+		// whatever it was handed and gets ListDir, StatPaths and FetchFile off it
+		// (internal/tui3's remotefiles.go, on attach.go's narrow-interface
+		// pattern). So the door this file already passes is the whole wiring, a
+		// local session satisfies none of it and gets none of it, and there is no
+		// closure here that could go stale around a conversation that was swapped.
 	}
 	// The two things this surface keeps on the person's behalf, resolved the way
 	// the local door resolves them and keyed by the REMOTE workspace — which is
