@@ -49,14 +49,20 @@ the short list of commands that always ask no matter what the settings say.
 
 Yes, three ways.
 
-**`grep` — search inside files.** It shells out to ripgrep and respects
-`.gitignore`. Arguments: `pattern` (required), `path`, `glob`, `ignoreCase`,
-`literal`, `context`, `limit`. It returns at most **100 matches** by default and
-says so at the cap:
+**`grep` — search inside files.** Arguments: `pattern` (required), `path`,
+`glob`, `ignoreCase`, `literal`, `context`, `limit`. It returns at most **100
+matches** by default and says so at the cap:
 `100 matches limit reached. Use limit=200 for more, or refine pattern`.
 Any single line longer than 500 characters is cut and marked `... [truncated]`.
-Without ripgrep on the machine it answers
-`ripgrep (rg) is not available and could not be downloaded`.
+
+**It works whether or not the machine has ripgrep.** With ripgrep it shells out
+to it and respects `.gitignore`. Without ripgrep it walks the tree itself, with
+the same arguments, the same caps and the same output — it just does not read
+`.gitignore`, and skips `.git`, `node_modules`, `vendor` and files that look
+binary instead. The tool description says which of the two you have. It never
+answers `ripgrep (rg) is not available and could not be downloaded` any more:
+that sentence was every grep call on a machine with no ripgrep and no way to
+fetch one, and a search that cannot fail is worth more than an accurate excuse.
 
 **`find` — find files by name.** It shells out to fd and respects `.gitignore`.
 Arguments: `pattern` (required), `path`, `limit`. Default **1000 results**, and
@@ -83,13 +89,29 @@ with the environment aforge itself was started with.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
 
-**Foreground commands time out after 120 seconds by default, and 600 seconds is
-the maximum** you can ask for. A higher `timeout` is quietly clamped to 600. A
-`timeout` that is missing, null, zero or negative is the same as not asking: 120
-seconds is written in for it, so there is no way to spell a foreground command
-that runs unbounded.
+**aforge waits for the command.** A foreground call runs for as long as its own
+`timeout` argument says, and **600 seconds — ten minutes — is the ceiling**. A
+higher `timeout` is quietly clamped to 600. A `timeout` that is missing, null,
+zero or negative is the same as not asking, and gets the full ten minutes, so
+there is no way to spell a foreground command that runs unbounded and no way for
+one to be sent to the background before the time it asked for is up.
 
-**Reaching that bound does not kill the command.** It is handed to the job
+It used to be two minutes by default with ten as the cap, and the gap between
+them was expensive: a four-minute script hit the two-minute default every single
+time and came back as a background job nobody had asked for, which the model then
+had to chase. One number now, and the escape for anything genuinely longer is
+`background: true`, which is a decision rather than an accident of the clock.
+
+**A long command's output arrives while it runs, not all at once at the end.**
+Programs writing to a pipe normally hold their output back in 4KB blocks —
+Python especially — which used to leave a long job's log at zero bytes until the
+moment it finished, so a job that was working perfectly looked dead. aforge runs
+commands line-buffered (`stdbuf` where the machine has it, plus
+`PYTHONUNBUFFERED=1` for Python, which does its own buffering), so the log fills
+as the work happens. If you had already exported `PYTHONUNBUFFERED` yourself,
+your value is left alone.
+
+**Reaching the ceiling does not kill the command.** It is handed to the job
 registry and keeps running — see the next section.
 
 A command that exits non-zero answers `Command exited with code N`. An
@@ -104,19 +126,23 @@ is better started in the background from the start, where no clock runs at all.
 ## The command took too long — is the work lost, or does it keep running?
 
 It keeps running. A foreground command that reaches its timeout is **adopted as
-a background job**, not killed, and the call answers with one line:
+a background job**, not killed, and the call answers with one line and then
+whatever the command had already printed:
 
 ```
 still running as job 3; log at /path/to/workspace/.aforge-v3/jobs/3.log
+
+collecting 120 cases
+scored case 1
+scored case 2
 ```
 
-That is the same sentence a command started with `background: true` answers with,
-and from that moment it *is* an ordinary job: a row in `jobs list`, a tail in
-`jobs output`, `jobs kill` reaches its whole process group, and when it finally
-exits aforge is told at the next step — `job 3 exited 0: BUILD OK`. The turn
+The first line is the same sentence a command started with `background: true`
+answers with, and from that moment it *is* an ordinary job: a row in `jobs list`,
+a tail in `jobs output`, `jobs kill` reaches its whole process group. The turn
 carries on straight away rather than waiting.
 
-So a nine-minute `make` behind a two-minute bound costs nothing. Nothing is
+So a fifteen-minute `make` behind a ten-minute ceiling costs nothing. Nothing is
 thrown away and nothing is run twice. The old behaviour — the process group
 killed and `Command timed out after N seconds` — is what a bare subharness leaf
 still does; the chat does not.
@@ -134,6 +160,43 @@ with everything the command printed afterwards. For a command that had printed
 truly enormous amounts before it was promoted, the log begins where aforge's own
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
+
+## Does aforge poll a background job, or does it get told — how does it know a job finished?
+
+**It gets told, and it never has to poll.** Two things arrive without anybody
+asking for them.
+
+**While a job runs**, every tool result aforge reads carries one line per
+outstanding job at the bottom of it, the way a shell prints its background jobs
+under the prompt:
+
+```
+[job 1] running 3m12s · last: scored case 41
+```
+
+Three facts — it is alive, it has been alive this long, this is the last thing it
+said — on every result, so "is it still going" is answered before it can be
+asked. A finished or killed job drops off the list immediately.
+
+**When a job ends**, its exit code and the last 50 lines of its output arrive in
+the conversation on their own:
+
+```
+job 3 exited 0: BUILD OK
+
+… the last fifty lines …
+
+[job 3 · last 50 lines · full log: /path/to/.aforge-v3/jobs/3.log]
+```
+
+If aforge is mid-turn the note lands at the next step; if the turn had already
+ended, the note starts a new one, exactly as a finished task does.
+
+So you should never see aforge running `sleep 30 && tail …` to wait for
+something. That loop was real — it cost one benchmark worker two thirds of its
+wall clock, waiting on a log that was empty because of buffering — and the two
+mechanisms above are what replaced it. `jobs output` is still there for an
+intermediate look at a job you asked about; it is not how waiting is done.
 
 ## Can I send a running command to the background myself?
 
@@ -733,11 +796,13 @@ Plainly, so you do not have to find out the hard way.
 - **`read` cannot look at an image, listen to audio or watch a video when no
   model is set for that sense.** It says which one is missing rather than
   showing you the bytes.
-- **`grep` needs ripgrep and `find` needs fd** on the machine. Neither is
-  downloaded on demand; without them those tools say so and stop.
+- **`find` needs fd** on the machine, and it is not downloaded on demand; without
+  it `find` says `fd is not available and could not be downloaded` and stops.
+  `grep` is no longer in this position — it works without ripgrep, on its own
+  legs, and only its treatment of `.gitignore` changes.
 - **`bash` in the foreground cannot run longer than 600 seconds** — but reaching
-  that bound does not throw the work away: the command becomes a background job
-  and keeps going.
+  that ceiling does not throw the work away: the command becomes a background job
+  and keeps going, and the call hands back what it had printed so far.
 - **A scanned PDF is not readable by `read`**, only by `read_document`.
 - **More than 3 watches at once is refused.**
 

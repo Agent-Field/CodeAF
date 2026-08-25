@@ -233,7 +233,7 @@ If the naming call cannot answer at all — the provider is having a bad minute,
 comes back as a path — the row falls back to the id, because a row with a poor name is
 still better than a row missing from your project's history.
 
-## Why nothing seems to happen for the first minute of a run — `forming the work`
+## Why nothing seems to happen for the first minute of a run — nothing happens after a run starts, `forming the work`
 
 A run's row appears on the roster the instant you ask for it, and the workers under it
 cannot exist until the planner has answered — the one call in a run with no work to

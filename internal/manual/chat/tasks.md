@@ -215,7 +215,7 @@ Only one proposal is a live question at a time. If a second one arrives while th
 unanswered, the older card settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
 
-## Why a task started on its own — this looked like work, so task N started
+## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
 
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
