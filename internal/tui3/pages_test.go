@@ -376,7 +376,7 @@ func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	// row that needs a person wears the amber and nothing else on the screen
 	// does (switcher.go's [switcherPaintRow]).
 	row := switcherRow{kind: switcherConversation, title: "Asking", needs: true}
-	if !strings.Contains(switcherPaintRow(row, 60, pal, false, false, false), pal.warn(tokens.GlyphNeedsHuman)) {
+	if !strings.Contains(switcherPaintRow(row, 60, pal, false, switcherPaint{}), pal.warn(tokens.GlyphNeedsHuman)) {
 		t.Fatal("the needs-you row is not the waiting-on-you hue")
 	}
 	// AND MONEY HAS A HUE OF ITS OWN, which is not the hue of a finished tick.

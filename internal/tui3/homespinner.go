@@ -63,12 +63,18 @@ func (h *homeView) newestMoving() int {
 // homeMovingAt reports that one line stands for something MOVING THIS INSTANT,
 // and when that movement began.
 //
-// THE TWO KINDS ARE READ OFF THE ROW AND NEVER OFF THE WORLD, so that a line and
-// the mark it wears can never disagree: a conversation with nodes out, and an
-// errand mid-turn. A standing item that is firing is moving too and says so with
-// its own mark — the item row has never turned and does not start now
-// ([StandingItemRow]).
+// IT IS READ OFF THE ROW AND NEVER OFF THE WORLD, so that a line and the mark it
+// wears can never disagree. On the resting list the reading has already made the
+// judgement and carries it ([switcherRow.moving]); under a query the line is the
+// drop-up's own and the two kinds that move are a conversation with nodes out
+// and an errand mid-turn.
 func homeMovingAt(line homeLine) (time.Time, bool) {
+	if line.sw != nil {
+		if row := line.sw.row; row != nil {
+			return row.at, row.moving
+		}
+		return time.Time{}, false
+	}
 	switch line.kind {
 	case homeSession:
 		if line.row.NeedsPerson() || line.row.Tasks.Running == 0 {
@@ -103,6 +109,16 @@ func homeSpinNewer(best, cand time.Time) bool {
 // than in each of the three paints, so there is one place the exception lives.
 func (a *app) homeSpins(at int) bool {
 	return !a.linear && at >= 0 && at == a.home.spin
+}
+
+// homeSpinCell is the turning cell for one line of the column, and "" on every
+// other line — the one door the reading paints its moving mark through
+// (switcher.go's [switcherPaint]).
+func (a *app) homeSpinCell(at int) string {
+	if !a.homeSpins(at) {
+		return ""
+	}
+	return a.homeSpinGlyph()
 }
 
 // homeSpinGlyph is the moving cell itself, on the house grid so it never beats
