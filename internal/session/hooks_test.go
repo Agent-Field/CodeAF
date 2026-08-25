@@ -100,7 +100,7 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// The write scope is the one citizen that is inert for an ordinary
 		// agent: it is registered on every plane and refuses nothing until an
 		// agent is built with a scope (orchestrate.go).
-		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope"}},
+		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "task-git"}},
 		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "loop"}},
 	} {
 		if !sameNames(expected.got, expected.want) {

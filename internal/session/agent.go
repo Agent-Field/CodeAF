@@ -740,6 +740,18 @@ func wakeNote(text string) userMessage {
 	return userMessage{message: textMessage("user", text), wake: true}
 }
 
+// briefNote is A NODE'S OWN BRIEF, HELD RATHER THAN ASKED. It exists for one
+// caller: a worker whose work was handed out in parts before it started, whose
+// runner queues the brief here and parks until every part has reported
+// (task_run.go's [runTaskChild]).
+//
+// It owes NO answer — `wake` is false — because nothing here starts a turn. A
+// node's turns are its runner's to start ([Agent.wakeLocked] declines inside a
+// task), and the turn this line is read in is the one the last report begins.
+func briefNote(text string) userMessage {
+	return userMessage{message: textMessage("user", text)}
+}
+
 // steerNote is a line the PERSON said into a running node. It owes an answer
 // like every wake note does, and it is not the session's own words, which is the
 // whole of the difference (see [userMessage.steered]).

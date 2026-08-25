@@ -208,6 +208,13 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// run) is one slice length away from being where it was before this
 	// citizen existed (orchestrate.go).
 	plane.register(writeGuard{agent: a})
+	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
+	// and about a different kind of reach: not which files this agent may touch,
+	// but whose work it may pull into its own copy (taskgit.go). It is registered
+	// after the scope because it is the narrower question — a call the scope
+	// already refused is a call there is nothing left to say about — and it is a
+	// no-op on every agent that is not inside a task, which is every conversation.
+	plane.register(taskGitGuard{agent: a})
 	// AND A HAND'S ROUND BUDGET, which is a citizen only on a hand (fork.go). It
 	// is registered conditionally rather than made a no-op on every agent because
 	// post-feedback is on the step boundary of every turn this program runs, and
