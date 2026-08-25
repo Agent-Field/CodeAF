@@ -883,14 +883,14 @@ cursor but does not hand the roster the keyboard.
 
 ## What did we do last week — seeing every task: task history, old and past tasks, work from other sessions
 
-`/history`, or `ctrl+.`, opens a full-screen page holding **every task this project has ever
+`/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster
 cannot give: the column beside the conversation is built from *this session's* work and
 nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
 screen until you open this.
 
 **There is no `/tasks` command** — though `tasks` is what the PLACE this opens is called on
-the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` shows what was
+the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a
@@ -2178,3 +2178,24 @@ there does exactly what `x` does, leaves the same trace, and says the same sente
 stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
+
+## The tasks place — grouped work, folds, filtering and time-window keys
+
+The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
+next: `needs your look`, `running`, `done today`, then `earlier`. Each task row can include
+its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
+cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
+
+Each section shows six tasks before a `▸ N more` fold; when the time window has a known
+start the fold adds `back to <date>`. Type to filter by the same task and conversation
+words the old history list matched. `↑` and `↓` move among task rows and skip headings and
+folds. `enter` opens the task's originating conversation and its task record.
+
+`shift+←` and `shift+→` move the time window backward and forward. `shift+↑` zooms from
+days to weeks and then months; `shift+↓` zooms back in. On a phone the bottom line remains
+the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing empty
+headings.
+
+The row verb strip currently offers no `run it again` or `stop it`: the machine-wide
+record has no safe restart seam, and a completed record has no live worker to stop. Open
+the task room to use actions that genuinely exist there.
