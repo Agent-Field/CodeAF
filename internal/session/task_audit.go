@@ -144,6 +144,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -161,10 +162,14 @@ import (
 func init() { roles.Register(roles.RoleAuditor, roles.TierHigh) }
 
 const (
-	// auditDeadline bounds one verdict. Five minutes is a full `go test ./...`
-	// on a real repository plus the reading around it; past that the auditor is
-	// not judging, it is stuck, and a node that waits forever for a verdict is
-	// worse than a node that is told nobody could give it one.
+	// auditDeadline bounds one verdict. Five minutes is a full run of a real
+	// repository's own check plus the reading around it; past that the auditor
+	// is not judging, it is stuck, and a node that waits forever for a verdict
+	// is worse than a node that is told nobody could give it one.
+	//
+	// IT IS THE BOUND FOR AN AUDIT THAT HAS SOMETHING TO RUN. An audit holding
+	// no runnable check has no slow half and gets the much shorter window
+	// instead ([auditReadingDeadline], [auditDoor.window]).
 	auditDeadline = 5 * time.Minute
 
 	// auditEvidenceLines is how much evidence rides the report: what was run,
@@ -247,38 +252,15 @@ const (
 	auditUnverified = "UNVERIFIED"
 )
 
-// auditCommands is the allowlist: the repository's own verification, and
-// git's read-only reporting. It is a variable rather than a constant because it
-// is the one part of the auditor's belt that is meant to be configurable — a
-// repository whose verification is `make check` or `npm test` says so by
-// changing this list, and nothing else about the auditor moves.
+// THE ALLOWLIST IS NOT WRITTEN IN THIS FILE ANY MORE, and that is the whole of
+// one fix. It used to be a constant naming three `go` verbs, which made the gate
+// a gate for exactly one language and a coincidence everywhere else — measured,
+// on a Rust deliverable, in task_checks.go's opening. What one audit may run is
+// now read off the WORK: the checks its own document declares, the checks its
+// worker ran, and the always-safe reading commands ([auditDoorFor]).
 //
-// Every entry is a COMMAND PREFIX matched at a word boundary, so "go test"
-// admits `go test ./... -run TestX` and does not admit `go testify`. What is
-// NOT here is everything else, including `go generate` and `go run`, which
-// execute code the node wrote — an auditor that runs the executor's own program
-// is an auditor holding the tested thing's hand.
-//
-// The four ORIENTATION commands at the end are not verification and they are
-// here anyway, because refusing them cost a verdict: an auditor that cannot ask
-// where it is standing spends its steps finding out the hard way, and the audit
-// that died in the wild burned two of them on a refused `pwd`. Every one of the
-// four READS — they print, they do not touch — and the safety argument the belt
-// rests on is about what can CHANGE the thing under judgement, not about which
-// program prints it.
-var auditCommands = []string{
-	"go test",
-	"go build",
-	"go vet",
-	"git diff",
-	"git log",
-	"git status",
-	"git show",
-	"pwd",
-	"wc",
-	"head",
-	"cat",
-}
+// Every entry is still a COMMAND PREFIX matched field by field, so a check
+// admits its own flags and does not admit a program that merely starts like it.
 
 // auditPrompt is the auditor's whole world. It never sees the conversation, it
 // never sees the node's trajectory, and it is told in the first line that its
@@ -640,7 +622,18 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	ground := auditGroundFor(node, tree, changed, log)
 	defer ground.drop()
 
-	verdict, again := a.auditOnce(ctx, node, tree, ground, changed, claim, log)
+	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
+	// may run is the checks the node's own document declares and the ones its
+	// worker ran (task_checks.go); a retry that recomputed it could be judging
+	// the same tree through a different door, and "the same question asked again"
+	// is the only thing a retry is allowed to be.
+	door := auditDoorFor(node)
+	if len(door.checks) == 0 {
+		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
+			door.window())
+	}
+
+	verdict, again := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
 	switch {
 	case verdict.answered, !again:
 		return verdict
@@ -650,7 +643,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		return verdict
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, changed, claim, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
 	if retried.answered {
 		return retried
 	}
@@ -664,10 +657,10 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // verdict in it and a provider that errored are both worth one more call — the
 // first is a model that wandered, the second is a network — while an audit that
 // burned its whole deadline is not: the auditor already had every minute it was
-// going to get, and a second five minutes buys a second timeout while the node
-// holds its worktree.
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
-	auditor, err := a.newAuditAgent(ground.dir, node)
+// going to get, and a second window buys a second timeout while the node holds
+// its worktree.
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
+	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
@@ -680,14 +673,20 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	}()
 
 	// The deadline hangs off the NODE's context, so `jobs kill` ends a pending
-	// audit on the same beat it ends everything else, and the five minutes is a
-	// bound on the verdict rather than a second life for a task that has already
-	// been stopped.
-	auditCtx, done := context.WithTimeout(ctx, auditDeadline)
+	// audit on the same beat it ends everything else, and the window is a bound
+	// on the verdict rather than a second life for a task that has already been
+	// stopped.
+	//
+	// AND THE WINDOW IS THE DOOR'S. An audit with a check to run gets the time a
+	// check takes; an audit whose only remaining move is a refused command gets
+	// the time reading takes, because it is never going to run anything and
+	// waiting out the rest is the measured failure ([auditDoor.window]).
+	window := door.window()
+	auditCtx, done := context.WithTimeout(ctx, window)
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, changed, claim))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, changed, claim))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -708,9 +707,9 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	said := lastSaid(auditor)
 	// A node killed mid-audit is the caller's story to tell, not the auditor's;
 	// it reads ctx itself. What is this function's story is the audit that ran
-	// out of its own five minutes with the node still perfectly alive.
+	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", auditDeadline), said), false
+		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", window), said), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
@@ -1025,7 +1024,13 @@ func alsoChanged(changed, more []string) []string {
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, changed []string, claim string) string {
+//
+// AND IT NAMES THE DOOR. The auditor's bash will run the checks this work
+// declares or ran and nothing else (task_checks.go), so the packet says which
+// those are — or says plainly that there are none and that reading is the whole
+// of the job. A model that has not been told where the door is spends its
+// window looking for one, which is exactly what was measured.
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -1060,7 +1065,12 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, changed []
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
 	}
-	out.WriteString("\nRun the verification. Read the change. Then give your verdict.")
+	out.WriteString("\n" + door.line())
+	if len(door.checks) == 0 {
+		out.WriteString("\nRead the change. Then give your verdict.")
+	} else {
+		out.WriteString("\nRun the verification. Read the change. Then give your verdict.")
+	}
 	return out.String()
 }
 
@@ -1551,6 +1561,13 @@ type toolReceipt struct {
 	tool   string
 	args   string
 	result string
+	// command is the shell line a bash receipt ran, read out of the call's
+	// arguments BEFORE they were flattened and cut for the packet. It is kept
+	// apart from args because two different readers want two different things:
+	// the packet wants one readable line, and the door wants the command exactly
+	// as it was typed, since a check is only re-runnable verbatim
+	// (task_checks.go's [ranChecks]). It is empty for every other tool.
+	command string
 }
 
 // lastToolReceipts is the tail of what a worker RAN, read off its transcript.
@@ -1598,6 +1615,17 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
 			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
+			// AND THE SHELL LINE IS KEPT WHOLE, uncut, for the door
+			// ([toolReceipt.command]). A command clipped to fit a packet is a
+			// command nobody can re-run.
+			if strings.EqualFold(call.Function.Name, approval.ToolBash) {
+				var fields struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(call.Function.Arguments), &fields) == nil {
+					receipt.command = fields.Command
+				}
+			}
 		}
 		out = append(out, receipt)
 	}
@@ -1976,7 +2004,12 @@ func refutedLine(why string) string {
 // nothing that reaches outside the machine: no search, no fetch, no image
 // model. An auditor that can browse is an auditor that can be told a story from
 // somewhere else.
-func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
+//
+// THE DOOR COMES IN RATHER THAN BEING DECIDED HERE. What one audit may run is a
+// fact about the WORK — the checks its document declares and its worker ran
+// (task_checks.go) — and it is read once by the caller so that both attempts at
+// one node judge it through the same door.
+func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
 	model := a.model
@@ -2037,7 +2070,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	// may touch, and every later hand added to the session would silently join
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
-	tools := auditBelt(dir, auditCommands)
+	tools := auditBelt(dir, door.allowed)
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()
@@ -2122,11 +2155,16 @@ type shellLeash struct {
 // file has always carried.
 var auditShell = shellLeash{who: "an auditor", forWhat: "verification", hint: auditReaderHint}
 
-// verifyOnlyBash wraps pi's bash so it runs the repository's own verification
-// and nothing else.
+// verifyOnlyBash wraps pi's bash so it runs the work's own verification and
+// nothing else.
+//
+// THE DESCRIPTION NAMES THIS AUDIT'S OWN DOOR, not a list somebody wrote once.
+// The commands interpolated here are the checks the work declares and ran, so
+// the first thing the auditor reads about its shell is the exact command the
+// work is checked with (task_checks.go).
 func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 	tool = readingOnlyBash(tool, allowed, auditShell)
-	tool.Description = "Run one of the repository's own verification commands and read its output: " +
+	tool.Description = "Run one of THIS WORK's own verification commands and read its output: " +
 		strings.Join(allowed, ", ") + ". Every other command is refused, including anything that " +
 		"edits, installs, fetches, or chains a second command onto one of these. " +
 		auditReaderHint + " " + tool.Description
@@ -2184,20 +2222,61 @@ func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) 
 		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
 			voice.who, voice.forWhat, voice.hint), false
 	}
-	if index := strings.IndexAny(command, ";|&<>`$(){}\n\r\\"); index >= 0 {
+	if index := strings.IndexAny(command, shellComposition); index >= 0 {
 		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
 			voice.who, voice.forWhat, string(command[index]), clip(command, auditCommandLimit),
 			strings.Join(allowed, ", "), voice.hint), false
 	}
-	// Whitespace is normalized so "go  test" is the same command as "go test":
-	// the allowlist is about which program runs, not about how it was typed.
+	// Whitespace is normalized so "make  check" is the same command as
+	// "make check": the allowlist is about which program runs, not about how it
+	// was typed.
 	normalized := strings.Join(strings.Fields(command), " ")
+	fields := strings.Fields(normalized)
 	for _, prefix := range allowed {
-		if normalized == prefix || strings.HasPrefix(normalized, prefix+" ") {
+		if matchesCommandPrefix(fields, strings.Fields(prefix)) {
 			return "", true
 		}
 	}
 	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
 		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
 		strings.Join(allowed, ", "), voice.hint), false
+}
+
+// shellComposition is every character that can start a second command, redirect
+// output, or substitute one. It is a CONSTANT rather than a literal at the gate
+// because two readers now ask the same question of a string — the gate itself,
+// and the reader that decides whether a fragment of the work's own text could
+// ever be a door (task_checks.go's [commandLike]) — and a composition set spelled
+// twice is a safety argument with two versions.
+const shellComposition = ";|&<>`$(){}\n\r\\"
+
+// matchesCommandPrefix decides whether one command starts with one allowed
+// prefix, FIELD BY FIELD.
+//
+// The field walk is what makes a prefix a command prefix rather than a string
+// prefix: "make check" admits `make check ./...` and does not admit
+// `make checkout`, which a byte-wise HasPrefix would wave straight through.
+//
+// AND A WILDCARD THE WORK WROTE IS HONOURED. A brief that names its check as
+// `run_tests.*` is naming one check whose extension it does not want to spell,
+// and a door that took the star literally would be a door onto nothing. The
+// match is per field, so a star never spans the space between two arguments, and
+// a prefix that is nothing but wildcards was refused before it ever reached this
+// list ([commandLike]).
+func matchesCommandPrefix(fields, prefix []string) bool {
+	if len(prefix) == 0 || len(fields) < len(prefix) {
+		return false
+	}
+	for index, want := range prefix {
+		if want == fields[index] {
+			continue
+		}
+		if !strings.ContainsAny(want, "*?[") {
+			return false
+		}
+		if ok, err := path.Match(want, fields[index]); err != nil || !ok {
+			return false
+		}
+	}
+	return true
 }
