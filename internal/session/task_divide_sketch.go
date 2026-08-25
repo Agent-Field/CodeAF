@@ -333,6 +333,14 @@ func (d drawnDivision) evidence() string {
 // sketchBrief is one part's whole world: the work's own brief, then which letter
 // of the drawing this is and which letters are elsewhere.
 //
+// NO MODEL WRITES ANYTHING HERE, which is why the handoff's own two-model
+// arrangement does not need repeating in this file. The brief this composes on
+// top of is the parent's, and on the checkpoint road that is already the document
+// a mastermind wrote out of the runner's draft (checkpoint.go's
+// [Agent.writeHandoff]) — so every part inherits the structural checks that stood
+// in front of it, and a degeneration that never became the parent's brief cannot
+// become a part's.
+//
 // IT IS HELD TO THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO. The clip is
 // from the front, so a parent brief that was already at the limit loses its tail
 // rather than the sentence naming the siblings — which would leave a worker with

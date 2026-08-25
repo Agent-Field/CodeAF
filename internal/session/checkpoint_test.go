@@ -413,11 +413,11 @@ const (
 )
 
 // checkpointSlack is how many of a script's steps a grinding turn spends on
-// things that are not tool rounds: one read per mark, and the dowry ask at the
-// end. A script cut to the round count alone runs out under the sidecar, and the
-// scripted completer's past-the-end answer would then be read as a sketch and as
-// a brief.
-const checkpointSlack = checkpointMarks + 2
+// things that are not tool rounds: one read per mark, the dowry DRAFT at the end,
+// and the mastermind that writes the brief out of it. A script cut to the round
+// count alone runs out under the sidecar, and the scripted completer's
+// past-the-end answer would then be read as a sketch and as a brief.
+const checkpointSlack = checkpointMarks + 3
 
 // checkpointAgent is a watched conversation with a mastermind the mark can be
 // read by. Everything else is [newTestAgent]'s.
@@ -454,6 +454,21 @@ func grindingSteps(count int, sketch, brief string) []step {
 			if askedForHandoff(messages) {
 				return textResponse(brief), nil
 			}
+			// THE WRITER IS SILENT IN THIS FIXTURE, and that is deliberate: what
+			// these tests are about is the road, and a mastermind answering with a
+			// tool call is the ordinary failure that drops the ladder back onto the
+			// draft the running model wrote. The tests that are about the writer
+			// script it themselves ([handoffSteps]).
+			if askedToWriteHandoff(messages) {
+				return toolResponse("no-writer", "ls", `{"path":"."}`), nil
+			}
+			// AND A TURN'S END ASKS WHETHER THE ASK IS FINISHED. A grinding turn is
+			// moved by a mark or by the ceiling long before it reaches this, and
+			// the tests that end in words say so here rather than letting the
+			// question fall past the script.
+			if askedForRemains(messages) {
+				return textResponse(checkpointNothingLeft), nil
+			}
 			arguments, _ := json.Marshal(struct {
 				Path string `json:"path"`
 			}{Path: fmt.Sprintf("./%d", round)})
@@ -471,12 +486,40 @@ func askedForSketch(messages []ai.Message) bool {
 	return strings.Contains(messageText(messages[len(messages)-1]), "[checkpoint]")
 }
 
-// askedForHandoff reports whether this request ends on the dowry ask.
+// askedForHandoff reports whether this request ends on the dowry ask — the DRAFT,
+// put to the model that spent the turn.
 func askedForHandoff(messages []ai.Message) bool {
+	return endsOn(messages, "[handing over]")
+}
+
+// askedToWriteHandoff reports whether this request ends on the mastermind's ask:
+// the draft, the digest and the person's words in, one worker's instruction out.
+func askedToWriteHandoff(messages []ai.Message) bool {
+	return endsOn(messages, "[write the handoff]")
+}
+
+// askedForRemains reports whether this request ends on the question a turn's END
+// puts to the mark's reader: is what the person asked for finished?
+func askedForRemains(messages []ai.Message) bool {
+	return endsOn(messages, "[still asked]")
+}
+
+func endsOn(messages []ai.Message, marker string) bool {
 	if len(messages) == 0 {
 		return false
 	}
-	return strings.Contains(messageText(messages[len(messages)-1]), "[handing over]")
+	return strings.Contains(messageText(messages[len(messages)-1]), marker)
+}
+
+// finalAnswer is [finalText] for a session that has a mastermind: the turn's last
+// words, and the one answer the end of a turn now asks a reader for.
+func finalAnswer(text string) step {
+	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		if askedForRemains(messages) {
+			return textResponse(checkpointNothingLeft), nil
+		}
+		return textResponse(text), nil
+	}
 }
 
 // marksRead is how many times the sidecar was actually asked.
@@ -591,7 +634,7 @@ func TestTheSidecarIsAskedOncePerMarkAndNotBetween(t *testing.T) {
 	// Every round up to one short of the second mark: the first mark fires, the
 	// second does not.
 	rounds := checkpointMarkAt(2) - 1
-	steps := append(grindingSteps(rounds+1, checkpointChainSketch, ""), finalText("done"))
+	steps := append(grindingSteps(rounds+1, checkpointChainSketch, ""), finalAnswer("done"))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -640,8 +683,10 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 		t.Fatalf("%d tasks were admitted at the first mark, want exactly one", count)
 	}
 	// AND IT STOPPED AT THE MARK. The script had six rounds left in it, and the
-	// ceiling stands three times further along.
-	if completer.requests() > checkpointMarkAt(1)+3 {
+	// ceiling stands three times further along. The slack past the mark is the
+	// calls the handover itself makes: the sketch, the draft, and the mastermind
+	// that writes the brief out of it.
+	if completer.requests() > checkpointMarkAt(1)+4 {
 		t.Errorf("the turn made %d requests past a first mark standing at %d rounds",
 			completer.requests(), checkpointMarkAt(1))
 	}
@@ -694,7 +739,7 @@ func TestASketchSayingOneJobLetsTheTurnRunOn(t *testing.T) {
 	const answered = "here is the fix and the suite is green"
 
 	rounds := checkpointMarkAt(2)
-	steps := append(grindingSteps(rounds+2, checkpointChainSketch, "Finish it\nwhat is left"), finalText(answered))
+	steps := append(grindingSteps(rounds+2, checkpointChainSketch, "Finish it\nwhat is left"), finalAnswer(answered))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
@@ -1076,7 +1121,7 @@ func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
 	const answered = "all eight files are written and the smoke check passed"
 
 	rounds := checkpointMarkAt(checkpointMarks)
-	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft), finalText(answered))
+	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft), finalAnswer(answered))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -1211,7 +1256,7 @@ func TestTheTurnsThatMustNeverBeCheckpointedAreNot(t *testing.T) {
 		{"a session nobody is watching", func(config *Config) { config.AskConsent = false }},
 	} {
 		t.Run(shape.name, func(t *testing.T) {
-			steps := append(grindingSteps(rounds, checkpointSplitSketch, ""), finalText("done"))
+			steps := append(grindingSteps(rounds, checkpointSplitSketch, ""), finalAnswer("done"))
 			completer := &scriptedCompleter{steps: steps}
 			agent := checkpointAgent(t, completer, shape.mutate)
 			graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -1309,9 +1354,9 @@ func TestAnInterruptedTurnIsNotCheckpointed(t *testing.T) {
 // This is the assertion the wave turns on. Reading the raw transcript was
 // measured at 57k, 65k and 91k input tokens across three marks of one crew run —
 // $0.62 on the mastermind tier against $0.123 for the sixty-two calls that did
-// the work — and all three answered "carry on". So the four things that actually
-// bear on what is left are assembled by hand, and everything else, which is the
-// bulk and the bill, is left out.
+// the work — and all three answered "carry on". So the things that actually bear
+// on what is left are assembled by hand, and everything else, which is the bulk
+// and the bill, is left out.
 func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 	const asked = "add the validation workflow, then fix the arithmetic and the currency"
 	const bulk = "SEVENTY LINES OF SEARCH RESULTS NOBODY NEEDS TO SEE"
@@ -1342,12 +1387,23 @@ func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
 			t.Errorf("the ledger is missing %q:\n%s", line, digest)
 		}
 	}
-	// AND NO RESULTS AT ALL, which is where the tokens and the noise both were.
-	if strings.Contains(digest, bulk) || strings.Contains(digest, "wrote 4000 bytes") {
-		t.Errorf("a tool result reached the reader:\n%s", digest)
+	// AND WHAT CAME BACK, WHICH IS THE HALF THIS DIGEST USED TO REFUSE TO CARRY.
+	// A ledger says a suite was run; a result says what it reported, and that is
+	// the only statement of how much of the ask is actually discharged.
+	found := digest[strings.Index(digest, checkpointDigestFound):]
+	for _, evidence := range []string{bulk, "wrote 4000 bytes", "edited"} {
+		if !strings.Contains(found, evidence) {
+			t.Errorf("the reader was not shown %q:\n%s", evidence, digest)
+		}
+	}
+	// AND NEWEST FIRST, so a reader that runs out of attention spends it on the
+	// work in front of the turn.
+	if strings.Index(found, "edited") > strings.Index(found, bulk) {
+		t.Errorf("the results are printed oldest first:\n%s", found)
 	}
 	// AND NO PAYLOAD EITHER. `write` names a path here precisely because the
-	// argument that carries the bytes is the thing this exists to leave out.
+	// argument that carries the bytes is the thing this exists to leave out —
+	// whichever order the two arrived in.
 	if strings.Contains(digest, strings.Repeat("x", 200)) {
 		t.Errorf("a written file's contents reached the reader:\n%s", digest)
 	}
@@ -1442,6 +1498,10 @@ func TestTheDigestIsBoundedAndDropsTheOldestStepsFirst(t *testing.T) {
 // transcript the running model is holding.
 func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 	const bulk = "A TOOL RESULT LONG ENOUGH TO PAY FOR THE WHOLE MECHANISM"
+	// A second result, on a call the reader is NOT going to be shown a line for,
+	// because no call in this transcript claims that id. A result credited to the
+	// wrong line is evidence that is worse than none.
+	const orphan = "A RESULT WHOSE CALL NOBODY MADE"
 
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -1452,7 +1512,8 @@ func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 	workedTurn(agent, "read the four modules and fix what is broken", 3)
 	agent.mu.Lock()
 	agent.messages = append(agent.messages,
-		ai.Message{Role: "tool", ToolCallID: "call-0", Content: []ai.ContentPart{{Type: "text", Text: bulk}}})
+		ai.Message{Role: "tool", ToolCallID: "call-0", Content: []ai.ContentPart{{Type: "text", Text: bulk}}},
+		ai.Message{Role: "tool", ToolCallID: "nobody", Content: []ai.ContentPart{{Type: "text", Text: orphan}}})
 	agent.mu.Unlock()
 
 	read := agent.readMark(context.Background())
@@ -1466,8 +1527,15 @@ func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("the reader was sent %d messages, want the one digest", len(sent))
 	}
-	if strings.Contains(messageText(sent[0]), bulk) {
-		t.Errorf("a tool result's body was sent to the reader:\n%s", messageText(sent[0]))
+	// THE ACCOUNT AND NOT THE THREAD. A tool result reaches the reader as the tail
+	// of one line under the call that made it, tied by id — and a result whose id
+	// names no call is dropped rather than attached to whichever line is beside it.
+	page := messageText(sent[0])
+	if !strings.Contains(page, "read ./0.txt"+checkpointResultArrow+bulk) {
+		t.Errorf("the result was not attached to the call that made it:\n%s", page)
+	}
+	if strings.Contains(page, orphan) {
+		t.Errorf("a result nobody's call produced was shown to the reader:\n%s", page)
 	}
 	if !strings.Contains(messageText(sent[0]), "read the four modules") {
 		t.Errorf("the person's ask was not sent to the reader:\n%s", messageText(sent[0]))
@@ -1620,7 +1688,7 @@ func TestTheCeilingIsNotDroppedOnTheRunningModelsSayS0Alone(t *testing.T) {
 	// A CHAIN AT EVERY MARK: the reader says work remains, all the way to the
 	// ceiling. The continuation then says it does not.
 	steps := append(grindingSteps(rounds+checkpointSlack, checkpointChainSketch, checkpointNothingLeft),
-		finalText("done"))
+		finalAnswer("done"))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
 	ran := make(ranNodes, 2)
@@ -1661,7 +1729,7 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 
 	rounds := checkpointMarkAt(checkpointMarks)
 	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft),
-		finalText(answered))
+		finalAnswer(answered))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -1722,7 +1790,600 @@ func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
 	}
 }
 
+// ── the reader sees what the model saw ──────────────────────────────────────
+
+// EVERY VERB'S ARGUMENTS RENDER, AND THE LEDGER KNOWS NO VERB'S NAME FOR
+// ANYTHING.
+//
+// The old rule was a list of five anticipated keys, and `fork` — which takes
+// `parts` — drew as a bare line reading `fork`. So a measured turn that had
+// already fanned out twice was described to the reader as two steps that touched
+// nothing, and the reader sketched serial work over the top of it three times.
+func TestEveryVerbsArgumentsRenderInTheLedger(t *testing.T) {
+	for _, shape := range []struct {
+		name      string
+		arguments string
+		want      []string
+		absent    string
+	}{
+		{
+			name:      "a fork renders its parts",
+			arguments: `{"parts":[{"role":"the parser","scope":["p.go"]},{"role":"the handlers","scope":["h.go"]}]}`,
+			want:      []string{"the parser", "the handlers"},
+		},
+		{
+			name:      "a command renders itself",
+			arguments: `{"command":"go test ./...","timeout":30}`,
+			want:      []string{"go test ./..."},
+		},
+		{
+			name:      "a search renders its pattern",
+			arguments: `{"pattern":"validate(","path":"./internal"}`,
+			want:      []string{"validate("},
+		},
+		{
+			// THE PAYLOAD NEVER WINS, whichever order it arrived in. The first pass
+			// skips any argument too long to be a ledger line, which is the generic
+			// spelling of what the old list of keys bought by naming `path`.
+			name:      "a write renders its path and never its contents",
+			arguments: `{"content":"` + strings.Repeat("x", 4000) + `","path":"./workflow.yml"}`,
+			want:      []string{"./workflow.yml"},
+			absent:    strings.Repeat("x", 100),
+		},
+		{
+			// A NUMBER SAYS NOTHING ABOUT WHAT WAS TOUCHED, so the walk carries on to
+			// the argument that does.
+			name:      "a leading number is stepped over",
+			arguments: `{"lines":200,"deep":true,"path":"./money.go"}`,
+			want:      []string{"./money.go"},
+		},
+		{
+			// AND A VERB NOBODY ANTICIPATED IS DESCRIBED BADLY RATHER THAN NOT AT ALL.
+			name:      "arguments with nothing sayable in them still draw a line",
+			arguments: `{"depth":3,"recursive":true}`,
+			want:      []string{"depth"},
+		},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			line := checkpointArgument(shape.arguments)
+			for _, want := range shape.want {
+				if !strings.Contains(line, want) {
+					t.Errorf("the ledger drew %q, want %q in it", line, want)
+				}
+			}
+			if shape.absent != "" && strings.Contains(line, shape.absent) {
+				t.Errorf("the ledger carried a payload: %q", line)
+			}
+			if len(line) > checkpointLedgerBytes {
+				t.Errorf("the line is %d bytes against a bound of %d: %q",
+					len(line), checkpointLedgerBytes, line)
+			}
+		})
+	}
+}
+
+// AND WHAT A COMMAND ACTUALLY REPORTED REACHES THE READER — THE TAIL OF IT.
+//
+// This is the defect in one assertion. A ledger says a suite was run; the tail of
+// its output says `Passed: 0`, and only one of those two lets a reader work out
+// how much of the ask is discharged. The measured turn had exactly that line in
+// front of it and the reader was shown neither it nor anything like it.
+func TestAToolResultsTailReachesTheReader(t *testing.T) {
+	const verdict = "Loaded 68186 golden test points across 12 suites — Passed: 0, Failed: 68186"
+	const scroll = "compiling package number four hundred and ninety, which nobody needs to read\n"
+	body := strings.Repeat(scroll, 200) + verdict
+
+	digest := checkpointDigest("run the suite and make it pass", []ai.Message{
+		toolCallMessage("c1", "bash", `{"command":"go test ./..."}`),
+		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	})
+
+	if !strings.Contains(digest, verdict) {
+		t.Fatalf("the one line that says how the ask is going never reached the reader:\n%s", digest)
+	}
+	// AND IT IS THE TAIL AND NOT THE OUTPUT. A result kept whole would put a
+	// mastermind's bill back on the digest this file exists to keep off it.
+	if strings.Count(digest, scroll) > checkpointResultBytes/len(scroll)+1 {
+		t.Errorf("the whole of a result reached the reader:\n%s", digest)
+	}
+	if !strings.Contains(digest, "bash go test ./..."+checkpointResultArrow) {
+		t.Errorf("the result is not under the call that made it:\n%s", digest)
+	}
+}
+
+// AND A DIGEST OVER ITS BUDGET DROPS RESULTS BEFORE IT DROPS ANYTHING ELSE.
+//
+// The order of eviction is the whole of the priority rule: the boundary sections
+// are fitted first and can never be squeezed out, then the ledger, which is the
+// complete account of what was touched, and the results take what room is left —
+// so the oldest results go first and the oldest ledger lines only after them.
+func TestADigestOverBudgetDropsResultsBeforeItDropsTheAsk(t *testing.T) {
+	const asked = "work through every package and report what is failing"
+	messages := []ai.Message{textMessage("user", asked)}
+	for index := 0; index < 300; index++ {
+		id := fmt.Sprintf("c%d", index)
+		messages = append(messages,
+			toolCallMessage(id, "bash", fmt.Sprintf(`{"command":"go test ./pkg/%d"}`, index)),
+			// The verdict is at the END of the output, where a real one is, so this
+			// also asserts that what survives the per-result bound is the tail.
+			ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{{Type: "text",
+				Text: fmt.Sprintf("%s package %d FAILED", strings.Repeat("noise ", 200), index)}}})
+	}
+	messages = append(messages, textMessage("assistant", "the last thing this turn said"))
+
+	digest := checkpointDigest(asked, messages)
+
+	if len(digest) > checkpointDigestBytes {
+		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)
+	}
+	// THE ASK SURVIVES, WHOLE. It is the one thing on this road nobody may rewrite
+	// and the one thing everything else is measured against.
+	if !strings.HasPrefix(digest, checkpointDigestAsked+"\n"+asked) {
+		t.Fatalf("the ask was squeezed out by the evidence:\n%s", digest[:400])
+	}
+	if !strings.Contains(digest, "the last thing this turn said") {
+		t.Error("the last thing said was squeezed out by the evidence")
+	}
+	// AND SO DOES THE LEDGER, WHICH IS CHEAPER PER LINE AND IS THE COMPLETE
+	// ACCOUNT: three hundred lines of it fit where three hundred results cannot.
+	if strings.Contains(digest, "earlier steps") {
+		t.Errorf("the ledger was cut to make room for results:\n%s", digest[:400])
+	}
+	if !strings.Contains(digest, "bash go test ./pkg/0\n") {
+		t.Error("the ledger dropped its oldest line while results were still being carried")
+	}
+	// THE NEWEST RESULTS ARE THE ONES KEPT, and the oldest are the ones that went.
+	found := digest[strings.Index(digest, checkpointDigestFound):]
+	if !strings.Contains(found, "package 299 FAILED") {
+		t.Errorf("the newest result was dropped, which is the evidence in front of the turn:\n%s", found)
+	}
+	if strings.Contains(found, "package 0 FAILED") {
+		t.Error("a bounded results section kept its oldest line")
+	}
+	// AND IT SAYS WHAT IT DROPPED, for the ledger's own reason: a silent truncation
+	// lets a reader believe the turn learned less than it did.
+	if !strings.Contains(found, "earlier results") {
+		t.Errorf("the results were truncated in silence:\n%s", found)
+	}
+}
+
+// ── the handoff is drafted by the runner and written by the mastermind ──────
+
+// THE BRIEF A WORKER OPENS ON IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
+//
+// The runner holds the findings and drafts; the mastermind holds the judgement
+// and writes. Asking one model to be both was the shipping arrangement and it was
+// measured producing 5,882 characters of loop that a cold worker was then started
+// on as its whole world.
+func TestTheHandoffIsDraftedByTheRunnerAndWrittenByTheMastermind(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const draft = "Finish the four pieces, and the auth test is the one still failing."
+	const written = "Finish the currency module. The auth test is the one still failing and the yaml " +
+		"route has been ruled out. It is done when the whole suite is green."
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, draft, written)}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	node := ran.await(t)
+
+	// THE WORKER OPENS ON WHAT THE MASTERMIND WROTE, not on the draft.
+	if !strings.Contains(node.spec.brief, written) {
+		t.Fatalf("the worker's brief is not the written handoff:\n%s", node.spec.brief)
+	}
+	// AND THE WRITER WAS SHOWN THE FOUR THINGS IT IS OWED: the person's own words,
+	// an account of the turn WITH what came back in it, and the draft.
+	page := ""
+	for index := range completer.requests() {
+		if askedToWriteHandoff(completer.request(index)) {
+			page = messageText(completer.request(index)[0])
+			if completer.model(index) != checkpointMarkModel {
+				t.Errorf("the handoff was written by %q, want the mastermind %q",
+					completer.model(index), checkpointMarkModel)
+			}
+		}
+	}
+	if page == "" {
+		t.Fatal("nobody was ever asked to write the handoff")
+	}
+	for _, want := range []string{
+		checkpointHandoffAskedHeading, asked,
+		checkpointHandoffWorkHeading, checkpointDigestDone,
+		checkpointHandoffDraftHeading, draft,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the writer was never shown %q:\n%s", want, page)
+		}
+	}
+	// AND THE CALL IS ON THE BILL UNDER ITS OWN NAME. A mastermind-priced line with
+	// nothing beside it saying what it bought is the shape of bill the mark
+	// reader's own journal line already exists because of.
+	billed := 0
+	for _, call := range journaledCalls(t, path) {
+		if call.Role == string(roles.RoleHandoff) {
+			billed++
+		}
+	}
+	if billed != 1 {
+		t.Errorf("%d journaled calls name the handoff writer, want exactly one", billed)
+	}
+}
+
+// AND THE WRITER STILL WRITES WHEN THE DRAFT FAILED, WHICH IS WHY THE BARE ASK IS
+// NOW THE LAST RESORT AND NOT THE SECOND OPTION.
+//
+// Across the twenty-two handoffs of the measured run, seven fell straight through
+// to the person's bare sentence — a sentinel or an empty answer from a tired
+// model — and a bare sentence hands a worker everything the turn found out except
+// the findings. The writer has the digest whatever the runner managed to say.
+func TestTheHandoffWriterStillWritesWhenTheDraftFailed(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const written = "Finish the currency module; the arithmetic and validation modules are already done."
+
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, dsmlSentinel, written)}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	node := ran.await(t)
+
+	if !strings.Contains(node.spec.brief, written) {
+		t.Fatalf("a refused draft dropped the whole handoff; the worker got:\n%s", node.spec.brief)
+	}
+	if strings.Contains(node.spec.brief, dsmlSentinel) {
+		t.Errorf("the sentinel reached the worker:\n%s", node.spec.brief)
+	}
+}
+
+// AND A BRIEF THAT HAS STOPPED SAYING NEW THINGS IS NOT A BRIEF.
+//
+// [briefIsProse] asks whether an answer is words at all; this asks whether those
+// words are still going somewhere. A repeat loop passes every test for shape,
+// which is exactly how 85 clauses with 39 distinct among them became a worker's
+// whole world.
+func TestABriefThatHasStoppedSayingNewThingsIsNotABrief(t *testing.T) {
+	loop := strings.Repeat("Also: rerun the suite. Also: check the parser. Also: wire the handlers. "+
+		"Also: rerun the suite. Also: check the parser. Also: wire the handlers. ", 14)
+	if !briefRepeats(loop) {
+		t.Errorf("a brief that says six things forty times over was accepted")
+	}
+	// AND A HEAVILY FORMATTED ONE IS THE SAME SENTENCE TO THIS. Emphasis, case and
+	// punctuation are folded away, so a loop cannot be dressed past the check.
+	dressed := strings.Repeat("**Also: rerun the suite.**\n- also, RERUN the suite!\n", 10)
+	if !briefRepeats(dressed) {
+		t.Errorf("a loop written in markdown was accepted")
+	}
+	// AND AN HONEST BRIEF IS NOT REFUSED, however consistent its vocabulary.
+	honest := "Finish the currency module. The auth test is the one still failing, and it fails on the " +
+		"rounding rather than on the lookup. The yaml route has been ruled out: the parser cannot " +
+		"see the tag. The arithmetic module is done and its tests are green. The validation " +
+		"workflow is written but not wired. Wire it into the job that runs on push. " +
+		"Do not touch the fixtures. It is done when the whole suite is green on a clean checkout."
+	if briefRepeats(honest) {
+		t.Errorf("an honest brief was read as a loop:\n%s", honest)
+	}
+	// AND A SHORT BRIEF IS NEVER DEGENERATE. A ratio over four sentences is noise,
+	// and refusing one would cost a regeneration on the document that needed none.
+	if briefRepeats("Wire the handlers. Wire the handlers. Wire the handlers.") {
+		t.Errorf("a brief too short to judge was judged")
+	}
+}
+
+// AND A DEGENERATE BRIEF BUYS ONE REGENERATION AND THEN THE LADDER TAKES OVER.
+//
+// A mastermind that looped once may not loop twice; one that looped twice is one
+// that is going to. What catches the second failure is the fallback ladder, which
+// costs nothing: the runner's own draft, and then the person's sentence.
+func TestADegenerateHandoffIsRegeneratedOnceAndThenGivenUpOn(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const draft = "Finish the four pieces, and the auth test is the one still failing."
+	loop := strings.Repeat("Also: rerun the suite. Also: check the parser. Also: wire the handlers. ", 20)
+
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack+2,
+		checkpointChainSketch, draft, loop)}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	node := ran.await(t)
+
+	// THE LOOP NEVER BECAME A SPEC.
+	if strings.Contains(node.spec.brief, "Also: rerun the suite. Also: rerun the suite.") {
+		t.Fatalf("a degenerate brief became a worker's whole world:\n%s", node.spec.brief)
+	}
+	if !strings.Contains(node.spec.brief, draft) {
+		t.Errorf("the ladder did not fall back to the runner's own draft:\n%s", node.spec.brief)
+	}
+	// AND IT WAS ASKED FOR TWICE AND NOT FOREVER.
+	asks := 0
+	for index := range completer.requests() {
+		if askedToWriteHandoff(completer.request(index)) {
+			asks++
+		}
+	}
+	if asks != checkpointBriefTries {
+		t.Errorf("the writer was asked %d times, want %d", asks, checkpointBriefTries)
+	}
+}
+
+// ── the acceptance stays the person's ───────────────────────────────────────
+
+// THE SPEC THE CEILING BUILDS IS FINISHED AGAINST THE PERSON'S ASK, AND THE BRIEF
+// IS THE STATE UNDER IT.
+//
+// They are two documents and they were collapsing into one. A handoff brief says
+// what is left of the work RIGHT NOW; finishing a task against that is finishing
+// it against a to-do the turn happened to be holding, which is how a ten-hour ask
+// was measured being accepted as met once the code compiled.
+func TestTheSpecTheCeilingBuildsIsFinishedAgainstThePersonsAsk(t *testing.T) {
+	const asked = "port the whole language server and get every golden test passing"
+	const written = "Finish the type-checker. The parser is done and the 12 protocol methods are enumerated."
+
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, "a draft that names the compile errors", written)}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	node := ran.await(t)
+
+	// THE ACCEPTANCE IS THEIRS.
+	if !strings.Contains(node.spec.acceptance, asked) {
+		t.Fatalf("the work is finished against %q, want the person's own words", node.spec.acceptance)
+	}
+	// AND IT IS NOT THE BRIEF'S LOCAL TO-DO.
+	if strings.Contains(node.spec.acceptance, written) {
+		t.Errorf("the handoff brief became the done-condition:\n%s", node.spec.acceptance)
+	}
+	// AND THE BRIEF IS STILL THE STATE, which is what a worker opens on.
+	if !strings.Contains(node.spec.brief, written) {
+		t.Errorf("the brief is not the state the turn handed over:\n%s", node.spec.brief)
+	}
+	// AND THE CHECKER READS THE PERSON'S QUESTION, which is the only place any of
+	// this actually lands (task_audit.go).
+	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, asked) {
+		t.Fatalf("the checker was asked %q, want the person's own words in it", question)
+	}
+}
+
+// ── every turn is metered ───────────────────────────────────────────────────
+
+// A WOKEN TURN IS METERED EXACTLY LIKE A TYPED ONE.
+//
+// It was not, and that was the whole of the measured idleness: a task landed, the
+// note started a turn, and that turn made 127 tool calls over 46 minutes with no
+// mark, no ceiling and no handover — it ended when the model stopped talking, and
+// the harness then sat idle for the remaining seven and a half hours of the ask.
+func TestAWokenTurnIsMeteredExactlyLikeATypedOne(t *testing.T) {
+	const asked = "port the whole language server and get every golden test passing"
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, "a draft", "a written brief that somebody could work from")}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	// The person's ask, as the session already holds it: this turn is not the one
+	// they typed, and what it is measured against is still their sentence.
+	agent.mu.Lock()
+	agent.personAsk = asked
+	agent.mu.Unlock()
+
+	// A TASK LANDS, which is the one road [Agent.wakeLocked] opens.
+	settleTask(t, agent, "the first piece", "the first piece is done")
+
+	waitFor(t, "the woken turn to be read at its first mark", func() bool {
+		return marksRead(completer) > 0
+	})
+	waitFor(t, "the mark to reach the journal", func() bool {
+		return len(journaledMarks(t, path)) > 0
+	})
+	marks := journaledMarks(t, path)
+	if marks[0].Rounds != checkpointMarkAt(1) {
+		t.Errorf("the woken turn's first mark fired at round %d, want the price %d",
+			marks[0].Rounds, checkpointMarkAt(1))
+	}
+	// AND A LINE THE SESSION WROTE THAT NOBODY OWES AN ANSWER FOR IS STILL LEFT
+	// ALONE, which is the half of the old rule that was right.
+	ambient := userText("the session's own note")
+	ambient.authored = true
+	if agent.checkpoints(context.Background(), ambient) {
+		t.Error("an ambient note the session wrote to itself is metered")
+	}
+}
+
+// ── a turn ends; the ask does not ───────────────────────────────────────────
+
+// A TURN THAT STOPS SHORT OF THE ASK IS RE-OPENED, ONCE, WITH WHAT IS LEFT.
+//
+// "I've finished the parser, next I'll wire the handlers" ends a turn exactly as
+// firmly as a finished job does, and until this nothing checked which of the two
+// it was. All three harnesses in the measured comparison stopped with hours of
+// the ask unused.
+func TestATurnThatStopsShortOfTheAskIsReopened(t *testing.T) {
+	const stopped = "I've finished the parser, next I'll wire the handlers"
+	const remains = "the handlers are not wired and the golden tests have never been run"
+
+	var remainsAsks atomic.Int64
+	completer := &scriptedCompleter{steps: stoppingSteps(20, stopped, func() string {
+		if remainsAsks.Add(1) == 1 {
+			return remains
+		}
+		return checkpointNothingLeft
+	})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got != 2 {
+		t.Fatalf("the ask was read %d times; want one that re-opened and one that let the turn end", got)
+	}
+	// THE CONTINUATION IS THE READER'S OWN LINE, AND IT SAYS WHO IS SPEAKING.
+	transcript := transcriptText(agent)
+	if !strings.Contains(transcript, checkpointCarryOnLead+remains) {
+		t.Errorf("the turn was not re-opened on what the reader said is left:\n%s", transcript)
+	}
+	// AND THE PERSON IS TOLD, once, in the register the other three notes use.
+	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("nobody said why the turn kept going; notices were %q", noticeTexts(collected))
+	}
+}
+
+// AND A TURN THAT ENDS BY ASKING THE PERSON SOMETHING IS NEVER RE-OPENED.
+//
+// It is WAITING rather than stopping, and re-opening it would be the harness
+// answering a question that was addressed to somebody else. It is read
+// structurally — a question mark on the last words — because a list of openers
+// would be a rule about English.
+func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
+	var remainsAsks atomic.Int64
+	completer := &scriptedCompleter{steps: stoppingSteps(20,
+		"Two schemas would both work here. **Which one should I use?**", func() string {
+			remainsAsks.Add(1)
+			return checkpointNothingLeft
+		})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a turn waiting on the person was read %d times for what remains", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
+		t.Errorf("a turn waiting on an answer was carried on: %q", noticeTexts(collected))
+	}
+	// AND THE STRUCTURE IS THE WHOLE OF THE RULE, decoration and all.
+	for _, waiting := range []string{"which one?", "**which one?**", `"which one?"`, "which one? "} {
+		if !endsAskingThePerson(waiting) {
+			t.Errorf("%q was not read as a question to the person", waiting)
+		}
+	}
+	for _, stopping := range []string{"", "I've finished the parser.", "next: the handlers"} {
+		if endsAskingThePerson(stopping) {
+			t.Errorf("%q was read as a question to the person", stopping)
+		}
+	}
+}
+
+// AND A RE-OPENED TURN IS ON THE SAME METER, SO IT STILL MARKS.
+//
+// The bound on re-opening is the meter and nothing else — no second counter — so
+// a re-open is charged as a round, the marks still fire, and a re-opened turn
+// that reaches the ceiling hands off exactly as any other does.
+func TestAReopenedTurnStillMarksOnTheSameMeter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	var remainsAsks atomic.Int64
+	// Nine tool rounds and then words: the re-open is the round that crosses the
+	// first mark, which stands at the handoff price.
+	completer := &scriptedCompleter{steps: stoppingSteps(checkpointMarkAt(1)-1,
+		"I've finished the parser, next I'll wire the handlers", func() string {
+			if remainsAsks.Add(1) == 1 {
+				return "the handlers are not wired"
+			}
+			return checkpointNothingLeft
+		})}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	marks := journaledMarks(t, path)
+	if len(marks) == 0 {
+		t.Fatalf("a re-opened turn was never read at a mark; the reader was asked %d times about the ask",
+			remainsAsks.Load())
+	}
+	if marks[0].Rounds != checkpointMarkAt(1) {
+		t.Errorf("the mark fired at round %d, want the price %d — a re-open is a round",
+			marks[0].Rounds, checkpointMarkAt(1))
+	}
+}
+
 // ── the fixtures these use ──────────────────────────────────────────────────
+
+// handoffSteps is [grindingSteps] with the mastermind that WRITES the brief
+// scripted too: the sketch it draws at a mark, the draft the running model
+// writes, and the document the writer makes out of it.
+func handoffSteps(count int, sketch, draft, written string) []step {
+	steps := grindingSteps(count, sketch, draft)
+	for index := range steps {
+		inner := steps[index]
+		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedToWriteHandoff(messages) {
+				return textResponse(written), nil
+			}
+			return inner(ctx, messages)
+		}
+	}
+	return steps
+}
+
+// stoppingSteps is a turn that does `rounds` tool calls and then STOPS IN WORDS,
+// however many times it is re-opened — which is what makes it a fixture for the
+// end of a turn rather than for the ceiling. remains answers the question a
+// turn's end puts to the reader, and is a function so a test can say something
+// different the second time it is asked.
+func stoppingSteps(rounds int, stopped string, remains func() string) []step {
+	var done atomic.Int64
+	steps := make([]step, rounds+40)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				return textResponse(checkpointChainSketch), nil
+			}
+			if askedForHandoff(messages) {
+				return textResponse("a draft of what is left"), nil
+			}
+			if askedToWriteHandoff(messages) {
+				return textResponse("a brief somebody could work from, written by the mastermind"), nil
+			}
+			if askedForRemains(messages) {
+				return textResponse(remains()), nil
+			}
+			if call := done.Add(1); call <= int64(rounds) {
+				return toolResponse(fmt.Sprintf("call-%d", call), "ls",
+					fmt.Sprintf(`{"path":"./%d"}`, call)), nil
+			}
+			return textResponse(stopped), nil
+		}
+	}
+	return steps
+}
 
 // workedTurn puts a turn's worth of work into an agent by hand: the person's ask
 // and n finished tool calls. It is what the digest is assembled out of, so a test
