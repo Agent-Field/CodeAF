@@ -22,9 +22,14 @@ import (
 // subharness card, the files shelf, the connections panel, the rewind bar), the
 // keyboard is pointed somewhere else and a caret moved under it would be a
 // caret in a box the person is not in.
+//
+// THE THINKING LADDER IS IN THAT LIST FOR THE SAME REASON READ ONE STEP EARLIER
+// (effortchip.go). Its rows hang ABOVE the box rather than in it, so the draft
+// is still on the frame — but every key belongs to the ladder while it is up, so
+// a caret placed under the pointer would be a caret nothing can move.
 func (a *app) draftPress(x, y int) bool {
 	if a.rew.on || a.pick.open || a.memPanel.open || a.roster.open ||
-		a.subPage.open || a.shelf.open || a.connPanel.open {
+		a.subPage.open || a.shelf.open || a.connPanel.open || a.effPick.open {
 		return false
 	}
 	mark, ok := a.chromeAt(y)

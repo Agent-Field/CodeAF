@@ -507,9 +507,10 @@ Several things can name a rung, and the most specific one wins:
    and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
 
-There is no chip on the frame for this yet, and no key or slash command of its own: the
-**thinking** row, and the more specific places listed above it, are where a rung is chosen
-today.
+**This conversation's own rung has a chip above the message box, and `ctrl+v` walks it.**
+See *The thinking chip above the message box — `ctrl+v`* on the keys page for the chip,
+the chord and the five-row menu a click on it opens. The **thinking** row in `/settings`
+stays what it is: the answer for every conversation that has not been dialled by hand.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 
