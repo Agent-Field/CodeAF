@@ -508,3 +508,21 @@ func TestStubbingStillRewritesWhenTheReclaimIsWorthIt(t *testing.T) {
 		t.Fatalf("a 200KB result was left verbatim: %.80q", texts[0])
 	}
 }
+
+// AN OLD VOLATILE NOTE FOLDS WITH THE HISTORY. The person's own words survive
+// every fold; the session's note about the card does not, because the next
+// landing supersedes it and a long session would otherwise carry every state
+// the card ever had, uncompactable.
+func TestAnOldVolatileNoteFoldsWithTheHistory(t *testing.T) {
+	if !isVolatileNote(volatileNoteOpening + "anything") {
+		t.Fatal("the opening no longer marks a note")
+	}
+	person := textMessage("user", "please look at the reconciler")
+	note := textMessage("user", volatileNoteOpening+"<state>old</state>")
+	if isVolatileNote(messageContentText(person)) {
+		t.Fatal("a person's message read as the session's note")
+	}
+	if !isVolatileNote(messageContentText(note)) {
+		t.Fatal("the note was not recognized through messageContentText")
+	}
+}
