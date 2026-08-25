@@ -9,6 +9,7 @@ package session
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,6 +54,7 @@ type scriptedMedia struct {
 	musicFormat string
 	musicErr    error
 	musicCost   *ai.Usage
+	musicHold   chan struct{}
 
 	// the filming half
 	video     []byte
@@ -93,10 +95,18 @@ func (p *scriptedMedia) Speak(_ context.Context, request provider.SpeechRequest)
 	return &provider.SpeechResponse{Audio: p.audio, Usage: p.speechCost}, nil
 }
 
-func (p *scriptedMedia) GenerateMusic(_ context.Context, request provider.MusicRequest) (*provider.MusicResponse, error) {
+func (p *scriptedMedia) GenerateMusic(ctx context.Context, request provider.MusicRequest) (*provider.MusicResponse, error) {
 	p.mu.Lock()
 	p.composed = append(p.composed, request)
+	hold := p.musicHold
 	p.mu.Unlock()
+	if hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if p.musicErr != nil {
 		return nil, p.musicErr
 	}
@@ -146,6 +156,12 @@ func (p *scriptedMedia) composition(index int) provider.MusicRequest {
 		return provider.MusicRequest{}
 	}
 	return p.composed[index]
+}
+
+func (p *scriptedMedia) compositions() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.composed)
 }
 
 func (p *scriptedMedia) speeches() int {
@@ -277,27 +293,87 @@ func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
 // the prompt, and never touches the speaking endpoint.
 func TestGenerateMusicComposesOnItsOwnLaneAndNeverThroughSpeak(t *testing.T) {
 	cost := 0.08
-	media := &scriptedMedia{music: []byte("a song's worth of bytes"), musicFormat: "mp3", musicCost: &ai.Usage{Cost: &cost}}
+	hold := make(chan struct{})
+	media := &scriptedMedia{music: []byte("a song's worth of bytes"), musicFormat: "mp3", musicCost: &ai.Usage{Cost: &cost}, musicHold: hold}
 	agent, workspace := newMediaAgent(t, media, nil)
 
 	result, isError := runTool(t, agent, "generate_music", `{"prompt":"A calm solo piano loop, 90bpm"}`)
 	if isError {
 		t.Fatalf("generate_music = %q", result)
 	}
+	// The tool answered while the provider is still inside the call — the
+	// async law, held the way the video tests hold it.
+	if !strings.Contains(result, "job 1 started") || !strings.Contains(result, "composing on compose/model") {
+		t.Fatalf("result %q does not hand back a composing job", result)
+	}
+	if strings.Contains(result, ".mp3") {
+		t.Fatalf("result %q names a file that does not exist yet", result)
+	}
+	waitFor(t, "the compose to start", func() bool { return media.compositions() == 1 })
 	if got := media.composition(0); got.Model != "compose/model" || got.Prompt != "A calm solo piano loop, 90bpm" {
 		t.Fatalf("music request = %+v", got)
 	}
 	if media.speeches() != 0 {
 		t.Fatalf("a composition brief was sent to the speaking endpoint (%d calls)", media.speeches())
 	}
-	// The file is real, and the sentence names it.
-	if !strings.Contains(result, ".mp3") || !strings.Contains(result, "composed by compose/model") {
-		t.Fatalf("music result = %q", result)
+
+	close(hold)
+
+	// The ending is the note, and the note names the file that landed.
+	waitFor(t, "the completion note", func() bool { return notesContain(agent, "job 1 finished") })
+	if !notesContain(agent, "composed by compose/model") {
+		t.Fatalf("the note does not say who composed it; notes = %v", sessionNotes(agent))
 	}
-	written := filepath.Join(workspace, filepath.FromSlash(strings.Fields(result)[0]))
+	directory := filepath.Join(workspace, ".aforge-v3", "music")
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("%s holds %v (%v), want one file", directory, entries, err)
+	}
+	written := filepath.Join(directory, entries[0].Name())
 	data, readErr := os.ReadFile(written)
 	if readErr != nil || string(data) != "a song's worth of bytes" {
 		t.Fatalf("music file at %s = %q err=%v", written, data, readErr)
+	}
+}
+
+// A compose this session KILLED says nothing on the way out, and the kill line
+// names what was lost in the job's own noun.
+func TestGenerateMusicKilledSaysNothing(t *testing.T) {
+	hold := make(chan struct{})
+	defer close(hold)
+	media := &scriptedMedia{music: []byte("notes"), musicHold: hold}
+	agent, _ := newMediaAgent(t, media, nil)
+
+	if result, isError := runTool(t, agent, "generate_music", `{"prompt":"a theme"}`); isError {
+		t.Fatalf("generate_music failed: %s", result)
+	}
+	waitFor(t, "the compose to start", func() bool { return media.compositions() == 1 })
+
+	killed, isError := runTool(t, agent, "jobs", `{"action":"kill","id":1}`)
+	if isError {
+		t.Fatalf("jobs kill failed: %s", killed)
+	}
+	if !strings.Contains(killed, "no music was saved") {
+		t.Fatalf("kill said %q, want it to say no music was saved", killed)
+	}
+	for _, note := range sessionNotes(agent) {
+		if strings.Contains(note, "job 1") {
+			t.Fatalf("a killed compose reported its own death: %q", note)
+		}
+	}
+}
+
+// A failed compose arrives as a note too — the failure has no turn left to
+// answer, exactly as a failed render has not.
+func TestGenerateMusicFailureArrivesAsANote(t *testing.T) {
+	media := &scriptedMedia{musicErr: errors.New("the model is overloaded")}
+	agent, _ := newMediaAgent(t, media, nil)
+	if result, isError := runTool(t, agent, "generate_music", `{"prompt":"a theme"}`); isError {
+		t.Fatalf("generate_music refused to submit: %s", result)
+	}
+	waitFor(t, "the failure note", func() bool { return notesContain(agent, "job 1 failed") })
+	if !notesContain(agent, "music generation failed (compose/model): the model is overloaded") {
+		t.Fatalf("notes %v do not carry the provider's cause", sessionNotes(agent))
 	}
 }
 

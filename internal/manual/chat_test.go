@@ -319,6 +319,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the stitched video has no sound after the first clip", "making-pictures-audio-and-video"},
 		{"keep the same character across the clips", "making-pictures-audio-and-video"},
 		{"how long is the music you compose", "making-pictures-audio-and-video"},
+		{"can you keep working while the music is composing", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught

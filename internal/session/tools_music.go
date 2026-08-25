@@ -1,7 +1,7 @@
 package session
 
 // generate_music is the session's composer: a description of a piece of music
-// in, an mp3 on disk, a path back.
+// in, an mp3 on disk, a note naming it when it lands.
 //
 // It is `speak`'s sibling on the belt (tools_speak.go) and NOT its twin on the
 // wire, which is the one thing worth knowing about it. Speech posts to
@@ -15,8 +15,19 @@ package session
 // model; one verb taking both would be a verb whose arguments contradict each
 // other depending on a model slot the model cannot see.
 //
+// IT ANSWERS BEFORE IT IS FINISHED, by generate_video's law (tools_video.go
+// states it whole). A compose is one long streaming call — most of a minute is
+// normal — and a turn that sat inside it was a conversation nobody could use
+// while a file nobody could hear yet was written. So the call submits, comes
+// back in a breath with a job id, and the composing happens in a goroutine
+// whose ending is a note naming the file — the same id space, the same log,
+// the same row in `jobs list`, the same `jobs kill`, the same death at Close.
+// A model that has learned what a video render is has learned what this is,
+// and it keeps working — on the clips, on the stitch, on the conversation —
+// while the score is written.
+//
 // THE BYTES NEVER ENTER THE TRANSCRIPT, for tools_speak.go's reason and more so:
-// a minute of music is a megabyte and base64 inflates it by a third. The result
+// a minute of music is a megabyte and base64 inflates it by a third. The note
 // is one line naming the file, and the file is what the person plays.
 //
 // IT HAS NO LENGTH ARGUMENT because the endpoint has none. A call composes
@@ -32,6 +43,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +71,12 @@ const musicDirectory = ".aforge-v3/music"
 // is a fallback rather than an assumption the file has to live up to.
 const musicExtension = ".mp3"
 
+// musicLabel is what the job answers to in `jobs list` and in its kill line,
+// [videoLabel]'s sibling: a constant word rather than a slug of the prompt,
+// because the prompt is already the row's detail and a label is what a person
+// says out loud ("kill the music").
+const musicLabel = "music"
+
 // musicFileExtension is the suffix a composed clip is saved under: what the
 // provider said it sent, or [musicExtension] when it said nothing. A file named
 // for a format it is not is a file the person's player refuses, so the
@@ -76,12 +94,13 @@ func musicFileExtension(format string) string {
 	}
 }
 
-// The description says the two things a model cannot guess: that the prompt is a
-// DESCRIPTION OF MUSIC and not lyrics to be sung or words to be read out, and
-// that what comes back is a path rather than audio it can listen to. The pointer
-// to speak is there because a model reaching for this to make a voiceover would
-// get a music model trying to sing an announcement.
-const generateMusicDescription = "Compose music from a description and save it as an audio file. Returns the path it was written to and how big the file is — never the audio itself, which stays on disk for the user to play. The prompt describes the MUSIC: genre, instruments, tempo, mood, structure — it is not lyrics to sing and not text to read out. For a voiceover or for text spoken aloud use speak instead, which is a different model. There is no length argument: the model writes a piece of its own choosing — half a minute to a minute in practice — and the call costs the same however long it turns out, so ask for one piece and iterate on the description rather than calling this repeatedly for a shorter one. To lay the piece under anything timed, measure the file first and loop or trim it: its length is the model's choice, not yours. Give a path to choose the name and the folder; leave it out and the file is saved under a timestamped name derived from the description."
+// The description carries the async law in the model's own terms, exactly as
+// generate_video's does and for its reason: a model that does not know the
+// call returns before the file exists reads the job line as a failure and pays
+// twice. It also says the two things a model cannot guess — that the prompt is
+// a DESCRIPTION OF MUSIC and not lyrics to be sung or words to be read out,
+// and that the piece's length is the model's own choice.
+const generateMusicDescription = "Compose music from a description and save it as an audio file. This tool RETURNS IMMEDIATELY with a background job id, because a compose takes most of a minute: the work keeps going while you and the user carry on talking, and when it lands you are told in a note naming the file — you do not wait for it, poll it, or call it twice. The prompt describes the MUSIC: genre, instruments, tempo, mood, structure — it is not lyrics to sing and not text to read out. For a voiceover or for text spoken aloud use speak instead, which is a different model. There is no length argument: the model writes a piece of its own choosing — half a minute to a minute in practice — and the call costs the same however long it turns out, so ask for one piece and iterate on the description rather than calling this repeatedly for a shorter one. To lay the piece under anything timed, measure the file first and loop or trim it: its length is the model's choice, not yours. Give a path to choose the name and the folder; leave it out and the file is saved under a timestamped name derived from the description. Watch it with the jobs tool and stop it with jobs kill; a stopped compose saves nothing."
 
 const generateMusicSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"The music to compose, described the way a brief would describe it: genre, instruments, tempo, key or mood, and how it should develop. The whole prompt reaches the music model, so detail is worth writing. It is a description of a piece, not lyrics and not words to be spoken."},` +
@@ -115,7 +134,7 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 		Name:        "generate_music",
 		Description: generateMusicDescription,
 		Schema:      a.mediaSchema(generateMusicSchemaJSON, "music"),
-		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateMusicArguments
 			if err := json.Unmarshal(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
@@ -124,63 +143,103 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 			if prompt == "" {
 				return "Invalid arguments: prompt is required", true, nil
 			}
-			// The call's own choice, resolved before anything is paid for
+			// The call's own choice, resolved before the job starts, so a word
+			// that matches nothing costs neither money nor a job row
 			// (tools_image.go states the shape).
 			model, refusal := a.mediaPick(modalityMusic, parsed.Model, defaultModel)
 			if refusal != "" {
 				return "Invalid arguments: " + refusal, true, nil
 			}
 
-			// Every failure is a TOOL ERROR and never a Go error, exactly as
-			// generate_image's and speak's are: a refused prompt, a model having
-			// a bad minute and an expired key are all things the model can act
-			// on, and none of them is a reason to fail the turn.
-			//
-			// This is GenerateMusic and never Speak: the two lanes share a
-			// family and not an endpoint (media_contract.go, and
-			// internal/provider/music.go for why).
-			response, err := client.GenerateMusic(ctx, provider.MusicRequest{
-				Model: model, Prompt: prompt,
-			})
+			started, ctx, err := a.jobs.startRender(musicLabel, prompt)
 			if err != nil {
-				return "Music generation failed (" + model + "): " + err.Error(), true, nil
+				return "Could not start the compose: " + err.Error(), true, nil
 			}
-			if response == nil || len(response.Audio) == 0 {
-				return "Music generation returned no audio (" + model + ")", true, nil
-			}
-			// Paid for before it is saved, on the session's pocket and no turn's
-			// — tools_image.go states the reason.
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
+			fmt.Fprintf(started.sink, "composing on %s: %s\n", model, firstLine(prompt))
 
-			path, err := a.mediaDestination(parsed.Path, prompt, musicFileExtension(response.Format),
-				MusicDir(a.config.Place, a.config.Workspace))
-			if err != nil {
-				return "Could not save the generated music: " + err.Error(), true, nil
-			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return "Could not save the generated music: " + err.Error(), true, nil
-			}
-			if err := os.WriteFile(path, response.Audio, 0o644); err != nil {
-				return "Could not save the generated music: " + err.Error(), true, nil
-			}
-			RecordArtifact(a.config.ArtifactsIndex, Artifact{
-				Path:    path,
-				Session: a.journalID(),
-				Title:   mediaTitle(prompt, path),
-				Kind:    "audio",
-				Created: time.Now(),
-			})
-			return describeGeneratedMusic(a.config.Workspace, path, len(response.Audio), model), false, nil
+			go a.composeMusic(ctx, client, started, provider.MusicRequest{
+				Model: model, Prompt: prompt,
+			}, parsed.Path, model)
+
+			// The id, the model and the log, and nothing else — the RESULT
+			// arrives as a note, by tools_video.go's law exactly.
+			return fmt.Sprintf("job %d started; composing on %s — the finished piece arrives as a note naming the file. Log at %s",
+				started.id, model, started.logPath), false, nil
 		},
 	}
 }
 
-// describeGeneratedMusic is the whole result: where it is, how big it is, who
-// composed it. There is no duration, for [describeGeneratedAudio]'s reason —
-// nothing here decodes the file, and a guessed length is worse than none
-// (design-law §EMPTINESS). The format is read off the NAME the file was
-// actually saved under rather than restated, so the sentence cannot describe a
-// file that is not there.
+// composeMusic is the job's whole middle, [Agent.renderVideo]'s twin: wait for
+// the provider, land the bytes, record the row, and say one sentence about how
+// it went. It runs on the registry's background context, so it survives the
+// turn that started it and dies to `jobs kill` and to Close like any other
+// job; the only audience for a failure is the model, which hears it in the
+// note.
+func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composing *job, request provider.MusicRequest, asked, model string) {
+	response, err := client.GenerateMusic(ctx, request)
+	if err != nil {
+		a.failMusic(composing, musicFailure(model, err))
+		return
+	}
+	if response == nil || len(response.Audio) == 0 {
+		a.failMusic(composing, "music generation returned no audio ("+model+")")
+		return
+	}
+	// Paid for before it is saved, on the SESSION's pocket and no turn's — the
+	// turn that submitted it has usually ended by now (tools_image.go states
+	// the law).
+	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
+
+	path, err := a.mediaDestination(asked, request.Prompt, musicFileExtension(response.Format),
+		MusicDir(a.config.Place, a.config.Workspace))
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(path), 0o755)
+	}
+	if err == nil {
+		err = os.WriteFile(path, response.Audio, 0o644)
+	}
+	if err != nil {
+		a.failMusic(composing, "could not save the generated music: "+err.Error())
+		return
+	}
+	RecordArtifact(a.config.ArtifactsIndex, Artifact{
+		Path:    path,
+		Session: a.journalID(),
+		Title:   mediaTitle(request.Prompt, path),
+		Kind:    "audio",
+		Created: time.Now(),
+	})
+
+	landed := describeGeneratedMusic(a.config.Workspace, path, len(response.Audio), model)
+	fmt.Fprintln(composing.sink, landed)
+	a.jobs.finish(composing, 0, fmt.Sprintf("job %d finished: %s", composing.id, landed))
+}
+
+// failMusic ends a compose that produced nothing, [Agent.failVideo]'s twin:
+// exit code 1, the reason in the log, the same sentence as the note.
+func (a *Agent) failMusic(composing *job, reason string) {
+	fmt.Fprintln(composing.sink, reason)
+	a.jobs.finish(composing, 1, fmt.Sprintf("job %d failed: %s", composing.id, reason))
+}
+
+// musicFailure is the one sentence a failed compose says, with the provider's
+// own cause in it. A cancellation is named plainly rather than as a Go error
+// string, because "context canceled" is a sentence about plumbing and "was
+// stopped" is a sentence about what happened.
+func musicFailure(model string, err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "music generation was stopped (" + model + "); no music was saved"
+	}
+	return "music generation failed (" + model + "): " + clip(firstLine(err.Error()), jobExitNoteLimit)
+}
+
+// describeGeneratedMusic is what the note and the log both say: where it is,
+// how big it is, who composed it. There is no duration, for
+// [describeGeneratedAudio]'s reason — nothing here decodes an mp3, whose
+// framing carries no stated length the way an mp4's movie header does, and a
+// guessed length is worse than none (design-law §EMPTINESS). The format is
+// read off the NAME the file was actually saved under rather than restated, so
+// the sentence cannot describe a file that is not there.
 func describeGeneratedMusic(workspace, path string, size int, model string) string {
 	format := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
 	return fmt.Sprintf("%s — %s of %s audio, composed by %s",

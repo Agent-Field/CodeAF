@@ -1,6 +1,7 @@
 package session
 
-// generate_video: the belt's one verb that ANSWERS BEFORE IT IS FINISHED.
+// generate_video: a verb that ANSWERS BEFORE IT IS FINISHED — the belt's first;
+// generate_music (tools_music.go) now keeps the same law.
 //
 // /videos is submit-then-poll on the wire, and a render is minutes rather than
 // seconds — ten of them, at the provider's own ceiling. Every other tool on this
@@ -145,7 +146,7 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 				FrameImages:     frames,
 				InputReferences: styles,
 			}
-			started, ctx, err := a.jobs.startVideo(videoLabel, prompt)
+			started, ctx, err := a.jobs.startRender(videoLabel, prompt)
 			if err != nil {
 				return "Could not start the video render: " + err.Error(), true, nil
 			}
