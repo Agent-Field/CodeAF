@@ -18,6 +18,11 @@ package tui3
 //
 // Both keep their bodies exactly as they drew them. What changed is the frame
 // around them and the keyboard, which is the whole of what this wave claimed.
+//
+// WHAT IS LEFT IN THIS FILE IS THE SHARED FOOT AND NOTHING ELSE. A place's own
+// frame lives in that place's own file — `place_memory.go`, `place_spend.go`,
+// `place_search.go` — because a router file that knew how one place draws is
+// the shape ARCHITECTURE.md exists to retire.
 
 // placeHeadRows is how many rows every place spends before its body: the pulse,
 // the tab bar, the rule, and the blank under it (pages.go's [placeFrame]).
@@ -55,40 +60,6 @@ func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
 // the chrome does not draw this list any more; a hover resolved against a map
 // nobody writes would be a highlight on whatever row it used to be.
 func (a *app) standPageHover() int { return -1 }
-
-// memoryFrame draws the memory place: the shelves, or the one line whose card
-// is open.
-//
-// THE BODY IS A READING AND THE READING IS PURE (memoryplace.go's [readMemory]).
-// Nothing here opens the store, and the reading itself was built when the
-// snapshot, the filter or a fold last changed — so a resize is a re-measure of
-// words already decided rather than five hundred rows re-ranked.
-func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
-	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
-		p := &a.memPanel
-		var body []string
-		switch {
-		case p.expanded != "":
-			body = p.card(width, a.pal)
-		default:
-			body = p.reading.rows(width, a.pal)
-		}
-		rows := make([]placeRow[int], 0, room)
-		for i, text := range body {
-			if len(rows) >= room {
-				break
-			}
-			if _, stop := p.reading.at(i); stop && p.expanded == "" && i == p.cursor {
-				text = a.pal.selected(text, width)
-			}
-			rows = append(rows, placeRow[int]{text: text, hit: i})
-		}
-		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
-		}
-		return rows
-	})
-}
 
 // placeNote is the one line a place says about what it is holding, drawn under
 // the rule and above the composer (pages.go's [placeFrame] states the law).
