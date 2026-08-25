@@ -2981,13 +2981,39 @@ func (a *app) railView(height int) ([]railLine, int) {
 	a.railCramped = false
 	// A SECTION EARNS ITS LABEL FROM A REAL ROW. The typeable doors remain when
 	// nothing exists, while the emptiness law spends no pixels naming absence.
-	lines := append(a.marginHead(room, len(entries) > 0), a.railLines(entries, room)...)
-	lines = append(lines, a.marginRows(room)...)
+	head := a.marginHead(room, len(entries) > 0)
+	lines := a.railLines(entries, room)
 	foot, hint, door, more := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
 		body, foot, hint, door, more = height, nil, -1, -1, -1
 	}
+
+	// ── THE COLUMN IS A BUDGET AND NOT A STACK ────────────────────────────────
+	//
+	// Four things share thirty columns of somebody's screen — the label, the
+	// roster, the two sections under it (margin.go), and the footer — and they
+	// used to be simply concatenated into one scrolling list. Which meant the
+	// roster, the one part with no upper bound, could take all of it: thirteen
+	// landed jobs pushed `standing` to the last row of the window, cut off, and
+	// the orders that govern the conversation were reachable only by scrolling
+	// past a wall of history. A list that can grow without limit will starve
+	// anything stacked under it, every time.
+	//
+	// SO EVERY SECTION BUT THE ROSTER IS RESERVED FIRST, AND THE ROSTER TAKES WHAT
+	// IS LEFT. The label is pinned above the window because a heading that scrolls
+	// away is a heading nobody has when they need it; the footer is already
+	// measured out of the body above; and the two sections under the roster are
+	// asked for a block that fits the rows they are allowed
+	// ([app.marginRows] and [marginStandFit] state what they give up first).
+	// Only then is the roster's window measured, and it is still the same
+	// [listTop] scrolling the same offset — a budget is not a second scroller.
+	//
+	// AND THE ROSTER OUTRANKS THEM WHEN THERE IS NOTHING LEFT. A frame too short
+	// for both drops the reserved block rather than the work: the doors are
+	// geography and the work is the news.
+	margin := a.marginRows(room, marginRoomFor(body-len(head), len(lines)))
+	window := max(body-len(head)-len(margin), 0)
 
 	// WORK THAT IS STILL GOING IS NEVER SCROLLED OFF THIS COLUMN. The families
 	// are already sorted so that everything live leads ([app.railForest]), and
@@ -3003,13 +3029,13 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// names ([taskSheetMoreHint], taskview.go) rather than a live row quietly
 	// dropped.
 	pin := 0
-	if body > 1 {
-		pin = min(a.railMovingHead(lines, entries), body-1)
+	if window > 1 {
+		pin = min(a.railMovingHead(lines, entries), window-1)
 	}
 	tail := lines[pin:]
-	// The rows the WINDOW gets, which is what is left of the body once the pinned
-	// head has taken its own.
-	scroll := body - pin
+	// The rows the WINDOW gets, which is what is left of the roster's own share
+	// once the pinned head has taken its own.
+	scroll := window - pin
 
 	// The cursor the window follows is the focused entry's first line, and the
 	// offset itself when nothing is focused: a roster nobody is navigating stays
@@ -3028,9 +3054,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	a.railTop = listTop(max(cursor-pin, 0), a.railTop, len(tail), scroll)
 
 	out := make([]railLine, 0, height)
+	out = append(out, head...)
 	out = append(out, lines[:pin]...)
 	i := a.railTop
-	for ; i < len(tail) && len(out) < body; i++ {
+	for ; i < len(tail) && len(out) < len(head)+window; i++ {
 		out = append(out, tail[i])
 	}
 	// A LONG LIST'S TAIL FADES WITH DEPTH — NEVER STRIPES (depthfade.go). The
@@ -3040,15 +3067,23 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// and say there is more of this than fits. A column whose last entry is on
 	// screen fades nothing: there is nothing below it to point at.
 	//
-	// The depth is measured over the whole body and not just the scrolling part,
-	// because the pinned live head is the sharpest head this column has: work
-	// that is still going leads the column by construction, and the fade walking
-	// away from it is exactly the shape the pin was already drawing.
+	// The depth is measured over the label and the pinned head as well as the
+	// scrolling part, because the pinned live head is the sharpest head this
+	// column has: work that is still going leads the column by construction, and
+	// the fade walking away from it is exactly the shape the pin was already
+	// drawing. It stops at the ROSTER'S OWN LAST ROW rather than at the bottom of
+	// the column — what is under it is the reserved block, which is not the list
+	// being cut off and must not read as the quiet end of one.
 	for at := range out {
-		if stop := tailStop(at, body, i < len(tail)); stop >= 0 {
+		if stop := tailStop(at, len(out), i < len(tail)); stop >= 0 {
 			out[at].fade = stop + 1
 		}
 	}
+	// THE RESERVED BLOCK FOLLOWS THE WORK RATHER THAN THE FRAME'S BOTTOM EDGE, so
+	// a session with three tasks in it draws exactly the column it always drew —
+	// the door directly under the last row — and a session with three hundred
+	// draws the same block in the same order, one window further down.
+	out = append(out, margin...)
 	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED IS LEFT BLANK. It used to be
 	// filled with a dulled sample of the project's record; that record is the task
 	// page's, and the foot of this column names the door onto it (taskview.go says
@@ -3489,6 +3524,50 @@ func (a *app) railMove(delta int) {
 	a.touch()
 }
 
+// railWheelAt reports whether a wheel turned at these coordinates belongs to the
+// side column — the pointer is over the column's cells AND over a row the column
+// actually drew.
+//
+// THE SECOND HALF IS NOT PEDANTRY. [app.railAt] answers about the whole right
+// strip of the frame at every height, which is what a press wants; a wheel wants
+// the drawn rows, because the strip also runs behind the top chrome and the draft
+// box, and a turn over the status line is a turn over the conversation's
+// furniture rather than over the roster.
+func (a *app) railWheelAt(x, y int) bool {
+	if a.railFull() || !a.railAt(x, y) {
+		return false
+	}
+	_, ok := a.railLineAt(y)
+	return ok
+}
+
+// railScroll is the wheel's answer over the column, and it moves the SAME offset
+// the keyboard moves ([app.railTop], resolved by [listTop] in [app.railView]).
+// There is one scroller on this column and there will never be two.
+//
+// WHILE THE ROSTER HOLDS THE KEYBOARD THE WHEEL WALKS THE CURSOR, which is the
+// bargain the full-frame roster already makes (app.go's wheel): the window
+// follows the focus while there is one, so an offset nudged out from under it
+// would be undone by the next layout and the column would read as a list that
+// refuses to move. Without a focus there is no cursor to walk and the offset is
+// the whole of the state, so the wheel moves it directly.
+//
+// THE BOTTOM IS CLAMPED WHERE EVERY OTHER LIST CLAMPS IT. [listTop] holds the
+// offset inside the line count on the layout that follows, so a wheel spun past
+// the end of a short roster lands on the last window rather than on blank rows —
+// and this is deliberately not clamped twice, because the line count is a fact
+// the layout holds and a second copy of it here is the copy that would drift.
+func (a *app) railScroll(delta int) {
+	if a.railHold {
+		a.railMove(delta)
+		return
+	}
+	if top := max(a.railTop+delta, 0); top != a.railTop {
+		a.railTop = top
+		a.touch()
+	}
+}
+
 // railCursorTo parks the cursor at one row of that list.
 func (a *app) railCursorTo(entries []railEntry, at int) {
 	if at < 0 || at >= len(entries) {
@@ -3499,8 +3578,12 @@ func (a *app) railCursorTo(entries []railEntry, at int) {
 
 // railOut is →, and it is the tree grammar every file manager a person has used
 // spells the same way: on a folded root it OPENS the family, and on a family
-// already open it steps INTO it, onto the first child. On a leaf it does
-// nothing — there is nothing further out to go.
+// already open it steps INTO it, onto the first child.
+//
+// ON A LANDED ROW IT OPENS THE ROW'S OWN BLOCK, which is the same grammar one
+// scale down: → is "show me what is inside this", and what is inside a row that
+// has come home is the branch it kept or the log it wrote ([app.railTucks]). On
+// anything else it does nothing — there is nothing further out to go.
 func (a *app) railOut() {
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
@@ -3509,6 +3592,9 @@ func (a *app) railOut() {
 	}
 	e := entries[at]
 	if !e.root {
+		if a.railTuckShut(e.node) && a.railTucks(e) {
+			a.railSetOpen(e.node, true)
+		}
 		return
 	}
 	if e.folded {
@@ -3521,8 +3607,9 @@ func (a *app) railOut() {
 	}
 }
 
-// railIn is ←, and it is the mirror: on an open root it FOLDS the family, and
-// anywhere else it walks up to the parent row.
+// railIn is ←, and it is the mirror: on an open root it FOLDS the family, on a
+// landed row whose block is showing it tucks the block back away, and anywhere
+// else it walks up to the parent row.
 //
 // THE CURSOR NEVER STAYS ON A ROW THE FOLD TOOK AWAY. Folding from the root
 // leaves it on the root, which is the row the family is now standing in; jumping
@@ -3535,6 +3622,10 @@ func (a *app) railIn() {
 	}
 	e := entries[at]
 	if e.root && !e.folded {
+		a.railSetOpen(e.node, false)
+		return
+	}
+	if !e.root && !a.railTuckShut(e.node) && a.railTucks(e) {
 		a.railSetOpen(e.node, false)
 		return
 	}
@@ -3990,29 +4081,82 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 
 // railSaysMore reports whether this row is allowed the block under its title.
 //
-// A SETTLED NODE IN A TREE IS ONE LINE. A family is drawn whole, which means the
-// rows that landed are on screen to make the rows that have not landed legible —
-// and a merge word and a price under each of them is a second column of history
-// inside a shape somebody is reading for its shape. So inside a family only the
-// rows that are still going somewhere say anything more: what is running, and
-// what is waiting on a person. A folded root says nothing extra either — it is
-// standing for a whole subtree, and one row is the point of it.
+// A SETTLED NODE IS ONE LINE, WHEREVER IT STANDS. A family is drawn whole, which
+// means the rows that landed are on screen to make the rows that have not landed
+// legible — and a merge word and a price under each of them is a second column of
+// history inside a shape somebody is reading for its shape. So only the rows that
+// are still going somewhere say anything more: what is running, and what is
+// waiting on a person. A folded root says nothing extra either — it is standing
+// for a whole subtree, and one row is the point of it.
 //
-// A ROW WITH NO FAMILY AROUND IT IS UNCHANGED, and that is deliberate: it is the
-// column this surface has always drawn, where the block under the title is the
-// only place a branch that did not merge or a prerequisite's name is ever said.
+// AND THE FLAT ROW FOLLOWS THE SAME LAW, which is the thing that changed. A row
+// with no family around it used to keep its block forever, so thirteen jobs that
+// had all landed hours ago spent thirty-nine lines of a thirty-cell column
+// restating history, and the standing section under them was squeezed to a single
+// cut-off row. The column exists to say what is alive; space it spends on what is
+// over is space taken from what is not.
+//
+// WHAT IS QUEUED IS NOT SETTLED, and a flat one keeps its line: `waits: Collect
+// sources` is the only place this surface says what is in the way, and inside a
+// family the sibling above it is that answer already.
+//
+// AND NOTHING IS THROWN AWAY — it is TUCKED. A landed flat row that had something
+// to say folds it behind the same disclosure a family root wears, opened with →
+// or a press on the glyph cell and remembered in the same map ([app.railOpen]).
+// So the branch a stopped run kept and the log a job wrote are one gesture away
+// rather than gone; see [app.railTucks].
 func (a *app) railSaysMore(e railEntry) bool {
 	if e.folded {
 		return false
 	}
-	if !e.root && len(e.stems) == 0 {
-		return true
-	}
-	switch a.railGroupOf(e.node) {
+	group := a.railGroupOf(e.node)
+	switch group {
 	case railRunning, railAttention:
 		return true
 	}
-	return e.node.Paused()
+	if e.node.Paused() {
+		return true
+	}
+	if e.root || len(e.stems) > 0 {
+		return false
+	}
+	if group == railDone {
+		return !a.railTuckShut(e.node)
+	}
+	return true
+}
+
+// railTucks reports whether this row folds ITS OWN BLOCK — the landed flat row,
+// open or shut, and nothing else on the column.
+//
+// IT ASKS WHETHER THERE IS ANYTHING BEHIND THE DISCLOSURE, at the width the block
+// would be drawn at, because a triangle on a row with nothing under it is an
+// affordance that answers a press with silence. A node that came home clean with
+// no price to report has nothing tucked, and its glyph cell stays its state.
+//
+// It is asked of ONE row at a time — the row under the pointer, and the row a key
+// arrived on — and never down the whole column, which is why the layout reads
+// [app.railSaysMore] instead: that question is answered from the fold map alone,
+// and this one renders a block to answer.
+func (a *app) railTucks(e railEntry) bool {
+	if e.node == nil || e.root || e.folded || len(e.stems) > 0 {
+		return false
+	}
+	if a.railGroupOf(e.node) != railDone {
+		return false
+	}
+	return len(a.railUnder(e.node, a.railRoom()-a.railUnderCols(e))) > 0
+}
+
+// railTuckShut reports whether a landed flat row is holding its block back.
+//
+// THE DEFAULT IS SHUT AND THE MAP IS THE PERSON'S CORRECTION OF IT, which is
+// [app.railShut]'s own bargain said about one row instead of a family — and it is
+// the same map, so a row and a family are folded by the same gesture and undone
+// by it too. It is spelled separately because [app.railShut] answers by regrowing
+// the node's family, which the layout may not pay for once a row.
+func (a *app) railTuckShut(node *taskNode) bool {
+	return node == nil || !a.railOpen[node.id]
 }
 
 // railNodeRows is one node with no family around it — the flat row, and the
@@ -4029,6 +4173,11 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 // on the row moves — because the affordance is worth exactly as much as the
 // state for the one moment there is a hand on it. At rest the column is states
 // all the way down.
+//
+// AND A LANDED ROW WITH ITS BLOCK TUCKED AWAY OFFERS THE SAME CELL, because it is
+// the same gesture on the same map ([app.railTucks]). One fold vocabulary down
+// the column: what is hiding something says so under the hand, and ▸ opens it
+// whether what it is hiding is a subtree or two lines of its own history.
 func (a *app) railLead(e railEntry) (string, string) {
 	glyph := a.railTreeGlyph(e.node)
 	if e.folded && e.worst != nil {
@@ -4037,9 +4186,9 @@ func (a *app) railLead(e railEntry) (string, string) {
 		// rather than what its root happens to be doing.
 		glyph = a.railTreeGlyph(e.worst)
 	}
-	if e.root && a.hoveringRail(e.node) {
+	if a.hoveringRail(e.node) && (e.root || a.railTucks(e)) {
 		mark := a.linearMark(glyphOpen, glyphOpenASCII)
-		if e.folded {
+		if e.folded || (!e.root && a.railTuckShut(e.node)) {
 			mark = a.linearMark(glyphShut, glyphShutASCII)
 		}
 		glyph = a.pal.accent(mark)
