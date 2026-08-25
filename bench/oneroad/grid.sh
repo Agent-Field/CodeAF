@@ -16,6 +16,11 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASKS="${TASKS:-20 21 22 23 batch}"
 MAX_WAVES="${MAX_WAVES:-3}"
+# ARMS lets one grid run a SUBSET of the arms over the same tasks, which is what
+# a follow-up wave is: wave 1b re-asks the identical five tasks of two new arms
+# and must not re-run the eight rows that already landed. Empty is every arm,
+# which is what wave 1 wanted.
+ARMS="${ARMS:-}"
 
 mkdir -p "$ROOT/results"
 echo "grid $$ $(date -Is)" >> "$ROOT/results/PIDS"
@@ -24,8 +29,8 @@ for task in $TASKS; do
   # Wait for a wave to land before firing the next, so the cap holds without a
   # scheduler: `jobs -r` is this shell's own count of waves still in the air.
   while [ "$(jobs -r | wc -l)" -ge "$MAX_WAVES" ]; do sleep 20; done
-  bash "$ROOT/wave.sh" "$task" > "$ROOT/results/.wave-$task.out" 2>&1 &
-  echo "wave-$task $! $(date -Is)" >> "$ROOT/results/PIDS"
+  SEED="${SEED:-s1}" bash "$ROOT/wave.sh" "$task" $ARMS > "$ROOT/results/.wave-${WAVE_TAG:-}$task.out" 2>&1 &
+  echo "wave-${WAVE_TAG:-}$task $! $(date -Is)" >> "$ROOT/results/PIDS"
   sleep 5
 done
 wait
