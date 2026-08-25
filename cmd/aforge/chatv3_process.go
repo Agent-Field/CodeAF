@@ -288,6 +288,13 @@ func (p *v3Process) closeAll() {
 	}
 	waiting.Wait()
 
+	// The ledger's background writer is drained AFTER the agents have closed,
+	// because closing an agent can seal a last turn and a seal records a line.
+	// It is the same bargain the recall store's Close makes one line below: a
+	// queue written on the way out, so the last thing a person did is on disk
+	// before the terminal comes back.
+	session.FlushUsage()
+
 	if recall != nil {
 		_ = recall.Close()
 	}

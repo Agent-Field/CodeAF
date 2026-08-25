@@ -11,6 +11,16 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// recordUsage writes one line AND WAITS for it to reach the disk, which is what
+// a test wants and what a turn must never do: [RecordUsage] hands the row to a
+// background writer, so a test that read the file straight afterwards — or wrote
+// its own next byte to it — would be racing that writer.
+func recordUsage(t *testing.T, path string, line UsageLine) {
+	t.Helper()
+	RecordUsage(path, line)
+	FlushUsage()
+}
+
 func usageAt(t *testing.T, day string) time.Time {
 	t.Helper()
 	at, err := time.ParseInLocation("2006-01-02 15:04", day, time.Local)
@@ -25,7 +35,7 @@ func usageAt(t *testing.T, day string) time.Time {
 func TestAUsageLineComesBackTheWayItWasWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spend", UsageLedgerName)
 	at := usageAt(t, "2026-08-25 13:11")
-	RecordUsage(path, UsageLine{
+	recordUsage(t, path, UsageLine{
 		At: at, Model: "opus-4.1", Role: "title", Calls: 3,
 		Input: 1200, Output: 340, USD: 0.42,
 		Session: "aaaa1111aaaa1111", Task: "7", Standing: "", Workspace: "/repo",
@@ -60,7 +70,7 @@ func TestAUsageLineComesBackTheWayItWasWritten(t *testing.T) {
 // nothing was spent, and a row of zeroes would make it look measured.
 func TestACallThatSpentNothingWritesNoLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
-	RecordUsage(path, UsageLine{At: time.Now(), Model: "opus-4.1", Calls: 1})
+	recordUsage(t, path, UsageLine{At: time.Now(), Model: "opus-4.1", Calls: 1})
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("a zero call created a ledger")
 	}
@@ -78,7 +88,7 @@ func TestACallThatSpentNothingWritesNoLine(t *testing.T) {
 func TestABadLineCostsOneRowAndNotTheLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-24 09:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.01})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.01})
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -87,7 +97,7 @@ func TestABadLineCostsOneRowAndNotTheLedger(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	file.Close()
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.02})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.02})
 
 	lines, err := ReadUsage(path, time.Time{})
 	if err != nil {
@@ -104,7 +114,7 @@ func TestReadUsageKeepsTheFloorAndDropsWhatIsBelowIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	floor := usageAt(t, "2026-08-20 12:00")
 	for _, at := range []time.Time{floor.Add(-time.Hour), floor, floor.Add(time.Hour)} {
-		RecordUsage(path, UsageLine{At: at, Model: "m", Calls: 1, Input: 5, USD: 0.01})
+		recordUsage(t, path, UsageLine{At: at, Model: "m", Calls: 1, Input: 5, USD: 0.01})
 	}
 	lines, err := ReadUsage(path, floor)
 	if err != nil {
@@ -124,7 +134,7 @@ func TestReadUsageKeepsTheFloorAndDropsWhatIsBelowIt(t *testing.T) {
 func TestTheCacheReadsOnlyWhatWasAppended(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
 
 	cache := &UsageCache{Path: path}
 	first, err := cache.Read(time.Time{})
@@ -146,7 +156,7 @@ func TestTheCacheReadsOnlyWhatWasAppended(t *testing.T) {
 
 	// Grown by one line: the cache must hold two and must have read only the
 	// second one's bytes.
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	// A modification time with a one-second resolution would otherwise make the
 	// second write invisible; the size changed too, and the cache tests both.
 	grown, err := cache.Read(time.Time{})
@@ -170,7 +180,7 @@ func TestTheCacheStartsOverWhenTheLedgerShrinks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
 	for i := 0; i < 4; i++ {
-		RecordUsage(path, UsageLine{At: at.Add(time.Duration(i) * time.Hour), Model: "a", Calls: 1, Input: 10, USD: 0.10})
+		recordUsage(t, path, UsageLine{At: at.Add(time.Duration(i) * time.Hour), Model: "a", Calls: 1, Input: 10, USD: 0.10})
 	}
 	cache := &UsageCache{Path: path}
 	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 4 {
@@ -179,7 +189,7 @@ func TestTheCacheStartsOverWhenTheLedgerShrinks(t *testing.T) {
 	if err := os.Truncate(path, 0); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
-	RecordUsage(path, UsageLine{At: at.Add(9 * time.Hour), Model: "z", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at.Add(9 * time.Hour), Model: "z", Calls: 1, Input: 10, USD: 0.10})
 	lines, err := cache.Read(time.Time{})
 	if err != nil {
 		t.Fatalf("read after truncate: %v", err)
@@ -198,6 +208,7 @@ func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {
 		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
 	})
 	agent.sealTurn(Usage{Input: 900, Output: 120, CostUSD: 0.31, Calls: 2}, time.Now().Add(-time.Second), "opus-4.1")
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil {
@@ -237,6 +248,7 @@ func TestFoldingAChildsTallyWritesNoSecondLedgerLine(t *testing.T) {
 	agent.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens: 800, CompletionTokens: 200, Cost: &cost,
 	}}, "sonnet-4.5", 12)
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil {
@@ -263,6 +275,7 @@ func TestAStandingFiringsLineNamesTheItem(t *testing.T) {
 		config.taskID = 4
 	})
 	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.004, Calls: 1}, time.Now(), "haiku-4.5")
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil || len(lines) != 1 {
@@ -301,7 +314,7 @@ func TestAConversationLineSpellsNoEmptyIds(t *testing.T) {
 func TestAHalfWrittenLineIsReadWholeOnTheNextLook(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
 
 	whole, err := json.Marshal(UsageLine{At: at.Add(time.Hour), Day: "2026-08-25", Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	if err != nil {
@@ -350,7 +363,7 @@ func TestTheTailOffsetCountsEveryByteOfALine(t *testing.T) {
 	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 1 {
 		t.Fatalf("first read gave %d lines, %v", len(lines), err)
 	}
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	lines, err := cache.Read(time.Time{})
 	if err != nil {
 		t.Fatalf("second read: %v", err)
