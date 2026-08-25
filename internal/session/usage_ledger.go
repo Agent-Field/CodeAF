@@ -464,8 +464,18 @@ func usageTaskID(id uint64) string {
 // after every single turn, and re-parse a year of spending to learn about one
 // new line. So the cache is keyed on how far it has already read: an unchanged
 // file answers from memory, a GROWN file is read from where the last read
-// stopped, and only a file that shrank — truncated, rotated, replaced — is read
-// again from the beginning.
+// stopped, and a file that is not the one it was reading is read again from the
+// beginning.
+//
+// "NOT THE ONE IT WAS READING" IS AN IDENTITY QUESTION AND NOT A SIZE ONE. A
+// ledger that is rotated away and replaced grows back, and a cache that asked
+// only "is it shorter than what I have parsed" would meet the replacement after
+// it had passed that mark, keep the rows of a file that is gone, and seek into
+// the new one past a prefix it never read — two ledgers added together, with
+// somebody else's morning missing out of the middle. So the cache remembers WHICH
+// file it read ([os.SameFile], which is the device and inode the filesystem
+// reports) and how long it was, and it starts over the moment either says this
+// is a different file or a shorter one.
 //
 // It holds every line it has ever parsed, which is the one thing that makes the
 // tail read possible. That is bounded by [usageCacheLines]: past it the oldest
@@ -485,6 +495,10 @@ type UsageCache struct {
 	read int64
 	size int64
 	mod  time.Time
+	// info is the file those figures are about — kept whole rather than as a
+	// device and an inode of this cache's own choosing, because [os.SameFile] is
+	// the one comparison that is right on every filesystem Go runs on.
+	info os.FileInfo
 	// loaded says a first read has happened, so that a genuinely empty ledger is
 	// distinguishable from one nobody has looked at yet.
 	loaded bool
@@ -514,24 +528,41 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	case errors.Is(err, fs.ErrNotExist):
 		// A machine that has spent nothing. The cache remembers that it looked,
 		// so a ledger that appears later is picked up on the next beat.
-		c.lines, c.read, c.size, c.mod, c.loaded = nil, 0, 0, time.Time{}, true
+		c.lines, c.read, c.size, c.mod, c.info, c.loaded = nil, 0, 0, time.Time{}, nil, true
 		return nil, nil
 	case err != nil:
 		return c.since(since), err
 	}
-	if c.loaded && info.Size() == c.size && info.ModTime().Equal(c.mod) {
+	// SAME FILE is asked FIRST, and it is asked here as well as below: a
+	// replacement that happens to have the size and the modification time of the
+	// file it replaced would otherwise be answered out of memory forever.
+	same := c.loaded && c.info != nil && os.SameFile(info, c.info)
+	if same && info.Size() == c.size && info.ModTime().Equal(c.mod) {
 		return c.since(since), nil
 	}
-	if !c.loaded || info.Size() < c.read {
-		// Shorter than what we have already parsed: this is a different file
-		// wearing the same name, and nothing we hold is about it.
-		c.lines, c.read = nil, 0
+	if !same || info.Size() < c.size || info.Size() < c.read {
+		// Either a different file wearing the same name, or the same one
+		// truncated back under what we have already read. Nothing held is about
+		// it, and the read starts at nothing — which is also what keeps the seek
+		// below from ever landing past a prefix this cache did not read.
+		c.lines, c.read, c.full = nil, 0, false
 	}
 	file, err := os.Open(path)
 	if err != nil {
 		return c.since(since), err
 	}
 	defer file.Close()
+	// THE FILE THAT WAS STAT'ED AND THE FILE THAT IS OPEN NEED NOT BE THE SAME
+	// ONE — a rotation can land between the two calls — so identity is asked
+	// again, of the descriptor actually about to be read. What this protects is
+	// the seek: reading from an offset into a file whose first bytes this cache
+	// never saw would lose that prefix silently and forever.
+	if opened, err := file.Stat(); err == nil {
+		if c.read > 0 && (c.info == nil || !os.SameFile(opened, c.info) || opened.Size() < c.read) {
+			c.lines, c.read, c.full = nil, 0, false
+		}
+		info = opened
+	}
 	if c.read > 0 {
 		if _, err := file.Seek(c.read, io.SeekStart); err != nil {
 			// A seek that fails leaves the cache exactly as it was rather than
@@ -545,7 +576,7 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	fresh, consumed, scanErr := scanUsage(file, time.Time{})
 	c.lines = append(c.lines, fresh...)
 	c.read += consumed
-	c.size, c.mod, c.loaded = info.Size(), info.ModTime(), true
+	c.size, c.mod, c.info, c.loaded = info.Size(), info.ModTime(), info, true
 	if len(c.lines) > usageCacheLines {
 		c.lines = c.lines[len(c.lines)-usageCacheLines:]
 		c.full = true
