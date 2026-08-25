@@ -1421,6 +1421,16 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
+	// switchGrouped is `alt+g` and switchQuiet is `alt+q`: the two views home's
+	// list can be shown in (homeswitch.go).
+	//
+	// THEY ARE ON THE APP BECAUSE THEY OUTLIVE THE SCREEN AND NOTHING ELSE. A
+	// person who grouped the list expects it grouped the next time they open home
+	// in this terminal, and expects to have chosen a view rather than to have
+	// found a preference they now own — so the flags live for as long as the
+	// process does, and nothing writes them to a disk.
+	switchGrouped bool
+	switchQuiet   bool
 	// errand builds the agent behind `ask here` and standingRoot is where its
 	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a

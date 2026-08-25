@@ -3,7 +3,7 @@ package tui3
 // THE SECTION THAT HOLDS THE CURSOR SAYS SO ON ITS OWN HEADING.
 //
 // Home is several regions at once — two zones of triage, a list of projects, a
-// card — and at [homeTierColumns] they stand side by side as three columns. The
+// card — and past [homeCardMin] they stand side by side. The
 // row under the cursor wears THE GROUND LADDER's cursor step, which is a very
 // quiet tint on purpose (1.17:1 against an ordinary terminal ground), and that
 // tint answers "which ROW am I on" perfectly while answering "which REGION is
@@ -72,7 +72,7 @@ package tui3
 // wearing a ground it did not earn. An honest silence beats a confident mark on
 // the section above.
 func sectionEnd(kind homeRowKind) bool {
-	return kind == homeBlank || kind == homeAttentionGap
+	return kind == homeBlank
 }
 
 // markedSection is the line number of THE ONE HEADING THIS FRAME MARKS, and

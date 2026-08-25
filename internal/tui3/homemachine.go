@@ -35,6 +35,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -164,22 +165,40 @@ func (a *app) sampleHands(hands int) {
 // rows the moving zone gathers ([homeView.attentionMoving]).
 //
 // ONE ROW IS NOT ALWAYS ONE HAND. A conversation with three task nodes out is
-// one row and three things being done, and the zone already carries that figure
-// on the row as [homeAttention.busy] because it sorts by it. A row with no
-// count — a conversation merely mid-turn, an errand answering, an order firing —
-// is one hand: something IS being done there, and the machine has no finer
-// number for it than "this".
+// one row and three things being done, so it counts three. A row with no count —
+// a conversation merely mid-turn, an errand answering, an order firing — is one
+// hand: something IS being done there, and the machine has no finer number for
+// it than "this".
+//
+// IT IS COUNTED OFF THE READING AND NOT OFF THE COLUMN. The list caps what it
+// draws ([switcherShown]) and the pulse's figure is about the MACHINE, so a
+// count taken from the rows on screen would fall the moment a ninth thing
+// started — which is the opposite of what the figure means.
 func (a *app) machineHands() int {
 	hands := 0
-	for _, line := range a.home.attentionMoving() {
-		if line.zone == nil {
+	for _, row := range a.home.world.Sessions() {
+		if row.Archived || row.NeedsPerson() {
 			continue
 		}
-		if line.zone.busy > 1 {
-			hands += line.zone.busy
+		if row.Tasks.Running > 1 {
+			hands += row.Tasks.Running
 			continue
 		}
-		hands++
+		if row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking {
+			hands++
+		}
+	}
+	for _, views := range a.home.items {
+		for _, view := range views {
+			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
+				hands++
+			}
+		}
+	}
+	for _, ex := range a.home.exchanges {
+		if ex.working && !ex.waiting() {
+			hands++
+		}
 	}
 	return hands
 }
