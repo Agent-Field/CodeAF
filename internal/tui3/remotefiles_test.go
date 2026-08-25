@@ -3,10 +3,12 @@ package tui3
 import (
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -116,6 +118,34 @@ func (w *fakeWire) fetched() []string {
 	return append([]string(nil), w.fetchCalls...)
 }
 
+func (w *fakeWire) stats() [][]string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([][]string(nil), w.statCalls...)
+}
+
+// farFile puts one file on the fake far disk, with the facts a stat answers
+// about it. THE TWO HAVE TO BE COHERENT: the freshness rule compares what the
+// stat says now against what the stat said when the bytes crossed, so a fake
+// whose bytes and whose numbers disagree is a fake testing nothing.
+func (w *fakeWire) farFile(target, kind, body string, mtime int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.files[target] = remote.FetchedFile{
+		Name: path.Base(target), MIME: kind, Size: int64(len(body)), Bytes: []byte(body),
+	}
+	w.facts[target] = remote.PathFact{Exists: true, Size: int64(len(body)), ModTime: mtime}
+}
+
+// testClock is the two ages in remotefiles.go — how long a NO is believed, and
+// how long a dropped call buys quiet — moved by hand. Proving either by
+// sleeping would be twenty seconds of suite for what an assignment says.
+type testClock struct{ at time.Time }
+
+func (c *testClock) now() time.Time { return c.at }
+
+func (c *testClock) pass(d time.Duration) { c.at = c.at.Add(d) }
+
 // fakeDoor is the loopback listener without a listener: it mints ids the way
 // the real one does and remembers what it was asked for.
 type fakeDoor struct {
@@ -155,6 +185,14 @@ func hostedFixture(t *testing.T) (*app, *fakeWire, *fakeDoor) {
 	openDoor = func(_ filedoor.Source) (doorLinker, error) { return door, nil }
 	t.Cleanup(func() { openDoor = restore })
 	return a, wire, door
+}
+
+// clockOf pins one surface's clock and hands back the handle that moves it, so
+// a test can say "twenty seconds later" without waiting twenty seconds.
+func clockOf(a *app) *testClock {
+	c := &testClock{at: time.Unix(1_700_000_000, 0)}
+	a.rfiles.now = c.now
+	return c
 }
 
 // run turns one tea.Cmd into the message it produced, so a batched wire question
@@ -295,16 +333,97 @@ func TestRemoteWordIsAskedOncePerSession(t *testing.T) {
 	}
 }
 
-// A candidate the engine said nothing about is still written down as absent, or
-// it is a question this surface asks on every frame for the rest of the session.
+// A candidate the engine ANSWERED about — "there is nothing there" — is written
+// down as absent, or it is a question this surface asks on every frame for the
+// rest of the session.
 func TestRemoteUnansweredCandidateIsNotAskedForever(t *testing.T) {
 	a, wire, _ := hostedFixture(t)
-	wire.statErr = errors.New("engine: the connection to devbox has gone")
+	clockOf(a)
 	a.linkPaths([]string{"see pkg/one.go"})
 	a.remoteFactsBack(run(a.remoteStatKick()).(remoteFactsMsg))
 	a.linkPaths([]string{"see pkg/one.go"})
+	if a.remoteStatKick() != nil || len(wire.statCalls) != 1 {
+		t.Fatalf("a clean not-there was asked about again: %v", wire.statCalls)
+	}
+}
+
+// A CALL THAT DID NOT GET THROUGH IS NOT AN ANSWER, and this is the difference
+// between the two. Recording a dropped frame as absence blackholes up to a
+// whole batch of REAL files for the rest of the session — a confirmed word is
+// never re-asked, so the words that most deserve another question would be
+// precisely the ones that never got one.
+func TestADroppedStatDoesNotBlackholeThePathsItCarried(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
+	clock := clockOf(a)
+	wire.statErr = errors.New("engine: the connection to devbox has gone")
+	wire.facts["/srv/app/pkg/one.go"] = remote.PathFact{Exists: true, Size: 12, ModTime: 1}
+
+	a.linkPaths([]string{"see pkg/one.go"})
+	a.remoteFactsBack(run(a.remoteStatKick()).(remoteFactsMsg))
+	if fact, known := a.rfiles.facts["/srv/app/pkg/one.go"]; known {
+		t.Fatalf("a broken pipe was written down as a fact about the disk: %#v", fact)
+	}
+	// AND NOT ON THE VERY NEXT FRAME EITHER. The quiet window is what keeps a
+	// released word from becoming a question every frame while the link is down.
+	a.linkPaths([]string{"see pkg/one.go"})
 	if a.remoteStatKick() != nil {
-		t.Fatal("a word a failed call carried is being asked again")
+		t.Fatal("the surface went straight back at a wire that just failed")
+	}
+
+	// Past the window, and with the link back, the same word is asked again and
+	// this time it is a door.
+	clock.pass(remoteStatQuiet + time.Second)
+	wire.statErr = nil
+	a.linkPaths([]string{"see pkg/one.go"})
+	msg, ok := run(a.remoteStatKick()).(remoteFactsMsg)
+	if !ok {
+		t.Fatal("the word a dropped call carried was never asked again")
+	}
+	a.remoteFactsBack(msg)
+	rows := a.linkPaths([]string{"see pkg/one.go"})
+	if !strings.Contains(rows[0], "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("the file the dropped call lost never became a link: %q", rows[0])
+	}
+}
+
+// A PATH MENTIONED BEFORE IT EXISTS IS THE ORDINARY CASE, not the exotic one:
+// the model says where it is going to put something and then puts it there. A
+// NO is believed for [remoteAbsentFor] and then asked again, which is the
+// expiry the local pass gets from the turn boundary (pathlink.go's memo) and
+// this table cannot.
+func TestARemotePathThatWasAbsentLinksOnceItExists(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
+	clock := clockOf(a)
+
+	// "I'll write dist/app" — said before anything is there.
+	a.linkPaths([]string{"I'll write dist/app when the build finishes"})
+	a.remoteFactsBack(run(a.remoteStatKick()).(remoteFactsMsg))
+	rows := a.linkPaths([]string{"I'll write dist/app when the build finishes"})
+	if strings.Contains(rows[0], "\x1b]8;;") {
+		t.Fatalf("a name that is not a file became a link: %q", rows[0])
+	}
+
+	// The build runs under bash, which is not a trigger for anything — nothing
+	// on this surface saw the file appear.
+	wire.farFile("/srv/app/dist/app", "", "binary", 1)
+	clock.pass(remoteAbsentFor + time.Second)
+
+	a.linkPaths([]string{"I'll write dist/app when the build finishes"})
+	msg, ok := run(a.remoteStatKick()).(remoteFactsMsg)
+	if !ok {
+		t.Fatal("the word was never asked about again")
+	}
+	a.remoteFactsBack(msg)
+	rows = a.linkPaths([]string{"I'll write dist/app when the build finishes"})
+	if !strings.Contains(rows[0], "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("a path that now exists is still plain text: %q", rows[0])
+	}
+	// And a YES is not on a clock: the confirmed word is never asked again.
+	before := len(wire.stats())
+	clock.pass(remoteAbsentFor * 10)
+	a.linkPaths([]string{"I'll write dist/app when the build finishes"})
+	if a.remoteStatKick() != nil || len(wire.stats()) != before {
+		t.Fatal("a confirmed path was put back on the wire by the clock")
 	}
 }
 
@@ -322,10 +441,7 @@ func writeEvent(path string) session.Event {
 // receipt for a transfer that already happened.
 func TestPrefetchRefusesAFileOverTheCeilingWithoutFetchingIt(t *testing.T) {
 	a, wire, _ := hostedFixture(t)
-	wire.listings["/srv/app/out"] = remote.DirListing{
-		Path:    "/srv/app/out",
-		Entries: []remote.DirEntry{{Name: "big.bin", Size: prefetchMax + 1}},
-	}
+	wire.facts["/srv/app/out/big.bin"] = remote.PathFact{Exists: true, Size: prefetchMax + 1, ModTime: 7}
 	msg := run(a.prefetchWritten(writeEvent("out/big.bin")))
 	got, ok := msg.(remotePrefetchedMsg)
 	if !ok || got.ok {
@@ -341,11 +457,7 @@ func TestPrefetchRefusesAFileOverTheCeilingWithoutFetchingIt(t *testing.T) {
 func TestPrefetchCachesAndLinksWhatTheModelWrote(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	a, wire, door := hostedFixture(t)
-	wire.listings["/srv/app/out"] = remote.DirListing{
-		Path:    "/srv/app/out",
-		Entries: []remote.DirEntry{{Name: "report.md", Size: 12}},
-	}
-	wire.files["/srv/app/out/report.md"] = remote.FetchedFile{Name: "report.md", Bytes: []byte("hello world\n")}
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "hello world\n", 1700)
 
 	msg := run(a.prefetchWritten(writeEvent("out/report.md"))).(remotePrefetchedMsg)
 	if !msg.ok {
@@ -367,11 +479,11 @@ func TestPrefetchCachesAndLinksWhatTheModelWrote(t *testing.T) {
 func TestPrefetchFailsSilently(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	a, wire, _ := hostedFixture(t)
-	wire.listErr = errors.New("engine: no such file")
+	wire.statErr = errors.New("engine: no such file")
 	before := len(a.entries)
 	msg := run(a.prefetchWritten(writeEvent("out/report.md"))).(remotePrefetchedMsg)
 	if msg.ok {
-		t.Fatal("a failed listing reported a prefetch")
+		t.Fatal("a failed stat reported a prefetch")
 	}
 	if cmd := a.remotePrefetched(msg); cmd != nil {
 		t.Fatal("a failed prefetch asked the loop to do something")
@@ -391,6 +503,82 @@ func TestPrefetchOnlyFollowsAWriteOnAConnection(t *testing.T) {
 	local := newTestApp(nil)
 	if local.prefetchWritten(writeEvent("main.go")) != nil {
 		t.Fatal("a local session started a prefetch")
+	}
+}
+
+// ONE FETCH PER PATH AT A TIME, and the mark comes off when it lands — because
+// a SECOND write to the same path is the one moment the cached copy is known to
+// be wrong, and a guard that skipped it would be the guard that pins the stale
+// bytes in place.
+func TestPrefetchDoesNotFetchTheSamePathTwiceAtOnce(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "first draft\n", 100)
+
+	first := a.prefetchWritten(writeEvent("out/report.md"))
+	if first == nil {
+		t.Fatal("the first write started nothing")
+	}
+	if a.prefetchWritten(writeEvent("out/report.md")) != nil {
+		t.Fatal("the same path went out twice with the first fetch still in flight")
+	}
+	a.remotePrefetched(run(first).(remotePrefetchedMsg))
+
+	// The model writes the same file again, and this time the bytes on that
+	// machine are different.
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "second draft\n", 200)
+	second := a.prefetchWritten(writeEvent("out/report.md"))
+	if second == nil {
+		t.Fatal("a rewrite of a path already held did not re-prime the cache")
+	}
+	a.remotePrefetched(run(second).(remotePrefetchedMsg))
+	if len(wire.fetched()) != 2 {
+		t.Fatalf("the rewritten file crossed %d times: %v", len(wire.fetched()), wire.fetched())
+	}
+	_, file, err := a.rfiles.fetch("/srv/app/out/report.md")
+	if err != nil || string(file.Bytes) != "second draft\n" {
+		t.Fatalf("the cache is holding %q: %v", file.Bytes, err)
+	}
+}
+
+// SPECULATIVE WORK MUST NEVER OUTRUN THE PERSON'S NEXT MESSAGE. A turn writing
+// forty files is an ordinary turn, and forty transfers fanned out on one ssh
+// pipe ahead of a click nobody has made is the connection spent on a guess.
+func TestPrefetchStopsAtTheInFlightCap(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+
+	started := make([]tea.Cmd, 0, prefetchAtOnce+3)
+	for i := range prefetchAtOnce + 3 {
+		name := fmt.Sprintf("out/file%d.txt", i)
+		wire.farFile("/srv/app/"+name, "", "x", int64(i+1))
+		started = append(started, a.prefetchWritten(writeEvent(name)))
+	}
+	out := 0
+	for _, cmd := range started {
+		if cmd != nil {
+			out++
+		}
+	}
+	if out != prefetchAtOnce {
+		t.Fatalf("%d speculative fetches went out at once, and the cap is %d", out, prefetchAtOnce)
+	}
+	// WHAT DID NOT FIT IS DROPPED AND NOT QUEUED: the cost of not having
+	// prefetched is one round trip on a click that will probably never happen.
+	landed := make([]remotePrefetchedMsg, 0, out)
+	for _, cmd := range started {
+		if cmd != nil {
+			landed = append(landed, run(cmd).(remotePrefetchedMsg))
+		}
+	}
+	if len(wire.fetched()) != prefetchAtOnce {
+		t.Fatalf("%d files crossed: %v", len(wire.fetched()), wire.fetched())
+	}
+	// And a landing frees the pipe for the next one.
+	a.remotePrefetched(landed[0])
+	wire.farFile("/srv/app/out/late.txt", "", "y", 99)
+	if a.prefetchWritten(writeEvent("out/late.txt")) == nil {
+		t.Fatal("the cap never lifted after a prefetch landed")
 	}
 }
 

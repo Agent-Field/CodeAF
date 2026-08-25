@@ -26,8 +26,16 @@ wraps across rows and every row of it opens the same file.
 
 A file the model **just wrote** is usually already on this machine before you click it,
 so it opens at once — aforge quietly fetches a small file as it watches the `write` tool
-make it. A larger one crosses when you click, and a fetch that takes more than about a
+make it, a few at a time so a turn that writes forty of them does not take over the
+connection. A larger one crosses when you click, and a fetch that takes more than about a
 third of a second draws one line naming the file. Nothing spins.
+
+**You always get the version that is on that machine now.** aforge keeps the copies it has
+already fetched so a second click is instant, but before it hands one back it asks the
+other machine how big the file is and when it last changed — a question far smaller than
+the file. If either has moved, the file crosses again and you open the new one. If the
+file has been deleted over there, you get that machine's own sentence about it rather than
+the copy aforge was holding.
 
 The browser is where a click lands because that is what a terminal hands a web address to.
 If you want the file in **your own** program — Preview, an editor, a spreadsheet — use
@@ -45,7 +53,10 @@ So a path is drawn plain when:
   it, so it asks that machine and the word becomes a link a moment later. A file a tool is
   still in the middle of writing is plain until it exists.
 - **The file is not there at all** — a name the model invented, a path with a typo, a file
-  deleted since. A link that opens nothing is worse than no link.
+  deleted since. A link that opens nothing is worse than no link. A name that was not
+  there when it was asked about is asked about **again** a little later, so a path the
+  model named before it built it — "I'll write it to `dist/app`" — becomes a link once it
+  exists, without you doing anything.
 - **It is a folder.** Folders are not links over a connection; use `/files` and click your
   way to it.
 - **It is outside what may cross** — see the last section of this page. Two places cross

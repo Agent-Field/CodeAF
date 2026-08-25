@@ -20,13 +20,15 @@ func openFixture(t *testing.T) (*app, *fakeWire, string) {
 	dir := t.TempDir()
 	t.Setenv(home.EnvVar, dir)
 	a, wire, _ := hostedFixture(t)
-	wire.files["/srv/app/out/report.md"] = remote.FetchedFile{
-		Name: "report.md", MIME: "text/markdown", Size: 12, Bytes: []byte("hello world\n"),
-	}
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "hello world\n", 1700)
 	return a, wire, dir
 }
 
-// CACHE BY CONTENT: a file opened twice crosses the wire once.
+// CACHE BY CONTENT: a file that has not changed on the other machine is opened
+// twice and crosses the wire once. What it costs the second time is the
+// FRESHNESS QUESTION and nothing else — one small Stat.Paths, a few
+// milliseconds, no transfer — which is the whole trade this cache exists to
+// make.
 func TestRemoteFetchPrefersTheCacheOverTheWire(t *testing.T) {
 	a, wire, _ := openFixture(t)
 	r := a.rfiles
@@ -48,11 +50,91 @@ func TestRemoteFetchPrefersTheCacheOverTheWire(t *testing.T) {
 	if first.ref != second.ref || string(again.Bytes) != "hello world\n" {
 		t.Fatalf("the cached answer differs: %#v vs %#v", first, second)
 	}
+	// The freshness question is asked every time, and it is one path.
+	stats := wire.stats()
+	if len(stats) != 2 || len(stats[1]) != 1 || stats[1][0] != "/srv/app/out/report.md" {
+		t.Fatalf("the cache was believed without asking, or asked expensively: %v", stats)
+	}
 	// AND THE KEY IS THE SURFACE'S OWN ARITHMETIC. A content-addressed store
 	// whose keys are somebody else's hash is not content-addressed.
 	sum := sha256.Sum256([]byte("hello world\n"))
 	if !strings.Contains(string(first.ref), hex.EncodeToString(sum[:])) {
 		t.Fatalf("the blob is not keyed by its own digest: %q", first.ref)
+	}
+}
+
+// AND A FILE REWRITTEN ON THAT MACHINE IS FETCHED AGAIN. This is the half a
+// path→digest map cannot do on its own: the digest only changes when somebody
+// fetches, so without the freshness question the first fetch's bytes are what
+// every later click gets, for the rest of the session, with nothing on the
+// screen admitting it.
+func TestAChangedFarFileIsRefetched(t *testing.T) {
+	a, wire, _ := openFixture(t)
+	r := a.rfiles
+
+	first, file, err := r.fetch("/srv/app/out/report.md")
+	if err != nil || string(file.Bytes) != "hello world\n" {
+		t.Fatalf("the first fetch answered %q: %v", file.Bytes, err)
+	}
+
+	// The model rewrites it over there. Nothing tells this surface.
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "hello again, world\n", 1900)
+
+	second, changed, err := r.fetch("/srv/app/out/report.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(changed.Bytes) != "hello again, world\n" {
+		t.Fatalf("the cache served the old bytes: %q", changed.Bytes)
+	}
+	if len(wire.fetched()) != 2 {
+		t.Fatalf("the changed file crossed %d times: %v", len(wire.fetched()), wire.fetched())
+	}
+	if first.ref == second.ref {
+		t.Fatalf("the new content is under the old digest: %q", second.ref)
+	}
+	sum := sha256.Sum256([]byte("hello again, world\n"))
+	if !strings.Contains(string(second.ref), hex.EncodeToString(sum[:])) {
+		t.Fatalf("the new blob is not keyed by its own digest: %q", second.ref)
+	}
+	// A THIRD FETCH IS FREE AGAIN. Refetching once is the cost of being right;
+	// refetching every time would be a cache that never was one.
+	if _, _, err := r.fetch("/srv/app/out/report.md"); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.fetched()) != 2 {
+		t.Fatalf("the unchanged file crossed again: %v", wire.fetched())
+	}
+}
+
+// A SIZE THAT DID NOT MOVE IS NOT AN ANSWER ON ITS OWN. The far machine
+// rewrites a file to the same length — the ordinary shape of an edit — and the
+// modification time is what catches it.
+func TestARewriteOfTheSameLengthIsStillRefetched(t *testing.T) {
+	a, wire, _ := openFixture(t)
+	if _, _, err := a.rfiles.fetch("/srv/app/out/report.md"); err != nil {
+		t.Fatal(err)
+	}
+	wire.farFile("/srv/app/out/report.md", "text/markdown", "HELLO WORLD\n", 2000)
+	_, file, err := a.rfiles.fetch("/srv/app/out/report.md")
+	if err != nil || string(file.Bytes) != "HELLO WORLD\n" {
+		t.Fatalf("a same-size rewrite was served from the cache: %q %v", file.Bytes, err)
+	}
+}
+
+// AND A LINK THAT CANNOT ANSWER IS NOT A REASON TO REFUSE A FILE ALREADY HELD.
+// A stat that did not get through means a fetch would not either, so the cached
+// bytes — the last true answer this surface got — are what it hands over.
+func TestACacheOutlivesAConnectionThatCannotBeAsked(t *testing.T) {
+	a, wire, _ := openFixture(t)
+	if _, _, err := a.rfiles.fetch("/srv/app/out/report.md"); err != nil {
+		t.Fatal(err)
+	}
+	wire.statErr = errors.New("engine: the connection to devbox has gone")
+	wire.fetchErr = errors.New("engine: the connection to devbox has gone")
+	_, file, err := a.rfiles.fetch("/srv/app/out/report.md")
+	if err != nil || string(file.Bytes) != "hello world\n" {
+		t.Fatalf("a copy in hand was thrown away with the link: %q %v", file.Bytes, err)
 	}
 }
 
