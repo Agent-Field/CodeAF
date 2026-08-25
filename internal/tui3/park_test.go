@@ -178,25 +178,25 @@ func TestTheParkedBlockSaysWhatItIsWaitingForAndWhichKeysMoveIt(t *testing.T) {
 // ONE MESSAGE IS NOT COUNTED. The emptiness law over a number that says nothing
 // the block above it does not.
 func TestOneWaitingMessageIsNotCounted(t *testing.T) {
-	if got := parkedWord(1, 200, true); strings.HasPrefix(got, "1 ") {
+	if got := parkedWord(1, 200, true, true); strings.HasPrefix(got, "1 ") {
 		t.Fatalf("one waiting message was counted: %q", got)
 	}
-	if got := parkedWord(2, 200, true); !strings.HasPrefix(got, "2 wait for this answer") {
+	if got := parkedWord(2, 200, true, true); !strings.HasPrefix(got, "2 wait for this answer") {
 		t.Fatalf("two waiting messages were not counted: %q", got)
 	}
 }
 
 // A narrow frame drops the pieces from the right and never wraps the line.
 func TestTheParkedLineTrimsFromTheRightOnANarrowFrame(t *testing.T) {
-	full := parkedWord(1, 200, true)
+	full := parkedWord(1, 200, true, true)
 	if full != strings.Join(parkedHint, " · ") {
 		t.Fatalf("the whole line is not the whole hint: %q", full)
 	}
-	tight := parkedWord(1, ansi.StringWidth(parkedHint[0]+" · "+parkedHint[1]), true)
+	tight := parkedWord(1, ansi.StringWidth(parkedHint[0]+" · "+parkedHint[1]), true, true)
 	if tight != parkedHint[0]+" · "+parkedHint[1] {
 		t.Fatalf("the line did not drop its last piece: %q", tight)
 	}
-	if got := parkedWord(1, 4, true); got != parkedHint[0] {
+	if got := parkedWord(1, 4, true, true); got != parkedHint[0] {
 		t.Fatalf("the narrowest line is not what the message is doing: %q", got)
 	}
 }

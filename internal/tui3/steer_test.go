@@ -1,0 +1,622 @@
+package tui3
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// THE SPLICE FROM THE KEYBOARD: "and also this", said into an answer that is
+// still coming.
+//
+// What is pinned here is a pair of doors onto one act and, above all, the two
+// keys BESIDE them that must not have changed. Plain enter still only waits and
+// `shift+enter` still stops — a chord that quietly became a second way to do
+// either would be worse than the gesture not existing, because both of those are
+// keys people have already learned.
+//
+// Every assertion is what the session was actually told, what the box holds, or
+// what the two lines on the screen say.
+
+// ── the scripted agent's steer ──────────────────────────────────────────────
+
+// Steer is [session.Agent.Steer] as the fake answers it: the words are recorded,
+// and what comes back is whatever the test asked for. The default is a channel
+// that is already closed, which is the shape of a steer whose turn ended with it
+// consumed — the pump reads one closed channel and stops.
+func (f *fakeAgent) Steer(words string) (<-chan session.Event, error) {
+	f.steered = append(f.steered, words)
+	if f.steerErr != nil {
+		return nil, f.steerErr
+	}
+	if f.steerCh != nil {
+		ch := f.steerCh
+		f.steerCh = nil
+		return ch, nil
+	}
+	done := make(chan session.Event)
+	close(done)
+	return done, nil
+}
+
+// blindAgent is a session with no steer at all — the capability law's own case,
+// and the thing [app.steerable] exists to ask. It wraps the fake by VALUE
+// forwarding rather than embedding the pointer, so the method set genuinely
+// lacks Steer.
+type blindAgent struct{ Agent }
+
+// steerable is a streaming turn on a session that can steer and a terminal that
+// can spell the chord. The enhancement message is delivered rather than the
+// field set, so the wiring from the terminal's answer to the advertisement is
+// under test too — [bargeable]'s own arrangement (bargein_test.go).
+func steerableTurn(t *testing.T, first string) (*app, *fakeAgent) {
+	t.Helper()
+	a, agent := streaming(t, first)
+	drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
+	if !a.keysDisambiguated {
+		t.Fatal("the terminal's answer did not reach the surface")
+	}
+	return a, agent
+}
+
+// wirePress is one escape sequence as the real decoder reads it, checked against
+// the name this surface binds it under on the way past. It is
+// inputguard_test.go's idiom, and it exists for that file's reason: every key
+// table in this package is written in the spelling ultraviolet's decoder
+// produces, so a binding can be syntactically perfect and permanently
+// unreachable with no test failing.
+func wirePress(t *testing.T, seq, want string) tea.KeyPressMsg {
+	t.Helper()
+	var decoder uv.EventDecoder
+	n, event := decoder.Decode([]byte(seq))
+	press, ok := event.(uv.KeyPressEvent)
+	if !ok {
+		t.Fatalf("%q decoded to %#v, want a key press", seq, event)
+	}
+	if n != len(seq) {
+		t.Fatalf("%q was read %d bytes deep, want %d", seq, n, len(seq))
+	}
+	if got := uv.Key(press).String(); got != want {
+		t.Fatalf("%q arrives as %q, but this surface binds %q", seq, got, want)
+	}
+	return tea.KeyPressMsg(press)
+}
+
+// ── the wire ────────────────────────────────────────────────────────────────
+
+// cmd+enter TRAVELS BY TWO ROADS AND BOTH OF THEM ARRIVE.
+//
+// This is the test the whole binding hangs on. A modified enter reaches
+// ultraviolet through one of two readers and they disagree about what the ninth
+// modifier is called: the kitty protocol's `CSI 13;9u` is read against the
+// kitty table, where bit 8 is `super`, and xterm's modifyOtherKeys form
+// `CSI 27;9;13~` is read against the static table, where the ninth column is
+// `meta`. One hand, one keystroke, two names — the same split that left cmd+←
+// bound as `super+left` and dead on every terminal there is.
+//
+// So the bytes are driven through the real decoder into the real router, and
+// what is asked is that the SESSION was told the sentence.
+func TestBothWireSpellingsOfCmdEnterSteerTheDraftIn(t *testing.T) {
+	for _, tc := range []struct{ seq, name, road string }{
+		{"\x1b[13;9u", steerKeySuper, "the kitty keyboard protocol"},
+		{"\x1b[27;9;13~", steerKeyMeta, "xterm's modifyOtherKeys"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, agent := steerableTurn(t, "reading the tree. ")
+			typeInto(t, a, "no, the OTHER file")
+			drive(t, a, wirePress(t, tc.seq, tc.name))
+
+			if len(agent.steered) != 1 || agent.steered[0] != "no, the OTHER file" {
+				t.Fatalf("%s did not reach the running turn: %q", tc.road, agent.steered)
+			}
+			// NOTHING WAS STOPPED AND NOTHING WAS STARTED. That is the whole
+			// difference between this chord and the one beside it: the answer is
+			// still coming, and no second turn was opened for the correction.
+			if agent.stops != 0 {
+				t.Fatalf("the steer stopped the answer: %d stops", agent.stops)
+			}
+			if len(agent.sent) != 1 {
+				t.Fatalf("the steer started a second turn: %q", agent.sent)
+			}
+			if a.state != stateWorking {
+				t.Fatalf("state = %v, want the turn still running", a.state)
+			}
+			// THE BOX IS CLEARED LIKE ANY OTHER SEND, and the message is not left
+			// waiting above it either — it has gone.
+			if !a.input.empty() {
+				t.Fatalf("the chord left the draft in the box: %q", a.input.String())
+			}
+			if len(a.parks) != 0 {
+				t.Fatalf("the steered sentence is still waiting: %+v", a.parks)
+			}
+		})
+	}
+}
+
+// ── at rest, and with nothing to say ────────────────────────────────────────
+
+// AT REST THE CHORD DOES NOTHING AT ALL, which is `shift+enter`'s own answer to
+// the same question (bargein.go): plain enter already sends, so a second chord
+// meaning the same thing would teach a gesture nobody needs — and one that meant
+// something else would be a key with two readings a hand cannot tell apart.
+func TestAtRestCmdEnterDoesNothingAtAll(t *testing.T) {
+	agent, a := wired(nil)
+	typeInto(t, a, "what is in this repository")
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
+
+	if len(agent.steered) != 0 {
+		t.Fatalf("the chord steered with nothing running: %q", agent.steered)
+	}
+	if len(agent.sent) != 0 {
+		t.Fatalf("the chord sent at rest: %q", agent.sent)
+	}
+	if got := a.input.String(); got != "what is in this repository" {
+		t.Fatalf("the chord disturbed the draft at rest: %q", got)
+	}
+}
+
+// AND AN EMPTY BOX DOES NOTHING, running or not: there is no sentence to put
+// into the answer, and a steer of nothing would spend a step boundary on
+// silence.
+func TestCmdEnterOverAnEmptyBoxDoesNothing(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
+
+	if len(agent.steered) != 0 {
+		t.Fatalf("an empty box steered: %q", agent.steered)
+	}
+	if len(a.parks) != 0 {
+		t.Fatalf("an empty box parked something: %+v", a.parks)
+	}
+}
+
+// A SESSION THAT CANNOT STEER HAS NO CHORD, which is the design law about a
+// capability with nothing behind it: the key does nothing and neither line names
+// it, rather than a chord that fails every time it is pressed.
+func TestASessionThatCannotSteerNeitherTakesTheChordNorNamesIt(t *testing.T) {
+	agent := &fakeAgent{turns: [][]session.Event{{text(session.EventTextDelta, "reading. ")}}}
+	a := newTestApp(blindAgent{Agent: agent})
+	typeLine(t, a, "what is in this repository")
+	drive(t, a, frameMsg{}, tea.KeyboardEnhancementsMsg{Flags: 1})
+	typeInto(t, a, "no, the other file")
+
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
+	if len(agent.steered) != 0 {
+		t.Fatalf("a session with no steer was steered: %q", agent.steered)
+	}
+	if got := a.input.String(); got != "no, the other file" {
+		t.Fatalf("the chord spent the draft on a session that cannot steer: %q", got)
+	}
+	// AND THE LINE READS EXACTLY AS IT DID BEFORE THE SPLICE EXISTED. The chord
+	// beside it is still true here — the terminal answered, the turn is running,
+	// there is a sentence — so this is the whole of what a session without the
+	// verb loses: the one clause.
+	if got := a.hintWord(); got != bargeHint {
+		t.Fatalf("a session with no steer reads %q, want %q", got, bargeHint)
+	}
+}
+
+// ── the safe default is sacred ──────────────────────────────────────────────
+
+// PLAIN ENTER STILL ONLY WAITS AND shift+enter STILL STOPS. The chord's
+// existence must change nothing about either key beside it.
+func TestTheNeighbouringKeysAreUntouchedByTheSteer(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	typeLine(t, a, "no, the other file")
+	if len(agent.steered) != 0 {
+		t.Fatalf("plain enter steered: %q", agent.steered)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("plain enter did not park the sentence: %+v", a.parks)
+	}
+
+	typeInto(t, a, "and the tests")
+	drive(t, a, key(bargeKey))
+	if len(agent.steered) != 0 {
+		t.Fatalf("the barge steered instead of stopping: %q", agent.steered)
+	}
+	if agent.stops != 1 {
+		t.Fatalf("the barge did not stop the answer: %d stops", agent.stops)
+	}
+}
+
+// ── the arrow over the waiting message ──────────────────────────────────────
+
+// → PROMOTES A WAITING MESSAGE, AND ONLY WHERE IT HAD NO MEANING.
+//
+// The gesture exists in one narrow state — a turn running, a message parked, an
+// empty box — because that is exactly the state in which the arrow was doing
+// nothing a person could want. The moment there is a sentence to move a caret
+// through, it is the caret's again.
+func TestTheArrowPromotesAWaitingMessageOnlyOverAnEmptyBox(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	typeLine(t, a, "do much more of a deep research please")
+	if len(a.parks) != 1 {
+		t.Fatalf("the message did not park: %+v", a.parks)
+	}
+
+	// With a sentence in the box the arrow is the caret's, and the waiting
+	// message is left exactly where it is.
+	a.input.setText("abc")
+	a.input.cursor = 1
+	drive(t, a, key("right"))
+	if a.input.cursor != 2 {
+		t.Fatalf("→ over a sentence did not move the caret: cursor %d", a.input.cursor)
+	}
+	if len(agent.steered) != 0 {
+		t.Fatalf("→ over a sentence steered: %q", agent.steered)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("→ over a sentence disturbed the queue: %+v", a.parks)
+	}
+
+	// And over an empty box it goes in.
+	a.input.reset()
+	drive(t, a, key("right"))
+	if len(agent.steered) != 1 || agent.steered[0] != "do much more of a deep research please" {
+		t.Fatalf("→ did not promote the waiting message: %q", agent.steered)
+	}
+	if len(a.parks) != 0 {
+		t.Fatalf("the promoted message is still waiting: %+v", a.parks)
+	}
+	if agent.stops != 0 {
+		t.Fatalf("the promotion stopped the answer: %d stops", agent.stops)
+	}
+	if len(agent.sent) != 1 {
+		t.Fatalf("the promotion started a second turn: %q", agent.sent)
+	}
+}
+
+// AND WITH NOTHING WAITING → IS THE NAVIGATION IT HAS ALWAYS BEEN. The promotion
+// is read above the step into the work, so this is the assertion that it stands
+// down where there is nothing to promote.
+func TestTheArrowStillNavigatesWithNothingWaiting(t *testing.T) {
+	a, _, _ := roomApp(t)
+	drive(t, a, key("right"))
+	if !a.roomOpen() {
+		t.Fatal("→ over an empty box with nothing waiting stopped opening a room")
+	}
+}
+
+// A MESSAGE THAT CANNOT BE STEERED IS LEFT WAITING, and the line does not offer
+// the key. Pictures reach a running turn by their own door, and a sentence
+// somebody marked as something to keep true is bound for a different door
+// entirely — so both wait and go the way they were always going to go.
+func TestAWaitingMessageThatCannotBeSteeredIsLeftAloneAndNotAdvertised(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		hold parked
+	}{
+		{"a message with pictures", parked{text: "what is this", chips: []chip{{}}}},
+		{"a message marked to keep true", parked{text: "always run the tests", standing: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, agent := steerableTurn(t, "reading the tree. ")
+			a.parks = append(a.parks, tc.hold)
+
+			drive(t, a, key("right"))
+			if len(agent.steered) != 0 {
+				t.Fatalf("%s was steered: %q", tc.name, agent.steered)
+			}
+			if len(a.parks) != 1 {
+				t.Fatalf("%s left the queue: %+v", tc.name, a.parks)
+			}
+			if strings.Contains(plain(frame(a)), steerArrowWord) {
+				t.Fatalf("the strip offered a key that would decline %s:\n%s", tc.name, plain(frame(a)))
+			}
+		})
+	}
+}
+
+// ── the strip's door ────────────────────────────────────────────────────────
+
+// THE LINE PRINTS A GESTURE, SO THE LINE ANSWERS TO IT. `→ steers it in` is
+// pressable, which is what lets the clause stay on the line with a sentence in
+// the box — the key half is conditional and the pointer half is not, exactly as
+// `↑ or click to edit` beside it.
+func TestClickingTheStripsSteerWordPromotesTheWaitingMessage(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	a.width = 90
+	typeLine(t, a, "do much more of a deep research please")
+	drive(t, a, frameMsg{})
+
+	// The frame is what writes the span, exactly as it is for every other
+	// right-placed door on this surface.
+	frame(a)
+	if !a.steerDoor.pressable() {
+		t.Fatal("the strip drew the steer clause without recording where it landed")
+	}
+	row := -1
+	for y := 0; y < a.height; y++ {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeParkedHint {
+			row = y
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatal("the strip's dim line carries no mark for the pointer to find")
+	}
+	cmd, took := a.steerDoorPress(a.steerDoor.from, row)
+	if !took {
+		t.Fatal("a press on the steer word was not taken")
+	}
+	drive(t, a, runCmd(cmd)...)
+
+	if len(agent.steered) != 1 || agent.steered[0] != "do much more of a deep research please" {
+		t.Fatalf("the click did not promote the waiting message: %q", agent.steered)
+	}
+	if len(a.parks) != 0 {
+		t.Fatalf("the promoted message is still waiting: %+v", a.parks)
+	}
+}
+
+// AND A PRESS ON THE REST OF THAT LINE DOES NOTHING. Three of its four clauses
+// are statements, and a line where every phrase quietly acted as a door would be
+// the surface answering a gesture nobody made.
+func TestAPressOnTheRestOfTheStripsDimLineDoesNothing(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	a.width = 90
+	typeLine(t, a, "do much more of a deep research please")
+	drive(t, a, frameMsg{})
+	frame(a)
+
+	row := -1
+	for y := 0; y < a.height; y++ {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeParkedHint {
+			row = y
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatal("the strip's dim line carries no mark")
+	}
+	if _, took := a.steerDoorPress(0, row); took {
+		t.Fatal("a press on the first clause acted as the steer door")
+	}
+	if len(agent.steered) != 0 || len(a.parks) != 1 {
+		t.Fatalf("a press off the door moved something: %q %+v", agent.steered, a.parks)
+	}
+}
+
+// ── the refusal ─────────────────────────────────────────────────────────────
+
+// THE RACE IS ANSWERED BY DELIVERING THE WORDS, NOT BY A NOTE. The turn ended
+// between the frame that offered the key and the press, so the engine refuses
+// with [session.ErrNothingToSteer] — and what the person asked for was that
+// these words be delivered, so they are, the ordinary way.
+func TestASteerRefusedBecauseTheTurnEndedFallsBackToTheOrdinarySend(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	agent.steerErr = session.ErrNothingToSteer
+	typeInto(t, a, "no, the other file")
+
+	// The turn really does end under the press: the stream closes on the way
+	// through, which is the shape of the window this fallback is about.
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
+	if len(agent.steered) != 1 {
+		t.Fatalf("the chord did not reach the session: %q", agent.steered)
+	}
+	// The words are back on the waiting queue, at the head, where the queue's own
+	// machinery sends them when the turn ends.
+	if len(a.parks) != 1 || a.parks[0].text != "no, the other file" {
+		t.Fatalf("the refused steer did not fall back to the queue: %+v", a.parks)
+	}
+	// AND NOTHING WAS SAID ABOUT IT. Nobody made a mistake, so there is nothing
+	// to report.
+	if note := plain(frame(a)); strings.Contains(note, "steer failed") {
+		t.Fatalf("the refusal was surfaced as an error:\n%s", note)
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if len(agent.sent) != 2 || agent.sent[1] != "no, the other file" {
+		t.Fatalf("the refused steer was never delivered: %q", agent.sent)
+	}
+}
+
+// AND WITH NOTHING BEING PUMPED IT GOES AT ONCE. There is no close coming to
+// drain the queue, so the fallback sends it where it stands — followup.go's own
+// argument about a message queued into an idle session.
+func TestARefusedSteerWithNothingRunningIsSentImmediately(t *testing.T) {
+	agent, a := wired(nil)
+	a.parks = nil
+	drive(t, a, steeredMsg{words: "no, the other file", err: session.ErrNothingToSteer})
+
+	if len(agent.sent) != 1 || agent.sent[0] != "no, the other file" {
+		t.Fatalf("the refused steer was not sent: %q", agent.sent)
+	}
+	if len(a.parks) != 0 {
+		t.Fatalf("the refused steer stayed on the queue: %+v", a.parks)
+	}
+}
+
+// EVERY OTHER FAILURE IS SAID OUT LOUD, because every other one means something
+// a person needs to know.
+func TestASteerThatFailedForAnyOtherReasonIsReported(t *testing.T) {
+	_, a := wired(nil)
+	drive(t, a, steeredMsg{words: "no", err: errors.New("agent is closed")}, frameMsg{})
+	if body := plain(frame(a)); !strings.Contains(body, "steer failed: agent is closed") {
+		t.Fatalf("the failure was swallowed:\n%s", body)
+	}
+}
+
+// ── the stream ──────────────────────────────────────────────────────────────
+
+// A STEER THAT FELL THROUGH KEEPS ITS CHANNEL, AND THE TURN IT STARTS IS DRAWN.
+//
+// The engine lifts a steer that never reached a boundary onto its own follow-up
+// queue and carries the stream across with it, so the turn those words then
+// start speaks on that channel and nowhere else. Left unread it would be a whole
+// turn running with nothing on the screen about it.
+func TestASteerThatFellThroughBecomesTheNextMessagesTurn(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	lane := make(chan session.Event, 4)
+	agent.steerCh = lane
+	typeInto(t, a, "no, the other file")
+	lane <- session.Event{
+		Kind:  session.EventSteerFellThrough,
+		Steer: &session.SteerNote{ID: 1, Words: "no, the other file"},
+	}
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper))
+
+	if len(a.follows) != 1 || a.follows[0].text != "no, the other file" {
+		t.Fatalf("the fall-through did not become a waiting turn: %+v", a.follows)
+	}
+	// The turn being steered is still the one being pumped, so the carried
+	// stream waits for it exactly as a ctrl+q message's does.
+	if a.stream == nil {
+		t.Fatal("the fall-through took the running turn's stream")
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if a.stream != lane {
+		t.Fatal("the carried stream did not become the next turn's")
+	}
+	last := a.entries[len(a.entries)-1]
+	if last.kind != entryUser || last.text != "no, the other file" {
+		t.Fatalf("the fallen-through sentence did not open the next turn: %v %q", last.kind, last.text)
+	}
+}
+
+// ── the overlays above ──────────────────────────────────────────────────────
+
+// AN OVERLAY THAT HAS TAKEN THE KEYBOARD KEEPS BOTH KEYS. Copy mode is read
+// above the plain switch, and while it is up the surface is a reader: a chord
+// that reached past it would send a sentence out of a box nobody is looking at.
+func TestAnOverlayAboveKeepsBothSteerKeys(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	typeLine(t, a, "do much more of a deep research please")
+	a.input.setText("no, the other file")
+	a.enterCopy()
+	if !a.copy.on {
+		t.Fatal("copy mode did not open")
+	}
+
+	drive(t, a, wirePress(t, "\x1b[13;9u", steerKeySuper), key("right"))
+	if len(agent.steered) != 0 {
+		t.Fatalf("a key reached past copy mode and steered: %q", agent.steered)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("a key reached past copy mode and moved the queue: %+v", a.parks)
+	}
+	// And the slot names neither, because neither would do anything.
+	if got := a.hintWord(); strings.Contains(got, steerKey) || strings.Contains(got, steerSendWord) {
+		t.Fatalf("the hint named the steer while copy mode held the keyboard: %q", got)
+	}
+}
+
+// ── the two lines that teach it ─────────────────────────────────────────────
+
+// THE TYPING-TIME HINT NAMES ALL THREE MEANINGS OF enter's NEIGHBOURHOOD, and it
+// names them only where all three are true — which is [app.bargeOffered]'s and
+// [app.steerOffered]'s shared question about the terminal.
+func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing.T) {
+	a, _ := steerableTurn(t, "reading the tree. ")
+	typeInto(t, a, "no, the other file")
+
+	want := "enter waits · " + steerKey + " " + steerSendWord + " · " + bargeKey + " " + bargeSendWord
+	if got := a.hintWord(); got != want {
+		t.Fatalf("the hint slot reads %q, want %q", got, want)
+	}
+
+	// A TERMINAL THAT NEVER ANSWERED THE QUERY IS NEVER TOLD ABOUT THE CHORD, and
+	// what is left is the line bargein.go already drew — the capability law
+	// reaching the advertisement and not only the key.
+	a.keysDisambiguated = false
+	if got := a.hintWord(); got != "esc interrupt" {
+		t.Fatalf("a terminal that cannot spell the chords was still offered one: %q", got)
+	}
+}
+
+// AND THE NARROWEST FRAME THAT HAS A HINT SLOT AT ALL KEEPS TWO KEYS RATHER
+// THAN LOSING THREE. The legend drops the whole hint when the sentence will not
+// fit beside the rule, so a third clause could have taken the other two off
+// narrow frames with it — the shorter form is the rung that stops that
+// (steer.go's [app.hintShorter], render.go's [app.legend]).
+func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
+	a, _ := steerableTurn(t, "reading the tree. ")
+	typeInto(t, a, "no, the other file")
+
+	// Wide enough for all three: the line is the whole sentence.
+	a.width = 100
+	if body := plain(frame(a)); !strings.Contains(body, a.typingHint()) {
+		t.Fatalf("a wide frame did not draw the whole hint:\n%s", body)
+	}
+	// The narrowest frame that carries a hint slot at all. The three-key line
+	// does not fit; the two-key one does, and it is what is drawn.
+	a.width = hudTight
+	body := plain(frame(a))
+	if strings.Contains(body, steerKey) {
+		t.Fatalf("the three-key line was drawn on a frame too narrow for it:\n%s", body)
+	}
+	if !strings.Contains(body, bargeHint) {
+		t.Fatalf("the narrow frame lost the whole hint slot:\n%s", body)
+	}
+}
+
+// AND THE WAITING MESSAGE'S OWN LINE CARRIES THE ARROW, unconditionally as far
+// as the terminal is concerned: an arrow key reaches every terminal there is, so
+// there is nothing to gate the clause on but whether the act itself is possible.
+func TestTheStripNamesTheArrowAndDropsItWithTheStop(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	a.width = 90
+	typeLine(t, a, "do much more of a deep research please")
+	drive(t, a, frameMsg{})
+
+	body := plain(frame(a))
+	for _, want := range parkedHint {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the strip did not say %q:\n%s", want, body)
+		}
+	}
+	if !strings.Contains(body, steerArrowWord) {
+		t.Fatalf("the strip did not offer the steer:\n%s", body)
+	}
+
+	// A TURN WINDING DOWN HAS NO BOUNDARY LEFT, so the arrow goes down with the
+	// esc — and what is left of the line is still exactly true.
+	drive(t, a, key("esc"), frameMsg{})
+	if !a.windingDown() {
+		t.Fatal("the surface is not winding down after esc")
+	}
+	body = plain(frame(a))
+	if strings.Contains(body, steerArrowWord) {
+		t.Fatalf("the strip still offers a steer into a turn that is ending:\n%s", body)
+	}
+	if !strings.Contains(body, parkedHint[0]) {
+		t.Fatalf("the strip dropped the half that is still true:\n%s", body)
+	}
+	// And the key is inert with it.
+	drive(t, a, key("right"))
+	if len(agent.steered) != 0 {
+		t.Fatalf("→ steered into a turn that was winding down: %q", agent.steered)
+	}
+	_ = agent
+}
+
+// THE NARROW LINE DROPS FROM THE RIGHT, and the steer outranks the edit: a
+// message that can still go now is worth more cells than one you can change.
+func TestTheStripDropsTheEditBeforeTheSteer(t *testing.T) {
+	full := parkedWord(1, 200, true, true)
+	if full != strings.Join(parkedHint, " · ") {
+		t.Fatalf("the whole line is not the whole hint: %q", full)
+	}
+	head := parkedHint[0] + " · " + parkedHint[1] + " · " + parkedHint[2]
+	if got := parkedWord(1, ansi.StringWidth(head), true, true); got != head {
+		t.Fatalf("the line did not drop the edit first: %q", got)
+	}
+	// And a session with nothing to promote never draws the clause at all.
+	without := parkedWord(1, 200, true, false)
+	if strings.Contains(without, steerArrowWord) {
+		t.Fatalf("the line offered a steer nothing could take: %q", without)
+	}
+	if !strings.Contains(without, parkedHint[3]) {
+		t.Fatalf("dropping the steer took the edit with it: %q", without)
+	}
+}

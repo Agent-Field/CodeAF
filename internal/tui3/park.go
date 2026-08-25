@@ -207,15 +207,26 @@ func (a *app) recallParkedAt(i int) bool {
 // second copy to drift: `esc stops and sends` and `shift+enter stops and sends`
 // have to stay the same sentence about the same thing.
 //
-// AND THE MIDDLE PIECE IS CONDITIONAL, which is what the `stops` argument below
-// buys. There is a window — the seconds between a person's esc and the engine
-// letting go of the turn (render.go's [app.windingDown]) — in which a message is
-// still parked and esc does NOTHING: [app.interrupt] returns at its first line
-// outside [stateWorking], and [app.sendParked] stands down while the stream is
-// open. A line offering a key that is inert for three seconds is the surface
-// lying at the exact moment a person is pressing keys because they think it is
-// not listening.
-var parkedHint = []string{"waits for this answer", "esc " + bargeSendWord, "↑ or click to edit"}
+// AND THE MIDDLE PIECES ARE CONDITIONAL, which is what the `stops` and `steers`
+// arguments below buy. There is a window — the seconds between a person's esc
+// and the engine letting go of the turn (render.go's [app.windingDown]) — in
+// which a message is still parked and esc does NOTHING: [app.interrupt] returns
+// at its first line outside [stateWorking], and [app.sendParked] stands down
+// while the stream is open. A line offering a key that is inert for three
+// seconds is the surface lying at the exact moment a person is pressing keys
+// because they think it is not listening.
+//
+// AND THE THIRD PIECE IS THE OTHER THING THAT CAN HAPPEN TO A WAITING MESSAGE:
+// it does not have to wait. `→` over an empty box promotes it INTO the answer
+// that is running, where it lands at the next step boundary with nothing
+// stopped and nothing thrown away (steer.go). It is drawn between the stop and
+// the edit because that is the order of what the three cost — the answer is
+// kept, the answer is kept and the message goes now, the message comes back to
+// be changed — and it is dropped by the same question the stop is, because a
+// turn that is winding down has no boundary left to steer into either.
+var parkedHint = []string{
+	"waits for this answer", "esc " + bargeSendWord, steerArrowWord, "↑ or click to edit",
+}
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim
 // line. Zero when nothing is parked, which is every frame of an ordinary
@@ -227,6 +238,13 @@ func (a *app) parkedHeight() int {
 
 // parkedRows draws the block.
 func (a *app) parkedRows(width int) []string {
+	// THE DOOR'S COLUMNS BELONG TO THE FRAME THAT DREW THEM, so they are cleared
+	// here rather than only where the line is laid out — [app.inputBlock] clears
+	// the thinking dial's span at its own head for exactly this reason: every
+	// early return below draws no line at all, and a span left over from the
+	// frame before would leave a column pressable on a screen with nothing on it
+	// (steer.go's [app.steerDoorPress]).
+	a.steerDoor = hudSpan{}
 	if len(a.parks) == 0 || width < 4 {
 		return nil
 	}
@@ -254,7 +272,18 @@ func (a *app) parkedRows(width int) []string {
 	// [app.hintWord] gates its own parked case on the same predicate), so the two
 	// lines about this queue that share one screen cannot say different things
 	// about the same key.
-	return append(out, a.pal.dim(fit("  "+parkedWord(len(a.parks), width-2, a.parking()), width)))
+	line := parkedWord(len(a.parks), width-2, a.parking(), a.steerParkOffered())
+	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
+	// as the line is laid out, for the reason render.go's [app.legendLine] gives
+	// about the door home: a column read from anywhere else is a column from the
+	// frame before this one. A line that did not draw the clause records nothing,
+	// which is what makes the span its own answer to "was it drawn"
+	// (steer.go's [app.steerDoorPress]).
+	if at := strings.Index(line, steerArrowWord); at >= 0 {
+		from := 2 + ansi.StringWidth(line[:at])
+		a.steerDoor = hudSpan{from: from, to: from + ansi.StringWidth(steerArrowWord)}
+	}
+	return append(out, a.pal.dim(fit("  "+line, width)))
 }
 
 // parkedWord is the dim line's sentence, trimmed to what fits. The count is
@@ -262,14 +291,25 @@ func (a *app) parkedRows(width int) []string {
 // counted is a number that says nothing the block above it does not.
 //
 // stops says esc still has a turn to stop. When it does not — the turn was
-// stopped a moment ago and is winding down — the middle piece is dropped rather
-// than reworded: what is left is still exactly true (the message waits for this
-// answer, and it can still be edited), and there is no key to name, which is the
-// same silence [stoppingWord] keeps in the status line for the same seconds.
-func parkedWord(n, width int, stops bool) string {
+// stopped a moment ago and is winding down — the middle pieces are dropped
+// rather than reworded: what is left is still exactly true (the message waits
+// for this answer, and it can still be edited), and there is no key to name,
+// which is the same silence [stoppingWord] keeps in the status line for the same
+// seconds. A turn with no boundary left to reach takes the arrow down with the
+// esc, because a steer into it would be refused for the same reason the stop is
+// inert (steer.go).
+//
+// steers says the arrow's clause is true besides: this session has the verb at
+// all, and the message at the front of the queue is one that can take it — words
+// alone, unmarked. A message of pictures waits and goes through its own door,
+// and the line does not offer a key that would decline it.
+func parkedWord(n, width int, stops, steers bool) string {
 	pieces := append([]string(nil), parkedHint...)
+	if !steers {
+		pieces = append(pieces[:2], pieces[3:]...)
+	}
 	if !stops {
-		pieces = append(pieces[:1], pieces[2:]...)
+		pieces = append(pieces[:1], pieces[len(pieces)-1:]...)
 	}
 	if n > 1 {
 		pieces[0] = itoa(n) + " wait for this answer"
@@ -309,8 +349,15 @@ func (a *app) parkPress(y int) (tea.Cmd, bool) {
 }
 
 // parkedMark is the pointer's answer for one row of the block: which parked
-// message that row belongs to, so a click can pull that one back. The dim line
-// at the foot belongs to no message and answers to nothing.
+// message that row belongs to, so a click can pull that one back.
+//
+// THE DIM LINE AT THE FOOT BELONGS TO NO MESSAGE and still carries a mark of its
+// own, because one clause on it is a door: `→ steers it in` is pressable, and
+// the mark is how the press finds the row before it asks about the column
+// (steer.go's [app.steerDoorPress]). It is a SEPARATE KIND rather than a
+// [chromeParked] with no index, so that nothing which acts on a waiting message
+// by row — the press that pulls one back, the hover that lights one whole — can
+// reach this line by accident.
 func (a *app) parkedMark(row, width int) chromeRow {
 	if len(a.parks) == 0 {
 		return chromeRow{}
@@ -326,5 +373,5 @@ func (a *app) parkedMark(row, width int) chromeRow {
 		}
 		at += height
 	}
-	return chromeRow{}
+	return chromeRow{kind: chromeParkedHint}
 }

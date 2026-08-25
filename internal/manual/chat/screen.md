@@ -247,14 +247,17 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
-`esc interrupt` while a turn is running, `enter waits · shift+enter stops and sends` while
-a turn is running and you have typed something, `esc stops and sends` while a message of
-yours is waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+`esc interrupt` while a turn is running,
+`enter waits · cmd+enter steers it in · shift+enter stops and sends` while a turn is
+running and you have typed something, `esc stops and sends` while a message of yours is
+waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
-`shift+enter` line is not drawn on a terminal that cannot tell that chord apart from a
-plain `enter`, because a hint for a key that could never arrive would be the surface
-lying to you. See the keys page, "Interrupt and say something new in one key".
+`shift+enter` and `cmd+enter` clauses are not drawn on a terminal that cannot tell those
+chords apart from a plain `enter`, because a hint for a key that could never arrive would
+be the surface lying to you — there the line stays `esc interrupt`. See the keys page,
+"Interrupt and say something new in one key" and "Send a message into the running
+answer".
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -900,6 +903,10 @@ block that is still being written, whatever put it there — and plain `enter` n
 sends into a running answer at all: it **waits**. See "A message you typed while the
 answer was still coming" below.
 
+A sentence you deliberately send into the running turn — `cmd+enter`, or `→` over a
+message that is already waiting — does not break this either. It is never drawn inside
+the answer that is streaming, and the reply above it stays one contiguous block.
+
 ## A message you typed while the answer was still coming (the waiting block)
 
 Press `enter` while a turn is running and your message is **held**, not sent. It is
@@ -909,13 +916,19 @@ glyph your messages wear in the conversation. Under it sits one dim line:
 
 ```
 › do much more of a deep research please
-  waits for this answer · esc stops and sends · ↑ or click to edit
+  waits for this answer · esc stops and sends · → steers it in · ↑ or click to edit
 ```
 
 The dim line trims from the right on a narrow terminal: the last piece goes first, then
-the middle, and the narrowest frame keeps `waits for this answer` alone. With more than
+the next, and the narrowest frame keeps `waits for this answer` alone. With more than
 one message waiting the first piece is counted — `2 wait for this answer` — and with
 exactly one it is not counted at all.
+
+`→ steers it in` is there only while the message can go into the running answer: a turn
+still running, and a message of words alone. A waiting message that carries pictures, or
+one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. `esc
+stops and sends` and `→ steers it in` both go while a turn you stopped is winding down —
+for those seconds neither key does anything, and what is left of the line is still true.
 
 What happens to it:
 
@@ -923,6 +936,10 @@ What happens to it:
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
 - **`esc`** stops the answer and sends it immediately.
+- **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
+  **into** the running answer instead of leaving it to wait — nothing is stopped. With
+  several waiting it is the one at the front of the queue that goes. See the keys page,
+  "Send a message into the running answer".
 - **`↑` over an empty box**, or a **click on the block**, takes it back into the box to
   be edited. `enter` then holds the edited sentence again.
 - The box is cleared the moment you press `enter`, so you can keep typing. Attachments
