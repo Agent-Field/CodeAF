@@ -160,7 +160,7 @@ func TestSteeringBecomesTheRequestWorkHandedOffAfterItCarries(t *testing.T) {
 	agent.mu.Lock()
 	agent.rememberAskLocked(userText("audit the pricing code"))
 	agent.steering = append(agent.steering, userText("actually only internal/billing"))
-	agent.drainSteeringLocked()
+	agent.drainSteeringLocked(nil)
 	agent.mu.Unlock()
 
 	if got := agent.taskRequest(); got != "actually only internal/billing" {

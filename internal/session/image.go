@@ -416,7 +416,14 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
-			a.drainSteeringLocked()
+			// A VISION TURN HAS NO STEP BOUNDARY — it is one provider call — so a
+			// sentence spliced into it can only ever fall through, and it does so
+			// by the same law every other turn keeps (steer.go's
+			// [Agent.liftSteersLocked]). It is here rather than left out because
+			// "this turn shape cannot be steered" is a fact the person is owed on
+			// their own stream, not a reason to swallow their words.
+			a.liftSteersLocked(hub)
+			a.drainSteeringLocked(hub)
 			a.running = false
 			a.cancel = nil
 			a.hub = nil

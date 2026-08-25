@@ -100,6 +100,20 @@ type sessionEntry struct {
 	Note      bool           `json:"note,omitempty"`
 	ReplyTags []TaskReplyTag `json:"replyTags,omitempty"`
 
+	// Steer marks the two lines that belong to STEERING — a sentence the person
+	// typed into a turn that was already running (steer.go).
+	//
+	// On a `message` line it says that this user message did not open the turn it
+	// sits in: it was spliced into it, and the model read it as part of the same
+	// question. On a `steer` line — a line that is not a message at all — it says
+	// the opposite: those words were sent at that turn, no request of it ever
+	// carried them, and they went on to ask their own question a moment later.
+	//
+	// Absent from every line written before it existed, and from every line that
+	// is not one of those two, so a file this build reads and a file it writes
+	// tell the same conversation.
+	Steer *journalSteer `json:"steer,omitempty"`
+
 	// Compaction fields.
 	//
 	// Summary is LEGACY ONLY: it is the prose a summarizer wrote for every
@@ -194,6 +208,24 @@ type journalUsage struct {
 	// seal and from every auxiliary call that does not name itself, by the same
 	// emptiness law the rest of the line keeps.
 	Role string `json:"role,omitempty"`
+}
+
+// journalSteer is one steer as the journal holds it: the instant the person
+// pressed enter, and whether the turn they aimed it at actually carried it.
+//
+// The instant is the SEND's and not the line's. A steer typed while a long tool
+// batch was running is journaled at the boundary that took it, seconds or
+// minutes later, and the file's own Timestamp says that — which is the right
+// answer to "when was this recorded" and the wrong one to "when did they say
+// it". Both facts are worth keeping and they are kept separately.
+//
+// Consumed carries NO omitempty, deliberately. False is the meaningful answer
+// here — the steer fell through — and a field that vanished when it was false
+// would leave a reader unable to tell "it did not land" from "this build did not
+// say". Every steer line states its outcome outright.
+type journalSteer struct {
+	At       string `json:"at,omitempty"`
+	Consumed bool   `json:"consumed"`
 }
 
 // journalPartImage names the one non-text part a person's message can carry
@@ -317,6 +349,17 @@ type sessionFile struct {
 	// [shapeEntries]).
 	notes     map[string]bool
 	replyTags map[string][]TaskReplyTag
+
+	// steers is WHICH user-role messages were spliced into a turn that was
+	// already running (steer.go), under the same fingerprint the notes use.
+	//
+	// It lives here for the notes' own reason, one turn of the argument further
+	// along: a steer is an ordinary user message in the transcript — it has to
+	// be, because that is what the model reads it as — so nothing about the
+	// message says it did not open the turn it sits in. The mark is on the
+	// journal's line, so the journal is what a surface asks
+	// ([sessionFile.steerMark], read by [shapeEntries]).
+	steers map[string]SteerMark
 
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
@@ -442,6 +485,61 @@ func (s *sessionFile) isNote(message ai.Message) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.notes[key]
+}
+
+// steerMark reports whether one message was spliced into a running turn, and
+// what the record kept about it — nil for every message that was not one, which
+// is nearly all of them.
+//
+// The NIL RECEIVER answers nil, for the reason [sessionFile.isNote] answers
+// false: a session with no file wrote no journal, so there is no mark to have
+// read, and the caller should not have to check for a file first.
+func (s *sessionFile) steerMark(message ai.Message) *SteerMark {
+	if s == nil {
+		return nil
+	}
+	key := noteKey(message)
+	if key == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mark, spliced := s.steers[key]
+	if !spliced {
+		return nil
+	}
+	return &mark
+}
+
+// rememberSteer marks one message as a splice, in a map the caller owns — the
+// file's, under its lock, or the one a replay is still building. It is
+// [rememberNote]'s twin and keeps its shape on purpose: the two facts are
+// remembered the same way because they are the same kind of fact about a line.
+func rememberSteer(steers map[string]SteerMark, message ai.Message, mark SteerMark) {
+	if steers == nil {
+		return
+	}
+	if key := noteKey(message); key != "" {
+		steers[key] = mark
+	}
+}
+
+// steerStamp is one steer's send instant as the file holds it, and the time back
+// out of it. An unparseable or absent stamp is the zero time, which a surface
+// reads as "not known" by the emptiness law rather than as the epoch.
+func steerStamp(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339Nano)
+}
+
+func steerInstant(at string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(at))
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
 }
 
 // taskReplyTags returns the typed identities stored beside a completion note.
@@ -596,6 +694,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.images = replayed.images
 	journal.notes = replayed.notes
 	journal.replyTags = replayed.replyTags
+	journal.steers = replayed.steers
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -685,6 +784,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	notes := make(map[string]bool)
 	replyTags := make(map[string][]TaskReplyTag)
+	// And the splice index, in the same pass and for the same reason: a steer is
+	// an ordinary user message once it has been rebuilt, and the mark that says
+	// it was typed INTO the turn above it is on the line (steer.go).
+	steers := make(map[string]SteerMark)
 	scanner := bufio.NewScanner(file)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
@@ -737,6 +840,12 @@ func replaySessionFile(path string) (replayedSession, error) {
 				rememberNote(notes, message)
 				rememberReplyTags(replyTags, message, entry.ReplyTags)
 			}
+			if entry.Steer != nil {
+				rememberSteer(steers, message, SteerMark{
+					At:       steerInstant(entry.Steer.At),
+					Consumed: entry.Steer.Consumed,
+				})
+			}
 			messages = append(messages, message)
 		case "compaction":
 			// THE REGION THIS MARKER REPLACES IS KEPT BEFORE IT IS THROWN AWAY,
@@ -776,6 +885,18 @@ func replaySessionFile(path string) (replayedSession, error) {
 			if len(entry.Parts) > 0 && len(rebuilt) > 0 {
 				rememberParts(images, rebuilt[0], entry.Parts)
 			}
+		case "steer":
+			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
+			// ([sessionFile.appendSteerFellThrough]). Those words never reached
+			// the turn they were aimed at, so they are not a message of it — and
+			// they DID reach the conversation, as the ordinary question they
+			// became a moment later, which the message lines below already carry.
+			// Replaying the line as well would put the sentence in twice.
+			//
+			// The arm is written out rather than left to the switch's silence so
+			// that the next reader finds the reason here instead of concluding the
+			// line was forgotten about.
+			continue
 		case "rewind":
 			// The turn this line took back. Everything after it in the file is
 			// ordinary conversation again — a rewind is followed by the person
@@ -823,7 +944,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	repaired := repairTranscript(messages)
 	// The overlap was counted against the lines the file holds and is applied to
@@ -849,6 +970,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		images:    images,
 		notes:     notes,
 		replyTags: replyTags,
+		steers:    steers,
 		usage:     spent,
 		existed:   lines > 0,
 	}, nil
@@ -1012,6 +1134,10 @@ type replayedSession struct {
 	notes map[string]bool
 	// replyTags is the typed identity stored on task completion notes.
 	replyTags map[string][]TaskReplyTag
+	// steers is which of those messages were spliced into a turn that was
+	// already running, keyed by [noteKey] — the index [sessionFile.steers] is
+	// opened holding (steer.go).
+	steers map[string]SteerMark
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.
@@ -1148,6 +1274,65 @@ func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
 	s.append(message, true, nil, tags...)
 }
 
+// appendSteer is appendMessage for a person's line that was SPLICED into a turn
+// already running (steer.go). It is the same message line every other user
+// message writes, with the mark that says it did not open the turn it sits in
+// and the instant the person actually sent it.
+//
+// It is a separate door rather than a flag on the common one, on
+// [sessionFile.appendNote]'s terms: exactly one caller has the answer —
+// [Agent.recordUserLocked], which is holding the [userMessage] the slip comes
+// off — and every other call site should stay the call it was.
+//
+// A steer carries no pictures ([Agent.Steer] takes words only), which is why
+// this door takes no references.
+func (s *sessionFile) appendSteer(message ai.Message, at time.Time) {
+	if s == nil {
+		return
+	}
+	mark := SteerMark{At: at, Consumed: true}
+	s.mu.Lock()
+	if s.steers == nil {
+		s.steers = make(map[string]SteerMark, 4)
+	}
+	rememberSteer(s.steers, message, mark)
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{
+		Type:      "message",
+		Role:      message.Role,
+		Content:   messageContentText(message),
+		Steer:     &journalSteer{At: steerStamp(at), Consumed: true},
+		Timestamp: stamp(),
+	})
+}
+
+// appendSteerFellThrough journals a steer that NEVER REACHED THE MODEL: the turn
+// it was aimed at ended — answered, faulted or stopped — with the sentence still
+// waiting for a step boundary that never came (steer.go).
+//
+// IT IS NOT A MESSAGE LINE, and that is the whole point of it. These words are
+// not in that turn's transcript and never were, so a `message` line would be the
+// record claiming they were read. What replays into the conversation is the
+// ordinary question they became a moment later, on the follow-up queue; this
+// line is the part of the truth the conversation alone cannot tell — that the
+// question started life as a correction to the turn above it.
+//
+// Nothing is rebuilt from it. A replay reads it and carries on, which is what
+// keeps a session written by this build resumable by one that reads the words
+// and not the mark.
+func (s *sessionFile) appendSteerFellThrough(note SteerNote) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{
+		Type:      "steer",
+		Role:      "user",
+		Content:   note.Words,
+		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: false},
+		Timestamp: stamp(),
+	})
+}
+
 func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, tagSets ...[]TaskReplyTag) {
 	// Indexed as it is written, not only as it is replayed: a picture attached
 	// an hour ago is one a rewind or a /compact can put back through the display
@@ -1243,6 +1428,13 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// pass is the one place a message is journaled twice.
 		if s.isNote(message) {
 			s.appendNote(message, s.taskReplyTags(message))
+			continue
+		}
+		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without
+		// its mark would come back from the next resume as a question of its own,
+		// and the turn it was typed into would lose the correction that shaped it.
+		if mark := s.steerMark(message); mark != nil {
+			s.appendSteer(message, mark.At)
 			continue
 		}
 		s.appendMessage(message)

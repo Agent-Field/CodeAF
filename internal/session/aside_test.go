@@ -24,7 +24,7 @@ func enqueuedNote(t *testing.T, agent *Agent, text string) []DisplayEntry {
 	// The ambient door rather than the waking one: the mark is the same — both
 	// go through [Agent.enqueueNote] — and this one does not spend a turn.
 	agent.enqueueAmbientNote(text)
-	if landed := agent.drainSteering(); landed != 1 {
+	if landed := agent.drainSteering(nil); landed != 1 {
 		t.Fatalf("%d notes drained, want 1", landed)
 	}
 	return agent.Transcript()

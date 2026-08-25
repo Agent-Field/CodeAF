@@ -22,7 +22,7 @@ func TestFinishedTaskNotesCarryTheirReplyTagsInDrainOrder(t *testing.T) {
 			t.Fatalf("note %d was refused", i)
 		}
 	}
-	agent.drainSteering()
+	agent.drainSteering(nil)
 	if got := agent.takeReplyTags(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("reply tags = %#v, want %#v", got, want)
 	}
@@ -63,7 +63,7 @@ func TestPersonPromptCarriesNoTaskReplyTag(t *testing.T) {
 	agent.mu.Lock()
 	agent.steering = append(agent.steering, userText("what happened?"))
 	agent.mu.Unlock()
-	agent.drainSteering()
+	agent.drainSteering(nil)
 	if got := agent.takeReplyTags(); len(got) != 0 {
 		t.Fatalf("person-prompted reply acquired tags: %#v", got)
 	}

@@ -777,6 +777,23 @@ type userMessage struct {
 	// [runTaskChild]). It is also why such a line is NOT `authored`: the session
 	// wrote every other note on here, and it did not write this one.
 	steered bool
+
+	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
+	// [Agent.Steer]): a correction to the question already being worked on,
+	// riding this queue for the reason everything else on it does — a step
+	// boundary is the only legal place for a user message mid-turn.
+	//
+	// IT IS NOT `steered`, AND THE TWO MUST NOT BE READ FOR EACH OTHER. `steered`
+	// is a line aimed at a RUNNING NODE, delivered onto that node's own agent by
+	// task_room.go, and it promises nothing beyond arrival. This is a splice into
+	// THIS conversation's turn, and it carries an identity, three outcomes and a
+	// record that says which of them happened. steer.go states the distinction in
+	// full; the two marks stay separate so that neither has to lie about what it
+	// promises.
+	//
+	// Nil on every message that is not one, which is every message this queue
+	// carried before it existed.
+	steer *turnSteer
 }
 
 // userText is the ordinary case: a message that is only words.
@@ -909,7 +926,16 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// out, so the model never saw it. It is in the transcript now and
 			// nothing is going to speak about it, which is exactly the silence
 			// the wake below exists to end.
-			_, unanswered := a.drainSteeringLocked()
+			//
+			// A SPLICED SENTENCE IS NOT PART OF THAT DRAIN. It was aimed at a step
+			// of this turn that never came, so writing it into this turn's
+			// transcript would be the record claiming the model had read it. It is
+			// lifted off the queue first and becomes a message waiting for a turn
+			// of its own (steer.go's [Agent.liftSteersLocked]) — which the
+			// follow-up drain below then starts, on the follow-up queue's own
+			// terms. Everything else on the queue drains exactly as it always has.
+			a.liftSteersLocked(hub)
+			_, unanswered := a.drainSteeringLocked(hub)
 			a.running = false
 			// And the presence stops claiming a turn is in flight, for the
 			// reason it started claiming one (taskpresence.go).
@@ -1338,6 +1364,17 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		a.file.appendNote(user.message, user.replyTags)
 		return
 	}
+	if user.steer != nil {
+		// A SPLICED SENTENCE IS MARKED AS ONE. The transcript keeps it an ordinary
+		// user message, which is what the model has to read it as; the journal
+		// keeps the one bit that says it did not open the turn it sits in, plus
+		// the instant the person sent it, so a resume can draw the turn as a trunk
+		// with elbows rather than as a run of separate questions (steer.go,
+		// sessionfile.go's [sessionEntry.Steer]).
+		a.file.appendSteer(kept, user.steer.note.At)
+		a.stampUserLocked(messageContentText(kept))
+		return
+	}
 	a.file.appendMessage(kept, user.refs...)
 	// AND THE FOLDER LEARNS THE PERSON WAS HERE. Resume order is on when the
 	// person last spoke and not on file mtime (place.go's [Meta.LastUserAt]),
@@ -1413,7 +1450,13 @@ func (a *Agent) snapshot() []ai.Message {
 
 // drainSteering moves queued steering messages into the transcript at a step
 // boundary and reports how many landed.
-func (a *Agent) drainSteering() int {
+//
+// The hub is here for one reason: THIS DRAIN IS WHERE A STEER BECOMES TRUE
+// (steer.go). A sentence the person spliced into this turn is consumed at the
+// instant it is recorded here — not when they typed it — and the surface holding
+// its stream is told so on the same beat. A nil hub is a batch run with no turn
+// around it and says nothing, exactly as every other send on this path does.
+func (a *Agent) drainSteering(hub *eventHub) int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	// THIS DRAIN IS THE ONE THAT ANSWERS. It runs immediately before the next
@@ -1423,7 +1466,7 @@ func (a *Agent) drainSteering() int {
 	// deliberately does not clear it: those notes reached the transcript and no
 	// request.
 	a.taskNotes = 0
-	landed, _ := a.drainSteeringLocked()
+	landed, _ := a.drainSteeringLocked(hub)
 	return landed
 }
 
@@ -1435,12 +1478,18 @@ func (a *Agent) drainSteering() int {
 // turn's end: a note drained at a step boundary is one the next request carries,
 // so the model answers it as part of the turn it is already in, while a note
 // drained after the last request is one nobody has said a word about.
-func (a *Agent) drainSteeringLocked() (int, bool) {
+func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 	queued := a.steering
 	a.steering = nil
 	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
+		// AND A SPLICED SENTENCE IS NOW A SENTENCE THE MODEL HAS (steer.go). It
+		// is said here rather than at the queueing because this is the drain that
+		// answers — see the caller — so the event and the record become true in
+		// the same breath. The turn's END drain reaches no steer at all: they are
+		// lifted off the queue before it ([Agent.liftSteersLocked]).
+		a.consumedSteerLocked(hub, message)
 		a.replyTags = append(a.replyTags, message.replyTags...)
 		// A STEERING MESSAGE IS STILL THE PERSON ASKING. It arrives mid-turn and
 		// is often the correction the work about to be handed off must carry, so
@@ -1967,6 +2016,33 @@ func (h *eventHub) drop(stream *eventStream) {
 	stream.leave()
 }
 
+// release takes one subscriber off the hub AND LEAVES ITS CHANNEL OPEN. It is
+// [eventHub.drop] for a stream that is not finished with — the reader has not
+// gone anywhere, this turn is simply no longer the turn it is watching.
+//
+// It has one caller, and the whole of the reason is there: a steer that fell
+// through is re-homed onto the follow-up queue, and the person holding its
+// stream is owed the turn their words then start on the channel they are already
+// reading (steer.go's [Agent.liftSteersLocked]). [eventHub.drop] cannot serve
+// that — it ends the reader — and leaving the stream subscribed cannot either,
+// because [eventHub.close] would close it a moment later.
+//
+// A stream this hub does not hold is left alone, on drop's terms: a caller
+// asking for a state this already is has asked for nothing.
+func (h *eventHub) release(stream *eventStream) {
+	if h == nil || stream == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for at, held := range h.subscribers {
+		if held == stream {
+			h.subscribers = append(h.subscribers[:at], h.subscribers[at+1:]...)
+			return
+		}
+	}
+}
+
 // adopt hands an ALREADY-BUILT stream to this hub. It is subscribe for a
 // caller that had to hold its channel before the turn it belongs to existed: a
 // queued follow-up is handed a stream the moment it is queued, and that stream
@@ -2270,6 +2346,40 @@ type DisplayEntry struct {
 	// ReplyTags label the assistant entry that answers finished task notes. They
 	// are nil on every ordinary reply.
 	ReplyTags []TaskReplyTag
+
+	// Steer marks a user entry that was typed INTO the turn it sits inside
+	// rather than starting one of its own (steer.go), and carries the instant it
+	// was sent.
+	//
+	// IT IS WHAT MAKES A TURN A TRUNK WITH ELBOWS. The entry that opened the turn
+	// is the question; every entry after it that carries this, up to the next
+	// question, is a correction the person made while the work was running — so a
+	// surface can draw the turn as one thing with the steers hanging off it
+	// instead of as a run of unrelated messages from somebody who kept
+	// interrupting themselves.
+	//
+	// It is answered from the JOURNAL's own mark, exactly as "aside" is: a
+	// message replayed out of a file written before steering existed carries nil
+	// and draws as the plain user line it always was. A steer that FELL THROUGH
+	// never appears here at all — it was never part of the turn, and what replays
+	// is the ordinary question it became (the record of the fall-through is its
+	// own line in the session file).
+	//
+	// Nil on every other entry, and on every session with no file to have kept a
+	// mark.
+	Steer *SteerMark
+}
+
+// SteerMark is what the record keeps about one steer that LANDED: when the
+// person sent it, and — always true here — that the turn it was typed into
+// carried it to the model.
+//
+// Consumed is a field rather than an assumption because the record has to be
+// able to say both things, and because a reader of a session file finds the
+// other answer written next to these same words ([journalSteer]).
+type SteerMark struct {
+	At       time.Time
+	Consumed bool
 }
 
 // Transcript returns the conversation so far as display entries, oldest
@@ -2384,6 +2494,11 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			Text:      messageContentText(msg),
 			ImageRefs: journal.imageRefs(msg),
 			ReplyTags: tags,
+			// The journal is the only thing that remembers a user line was typed
+			// INTO the turn above it rather than opening one of its own: the
+			// message itself is an ordinary user message, because that is what the
+			// model has to read it as (steer.go).
+			Steer: journal.steerMark(msg),
 		})
 		for _, call := range msg.ToolCalls {
 			entries = append(entries, DisplayEntry{
