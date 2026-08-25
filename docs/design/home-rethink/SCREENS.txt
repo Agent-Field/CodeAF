@@ -1,0 +1,352 @@
+
+===== SCREEN PREAMBLE =====
+aforge · home, from first principles
+Model we agreed on, before the pixels:
+Home is a switcher, not a directory. Seconds between opens, 10–20 live chats, 3–5 projects — so the project tree buys five rows of scaffolding to reach twenty leaves. Flat ranked list, project demoted to a tag on the row, alt+g toggles grouping back.
+needs you and moving stop being strips and become the sort order of the one list. Nothing empty draws a heading.
+Seven places once spend earned one in turn 2 — visible tab bar, and every place is also reachable by typing its name — the typed surface offers places alongside chats, so the tab bar teaches and the keyboard is faster. A tab wears a count only when something in it changed, and alt+1…7 jumps straight to one.
+Discoverability is solved by events, not inventories: since you left appears only when something happened on its own, and each line is a door into the page that owns it. You learn memory exists the day it tells you it learned something. An almost-empty page is the best teacher on the machine — it can spend the whole screen saying what it's for.
+Growth → a page (tasks, standing, memory, search). One fact about the thing under the cursor → a band on the card. Crew, accounts, permissions, fixes, harnesses → settings, one page, checked monthly.
+Palette from internal/tui2/tokens/palette.go — ground #12121A, band #262633, amber = needs a human, cyan = alive, green = money. Every state mark is an existing slot from tokens/glyph.go — ? NeedsHuman, ◐ Working, ○ Queued, ✓ Settled, ✕ Failed, ▸ Collapsed, › PromptChat. Two reuses, stated: a memory belief wears · ProseBullet (it has no lifecycle to be queued in), and a place in the typed results wears ▸ Collapsed (it opens into more). Cell grid is honest: every mockup is a real column count.
+Open tension I did not resolve for you: one accent per screen vs. two live states. I read the law as one accent per meaning — amber for waiting on a person, cyan for in flight, and nothing else in colour. Say if you want it stricter.
+3the keyboard, properly — plus what the machine tidies behind your back
+You caught a real bug, and it was mine. Turn 2 put a live composer at the bottom of every page and then asked for g, d, w, m, p, f. If every printable character goes to the composer — and it must, that's the product — then none of those keys can ever fire. Two of my chords were worse than unreachable: ctrl+m IS enter and ctrl+e IS end-of-line inside the very field homes/spend.go already binds it in. 3a is the law that fixes all of it, and its one clause worth stealing is: no key does anything that isn't drawn on screen right now — which makes the collision fix and the discoverability fix the same fix. 3b is the hero: hold a modifier and the whole map appears in cells you were already looking at.
+
+===== SCREEN 3a =====
+3athe key law · six classes, zero collisions, and the audit that found them
+six classes. a key belongs to exactly one.
+↑↓ enter esc tabmove, open, back out, next placenever text
+any lettergoes to the composer, on every page, alwaysnever a verb
+alt+entersend what you typed off as a taskone chord
+alt+1…7jump straight to a placedrawn while held
+alt+letterchange how THIS place is showndrawn while held
+shift+←→step the window this place is showingno letters needed
+→ then a letteract on the row — letters are verbs only herestrip is on screen
+the clause that does the work
+no key does anything that isn't drawn on screen right now.
+a bare letter is a verb only while its strip is visible. a chord is
+only real while the modifier is down and the map is painted. nothing
+is hidden, and nothing is permanently in the way.
+what the audit found in my own turn-2 screens
+ctrl+mis enter. a terminal cannot tell them apart.gone
+ctrl+eis end-of-line, in spend.go's own fieldgone
+ctrl+treadline's transpose, inside the composergone
+g d w m p funreachable — the composer eats every letterre-homed
+ctrl+c z d s qthe terminal's own. never bound, at any depth.reserved
+why alt and not ctrl+number: ctrl+1 has no encoding to send. most
+terminals drop it entirely. alt+1 arrives as esc+1 and has for 40 years.
+Six classes is the whole grammar. Note what's absent: no modal normal/insert split. Making you press i before talking would tax the single most common act in the product to save keys we don't need.
+
+===== SCREEN 3b =====
+3bhold alt · the map appears in the cells you were already reading
+aforge2 want you · 4 moving · $0.55 / $20.00
+1 home2 tasks 13 standing4 memory 25 spend6 search7 settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+20 chats · what wants you firstalt+g group by project · alt+q hide the quiet ones
+?Swarm Task Splitting Ideationaforge-v2asks: add a --report-only mode?→ verbs
+?Gmail cleanup routine~wants to send on your behalf6h
+◐Bounty Reward Companiesleadgen2 tasks running · reading filings3h
+◐Thor Fight Clip Generationmediarendering, 4 of 913h
+▸16 more
+› cut the opus spend in half▏
+enter talk about it · alt+enter send it off as a task · alt+w somewhere elseholding alt
+Nothing moved. The tab words grew their numbers, each row's time cell became its way in, and the composer's hint line became the real chord list — same rows, same columns, no layout shift, no popup. Let go and it's 2b again. This is the whole discoverability answer for a product nobody has seen before: the map is one modifier away from every screen, and it never occupies a single cell at rest.
+
+===== SCREEN 3c =====
+3cpress → · now letters are verbs, because the strip is on screen
+20 chats · what wants you first
+?Swarm Task Splitting Ideationasks: add a --report-only mode?2h
+?Gmail cleanup routinewants to send on your behalf6h
+y let it send n not this time a always, stop asking p pause it
+esc or ← to leave · enter opens the chat instead
+◐Bounty Reward Companies2 tasks running3h
+› composer is asleep while the strip is up
+The strip pushes the list down by two rows and takes the letters with it — that visible displacement is why bare letters are safe here. The verbs are the row's own, so a chat that isn't asking anything has no y: same law homes/standing.go already follows, where the strip is rendered from the registry and this file never invents a key.
+
+===== SCREEN 3d =====
+3ddays, weeks, months · on the arrow axis, so no letter is spent
+spendshift+← aug 12 – aug 25 →
+▁▂▁▃▅▂▁▁▇▃▂▅▂▁$34.10
+by dayshift+↑ zoom out to weeks
+a fortnight of weeks, one step up
+▃▅▂▇jul 28 – aug 25
+two axes, four keys, and the same pair works on tasks (when it ran),
+standing (when it fired) and memory (when it was learned).
+Time is two dimensions — which window and how coarse — so it gets two arrow axes rather than three letters. The label between the arrows is the control and the reading at once, which is the same move spend.go makes with the money segment.
+
+===== SCREEN 3e =====
+3eyes — a model already rewrites your shelves. so show it, and let it be undone
+aforgememory · 1,240 held · 86 shelves
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+tidied for you · a model rewrote 3 shelves last night
+?repo:/aforge-v282 lines became 9the 73 it retired are still readable3h ago
+it now says: “tui2 is the live tree, tests sit beside their file, and the
+rail never owns the cursor.”written by a model
+k keep it u put the 82 back d show me exactly what it dropped e fix the wording
+·tool:git74 lines became 11you kept this one1w ago
+what it dropped is never deleted · the journal keeps every line it ever held
+→ verbs on any shelf · alt+t show only what was tidied · shift+←→ older tidyings
+To your question: yes, and it's already in the code — FactOriginConsolidator, and store/facts.go says in as many words that consolidation rewrites a scope into fewer, better lines. But turn 2 rendered that as a neutral summary line, which is wrong: a model quietly rewriting what the machine believes about your repo is the single scariest thing here, and it deserves a receipt with an undo, not a caption. The prose is marked written by a model, the retired 73 lines stay readable because the journal never forgets, and u puts them back. This is also the best since you left line the product will ever have.
+Left open on purpose: alt on macOS needs “use option as meta” in some terminals — worth a first-run check, and esc esc as the fallback map. · Should the alt map also appear after a 600ms hold of esc, for terminals that swallow alt? · A theme chip in settings, omarchy-style, is the obvious next thing I did not draw.
+2the design language, then the pages that need it — at real scale
+A terminal has no font sizes, so hierarchy has to come from somewhere else. 2a is the scale I'd commit to — five levels built from brightness, case, indent, band and blank-line rhythm, in the omarchy spirit: high contrast, one accent, generous vertical air, nothing merely decorative. Everything after it is drawn on that scale. Scale is honest too: memory is 1,240 lines across 86 shelves, not six, because store/facts.go has nine kinds, four channels, a scope ladder and a retraction shelf, and a page that only works at six rows is a page that breaks the first real week.
+
+===== SCREEN 2a =====
+2athe scale · five levels, no font sizes involved
+1 · pagememory  bright, bold, one word, only in the tab bar
+2 · sectionabout you  dim, lowercase, always preceded by one blank line
+3 · subjectyou want terse answers  primary tier — the thing itself
+4 · notehelped 14 times  secondary tier — what is true about it
+5 · margin3h ago  tertiary, right-flushed, never load-bearing
+on top of the five, three non-type devices
+the bandwhere the cursor is  selection, and the subject goes bold inside it
+the accent? waiting on you  amber, or ◐ cyan in flight — never both meanings at once
+the gutter2ch page · 2ch glyph  one indent level, ever
+rhythm
+blank line = section break. rows never get one. a page is a stack of
+tight blocks separated by air, which is what makes 40 rows scannable.
+money
+a figure under half a cent is stated in words — under a cent — because
+tokens.Money rounds, and $0.0017 printed as $0.00 reads as free.
+Four brightness tiers is all the palette has, so hierarchy that needs a fifth step borrows case, indent or air instead of inventing a colour. The under a cent rule is lifted from homes/standing.go's own comment, not invented.
+
+===== SCREEN 2b =====
+2bhome on the scale · seven places, and the composer is now global
+aforge2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+hometasks 1standingmemory 2spendsearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+since you left · 3h
+a watch fired at 6am — nothing had changed, and it says sostanding
+learned 2 things about aforge-v2, let go of 1 you correctedmemory
+execution moved to sonnet 4.5 when opus hit its railspend
+20 chats · what wants you firstalt+g group by project
+?Swarm Task Splitting Ideationaforge-v2asks: add a --report-only mode?2h
+?Gmail cleanup routine~wants to send on your behalf6h
+◐Bounty Reward Companiesleadgen2 tasks running · reading filings3h
+◐Thor Fight Clip Generationmediarendering, 4 of 913h
+○Researching Santosh Kumar Radhaaforge-v23 files made15h
+○top-movers-research, second passresearchran a saved harness1d
+▸15 more, quiet since aug 21
+› say what you want donehere ~/aforge-v2
+enter talk about it · alt+enter send it off as a task · alt for the map · tab next place
+Three changes from 1a: spend is a place; the composer is a permanent bottom line rather than a mode you enter by typing; and the composer carries a scope chip. The chip is the whole answer to “start a task from anywhere” — the same two lines sit at the bottom of every page in this turn, so the verb is always in reach and always says where it will land.
+
+===== SCREEN 2c =====
+2cspend · which models, which days, on what
+aforge4 moving · $0.55 / $20.00 · tue 1:11pm
+hometasksstandingmemoryspendsearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+last 14 days · $34.10 · 41.2M tokensshift+←→ window · shift+↑ coarser
+▁▂▁▃▅▂▁▁▇▃▂▅▂▁
+aug 12today $0.55
+aug 20 was the loudest day — $8.65, the filings sweeptasks
+what ran it · by the model, and the role it was bound to
+·opus 4.1execution████████████312 calls · 18.1M$21.40
+·sonnet 4.5conversation█████1,904 calls · 19.7M$9.12
+·gemini 2.5 proverification█88 calls · 2.9M$3.31
+·haiku 4.5naming 640 calls · 0.5M$0.27
+·planningunboundfollows execution—
+what it was for
+·read 40 filings for reward mentionsbounty companiesa task, adaptive$8.65
+·render fight clip, shots 4–9thor clipsa task, still running$3.10
+·the 6am repo watchstanding · 14 firingsunder a cent a run$0.06
+▸31 more
+› say what you want donehere ~/aforge-v2
+enter open what a row was for · → verbs · the rail is raised on the segment above · tab next place
+Three questions, three blocks: which days, which models, on what. The role column is what makes the model list actionable — you don't change a model here, you see that execution is 63% of the bill and go change that binding on its chip. Deliberately not here: a budget editor. homes/spend.go says it in as many words — the rail is edited on the segment that shows it, and there is no budget page — so this page reports and the status line stays the only control. planning shows as unbound / follows execution rather than as a blank, per config/modelslots.go.
+
+===== SCREEN 2d =====
+2dmemory at real scale · 1,240 lines, 86 shelves
+aforge4 moving · $0.55 / $20.00 · tue 1:11pm
+hometasksstandingmemoryspendsearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+1,240 held · 86 shelves · 41 let go · a line only travels into work it is abouttype to filter
+wants your eye · 3
+?two ways to scope the rail, and the evidence won't pick oneunsettled2 trials, neither settled3d ago
+?you keep shortening my summaries — should that be a rule?taste, candidatecorrected twice1d ago
+·a belief was written back after you threw it awayretractedblocked, kept out6h ago
+shelves · biggest firstpreference 120 · quirk 380 · lesson 96 · skill 22 · playbook 61 · question 14 · trait 6
+▾repo:/aforge-v2412 mostly quirks · 2 new today3h ago
+·tui2 is the live tree; tui is dead codequirkrode 3, held up 33h ago
+·tests live beside the file they testlessonrode 19, held up 182w ago
+·the rail owns the cursor and the collapse statelet goyou corrected it6d ago
+▸409 more on this shelf
+▸you96 how you want things done1d ago
+▸tool:git74 how this machine's git behaves4d ago
+▸domain:go63 transferable, earned here1w ago
+▸env38 this laptop, these paths2d ago
+▸81 more shelves · 24 files, 9 tools, 6 domains, 42 one-offs
+gaps it knows it has · 14 open questions, 2 being practiced
+·nobody has told me how you want migrations reviewedopen2w ago
+› say what you want donehere ~/aforge-v2
+enter open a shelf · → verbs: fix the wording, forget it, settle it · alt+t only what was tidied · tab next place
+At 1,240 lines a flat list is useless, so the page is shelves — the scope ladder store/facts.go already indexes on — with one expanded and the rest rolled up. The kind counts sit on the section line rather than as a chip row, because they're a filter legend, not nine buttons. Confidence is rendered as rode 19, held up 18 — the two numbers FactOutcomes actually returns — instead of a fabricated percentage. Age uses the store's own words (3h ago, 2w ago), not a second spelling.
+
+===== SCREEN 2e =====
+2estart a task from anywhere · the composer, open, on the spend page
+aforge$0.55 / $20.00
+hometasksstandingmemoryspendsearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+last 14 days · $34.10
+▁▂▁▃▅▂▁▁▇▃▂▅▂▁
+· opus 4.1 execution $21.40
+· sonnet 4.5 conversation $9.12
+› cut the opus spend in half without losing the sweep▏
+it will run on its own and tell you when it landsa task
+·in ~/aforge-v2, on masteralt+w to move it
+·execution runs on opus 4.1alt+o to change
+·it may spend up to $2.00 before it askstype a number
+alt+enter send it off · enter talk about it first · esc back to spend
+The page behind dims to the faintest tier instead of being covered — you never lose your place, and the composer is plainly a layer rather than a new screen. It opens on any page from the same bottom line, and the three lines under it are the only three facts a task needs before it leaves: where, on what, how much. Each is edited where it is shown, which is the same law the money segment already follows.
+
+===== SCREEN 2f =====
+2fstanding · promises, and how much rope each has
+aforge4 moving · $0.55 / $20.00 · tue 1:11pm
+hometasksstandingmemoryspendsearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+things aforge does without being asked. 6 standing, 1 waiting to be stood up.
+?watch every agentfield repo and summarise what mergedwants standing uphourly—
+○at 6am, tell me what changed in aforge-v2 overnighttenureddaily · fired 6amunder 1¢
+○keep the top-movers sheet fresh before the openearning tenure 3/5weekdays · 8:30am$0.31
+○file anything from gmail that looks like an invoiceasks firston arrivalnot measured
+▸3 more, all quiet this week
+the 6am watch, last look · 3h ago
+nothing had changed since yesterday, so I did nothing and wrote this line.
+enter open it · → verbs: pause, trust it alone, retire · tab next place
+The one column that earns its place is how much rope — asks first, earning tenure 3/5, tenured — because that's the only fact that changes whether you have to watch it. Cost per firing says under 1¢ and not measured in words, per homes/standing.go's own rule about printing figures it can't compute.
+Open for you to settle: is spend a place or a section of settings? · should search be a tab at all, given the composer searches? · 2d's wants your eye could instead ride the home ledger and leave memory purely a reference page.
+1home as a switcher · three densities, plus the pages it opens onto
+
+===== SCREEN 1a =====
+1athe flat list · 120 cols · the baseline proposal
+aforge4 moving · $0.55 today · tue 1:11pm
+hometasks 1standingmemory 2searchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+since you left · 3h
+a watch fired at 6am — nothing had changed, and it says sostanding
+learned 2 things about aforge-v2memory
+gmail moved itself to ask-first after a failed sendsettings
+20 chats · what wants you firstalt+g group by project
+?Swarm Task Splitting Ideationaforge-v2asks: add a --report-only mode?2h
+?Gmail cleanup routine~wants to send on your behalf6h
+◐Bounty Reward Companiesleadgen2 tasks running · reading filings3h
+◐Thor Fight Clip Generationmediarendering, 4 of 913h
+○Researching Santosh Kumar Radhaaforge-v23 files made15h
+○top-movers-research, second passresearchran a saved harness1d
+○Refactor the rail scope modelaforge-v21d
+▸14 more, quiet since aug 21
+type to search or start something new · ↑↓ pick · enter open · tab next place
+No card column at all: at this width the card was showing you what pressing enter shows a beat later. The right-hand note on each row carries the one fact the card was really for — what it's stopped on, what's in flight.
+
+===== SCREEN 1b =====
+1bthe triage stack · answer the top thing without opening it
+aforge2 want you · 4 moving · $0.55 today
+hometasks 1standingmemory 2searchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Swarm Task Splitting Ideation · aforge-v2 · stopped 2h
+Add a --report-only mode so the report regenerates without re-running the
+sweep? It costs a flag and a branch in the writer.
+y yes n no enter open and talk s skip to the next one
+then
+?Gmail cleanup routinewants to send on your behalf6h
+moving
+◐Bounty Reward Companies2 tasks · reading filings3h
+◐Thor Fight Clip Generationrendering, 4 of 913h
+▸ 18 quiet chats · type to reach any of them
+Radical hierarchy: home is a queue with a front, not a list you scan. The question is answerable in place, and answering it pops the next one. Cost: the twenty-chat switcher is now a typing exercise, which suits “seconds between opens” only if search is instant.
+
+===== SCREEN 1c =====
+1c80 cols, quiet morning · nothing needs you, so nothing is drawn
+aforgetue 8:04am
+hometasksstandingmemorysearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+○Swarm Task Splitting Ideationaforge-v22h
+○Bounty Reward Companiesleadgen3h
+○Thor Fight Clip Generationmedia13h
+▸17 more
+type to search or start · tab next place
+Same screen, empty machine. No ledger, no accent, no spend segment, no headings — the emptiness law taken all the way. Eight lines is a legitimate home.
+
+===== SCREEN 1d =====
+1d200 cols, packed · the width earns a card, so the card acts
+aforge2 want you · 4 moving · $0.55 of $20 today · tue 1:11pm
+hometasks 1standingmemory 2searchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+since you left · 3h
+a watch fired at 6am — nothing had changed, and it says sostanding
+learned 2 things about aforge-v2memory
+20 chats · what wants you firstalt+g group by project
+?Swarm Task Splitting Ideationaforge-v2asks: add a --report-only mode?2h
+?Gmail cleanup routine~wants to send on your behalf6h
+◐Bounty Reward Companiesleadgen2 tasks running · reading filings3h
+◐Thor Fight Clip Generationmediarendering, 4 of 913h
+○Researching Santosh Kumar Radhaaforge-v23 files made15h
+○top-movers-research, second passresearchran a saved harness1d
+▸15 more, quiet since aug 21
+type to search or start something new · ↑↓ pick · enter open · tab next place
+Swarm Task Splitting Ideation
+~/aforge-v2 · master, 1 file dirty · here
+it is stopped on you
+Add a --report-only mode so the report can be
+regenerated without re-running the sweep?
+y yes · n no · enter open and talk
+work
+✓toy-scale validation of decomposition$1.63
+▸3 more taskstasks
+made for you
+…/reports/swarm-decomposition.md
+spent $1.63 · 3.6M tokens · thinking high
+→ verbs: new chat here, put it away
+Sixteen registered bands became five, and every one either asks you something you can answer here or points at a page. Anything that grows says ▸ 3 more tasks and names its page. The two-column shape only exists above ~160 cols; below that it's 1a.
+
+===== SCREEN 1e =====
+1etasks · the page you said you needed, no longer behind /history
+aforge4 moving · $0.55 today · tue 1:11pm
+hometasksstandingmemorysearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+work aforge ran on its own. 51 since aug 2, $34.10 of it.
+needs your look
+?verify the pro model's pricingswarm splittingoracle values disagree$0.402h
+running
+◐read 40 filings for reward-program mentionsbounty companies18 of 40 · adaptive$0.9221m
+◐render fight clip, shots 4–9thor clips4 of 9$3.101h
+done today
+✓toy-scale validation of decompositionswarm splitting1 file · a report$1.633h
+✓summarise the three loudest moverstop-movers harnessa report$0.317h
+✕install the render toolchainthor clipsgave up, said why$0.059h
+▸45 more, back to aug 2
+enter open its room · → verbs: run it again, stop it · type to filter · tab next place
+Grouped by state, not by time — the only grouping that changes what you do next. adaptive appears as a word on the row, which is the first time a run's kind is visible anywhere.
+
+===== SCREEN 1f =====
+1fmemory · a nearly-empty page teaching what it is
+aforge4 moving · $0.55 today · tue 1:11pm
+hometasksstandingmemorysearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+What I hold true about you and this machine. I put a line in here when it looked
+like it would matter later, and I only carry it into a chat it bears on.
+Corrections are the point — a wrong line here is wrong in every chat.
+about you · everywhere
+·you want terse answers, no preamblehelped 14 timesjul 30
+·you ship on master, no feature brancheshelped 6 · bore on 2aug 12
+about aforge-v2 · this project
+·tests live beside the file they testhelped 3aug 24
+·tui2 is the live tree; tui is dead codenew, learned 3h ago3h
+·the rail owns the cursor and the collapse statelet go, you corrected itaug 19
+4 held · 1 let go · nothing here is a setting, all of it is editable
+enter ask me about it · e fix the wording · f forget it · tab next place
+Three sentences of prose at the top is the whole discoverability mechanism: you only ever arrive here from a since you left line, and the page explains itself once you do. Help-vs-miss is rendered as plain words, and a let-go belief stays struck rather than vanishing.
+
+===== SCREEN 1g =====
+1gtyping offers places too · the tab bar teaches, the keyboard is faster
+aforgetue 1:12pm
+hometasksstandingmemorysearchsettings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+› sta▏
+▸standinga place · 6 promises, 1 fired today
+○watch: any merge in an agentfield org repoa promise
+○Swarm Task Splitting Ideationa chat
++start a chat about “sta”here
+enter go · esc back to the list
+Places rank first when the words match, and each result says what kind of thing it is in the right margin. Nobody has to be told the places exist twice.
+Try next: “1a but keep a card like 1d at 120 cols” · “make 1b the default and show me what 20 chats look like under it” · “design standing and settings the same way” · “show me first run — an empty machine, nothing learned yet”
