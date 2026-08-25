@@ -14,9 +14,9 @@ package session
 // the note does not ship a soundtrack bug it could only have found by ear.
 //
 // The emptiness law still governs the exit: bytes that do not parse as an mp4,
-// a header with no timescale, a duration of zero or of the unknown sentinel —
-// all answer ok=false, and the note simply omits the clause rather than
-// carrying a number nobody measured.
+// a header with no timescale, a duration of zero, of a sentinel, or outside
+// any length a render could honestly be — all answer ok=false, and the note
+// simply omits the clause rather than carrying a number nobody measured.
 
 import (
 	"encoding/binary"
@@ -25,11 +25,25 @@ import (
 	"time"
 )
 
+// The bounds a measured length must sit inside to be believed. A render is
+// seconds to minutes; the ceiling is far above the provider's own ten-minute
+// give-up (tools_video.go) and the floor far below any clip a person would be
+// handed — a header outside them is lying (a saturated conversion, a 32-bit
+// "unknown" sentinel read as a 64-bit number), and a lie is answered with the
+// clause's absence, never with a 292-year clip in the note.
+const (
+	mp4LengthFloor   = 0.1    // seconds
+	mp4LengthCeiling = 3600.0 // seconds
+)
+
 // mp4Facts answers the note's two questions about a finished render: length
-// and sound. ok is false whenever the bytes cannot answer BOTH honestly — a
-// clip whose duration is readable but whose track list is truncated could
-// state a length, but a note that says nothing about sound reads as "no sound"
-// to a model that has seen the full sentence, so half an answer is no answer.
+// and sound. ok is false whenever the bytes cannot answer BOTH honestly — the
+// sound answer is a claim about EVERY track, so a track list that is damaged,
+// truncated or absent refuses the whole measurement rather than letting "no
+// sound track seen" masquerade as "without sound". A note that said "without
+// sound" about a clip whose audio track was simply unreadable would send the
+// model to build a stitch that never maps audio — the exact bug the note
+// exists to prevent.
 func mp4Facts(data []byte) (length time.Duration, sound bool, ok bool) {
 	moov, found := mp4FirstBox(data, "moov")
 	if !found {
@@ -43,28 +57,49 @@ func mp4Facts(data []byte) (length time.Duration, sound bool, ok bool) {
 	if !ok {
 		return 0, false, false
 	}
-	mp4EachBox(moov, "trak", func(trak []byte) bool {
-		if mdia, found := mp4FirstBox(trak, "mdia"); found {
-			if hdlr, found := mp4FirstBox(mdia, "hdlr"); found {
-				// hdlr payload: version+flags (4), pre_defined (4), then the
-				// handler type — "soun" for an audio track, "vide" for video.
-				if len(hdlr) >= 12 && string(hdlr[8:12]) == "soun" {
-					sound = true
-					return false
-				}
-			}
+	tracks := 0
+	damaged := false
+	clean := mp4EachBox(moov, "trak", func(trak []byte) bool {
+		tracks++
+		mdia, found := mp4FirstBox(trak, "mdia")
+		if !found {
+			damaged = true
+			return false
+		}
+		hdlr, found := mp4FirstBox(mdia, "hdlr")
+		if !found || len(hdlr) < 12 {
+			damaged = true
+			return false
+		}
+		// hdlr payload: version+flags (4), pre_defined (4), then the handler
+		// type — "soun" for an audio track, "vide" for video. That is the ISO
+		// layout the provider's files carry; a QuickTime .mov keeps its type
+		// four bytes later, and would read as silent here — acceptable while
+		// the only bytes this sees are the provider's own .mp4 renders. And it
+		// is a DECLARED track, not a measure of audible samples: a track of
+		// silence still answers "with sound".
+		if string(hdlr[8:12]) == "soun" {
+			sound = true
+			return false
 		}
 		return true
 	})
-	return length, sound, true
+	if sound {
+		return length, true, true
+	}
+	if damaged || !clean || tracks == 0 {
+		return 0, false, false
+	}
+	return length, false, true
 }
 
 // mp4EachBox walks the boxes laid end to end in data and hands each payload of
-// the named kind to visit, stopping early when visit answers false. Malformed
-// framing — a size smaller than its own header, or larger than what remains —
-// ends the walk silently: the caller's ok-paths already treat "not found" and
-// "not parseable" as the same absence.
-func mp4EachBox(data []byte, kind string, visit func(payload []byte) bool) {
+// the named kind to visit, stopping early when visit answers false. It reports
+// whether the walk was CLEAN — ended deliberately or consumed every byte —
+// because a walk that died on malformed framing has not seen the boxes beyond
+// the damage, and a caller asserting "none of the boxes is X" needs to know
+// the difference between "none" and "none before the walk broke".
+func mp4EachBox(data []byte, kind string, visit func(payload []byte) bool) (clean bool) {
 	for len(data) >= 8 {
 		size := uint64(binary.BigEndian.Uint32(data[:4]))
 		name := string(data[4:8])
@@ -76,23 +111,26 @@ func mp4EachBox(data []byte, kind string, visit func(payload []byte) bool) {
 		case 1:
 			// A size of one means the real size follows as 64 bits.
 			if len(data) < 16 {
-				return
+				return false
 			}
 			size = binary.BigEndian.Uint64(data[8:16])
 			header = 16
 		}
 		if size < header || size > uint64(len(data)) {
-			return
+			return false
 		}
 		if name == kind && !visit(data[header:size]) {
-			return
+			return true
 		}
 		data = data[size:]
 	}
+	return len(data) == 0
 }
 
 // mp4FirstBox is mp4EachBox stopped at the first hit — the shape every
-// singleton lookup on the moov path wants.
+// singleton lookup on the moov path wants. A walk that broke before the box
+// simply answers not-found, which every caller already treats as the absence
+// it is.
 func mp4FirstBox(data []byte, kind string) (payload []byte, found bool) {
 	mp4EachBox(data, kind, func(inner []byte) bool {
 		payload, found = inner, true
@@ -105,8 +143,11 @@ func mp4FirstBox(data []byte, kind string) (payload []byte, found bool) {
 // header's version — version 1 widens the timestamps and the duration to 64
 // bits — and both forks keep the timescale at 32. A zero timescale cannot
 // divide, a zero duration is a file that claims to be nothing, and the
-// all-ones duration is the spec's own "unknown" sentinel: all three answer
-// not-ok rather than a number the file did not actually state.
+// all-ones duration is the spec's own "unknown" sentinel: all of them, and
+// anything outside the believable bounds above, answer not-ok rather than a
+// number the file did not honestly state. The bounds are checked on the float
+// BEFORE the Duration conversion, because converting an out-of-range float is
+// the step whose result differs by architecture.
 func mp4MovieLength(mvhd []byte) (time.Duration, bool) {
 	if len(mvhd) < 1 {
 		return 0, false
@@ -137,17 +178,24 @@ func mp4MovieLength(mvhd []byte) (time.Duration, bool) {
 	if timescale == 0 || duration == 0 {
 		return 0, false
 	}
-	return time.Duration(float64(duration) / float64(timescale) * float64(time.Second)), true
+	seconds := float64(duration) / float64(timescale)
+	if seconds < mp4LengthFloor || seconds > mp4LengthCeiling {
+		return 0, false
+	}
+	return time.Duration(seconds * float64(time.Second)), true
 }
 
 // mediaLength is how a measured clip length reads in a note: tenths of a
 // second below a minute, where a render's whole life happens, and
-// minutes-and-seconds above it, where tenths are noise.
+// minutes-and-seconds above it, where tenths are noise. The branch is taken on
+// the ROUNDED tenths, so 59.96s reads "1m00s" and never the "60.0s" the
+// sub-minute rule forbids.
 func mediaLength(length time.Duration) string {
 	seconds := length.Seconds()
-	if seconds < 60 {
-		return fmt.Sprintf("%.1fs", seconds)
+	tenths := math.Round(seconds*10) / 10
+	if tenths < 60 {
+		return fmt.Sprintf("%.1fs", tenths)
 	}
-	whole := int(seconds + 0.5)
+	whole := int(math.Round(seconds))
 	return fmt.Sprintf("%dm%02ds", whole/60, whole%60)
 }

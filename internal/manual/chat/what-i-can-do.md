@@ -503,8 +503,8 @@ kind is a separate answer, so drawing may be there while filming is not.
   name one.
 - `generate_music` composes a piece from a description of the music — genre,
   instruments, tempo, mood. It is a different model from `speak` and has no
-  length argument: you get a piece of the model's own choosing, around a minute,
-  for a flat price per call.
+  length argument: you get a piece of the model's own choosing, half a minute
+  to a minute in practice, for a flat price per call.
 - `generate_video` renders a short video. It **returns straight away with a
   background job** because a render takes minutes; the finished file arrives as a
   note naming it, and `jobs kill` stops it.
