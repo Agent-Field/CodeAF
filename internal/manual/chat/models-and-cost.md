@@ -735,6 +735,33 @@ Two things follow from that:
 The `model calls` count is rebuilt the same way, so a resumed conversation's call count also
 covers the requests made before the restart.
 
+## Is there a record of what I spent across all my conversations, by day or by model
+
+Yes, on disk — and nothing on any screen reads it yet, so `/cost` and `/status` remain the
+only way to see money in this build.
+
+Every cost line written into a conversation's transcript is also appended to one file for the
+whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
+keeps. One line per request to a provider, carrying: when it happened and which local
+calendar day that was, which model answered, how many requests and how many tokens in and
+out, what it cost, the conversation it was made in, the piece of work or the standing promise
+it was made for, and the project directory it ran against.
+
+Three things are worth knowing about it:
+
+- **It is what a spend page will be built from.** Until this file existed, "what did opus cost
+  me this month" could only be answered by opening every transcript on the machine, and "what
+  did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
+  in it.
+- **A request that cost nothing writes no line.** So a day with no lines is a day nothing was
+  spent, rather than a day of zeroes.
+- **Work is counted once.** A task's own requests are recorded where they were made. Its total
+  is added to the conversation that started it afterwards, and that addition is deliberately
+  not written here, or the same money would be counted twice.
+
+It is not a second bill and nothing reads it back into a conversation: `/cost` and the status
+line are still rebuilt from this conversation's own transcript, exactly as described above.
+
 ## Everything at once — /status
 
 `/status` (also `/info`, `/context`) prints **every fact the status line can carry**, one per

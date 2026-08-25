@@ -1440,6 +1440,23 @@ type Config struct {
 	// exists.
 	Divide bool
 
+	// usageLedger points this agent's spending records at a file OTHER than the
+	// machine's own (usage_ledger.go's [UsageLedgerPath]). Empty — which is every
+	// door in the product — means the machine's.
+	//
+	// It is private for [Config.fixesDir]'s reason inverted: no surface sets it
+	// and no surface should, because the whole value of the ledger is that there
+	// is exactly one of it. What it is for is a test that wants to read back what
+	// a turn recorded without depending on where this machine keeps its state.
+	usageLedger string
+
+	// standingItemID is the id of the standing item whose firing this agent IS
+	// (standing_run.go), and empty in every conversation and every ordinary task.
+	// It rides on the config for [Config.taskID]'s reason: the money a firing
+	// spends has to be attributable to the promise the person made, and the only
+	// thing that knows which promise is the runner that built this config.
+	standingItemID string
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn

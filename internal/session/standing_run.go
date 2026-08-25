@@ -728,6 +728,11 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	cfg.InTask = true
 	cfg.Standing = nil
 	cfg.standingItems = nil
+	// WHOSE MONEY THIS IS. A firing runs in a folder of its own with a session id
+	// of its own, so without this the machine's usage ledger would hold a growing
+	// pile of one-run conversations and no way to say that they were all the same
+	// promise, kept every morning for a month (usage_ledger.go).
+	cfg.standingItemID = item.ID
 	if model := strings.TrimSpace(item.Does.Model); model != "" {
 		cfg.Model = model
 	}
