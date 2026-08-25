@@ -90,13 +90,13 @@ func TestOnlyTheCollectionsWearACount(t *testing.T) {
 	}
 }
 
-// AND WITH NOTHING ANSWERING THE SEAM, EVERY TAB IS BARE. The per-place look
-// stamps that would answer it are another lane's; until they exist the emptiness
-// law says an unknown number is drawn as nothing, not as a zero.
+// AND A SURFACE THAT HAS NOT COUNTED YET WEARS NOTHING. The counts arrive on
+// the clock (placecounts.go); until the first beat the seam is nil, and the
+// emptiness law says an unknown number is drawn as nothing, not as a zero.
 func TestATabWearsNoCountUntilSomethingAnswersForIt(t *testing.T) {
 	a := placeApp(t)
 	if a.places != nil {
-		t.Fatal("this surface wired a counter it was not given")
+		t.Fatal("a surface that has not counted yet wired a counter")
 	}
 	bar := plain(a.placeTabBar(a.width, false, a.pal))
 	for _, digit := range "0123456789" {

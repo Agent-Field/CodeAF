@@ -1,6 +1,9 @@
 package tui3
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -141,4 +144,124 @@ func plainSpendRows(rows []string) []string {
 		out[i] = ansi.Strip(row)
 	}
 	return out
+}
+
+// ── the place, as a person meets it ─────────────────────────────────────────
+
+// spendLab is an app standing in the spend place over a ledger this test wrote.
+func spendLab(t *testing.T, lines []session.UsageLine) *app {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	var file strings.Builder
+	for _, line := range lines {
+		raw, err := json.Marshal(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Write(raw)
+		file.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(file.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := placeApp(t)
+	a.usageLedger = path
+	a.showPage(pageSpend)
+	return a
+}
+
+// THE LEDGER IS THE PAGE. Walking in reads it once; the three blocks screen 2c
+// asks for are all drawn from that one reading.
+func TestTheSpendPlaceDrawsTheLedgerItWalkedInOn(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	text := placeFrameText(a)
+	for _, want := range []string{"$34.10", "what ran it", "opus 4.1", "what it was for"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the spend place does not carry %q:\n%s", want, text)
+		}
+	}
+	// AND A MACHINE THAT HAS SPENT NOTHING MEETS THE TEACHING INSTEAD, which is
+	// the router's own three sentences and not a second set of words.
+	empty := spendLab(t, nil)
+	if got := placeFrameText(empty); !strings.Contains(got, "Every model call writes a line") {
+		t.Fatalf("an empty ledger did not teach:\n%s", got)
+	}
+}
+
+// MOVING THE WINDOW IS ARITHMETIC AND NEVER A READ. The lines are already in
+// memory, which is what lets somebody hold the arrow down.
+func TestTheSpendWindowMovesWithoutReadingTheLedgerAgain(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	was := a.spend.win
+	held := len(a.spend.lines)
+	drive(t, a, key("shift+left"))
+	if a.spend.win == was {
+		t.Fatal("shift+← did not move the window")
+	}
+	if len(a.spend.lines) != held {
+		t.Fatalf("moving the window re-read the ledger: %d lines, was %d", len(a.spend.lines), held)
+	}
+	drive(t, a, key("shift+right"))
+	if a.spend.win != was {
+		t.Fatalf("shift+→ did not come back to %v", was)
+	}
+	drive(t, a, key("shift+up"))
+	if a.spend.win.Grain != session.GrainWeek {
+		t.Fatalf("shift+↑ left the grain at %q", a.spend.win.Grain)
+	}
+}
+
+// THE LEDGER HOLDS IDS AND NO TITLES, so the page joins them against the
+// records it is already reading and a subject nobody can name keeps its id.
+func TestTheSpendPlaceNamesWhatTheLedgerOnlyHasAnIdFor(t *testing.T) {
+	win := session.LastDays(spendTestNow, 14)
+	r := readSpend(spendFixture(), win, spendTestNow).naming(map[string]string{
+		session.SubjectTask + "\x00" + "the-filings-sweep": "read 40 filings for reward mentions",
+	})
+	text := strings.Join(plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false))), "\n")
+	if !strings.Contains(text, "read 40 filings for reward mentions") {
+		t.Fatalf("the joined title is not on the page:\n%s", text)
+	}
+	if !strings.Contains(text, "render-fight-clips") {
+		t.Fatalf("a subject nobody could name lost its id:\n%s", text)
+	}
+}
+
+// `enter` ON A ROW OF "WHAT IT WAS FOR" OPENS WHAT IT WAS FOR — the money is
+// the reading and the thing it went on is the door.
+func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
+	talk := session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
+		USD: 4.25, Session: "aaaa000000000001", Workspace: "/work/alpha"}
+	a := spendLab(t, []session.UsageLine{talk})
+	stop := a.spendStopAt(a.spend.cursor)
+	if !stop.ok {
+		t.Fatalf("the cursor did not open on a door: %d of %d", a.spend.cursor, len(a.spend.stops))
+	}
+	if stop.subject.Kind != session.SubjectConversation {
+		t.Fatalf("the only door is a %q row", stop.subject.Kind)
+	}
+	drive(t, a, key("enter"))
+	if a.page != pageHome {
+		t.Fatalf("enter on a conversation's row landed on %q", a.page.word())
+	}
+}
+
+// AND A ROW THAT IS NOT A DOOR IS NOT ONE. The window header, the sparkline and
+// the section headings are the reading; nothing stops on them, so `enter` there
+// is the composer's own road.
+func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	seen := 0
+	for i, stop := range a.spend.stops {
+		if !stop.ok {
+			continue
+		}
+		seen++
+		if i == 0 {
+			t.Fatal("the window header was offered as a door")
+		}
+	}
+	if seen != spendSubjectCap {
+		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
+	}
 }
