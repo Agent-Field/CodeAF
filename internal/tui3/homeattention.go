@@ -10,7 +10,7 @@ package tui3
 // THEY ARE GONE, AND WHAT THEY WERE FOR IS NOT. A summary standing over a list
 // earns its cells when the list is in a different order — a project tree sorted
 // by project genuinely cannot answer "what needs me". The list is one flat
-// ranked list now (SCREEN 1a, homeswitch.go), and what it is ranked BY is
+// ranked list now (SCREEN 1a, place_home.go), and what it is ranked BY is
 // exactly what the two strips gathered: needs-you first, then moving, then
 // quiet. A strip over that list is the same reading twice, and every row it held
 // was already one row further down the screen.

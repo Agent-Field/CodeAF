@@ -6,8 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── THE VERB STRIP ──────────────────────────────────────────────────────────
@@ -169,6 +167,8 @@ const verbGap = "   "
 func (a *app) rowVerbs() []verb {
 	switch a.page {
 	case pageHome:
+		// Home's own half is place_home.go's; this file knows the mechanism and
+		// never a place's verbs.
 		return a.homeRowVerbs()
 	case pageStanding:
 		return a.standRowVerbs()
@@ -176,27 +176,6 @@ func (a *app) rowVerbs() []verb {
 		return a.memoryRowVerbs()
 	}
 	return nil
-}
-
-// homeRowVerbs is the strip on home. On the resting switcher the verbs are the
-// READING's — the question's own option words on a row that is asking, and the
-// doors a row with an address has (homeswitch.go's [app.homeSwitchVerbs]); on a
-// row built any other way it carries the two actions home has been ADVERTISING
-// on a standing item without binding (`homeItemActions`, homestanding.go), which
-// were bound to ctrl+e and ctrl+x, which the line never named, and whose bare
-// `p` and `s` typed.
-func (a *app) homeRowVerbs() []verb {
-	if verbs := a.homeSwitchVerbs(); len(verbs) > 0 {
-		return verbs
-	}
-	line, ok := a.home.previewLine()
-	if !ok || line.kind != homeItem {
-		return nil
-	}
-	return []verb{
-		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
-		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
-	}
 }
 
 // standRowVerbs is the standing place's strip. Its three letters were bare while

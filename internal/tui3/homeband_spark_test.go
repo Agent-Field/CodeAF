@@ -46,7 +46,7 @@ func TestThePulseSaysHowManyHandsAreWorkingAndIsAbsentAtZero(t *testing.T) {
 	}
 	// THE FIGURE AND THE LIST ARE ONE ACCOUNTING. The rows the switcher calls
 	// moving are the same things this figure counts; a top line that counted them
-	// a second way would be the screen arguing with itself (homeswitch.go's
+	// a second way would be the screen arguing with itself (place_home.go's
 	// [app.machineHands] reads the world the list is ranked from).
 	moving := 0
 	for _, line := range a.home.lines {

@@ -3,7 +3,7 @@ package tui3
 // THE BRIDGE: HOW WIDE HOME HAS TO BE BEFORE IT DRAWS A CARD.
 //
 // Everything this file arranges was built somewhere else. The list is
-// switcher.go's flat ranked reading (homeswitch.go wires it), the pulse over the
+// switcher.go's flat ranked reading (place_home.go wires it), the pulse over the
 // top is pulse.go's, the frame around all of it is the router's (pages.go), and
 // the card on the right is the band registry's (homebands.go). What is here is
 // the ARRANGEMENT — where each of them stands at which width, and the one cell
