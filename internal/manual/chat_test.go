@@ -35,6 +35,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the chat session or the output".
 		{"inside a task I cannot see the chat session or the output", "task-rooms-after-restart"},
 		{"why is the task page hidden", "task-rooms-after-restart"},
+		// And the same blank met on a task that has NOT finished — the queued one,
+		// and the one opened the instant it was started. It is the same sentence a
+		// person says about it, so it has to reach a page that names the line the
+		// screen is actually showing them.
+		{"I clicked on the task and there is nothing there at all", "task-rooms-after-restart"},
+		{"nothing on this page yet", "reading-a-task-page"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
