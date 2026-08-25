@@ -1,8 +1,8 @@
 package tui3
 
 import (
+	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +55,7 @@ type memoryReadingKind uint8
 
 const (
 	memoryReadingProse memoryReadingKind = iota
+	memoryReadingBlank
 	memoryReadingHeader
 	memoryReadingSection
 	memoryReadingShelf
@@ -121,9 +122,16 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		}
 		return ranked[i].count > ranked[j].count
 	})
+	if query != "" && len(ranked) == 0 {
+		r.lines = []memoryReadingLine{{kind: memoryReadingProse, label: fmt.Sprintf("nothing on a shelf says %q", query)}}
+		return r
+	}
 
 	// No memory status asks for a look: active is held, while forgotten and
 	// superseded are history. Drawing that section would invent a fourth state.
+	if len(r.lines) > 0 {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingBlank})
+	}
 	r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: "shelves · biggest first", note: memoryTypeLegend(ranked)})
 	shownShelves := min(len(ranked), memoryShelvesShown)
 	for i := 0; i < shownShelves; i++ {
@@ -145,8 +153,8 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		}
 		r.lines = append(r.lines, memoryReadingLine{
 			kind: memoryReadingShelf, shelf: key,
-			label: mark + " " + memoryShelfName(shelf.shelf) + " · " + formatMemoryNumber(shelf.count),
-			note:  memoryShelfNote(shelf.shelf, newToday), age: store.AgeLabel(newest, now),
+			label: mark + " " + memoryShelfName(shelf.shelf) + " · " + groupedInt(shelf.count),
+			note:  memoryShelfNote(shelf.shelf, newToday), age: sinceAt(newest, now),
 		})
 		if !open[key] {
 			continue
@@ -158,15 +166,15 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 			r.lines = append(r.lines, memoryReadingLine{
 				kind: memoryReadingMemory, shelf: key, memory: &copy,
 				label: tokens.GlyphProseBullet + " " + memory.Title,
-				note:  memory.Type, help: memoryHelp(memory, now), age: store.AgeLabel(memory.UpdatedAt, now),
+				note:  memory.Type, help: memoryHelp(memory, now), age: sinceAt(memory.UpdatedAt, now),
 			})
 		}
 		if more := len(shelf.lines) - shown; more > 0 {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: tokens.GlyphCollapsed + " " + formatMemoryNumber(more) + " more on this shelf"})
+			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "on this shelf")})
 		}
 	}
 	if more := len(ranked) - shownShelves; more > 0 {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: tokens.GlyphCollapsed + " " + formatMemoryNumber(more) + " more shelves"})
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "shelves")})
 	}
 	if r.teach {
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFooter})
@@ -206,7 +214,7 @@ func memoryTypeLegend(shelves []rankedMemoryShelf) string {
 	var parts []string
 	for _, kind := range []string{store.MemoryFact, store.MemoryPreference, store.MemoryDecision, store.MemoryCorrection, store.MemoryProjectState} {
 		if counts[kind] > 0 {
-			parts = append(parts, kind+" "+formatMemoryNumber(counts[kind]))
+			parts = append(parts, kind+" "+groupedInt(counts[kind]))
 		}
 	}
 	return strings.Join(parts, " · ")
@@ -228,7 +236,7 @@ func memoryShelfNote(shelf store.MemoryShelf, newToday int) string {
 		parts = append(parts, "mostly "+kind)
 	}
 	if newToday > 0 {
-		parts = append(parts, formatMemoryNumber(newToday)+" new today")
+		parts = append(parts, groupedInt(newToday)+" new today")
 	}
 	return strings.Join(parts, " · ")
 }
@@ -250,7 +258,7 @@ func memoryHelp(memory store.Memory, now time.Time) string {
 		return "let go"
 	}
 	if memory.UseCount == 0 && memory.MissCount == 0 {
-		if age := store.AgeLabel(memory.UpdatedAt, now); age != "" {
+		if age := sinceAt(memory.UpdatedAt, now); age != "" {
 			return "new, learned " + age
 		}
 		return "new"
@@ -262,13 +270,13 @@ func memoryHelp(memory store.Memory, now time.Time) string {
 			if memory.UseCount != 1 {
 				word = "times"
 			}
-			parts = append(parts, "helped "+formatMemoryNumber(memory.UseCount)+" "+word)
+			parts = append(parts, "helped "+groupedInt(memory.UseCount)+" "+word)
 		} else {
-			parts = append(parts, "helped "+formatMemoryNumber(memory.UseCount))
+			parts = append(parts, "helped "+groupedInt(memory.UseCount))
 		}
 	}
 	if memory.MissCount > 0 {
-		parts = append(parts, "bore on "+formatMemoryNumber(memory.MissCount))
+		parts = append(parts, "bore on "+groupedInt(memory.MissCount))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -279,14 +287,6 @@ func sameDay(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-func formatMemoryNumber(n int) string {
-	plain := strconv.Itoa(n)
-	for at := len(plain) - 3; at > 0; at -= 3 {
-		plain = plain[:at] + "," + plain[at:]
-	}
-	return plain
-}
-
 // rows paints only through the palette and fits every completed line with the
 // same cell-width ruler the rest of the surface uses.
 func (r memoryReading) rows(width int, pal palette) []string {
@@ -295,6 +295,10 @@ func (r memoryReading) rows(width int, pal palette) []string {
 		switch line.kind {
 		case memoryReadingProse:
 			rows = append(rows, pal.dim(fit(line.label, width)))
+		case memoryReadingBlank:
+			if len(rows) > 0 && rows[len(rows)-1] != "" {
+				rows = append(rows, "")
+			}
 		case memoryReadingHeader:
 			left := memoryCounts(r.held, r.shelves, r.letGo)
 			rows = append(rows, memoryJoin(pal.ink(left), pal.dim("type to filter"), "type to filter", width))
@@ -335,13 +339,13 @@ func (r memoryReading) rows(width int, pal palette) []string {
 func memoryCounts(held, shelves, letGo int) string {
 	var parts []string
 	if held > 0 {
-		parts = append(parts, formatMemoryNumber(held)+" held")
+		parts = append(parts, groupedInt(held)+" held")
 	}
 	if shelves > 0 {
-		parts = append(parts, formatMemoryNumber(shelves)+" shelves")
+		parts = append(parts, groupedInt(shelves)+" shelves")
 	}
 	if letGo > 0 {
-		parts = append(parts, formatMemoryNumber(letGo)+" let go")
+		parts = append(parts, groupedInt(letGo)+" let go")
 	}
 	return strings.Join(parts, " · ")
 }
