@@ -212,6 +212,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 			}
 		}
 		lastErr = apiError(response.StatusCode, peek)
+		// A 5xx that names its upstream is that upstream failing, not this model:
+		// the lane goes so the next encode routes around it (velocity.go's
+		// refuseUpstream). A 429 was already answered above with the wait the
+		// provider itself named, and this leaves it alone.
+		c.refuseUpstream(c.modelFor(request), lastErr)
 		// Non-rate-limit faults keep the original, shorter patience.
 		if !rateLimited && attempt >= maxAttempts-1 {
 			break

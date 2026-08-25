@@ -463,7 +463,13 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if httpResponse.StatusCode >= 400 {
-		return nil, apiError(httpResponse.StatusCode, payload)
+		refusal := apiError(httpResponse.StatusCode, payload)
+		// AND THE LANE GOES, so the caller's next attempt is encoded away from
+		// the upstream that just refused (velocity.go's refuseUpstream). The pin
+		// was already released on the way out of sendShaped; releasing a pin only
+		// stops us ASKING for that endpoint, and the router chooses it again.
+		c.refuseUpstream(c.modelFor(request), refusal)
+		return nil, refusal
 	}
 	var response ai.Response
 	if err := json.Unmarshal(payload, &response); err != nil {
@@ -564,7 +570,9 @@ func (c *Client) completeWithMessagesStreaming(
 	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
-		return nil, apiError(httpResponse.StatusCode, payload)
+		refusal := apiError(httpResponse.StatusCode, payload)
+		c.refuseUpstream(c.modelFor(request), refusal)
+		return nil, refusal
 	}
 	// The silence watchdog starts the moment the headers land, which is the
 	// moment the endpoint has accepted the request and owes an answer
@@ -658,6 +666,22 @@ func (c *Client) completeWithMessagesStreaming(
 		}
 		if chunk.Provider != "" {
 			served = chunk.Provider
+		}
+		// A REFUSAL DELIVERED INSIDE A 200 IS STILL A REFUSAL. The router accepted
+		// the request, sent its headers, and then said the upstream broke; every
+		// other layer here would read the stream that follows as a short answer.
+		// It ends the call as an error, releases the pin and takes the lane away,
+		// exactly as the same refusal arriving before the headers would (sse.go
+		// says what it cost when this field was not read at all).
+		if refusal := streamRefusal(chunk.Error); refusal != nil {
+			if named, ok := RefusalFrom(refusal); ok && named.Provider == "" && served != "" {
+				// The stream named who was serving it even when the error object
+				// did not, and that name is what the ledger and the journal need.
+				named.Provider = served
+			}
+			c.refuseUpstream(c.modelFor(request), refusal)
+			c.releaseEndpoint(ctx, c.modelFor(request))
+			return nil, refusal
 		}
 		if chunk.Usage != nil {
 			response.Usage = chunk.Usage
@@ -941,10 +965,22 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // message in a field, the sentence a reader gets is composed from parts rather
 // than cut out of transport.
 //
-// Error() is byte-for-byte what this used to return. That is deliberate and
-// load-bearing: the harness's provider-error taxonomy recovers a status code by
-// reading the text, so a rewording here would silently disable rate-limit and
-// transient-failure retries.
+// Error() keeps its OPENING byte-for-byte. That is deliberate and load-bearing:
+// the harness's provider-error taxonomy recovers a status code by reading the
+// text, so a rewording of the `API error (404): …` head would silently disable
+// rate-limit and transient-failure retries. What may be added is a tail, and
+// [APIError.upstream] is the only thing that adds one.
+//
+// ── THE MEASURED FAILURE THAT PUT Provider AND Raw ON HERE ──────────────────
+//
+// SWE-Marathon run s2, 22:45 UTC: a turn died with the whole of what anybody
+// was ever told being `error: after 3 retries: API error (400): Provider
+// returned error`. That sentence names no provider, carries no upstream body,
+// and left five hours of a benchmark's budget unspent with NOTHING in the
+// session journal to autopsy — no error row, no endpoint, no status. "Provider
+// returned error" is OpenRouter saying that somebody ELSE refused, and the
+// somebody and the refusal are both in the JSON it sent: `error.metadata`
+// carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
 	// Status is the HTTP status the refusal arrived under.
 	Status int
@@ -954,17 +990,102 @@ type APIError struct {
 	// Body is the undecoded payload, kept so nothing is lost when the provider
 	// answered with something this client does not know the shape of.
 	Body string
+	// Provider is the UPSTREAM the router handed this request to, exactly as
+	// OpenRouter spells it in `error.metadata.provider_name`. It is EMPTY when
+	// the router refused on its own account, and that emptiness is a fact rather
+	// than a gap — see [APIError.OurRequest].
+	Provider string
+	// Raw is the upstream's own answer, out of `error.metadata.raw`, clipped to
+	// [maxRawClip]. It is the sentence that says what the 400 actually was, and
+	// it is the one thing "Provider returned error" never contains.
+	Raw string
 }
 
-// Error keeps the SDK's exact error phrasing.
+// Error keeps the SDK's exact error phrasing, and names the upstream when the
+// router told us there was one.
 func (e *APIError) Error() string {
 	if e == nil {
 		return ""
 	}
-	if strings.TrimSpace(e.Message) != "" {
-		return fmt.Sprintf("API error (%d): %s", e.Status, e.Message)
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		message = e.Body
 	}
-	return fmt.Sprintf("API error (%d): %s", e.Status, e.Body)
+	return fmt.Sprintf("API error (%d): %s%s", e.Status, message, e.upstream())
+}
+
+// upstream is the short tail Error() adds when the router named who refused: the
+// provider's name, and the FIRST SENTENCE of what it said. It is one sentence
+// rather than the clip because this string is read by a person on one line of a
+// terminal — the whole of Raw is on the journal's error row, where an autopsy
+// looks for it.
+func (e *APIError) upstream() string {
+	if e == nil || strings.TrimSpace(e.Provider) == "" {
+		return ""
+	}
+	said := firstSentence(e.Raw)
+	if said == "" {
+		return " (via " + e.Provider + ")"
+	}
+	return " (via " + e.Provider + ": " + said + ")"
+}
+
+// FromUpstream reports that THE ENDPOINT THE ROUTER CHOSE is what refused, not
+// the router. It is the presence of a provider name and nothing else: OpenRouter
+// puts `provider_name` in the metadata exactly when it is relaying somebody
+// else's refusal, and leaves it out when it is answering for itself.
+//
+// It is the distinction that decides whether another endpoint is worth asking.
+func (e *APIError) FromUpstream() bool {
+	return e != nil && strings.TrimSpace(e.Provider) != ""
+}
+
+// OurRequest reports that THE REQUEST IS WHAT IS WRONG, so no endpoint will do
+// better with it.
+//
+// IT IS A SHAPE, NEVER A STATUS LIST. A 4xx that named an upstream is that
+// upstream's refusal and another one may well serve it; a 4xx that named nobody
+// is the router reading our own bytes and saying no, and asking again — anywhere
+// — spends the deadline to be told the same thing. 429 is excluded because it is
+// pacing rather than a verdict on the request, and it has its own patience
+// (retry.go).
+func (e *APIError) OurRequest() bool {
+	if e == nil || e.FromUpstream() {
+		return false
+	}
+	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
+}
+
+// RefusalFrom recovers the provider's refusal from anywhere in an error chain,
+// which is how a caller several wraps away asks the two questions above rather
+// than grepping the sentence.
+func RefusalFrom(err error) (*APIError, bool) {
+	var refusal *APIError
+	if errors.As(err, &refusal) && refusal != nil {
+		return refusal, true
+	}
+	return nil, false
+}
+
+// firstSentence is the readable head of an upstream body: its first sentence, or
+// its first line when it punctuates nothing. A body that is JSON all the way down
+// has no sentence in it and answers with its clipped head, which is still more
+// than "Provider returned error" ever said.
+func firstSentence(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if line, _, found := strings.Cut(raw, "\n"); found {
+		raw = strings.TrimSpace(line)
+	}
+	if head, _, found := strings.Cut(raw, ". "); found {
+		raw = strings.TrimSpace(head) + "."
+	}
+	if len(raw) > maxSentenceClip {
+		raw = strings.TrimSpace(raw[:maxSentenceClip]) + "…"
+	}
+	return raw
 }
 
 // errorBody is the shape a refusal arrives in, read for the one field anybody
@@ -982,12 +1103,35 @@ type errorBody struct {
 	Error struct {
 		Message string          `json:"message"`
 		Code    json.RawMessage `json:"code,omitempty"`
+		// Metadata is the router's own dialect and is decoded leniently, for
+		// [pacedProviderName]'s reason: a provider that shapes its errors
+		// differently simply leaves these empty and behaves exactly as it did
+		// before they were read. `raw` is typed as raw JSON because upstreams
+		// send it both ways — a string of their body, and their body itself.
+		Metadata struct {
+			ProviderName string          `json:"provider_name"`
+			Raw          json.RawMessage `json:"raw,omitempty"`
+		} `json:"metadata"`
 	} `json:"error"`
 	// Some providers put the sentence at the top level instead.
 	Message string `json:"message"`
 }
 
-// apiError decodes one refusal into its parts.
+// maxRawClip bounds the upstream body kept on a refusal and written to the
+// journal's error row. An upstream can answer with a whole HTML page, and a
+// transcript line is not the place for one; two kilobytes is several paragraphs
+// of any real provider error and is bounded enough to sit on every failed call.
+const maxRawClip = 2 << 10
+
+// maxSentenceClip bounds the ONE SENTENCE a person is shown. It is a line in a
+// terminal beside a status code, not a report.
+const maxSentenceClip = 160
+
+// apiError decodes one refusal into its parts, the upstream's included.
+//
+// THE UPSTREAM IS THE POINT. "Provider returned error" is a sentence about
+// nothing until it says which provider and what they said, and both are in the
+// metadata OpenRouter already sends (see [APIError]).
 func apiError(status int, payload []byte) error {
 	failure := &APIError{Status: status, Body: string(payload)}
 	var decoded errorBody
@@ -997,6 +1141,29 @@ func apiError(status int, payload []byte) error {
 		} else {
 			failure.Message = strings.TrimSpace(decoded.Message)
 		}
+		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
+		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
 	}
 	return failure
+}
+
+// clipRaw reads the upstream's own body out of the metadata, whichever of the
+// two shapes it arrived in, and bounds it.
+func clipRaw(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	text := string(raw)
+	// A quoted string is the common shape — the upstream's body, escaped — and it
+	// is unquoted so the journal carries prose rather than an escaped blob. A
+	// value that is not a string is kept exactly as it was sent.
+	var quoted string
+	if err := json.Unmarshal(raw, &quoted); err == nil {
+		text = quoted
+	}
+	text = strings.TrimSpace(text)
+	if len(text) > maxRawClip {
+		text = strings.TrimSpace(text[:maxRawClip]) + "…"
+	}
+	return text
 }
