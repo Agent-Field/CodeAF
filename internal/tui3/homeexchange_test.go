@@ -97,7 +97,7 @@ func theExchange(a *app) *homeExchange {
 // when the column is not drawing it.
 // ONE ROW PER ERRAND. It used to have two — its own inside a project block, and
 // a second view of it in whichever strip was drawing it — and the strips are
-// gone: an errand has one row, over the ranked list (homeswitch.go).
+// gone: an errand has one row, over the ranked list (place_home.go).
 func exchangeRowAt(a *app, ex *homeExchange) int {
 	for at, line := range a.home.lines {
 		if line.kind == homeExchangeRow && line.ex == ex {

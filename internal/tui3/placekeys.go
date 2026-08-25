@@ -182,8 +182,8 @@ func (a *app) placeAlt(letter rune) bool {
 	case pageHome:
 		// `alt+g` GROUPS THE LIST BY PROJECT AND `alt+q` HIDES THE QUIET ONES —
 		// the two views SCREEN 3b names for home, and the two this place can
-		// actually be shown in (homeswitch.go).
-		return a.homeSwitchAlt(letter)
+		// actually be shown in (place_home.go).
+		return a.homeAlt(letter)
 	case pageMemory:
 		if letter == 's' && a.memPanel.open {
 			// WHICH SHELF THIS PLACE IS SHOWING. It was `tab` while memory was a

@@ -66,7 +66,7 @@ package tui3
 //
 // IT FAILS TOWARD MARKING NOTHING, which is the right direction. A project
 // somebody opened inside the folded block gets air on both sides
-// ([homeView.buildElsewhere]), so a cursor down among its conversations meets a
+// (the folded block the switcher replaced), so a cursor down among its rows meets a
 // blank before it meets any heading and the frame marks none — that line is a
 // DOOR rather than a heading and cannot be one without a row that answers enter
 // wearing a ground it did not earn. An honest silence beats a confident mark on

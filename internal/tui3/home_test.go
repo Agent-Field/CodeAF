@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // homeLab builds a projects root on disk — the same shape the launch door
@@ -475,7 +473,7 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	// a search over the whole screen would find that copy first.
 	// ONE ROW PER THING. A waiting conversation used to have two rows — its own
 	// and a `needs you` strip's — and the strips are gone: the rank IS the list
-	// now, so the waiting one is simply first (homeswitch.go).
+	// now, so the waiting one is simply first (place_home.go).
 	var order []string
 	for _, line := range a.home.lines {
 		if line.kind == homeSession {
@@ -2210,7 +2208,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 	}{
 		// The card tier, and the two below it. NO TIER DRAWS FURNITURE OF ITS
 		// OWN ANY MORE — the strips that used to keep their labels over nothing
-		// went with the tree (homeswitch.go), and an empty machine at every
+		// went with the tree (place_home.go), and an empty machine at every
 		// width is the head, the sentence and the foot.
 		{homeCardMin, nil},
 		{homeSwitchFull, nil},
@@ -2821,11 +2819,11 @@ func TestHomeDoesNotLinkAProjectThatIsGone(t *testing.T) {
 	}
 }
 
-// ── the two tiers ───────────────────────────────────────────────────────────
+// ── one list, and nothing folded away from it ───────────────────────────────
 
 // homeTierLab is six projects with one conversation each, THIS WINDOW STANDING
-// IN THE OLDEST OF THEM — so that "the window's project comes first" cannot be
-// mistaken for "the most recent project comes first".
+// IN THE OLDEST OF THEM — so that "the window's own conversation is the one
+// marked here" cannot be mistaken for "the most recent one is".
 func homeTierLab(t *testing.T) (*app, *homeLab, string) {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -2840,8 +2838,6 @@ func homeTierLab(t *testing.T) (*app, *homeLab, string) {
 	}
 	a := lab.app(mine)
 	a.width, a.height = 100, 40
-	// The cursor stands on this window's own conversation, where the first ↓
-	// would put it: home itself opens at rest ([openHomeOn]).
 	openHomeOn(a, mine)
 	return a, lab, mine
 }
@@ -2857,318 +2853,62 @@ func homeKinds(a *app, kind homeRowKind) []string {
 	return out
 }
 
-// THE LIST IS TWO TIERS: three projects open, everything else one line each
-// under a rule, and the window's own project at the head of it.
+// NOTHING IS FOLDED AWAY BY BEING IN THE WRONG PROJECT.
 //
-// It was an unorganised wall — every project on the machine with a heading and
-// four rows, most of them saying `elsewhere` — and the one project a person
-// could actually act in was wherever recency happened to put it.
-func TestHomeOpensThreeProjectsAndFoldsTheRest(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	open := homeKinds(a, homeHeading)
-	if len(open) != homeOpenProjects {
-		t.Fatalf("home opened %d projects, want %d: %v\n%s", len(open), homeOpenProjects, open, homeText(a))
+// The list used to be two tiers: three projects drawn open with their
+// conversations under them, and every other project on the machine one line
+// each under a dim `elsewhere` rule. That shape bought five rows of scaffolding
+// to reach twenty leaves, and it could put a conversation that needs a person
+// three folds down under six projects nobody has touched.
+//
+// THE LAW THOSE TIERS WERE PROTECTING IS THE ONE THIS TEST NOW PINS: what wants
+// you is reachable without opening anything. There is one flat ranked list, the
+// project is a tag on the row, and the only thing folded is the quiet tail past
+// the eighth row (switcher.go, place_home.go).
+func TestHomeDrawsOneListWithNoProjectTierAndNoElsewhereBlock(t *testing.T) {
+	a, _, mine := homeTierLab(t)
+	if headings := homeKinds(a, homeHeading); len(headings) != 0 {
+		t.Fatalf("the resting list still draws project headings: %v\n%s", headings, homeText(a))
 	}
-	if open[0] != "zeta" {
-		t.Fatalf("the window's own project is not first: %v\n%s", open, homeText(a))
+	if folded := homeKinds(a, homeProject); len(folded) != 0 {
+		t.Fatalf("the resting list still folds projects away: %v\n%s", folded, homeText(a))
 	}
-	// Then the two most recently spoken-in others, in that order.
-	if open[1] != "alpha" || open[2] != "beta" {
-		t.Fatalf("the open tier is not the window's project then the two most recent: %v", open)
-	}
-	folded := homeKinds(a, homeProject)
-	if len(folded) != 3 {
-		t.Fatalf("home folded %d projects, want 3: %v\n%s", len(folded), folded, homeText(a))
-	}
-	// AND THE RULE SAYS WHAT THE BLOCK IS, once, instead of every heading
-	// saying it.
 	text := homeText(a)
-	if !strings.Contains(text, "─ "+homeElsewhereWord+" ─") {
-		t.Fatalf("the folded block has no rule over it:\n%s", text)
+	if strings.Contains(text, homeElsewhereWord) {
+		t.Fatalf("the elsewhere block survived:\n%s", text)
 	}
-	// A folded line is the project, how many conversations it holds, and how
-	// long since anybody spoke in one.
-	if !strings.Contains(text, "▸ gamma") {
-		t.Fatalf("a folded project is not drawn with its fold mark:\n%s", text)
-	}
-}
-
-// A FOLD MUST NOT HIDE THE ROW THIS SCREEN EXISTS FOR. A folded project holding
-// a conversation stopped on a question says so on its one line, and sorts above
-// the quiet ones.
-func TestAFoldedProjectSurfacesWhatIsWaitingAndSortsAboveTheQuiet(t *testing.T) {
-	_, lab, mine := homeTierLab(t)
-	// `eps` is the OLDEST of the folded projects, so recency alone would put it
-	// last of the three.
-	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWaiting, "can I run: rm -rf build/", time.Now())
-	a := lab.app(mine)
-	a.width, a.height = 100, 40
-	a.openHome()
-
-	folded := homeKinds(a, homeProject)
-	if len(folded) == 0 || folded[0] != "eps" {
-		t.Fatalf("the waiting project did not sort to the top of the block: %v\n%s", folded, homeText(a))
-	}
-	if !strings.Contains(homeText(a), homeAskGlyph+" 1 waiting") {
-		t.Fatalf("the folded line does not surface what is waiting:\n%s", homeText(a))
-	}
-}
-
-// A folded project that has work RUNNING surfaces that instead.
-func TestAFoldedProjectSurfacesWhatIsRunning(t *testing.T) {
-	_, lab, mine := homeTierLab(t)
-	now := time.Now()
-	lab.task("-tmp-eps", session.TaskIndexEntry{
-		ID: "1", Name: "port", Label: "Port It", Title: "Port It",
-		Status: string(session.TaskRunning), SessionID: "eeee000000000001",
-	})
-	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWorking, "", now,
-		session.PresenceTask{ID: "1", Title: "Port It", State: "running", StartedAt: now})
-	a := lab.app(mine)
-	a.width, a.height = 100, 40
-	a.openHome()
-	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
-		t.Fatalf("the folded line does not surface what is running:\n%s", homeText(a))
-	}
-}
-
-// A FOLD MUST NOT HIDE A STANDING ITEM THAT NEEDS SOMEBODY EITHER. A watch is
-// as capable of stopping on a question as a conversation is, and a project
-// whose only waiting thing is a watch sorts and reads exactly like one whose
-// waiting thing is a chat.
-func TestAFoldedProjectSurfacesAStandingItemThatNeedsYou(t *testing.T) {
-	_, lab, mine := homeTierLab(t)
-	a := lab.app(mine)
-	a.width, a.height = 100, 40
-	// `eps` is the OLDEST of the folded projects, so recency alone would put it
-	// last of the three.
-	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
-	item.NeedsPerson = "the fix touches migrations"
-	(&standBand{items: []standing.Item{item}}).wire(a)
-	a.openHome()
-
-	folded := homeKinds(a, homeProject)
-	if len(folded) == 0 || folded[0] != "eps" {
-		t.Fatalf("the project whose watch is waiting did not sort to the top: %v\n%s", folded, homeText(a))
-	}
-	if !strings.Contains(homeText(a), homeAskGlyph+" 1 waiting") {
-		t.Fatalf("the folded line does not surface the waiting watch:\n%s", homeText(a))
-	}
-}
-
-// AND ONE FIRING RIGHT NOW IS WORK IN FLIGHT, counted with the conversations
-// that have work in flight.
-func TestAFoldedProjectSurfacesAStandingItemThatIsFiring(t *testing.T) {
-	_, lab, mine := homeTierLab(t)
-	a := lab.app(mine)
-	a.width, a.height = 100, 40
-	(&standBand{
-		items:   []standing.Item{bandItem("run", "check the deploy", "/tmp/eps", standing.WhenEvery, "every 20 minutes")},
-		running: map[string]standing.RunningMark{"run": {What: standing.RunningFiring, Since: time.Now()}},
-	}).wire(a)
-	a.openHome()
-
-	folded := homeKinds(a, homeProject)
-	if len(folded) == 0 || folded[0] != "eps" {
-		t.Fatalf("the project with a firing watch did not sort to the top: %v\n%s", folded, homeText(a))
-	}
-	if !strings.Contains(homeText(a), homeLiveGlyph+" 1 running") {
-		t.Fatalf("the folded line does not surface the firing watch:\n%s", homeText(a))
-	}
-}
-
-// AND THE TWO KINDS ARE ADDED UP, not chosen between: the number on the line is
-// how many things want you, whichever kind they are.
-func TestAFoldedProjectCountsConversationsAndItemsTogether(t *testing.T) {
-	_, lab, mine := homeTierLab(t)
-	lab.presence("-tmp-eps", "eeee000000000001", session.PresenceWaiting, "can I run: rm -rf build/", time.Now())
-	a := lab.app(mine)
-	a.width, a.height = 100, 40
-	item := bandItem("ask", "keep main green", "/tmp/eps", standing.WhenProbe, "when CI goes red")
-	item.NeedsPerson = "the fix touches migrations"
-	(&standBand{items: []standing.Item{item}}).wire(a)
-	a.openHome()
-
-	if !strings.Contains(homeText(a), homeAskGlyph+" 2 waiting") {
-		t.Fatalf("the folded line counts one kind of row and not the other:\n%s", homeText(a))
-	}
-}
-
-// A FOLDED PROJECT OPENS IN PLACE. The line stays where it is and becomes the
-// head of a block shaped like a tier-one project; the same key folds it back.
-func TestEnterOpensAFoldedProjectInPlaceAndFoldsItAgain(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeProject && line.project == "gamma" {
-			at = i
+	// EVERY PROJECT'S CONVERSATION IS ON THE ONE LIST, each wearing the project
+	// it came from — six projects, six rows, no door between them.
+	for _, name := range []string{"alpha", "beta", "gamma", "delta", "eps", "zeta"} {
+		if !strings.Contains(text, strings.ToUpper(name[:1])+name[1:]+" Chat") {
+			t.Fatalf("%s's conversation is not on the list:\n%s", name, text)
 		}
 	}
-	if at < 0 {
-		t.Fatalf("gamma is not a folded project line:\n%s", homeText(a))
+	rows := 0
+	for _, line := range a.home.lines {
+		if line.kind != homeSession || line.sw == nil {
+			continue
+		}
+		rows++
+		if line.project == "" {
+			t.Fatalf("a row lost the project it came from:\n%s", text)
+		}
 	}
-	// THE COLUMN IS READ, NOT THE SCREEN: with the cursor on a project line the
-	// card on the right is the project's, and its first band lists the very
-	// conversations the fold hides (homeband_projectsessions.go) — so the text
-	// of the frame says "Gamma Chat" folded or not.
-	listed := func() bool {
-		for _, project := range homeKinds(a, homeSession) {
-			if project == "gamma" {
-				return true
+	if rows != 6 {
+		t.Fatalf("the list drew %d conversations, and the machine holds six:\n%s", rows, text)
+	}
+	// AND THIS WINDOW'S OWN CONVERSATION IS THE ONE MARKED, wherever the rank
+	// happens to put it — which is what the tiers' "your project first" rule was
+	// really for.
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Transcript == mine {
+			if line.sw == nil || !line.sw.row.here {
+				t.Fatalf("this window's own conversation does not wear `here`:\n%s", text)
 			}
-		}
-		return false
-	}
-	a.home.cursor = at
-	a.homeKey(key("enter"))
-	if !listed() {
-		t.Fatalf("enter did not open the project in place:\n%s", homeText(a))
-	}
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeProject || line.project != "gamma" || line.folded {
-		t.Fatalf("the cursor left the line that did the opening (%v %q)", line.kind, line.project)
-	}
-	if !strings.Contains(homeText(a), glyphOpen+" gamma") {
-		t.Fatalf("the opened project does not wear the open mark:\n%s", homeText(a))
-	}
-	// IT IS STILL A FOLDED-TIER PROJECT: no heading was minted for it, so the
-	// open tier is untouched.
-	if open := homeKinds(a, homeHeading); len(open) != homeOpenProjects {
-		t.Fatalf("opening a project changed the open tier: %v", open)
-	}
-	a.homeKey(key("left"))
-	if listed() {
-		t.Fatalf("← did not fold the project away again:\n%s", homeText(a))
-	}
-	a.homeKey(key("right"))
-	if !listed() {
-		t.Fatalf("→ did not open it again:\n%s", homeText(a))
-	}
-	// And a click is the same door in one press.
-	row := homeCursorY(t, a)
-	a.homePress(4, row)
-	if listed() {
-		t.Fatalf("a click did not fold the project:\n%s", homeText(a))
-	}
-}
-
-// THE CARD BESIDE A PROJECT LINE IS THE PROJECT'S. It is the two lines nothing
-// may displace — what it is called and where it is — and the bands registered
-// for a project under them.
-func TestAProjectLineGetsAProjectCard(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	for i, line := range a.home.lines {
-		if line.kind == homeProject && line.project == "gamma" {
-			a.home.cursor = i
+			return
 		}
 	}
-	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindProject {
-		t.Fatalf("a project line answers subject kind %v, want a project", subject.kind)
-	}
-	if subject.dir != "/tmp/gamma" {
-		t.Fatalf("the project subject names %q, want the workspace", subject.dir)
-	}
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	card := a.homeDetail(right, 12, a.pal)
-	if len(card) == 0 {
-		t.Fatalf("a project line draws no card at all:\n%s", homeText(a))
-	}
-	if !strings.Contains(ansi.Strip(strings.Join(card, "\n")), "/tmp/gamma") {
-		t.Fatalf("the project card does not say where the project is:\n%s", strings.Join(card, "\n"))
-	}
-}
-
-// SEARCH SEES THROUGH EVERY FOLD, tiers included: a conversation in a project
-// home had collapsed to one line is found by typing, drawn under its own
-// heading, exactly as it always was.
-func TestSearchSeesThroughTheFoldedTier(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	if strings.Contains(homeText(a), "Delta Chat") {
-		t.Fatal("delta is not folded, so this proves nothing")
-	}
-	for _, r := range "delta" {
-		a.homeKey(key(string(r)))
-	}
-	text := homeText(a)
-	if !strings.Contains(text, "Delta Chat") {
-		t.Fatalf("the query did not see through the fold:\n%s", text)
-	}
-	// And there are no tiers at all while something is typed.
-	if len(homeKinds(a, homeProject)) != 0 {
-		t.Fatalf("a search drew folded project lines:\n%s", text)
-	}
-	if strings.Contains(text, "─ "+homeElsewhereWord+" ─") {
-		t.Fatalf("a search drew the folded block's rule:\n%s", text)
-	}
-}
-
-// PAST EIGHT THE BLOCK FOLDS ITSELF, with the same gesture one rung up.
-func TestTheFoldedBlockFoldsItselfPastEight(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	var mine string
-	for i := 0; i < homeOpenProjects+homeFoldedProjects+3; i++ {
-		name := "p" + strconv.Itoa(i)
-		file := lab.session("-tmp-"+name, strings.Repeat("a", 4)+strconv.Itoa(1000000000000+i),
-			name+" chat", "/tmp/"+name, now.Add(-time.Duration(i+1)*time.Hour))
-		if i == 0 {
-			mine = file
-		}
-	}
-	a := lab.app(mine)
-	a.width, a.height = 100, 60
-	a.openHome()
-	if drawn := len(homeKinds(a, homeProject)); drawn != homeFoldedProjects {
-		t.Fatalf("the block drew %d folded lines, want %d:\n%s", drawn, homeFoldedProjects, homeText(a))
-	}
-	if !strings.Contains(homeText(a), "▸ …3 more") {
-		t.Fatalf("the block does not say what it is holding back:\n%s", homeText(a))
-	}
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeMoreProjects {
-			at = i
-		}
-	}
-	a.home.cursor = at
-	a.homeKey(key("enter"))
-	if drawn := len(homeKinds(a, homeProject)); drawn != homeFoldedProjects+3 {
-		t.Fatalf("enter drew %d folded lines, want them all:\n%s", drawn, homeText(a))
-	}
-	if !strings.Contains(homeText(a), "…3 fewer") {
-		t.Fatalf("the opened block does not offer the way back:\n%s", homeText(a))
-	}
-}
-
-// THE CURSOR NEVER RESTS ON THE RULE. It names a section rather than a thing,
-// exactly as a heading does.
-func TestTheCursorSkipsTheElsewhereRule(t *testing.T) {
-	a, _, _ := homeTierLab(t)
-	rule := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeElsewhereRule {
-			rule = i
-		}
-	}
-	if rule < 0 {
-		t.Fatalf("there is no rule to skip:\n%s", homeText(a))
-	}
-	if a.home.lines[rule].stop() {
-		t.Fatal("the rule is a cursor stop")
-	}
-	// Walk the whole list from the top and never land on it.
-	a.home.cursor = a.home.clamp(0)
-	for i := 0; i < len(a.home.lines); i++ {
-		if a.home.cursor == rule {
-			t.Fatalf("↓ rested the cursor on the rule:\n%s", homeText(a))
-		}
-		a.home.move(1)
-	}
-	if a.home.clamp(rule) == rule {
-		t.Fatal("a rebuild that landed on the rule left the cursor there")
-	}
+	t.Fatalf("this window's own conversation is not on the list:\n%s", text)
 }
 
 // THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX: one blank row, at every
@@ -3241,13 +2981,14 @@ func TestHomeCaretStaysInTheDraftWhenItWraps(t *testing.T) {
 	}
 }
 
-// `e` PUTS A CONVERSATION AWAY AND THE ARCHIVE GIVES IT BACK. The row leaves
-// its project's block for one folded line at the foot — junk from any project,
-// gathered in one place a person can still open — and the same key from
-// inside the standing-open archive returns it. A search finds a put-away row
-// regardless, because a filter that hid a match would be lying about the
-// machine.
-func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
+// PUTTING A ROW AWAY TAKES IT OFF THE LIST, AND ITS NAME BRINGS IT BACK.
+//
+// It used to gather under an `archive` fold at the foot of the resting list.
+// The resting list is the ranked reading now and archived rows are simply not
+// in it (switcher.go) — so the law the fold was protecting, that nothing a
+// person put away is LOST, is kept by the box instead: typing its name finds
+// it, exactly as typing any other name does, and ctrl+e there brings it back.
+func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "keep this one", "/tmp/alpha", now)
@@ -3270,36 +3011,18 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 	a.home.cursor, a.home.picked = at, true
 	drive(t, a, key("ctrl+e"))
 
-	text := homeText(a)
-	if !strings.Contains(text, homeArchiveHeadWord+" · 1 put away") {
-		t.Fatalf("no archive fold appeared:\n%s", text)
+	if text := homeText(a); strings.Contains(text, "Junk Drawer") {
+		t.Fatalf("the put-away row is still on the resting list:\n%s", text)
 	}
-	if strings.Contains(strings.SplitN(text, homeArchiveHeadWord, 2)[0], "Junk Drawer") {
-		t.Fatalf("the put-away row is still in its project's block:\n%s", text)
+	// AND THE SCREEN SAYS WHERE IT WENT. A row that vanished with no sentence
+	// would be the surface hiding something on a keystroke.
+	if !strings.Contains(a.home.msg, homePutAwayWord) {
+		t.Fatalf("putting a row away said %q", a.home.msg)
 	}
 
-	// A search still finds it.
+	// A search still finds it, which is the whole of the way back.
 	a.home.box.setText("junk")
 	a.home.build()
-	if !strings.Contains(homeText(a), "Junk Drawer") {
-		t.Fatalf("a search cannot find the put-away row:\n%s", homeText(a))
-	}
-	a.home.box.reset()
-	a.home.build()
-
-	// Open the archive, walk onto the row, and ctrl+e brings it back.
-	fold := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeArchiveFold {
-			fold = i
-			break
-		}
-	}
-	if fold < 0 {
-		t.Fatal("the archive fold is not on the resting list")
-	}
-	a.home.cursor, a.home.picked = fold, true
-	drive(t, a, key("enter"))
 	back := -1
 	for i, line := range a.home.lines {
 		if line.kind == homeSession && line.row.Archived {
@@ -3308,12 +3031,14 @@ func TestArchivePutsARowAwayAndBringsItBack(t *testing.T) {
 		}
 	}
 	if back < 0 {
-		t.Fatalf("the open archive shows no rows:\n%s", homeText(a))
+		t.Fatalf("typing its name does not find the put-away row:\n%s", homeText(a))
 	}
 	a.home.cursor, a.home.picked = back, true
 	drive(t, a, key("ctrl+e"))
-	if strings.Contains(homeText(a), homeArchiveHeadWord) {
-		t.Fatalf("the archive line survived its last row coming back:\n%s", homeText(a))
+	a.home.box.reset()
+	a.home.build()
+	if !strings.Contains(homeText(a), "Junk Drawer") {
+		t.Fatalf("ctrl+e did not bring the row back to the list:\n%s", homeText(a))
 	}
 }
 
