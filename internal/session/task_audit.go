@@ -147,6 +147,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
@@ -1322,7 +1323,13 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	// front of it, including its verdict. That is the one thing this gate must
 	// never be — an auditor that has already been told what to think.
 	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, "-audit-"+shortID())
+	// The audit reads and judges rather than works, but it judges THIS person's
+	// work, so it thinks as hard as the node it is checking (effort.go). It is
+	// the node's rung above the parent's own resolved answer, which is exactly
+	// the pair [Agent.newTaskAgent] hands a worker.
+	inherited := a.effortLocked(a.model)
 	a.mu.Unlock()
+	nodeRung := node.effortRung()
 
 	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
 	if err != nil {
@@ -1340,6 +1347,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 		CompactEnabled: false,
 		SessionFile:    journal,
 		System:         auditPrompt,
+		Effort:         nodeRung,
+		EffortRole:     effort.RoleWorker,
+		DefaultEffort:  inherited,
 		// The floor is still the floor (approval's critical table), but the
 		// belt is what actually constrains this agent: there is no hand here
 		// that writes. AskConsent is off and InTask is on for the node's own

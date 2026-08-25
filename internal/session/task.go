@@ -73,6 +73,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
@@ -187,6 +188,13 @@ type taskSpec struct {
 	modelWord    string
 	model        string
 	modelOptions []string
+	// effort is the rung this node's workers ask the model for, empty when
+	// nobody has set one and the ladder's next rung down decides
+	// (internal/effort). It travels the same road `model` travels — set at
+	// admission or from the node's own room, checkpointed, and read again by
+	// [Agent.newTaskAgent] when a worker is prepared — because it answers the
+	// same kind of question about the same piece of work.
+	effort effort.Rung
 	// maxSteps and noProgress are the node's own thresholds, 0 when the model
 	// did not name one and the defaults apply (task_run.go).
 	maxSteps   int

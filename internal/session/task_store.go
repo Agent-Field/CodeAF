@@ -76,6 +76,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -201,6 +202,12 @@ type taskRecord struct {
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
 	Model string `json:"model,omitempty"`
+
+	// Effort is the rung on the effort ladder this node's workers ask for, and
+	// empty when nobody set one and the ladder decides from further down
+	// (internal/effort) — including on every checkpoint written before a task
+	// could carry one, which resumes exactly as it always did.
+	Effort string `json:"effort,omitempty"`
 
 	// MaxSteps and NoProgress are the node's own thresholds, 0 when it named
 	// none and the defaults apply.
@@ -575,6 +582,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Merge:       n.merge,
 		Journal:     n.journal,
 		Model:       n.spec.model,
+		Effort:      n.spec.effort.String(),
 		MaxSteps:    n.spec.maxSteps,
 		NoProgress:  n.spec.noProgress,
 		ElapsedMS:   elapsed.Milliseconds(),
@@ -1021,6 +1029,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			acceptance:  record.Acceptance,
 			dependsOn:   record.DependsOn,
 			model:       record.Model,
+			effort:      restoredRung(record.Effort),
 			maxSteps:    record.MaxSteps,
 			noProgress:  record.NoProgress,
 		},
@@ -1065,14 +1074,14 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 	// frontier would hand the node to an ordinary worker in a worktree, which is
 	// the exact failure task.go's taskSpec.design warns about.
 	if record.Kind == TaskKindHarness && record.State == TaskQueued && record.Offer != nil {
-		effort, ok := provider.ParseEffort(record.Offer.Effort)
+		designEffort, ok := provider.ParseEffort(record.Offer.Effort)
 		if !ok {
-			effort = provider.EffortNone
+			designEffort = provider.EffortNone
 		}
 		node.spec.design = &harnessDesignSpec{
 			goal:   record.Offer.Goal,
 			model:  record.Offer.Model,
-			effort: effort,
+			effort: designEffort,
 			resume: record.Offer,
 		}
 	}
@@ -1197,4 +1206,16 @@ func branchOnDisk(workspace, branch string) bool {
 	}
 	_, err := git(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
 	return err == nil
+}
+
+// restoredRung reads one rung back off a checkpoint. A WORD THIS BUILD DOES NOT
+// KNOW IS ABSENCE, not a refusal: a file written by a build with a rung this one
+// dropped must resume the work rather than fail to load it, and the ladder's
+// next rung down is a correct answer where an unreadable checkpoint is not.
+func restoredRung(word string) effort.Rung {
+	rung, ok := effort.Parse(word)
+	if !ok {
+		return effort.None
+	}
+	return rung
 }

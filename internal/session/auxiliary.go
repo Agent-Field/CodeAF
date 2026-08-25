@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -90,12 +91,26 @@ func (a *Agent) callRole(
 		// WithoutStream because nobody asked for this call: left on the turn's
 		// stream it would type itself into the room in the model's voice.
 		callCtx := provider.WithoutStream(ctx)
-		if effort, ok := provider.ParseEffort(rung.Effort); ok && effort != provider.EffortNone {
-			// WithReasoningEffort and not the configured setter: a level carried
-			// on a tier value is a HARNESS default, which the adapter drops for a
-			// model no catalog can vouch for. A person's own ctrl+t is the other
-			// setter and does not reach an errand at all.
-			callCtx = provider.WithReasoningEffort(callCtx, effort)
+		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
+		// answer for it is nothing (internal/effort's RoleErrand): naming a
+		// conversation and judging a route are the session's own housekeeping,
+		// and the depth a person set so their QUESTION would be thought about is
+		// not spent on the label. The scope is deliberately narrow — the role
+		// and the tier's own suffix, and none of the fields above them — because
+		// an errand belongs to the machine and not to the conversation it runs
+		// beside.
+		//
+		// The tier's suffix goes in the task scope because that is what it is: a
+		// rung somebody wrote onto this piece of work when they configured the
+		// crew, sitting above the role's floor and below nothing.
+		if tier, ok := effort.Parse(rung.Effort); ok {
+			if asked := effort.Resolve(effort.Scope{Task: tier, Role: effort.RoleErrand}); asked != effort.None {
+				// WithEffortRung and not the configured setter: a level carried
+				// on a tier value is a HARNESS default, which the adapter drops
+				// for a model no catalog can vouch for. A person's own ctrl+t is
+				// the other setter and does not reach an errand at all.
+				callCtx = provider.WithEffortRung(callCtx, asked)
+			}
 		}
 		callCtx, cancel := context.WithTimeout(callCtx, patience)
 		response, callErr := client.CompleteWithMessages(callCtx, messages,

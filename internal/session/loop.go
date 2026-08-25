@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -322,13 +323,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// per step broke it: a swap between two steps would send one model the
 	// transcript another model was mid-way through writing.
 	//
-	// The reasoning level is latched WITH it, in the same breath and for the
-	// same reason — and it is latched for THIS model, so a swap mid-turn cannot
-	// leave the turn sending one model's level with another model's name.
+	// The effort rung is latched WITH it, in the same breath and for the same
+	// reason — and it is resolved for THIS model, so a swap mid-turn cannot
+	// leave the turn sending one model's level with another model's name. It is
+	// the LADDER'S answer and not a field ([Agent.effortFor]): a rung set on the
+	// conversation, on the work, or on the install reaches this turn through the
+	// same call the dialled level does, which is what makes one resolver true.
 	model := a.Model()
-	a.mu.Lock()
-	effort := a.reasoningLocked(model)
-	a.mu.Unlock()
+	rung := a.effortFor(model)
 
 	// usedTools says this turn touched the belt at all. It is the one fact the
 	// route judge cannot see from outside the loop (route_judge.go): a turn that
@@ -376,7 +378,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// request being measured.
 		a.guardOversizeRequest(ctx, hub)
 
-		response, answered, err := a.completeWithRetry(ctx, hub, model, effort, partial, warm, forming)
+		response, answered, err := a.completeWithRetry(ctx, hub, model, rung, partial, warm, forming)
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
 		// and everything the rest of the turn attributes — the usage rows, the
@@ -384,9 +386,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// model that actually answered rather than the one that stopped.
 		if answered != "" && answered != model {
 			model = answered
-			a.mu.Lock()
-			effort = a.reasoningLocked(model)
-			a.mu.Unlock()
+			rung = a.effortFor(model)
 		}
 		if err != nil {
 			// Interrupt (or the caller's own deadline). Whatever was streamed
@@ -597,7 +597,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // stamp here would be dropped every time and the knob would do nothing. Nothing
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
-func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
 	var lastErr error
 	// cuts counts the attempts the STREAM GUARD ended — a stall, or a reply that
 	// stopped being language. They are counted apart from the transport attempts
@@ -633,14 +633,14 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		// dead attempt's path.
 		forming.reset()
 
-		// The level is stamped PER ATTEMPT rather than once outside the loop,
-		// because the model can change inside it. Reasoning strength is a choice
+		// The rung is stamped PER ATTEMPT rather than once outside the loop,
+		// because the model can change inside it. A dialled level is a choice
 		// about a model and is held per model id (agent.go), so a step that has
-		// moved to a fallback asks that model for the level somebody set on IT —
-		// never for the level they dialled onto the model that stopped answering.
+		// moved to a fallback asks the ladder again for THAT model — never for
+		// the level they dialled onto the model that stopped answering.
 		attemptCtx := ctx
-		if effort != provider.EffortNone {
-			attemptCtx = provider.WithConfiguredReasoningEffort(ctx, effort)
+		if rung != effort.None {
+			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
 		messages := a.snapshot()
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
@@ -673,9 +673,7 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 					hopped = append(hopped, next)
 					hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, next)})
 					model = next
-					a.mu.Lock()
-					effort = a.reasoningLocked(model)
-					a.mu.Unlock()
+					rung = a.effortFor(model)
 					// A new model gets a whole budget of its own: what the last
 					// one did says nothing about this one, and a fallback that
 					// inherited a spent budget would be given up on before it had

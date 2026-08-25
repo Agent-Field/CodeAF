@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -411,21 +412,26 @@ func (a *Agent) SetAPIKey(key string) error {
 // switches back finds the high still there: the second model never had a level,
 // and setting one on it would have been a decision nobody made.
 //
-// The levels are provider.Effort's, minus one. "off" here means SEND NOTHING —
-// no reasoning field on the wire, the model's own default — and NOT
-// provider.EffortOff, which sends {"reasoning":{"enabled":false}} to suppress
-// the thinking pass outright. The distinction matters at exactly this seam: a
-// person turning a knob back to off is saying "stop asking for extra thinking",
-// which is the model's default, while EffortOff is a harness economy that some
-// endpoints refuse with a 400 (provider's quirks.go). The harness may spend a
-// round-trip discovering that; a person changing their mind must not.
+// The levels are the effort ladder's rungs (internal/effort). "off" here means
+// SEND NOTHING — no reasoning field on the wire, the model's own default — and
+// NOT provider.EffortOff, which sends {"reasoning":{"enabled":false}} to
+// suppress the thinking pass outright. The distinction matters at exactly this
+// seam: a person turning a knob back to off is saying "stop asking for extra
+// thinking", which is the model's default, while EffortOff is a harness economy
+// that some endpoints refuse with a 400 (provider's quirks.go). The harness may
+// spend a round-trip discovering that; a person changing their mind must not.
+//
+// OFF HERE IS NOT SILENCE ON THE LADDER. It clears this scope, and the rung
+// below — the conversation, the work, the install's default — is what the next
+// turn then asks for (effort.go). A person who wants nothing asked for at all
+// turns the ladder itself off, which is a choice they make once.
 
 // Reasoning is the level the model now in use will be asked for, "" when none
 // is set.
 func (a *Agent) Reasoning() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return string(a.reasoningLocked(a.model))
+	return a.reasoningLocked(a.model).String()
 }
 
 // ReasoningFor is the level held for one model id, whichever model is in use.
@@ -434,7 +440,7 @@ func (a *Agent) Reasoning() string {
 func (a *Agent) ReasoningFor(model string) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return string(a.reasoningLocked(model))
+	return a.reasoningLocked(model).String()
 }
 
 // SetReasoning sets the level for the model now in use, for subsequent turns.
@@ -469,27 +475,26 @@ func (a *Agent) setReasoningLocked(model, level string) {
 	if key == "" {
 		return
 	}
-	effort, ok := parseReasoning(level)
+	rung, ok := parseReasoning(level)
 	if !ok {
 		return
 	}
-	// None is absence and is stored as absence: a map that held EffortNone
-	// entries would answer "this model has a level" for every model anybody
-	// ever cycled back to off.
-	if effort == provider.EffortNone {
+	// Absence is stored as absence: a map that held empty entries would answer
+	// "this model has a level" for every model anybody ever cycled back to off.
+	if rung == effort.None {
 		delete(a.reasoning, key)
 		return
 	}
 	if a.reasoning == nil {
-		a.reasoning = make(map[string]provider.Effort, 2)
+		a.reasoning = make(map[string]effort.Rung, 2)
 	}
-	a.reasoning[key] = effort
+	a.reasoning[key] = rung
 }
 
-func (a *Agent) reasoningLocked(model string) provider.Effort {
+func (a *Agent) reasoningLocked(model string) effort.Rung {
 	key := reasoningKey(model)
 	if key == "" {
-		return provider.EffortNone
+		return effort.None
 	}
 	return a.reasoning[key]
 }
@@ -502,29 +507,20 @@ func reasoningKey(model string) string {
 }
 
 // ParseReasoning normalizes one operator-supplied level and reports whether it
-// is one. It answers in the surface's own words rather than provider.Effort's
-// so a door can validate `--reasoning` without importing the adapter, and "off"
-// and "" both normalize to "" — see the block comment above for why off is
-// silence and not provider.EffortOff.
+// is one. It answers in the surface's own words so a door can validate
+// `--reasoning` without importing the adapter, and "off" and "" both normalize
+// to "" — see the block comment above for why off is silence and not
+// provider.EffortOff.
+//
+// It is [effort.Parse] under a name the doors already call, so the five rungs a
+// person may type here are the same five the ladder holds and there is no
+// second list to keep true.
 func ParseReasoning(level string) (string, bool) {
-	effort, ok := parseReasoning(level)
-	return string(effort), ok
+	rung, ok := parseReasoning(level)
+	return rung.String(), ok
 }
 
-func parseReasoning(level string) (provider.Effort, bool) {
-	switch strings.ToLower(strings.TrimSpace(level)) {
-	case "", "off":
-		return provider.EffortNone, true
-	case string(provider.EffortLow):
-		return provider.EffortLow, true
-	case string(provider.EffortMedium):
-		return provider.EffortMedium, true
-	case string(provider.EffortHigh):
-		return provider.EffortHigh, true
-	default:
-		return provider.EffortNone, false
-	}
-}
+func parseReasoning(level string) (effort.Rung, bool) { return effort.Parse(level) }
 
 // SetContextWindow tells the agent how many tokens the model it is now running
 // actually accepts, and the compaction threshold follows it from the next check

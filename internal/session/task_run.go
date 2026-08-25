@@ -85,6 +85,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -1198,6 +1199,15 @@ func (n *TaskNode) runModel() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.runModelLocked()
+}
+
+// effortRung is the rung set on this node, under the same lock the model is
+// read under and for the same reason: [Agent.SetTaskEffort] can move it while a
+// worker is being prepared.
+func (n *TaskNode) effortRung() effort.Rung {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.effort
 }
 
 // runOn moves a node onto another model WITHOUT touching the id it was admitted
@@ -3467,6 +3477,12 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 	if strings.TrimSpace(model) == "" {
 		model = a.model
 	}
+	// The rung this session's own next turn would ask for, resolved once here
+	// under the lock the ladder's fields are read under, and carried into the
+	// child as its floor (effort.go). It is read for the PARENT'S model rather
+	// than the node's: what is being inherited is the person's depth, and their
+	// dial is a fact about the conversation they turned it in.
+	inherited := a.effortLocked(a.model)
 	// A TASK WITHOUT TOOLS CANNOT START. The catalog's supported-parameter row
 	// is the same capability fact the picker filters on. Swap once to the
 	// worker tier; if that is the same incapable model, refuse here rather than
@@ -3544,6 +3560,27 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 		ContextWindow:  window,
 		CompactEnabled: parent.CompactEnabled,
 		SessionFile:    journal,
+		// ── how hard this worker thinks ─────────────────────────────────────
+		//
+		// A NODE IS THE PERSON'S OWN WORK AT ONE REMOVE, so it inherits their
+		// depth rather than running at whatever a child agent's zero value is —
+		// which is what it did, silently, and made a conversation dialled to
+		// max hand its hardest part to a worker asking for nothing.
+		//
+		// THE NODE'S OWN RUNG IS THE WORK'S, AND THE PARENT'S ANSWER IS THE
+		// FLOOR UNDER IT. What arrives as this child's default is the rung the
+		// parent's own next turn would ask for — already resolved, so a dial the
+		// person turned, the conversation's sticky rung and the install's row
+		// have all been folded once and cannot disagree here. A rung set on THIS
+		// task then sits above it, which is the whole reason [Agent.SetTaskEffort]
+		// is worth having: a person who dials one piece of work deeper means that
+		// piece of work, not the conversation it came from.
+		//
+		// The role is worker, which has no floor of its own — a task is not
+		// machinery running while nobody watches, it is the job.
+		Effort:        node.effortRung(),
+		EffortRole:    effort.RoleWorker,
+		DefaultEffort: inherited,
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can

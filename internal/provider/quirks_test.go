@@ -168,9 +168,10 @@ func quirksAt(t *testing.T, models ...string) string {
 		defer quirks.mutex.Unlock()
 		for _, model := range models {
 			delete(quirks.mandatory, normalizeModel(model))
-			// Both memos, because both are process-wide and a fact left behind
-			// by one test silently changes the request shape of the next.
+			// EVERY memo, because they are all process-wide and a fact left
+			// behind by one test silently changes the request shape of the next.
 			delete(quirks.noCacheControl, normalizeModel(model))
+			delete(quirks.noReasoningBudget, normalizeModel(model))
 		}
 		quirks.path = ""
 	})

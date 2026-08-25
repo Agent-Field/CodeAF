@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -1044,6 +1045,11 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	}
 	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
+	// The rung this session's own next turn would ask for, carried into the node
+	// as its floor exactly as a task node inherits it (task_run.go's
+	// newTaskAgent). A node of an adaptive run is the person's work at one
+	// remove too, and it ran at whatever a fresh agent's zero value was.
+	inherited := a.effortLocked(a.model)
 	a.mu.Unlock()
 
 	child, err := newAgent(Config{
@@ -1057,6 +1063,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		ContextWindow:  window,
 		CompactEnabled: parent.CompactEnabled,
 		SessionFile:    journal,
+		EffortRole:     effort.RoleWorker,
+		DefaultEffort:  inherited,
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
