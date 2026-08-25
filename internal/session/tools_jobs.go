@@ -42,28 +42,52 @@ const backgroundSentence = " Run long-lived commands (servers, watchers, long bu
 // reasoning from "it will be killed" reasons wrongly: it hedges, splits the
 // command, or starts again from nothing when the answer was already running
 // (promote.go).
-const timeoutSentence = " Foreground calls are bounded at 120s unless you set timeout (max 600s); a foreground command that reaches its bound is NOT killed — it becomes a background job and the call answers 'still running as job N; log at <path>', so the work continues and its exit reaches you like any other job's. Background calls never time out."
+//
+// The figure is interpolated from [BashCeilingSeconds] rather than typed, on
+// this codebase's one-source-of-truth law: a number in a description is read by
+// the model as a fact about the machine, and a stale one is a lie it reasons
+// from.
+var timeoutSentence = " bash WAITS for the command. A foreground call runs for as long as your own timeout argument says, up to " +
+	strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. A call that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Its exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
 
-// The v3 foreground timeout law. bare carries a model-settable timeout with no
-// default and no sane cap (its maximum is int32 milliseconds — 24 days), which
-// is pi's choice for a bare loop and the wrong default for a session: an
-// unbounded foreground call is a turn that never ends. The defaults are Claude
-// Code's proven shape — two minutes by default, ten at the most, anything
-// longer belongs in the background where no clock runs at all. Exported so the
-// surface can count down against the same numbers rather than restate them.
-const (
-	DefaultBashTimeoutSeconds = 120
-	MaxBashTimeoutSeconds     = 600
-)
+// BashCeilingSeconds is THE bound on a foreground bash call — one number, read
+// everywhere, typed once.
+//
+// ── WHY THE CEILING IS THE DEFAULT TOO ──
+//
+// There used to be two numbers: a 120-second default and a 600-second cap. The
+// gap between them was measured and it was expensive. A scoring script that took
+// three to five minutes hit the 120-second default on every call, was adopted as
+// a job, and answered `still running as job N` — so a model that had asked for
+// nothing of the kind was handed a background job it then had to chase, and the
+// chasing (sleep, tail, sleep, tail) ate 68% of a ten-hour worker's wall clock
+// while a competitor's harness, which simply waited, saw the same score
+// thirty-eight times to our two.
+//
+// A CALL IS NEVER SILENTLY CONVERTED INTO A JOB BEFORE THE MODEL'S OWN TIMEOUT.
+// So the model's figure is honoured up to this ceiling, and a model that named no
+// figure gets the ceiling — because a model that did not ask for a background
+// job did not ask for one at 121 seconds either. Ten minutes is generous on
+// purpose: it is longer than almost every build, test suite and script anybody
+// runs in a turn, and the escape for the things that are longer is
+// `background: true`, which is a decision the model makes rather than one the
+// clock makes for it.
+//
+// bare itself carries a model-settable timeout with no default and no sane cap
+// (its maximum is int32 milliseconds — 24 days), which is pi's choice for a bare
+// loop and the wrong one for a session: an unbounded foreground call is a turn
+// that never ends. Exported so the surface counts down against the same number
+// rather than restating it.
+const BashCeilingSeconds = 600
 
 // BashTimeoutSeconds is the bound one foreground bash call actually runs
-// under: the model's own figure when it set a usable one, the default when it
-// did not, the cap when it asked for more than the law allows.
+// under: the model's own figure when it set a usable one, and
+// [BashCeilingSeconds] when it did not or when it asked for more.
 //
 // It is the ONE READ of the timeout argument. The wrapper applies it to the
 // wire args ([withTimeoutLaw]) and the surface counts down against it
 // (internal/tui3's toolLimit), so the number a person watches and the number
-// the command dies on cannot drift apart.
+// the command is bounded by cannot drift apart.
 //
 // AN EXPLICIT NULL IS UNSET, and so is a zero, a negative, a string, a NaN, or
 // anything else that does not read as a positive number of seconds. A weak
@@ -77,14 +101,14 @@ func BashTimeoutSeconds(args json.RawMessage) float64 {
 		Timeout *float64 `json:"timeout"`
 	}
 	if err := json.Unmarshal(args, &fields); err != nil || fields.Timeout == nil {
-		return DefaultBashTimeoutSeconds
+		return BashCeilingSeconds
 	}
 	seconds := *fields.Timeout
 	switch {
 	case math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0:
-		return DefaultBashTimeoutSeconds
-	case seconds > MaxBashTimeoutSeconds:
-		return MaxBashTimeoutSeconds
+		return BashCeilingSeconds
+	case seconds > BashCeilingSeconds:
+		return BashCeilingSeconds
 	}
 	return seconds
 }
@@ -116,7 +140,13 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 }
 
 // backgroundProperty is the one property the wrapper adds to pi's bash schema.
-const backgroundProperty = `{"type":"boolean","description":"Run the command in the background and return immediately with a job id instead of waiting for it to finish (default: false)"}`
+//
+// IT SPELLS OUT THE SPAWN SEMANTICS, because that is the whole difference
+// between the two doors and the model has to be able to choose between them: a
+// foreground call WAITS and hands back the output, a background one FORKS and
+// hands back an id, and either way the ending reaches the conversation without
+// being asked for.
+const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns immediately with a job id, and the job's exit and closing output arrive in the conversation on their own when it ends (default: false — the call waits and returns the output)"}`
 
 // backgroundBash wraps bare's bash: the same tool, with one optional argument.
 //
@@ -211,8 +241,16 @@ const (
 // tail's bounds are all enforced somewhere else in this package ([jobRingBytes],
 // [jobTermGrace], [jobsDefaultTail], [jobsMaxTail]); a digit typed here would be
 // the second copy, and the second copy is the one that goes stale.
-var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
-	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
+// AND IT DOES NOT OFFER POLLING AS A WAY TO WAIT. `output` is still here for an
+// intermediate look at a job somebody asked about, but the sentence that used to
+// invite a poll loop is gone and replaced by the fact that makes polling
+// pointless: A FINISHED JOB REPORTS ITSELF. Every outstanding job's state also
+// rides at the foot of every tool result (jobfooter.go), so "is it still going,
+// and what did it last say" is answered without a call at all. The measured cost
+// of the old wording was a model that answered `sleep 30 && tail` nine times to
+// an empty log and then killed the work.
+var jobsDescription = "Background work: bash background:true commands and watches. Completions come to you: when a job ends, its exit code and closing output arrive in the conversation on their own, and every running job's elapsed time and last line ride at the foot of every tool result — so never sleep, tail or poll to wait for one. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
+	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks), for an intermediate look and not for waiting. kill: SIGTERM the process group, SIGKILL " +
 	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
 
 var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"number","description":"Job id (output and kill need one)"},"tail":{"type":"number","description":"Lines returned (default: ` +

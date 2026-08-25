@@ -369,13 +369,24 @@ func TestExitingJobLandsSteeringNote(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	// The note quotes the last non-empty log line, which is the one thing a
+	// The HEADLINE quotes the last non-empty log line, which is the one thing a
 	// person (or a model) reads a completion for.
-	if !strings.HasSuffix(queued[0], ": build finished") {
+	headline, _, _ := strings.Cut(queued[0], "\n")
+	if !strings.HasSuffix(headline, ": build finished") {
 		t.Fatalf("note does not quote the last line: %q", queued[0])
 	}
-	if length := len(queued[0]); length > 160 {
-		t.Fatalf("note is %d bytes; it is a sentence, not the log", length)
+	if length := len(headline); length > 160 {
+		t.Fatalf("headline is %d bytes; it is a sentence, not the log", length)
+	}
+	// AND THE OUTPUT COMES WITH IT. A completion the model has to answer with a
+	// second call — `jobs output`, to learn what the note was already about —
+	// is a completion that was not delivered. It carries the tail and names the
+	// whole log, so there is nothing left to go and fetch.
+	if !strings.Contains(queued[0], "\n\nbuild finished\n") {
+		t.Fatalf("note does not carry the job's output: %q", queued[0])
+	}
+	if !strings.Contains(queued[0], "full log: ") {
+		t.Fatalf("note does not name the whole log: %q", queued[0])
 	}
 }
 

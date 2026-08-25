@@ -45,9 +45,9 @@ func TestAnUnreadableTimeoutIsTheSameAsNoTimeoutAtAll(t *testing.T) {
 		{"a false", `{"command":"cd /x","timeout":false}`},
 	} {
 		got, set := timeoutOf(t, withTimeoutLaw(json.RawMessage(c.args)))
-		if !set || got != DefaultBashTimeoutSeconds {
-			t.Fatalf("%s left the call bounded by %v (set: %v), want the %d second default",
-				c.which, got, set, DefaultBashTimeoutSeconds)
+		if !set || got != BashCeilingSeconds {
+			t.Fatalf("%s left the call bounded by %v (set: %v), want the %d second ceiling",
+				c.which, got, set, BashCeilingSeconds)
 		}
 	}
 }
@@ -55,9 +55,9 @@ func TestAnUnreadableTimeoutIsTheSameAsNoTimeoutAtAll(t *testing.T) {
 // THE CAP IS THE CAP, and a call already inside the law is not touched.
 func TestTheTimeoutLawClampsTooMuchAndLeavesAWorkableFigureAlone(t *testing.T) {
 	got, set := timeoutOf(t, withTimeoutLaw(json.RawMessage(`{"command":"go test ./...","timeout":900}`)))
-	if !set || got != MaxBashTimeoutSeconds {
-		t.Fatalf("900 seconds came back as %v (set: %v), want the %d second cap",
-			got, set, MaxBashTimeoutSeconds)
+	if !set || got != BashCeilingSeconds {
+		t.Fatalf("900 seconds came back as %v (set: %v), want the %d second ceiling",
+			got, set, BashCeilingSeconds)
 	}
 	asked := json.RawMessage(`{"command":"go test ./...","timeout":30}`)
 	if got, set := timeoutOf(t, withTimeoutLaw(asked)); !set || got != 30 {
@@ -83,10 +83,10 @@ func TestTheBoundTheSurfaceDrawsIsTheBoundTheCommandDiesOn(t *testing.T) {
 		args string
 		want float64
 	}{
-		{`{"command":"cd /x"}`, DefaultBashTimeoutSeconds},
-		{`{"command":"cd /x","timeout":null}`, DefaultBashTimeoutSeconds},
-		{`{"command":"cd /x","timeout":0}`, DefaultBashTimeoutSeconds},
-		{`{"command":"cd /x","timeout":900}`, MaxBashTimeoutSeconds},
+		{`{"command":"cd /x"}`, BashCeilingSeconds},
+		{`{"command":"cd /x","timeout":null}`, BashCeilingSeconds},
+		{`{"command":"cd /x","timeout":0}`, BashCeilingSeconds},
+		{`{"command":"cd /x","timeout":900}`, BashCeilingSeconds},
 		{`{"command":"cd /x","timeout":30}`, 30},
 	} {
 		if got := BashTimeoutSeconds(json.RawMessage(c.args)); got != c.want {
@@ -100,9 +100,9 @@ func TestTheBoundTheSurfaceDrawsIsTheBoundTheCommandDiesOn(t *testing.T) {
 	}
 	// Arguments that do not decode at all belong to bare's own error wording,
 	// not to this wrapper's: the law passes them through untouched, and the row
-	// draws the default rather than nothing, because the call it is about to
+	// draws the ceiling rather than nothing, because the call it is about to
 	// refuse is still a call somebody may be watching.
-	if got := BashTimeoutSeconds(json.RawMessage(`not json at all`)); got != DefaultBashTimeoutSeconds {
-		t.Fatalf("undecodable arguments read as %v seconds, want the default", got)
+	if got := BashTimeoutSeconds(json.RawMessage(`not json at all`)); got != BashCeilingSeconds {
+		t.Fatalf("undecodable arguments read as %v seconds, want the ceiling", got)
 	}
 }
