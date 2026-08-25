@@ -42,6 +42,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -597,7 +598,12 @@ func (w *remoteWorld) buildStatic(t *testing.T, name, pkg string) {
 	defer cancel()
 	build := exec.CommandContext(ctx, "go", "build", "-o", out, pkg)
 	build.Dir = repoRoot(t)
-	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+	// GOARCH IS THE HOST'S, NOT A CONSTANT: docker runs the containers on this
+	// machine's architecture, so a binary pinned to amd64 lands in an arm64
+	// container and dies with `Exec format error` — a failure that reads like a
+	// missing file rather than a wrong build. GOOS stays linux because the
+	// containers are linux even when the host is a Mac.
+	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+containerArch())
 	if said, err := build.CombinedOutput(); err != nil {
 		// A build that fails because ANOTHER LANE's file is half-written is not
 		// this lane's fault and is worth saying plainly, because it is the
@@ -1128,4 +1134,16 @@ func firstLine(text string) string {
 		}
 	}
 	return ""
+}
+
+// containerArch is the architecture the test containers run, which is this
+// machine's own: docker without an explicit --platform starts a container on
+// the host's architecture, and the binaries are built on the host and copied
+// in. A darwin/arm64 host and a linux/arm64 container agree here; so do
+// linux/amd64 and linux/amd64.
+func containerArch() string {
+	if a := os.Getenv("AFORGE_E2E_ARCH"); a != "" {
+		return a
+	}
+	return runtime.GOARCH
 }
