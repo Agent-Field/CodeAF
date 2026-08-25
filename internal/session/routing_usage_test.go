@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -100,8 +101,33 @@ func TestAnErrandAsksForPrice(t *testing.T) {
 
 // ── ONE LINE PER RESPONSE ───────────────────────────────────────────────────
 
-// journalCalls reads back every call line the journal holds, in order.
+// journalCalls reads back the CONVERSATION'S OWN call lines, in order — the ones
+// with no role on them (see [journalCall]). The errands write the same line with
+// their role named, and [journalErrandCalls] is how a test asks for those.
 func journalCalls(t *testing.T, path string) []journalCall {
+	t.Helper()
+	var calls []journalCall
+	for _, call := range journalAllCalls(t, path) {
+		if call.Role == "" {
+			calls = append(calls, call)
+		}
+	}
+	return calls
+}
+
+// journalErrandCalls is the other half: every call line a role made.
+func journalErrandCalls(t *testing.T, path string) []journalCall {
+	t.Helper()
+	var calls []journalCall
+	for _, call := range journalAllCalls(t, path) {
+		if call.Role != "" {
+			calls = append(calls, call)
+		}
+	}
+	return calls
+}
+
+func journalAllCalls(t *testing.T, path string) []journalCall {
 	t.Helper()
 	var calls []journalCall
 	for _, line := range readLines(t, path) {
@@ -211,5 +237,63 @@ func TestCallLinesAreNotReadBackAsSpend(t *testing.T) {
 	}
 	if replayed.usage.CostUSD != 0.0021 || replayed.usage.Input != 900 || replayed.usage.Calls != 1 {
 		t.Fatalf("replayed usage = %+v, want the seal alone", replayed.usage)
+	}
+}
+
+// AN ERRAND WRITES ITS OWN CALL LINE, CARRYING ITS ROLE AND ITS COST.
+//
+// It did not, and that is how a measured run's call lines summed to $0.123
+// against a real bill of $0.739: the difference was three side-calls to a
+// mastermind, which left `usage` lines and no shape at all. A record that covers
+// only the requests a turn made is a record that answers cost questions wrongly,
+// so every request this session makes writes one — with the role on it, because
+// "which errand cost this" is the whole question the aux mark could never answer.
+func TestAnErrandWritesACallLineCarryingItsRoleAndItsCost(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	// The measured read: a mastermind shown a whole transcript at one mark.
+	cost := 0.262
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			response := textResponse("A | B | C")
+			response.Model = "vendor/mastermind"
+			response.Usage = &ai.Usage{PromptTokens: 91188, CompletionTokens: 120, Cost: &cost}
+			return response, nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.SessionFile = path
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierMastermind): "vendor/mastermind",
+		})
+	})
+	if _, _, err := agent.callRole(context.Background(), roles.RoleMarkReader, "",
+		[]ai.Message{textMessage("user", "what is left of this?")}); err != nil {
+		t.Fatalf("callRole: %v", err)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	errands := journalErrandCalls(t, path)
+	if len(errands) != 1 {
+		t.Fatalf("journal holds %d errand call lines, want exactly one", len(errands))
+	}
+	line := errands[0]
+	if line.Role != string(roles.RoleMarkReader) {
+		t.Errorf("the errand's line names role %q, want %q", line.Role, roles.RoleMarkReader)
+	}
+	if line.CostUSD != cost {
+		t.Errorf("the errand's line cost %v, want the provider's own figure %v", line.CostUSD, cost)
+	}
+	if line.Input != 91188 || line.Output != 120 {
+		t.Errorf("the errand's line = %+v, want the response's own token counts", line)
+	}
+	if line.Model != "vendor/mastermind" {
+		t.Errorf("the errand's line names model %q, want the one that answered", line.Model)
+	}
+	// AND THE CONVERSATION'S OWN LINES ARE STILL ITS OWN. An errand is not a step
+	// of the turn and a reader summing by role must be able to say so.
+	if own := journalCalls(t, path); len(own) != 0 {
+		t.Errorf("an errand wrote %d lines with no role on them: %+v", len(own), own)
 	}
 }

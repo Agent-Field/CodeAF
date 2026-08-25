@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -104,11 +105,25 @@ func (a *Agent) callRole(
 			// setter and does not reach an errand at all.
 			callCtx = provider.WithReasoningEffort(callCtx, effort)
 		}
+		// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name
+		// the endpoint the way a turn's does. An errand routes by price, which
+		// means it is exactly the kind of request whose server cannot be guessed
+		// from the model name.
+		served := &provider.ServedEndpoint{}
+		callCtx = provider.WithServedEndpoint(callCtx, served)
 		callCtx, cancel := context.WithTimeout(callCtx, patience)
 		response, callErr := client.CompleteWithMessages(callCtx, messages,
 			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
 		cancel()
 		if callErr == nil && response != nil {
+			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
+			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
+			// call lines covered only the conversation's own requests, and a
+			// measured run's lines summed to $0.123 against a real bill of $0.739
+			// — the whole of the difference being three side-calls to a
+			// mastermind. See [journalCall] for why that is a record worth
+			// nothing and why the role rides the line.
+			a.journalRoleCall(response, role, rung.Model, served.Name())
 			return response, rung.Model, nil
 		}
 		// The person's own interrupt, or the caller's deadline, ends the errand
@@ -123,6 +138,45 @@ func (a *Agent) callRole(
 		}
 	}
 	return nil, "", lastErr
+}
+
+// journalRoleCall writes ONE errand's own accounting down, on the same line
+// shape a step of the turn writes (see [journalCall]).
+//
+// IT IS EVIDENCE AND NEVER SPEND, exactly as the turn's line is: the caller
+// folds the money into the session's totals through [Agent.addAuxiliaryUsage],
+// and the replay drops these lines rather than adding them a second time. What
+// this buys is the question the summed lines could not answer — which model was
+// asked what, and what that one request cost — for the half of the bill that has
+// nobody's turn behind it.
+//
+// THE MODEL FALLS BACK TO THE RUNG. A provider that names itself in the response
+// is the better answer, because it is who actually served the request; a
+// provider that names nothing would otherwise leave the line saying only that
+// somebody was paid, so the rung the ladder resolved stands in for it.
+//
+// A response that reported no usage writes nothing, which [sessionFile.appendCall]
+// enforces on its own side too — the emptiness law, and a stream cut before its
+// final chunk is exactly that case.
+func (a *Agent) journalRoleCall(response *ai.Response, role roles.Role, rung, endpoint string) {
+	if response == nil || response.Usage == nil {
+		return
+	}
+	model := strings.TrimSpace(response.Model)
+	if model == "" {
+		model = strings.TrimSpace(rung)
+	}
+	usage := response.Usage
+	a.file.appendCall(journalCall{
+		Model:      model,
+		Endpoint:   strings.TrimSpace(endpoint),
+		Role:       string(role),
+		Input:      usage.PromptTokens,
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		Output:     usage.CompletionTokens,
+		CostUSD:    costOf(usage),
+	})
 }
 
 // The two failures this file names itself. Both are the shape a caller has

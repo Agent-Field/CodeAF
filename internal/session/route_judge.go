@@ -915,11 +915,14 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // that wrote the goal ([routeVerdict.Acceptance]), and [routeAcceptance] stands
 // in for it when the judge did not write one.
 //
-// IT HANDS BACK THE LINE IT SAID. The post-turn caller has no use for it — the
-// person already has an answer on the screen and this note goes under it — but
-// the pre-turn one ends the turn on this sentence and records it as the turn's
-// answer ([Agent.routeAhead]), and a second copy of the wording assembled there
-// would be the one that drifts.
+// IT HANDS BACK THE LINE IT SAID, AND THE NODE'S NUMBER. The post-turn caller has
+// no use for the line — the person already has an answer on the screen and this
+// note goes under it — but the pre-turn one ends the turn on this sentence and
+// records it as the turn's answer ([Agent.routeAhead]), and a second copy of the
+// wording assembled there would be the one that drifts. The number is what lets
+// the checkpoint's own journal line name the task its ceiling started
+// (checkpoint.go's [journalCeiling]); reading it back out of the line would be a
+// number parsed out of a sentence written for a person.
 //
 // THE TITLE IS THE CALLER'S TO CHOOSE, and that is the one thing that is not the
 // same on the two roads in. A goal a judge wrote is a sentence about the work and
@@ -929,7 +932,7 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // (checkpoint.go). So the source is named at each call site rather than assumed
 // here, and whatever arrives is put through the hand that cleans every other name
 // on this surface ([routeTaskTitle]).
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string) string {
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string) (string, uint64) {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
@@ -966,7 +969,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	said := "this looked like work, so task " +
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
 	hub.send(Event{Kind: EventNotice, Text: said})
-	return said
+	return said, id
 }
 
 // routeTaskTitle is the name an auto-started task wears until the namer improves

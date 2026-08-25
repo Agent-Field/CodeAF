@@ -167,6 +167,12 @@ type sessionEntry struct {
 	// written before it existed.
 	Call *journalCall `json:"call,omitempty"`
 
+	// Mark is ONE reading taken at a checkpoint mark, and Ceiling is what the
+	// last mark then did with the turn (checkpoint.go). Absent from every line
+	// that is not one of those, and from every file written before they existed.
+	Mark    *journalMark    `json:"mark,omitempty"`
+	Ceiling *journalCeiling `json:"ceiling,omitempty"`
+
 	Timestamp string `json:"timestamp"`
 }
 
@@ -187,14 +193,80 @@ type sessionEntry struct {
 // Endpoint is who served it, exactly as the router spelled it, and it is the
 // field the summed seal could never carry: a turn routed across three endpoints
 // has one bill and three tariffs.
+//
+// EVERY REQUEST THIS SESSION MAKES WRITES ONE, the errands included
+// (auxiliary.go's [Agent.callRole]). It did not always: the line was written
+// from the turn's own accounting alone, so a measured run's call lines summed to
+// $0.123 while the real bill was $0.739 — the difference being three side-calls
+// to a mastermind that left `usage` lines and no shape at all. A record that
+// covers most of the money is a record that answers cost questions wrongly, so
+// the sum of these lines IS the bill.
+//
+// Role is which errand made the call, spelled as the role registry spells it
+// (internal/roles). It is ABSENT on the conversation's own requests rather than
+// spelled "chat", because absent is what the whole file means by "this is the
+// session itself" — [journalUsage] already writes its own Role the same way —
+// and a name invented for the default case is a name that has to be kept in step
+// with a registry it is not in.
 type journalCall struct {
 	Model      string  `json:"model,omitempty"`
 	Endpoint   string  `json:"endpoint,omitempty"`
+	Role       string  `json:"role,omitempty"`
 	Input      int     `json:"input,omitempty"`
 	CacheRead  int     `json:"cacheRead,omitempty"`
 	CacheWrite int     `json:"cacheWrite,omitempty"`
 	Output     int     `json:"output,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
+}
+
+// journalMark is ONE reading taken at a checkpoint mark: what the sidecar was
+// asked to draw mid-turn, what it drew, what the harness did about it, and what
+// the call itself cost (checkpoint.go's [Agent.readMark]).
+//
+// IT EXISTS BECAUSE A DECISION NOBODY WROTE DOWN CANNOT BE MEASURED. Three of
+// these reads were made on one measured run and cost sixty-two cents between
+// them — five times the whole of what the work they were judging cost — and
+// every one of them answered "carry on". None of that was in the file: the
+// spend showed up as three anonymous auxiliary lines, and what was asked, what
+// came back and what it decided existed nowhere at all. So the reading is
+// journaled where the money already is, and a bench can join the two.
+//
+// N is which rung of the ladder this was and Rounds is where the turn stood when
+// it fired, which together say whether the ladder is landing where the policy
+// says it does. Sketch is THE SHAPE LINE ALONE — the legend is a sentence for a
+// worker and not evidence for a reader of the file — and Decision is what the
+// harness took off it: `split` when the turn was handed over on account of the
+// parts, `continue` when nothing happened, `failed` when no reading came back at
+// all. The ceiling's own read is a `continue` too: it decides nothing, and the
+// ceiling line that follows it says what actually happened.
+type journalMark struct {
+	N          int     `json:"n,omitempty"`
+	Rounds     int     `json:"rounds,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
+	Sketch     string  `json:"sketch,omitempty"`
+	Decision   string  `json:"decision,omitempty"`
+	DurationMS int64   `json:"durationMs,omitempty"`
+}
+
+// journalCeiling is what the LAST mark did with the turn: moved the remaining
+// work onto the one road, or dropped the handover and left the turn to finish.
+//
+// It is a line of its own rather than a field on the mark above it because the
+// two are different facts about different moments — the mark is a reading and
+// this is an act — and because the ceiling can fire with no reading behind it at
+// all (a sidecar nobody could reach still meets the ceiling).
+//
+// Decision is `moved`, `dropped:nothing-left` — the running model declared the
+// work finished AND the mark's own reader agreed nothing remained — or
+// `dropped:no-brief`, which is the one other way a ceiling ends with no task:
+// nothing could be written down for anybody. TaskID names the node when one was
+// admitted, and is absent otherwise by the emptiness law the rest of the line
+// keeps.
+type journalCeiling struct {
+	Rounds   int    `json:"rounds,omitempty"`
+	Decision string `json:"decision,omitempty"`
+	TaskID   uint64 `json:"taskId,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.
@@ -850,6 +922,14 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// warm — and every dollar on it is already counted in the seal that
 			// closed its turn. Folding it in here would bill the session twice
 			// for the same money.
+		case "mark", "ceiling":
+			// DROPPED ON PURPOSE, for the reason a call line is: these are the
+			// RECORD of a decision the harness took mid-turn, and a decision is
+			// not a message and not money. Whatever the mark's reader cost is
+			// already on the usage line beside it and on its own call line, and
+			// what the ceiling did to the turn is already in the transcript —
+			// the line the person read, and the task the graph admitted.
+			// Replaying them would put machinery into somebody's conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
@@ -1374,6 +1454,33 @@ func (s *sessionFile) appendCall(call journalCall) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "call", Call: &call, Timestamp: stamp()})
+}
+
+// appendMark writes ONE mark's reading down (see [journalMark]).
+//
+// A MARK THAT NEVER HAPPENED WRITES NOTHING, which is the emptiness law applied
+// to a file a person reads: a turn that crossed no mark, and a session that
+// cannot reach a reader at all, leave the journal exactly as it was before any
+// of this existed. The caller's own guard is the one that knows — a read that
+// was never attempted is not a read — and this repeats it on the decision,
+// because a line with no decision on it says nothing about anything.
+//
+// The nil receiver writes nothing, as everywhere in this file.
+func (s *sessionFile) appendMark(mark journalMark) {
+	if s == nil || strings.TrimSpace(mark.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "mark", Mark: &mark, Timestamp: stamp()})
+}
+
+// appendCeiling writes down what the last mark did with the turn (see
+// [journalCeiling]). A ceiling that did not fire writes nothing, for
+// [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendCeiling(ceiling journalCeiling) {
+	if s == nil || strings.TrimSpace(ceiling.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "ceiling", Ceiling: &ceiling, Timestamp: stamp()})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

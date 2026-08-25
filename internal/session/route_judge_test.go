@@ -1374,6 +1374,15 @@ func TestAConversionSpendsTheGapOnce(t *testing.T) {
 // having duplicated a turn nobody needed duplicating. The race reads the REQUEST
 // and cannot know any of that; the model holding the findings can, so the dowry
 // ask asks it, and [checkpointNothingLeft] drops the whole handover.
+//
+// AND THE MARK'S OWN READER SAYS THE SAME THING, which is what a drop now needs:
+// the running model declaring itself finished is that model grading its own work,
+// so the declaration is corroborated against the sketch drawn at the same mark
+// ([checkpointSketch.saysDone]). That is not a harder bar on this turn — it is
+// the honest one. The reader here is shown an account of the work whose written
+// section holds all eight files, which is exactly the evidence that answers
+// "(done)"; a reader still drawing three parts over the top of that would be
+// disagreeing about the facts, and the file sides with the second mind.
 func TestARacedYesIsDroppedWhenTheModelSaysNothingIsLeft(t *testing.T) {
 	completer := &routeCompleter{answer: "All eight files are written and the smoke check passed."}
 	agent, _, nodes := racingAgent(t, completer)
@@ -1381,6 +1390,7 @@ func TestARacedYesIsDroppedWhenTheModelSaysNothingIsLeft(t *testing.T) {
 	// verdict to land at — the conversion is declined there rather than missed.
 	completer.toolRounds = 1
 	completer.handoff = checkpointNothingLeft
+	completer.sketch = checkpointDoneSketch
 
 	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
 
