@@ -981,29 +981,120 @@ func taskSheetFilterLine(needle string, kept int) string {
 	return line
 }
 
-// hint names the keys, and it names the one enter actually has on the row under
-// the cursor. A foot that promised a room over work that has none would be the
-// place lying about its own door.
+// hint is SCREEN 1e's foot, assembled from the clauses that are TRUE of the row
+// under the cursor (taskview.go spells every word of it and says why the design's
+// one static line is built rather than quoted).
 //
-// WHILE A FILTER IS ON IT NAMES WHAT esc DOES, because that is the key whose
-// meaning just moved: it clears the filter first and closes the page second
-// ([app.taskSheetKeyPress]), and a foot still reading "esc close" would be the
-// page lying about the next keystroke instead of about enter.
+// The three clauses, in the design's order: which door enter has here, the verbs
+// this row can actually be asked for, and the filter — replaced, while one is
+// on, by the one key whose meaning just moved.
 func (p *tasksPlace) hint(a *app) string {
-	if a.taskSheetFiltering() {
-		return taskSheetFilterKeys
-	}
+	var parts []string
 	item, ok := a.taskSheetCurrent()
 	switch {
 	case !ok:
-		return taskSheetReadKeys
+		// A PAGE WHOSE ONLY ROWS ARE ANOTHER WINDOW'S PROMISES NOTHING ABOUT
+		// enter, because enter does nothing there. A foot still offering a room
+		// over work this window cannot open would be the page lying about its own
+		// door.
 	case a.taskSheetNodeFor(&item.entry) != nil:
-		return taskSheetRoomKeys
+		parts = append(parts, tasksEnterRoomWord)
+	default:
+		parts = append(parts, tasksEnterInsideWord)
 	}
-	return taskSheetInsideKeys
+	if verbs := p.verbs(a); len(verbs) > 0 {
+		words := make([]string, 0, len(verbs))
+		for _, v := range verbs {
+			words = append(words, v.word)
+		}
+		parts = append(parts, tasksVerbsWord+strings.Join(words, tasksVerbGap))
+	}
+	if a.taskSheetFiltering() {
+		parts = append(parts, tasksClearFilterWord)
+	} else {
+		parts = append(parts, tasksTypeWord)
+	}
+	return strings.Join(parts, railSep)
 }
 
 func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
+
+// verbs is the `→` strip over the row under the cursor, and it is the other half
+// of the foot's second clause: the strip draws exactly what the foot named, and
+// the foot names exactly what the strip will do.
+//
+// ONLY ONE OF SCREEN 1e's TWO VERBS EXISTS, and the other is therefore ABSENT
+// rather than drawn dead. The design spells `run it again, stop it`:
+//
+//   - `stop it` is real. A node THIS window's graph is holding, still queued or
+//     running, is exactly what [app.stopTaskTarget] offers the roster's own `x`,
+//     and the engine door behind it is [app.stopDoors]. Work another conversation
+//     ran has no such node — the id in a cancel address is this session's — and
+//     work that has settled has nothing left to stop, so neither is offered one.
+//   - `run it again` has NO SEAM. Nothing on this machine re-runs a finished
+//     task: a record row is an account of work that happened, and starting the
+//     same brief again is `/task <brief>`, which is a new piece of work with a
+//     new id rather than a repeat of an old one. A capability that cannot work is
+//     absent, not broken — so the verb is not named here, and the foot does not
+//     promise it.
+func (p *tasksPlace) verbs(a *app) []verb {
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		return nil
+	}
+	entry := item.entry
+	node := a.taskSheetNodeFor(&entry)
+	if node == nil {
+		return nil
+	}
+	target := a.stopTaskTarget(node)
+	if target.empty() {
+		return nil
+	}
+	// THE BUILD GUARD, ASKED BEFORE THE VERB IS NAMED. A surface driven by an
+	// agent with no door onto cancelling says so when `x` is pressed
+	// ([stopUnavailableWord]); a NAMED verb that could only ever answer with that
+	// sentence would be this place advertising a key it has not got.
+	if _, ok := a.stopDoors(); !ok {
+		return nil
+	}
+	return []verb{{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }}}
+}
+
+// tasksStop ends one piece of work from the strip, and says what the engine
+// said.
+//
+// IT ASKS NO CONFIRMATION, AND THAT IS DELIBERATE RATHER THAN MISSING. The
+// confirmation card guards a BARE key: `x` is one keystroke over a list, and a
+// person walking the roster with it under their finger can end an hour of work
+// by accident (stop.go). The strip is not bare — `→` draws the word `stop it`
+// and only then does `s` mean anything at all, which is two deliberate presses
+// with the verb on screen for the second of them. And the card is UNAVAILABLE
+// here by stop.go's own guard: [app.stopKey] refuses while this place is up,
+// because a question raised over a frame that is not drawing it is a question
+// nobody can see, answered by the next key they press. So the choice was this or
+// a foot naming a verb nothing does.
+//
+// The words, the door and the receipt are all the card's own — [stopActWord],
+// [app.stopDoors] and [app.stopSay] — so the two ways to end work can differ in
+// how they are reached and in nothing else.
+func (a *app) tasksStop(target stopTarget) tea.Cmd {
+	doors, ok := a.stopDoors()
+	if !ok {
+		a.note(stopUnavailableWord)
+		return nil
+	}
+	line, err := doors.Cancel(target.id)
+	if err != nil {
+		// The engine's own sentence, kept: a stop that could not be given is work
+		// still running, and a surface that swallowed the reason would leave a
+		// person pressing the same key again.
+		a.stopSay(err.Error())
+		return nil
+	}
+	a.stopSay(line)
+	return nil
+}
 
 // changed is the tab's count: how much work has landed since the last look.
 //

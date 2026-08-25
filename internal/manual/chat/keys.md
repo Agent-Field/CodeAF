@@ -915,13 +915,15 @@ and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, steppi
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
 · **every other printable key, the space included, types into the filter**, which narrows
-both sections at once and is shown at the foot as `filter · port`. Its foot reads
-`esc close · ↑↓ move · enter opens its room`, or
-`esc close · ↑↓ move · enter goes inside it` on a task another conversation ran, which has
-no room to open, `esc close · ↑↓ move` where the row under the cursor has no door
-at all — which is a page holding only work running in other aforge windows — or
-`esc clears the filter · ↑↓ move · enter opens the row` while you are typing one. Clicking a row acts on the first press; the wheel walks the
-cursor. The tasks pages describe what is on it.
+every section at once and is shown at the foot as `filter · port`. `→` opens the row's
+verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
+still queued or running. Its foot is assembled from what is true of the row under the
+cursor — `enter open its room · → verbs: stop it · type to filter` over a task this window is
+running, `enter go inside it` on a task another conversation ran, which has no room to open,
+no `enter` clause at all where the row under the cursor has no door — which is a page
+holding only work running in other aforge windows — and `esc clear the filter` in place of
+`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
@@ -1157,8 +1159,8 @@ standing orders page, and typing `/task ` is exactly what pressing `+ /task` put
 box. **No new key is added to the column by either of them.**
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
-cards a tap opens, its foot is a `‹ back` bar in place of the key legend `esc close · ↑↓
-move · enter opens its room`, and the strip that opens it is one full-width door
+cards a tap opens, its foot is a `‹ back` bar in place of the key legend
+`enter open its room · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 

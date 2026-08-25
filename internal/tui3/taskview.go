@@ -125,34 +125,57 @@ func taskAwayNote(name string) string {
 	return taskAwayWord + railSep + name
 }
 
-// The two lines at the foot, which are what this page offers each hand.
+// THE FOOT, AS SCREEN 1e SPELLS IT.
+//
+// The design draws one line under this place:
+//
+//	enter open its room · → verbs: run it again, stop it · type to filter · tab next place
+//
+// Three of its four clauses are built here and the fourth is the router's — it
+// appends `alt+. map · tab next place` to every place's sentence ([placeTailed]),
+// so a foot that wrote `tab next place` itself would be the frame naming a key
+// twice. What is left is the imperative grammar of the design — `open`, `go`,
+// `type` — in place of the older third-person one this page used to spell.
+//
+// EVERY CLAUSE IS TRUE OF THE ROW UNDER THE CURSOR OR IT IS NOT DRAWN. That is
+// this surface's own law — no key does anything that is not drawn on screen
+// right now, and nothing is named that is not bound (verbstrip.go states it) —
+// and it is why the design's one static line is assembled rather than quoted:
+// `enter` opens a ROOM only over a node this window is holding, and a page whose
+// only rows are another window's work has no `enter` at all.
 const (
-	taskSheetRoomKeys = "esc close · ↑↓ move · enter opens its room"
-	// taskSheetInsideKeys is the foot over a row of the project's record, and it
-	// promises what enter now does: it GOES INSIDE that task — the card carrying
-	// what the work came to, what it cost, where it left its changes and the last
-	// thing it said (taskrecord.go).
+	// tasksEnterRoomWord is enter over a node THIS session's graph is holding:
+	// the room, which is what every other list of work on this surface opens.
+	tasksEnterRoomWord = "enter open its room"
+	// tasksEnterInsideWord is enter over work another conversation ran. There is
+	// no room to open — a room is a live lane onto a node this session holds, and
+	// that conversation closed — so what it opens is the card (taskrecord.go).
 	//
-	// It used to read "enter puts it in your message", which was the truth about a
-	// key answering the wrong question. The mention is still one keystroke away
-	// and the card's own foot names it.
-	taskSheetInsideKeys = "esc close · ↑↓ move · enter goes inside it"
+	// The design does not spell this clause, because 1e's cursor is on a row this
+	// window is running. It is 1e's grammar said about the other door, which is
+	// the only honest thing a foot can do over a row that has no room.
+	tasksEnterInsideWord = "enter go inside it"
+	// tasksVerbsWord opens the design's second clause. What follows it is the
+	// verbs that EXIST for the row under the cursor, joined by the design's own
+	// comma — and the clause is absent entirely when the row has none.
+	tasksVerbsWord = "→ verbs: "
+	tasksVerbGap   = ", "
+	// tasksTypeWord is the design's third clause, and it is the only place on the
+	// frame that says the filter exists at all: a record of two thousand tasks is
+	// reached by remembering a word of a title, and nothing else on screen
+	// suggests a letter would do anything.
+	tasksTypeWord = "type to filter"
+	// tasksClearFilterWord takes that clause's place while a filter is on. It is
+	// the one fact the keyboard has that just MOVED — esc clears the filter first
+	// and closes the place second ([app.taskSheetKeyPress]) — and the clause it
+	// replaces would be teaching a person to do the thing they are already doing.
+	tasksClearFilterWord = "esc clear the filter"
 	// taskSheetFilterWord opens the line that says what was typed, and
 	// taskSheetFilterNone is what that line adds when the query has taken every
 	// row off the page. A filtered page with nothing on it and nothing said is a
 	// page a person reads as broken.
 	taskSheetFilterWord = "filter · "
 	taskSheetFilterNone = " · nothing matches"
-	// taskSheetFilterKeys replaces the enter line while a filter is being typed:
-	// esc means the filter first and the page second, and a foot that went on
-	// promising to close would be lying about the next keystroke.
-	taskSheetFilterKeys = "esc clears the filter · ↑↓ move · enter opens the row"
-	// taskSheetReadKeys is the foot for a page with nothing under the cursor to
-	// act on, which is a page whose only rows are another window's work. It
-	// PROMISES NOTHING ABOUT enter, because enter does nothing there — a foot
-	// still offering a room over work this window cannot open would be the page
-	// lying about its own door.
-	taskSheetReadKeys = "esc close · ↑↓ move"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when

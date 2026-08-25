@@ -130,11 +130,16 @@ taken into with `→` rather than `tab`. `←` from rest is the named way into `
 
 ## tasks — the tasks page, and how to get to it without a command
 
-Everything this project has run: the tree of what is running now, and the flat record of
-everything before it. `/history` and `ctrl+.` both open it, and so does `alt+2`.
+Everything this machine has run, across every project and every conversation, grouped by
+what you do next: `needs your look`, `running`, `done today`, `earlier`. `/history` and
+`ctrl+.` both open it, and so does `alt+2`.
 
-Type to filter. `enter` opens a run's room. The count of what is on the page sits just above
-the composer.
+Type to filter. `enter` opens a task's room when this conversation is holding it, and goes
+inside its record card otherwise. `→` opens the row's verbs, and this place has one —
+`s stop it`, over a task this conversation is holding that is still queued or running.
+Nothing is behind a fold; the list scrolls and its tail fades. The count of what is on the
+page sits just above the composer, and the foot names only what is true of the row you are
+on: `enter open its room · → verbs: stop it · type to filter`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

@@ -170,6 +170,8 @@ func (a *app) rowVerbs() []verb {
 	switch a.page {
 	case pageHome:
 		return a.homeRowVerbs()
+	case pageTasks:
+		return a.tasksRowVerbs()
 	case pageStanding:
 		return a.standRowVerbs()
 	case pageMemory:
@@ -177,6 +179,12 @@ func (a *app) rowVerbs() []verb {
 	}
 	return nil
 }
+
+// tasksRowVerbs is the tasks place's strip, and it is that place's own answer
+// ([tasksPlace.verbs]) — this file invents no verb for it, as its header says.
+// SCREEN 1e names two; exactly one of them has a seam behind it, and the place
+// says which and why.
+func (a *app) tasksRowVerbs() []verb { return a.taskSheet.verbs(a) }
 
 // homeRowVerbs is the strip on home, and today it carries exactly the three
 // actions home has been ADVERTISING on a standing item's row without binding
