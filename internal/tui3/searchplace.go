@@ -134,7 +134,7 @@ func (r searchReading) rows(width int, pal palette) []string {
 		out = append(out, searchRowAt(hit, r.query, width, r.now, pal))
 	}
 	if more := len(r.hits) - shown; more > 0 {
-		out = append(out, pal.dim(fit(fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, more), width)))
+		out = append(out, pal.dim(fit(foldLine(more, ""), width)))
 	}
 	return out
 }
@@ -273,6 +273,18 @@ func searchCmd(s searchStore, ask searchAsk) tea.Cmd {
 }
 
 type searchTickMsg struct{ gen int }
+
+// searchTickAccepted keeps an old quiet interval from starting work for text
+// that the person has already replaced.
+func searchTickAccepted(current searchAsk, msg searchTickMsg) bool {
+	return current.gen == msg.gen
+}
+
+// searchDoneAccepted keeps a slower old store read from replacing the results
+// for the words currently in the box.
+func searchDoneAccepted(current searchAsk, msg searchDoneMsg) bool {
+	return current.gen == msg.ask.gen
+}
 
 func searchDebounce(gen int) tea.Cmd {
 	return tea.Tick(searchDebounceEvery, func(time.Time) tea.Msg { return searchTickMsg{gen: gen} })

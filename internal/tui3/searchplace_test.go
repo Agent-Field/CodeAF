@@ -169,3 +169,13 @@ func TestSearchCommandCarriesItsGenerationAndReturnsErrorsAsMessages(t *testing.
 		t.Fatalf("store was asked for %q/%d, want %q/%d", fake.got, fake.limit, ask.query, searchFetch)
 	}
 }
+
+func TestSearchGenerationGuardsRejectStaleTicksAndResults(t *testing.T) {
+	current := searchAsk{query: "new words", gen: 9}
+	if searchTickAccepted(current, searchTickMsg{gen: 8}) || !searchTickAccepted(current, searchTickMsg{gen: 9}) {
+		t.Fatal("tick acceptance did not follow the current generation")
+	}
+	if searchDoneAccepted(current, searchDoneMsg{ask: searchAsk{gen: 8}}) || !searchDoneAccepted(current, searchDoneMsg{ask: searchAsk{gen: 9}}) {
+		t.Fatal("completion acceptance did not follow the current generation")
+	}
+}

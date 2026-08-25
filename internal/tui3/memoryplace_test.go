@@ -87,7 +87,7 @@ func TestMemoryShelvesAreBiggestFirstAndUseOneDisclosureGrammar(t *testing.T) {
 	if user < 0 || project < user || env < project {
 		t.Fatalf("the shelves are not biggest-first with their settled names:\n%s", text)
 	}
-	if !strings.Contains(text, tokens.GlyphCollapsed+" 3 more on this shelf") {
+	if !strings.Contains(text, tokens.GlyphCollapsed+" 3 more, on this shelf") {
 		t.Fatalf("the open shelf omitted its exact fold:\n%s", text)
 	}
 }
@@ -101,7 +101,7 @@ func TestMemoryHelpWordsSayWhatTheCountersKnow(t *testing.T) {
 		{store.Memory{Status: store.MemoryActive, UseCount: 14}, "helped 14 times"},
 		{store.Memory{Status: store.MemoryActive, UseCount: 6, MissCount: 2}, "helped 6 · bore on 2"},
 		{store.Memory{Status: store.MemoryActive, MissCount: 2}, "bore on 2"},
-		{store.Memory{Status: store.MemoryActive, UpdatedAt: now.Add(-3 * time.Hour)}, "new, learned 3h ago"},
+		{store.Memory{Status: store.MemoryActive, UpdatedAt: now.Add(-3 * time.Hour)}, "new, learned 3h"},
 		{store.Memory{Status: store.MemoryForgotten}, "let go"},
 		{store.Memory{Status: store.MemorySuperseded}, "let go"},
 	}
@@ -118,6 +118,14 @@ func TestTypingNarrowsMemoryShelvesAndLinesByWords(t *testing.T) {
 	text := memoryPlaceText(r, 120)
 	if !strings.Contains(text, "Tests live beside files") || strings.Contains(text, "Terse answers") || strings.Contains(text, "this machine") {
 		t.Fatalf("the two-word filter did not narrow both shelves and lines:\n%s", text)
+	}
+}
+
+func TestAFilteredMemoryWithNoMatchesDrawsOnlyItsNoMatchLine(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	text := memoryPlaceText(readMemory(memoryPlaceFixture(now), nil, "purple aardvark", now), 120)
+	if text != `nothing on a shelf says "purple aardvark"` || strings.Contains(text, "shelves") {
+		t.Fatalf("empty filtered memory drew %q", text)
 	}
 }
 
@@ -171,10 +179,10 @@ func TestMemoryFoldsNameTheirExactHiddenCounts(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	snapshot := memoryPlaceFixture(now)
 	for i := 0; i < 4; i++ {
-		snapshot.Shelves = append(snapshot.Shelves, store.MemoryShelf{Scope: "later" + formatMemoryNumber(i), Label: "later " + formatMemoryNumber(i), Held: 1, ByType: map[string]int{store.MemoryFact: 1}})
+		snapshot.Shelves = append(snapshot.Shelves, store.MemoryShelf{Scope: "later" + groupedInt(i), Label: "later " + groupedInt(i), Held: 1, ByType: map[string]int{store.MemoryFact: 1}})
 	}
 	text := memoryPlaceText(readMemory(snapshot, map[string]bool{store.MemoryScopeUser: true}, "", now), 120)
-	if !strings.Contains(text, tokens.GlyphCollapsed+" 3 more on this shelf") || !strings.Contains(text, tokens.GlyphCollapsed+" 2 more shelves") {
+	if !strings.Contains(text, tokens.GlyphCollapsed+" 3 more, on this shelf") || !strings.Contains(text, tokens.GlyphCollapsed+" 2 more, shelves") {
 		t.Fatalf("the folds did not name their exact hidden counts:\n%s", text)
 	}
 }

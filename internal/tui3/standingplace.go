@@ -98,7 +98,7 @@ func (r standingReading) rows(width int, cursor int, pal palette) []string {
 		out = append(out, r.row(r.views[i], width, pal))
 	}
 	if folded := len(r.views) - shown; folded > 0 {
-		word := tokens.GlyphCollapsed + " " + itoa(folded) + " more"
+		clause := ""
 		quiet := true
 		for _, view := range r.views[shown:] {
 			if r.week[view.Item.ID].Fired > 0 {
@@ -107,8 +107,9 @@ func (r standingReading) rows(width int, cursor int, pal palette) []string {
 			}
 		}
 		if quiet {
-			word += ", all quiet this week"
+			clause = "all quiet this week"
 		}
+		word := foldLine(folded, clause)
 		out = append(out, pal.dim(fit(word, width)))
 	}
 	if view, ok := r.at(cursor); ok {
@@ -117,7 +118,7 @@ func (r standingReading) rows(width int, cursor int, pal palette) []string {
 			name := strings.TrimSpace(view.Item.Title())
 			section := name + ", last look"
 			if age := sinceAt(view.Item.LastFired, r.now); age != "" {
-				section += " · " + age + " ago"
+				section += " · " + age
 			}
 			out = append(out, pal.dim(fit(section, width)), pal.ink(fit(line, width)))
 		}
@@ -155,7 +156,26 @@ func (r standingReading) row(view StandingItemView, width int, pal palette) stri
 	tails := []struct {
 		word string
 		ink  func(string) string
-	}{{rope, ropeInk}, {cadence, pal.dim}, {cost, standingMoneyInk(pal)}}
+	}{{rope, ropeInk}, {cadence, pal.dim}, {cost, placeMoneyInk(pal)}}
+	// An authored tail is still optional prose, so it first fits the frame and
+	// then yields whole cells in the same cadence, rope, cost order as narrow
+	// rows. This keeps an unusually long schedule from consuming the title.
+	for i := range tails {
+		tails[i].word = fit(tails[i].word, max(0, width-ansi.StringWidth(glyph)-1-8))
+	}
+	for standingTailWidth(tails)+ansi.StringWidth(glyph)+1+8 > width {
+		dropped := false
+		for _, at := range []int{1, 0, 2} {
+			if tails[at].word != "" {
+				tails[at].word = ""
+				dropped = true
+				break
+			}
+		}
+		if !dropped {
+			break
+		}
+	}
 	tailWidth := 0
 	for _, tail := range tails {
 		if tail.word != "" {
@@ -176,10 +196,23 @@ func (r standingReading) row(view StandingItemView, width int, pal palette) stri
 	if cost != "" && used < width {
 		// Money is the right edge's stable landmark, so any spare cells sit
 		// immediately before it rather than after the row.
-		costPainted := " " + standingMoneyInk(pal)(cost)
+		costPainted := " " + placeMoneyInk(pal)(cost)
 		line = strings.TrimSuffix(line, costPainted) + strings.Repeat(" ", width-used) + costPainted
 	}
-	return line
+	return fit(line, width)
+}
+
+func standingTailWidth(tails []struct {
+	word string
+	ink  func(string) string
+}) int {
+	width := 0
+	for _, tail := range tails {
+		if tail.word != "" {
+			width += 1 + ansi.StringWidth(tail.word)
+		}
+	}
+	return width
 }
 
 func standingPlaceMinimum(words, rope, cost string) int {
@@ -202,10 +235,6 @@ func standingClock(at time.Time) string {
 	word := strings.ToLower(at.Format("3:04pm"))
 	return strings.Replace(word, ":00", "", 1)
 }
-
-// standingMoneyInk is deliberately one door onto money colour. Wave zero's
-// palette gives that meaning to add; a later palette move changes one helper.
-func standingMoneyInk(pal palette) func(string) string { return pal.add }
 
 // at resolves only rows a cursor may stop on. The header and fold are doors or
 // prose, while detail rows are consequences of the selected item and never

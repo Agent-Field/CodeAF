@@ -28,7 +28,7 @@ func newSwitcherLab() switcherLab {
 		Kind: session.QuestionTask, ID: 7, Text: "add a --report-only mode?\nwith detail",
 		Asked: now.Add(-6 * time.Hour), Options: []session.AnswerOption{{Key: "1", Label: "do it"}, {Key: "2", Label: "leave it"}},
 	}
-	asking := session.SessionRow{ID: "ask", Dir: "/state/alpha/ask", Project: "alpha", ProjectDir: "/work/alpha", Title: "Asking chat", At: now.Add(-7 * time.Hour), Live: true,
+	asking := session.SessionRow{ID: "ask", Dir: "/state/alpha/ask", Project: "alpha", ProjectDir: "/work/alpha", Workspace: "/work/alpha", Title: "Asking chat", At: now.Add(-7 * time.Hour), Live: true,
 		Presence: session.SessionPresence{State: session.PresenceWaiting, Reason: question.Text, Question: question}}
 	running := session.SessionRow{ID: "run", Dir: "/state/beta/run", Project: "beta", ProjectDir: "/work/beta", Title: "Running chat", At: now.Add(-2 * time.Hour), Live: true,
 		Presence: session.SessionPresence{State: session.PresenceWorking, RunningTasks: []session.PresenceTask{{ID: "1", StartedAt: now.Add(-2 * time.Hour)}}},
@@ -121,8 +121,36 @@ func TestTheSwitcherFoldsOnlyTheQuietTailAndCanHideIt(t *testing.T) {
 		t.Fatalf("the quiet fold is wrong:\n%s", text)
 	}
 	hidden := switcherText(lab.read(false, true, switcherLedgerInput{}), 120)
-	if !strings.Contains(hidden, "▸ 12 quiet") || strings.Contains(hidden, "Quiet 00") {
+	if !strings.Contains(hidden, "▸ 12 more, quiet") || strings.Contains(hidden, "Quiet 00") {
 		t.Fatalf("hide-quiet did not become one honest fold:\n%s", hidden)
+	}
+}
+
+func TestTheSwitcherCapsAllGroupsInAttentionOrder(t *testing.T) {
+	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
+	project := session.Project{Dir: "/p", Name: "p"}
+	for i := 0; i < 5; i++ {
+		project.Sessions = append(project.Sessions, session.SessionRow{ID: fmt.Sprintf("need-%d", i), Title: fmt.Sprintf("Need %d", i), Live: true,
+			Presence: session.SessionPresence{State: session.PresenceWaiting, Question: session.PresenceQuestion{Text: "choose?"}}})
+	}
+	for i := 0; i < 5; i++ {
+		project.Sessions = append(project.Sessions, session.SessionRow{ID: fmt.Sprintf("move-%d", i), Title: fmt.Sprintf("Move %d", i), Live: true,
+			Presence: session.SessionPresence{State: session.PresenceWorking}})
+	}
+	for i := 0; i < 5; i++ {
+		project.Sessions = append(project.Sessions, session.SessionRow{ID: fmt.Sprintf("quiet-%d", i), Title: fmt.Sprintf("Quiet %d", i)})
+	}
+	r := readSwitcher(session.World{Projects: []session.Project{project}}, nil, "", time.Time{}, now, false, false, switcherLedgerInput{})
+	stops := switcherStops(r)
+	shown := 0
+	for _, row := range stops {
+		if row.kind == switcherConversation {
+			shown++
+		}
+	}
+	text := switcherText(r, 120)
+	if shown != switcherShown || !strings.Contains(text, foldLine(7, "")) || strings.Contains(text, "Quiet") {
+		t.Fatalf("bounded priority reading has %d rows:\n%s", shown, text)
 	}
 }
 
@@ -235,6 +263,56 @@ func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 	}
 	if row, ok := r.at(foldAt); !ok || !row.fold {
 		t.Fatal("the fold was not a door")
+	}
+}
+
+func TestSwitcherVerbsRequireTheStateAndAddressTheyActOn(t *testing.T) {
+	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
+	bare := session.SessionRow{ID: "bare", Title: "Bare", Presence: session.SessionPresence{Question: session.PresenceQuestion{Options: []session.AnswerOption{{Label: "yes"}, {Label: "no"}}}}}
+	paused := standing.Item{ID: "paused", Words: "Paused", Status: standing.StatusPaused, NeedsPerson: "old words without a pending question"}
+	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{bare}}}}
+	r := readSwitcher(world, map[string][]StandingItemView{"": {{Item: paused}}}, "", time.Time{}, now, false, false, switcherLedgerInput{})
+	for i := range r.lines {
+		row, ok := r.at(i)
+		if !ok {
+			continue
+		}
+		got := wordsOfSwitcherVerbs(r.verbs(i))
+		switch row.kind {
+		case switcherConversation:
+			for _, absent := range []string{"yes", "no", "new chat here", "open folder", "copy path"} {
+				if strings.Contains(got, absent) {
+					t.Fatalf("addressless conversation offered %q in %q", absent, got)
+				}
+			}
+		case switcherStanding:
+			if !strings.Contains(got, "resume it") || strings.Contains(got, "pause it") || strings.Contains(got, "y ") || strings.Contains(got, "n ") {
+				t.Fatalf("paused standing verbs are %q", got)
+			}
+		}
+	}
+}
+
+func wordsOfSwitcherVerbs(verbs []switcherVerb) string {
+	var out []string
+	for _, verb := range verbs {
+		out = append(out, string(verb.key)+" "+verb.word)
+	}
+	return strings.Join(out, " · ")
+}
+
+func TestSwitcherNeverCallsAnEmptyBucketHereOrDrawsZeroChats(t *testing.T) {
+	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
+	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{{Title: "Missing address"}}}}}
+	r := readSwitcher(world, nil, "", time.Time{}, now, false, false, switcherLedgerInput{})
+	if strings.Contains(switcherText(r, 80), "here") {
+		t.Fatal("two empty addresses became here")
+	}
+	item := standing.Item{ID: "ask", Words: "Standing only", NeedsPerson: "look"}
+	standingOnly := readSwitcher(session.World{Projects: []session.Project{{Dir: "/p", Name: "p"}}}, map[string][]StandingItemView{"/p": {{Item: item}}}, "", time.Time{}, now, false, false, switcherLedgerInput{})
+	text := switcherText(standingOnly, 80)
+	if strings.Contains(text, "0 chats") || !strings.Contains(text, "what wants you first") {
+		t.Fatalf("standing-only section is %q", text)
 	}
 }
 

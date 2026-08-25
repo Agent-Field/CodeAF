@@ -105,7 +105,7 @@ func TestTheStandingLastLookFollowsTheCursorAndKeepsQuietWhenUnknown(t *testing.
 	r := readStanding(views, week, now)
 	rows := r.rows(120, 3, newPalette(tokens.NoColor, false))
 	joined := strings.Join(rows, "\n")
-	if !strings.Contains(joined, "the 6am watch, last look · 3h ago") ||
+	if !strings.Contains(joined, "the 6am watch, last look · 3h") ||
 		!strings.Contains(joined, "fired 3h ago · nothing had changed since yesterday") {
 		t.Fatalf("last look did not follow quiet row:\n%s", joined)
 	}
@@ -165,6 +165,20 @@ func TestTheStandingPlaceHoldsAtEveryWidth(t *testing.T) {
 	rows := r.rows(60, -1, newPalette(tokens.NoColor, false))
 	if strings.Contains(rows[1], "hourly") {
 		t.Fatalf("narrow row kept cadence: %q", rows[1])
+	}
+}
+
+func TestAStandingRowFitsAuthoredUnicodeAndAnUnboundedCadence(t *testing.T) {
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.Local)
+	item := standing.Item{ID: "wide", Words: strings.Repeat("東京🧭", 30), Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenEvery, Words: strings.Repeat("界", 250)}}
+	r := readStanding([]StandingItemView{{Item: item}}, nil, now)
+	for _, width := range []int{40, 60, 80, 120, 200} {
+		for _, row := range r.rows(width, -1, newPalette(tokens.TrueColor, false)) {
+			if got := ansi.StringWidth(row); got > width {
+				t.Fatalf("width %d drew %d cells: %q", width, got, ansi.Strip(row))
+			}
+		}
 	}
 }
 
