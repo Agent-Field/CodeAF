@@ -451,7 +451,36 @@ func legendSegments(legend string) []string {
 // dropped, so "A is the validation workflow" answers "the validation workflow" —
 // which is what can stand as a name, as a summary, and inside a done-condition.
 func sketchSaid(piece string, segments []string) string {
-	key := labelOf(piece)
+	// A PIECE MAY BE A CHAIN. The first stage of `A > B | C > D` hands out two
+	// parts that are each a short procedure — a module, then its test — and a
+	// part named after its first letter alone would be called "the slugify
+	// module" while it also owns the test. So every letter in the piece is read
+	// off the legend and the words are joined in order, "then" between stages.
+	var said []string
+	for _, key := range labelsOf(piece) {
+		if words := legendWords(key, segments); words != "" {
+			said = append(said, words)
+		}
+	}
+	return strings.Join(said, ", then ")
+}
+
+// labelsOf is every label in a piece, in order: the letters of a chain, with
+// the arrows and brackets that joined them dropped.
+func labelsOf(piece string) []string {
+	var labels []string
+	for _, field := range strings.FieldsFunc(piece, func(r rune) bool {
+		return r == '>' || r == '(' || r == ')' || r == ' '
+	}) {
+		if key := labelOf(field); key != "" {
+			labels = append(labels, key)
+		}
+	}
+	return labels
+}
+
+// legendWords is what the legend says one label is, or "" when it says nothing.
+func legendWords(key string, segments []string) string {
 	if key == "" {
 		return ""
 	}

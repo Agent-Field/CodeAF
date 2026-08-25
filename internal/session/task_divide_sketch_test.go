@@ -547,3 +547,19 @@ func TestTheManualSaysAHandedOverTurnStartsAlreadyDivided(t *testing.T) {
 		}
 	}
 }
+
+// A CHAIN PIECE IS NAMED FROM EVERY LETTER IT HOLDS. `A > B` is a module and
+// then its test; a name from the first letter alone would hide half of what the
+// part owns, and a name from the raw letters ("a > b") names nothing.
+func TestAChainPieceIsNamedFromEveryLetterInIt(t *testing.T) {
+	segments := legendSegments("A is the slugify module, B is its test file, C is the chunk module")
+	if got := sketchSaid("A > B", segments); got != "the slugify module, then its test file" {
+		t.Fatalf("chain piece named %q", got)
+	}
+	if got := sketchSaid("C", segments); got != "the chunk module" {
+		t.Fatalf("single piece named %q", got)
+	}
+	if got := sketchSaid("(A > B)", segments); got != "the slugify module, then its test file" {
+		t.Fatalf("bracketed chain named %q", got)
+	}
+}
