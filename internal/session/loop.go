@@ -480,7 +480,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// Stop condition (pi spec §2): the loop ends when the assistant
 		// response has NO tool call.
 		if len(calls) == 0 {
-			a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
+			// A CALL THAT ANSWERED NOTHING IS A FAILED CALL, AND IT IS WRITTEN
+			// DOWN AS ONE. No words, no tool call, nothing the provider counted:
+			// that is not a short answer, it is an endpoint that did not answer,
+			// and the journal used to record it as an empty assistant message —
+			// indistinguishable, to anybody reading the file afterwards, from a
+			// model that had simply finished. Three of them in fifteen seconds
+			// were the front half of the measured failure ([journalError]).
+			//
+			// The turn still ends here rather than being retried: the ladder that
+			// owns retries is [Agent.completeWithRetry], and an empty 200 is not
+			// an error it was ever handed. What changes is the record — and the
+			// transcript, which no longer gains an empty assistant line for the
+			// reason [Agent.keepPartial] refuses to write one.
+			if turnBroke(response) {
+				a.journalFailedCall(ctx, model, "", errEmptyAnswer, 1, a.requestEstimate())
+			} else {
+				a.record(ai.Message{Role: "assistant", Content: assistantContent(response)})
+			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
 			// arriving during the tool batch from recording it a second time.
@@ -518,7 +535,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// finished is re-opened with one line saying what is left, ON THE SAME
 			// METER — so the ceiling still bounds it and a re-opened turn that reaches
 			// the ceiling hands off exactly as any other does.
-			if again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response.Text()); over {
+			//
+			// AND A TURN THAT BROKE IS NOT A TURN THAT STOPPED SHORT. The whole
+			// response goes down rather than its text, because the question this
+			// answers is about how the step ENDED and not about what it said
+			// ([turnBroke]). The other way a turn ends badly — a call that
+			// errored — never arrives here at all: the error path above returns
+			// before the loop reaches this line, and that is deliberate.
+			if again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response); over {
 				return true
 			} else if again {
 				continue
@@ -756,6 +780,13 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 		if ctx.Err() != nil {
 			return nil, model, ctx.Err()
 		}
+		// AND THE FAILURE IS WRITTEN DOWN BEFORE ANYTHING DECIDES WHAT TO DO
+		// ABOUT IT. Every other outcome of a request reaches the journal; this
+		// one reached nothing at all, and a measured run (see [journalError])
+		// left five hours of budget unspent with the whole record of why being a
+		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
+		// reads as a ladder.
+		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a
@@ -793,6 +824,27 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 			hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut)})
 			attempt--
 			continue
+		}
+		// ── WHOSE MISTAKE WAS IT? ────────────────────────────────────────────
+		//
+		// THE REFUSAL ANSWERS FOR ITSELF, BEFORE ANY PATTERN READS ITS SENTENCE.
+		// A 4xx that named no upstream is the router reading OUR OWN BYTES and
+		// saying no ([provider.APIError.OurRequest]), and every endpoint alive
+		// will say the same thing about the same request — so the ladder stops
+		// here rather than spending 2s, 4s and 8s to be told it three times. A
+		// 4xx that DID name an upstream is that upstream's refusal, another
+		// endpoint may serve it, and the adapter has already taken the refusing
+		// lane out of the ledger so the next attempt is routed elsewhere
+		// (internal/provider's velocity.go, refuseUpstream).
+		//
+		// IT IS A SHAPE AND NEVER A STATUS LIST, which is the whole point: the
+		// measured failure was a 400 whose text — "Provider returned error" —
+		// matched the retryable pattern and was retried three times into the same
+		// wall, while a differently-worded 400 from the same upstream would have
+		// been given up on at once. The pattern is asked second now, and only
+		// about errors that carry no refusal to ask.
+		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
+			return nil, model, err
 		}
 		errMsg := err.Error()
 		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
@@ -1861,6 +1913,58 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, served string) {
 		Output:     usage.CompletionTokens,
 		CostUSD:    costOf(usage),
 	})
+}
+
+// errorRowMessage bounds the sentence written on a failed call's journal row.
+// The upstream's own body has its own field and its own clip; this is the
+// harness's one-line account of the failure, not a place for a payload.
+const errorRowMessage = 512
+
+// journalFailedCall writes ONE FAILED CALL down (see [journalError]).
+//
+// THE LAW: A FAILED CALL NEVER LOOKS LIKE AN EMPTY ANSWER, AND NEVER LOOKS LIKE
+// NOTHING AT ALL. Every request that succeeds leaves a call line; until this,
+// every request that failed left the journal exactly as it found it, and the
+// autopsy of the measured run could read three empty assistant messages and a
+// dead turn without learning the status, the endpoint, the provider or a single
+// word of what the upstream had said.
+//
+// What it can say it says, and what it cannot it leaves off — a transport error
+// carries no status and no provider, and a row of zeroes would read as facts.
+// `role` is the errand that made the call, absent on the conversation's own
+// requests, exactly as [journalCall] spells it.
+func (a *Agent) journalFailedCall(ctx context.Context, model, role string, err error, attempt, estimate int) {
+	if err == nil {
+		return
+	}
+	row := journalError{
+		Model:    strings.TrimSpace(model),
+		Endpoint: strings.TrimSpace(provider.ServedEndpointFrom(ctx).Name()),
+		Role:     strings.TrimSpace(role),
+		Attempt:  attempt,
+		Input:    estimate,
+		Message:  clip(err.Error(), errorRowMessage),
+	}
+	if refusal, ok := provider.RefusalFrom(err); ok {
+		row.Status = refusal.Status
+		row.Provider = strings.TrimSpace(refusal.Provider)
+		row.Raw = refusal.Raw
+		if said := strings.TrimSpace(refusal.Message); said != "" {
+			row.Message = clip(said, errorRowMessage)
+		}
+	}
+	a.file.appendError(row)
+}
+
+// requestEstimate is the session's own count of the tokens the request that just
+// failed was carrying. It is the ONLY token figure a failed call has: the
+// provider counted none, so the alternative is a row that cannot say whether the
+// request was small or enormous — which is the first question an autopsy asks of
+// a 400.
+func (a *Agent) requestEstimate() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.estimateTokensLocked()
 }
 
 // costOf is the provider's own figure for one call, zero when it did not send

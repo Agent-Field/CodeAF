@@ -87,7 +87,10 @@ func (a *Agent) callRole(
 	patience := roles.PatienceFor(role)
 
 	var lastErr error
-	for _, rung := range rungs {
+	// The rung's index is the ATTEMPT number on a failed call's journal row: an
+	// errand that walked its whole ladder wrote one row per rung, and the number
+	// is what tells a reader they were one errand rather than three.
+	for attempt, rung := range rungs {
 		// WithoutStream because nobody asked for this call: left on the turn's
 		// stream it would type itself into the room in the model's voice.
 		//
@@ -136,6 +139,14 @@ func (a *Agent) callRole(
 		if lastErr == nil {
 			lastErr = errEmptyAnswer
 		}
+		// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
+		// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
+		// errand that cannot be reached is silent by design — the caller reads
+		// silence as "nothing to say" — and a silence nobody records is a bill
+		// with no explanation next to it. No estimate is written: an errand's
+		// request is a digest this session assembled, not the transcript, and the
+		// transcript's own count would be a number about something else.
+		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
 	}
 	return nil, "", lastErr
 }
