@@ -55,9 +55,11 @@ type hostLaunch struct {
 	target string
 	// session is --session, passed through as the engine's own --session means it.
 	session string
-	// model and level are --model and --reasoning. They are applied AFTER the
-	// handshake rather than carried in it, because the wire's hello has no room
-	// for them — see the STUB on [applyHostChoices].
+	// model and level are --model and --reasoning, carried in the hello itself
+	// ([remote.Hello]'s Model and Level) so the ENGINE opens the session on them
+	// rather than being switched a millisecond later — which is the difference
+	// between a journal whose first line names the model the person asked for
+	// and one that names whatever the machine happened to default to.
 	model string
 	level string
 	// once is --once: one message, printed, no terminal ownership.
@@ -123,36 +125,51 @@ func parseHostTarget(raw string) (dest, workspace string, err error) {
 }
 
 // engineLink is a live ssh process and the client speaking to it.
+//
+// THE PROCESS IS A SLOT AND NOT A CONSTANT, which is the whole of what roaming
+// changed here: a dropped link is redialled by [remote.Roam], every redial is a
+// FRESH ssh child, and this holds whichever one is current so the door can still
+// wait on its exit code and read what it said on stderr.
 type engineLink struct {
 	client *remote.Client
-	// process is the ssh child. Closing the client's pipe is what ends it; this
-	// is held so the door can wait for its exit code when the handshake failed
-	// and the exit code is the only witness to why.
+	// dest and workspace are what every spawn needs, kept because the spawning
+	// now happens again on a link that died and not only once at the door.
+	dest      string
+	workspace string
+
+	mu sync.Mutex
+	// process is the ssh child currently carrying the connection. Closing the
+	// client's pipe is what ends it; this is held so the door can wait for its
+	// exit code when the handshake failed and the exit code is the only witness
+	// to why.
 	process *exec.Cmd
 	// stderr is the tail of what ssh and the far shell said, kept so a failed
 	// handshake can be diagnosed in the person's own words rather than in a
 	// pipe error. It is a TEE — everything in it was also printed as it arrived.
 	stderr *tailWriter
-	// done is closed when the process has been waited on, and wait guards it.
-	wait sync.Once
-	err  error
+	// reaped says this process has already been waited on, and err is what that
+	// wait answered.
+	reaped bool
+	err    error
 }
 
-// dialEngine starts the engine on the far machine and completes the handshake.
-func dialEngine(dest, workspace, sessionFile string) (*engineLink, error) {
+// spawn starts one `ssh <dest> aforge engine` and hands back its pipes. It is
+// [remote.Dialer]: the door owns processes, the wire owns frames, and this is
+// the one function the redial loop reaches back through when a link dies.
+func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// The remote command, as the far machine's login shell will read it. The
 	// workspace is quoted because a path with a space in it is a path, and an
 	// unquoted one would arrive at `aforge engine` as two arguments.
 	remoteCommand := "aforge engine"
-	if workspace != "" {
-		remoteCommand += " --workspace " + shellQuote(workspace)
+	if l.workspace != "" {
+		remoteCommand += " --workspace " + shellQuote(l.workspace)
 	}
 	// -T because there is nothing interactive on the far end: the engine reads
 	// frames on stdin and writes them on stdout, and a pseudo-terminal in the
 	// middle would turn a newline into a carriage return and a frame into
 	// nonsense. ssh's OWN questions do not go through this — it asks them on
 	// /dev/tty, which is still the person's terminal.
-	process := exec.Command("ssh", "-T", dest, remoteCommand)
+	process := exec.Command("ssh", "-T", l.dest, remoteCommand)
 	stdin, err := process.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -172,11 +189,37 @@ func dialEngine(dest, workspace, sessionFile string) (*engineLink, error) {
 		}
 		return nil, fmt.Errorf("could not start ssh: %w", err)
 	}
-	link := &engineLink{process: process, stderr: tail}
-	client, err := remote.Dial(pipePair{r: stdout, w: stdin}, dest, remote.Hello{
+	l.hold(process, tail)
+	return pipePair{r: stdout, w: stdin}, nil
+}
+
+// hold takes the new child and lets go of the old one. THE PREVIOUS SSH IS
+// REAPED IN THE BACKGROUND, because a redial happens after its pipe died and a
+// child nobody waits on is a zombie for as long as this terminal is open — five
+// minutes of retries against a machine that is switched off would leave a row of
+// them.
+func (l *engineLink) hold(process *exec.Cmd, tail *tailWriter) {
+	l.mu.Lock()
+	previous, reaped := l.process, l.reaped
+	l.process, l.stderr, l.reaped, l.err = process, tail, false, nil
+	l.mu.Unlock()
+	if previous != nil && !reaped {
+		guard.Go("chatv3/host-reap", func() { _ = previous.Wait() })
+	}
+}
+
+// dialEngine starts the engine on the far machine, completes the handshake, and
+// leaves the connection able to redial itself.
+func dialEngine(dest, workspace string, launch hostLaunch) (*engineLink, error) {
+	link := &engineLink{dest: dest, workspace: workspace}
+	client, err := remote.Roam(dest, remote.Hello{
 		Workspace: workspace,
-		Session:   sessionFile,
-	})
+		Session:   launch.session,
+		// --model and --reasoning ride the frame that BUILDS the session, so the
+		// engine opens on them rather than being switched afterwards.
+		Model: launch.model,
+		Level: launch.level,
+	}, remote.Roaming{Dial: link.spawn})
 	if err != nil {
 		return nil, link.diagnose(dest, err)
 	}
@@ -195,7 +238,7 @@ func dialEngine(dest, workspace, sessionFile string) (*engineLink, error) {
 func (l *engineLink) diagnose(dest string, cause error) error {
 	_ = l.close()
 	code := l.exitCode()
-	said := l.stderr.String()
+	said := l.said()
 	switch {
 	case code == 127 || mentionsMissingCommand(said):
 		return fmt.Errorf("aforge is not installed on %s — install it there, or put it on the PATH that a non-login ssh command sees", dest)
@@ -217,30 +260,53 @@ func mentionsMissingCommand(said string) bool {
 		strings.Contains(said, "no such file or directory") && strings.Contains(said, "aforge")
 }
 
-// close shuts the connection and reaps the process.
+// close shuts the connection and reaps the process. Closing the client also
+// ends the redialling, so no further ssh child is started after this.
 func (l *engineLink) close() error {
 	if l.client != nil {
 		_ = l.client.Close()
 	}
-	l.wait.Do(func() {
-		if l.process != nil {
-			l.err = l.process.Wait()
-		}
-	})
-	return l.err
+	return l.reap()
+}
+
+// reap waits on the current ssh child, once.
+func (l *engineLink) reap() error {
+	l.mu.Lock()
+	process, reaped := l.process, l.reaped
+	if process == nil || reaped {
+		err := l.err
+		l.mu.Unlock()
+		return err
+	}
+	l.reaped = true
+	l.mu.Unlock()
+	err := process.Wait()
+	l.mu.Lock()
+	l.err = err
+	l.mu.Unlock()
+	return err
 }
 
 // exitCode is ssh's exit status once it has been waited on, or -1.
 func (l *engineLink) exitCode() int {
-	l.wait.Do(func() {
-		if l.process != nil {
-			l.err = l.process.Wait()
-		}
-	})
+	_ = l.reap()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.process == nil || l.process.ProcessState == nil {
 		return -1
 	}
 	return l.process.ProcessState.ExitCode()
+}
+
+// said is the tail of what ssh and the far shell printed on the current link.
+func (l *engineLink) said() string {
+	l.mu.Lock()
+	tail := l.stderr
+	l.mu.Unlock()
+	if tail == nil {
+		return ""
+	}
+	return tail.String()
 }
 
 // pipePair is the ssh child's two halves as one [io.ReadWriteCloser], which is
@@ -306,7 +372,7 @@ func openChatV3Host(launch hostLaunch) error {
 	if launch.pick && launch.once != "" {
 		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --host %s --once "text"`, dest)
 	}
-	link, err := dialEngine(dest, workspace, launch.session)
+	link, err := dialEngine(dest, workspace, launch)
 	if err != nil {
 		return err
 	}
@@ -315,7 +381,7 @@ func openChatV3Host(launch hostLaunch) error {
 	client := link.client
 	agent := client.Agent()
 	welcome := client.Welcome()
-	applyHostChoices(agent, launch, welcome)
+	correctHostChoices(agent, launch, welcome)
 
 	if launch.once != "" {
 		return runHostOnce(agent, launch.once)
@@ -330,26 +396,30 @@ func openChatV3Host(launch hostLaunch) error {
 	return tui3.Run(context.Background(), options)
 }
 
-// applyHostChoices lands --model and --reasoning on the session that just
-// opened.
+// correctHostChoices makes the session agree with --model and --reasoning when
+// the welcome says it does not.
 //
-// STUB: they belong in the hello, and [remote.Hello] has no room for them
-// (internal/remote's wire.go, which this lane does not own). Setting them
-// immediately after the handshake is the closest faithful thing: the session has
-// existed for a millisecond, nothing has been asked of it, and the first turn
-// rides the model the person named. The difference a hello field would make is
-// that the ENGINE would open the session on that model rather than switch it, so
-// the session file's first line would name it — a fact nobody on this screen can
-// see, but the right one for the journal.
-func applyHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.Welcome) {
+// THE HELLO IS WHERE THESE BELONG AND THE HELLO IS WHERE THEY GO NOW. The engine
+// opens the session on them ([remote.Hello]'s Model and Level), so the journal's
+// first line names the model the person asked for rather than the one the far
+// machine happens to default to. This is not that work done twice: it is the
+// check that the ask LANDED. The welcome states the model the engine actually
+// opened on, so a disagreement with --model is a fact the surface can see, and a
+// surface that saw it and drew the engine's answer anyway would be showing a
+// person a model they did not choose.
+//
+// The level cannot be read off the welcome — there is no field for it — so when
+// one was asked for it is read back with the one round trip that can answer it,
+// and set only when it differs.
+func correctHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.Welcome) {
 	model := welcome.Model
-	if launch.model != "" {
+	if launch.model != "" && launch.model != model {
 		agent.SetModel(launch.model)
 		model = launch.model
 	}
 	// The boot override lands on the model this session starts on, which is the
 	// only model it can be about — the same law the local door states.
-	if launch.level != "" && model != "" {
+	if launch.level != "" && model != "" && agent.ReasoningFor(model) != launch.level {
 		agent.SetReasoningFor(model, launch.level)
 	}
 }
@@ -383,6 +453,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
 	})
 	stands := newHostStanding(client)
+	seams := newHostSeams(client)
 
 	options := tui3.Options{
 		Agent:     agent,
@@ -392,7 +463,7 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// wherever the surface shows it (internal/tui3's host.go).
 		SessionFile: welcome.SessionFile,
 		Resumed:     welcome.Resumed,
-		Notice:      welcome.Note,
+		Notice:      hostEntryNotice(welcome),
 		// The engine's own tool-approval posture, so the YOLO badge names the
 		// machine that actually decides whether a tool runs unattended
 		// (internal/tui3's app.approvalPosture).
@@ -465,6 +536,19 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			// and better than a line read off THIS laptop's launchd — a status
 			// about the wrong machine.
 		},
+		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
+		//
+		// The three facts only a connection has: the sentence to draw while a
+		// dropped link is being redialled, the one-off news a redial discovered,
+		// and the questions this conversation raised while nobody was attached.
+		// Each lands somewhere different on the screen and internal/tui3's
+		// hostlink.go says where; what this door owes is the answer, and the
+		// client has answered all three since the wire grew them.
+		Link: tui3.LinkSeam{
+			Note:   seams.Link,
+			Notice: seams.Notice,
+			Held:   hostHeld(seams),
+		},
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
 		// Connections: the accounts panel signs in through a browser HERE and
@@ -506,6 +590,109 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		options.DraftFile = tui3.DraftFile(dir, dest+":"+welcome.Workspace)
 	}
 	return options
+}
+
+// ── what the engine says about the room ─────────────────────────────────────
+
+// hostEntryNotice is the sentence the surface shows once on the way in: what the
+// engine said about opening the session, and who else is already in it.
+//
+// WHO ELSE IS HERE IS NOT A DETAIL. A session with another surface attached is a
+// conversation somebody else can type into, and a screen that kept that quiet
+// would be the one place aforge hid something about the room. The count is the
+// engine's ([remote.Welcome]'s Attached), because only the machine holding the
+// session can know it. Zero says nothing at all, by the emptiness law.
+func hostEntryNotice(welcome remote.Welcome) string {
+	said := strings.TrimSpace(welcome.Note)
+	attached := hostAttachedNote(welcome.Attached)
+	switch {
+	case said == "":
+		return attached
+	case attached == "":
+		return said
+	default:
+		return said + " · " + attached
+	}
+}
+
+func hostAttachedNote(attached int) string {
+	switch {
+	case attached <= 0:
+		return ""
+	case attached == 1:
+		return "another window is on this conversation"
+	default:
+		return fmt.Sprintf("%d other windows are on this conversation", attached)
+	}
+}
+
+// hostSeams is what a remote connection can tell the surface, in the wire's own
+// shapes. Each field is a closure over [remote.Client], and each is named here
+// rather than passed inline so that the door has ONE list of what a connection
+// knows about itself and the option assembly has one line per fact.
+//
+// ALL THREE ARE WIRED NOW. They were written before internal/tui3 had anywhere
+// to put them and sat unwired for a wave, which is why this type reads as a list
+// of facts rather than as an argument: the surface has grown
+// [tui3.LinkSeam] and hostOptions hands these three straight into it.
+type hostSeams struct {
+	// Link is the quiet sentence about the connection right now — empty
+	// whenever there is nothing to say, which is what a status-line segment
+	// draws as nothing at all. It reads `reconnecting to devbox — trying for up
+	// to 5 minutes` while a dropped link is being redialled.
+	Link func() string
+	// Notice is one sentence to show once and then forget: the two things a
+	// redial can discover — the engine did not keep the turn, and the engine
+	// came back with a different conversation open.
+	Notice func() string
+	// Held is the questions this session raised while nobody was attached. The
+	// surface replays each one's event through the door it already draws live
+	// cards with.
+	Held func() ([]remote.HeldQuestion, error)
+}
+
+func newHostSeams(client *remote.Client) hostSeams {
+	return hostSeams{Link: client.LinkNote, Notice: client.TakeNotice, Held: client.HeldQuestions}
+}
+
+// hostHeld is the waiting room in the SURFACE's shape.
+//
+// It exists because internal/tui3 does not import internal/remote and must not:
+// the package that draws a screen has no business compiling against a protocol,
+// which is why every other thing that crosses this door crosses as a closure or
+// as one of internal/session's own types. So the one translation there is —
+// unwrapping the event, which is the field JSON could not carry
+// ([remote.EventWire]) — happens HERE, at the door, where both halves are
+// already in scope.
+//
+// THE ERROR TRAVELS rather than becoming an empty list, on the terms
+// [remote.Client.HeldQuestions] states: "nothing is waiting" and "the far end
+// did not answer" are different facts, and a surface handed the second as the
+// first would quietly tell a person there is nothing to answer.
+func hostHeld(seams hostSeams) func() ([]tui3.HeldQuestion, error) {
+	if seams.Held == nil {
+		return nil
+	}
+	return func() ([]tui3.HeldQuestion, error) {
+		held, err := seams.Held()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]tui3.HeldQuestion, 0, len(held))
+		for _, q := range held {
+			// THE KIND IS CARRIED ACROSS UNREAD. Deciding here which kinds this
+			// build can draw would put the skip rule in two places, and the
+			// surface is where the cards are — see internal/tui3's
+			// [app.replayHeld], which leaves an unrecognised one waiting.
+			//
+			// [remote.HeldQuestion.Stream] is dropped, and dropped rather than
+			// carried unread: the surface has one conversation and one place a
+			// card goes, so there is nothing for it to name (tui3's
+			// [HeldQuestion] states the same thing from the other side).
+			out = append(out, tui3.HeldQuestion{Kind: q.Kind, Event: q.Event.Unwire(), Since: q.Since})
+		}
+		return out, nil
+	}
 }
 
 // ── the ambient side over a connection ──────────────────────────────────────

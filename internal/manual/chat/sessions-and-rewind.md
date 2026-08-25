@@ -119,7 +119,16 @@ ordinary conversation. This is deliberate: *"a rewound turn really did run, and 
 calls really did touch the workspace."* The journal stays *"a record of what happened rather
 than of what is currently believed"*.
 
-If you need work on disk undone, undo it yourself. Rewind will not do it for you.
+Rewind will not undo work on disk for you. **On a machine with furrow installed and watching
+this folder, `workspace_restore` is the separate verb that does** — ask for the files to be
+put back and aforge uses the workspace's own restore points, which cover things git never
+sees: `.env`, a dev database, an untracked file, a dependency that changed. It is a
+different thing from a rewind and they are never the same gesture: a rewind edits the
+conversation and touches no file; `workspace_restore` moves bytes and leaves the
+conversation alone. See *Forking and syncing a workspace*.
+
+Without furrow there is no such verb, and then the sentence above is the whole truth: undo
+it yourself.
 
 ## What a rewind point is
 
