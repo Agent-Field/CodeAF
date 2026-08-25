@@ -2072,6 +2072,94 @@ stacked identical lines; the conversation scrolls back down to the line that is 
 there. If anything at all lands in between — a reply, a tool call, a different line of
 aforge's own — the answer is written again, in its new place.
 
+## The `└` line under my message — a correction typed into a turn that was already running
+
+A sentence you send while an answer is still being worked on is **part of that same
+question**, not a new one. So it is not drawn as a second message of yours. Your original
+message stays where it is and each correction hangs off it on its own row:
+
+```
+› port the parser to the new lexer
+└ use the staging bucket, not production
+└ and skip the cache while you are in there
+```
+
+The `└` is furniture, drawn dim like every other mark aforge uses about its own
+structure. The words after it are yours, painted one reading step below the question
+above them — the same voice, a little quieter, because they are part of the same fact.
+They are in the order you sent them, oldest first, and they sit directly under your
+message and above everything the turn then did.
+
+A correction wider than the frame wraps onto the next row, hung under its own first
+character rather than being cut. A file path inside one is a link, exactly as a path in
+any message of yours is.
+
+On a terminal with no box-drawing glyphs, and in the plain screen-reader mode, the `└`
+is drawn as `+`.
+
+## What `steering` next to my correction means — has the model been told yet?
+
+A correction does not reach the model the instant you send it. It is handed over at the
+running turn's next step — the moment between one batch of tool results and the next
+request — so there is a gap, and the row says which side of it you are on:
+
+```
+└ use the staging bucket, not production · ⠹ steering
+```
+
+The spinner and the word `steering` mean **the model has not been given these words
+yet**. They come off the row the moment it actually has. Nothing on this surface claims
+your correction landed before it did.
+
+When it lands, the row lights up for a moment and settles back down on its own: full ink
+for the first 4 seconds, the calmer tier until 10, and the quiet resting tier after that.
+No glyph is added and none taken away.
+
+A conversation opened from disk draws its corrections already settled — a correction made
+an hour ago is a fact and not news, so it never flashes on reload.
+
+## Too many corrections on one question — the `…2 more steers` line
+
+A question you corrected more than three times keeps the **newest three** on screen and
+folds the rest behind one line:
+
+```
+› port the parser to the new lexer
+└ …2 more steers
+└ and skip the cache while you are in there
+└ actually leave the cache alone entirely
+└ and run the tests when you are done
+```
+
+Click that line and the rest come back, with the line now reading `└ …2 fewer`. Click it
+again and they fold away. It is the same fold grammar the rest of aforge uses, and like
+every other fold here it is a fact about this window — nothing is written down, and the
+conversation opens folded next time.
+
+Folding a finished turn's work into its `▸ worked · …` chip never touches these rows.
+That is the point of drawing them here: a turn collapsed to one line still reads back as
+everything you asked for.
+
+## Where did my correction go — it arrived after the answer had finished
+
+A turn whose last request has already gone out has no next step left, so a correction
+sent in the last seconds of one can miss it. It is never dropped and it is never
+pretended about. It **leaves your question** — it was not part of it, and a row hanging
+under it would say the model had read something it never saw — and aforge says so in the
+dim line it uses for everything it says on its own account:
+
+```
+· your correction came after the answer finished — asking it as a new question
+```
+
+The words then start a turn of their own, and appear in the conversation as an ordinary
+message of yours with the usual `›`. Nothing is retyped and nothing is lost.
+
+The one exception is a turn **you stopped**. Pressing stop stops everything you had said
+to that turn, corrections included, so a correction that had not reached the model when
+you pressed it goes with the turn. Its row leaves your question the moment the turn ends,
+and nothing new is drawn after the stop — which is what stop means everywhere in aforge.
+
 ## The dim line under a finished turn
 
 Under each finished turn there is a dim right-aligned receipt:

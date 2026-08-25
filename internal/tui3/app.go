@@ -252,6 +252,26 @@ type entry struct {
 	// history every time the person walked into a different room.
 	context string
 
+	// steers are the corrections typed INTO this turn after this block opened it
+	// — the elbow rows drawn under the question (steerelbow.go). They are here
+	// rather than in the turn's own run of blocks because THE QUESTION IS WHAT
+	// THEY BELONG TO: a turn folded to its `worked` chip still reads back as
+	// everything that was asked, and a rewind that drops a turn drops its
+	// corrections with it because they are the same block.
+	//
+	// Empty on every block of every conversation nobody steered, which is nearly
+	// all of them, and a block with none renders exactly as it did before this
+	// existed.
+	steers []steerElbow
+	// steerFoldRow is which of this block's rows is the elbows' fold line, so the
+	// layout pass can make that one row a door — and ZERO IS NONE, which costs
+	// nothing to say: row zero is always the first row of the person's own
+	// sentence, so a fold line can never land there. It is written by the render
+	// that drew it, for the reason a proposal's choice row is (task.go): the row a
+	// thing lands on is decided by the wrap, and a hit-test that recomputed it
+	// would be measuring a row the frame has not drawn.
+	steerFoldRow int
+
 	// Tool fields.
 	tool   string
 	status toolState
@@ -682,6 +702,11 @@ type app struct {
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
 	workOpen map[int]bool
+	// steerOpen holds the turns whose elbow list is showing every correction
+	// rather than the newest three (steerelbow.go). Like the two folds above it,
+	// it is a fact about this WINDOW: nothing journals it, and a conversation
+	// re-opened tomorrow opens folded.
+	steerOpen map[int]bool
 	// sel is the selected tool entry, or -1. ↑/↓ move it; enter opens it.
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
@@ -2686,6 +2711,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case followMsg:
 		return a, a.queueFollow(msg)
 
+	// A correction that missed its boundary is an ordinary waiting message from
+	// that moment on, and it rides the queue every other one does (steerelbow.go).
+	case steerFellMsg:
+		return a, a.steerFell(msg)
+
 	case compactedMsg:
 		if msg.err != nil {
 			a.note("compact failed: " + msg.err.Error())
@@ -3245,6 +3275,20 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// stopped drawing runs the day a turn carried one.
 		after = a.orchestrateEvent(ev)
 
+	// ── A SENTENCE TYPED INTO THIS TURN (steerelbow.go) ──────────────────────
+	//
+	// The three of them are one story about one row, so they are read together:
+	// the correction hangs off the question, then it lands, or the turn ends
+	// first and it was never part of that question at all.
+	case session.EventSteerAccepted:
+		after = a.steerAccepted(ev.Steer)
+
+	case session.EventSteerConsumed:
+		after = a.steerConsumed(ev.Steer)
+
+	case session.EventSteerFellThrough:
+		after = a.steerFellThrough(ev.Steer)
+
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
 
@@ -3467,6 +3511,10 @@ func (a *app) settle() tea.Cmd {
 	// And a call that STARTED and never came back stops here too, or it starts
 	// spinning again the moment the next turn does ([app.resolveUnfinished]).
 	a.resolveUnfinished()
+	// AND A CORRECTION THAT NEVER REACHED THE MODEL LEAVES THE QUESTION. A turn
+	// that is over gave the model everything it was ever going to; an elbow still
+	// waiting under it would claim the opposite forever (steerelbow.go).
+	a.settleSteers()
 	// And a harness run's live step goes with the turn that was running it: the
 	// report is in the transcript by now with every step on it (harness.go).
 	a.dropHarnessStep()
@@ -4617,6 +4665,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.unfold(r.turn)
 	case hitWorkFold:
 		a.toggleWorkfold(r.turn)
+	case hitSteerFold:
+		a.toggleSteerFold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
 	case hitBrief:

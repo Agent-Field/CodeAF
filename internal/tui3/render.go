@@ -79,6 +79,13 @@ const (
 	// reason: two blocks answer the same gesture with different questions, and
 	// the press must not be resolved against the other card's columns.
 	hitStandChoice
+	// hitSteerFold is the elbows' fold line under a question somebody corrected
+	// more than three times — `└ …2 more steers` (steerelbow.go). It is a hit of
+	// its own rather than another [hitWorkFold] because the two rows fold
+	// different things on the same turn: one hides the machinery between the
+	// question and the answer, the other hides part of the question itself, and a
+	// press resolved against the wrong one would open the thing nobody pointed at.
+	hitSteerFold
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -462,7 +469,18 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && n == e.stand.choiceRow {
 				at = hitStandChoice
 			}
+			// AND THE ELBOWS' FOLD LINE, which is the only row of the person's own
+			// block a click acts on: the sentence above it has no gesture, and the
+			// corrections under it are text (steerelbow.go). Zero is no fold line at
+			// all — row zero is always the first row of what they said.
 			drawn := row{text: text, entry: i, hit: at}
+			if e.kind == entryUser && e.steerFoldRow > 0 && n == e.steerFoldRow {
+				// The turn rides with it for the reason it rides with every other
+				// fold line on this surface: what the press opens is a fact about the
+				// TURN, and the entry index alone names a block in whichever list was
+				// drawn rather than the thing being folded.
+				drawn.hit, drawn.turn = hitSteerFold, e.turn
+			}
 			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
 			// (markdown.go). It is applied HERE — after the block was rendered and
 			// wrapped, at the moment its rows become screen geometry — because a
@@ -647,6 +665,14 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
+	// AND A QUESTION WHOSE CORRECTIONS ARE STILL MOVING, for the reason all four
+	// of those are not: an elbow that has not landed turns a spinner and one that
+	// just did is on its way down the fade, both of which are functions of the
+	// frame (steerelbow.go). It rejoins the cache the moment the last of them
+	// settles, which is the moment the block stops moving.
+	if e.kind == entryUser && len(e.steers) > 0 && a.steersMoving(e) {
+		return a.renderEntry(i, e, width)
+	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -695,7 +721,17 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// the neutral narr tier, its answer is ink), so the hue stays an
 		// identity. The body was bold ink once before, and bold stays wrong
 		// for the stated reason: MARKDOWN OWNS WEIGHT.
+		//
+		// AND A TRUNK MAY HAVE NO WORDS OF ITS OWN, in exactly one case: a
+		// replayed window that opens PART-WAY THROUGH a steered turn, whose
+		// corrections are in it and whose question is above its top
+		// (steerelbow.go, replay.go). The elbows are drawn hanging from a trunk
+		// that is off the screen, which is what actually happened, rather than
+		// promoted into questions nobody asked.
 		body := wrap(e.text, width-userLeadCols)
+		if strings.TrimSpace(e.text) == "" {
+			body = nil
+		}
 		// AND A NODE'S INSTRUCTION SHOWS ITS OPENING AND NOT ALL OF ITSELF
 		// (brieffold.go). The cut is made on the WRAPPED lines, so it lands where
 		// a reader's eye would land rather than at some count of bytes; the door
@@ -739,7 +775,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// word of the message, so nothing in it may become a door. On an ordinary
 		// turn it adds nothing at all — which is nearly every turn, and is why this
 		// line changes no frame most people will ever look at.
-		return a.turnContextRows(a.linkPaths(out), e.context, width)
+		//
+		// AND THEN THE CORRECTIONS HANG OFF IT (steerelbow.go). They go LAST, under
+		// the context mark rather than above it, because the mark is a clause of the
+		// question's own row — it says where that sentence went — and a row wedged
+		// between a sentence and its own clause is the one shape turncontext.go is
+		// written against. On a question nobody corrected this adds nothing at all,
+		// which is nearly every question ever asked here.
+		return a.steerElbowRows(a.turnContextRows(a.linkPaths(out), e.context, width), e, width)
 
 	case entryAssistant:
 		return a.linkPaths(a.assistantRows(i, e, width))
