@@ -11,6 +11,10 @@ same thing — it is a second spelling for terminals that swallow `alt+enter`.
 and sends what you have typed** — see "Interrupt and say something new in one key"
 below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
 
+`cmd+enter` while a turn is running sends what you have typed **into that answer** —
+the same question, continued, with nothing stopped and nothing thrown away. See
+"Typing while an answer is still coming" below. At rest it does nothing at all.
+
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
 
@@ -39,7 +43,7 @@ under it:
 
 ```
 › do much more of a deep research please
-  waits for this answer · esc stops and sends · ↑ or click to edit
+  waits for this answer · esc stops and sends · → steers it in · ↑ or click to edit
 ```
 
 It is not written into the conversation and it is never drawn inside the streaming
@@ -50,7 +54,10 @@ reply. The box is cleared, so you can keep typing.
 | the answer finishes | the waiting message sends itself as an ordinary new turn |
 | several are waiting | one per finished turn, oldest first, in the order you typed them |
 | `esc` | stops the answer and sends the waiting message immediately |
+| `→` over an empty box | sends the waiting message **into** the running answer, stopping nothing — see "Send a message into the running answer" below |
+| click `→ steers it in` | the same, with the pointer |
 | `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
+| `cmd+enter` instead of `enter` | puts the sentence into the running answer instead of holding it |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
 | `enter` again | holds the edited sentence again |
@@ -65,12 +72,94 @@ messages dropped` — if the conversation is replaced under it by `/new` or by o
 session from the welcome box. Inside a **task room** `enter` steers the node instead
 and nothing is held; that is the room's own key (see the room section below).
 
-**Why it waits rather than going straight in.** The session can take a message into a
-running turn, but only at a *step boundary* — before the next model request. A turn
-whose last request has already gone out has no boundary left, so a message pushed into
-it would land in the transcript with nothing coming to answer it. Waiting for the turn
-to end means the message always gets a reply, and it is what makes the message editable
-until it goes.
+**Why it waits rather than going straight in.** Waiting is still what plain `enter`
+does, and it is still the safe default: a message that waits always gets a turn of its
+own, and it stays yours — editable, takeable-back — until it goes. Going straight in is
+the deliberate alternative, and it is deliberate because it is not promised. A message
+can only reach the model at a *step boundary* — before the next model request — and a
+turn whose last request has already gone out has no boundary left. So `enter` holds, and
+`cmd+enter` or `→` is how you say "no, into this one". Nothing is lost either way: a
+sentence sent in that arrives too late simply becomes the next message.
+
+## Send a message into the running answer — correct it without stopping it, steering with `cmd+enter`
+
+`cmd+enter` while a turn is running sends what you have typed **into that turn**. Nothing
+is interrupted, nothing already written is thrown away, and no second turn starts.
+
+**It is the same question, not a new one.** Your sentence is added to the transcript of
+the turn that is running, as your own words, and the model reads it at its next step —
+after everything it has already done about your original question. That is what makes it
+a correction rather than a restart: "no, the *other* file" arrives while the work is
+still going, and the work carries on from there.
+
+This is the key for the moment you are watching an answer go the wrong way and you do not
+want to pay for stopping it. The three keys, side by side:
+
+| Key | What happens to the answer | What happens to your sentence |
+|---|---|---|
+| `enter` | keeps going | waits above the box until the answer finishes |
+| `cmd+enter` | keeps going | goes into it, at the next step |
+| `shift+enter` | stopped, and what it said is kept | opens the next turn |
+
+**Over an empty box `cmd+enter` does nothing**, and at rest — nothing running — it does
+nothing either. `enter` already sends at rest.
+
+**The `→` shortcut for a message that is already waiting.** If you pressed `enter` and
+your message is sitting above the box, `→` over an **empty** box sends that message in
+instead of leaving it to wait. It is the front of the queue that goes, and the dim line
+under the block says so: `→ steers it in`. You can click those words instead. With
+anything typed in the box, `→` is the caret key it always is — the shortcut only exists
+where `→` had nothing else to mean.
+
+**A message with pictures, or one marked with `ctrl+enter`, is left waiting.** Only words
+go in; pictures reach a running turn through `/image` and their own tray, and a marked
+sentence is bound for the standing-order door. Neither is refused with a message — it
+simply waits and goes as its own turn, which is what it was always going to do. When that
+is the message at the front of the queue, the line does not offer `→ steers it in`.
+
+**The line that teaches it.** While a turn is running and you have typed something, the
+right end of the row under the message box reads exactly:
+
+```
+enter waits · cmd+enter steers it in · shift+enter stops and sends
+```
+
+## My message went in too late — the answer finished first, so it became the next message
+
+A sentence sent into a running turn is not promised a landing. It reaches the model at
+the turn's next *step boundary*, and a turn whose last request has already gone out has
+no boundary left — so the answer can finish with your words still on their way.
+
+**Nothing is dropped and nothing pretends.** When that happens your sentence is lifted
+out and simply becomes the next message: an ordinary one, waiting for a turn of its own.
+The screen says that is what happened, and the reply arrives in the turn that follows.
+You do not have to type it again, and you do not have to check.
+
+This is why plain `enter` — which holds the message and always gets it a turn — is still
+the default, and why sending it in is the deliberate thing you do when the correction is
+worth more now than it is in a minute.
+
+**The one case where the words do go** is a turn you **stopped**. A message sent into a
+turn you then interrupt is dropped with it, and aforge says so rather than doing it
+quietly: pressing stop stops everything you had said to that turn, which is what stop
+means. Press `enter` again to send it.
+
+## Why cmd+enter does nothing — which terminal you are in decides
+
+`cmd+enter` reaches a program only where your terminal can tell it apart from a plain
+`enter` — the kitty keyboard protocol, xterm's modifyOtherKeys, or win32-input. Ghostty,
+kitty, WezTerm and recent iTerm2 profiles all do; a plain Terminal.app does not.
+
+Where it cannot be spelled, the key arrives as an ordinary `enter` and your message simply
+**waits**, which is the safe half of the same meaning; nothing is lost and nothing breaks.
+
+On those terminals aforge also **never advertises the chord**: the line under the box
+keeps reading `enter waits · shift+enter stops and sends`, or `esc interrupt`. If you
+never see `cmd+enter steers it in` there, that is why.
+
+**What works everywhere instead.** Press `enter` to let the message wait, then `→` over
+the empty box — or click the words `→ steers it in` on the dim line — and it goes into
+the running answer just the same. Arrow keys and the mouse need no protocol at all.
 
 ## Interrupt and say something new in one key — barge in, stop it and tell it something else
 
@@ -124,23 +213,30 @@ right end of the row under the message box reads exactly:
 enter waits · shift+enter stops and sends
 ```
 
+On a session that can also take a sentence *into* the running turn, the third meaning is
+named between them and the line reads
+`enter waits · cmd+enter steers it in · shift+enter stops and sends`.
+
 It is shown only in that state — a turn running, something in the box, and a terminal that
 can deliver the chord. Over an empty box it goes back to `esc interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
-No. There are two moments, and both end in an answer.
+No. Every road ends in an answer.
 
-**Early in the turn**, your words land at the turn's next step boundary — between
-one tool batch and the next request — so the model reads them as part of the turn
-it is already in, and answers them there.
+**If you pressed `enter`**, the message is **held** above the box, in your own hue, and
+it is still yours: edit it with `↑`, click it, or let it go on its own when the answer
+finishes. It is never spliced into the reply you were reading.
 
-**In the last seconds of a turn** — while the final reply is streaming, or while
-aforge is naming the session and doing its tail work — there is no step boundary
-left, because the turn's last request has already gone out. Your message still
-lands in the conversation, in your own words, and aforge then starts one more turn
-by itself to answer it. You see your line, a pause, and then a reply. You do not
-have to type it again.
+**If you pressed `cmd+enter`, or `→` over a message already waiting**, it went into the
+turn that is running and the model reads it at its next step — between one tool batch and
+the next request.
+
+**If there was no step left** — the turn's last request had already gone out, or it
+finished a moment later — your words are not dropped and not pretended about. They become
+an ordinary message waiting for a turn of its own, the screen says so, and aforge answers
+them in the next turn. You see your line, a pause, and then a reply. You do not have to
+type it again.
 
 The same is true of a task or a background job that finishes in that window: its
 note lands and aforge speaks about it rather than leaving it sitting there.
@@ -315,12 +411,18 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
 | `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `cmd+enter` while a turn runs | Send what you have typed **into** that answer, stopping nothing. Empty box: nothing. Nothing running: nothing |
 | `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
+| `→` over an empty box, a message waiting | Send that waiting message into the running answer. With text in the box it is the caret key |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
-`shift+enter` does **not** open a line — use `alt+enter` or `ctrl+j` for that. It needs a
-terminal that can tell it apart from a plain `enter`; where it cannot, the key arrives as
-an ordinary `enter` and the message waits instead.
+The enter family, shortest first: `enter` sends or holds, `cmd+enter` puts it into the
+answer that is running, `ctrl+enter` marks it as something to keep true, `shift+enter`
+stops the answer and sends, `alt+enter` and `ctrl+j` open a line.
+
+Neither `shift+enter` nor `cmd+enter` opens a line — use `alt+enter` or `ctrl+j` for that.
+Both need a terminal that can tell them apart from a plain `enter`; where it cannot, the
+key arrives as an ordinary `enter` and the message waits instead.
 
 ## Keys in the message box: opening things and moving the view
 
@@ -1588,6 +1690,7 @@ answer:
 | Chord | Status |
 |---|---|
 | `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
+| `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it sends that message *into* the running answer without stopping it — see "Send a message into the running answer". It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |

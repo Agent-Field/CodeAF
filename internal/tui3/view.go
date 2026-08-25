@@ -128,6 +128,15 @@ const (
 	// pulls that one back into the box to be edited. The dim line under the block
 	// belongs to no message and is marked with nothing.
 	chromeParked
+	// chromeParkedHint is the dim line UNDER that block — the one that says what
+	// the waiting message is doing and which keys change it (park.go's
+	// [parkedWord]). It belongs to no message, which is why it is not a
+	// [chromeParked], and it is marked at all because one clause on it is a door:
+	// `→ steers it in` puts the message into the running answer, by pointer as
+	// well as by key (steer.go's [app.steerDoorPress]). The press is a question
+	// about the column as well as the row, since the other clauses on the line are
+	// statements.
+	chromeParkedHint
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).

@@ -59,6 +59,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop it and tell it something different at the same time", "keys"},
 		{"what does shift+enter do", "keys"},
 		{"shift enter does nothing for me", "keys"},
+		// THE SPLICE, asked the five ways people meet it: wanting to correct a
+		// running answer WITHOUT paying to stop it, reaching for the chord by
+		// name, meeting the arrow on the waiting message's own dim line, and
+		// finding out what happened when the answer finished first.
+		{"how do I correct it without stopping it", "keys"},
+		{"send a message into the running answer", "keys"},
+		{"what does cmd+enter do", "keys"},
+		{"what does steers it in mean", "keys"},
+		{"my message went in too late", "keys"},
 		// THE SCOPED THINKING CHORD, asked the five ways people meet it: reaching
 		// for paste and finding it bound, wanting one task to think harder,
 		// wanting the machine's own default moved, wanting one reminder raised
