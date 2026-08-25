@@ -83,8 +83,18 @@ func TestHomeAtRestIsOneFlatRankedListWithNoTreeAndNoStrips(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 30)
 	text := switchFrame(a)
+	// THE LIST IS WHAT IS ASKED, AND THE PULSE IS NOT PART OF IT. The words below
+	// are the old two-strip shape's own labels, and the frame's first row is the
+	// pulse, which legitimately says `4 moving` because that is the count of what
+	// is in flight on the whole machine (SCREEN 2b). Dropping row 0 before the
+	// scan is what keeps this a test about the LIST rather than about any line
+	// that happens to contain one of these words.
+	body := text
+	if at := strings.Index(text, "\n"); at >= 0 {
+		body = text[at+1:]
+	}
 	for _, gone := range []string{"needs you", "moving", "elsewhere", "keeping an eye"} {
-		if strings.Contains(text, gone) {
+		if strings.Contains(body, gone) {
 			t.Fatalf("the old shape survived (%q):\n%s", gone, text)
 		}
 	}

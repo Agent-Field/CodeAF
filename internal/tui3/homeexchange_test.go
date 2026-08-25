@@ -1467,8 +1467,13 @@ func TestAFollowUpGetsTheSameSignalAsTheFirstTurn(t *testing.T) {
 	if !strings.Contains(frame, homeAskThinkWord+" · 3s") {
 		t.Fatalf("a follow-up gets no signal that anything is happening:\n%s", frame)
 	}
-	if !strings.Contains(frame, homeAskWorkingWord) {
-		t.Fatalf("the row does not say the exchange went back to work:\n%s", frame)
+	// THE ROW'S OWN TAIL IS ASKED, AND NOT THE WHOLE FRAME. This used to scan the
+	// screen for the word `working`, and it passed for four waves because the
+	// PULSE said `1 working` — the row's tail was never actually checked. The
+	// pulse says `1 moving` now (SCREEN 2b), which is what exposed it, so the
+	// assertion asks the thing it was always about.
+	if tail := plain(a.exchangeTail(ex, false)); !strings.Contains(tail, homeAskWorkingWord) {
+		t.Fatalf("the row's tail does not say the exchange went back to work: %q\n%s", tail, frame)
 	}
 }
 
