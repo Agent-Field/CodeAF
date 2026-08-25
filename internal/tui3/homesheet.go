@@ -534,7 +534,9 @@ func (a *app) homeAnswerBand(chip answerChip, width int, pal palette) string {
 	if room := width - len(consentBandPad) - ansi.StringWidth(chip.key) - 1; ansi.StringWidth(word) > room {
 		word = fit(word, room)
 	}
-	return pal.ask(consentBandPad) + pal.askBold(chip.key) + pal.ask(" "+word)
+	// The phone's chip is the wide tier's chip, said in the same amber
+	// ([app.answerChipLines] holds the reasoning).
+	return pal.warn(consentBandPad) + pal.warnBold(chip.key) + pal.warn(" "+word)
 }
 
 // ── the errand's sheet ──────────────────────────────────────────────────────
