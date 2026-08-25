@@ -149,14 +149,27 @@ func (b *effortBand) wire(a *app) {
 	}
 }
 
+// itemHome is home with one standing item a cursor can be put on.
+//
+// THE ITEM IS FIRING, AND IT HAS TO BE. Home at rest is one flat ranked list and
+// a watch earns a row on it only while it is asking somebody something or is
+// actually running ([readSwitcher] — a watch that is merely set is not news and
+// is reached from the standing place or by typing its name). The rung is a fact
+// about the item and not about the pass it is on, so a running mark is the
+// cheapest honest way to put the cursor on one.
 func itemHome(t *testing.T) (*app, *effortBand) {
 	t.Helper()
 	lab := newHomeLab(t)
 	work := lab.workspace("alpha")
 	transcript := lab.session("alpha", "aaaa000000000001", "one", work, time.Now())
-	band := &effortBand{standBand: &standBand{items: []standing.Item{
-		bandItem("one", "remind me on Fridays", work, standing.WhenEvery, "Fridays"),
-	}}}
+	band := &effortBand{standBand: &standBand{
+		items: []standing.Item{
+			bandItem("one", "remind me on Fridays", work, standing.WhenEvery, "Fridays"),
+		},
+		running: map[string]standing.RunningMark{
+			"one": {PID: 4242, Since: time.Now().Add(-time.Minute), What: "reading the calendar"},
+		},
+	}}
 	a := lab.app(transcript)
 	band.wire(a)
 	a.openHome()
@@ -362,6 +375,16 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	}
 	if a.home.msg != "" {
 		t.Fatalf("a key with no door under it explained itself: %q", a.home.msg)
+	}
+	// AND THE CARD STATES NO RUNG EITHER, which is the same law read rather than
+	// pressed. `spend` and `thinking` are one facts line on the switcher's card
+	// now ([app.homeCardFacts]), and the only rungs home can honestly read are
+	// the install's default and a standing item's own — a conversation's is its
+	// own sticky setting, belongs to the window that session is open in, and
+	// printing the machine's default here would be advertising a fact about the
+	// install as a fact about the chat.
+	if card := strings.Join(homeCardFor(t, a, a.file), "\n"); strings.Contains(card, "thinking") {
+		t.Fatalf("a conversation's card stated a rung it does not own:\n%s", card)
 	}
 }
 

@@ -285,6 +285,14 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 		}
 		return note
 	}
+	// A FIRST LOOK HAS NO ORIGIN TO MEASURE FROM, so nothing is news. The stamp is
+	// zero until home has been closed once (home.go's [homeView.seen] states the
+	// law); without this guard every task a conversation ever ran would be work
+	// that landed "while you were away", on the one screen whose whole job is to
+	// say what changed.
+	if seen.IsZero() {
+		return ""
+	}
 	files := 0
 	saved := false
 	for _, entry := range row.Tasks.Rows {
@@ -331,6 +339,12 @@ func switcherPlural(n int, one, many string) string {
 }
 
 func (r *switcherReading) addLedger(items map[string][]StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
+	// AND THE WHOLE BLOCK IS ABOUT A STRETCH OF TIME THAT MAY NOT EXIST YET. With
+	// no look stamp there is no "since", so there is nothing to say — the same
+	// first-look law [switcherConversationNote] keeps one function up.
+	if seen.IsZero() {
+		return
+	}
 	var events []switcherRow
 	// ONE LINE PER ITEM, HOWEVER MANY PROJECTS HOLD IT. The bands are keyed by
 	// project directory and a machine-wide watch is in every one of them, so a

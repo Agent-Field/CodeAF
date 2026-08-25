@@ -71,12 +71,12 @@ type machineFacts struct {
 	// every project and every kind of thing: a task node out, a conversation
 	// mid-turn, an errand answering, a standing order firing.
 	//
-	// IT IS THE MOVING ZONE'S OWN ARITHMETIC AND NOT A SECOND ACCOUNTING
-	// ([app.machineHands] counts the rows [homeView.attentionMoving] gathers).
-	// Home already knows what is running everywhere — that is the whole subject
-	// of the left column's second strip — and a count derived a second way here
-	// would be a top line saying `3 working` over a strip listing four, which is
-	// the exact failure the one-reader law was written against.
+	// IT IS THE LIST'S OWN ARITHMETIC AND NOT A SECOND ACCOUNTING
+	// ([app.machineHands] counts the world the list is ranked from). The rows the
+	// switcher calls moving are the same things this figure counts, and a count
+	// derived a second way here would be a top line saying `3 working` over a
+	// list showing four, which is the exact failure the one-reader law was
+	// written against.
 	hands int
 }
 
@@ -162,7 +162,7 @@ func (a *app) sampleHands(hands int) {
 }
 
 // machineHands is how many things this machine has in flight, counted off the
-// rows the moving zone gathers ([homeView.attentionMoving]).
+// world the list is ranked from ([readSwitcher] judges the same rows moving).
 //
 // ONE ROW IS NOT ALWAYS ONE HAND. A conversation with three task nodes out is
 // one row and three things being done, so it counts three. A row with no count —
