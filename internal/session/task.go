@@ -721,6 +721,18 @@ func (a *Agent) alreadyWorking() bool {
 		case "tool":
 			return true
 		case "user":
+			// EXCEPT THE HARNESS'S OWN CHECKPOINT, which is the one line in this
+			// lane that is not somebody addressing the agent (checkpoint.go). It is
+			// written INTO a running answer, priced against what handing that answer
+			// over would cost, and it is the line that most often produces the
+			// proposal standing just below it — so a reader that treated it as the
+			// start of a fresh answer would silence the mid-answer line on precisely
+			// the handoffs it caused, and hand the worker a brief nobody asked for
+			// the findings in. Everything else here still ends the answer: a
+			// person's own steering is them speaking again.
+			if isCheckpointNote(a.messages[index]) {
+				continue
+			}
 			return false
 		}
 	}

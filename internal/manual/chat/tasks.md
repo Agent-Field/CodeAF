@@ -342,6 +342,71 @@ the way every other proposal is offered — `yes`, `redirect`, `no`, and a count
 silence starts it. You are told, and it opens; what the card gives you on top of that is
 the window to redirect it before it spends anything.
 
+## An answer that runs long is moved — this is running long, moving it to a task
+
+**When one answer keeps going, aforge prices it.** A long answer costs a little more with
+every round of tool calls and never stops costing; handing the same work to a task costs one
+fixed price — a clean copy of your folder opened and closed, a brief written, somebody
+independent reading the result — and after that the work runs watched. So the count of
+finished tool rounds is compared against that fixed price, and at three points along the way
+something happens. **Nothing about what you asked for is read.** It is the cost and only the
+cost.
+
+**Twice, the model is asked one question, and you see nothing.** At the first two points a
+line goes to the model — not to your screen — saying the answer has now cost more than
+handing it over would have, and asking it to say in one line whether what is left is one job
+or several independent parts. If it is several parts, it hands them over there and then, and
+you get the ordinary mid-answer handoff described above:
+
+```
+this one wants more hands · handing it over with everything found so far
+```
+
+If it is one job, it says what is left and carries on, and it is not asked again until the
+next point — which is twice as far along as the last one. **An answer can be interrupted this
+way at most twice.**
+
+**The third point is not a question.** Past it aforge stops asking. The answer ends where it
+is, what is left of the work moves onto one task, and two dim lines go into the transcript:
+
+```
+this is running long · moving it to a task that is watched and can split
+this looked like work, so task 4 started: finish the four pieces
+```
+
+The first line is the reason; the second is the ordinary line every task started this way
+carries, with its own number and name.
+
+**What the task is given.** Your own message rides it **word for word** — that is true of
+every task on this page and it is never rewritten. On top of it, the model is asked for one
+last thing before the answer ends: an instruction for whoever picks the work up, saying what
+is left, what it already found out that they would otherwise have to find again, what it
+ruled out, and how anybody could tell when it is done. That is the brief. If it cannot be
+written — the model fails, or replies with nothing — the task still starts, on your own
+sentence alone.
+
+**The task is armed to split.** An answer that outran one pair of hands is the strongest
+evidence there is that the work has parts in it, so the worker is allowed to hand parts out
+once it has opened the material. Whether it actually does is its own decision and the roster
+says so if it happens — see *When a task turns out to be too wide for one worker*.
+
+**What is on the rail is what you can stop.** From the moment the task exists it is an
+ordinary task: a row on the roster, a room, a budget, a report, `x` to stop it. That is the
+point of moving it — an answer grinding in the conversation has none of those.
+
+**What never gets moved:**
+
+- **Work already inside a task.** A task's own worker has a step cap, a deadline and a check
+  of its own, so nothing moves work out of one.
+- **Anything with no screen.** `--once`, and any session nobody is watching, never does this.
+- **Anything the session said to itself.** A task's report landing, a standing order's own
+  instruction, a woken turn: none of those are counted or moved.
+- **An answer you stopped.** Pressing escape ends the answer and nothing is started out of
+  it.
+
+**There is no setting that turns this off, and no number you can raise.** What bounds it is
+the list above.
+
 ## Every key the proposal card takes
 
 | key | when | what it does |

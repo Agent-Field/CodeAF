@@ -379,6 +379,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// this count keeps that exceptional continuation both useful and bounded.
 	truncations := 0
 
+	// meter is what this turn has COST, in finished tool rounds, priced against
+	// what handing it over would cost (checkpoint.go). It belongs to the turn for
+	// the reason the loop window and the change ledger do: it is a fact about one
+	// answer, and a meter that remembered yesterday's rounds would move work out
+	// of a conversation on the strength of a conversation that already ended.
+	meter := &checkpointMeter{}
+
 	for {
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
@@ -519,6 +526,25 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// next request has not been assembled, and a note dropped here rides into
 		// it exactly as a person's steering does.
 		episode.postFeedback(ctx, hub, calls, results)
+
+		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
+		// what handing it over would cost instead (checkpoint.go). The two prior
+		// answers to a grinding turn both decide BEFORE there is any evidence —
+		// the prompt teaches a judgement the model forgets under momentum, and the
+		// route judge reads a request nobody has worked on yet — so this is the
+		// one reading taken while the cost is a fact. At each geometric mark it
+		// states that fact and asks the model one question, in the ambient note
+		// lane the loop detector's nudge already rides; past the last mark it stops
+		// asking, ends the turn, and moves what is left onto the one road, where
+		// the work runs supervised.
+		//
+		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
+		// the control plane's law is that pre-action is the only hook that may
+		// (hooks.go). It stands with the two route-judge seams that also end turns,
+		// and a false is the turn carrying on exactly as it would have.
+		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model) {
+			return true
+		}
 
 		a.maybeCompact(ctx, hub)
 	}
