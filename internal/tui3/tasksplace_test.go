@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,29 @@ func TestTheTasksPageDrawsNoEmptySection(t *testing.T) {
 	page := strings.Join(readTasks(world, win, time.Time{}, now).rows(100, newPalette(tokens.NoColor, false)), "\n")
 	if strings.Contains(page, "\nrunning\n") || strings.Contains(page, "\ndone today\n") || strings.Contains(page, "\nearlier\n") {
 		t.Fatalf("an empty section drew a heading:\n%s", page)
+	}
+}
+
+func TestEveryTasksSectionHasItsOwnExactFold(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	row := session.SessionRow{ID: "many", Title: "many", Open: true}
+	statuses := []string{string(session.TaskUnverified), string(session.TaskRunning), string(session.TaskDone), string(session.TaskDone)}
+	for section, status := range statuses {
+		for i := 0; i < taskShown+section+1; i++ {
+			ended := now.AddDate(0, 0, -2)
+			if section == 2 {
+				ended = now.Add(-time.Hour)
+			}
+			entry := session.TaskIndexEntry{ID: fmt.Sprintf("%d-%d", section, i), Label: fmt.Sprintf("section %d row %d", section, i), Status: status, EndedAt: ended}
+			row.Tasks.Rows = append(row.Tasks.Rows, entry)
+		}
+	}
+	reading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}, session.LastDays(now, 10), time.Time{}, now)
+	text := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	for _, hidden := range []int{1, 2, 3, 4} {
+		if !strings.Contains(text, foldLine(hidden, "back to aug 16")) {
+			t.Fatalf("section fold %d is absent:\n%s", hidden, text)
+		}
 	}
 }
 

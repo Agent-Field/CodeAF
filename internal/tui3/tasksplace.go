@@ -107,19 +107,17 @@ func (r tasksReading) rows(width int, pal palette) []string {
 		if len(items) == 0 {
 			continue
 		}
-		rows = append(rows, "", pal.dim(fit(tasksSectionWord(section), width)))
-		shown := len(items)
-		if section == tasksEarlier && shown > taskShown {
-			shown = taskShown
-		}
+		rows = appendPlaceSection(rows, pal.dim(fit(tasksSectionWord(section), width)))
+		shown := min(len(items), taskShown)
 		for _, item := range items[:shown] {
 			rows = append(rows, tasksRow(item, width, r.now, pal))
 		}
-		if section == tasksEarlier && len(items) > shown {
-			fold := fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, len(items)-shown)
+		if len(items) > shown {
+			clause := ""
 			if start := tasksWindowStart(r.win); start != "" {
-				fold += ", back to " + start
+				clause = "back to " + start
 			}
+			fold := foldLine(len(items)-shown, clause)
 			rows = append(rows, pal.dim(fit(fold, width)))
 		}
 	}
@@ -193,7 +191,7 @@ func tasksRow(item tasksItem, width int, now time.Time, pal palette) string {
 		{text: session.TaskKindWord(entry.Kind), ink: pal.dim, drop: tasksDropKind},
 	}
 	if entry.Cost > 0 {
-		parts = append(parts, tasksCell{text: dollars(entry.Cost), ink: tasksMoneyInk(pal), drop: tasksDropCost})
+		parts = append(parts, tasksCell{text: dollars(entry.Cost), ink: placeMoneyInk(pal), drop: tasksDropCost})
 	}
 	parts = append(parts, tasksCell{text: sinceAt(tasksEntryAt(entry, now), now), ink: pal.dim, drop: tasksDropAge})
 	if width < 80 {
@@ -303,17 +301,13 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 	case string(session.TaskQueued):
 		return tokens.GlyphQueued, pal.dim
 	case string(session.TaskDone):
-		return tokens.GlyphSettled, pal.add
+		return tokens.GlyphSettled, pal.muted
 	case string(session.TaskFailed):
 		return tokens.GlyphFailed, pal.bad
 	default:
 		return tokens.GlyphQueued, pal.dim
 	}
 }
-
-// tasksMoneyInk is the single seam for money's semantic ink. The router lane
-// may move the palette meaning without making every money cell know about it.
-func tasksMoneyInk(pal palette) func(string) string { return pal.add }
 
 // at maps a painted page row back to its task. Headings, air, and the fold are
 // deliberately holes so a cursor can move over the page without opening the
@@ -329,17 +323,14 @@ func (r tasksReading) at(i int) (session.TaskIndexEntry, session.SessionRow, boo
 			continue
 		}
 		at += 2 // Blank air and the section word are not stops.
-		shown := len(items)
-		if section == tasksEarlier && shown > taskShown {
-			shown = taskShown
-		}
+		shown := min(len(items), taskShown)
 		for _, item := range items[:shown] {
 			if at == i {
 				return item.entry, item.row, true
 			}
 			at++
 		}
-		if section == tasksEarlier && len(items) > shown {
+		if len(items) > shown {
 			at++
 		}
 	}

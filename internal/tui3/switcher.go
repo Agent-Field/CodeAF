@@ -563,20 +563,24 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 			r.chatCount++
 			needs := row.NeedsPerson()
 			moving := !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking)
-			here := filepath.Clean(row.Dir) == filepath.Clean(bucket) || row.ID == bucket
+			here := bucket != "" && ((row.Dir != "" && filepath.Clean(row.Dir) == filepath.Clean(bucket)) || (row.ID != "" && row.ID == bucket))
 			// Existing home passes a project bucket, not a session id. An open row
 			// in that project is the narrowest honest identification available.
-			if !here && !hereSet && row.Open && filepath.Clean(project.Dir) == filepath.Clean(bucket) {
+			if !here && !hereSet && bucket != "" && project.Dir != "" && row.Open && filepath.Clean(project.Dir) == filepath.Clean(bucket) {
 				here = true
 			}
 			if here {
 				hereSet = true
 			}
+			options := []session.AnswerOption(nil)
+			if row.NeedsPerson() && strings.TrimSpace(row.Presence.Question.Text) != "" {
+				options = append(options, row.Presence.Question.Options...)
+			}
 			all = append(all, switcherRow{
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
 				at: switcherSortAt(row), needs: needs, moving: moving, here: here,
-				options: append([]session.AnswerOption(nil), row.Presence.Question.Options...),
+				options: options,
 			})
 		}
 		for _, view := range items[project.Dir] {
@@ -780,7 +784,7 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 	if age != "" {
 		head += " · " + age
 	}
-	r.lines = append(r.lines, switcherLine{heading: head})
+	r.addSectionLine(switcherLine{heading: head})
 	for i := range events {
 		row := events[i]
 		r.lines = append(r.lines, switcherLine{row: &row})
@@ -789,7 +793,7 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 
 func (r *switcherReading) addFlat(all []switcherRow) {
 	if r.hasAttention {
-		r.lines = append(r.lines, switcherLine{section: true})
+		r.addSectionLine(switcherLine{section: true})
 	}
 	r.addRowsAndFold(all)
 }
@@ -804,11 +808,11 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 		}
 	}
 	selected := append([]switcherRow(nil), active...)
-	quietShown := 0
 	if !r.hideQuiet {
-		quietShown = min(max(0, switcherShown-len(active)), len(quiet))
-		selected = append(selected, quiet[:quietShown]...)
+		selected = append(selected, quiet...)
 	}
+	shown := min(switcherShown, len(selected))
+	selected = selected[:shown]
 	byProject := map[string][]switcherRow{}
 	for _, row := range selected {
 		byProject[row.project] = append(byProject[row.project], row)
@@ -828,7 +832,7 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 			g.here = g.here || row.here
 		}
 		for dir, project := range projects {
-			if project.Name == name && filepath.Clean(dir) == filepath.Clean(bucket) {
+			if bucket != "" && dir != "" && project.Name == name && filepath.Clean(dir) == filepath.Clean(bucket) {
 				g.here = true
 			}
 		}
@@ -841,64 +845,73 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 		return groups[i].at.After(groups[j].at)
 	})
 	if r.hasAttention {
-		r.lines = append(r.lines, switcherLine{section: true})
+		r.addSectionLine(switcherLine{section: true})
 	}
 	for _, group := range groups {
-		r.lines = append(r.lines, switcherLine{heading: group.name})
+		r.addSectionLine(switcherLine{heading: group.name})
 		for _, row := range byProject[group.name] {
 			copy := row
 			r.lines = append(r.lines, switcherLine{row: &copy})
 		}
 	}
-	if r.hideQuiet {
-		if len(quiet) > 0 {
-			r.addFold(fmt.Sprintf("%s %d quiet", tokens.GlyphCollapsed, len(quiet)))
+	hidden := len(active) + len(quiet) - len(selected)
+	if hidden > 0 {
+		clause := ""
+		if len(selected) >= len(active) {
+			quietAt := len(selected) - len(active)
+			if r.hideQuiet {
+				clause = "quiet"
+			} else if quietAt < len(quiet) && !quiet[quietAt].at.IsZero() {
+				clause = "quiet since " + strings.ToLower(quiet[quietAt].at.Format("Jan 2"))
+			}
 		}
-	} else if more := len(quiet) - quietShown; more > 0 {
-		word := fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, more)
-		if !quiet[quietShown].at.IsZero() {
-			word += ", quiet since " + strings.ToLower(quiet[quietShown].at.Format("Jan 2"))
-		}
-		r.addFold(word)
+		r.addFold(foldLine(hidden, clause))
 	}
 }
 
 func (r *switcherReading) addRowsAndFold(all []switcherRow) {
-	shown := 0
-	var quiet []switcherRow
-	for _, row := range all {
-		if row.needs || row.moving {
-			copy := row
-			r.lines = append(r.lines, switcherLine{row: &copy})
-			shown++
-		} else {
-			quiet = append(quiet, row)
-		}
-	}
+	eligible := all
 	if r.hideQuiet {
-		if len(quiet) > 0 {
-			r.addFold(fmt.Sprintf("%s %d quiet", tokens.GlyphCollapsed, len(quiet)))
+		eligible = nil
+		for _, row := range all {
+			if row.needs || row.moving {
+				eligible = append(eligible, row)
+			}
 		}
-		return
 	}
-	room := max(0, switcherShown-shown)
-	showQuiet := min(room, len(quiet))
-	for _, row := range quiet[:showQuiet] {
+	shown := min(switcherShown, len(eligible))
+	for _, row := range eligible[:shown] {
 		copy := row
 		r.lines = append(r.lines, switcherLine{row: &copy})
 	}
-	if more := len(quiet) - showQuiet; more > 0 {
-		word := fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, more)
-		if showQuiet < len(quiet) && !quiet[showQuiet].at.IsZero() {
-			word += ", quiet since " + strings.ToLower(quiet[showQuiet].at.Format("Jan 2"))
+	if more := len(all) - shown; more > 0 {
+		clause := ""
+		if shown < len(all) && !all[shown].needs && !all[shown].moving {
+			if r.hideQuiet {
+				clause = "quiet"
+			} else if !all[shown].at.IsZero() {
+				clause = "quiet since " + strings.ToLower(all[shown].at.Format("Jan 2"))
+			}
 		}
-		r.addFold(word)
+		r.addFold(foldLine(more, clause))
 	}
 }
 
 func (r *switcherReading) addFold(word string) {
 	row := switcherRow{kind: switcherFold, fold: true, foldWord: word}
 	r.lines = append(r.lines, switcherLine{row: &row})
+}
+
+// addSectionLine keeps headings on the shared one-blank rhythm while leaving
+// the first block flush with the top of its reading.
+func (r *switcherReading) addSectionLine(line switcherLine) {
+	for len(r.lines) > 0 && r.lines[len(r.lines)-1].blank {
+		r.lines = r.lines[:len(r.lines)-1]
+	}
+	if len(r.lines) > 0 {
+		r.lines = append(r.lines, switcherLine{blank: true})
+	}
+	r.lines = append(r.lines, line)
 }
 
 func (r switcherReading) rows(width int, pal palette) []string {
@@ -909,7 +922,10 @@ func (r switcherReading) rows(width int, pal palette) []string {
 	for _, line := range r.lines {
 		switch {
 		case line.section:
-			left := fmt.Sprintf("%d chats · what wants you first", r.chatCount)
+			left := "what wants you first"
+			if r.chatCount > 0 {
+				left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
+			}
 			right := "alt+g group by project"
 			if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · alt+q hide the quiet ones")+3 <= width {
 				right += " · alt+q hide the quiet ones"
@@ -1021,8 +1037,8 @@ func (r switcherReading) verbs(i int) []switcherVerb {
 	}
 	if row.kind == switcherStanding {
 		verbs := switcherQuestionVerbs(row.options)
-		if strings.TrimSpace(row.item.Item.NeedsPerson) != "" && len(verbs) == 0 {
-			verbs = append(verbs, switcherVerb{'y', "yes"}, switcherVerb{'n', "no"})
+		if row.paused {
+			return append(verbs, switcherVerb{'r', "resume it"})
 		}
 		return append(verbs, switcherVerb{'p', "pause it"})
 	}
@@ -1030,9 +1046,10 @@ func (r switcherReading) verbs(i int) []switcherVerb {
 		return nil
 	}
 	verbs := switcherQuestionVerbs(row.options)
-	verbs = append(verbs,
-		switcherVerb{'a', "put it away"}, switcherVerb{'t', "new chat here"},
-		switcherVerb{'o', "open folder"}, switcherVerb{'c', "copy path"})
+	verbs = append(verbs, switcherVerb{'a', "put it away"})
+	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
+		verbs = append(verbs, switcherVerb{'t', "new chat here"}, switcherVerb{'o', "open folder"}, switcherVerb{'c', "copy path"})
+	}
 	return verbs
 }
 

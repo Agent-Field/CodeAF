@@ -86,6 +86,16 @@ func TestTheSpendPageDrawsNoFiguresItDoesNotKnow(t *testing.T) {
 	}
 }
 
+func TestTheSpendPageLeavesUnknownModelAndRoleBlank(t *testing.T) {
+	line := session.UsageLine{At: spendTestNow, Calls: 3, Input: 10, USD: 1.25}
+	text := strings.Join(plainSpendRows(readSpend([]session.UsageLine{line}, session.LastDays(spendTestNow, 1), spendTestNow).rows(120, newPalette(tokens.NoColor, false))), "\n")
+	for _, invented := range []string{"unnamed model", "conversation"} {
+		if strings.Contains(text, invented) {
+			t.Fatalf("unknown ledger metadata became %q:\n%s", invented, text)
+		}
+	}
+}
+
 func TestEverySpendRowFitsThePlaceAtEveryPromisedWidth(t *testing.T) {
 	for _, width := range []int{60, 80, 120, 200} {
 		for _, row := range spendTestReading().rows(width, newPalette(tokens.ANSI256, false)) {
