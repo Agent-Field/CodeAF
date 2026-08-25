@@ -48,6 +48,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -66,10 +67,21 @@ const (
 	// Two seconds is a server's shutdown hook, not a wait.
 	jobTermGrace = 2 * time.Second
 
-	// jobExitNoteLimit caps the log line quoted in the completion note. The
-	// note is a sentence in the transcript, not the output: the output is in
-	// the ring and on disk, and the model reads it if it cares.
+	// jobExitNoteLimit caps the log line quoted in the completion note's first
+	// line — the headline, which has to fit on one line beside the exit code.
 	jobExitNoteLimit = 120
+
+	// jobExitTailLines is how much of a finished job's output rides in the note
+	// itself.
+	//
+	// A COMPLETION IS DELIVERED WHOLE, OR IT IS NOT DELIVERED. The note used to
+	// be one line — `job 3 exited 0: BUILD OK` — and a model that read it still
+	// knew nothing about what the job had DONE, so its next move was a call to
+	// `jobs output`, which is a round trip to learn the thing the note was
+	// already about. Fifty lines is `jobs output`'s own default and the tail of
+	// a build log where the failure is; the whole log is still on disk and the
+	// note still names it.
+	jobExitTailLines = jobsDefaultTail
 )
 
 // jobState is what a job is doing now.
@@ -427,10 +439,16 @@ func (r *jobRegistry) start(command string) (*job, error) {
 		return nil, err
 	}
 
-	shell, shellArgs := jobShell()
-	process := exec.Command(shell, append(shellArgs, command)...)
+	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
+	// streaming.go). A background job is the one place where block-buffered
+	// output does the most damage — nobody is watching the pipe, so a log that
+	// stays empty until exit is a job that looks dead for as long as it runs —
+	// and this used to be a hand-copied three-line shell choice with no
+	// buffering fix in it at all.
+	shell, shellArgs := bare.StreamingShell(command)
+	process := exec.Command(shell, shellArgs...)
 	process.Dir = r.workspace
-	process.Env = os.Environ()
+	process.Env = bare.StreamingEnv()
 	// Setpgid puts the job and everything it spawns in one process group, so a
 	// kill reaches the whole tree. A dev server that forks a compiler must not
 	// survive the kill of its parent.
@@ -567,6 +585,16 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	note := fmt.Sprintf("job %d exited %d", watched.id, code)
 	if last := watched.sink.lastNonEmptyLine(); last != "" {
 		note += ": " + clip(last, jobExitNoteLimit)
+	}
+	// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and needs
+	// none of this; a bash job's ending is the moment its output finally means
+	// something, and a note that withheld it would be an invitation to make one
+	// more call for what the note was already about.
+	if watched.kind == jobKindBash {
+		if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
+			note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
+				strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+		}
 	}
 	r.notify(note)
 }
@@ -835,6 +863,16 @@ func (s *jobSink) tail(n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// text is everything the ring is holding, verbatim. It is what a caller bounds
+// for itself — the sentence a promoted call answers with (promote.go), the tail
+// on a completion note — rather than a second opinion about how much of a job's
+// output anybody may see.
+func (s *jobSink) text() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.ring)
+}
+
 // lastNonEmptyLine is the one line the completion note quotes. Blank lines are
 // skipped because a job whose last write was a newline still has something to
 // say about how it went.
@@ -856,6 +894,12 @@ func (s *jobSink) lastNonEmptyLine() string {
 // a copy rather than a call because bare's is unexported and this slice wraps
 // that package rather than editing it; the order is three lines and it is the
 // same three lines.
+//
+// IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
+// goes through [bare.StreamingShell] instead, which is this choice plus the
+// line-buffering that keeps a long command's log from being empty until it
+// exits. What is left on this one is a watch's tick and a standing order's step
+// — commands that are short by construction and read only after they end.
 func jobShell() (string, []string) {
 	if _, err := os.Stat("/bin/bash"); err == nil {
 		return "/bin/bash", []string{"-c"}
