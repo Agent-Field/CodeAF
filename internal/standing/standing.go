@@ -36,8 +36,14 @@
 //
 //   - UNATTENDED MEANS WHAT WAS ALREADY ALLOWED. A firing runs under the person's
 //     banked approval rules with nobody to ask; anything that would have asked
-//     stops the run as "needs your look". There are no probation counters: the
-//     rules are the tenure.
+//     stops the run as "needs your look". This paragraph used to finish "there
+//     are no probation counters: the rules are the tenure", and the second half
+//     of that is no longer true: [Item.CleanRuns] counts clean firings in a row,
+//     and the rope column reads it ([RopeWord]). The first half still is, and it
+//     is the part that mattered — the counter changes WHAT A PERSON IS TOLD
+//     about an item, never what a firing is allowed to do. What is allowed is
+//     the banked rules and only ever the banked rules; nothing here widens with
+//     a count.
 //
 //   - QUIET IS THE DESIGN. A check that found nothing rewrites LastChecked and
 //     LastCheckLine in the item and writes NO line anywhere else. A run that
@@ -355,6 +361,28 @@ type Item struct {
 	// NeedsPerson is set while the latest run is stopped waiting on the person,
 	// with the one line it is stopped on. Home sorts on it.
 	NeedsPerson string `json:"needsPerson,omitempty"`
+	// CleanRuns is HOW MANY FIRINGS IN A ROW CAME BACK CLEAN — fired with
+	// nothing waiting for the person and no failure. It is the count the rope
+	// column's middle rung is drawn from ([RopeWord]), and a firing that stops
+	// on a question or fails puts it back to nothing.
+	//
+	// IT IS RECORDED AND NOT DERIVED, and that is a deliberate loss of
+	// elegance. Everything else this struct keeps about a firing is the LATEST
+	// one — LastOutcome is overwritten every time — so a streak simply is not in
+	// the record. The one field that looks like it might do is [Item.Previous],
+	// which holds the last few sentinel judgments with `" → " + outcome.Kind`
+	// glued on the end; reading a streak out of that would mean splitting
+	// model-authored prose on an arrow, and it would silently tie a product
+	// threshold to [Previous], whose size exists to bound a PROMPT. Somebody
+	// trimming that prompt by two lines would quietly make trust unreachable.
+	// So the count is kept at the one site that records a firing
+	// ([Ticker.fire]), which is the same place [Item.Runs] is kept.
+	//
+	// AN ITEM WRITTEN BEFORE THIS FIELD EXISTED DECODES AS ZERO and starts
+	// earning trust again. That is the conservative direction and the only
+	// honest one: nothing on disk says those firings were clean, and a column
+	// that assumed they were would be granting rope nobody measured.
+	CleanRuns int `json:"cleanRuns,omitempty"`
 }
 
 // Validate is what [Store.Create] and [Store.Save] refuse on. It is the whole
@@ -699,6 +727,18 @@ type Outcome struct {
 // whose run folder the sweep may reap after [RunKeep], so it is a constant
 // rather than a word spelled twice in two packages.
 const OutcomeNothing = "nothing"
+
+// The two outcomes that mean a firing did NOT come back clean, spelled once
+// here because three places now test for them — the clause a card reads
+// ([outcomeClause]), the recorder ([Ticker.fire]) and the trust counter that
+// recorder keeps. They were string literals in each, which is a word spelled
+// three times and therefore a word that will drift.
+const (
+	// OutcomeNeedsYou is a firing that stopped on a question for the person.
+	OutcomeNeedsYou = "needs-you"
+	// OutcomeFailed is a firing that could not finish.
+	OutcomeFailed = "failed"
+)
 
 // CameTo is the one-word file a firing leaves in its run folder saying what
 // that run came to — the same word as [Outcome.Kind]. The item's own

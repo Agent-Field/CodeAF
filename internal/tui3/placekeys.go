@@ -203,6 +203,8 @@ func (a *app) placeWindow(key string) bool {
 	switch a.page {
 	case pageTasks:
 		return a.taskSheet.window(a, key)
+	case pageStanding:
+		return a.standPage.window(a, key)
 	case pageSpend:
 		return a.spendWindowKey(key)
 	}

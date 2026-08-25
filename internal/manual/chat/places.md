@@ -80,11 +80,12 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-Two of those are still thinly bound and say so. `alt+<letter>` today is `alt+s` on the memory
-place, which walks the shelves, and nothing else. `shift+<arrow>` is the spend place's time
-window — `shift+←→` moves it, `shift+↑↓` changes how coarse it is — and nothing anywhere else
-yet: a place with no window to move answers those keys with nothing rather than with
-something that is not drawn.
+One of those is still thinly bound and says so: `alt+<letter>` today is `alt+s` on the memory
+place, which walks the shelves, and nothing else. `shift+<arrow>` is a place's time window —
+`shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and three places
+have one: **tasks** (when it ran), **standing** (when it fired) and **spend** (which days).
+A place with no window to move answers those keys with nothing rather than with something
+that is not drawn, and so does a terminal too narrow to draw the control.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
 
@@ -155,9 +156,14 @@ it, because every printable key belongs to the composer. On the `in other projec
 only `p` and `s` are offered: `n` names an exception in a place that order never reached,
 so it is not there at all.
 
+Each row also says **how much rope** the order has — `asks first`, `earning trust 3/5`, or
+`trusted alone` — which is the fact that decides whether you have to watch it.
+
 Nothing is behind a fold — `↑ ↓` walks every order and the list scrolls with the cursor.
 Under the row you are on, an order that has been looked at adds a short `last look`
-paragraph. The standing orders page has the whole of it.
+paragraph. The header carries a time window for **when it fired**: `shift+←→` moves it,
+`shift+↑↓` changes how coarse it is, and it opens holding every firing this computer has.
+The standing orders page has the whole of it.
 
 ## memory — what is held true
 

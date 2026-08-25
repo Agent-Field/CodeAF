@@ -740,3 +740,139 @@ func TestAConversationVerbOnAnotherProjectsOrderSaysSo(t *testing.T) {
 		t.Fatalf("the engine was asked to except %v", lab.agent.excepts)
 	}
 }
+
+// ── 8. the window: when it fired ────────────────────────────────────────────
+
+// THE WINDOW KEY MOVES THE LABEL AND NEVER TOUCHES THE STORE. The orders are
+// already in memory — the open collected them — so paging the window is
+// arithmetic over a slice, which is what lets a person hold the arrow down. A
+// window key that reached the disk would break the law this place is built on
+// with the one gesture most likely to repeat.
+func TestTheWindowKeyMovesTheLabelWithoutTouchingTheStore(t *testing.T) {
+	fired := standFarItem("f1", "watch the release feed", "")
+	fired.LastFired = time.Date(2026, 8, 16, 9, 0, 0, 0, time.Local)
+	lab := newStandFarLab(t, nil, fired)
+
+	asked := 0
+	items := lab.a.stands.Items
+	lab.a.stands.Items = func(workspace string) []standing.Item {
+		asked++
+		return items(workspace)
+	}
+	lab.open(t)
+	after := asked
+	before := lab.a.standPage.win
+
+	head := func() string {
+		frame, _, _, _ := lab.a.standPageFrame(lab.a.width, lab.a.height)
+		for _, line := range frame {
+			if strings.Contains(plain(line), standHeading) {
+				return plain(line)
+			}
+		}
+		t.Fatal("the header is not on the frame")
+		return ""
+	}
+	was := head()
+	if !strings.Contains(was, "shift+←") {
+		t.Fatalf("the header draws no window control: %q", was)
+	}
+
+	drive(t, lab.a, key("shift+left"))
+	if lab.a.standPage.win == before {
+		t.Fatal("shift+left moved nothing")
+	}
+	if now := head(); now == was {
+		t.Fatalf("the label did not change: %q", now)
+	}
+	// AND BACK AGAIN LANDS WHERE IT STARTED, which is what makes the arrows a
+	// pair rather than two separate gestures.
+	drive(t, lab.a, key("shift+right"))
+	if lab.a.standPage.win != before {
+		t.Fatalf("shift+right came back to %q, not to %q",
+			lab.a.standPage.win.Label(), before.Label())
+	}
+	// The grain zoom is the other axis, and it is the same four keys everywhere.
+	drive(t, lab.a, key("shift+up"))
+	if lab.a.standPage.win.Grain == before.Grain {
+		t.Fatalf("shift+up did not zoom the grain: %v", lab.a.standPage.win.Grain)
+	}
+	if asked != after {
+		t.Fatalf("moving the window asked the store %d more times", asked-after)
+	}
+}
+
+// NARROWING THE WINDOW SCOPES WHAT IS LISTED — that is what the control is for —
+// AND AN ORDER THAT HAS NEVER FIRED IS NEVER SCOPED AWAY, because it has no
+// firing to be outside anything.
+func TestNarrowingTheWindowScopesWhatFiredAndKeepsWhatNeverDid(t *testing.T) {
+	old := standFarItem("old", "watch the release feed", "")
+	old.LastFired = time.Date(2026, 5, 17, 9, 0, 0, 0, time.Local)
+	never := standFarItem("never", "never touch the public API", "")
+	lab := newStandFarLab(t, nil, old, never)
+	screen := lab.open(t)
+	for _, want := range []string{"watch the release feed", "never touch the public API"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the opening frame already hid %q:\n%s", want, screen)
+		}
+	}
+	// Walk the window back off the old firing. Its span reaches from May to
+	// today, so one step back is a window with nothing that fired in it.
+	drive(t, lab.a, key("shift+left"))
+	screen = standPageScreen(lab.a)
+	if strings.Contains(screen, "watch the release feed") {
+		t.Fatalf("an order that fired outside the window is still listed:\n%s", screen)
+	}
+	if !strings.Contains(screen, "never touch the public API") {
+		t.Fatalf("an order that has never fired was scoped away:\n%s", screen)
+	}
+	// AND THE CURSOR IS BACK ON A ROW THAT EXISTS. A list that lost rows under a
+	// cursor left where it was would put a verb on whatever slid into its line.
+	item, ok := lab.a.standPage.current()
+	if !ok || item.ID != "never" {
+		t.Fatalf("the cursor is on %q (%v) after the list changed under it", item.ID, ok)
+	}
+}
+
+// A FRAME TOO NARROW TO DRAW THE CONTROL HAS NO WINDOW AT ALL: one predicate
+// answers the paint and the keys, so the arrows are never bound where they are
+// not drawn.
+func TestTheWindowKeysAreUnboundOnAFrameTooNarrowToDrawThem(t *testing.T) {
+	fired := standFarItem("f1", "watch the release feed", "")
+	fired.LastFired = time.Date(2026, 8, 16, 9, 0, 0, 0, time.Local)
+	lab := newStandFarLab(t, nil, fired)
+	lab.a.width, lab.a.height = 44, 30
+	lab.open(t)
+	before := lab.a.standPage.win
+	drive(t, lab.a, key("shift+left"))
+	if lab.a.standPage.win != before {
+		t.Fatal("a phone frame moved a window it never drew")
+	}
+	if screen := standPageScreen(lab.a); strings.Contains(screen, "shift+") {
+		t.Fatalf("a phone frame drew the control:\n%s", screen)
+	}
+}
+
+// AND THE ROPE REACHES THE SCREEN. The rung is derived in internal/standing and
+// drawn on the row's tail; this is the end-to-end that the two are actually
+// joined up, because a derivation nothing draws is a column that does not exist.
+func TestTheRopeIsOnTheStandingPlacesRows(t *testing.T) {
+	trusted := standFarItem("trusted", "watch the release feed", "")
+	trusted.Grant, trusted.CleanRuns = "summarise without asking", standing.TrustAfter
+	earning := standFarItem("earning", "keep the changelog index fresh", "")
+	earning.Grant, earning.CleanRuns = "refresh without asking", 3
+	bare := standFarItem("bare", "file anything that looks like an invoice", "")
+	lab := newStandFarLab(t, nil, trusted, earning, bare)
+	screen := lab.open(t)
+	for _, want := range []string{standing.RopeTrusted, "earning trust 3/5", standing.RopeAsksFirst} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the page does not draw %q:\n%s", want, screen)
+		}
+	}
+	// AND NEVER THE RESIDENT'S WORD FOR THE SAME MECHANISM. `tenure` is that
+	// other product's name for a charter earning the same thing, and vocabulary
+	// does not travel between the two.
+	if strings.Contains(strings.ToLower(screen), "tenure") {
+		t.Fatalf("the page says the resident's word:\n%s", screen)
+	}
+}
