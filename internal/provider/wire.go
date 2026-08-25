@@ -18,12 +18,17 @@ type reasoningKnob struct {
 	Effort  Effort `json:"effort,omitempty"`
 	Enabled *bool  `json:"enabled,omitempty"`
 
-	// MaxTokens is the thinking budget, and it is the OTHER HALF OF ONE KNOB
-	// rather than a second one. The effort word is what OpenAI-family endpoints
-	// read; the budget is what Anthropic- and Gemini-family endpoints read. They
-	// are sent together on the two ladder rungs above high (effortladder.go)
-	// because there is no word above high to send, and an endpoint reads
-	// whichever of the two it understands.
+	// MaxTokens is the thinking budget, and it is THE OTHER DIALECT OF THE SAME
+	// KNOB rather than a second knob. The effort word is what OpenAI-family
+	// endpoints read; the budget is what Anthropic- and Gemini-family endpoints
+	// read, and the router translates whichever one it is given for the
+	// endpoint that speaks the other.
+	//
+	// THE TWO ARE MUTUALLY EXCLUSIVE ON THE WIRE. A body carrying both is
+	// refused outright — `Only one of "reasoning.effort" and
+	// "reasoning.max_tokens" can be specified` is a 400 on the whole turn — so
+	// exactly one of these fields is ever set. [reasoningFor] is the one place
+	// that decides which.
 	//
 	// It is a plain int and not a pointer: zero is not a budget anybody could
 	// mean, so omitempty says "unset" exactly, and the encode path stays free of
@@ -31,10 +36,19 @@ type reasoningKnob struct {
 	MaxTokens int `json:"max_tokens,omitempty"`
 }
 
-// reasoningFor maps an effort and its budget onto the wire. Off is a disable
-// rather than a level, so it takes the other field; the two are never sent
-// together, and a disable never carries a budget — a request that suppresses
-// thinking has nothing to spend it on.
+// reasoningFor maps an effort and its budget onto the wire, and it is THE ONE
+// PLACE that decides which single field carries the request. Off is a disable
+// rather than a level, so it takes the other field, and a disable never carries
+// a budget — a request that suppresses thinking has nothing to spend it on.
+//
+// THE BUDGET WINS WHERE THERE IS ONE. Only the two rungs above high carry a
+// budget, and the budget is the only thing that tells them apart from high: an
+// endpoint asked for the word instead would see the same request for all three,
+// and the top of the ladder would be a rung that costs a keystroke and changes
+// nothing. So a budget travels alone, and the word travels alone when there is
+// no budget. The endpoint that speaks only the other dialect is served by the
+// router's own translation, and the one that refuses a budget outright is
+// served by the memo above — it degrades to high without one.
 func reasoningFor(level Effort, budget int) *reasoningKnob {
 	switch level {
 	case EffortNone:
@@ -43,7 +57,10 @@ func reasoningFor(level Effort, budget int) *reasoningKnob {
 		disabled := false
 		return &reasoningKnob{Enabled: &disabled}
 	default:
-		return &reasoningKnob{Effort: level, MaxTokens: budget}
+		if budget > 0 {
+			return &reasoningKnob{MaxTokens: budget}
+		}
+		return &reasoningKnob{Effort: level}
 	}
 }
 

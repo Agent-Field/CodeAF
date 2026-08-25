@@ -341,6 +341,17 @@ func TestTheLadderTakesEveryKeyAndPicksWithEnter(t *testing.T) {
 	if a.input.String() != "steady" {
 		t.Fatalf("a letter typed into the box under the ladder: %q", a.input.String())
 	}
+	// AND A SPACE IS A LETTER. It is called out beside the `x` because space is
+	// the one unanswered key that means something on the surfaces around this
+	// one, and a rung that let it through would put a character into a sentence
+	// nobody is looking at just as surely as the `x` would.
+	drive(t, a, key(" "))
+	if a.input.String() != "steady" {
+		t.Fatalf("a space fell through the ladder into the box: %q", a.input.String())
+	}
+	if !a.effPick.open {
+		t.Fatal("a key the ladder does not answer to closed it")
+	}
 	drive(t, a, key("down"), key("enter"))
 	if got := agent.ConversationEffort(); got != "xhigh" {
 		t.Fatalf("enter picked %q, want xhigh", got)

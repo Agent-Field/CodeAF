@@ -212,6 +212,26 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 	}
 }
 
+// AND THE STANDING CARD IS THE FOURTH QUESTION UNDER THAT RULE.
+//
+// It is not a row of the table above because home answers a standing card by
+// DIGIT rather than by letter — the card's own answers are enter, esc and its
+// numbered chips (standing.go), and home answers it in place on the asking
+// window's row (homeband_answer.go, which is where that half is held). What is
+// the same is the half this holds: the card arriving takes home down, so a
+// decision the session is blocked on is asked on the screen the person is
+// looking at rather than behind it.
+func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T) {
+	a, _, _ := standApp(t)
+	a.openHome()
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	})})
+	if a.home.open {
+		t.Fatal("home stayed up over a standing card the session is waiting on")
+	}
+}
+
 // ── the deletion keys ───────────────────────────────────────────────────────
 
 // EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to ctrl+w
