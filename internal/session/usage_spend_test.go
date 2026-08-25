@@ -87,6 +87,57 @@ func TestTheLastBucketHoldsItsWholeDay(t *testing.T) {
 	}
 }
 
+// THE DAY IS THE WRITER'S AND NOT THE READER'S. A process in Toronto records a
+// call at 23:30 as august 25; read an hour east — over ssh, in a container, in a
+// test — its timestamp falls on august 26, and a series that re-derived the day
+// from that timestamp would charge the money to a day the writer never had. The
+// row carries its day for exactly this reason.
+func TestUsageByDayChargesTheDayTheWriterWroteDown(t *testing.T) {
+	// The row as a reader one zone east of the writer sees it: the stamp has
+	// already turned over, the written day has not.
+	line := UsageLine{At: usageAt(t, "2026-08-26 00:30"), Day: "2026-08-25",
+		Model: "opus-4.1", Calls: 1, Input: 100, Output: 20, USD: 7}
+	window := UsageWindow{From: usageAt(t, "2026-08-24 00:00"), To: usageAt(t, "2026-08-26 00:00"), Grain: GrainDay}
+	series := UsageByDay([]UsageLine{line}, window)
+	if len(series) != 3 {
+		t.Fatalf("the series has %d buckets, want one per day: %+v", len(series), series)
+	}
+	if series[1].USD != 7 || series[1].Label != "aug 25" {
+		t.Fatalf("the writer's own day came to %+v, want the whole $7 on aug 25", series[1])
+	}
+	if series[2].USD != 0 {
+		t.Fatalf("aug 26 was charged %v for a call the writer booked on the 25th", series[2].USD)
+	}
+
+	// A row that carries no day at all — an older ledger, a line written by
+	// hand — still has its timestamp, read locally, and nothing better.
+	bare := UsageLine{At: usageAt(t, "2026-08-26 00:30"), Model: "opus-4.1", Calls: 1, USD: 3}
+	series = UsageByDay([]UsageLine{bare}, window)
+	if series[2].USD != 3 {
+		t.Fatalf("a row with no day of its own landed on %+v, want its own timestamp's day", series)
+	}
+}
+
+// WEEKS AND MONTHS BUCKET BY THAT SAME DAY. A sunday's spending recorded in
+// Toronto belongs to the week that sunday closes, whoever is reading it and
+// whatever their clock says the stamp is.
+func TestAWeekBucketsByTheWrittenDayToo(t *testing.T) {
+	// Sunday the 23rd where it was spent; monday the 24th where it is read.
+	line := UsageLine{At: usageAt(t, "2026-08-24 00:30"), Day: "2026-08-23",
+		Model: "a", Calls: 1, Input: 100, Output: 20, USD: 5}
+	window := UsageWindow{From: usageAt(t, "2026-08-19 00:00"), To: usageAt(t, "2026-08-25 00:00"), Grain: GrainWeek}
+	series := UsageByDay([]UsageLine{line}, window)
+	if len(series) != 2 {
+		t.Fatalf("the window holds %d weeks, want 2: %+v", len(series), series)
+	}
+	if series[0].USD != 5 {
+		t.Fatalf("the week of aug 17 came to %v, want the sunday that closes it", series[0].USD)
+	}
+	if series[1].USD != 0 {
+		t.Fatalf("the week of aug 24 was charged %v for the sunday before it", series[1].USD)
+	}
+}
+
 // The label is the control and the reading at once, so its spelling is a fact
 // worth pinning: lowercase month, en dash, no year inside one.
 func TestTheWindowLabelIsSpelledTheWayTheScreenSpellsIt(t *testing.T) {
