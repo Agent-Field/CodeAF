@@ -75,7 +75,7 @@ const (
 // through [app.memoryChangedSince] on that same beat and never on a draw. This
 // function opens nothing and stats nothing.
 func (h *homeView) buildSwitch() {
-	h.reading = readSwitcher(h.world, h.items, h.bucket, h.seen, h.world.Read,
+	h.reading = readSwitcher(h.world, h.items, switcherHere{session: h.here, project: h.bucket}, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in

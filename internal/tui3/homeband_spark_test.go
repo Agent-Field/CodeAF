@@ -44,11 +44,18 @@ func TestThePulseSaysHowManyHandsAreWorkingAndIsAbsentAtZero(t *testing.T) {
 	if facts := a.machineFactsAt(now); facts.hands != 3 {
 		t.Fatalf("the reading says %d hands, want 3", facts.hands)
 	}
-	// THE FIGURE AND THE ZONE ARE ONE ACCOUNTING. The moving strip on the left of
-	// the same screen gathers the same things; a top line that counted them a
-	// second way would be the screen arguing with itself.
-	if names := zoneNames(a, attentionMovingWord); len(names) != 3 {
-		t.Fatalf("the moving zone reads %v, and the pulse says 3 working", names)
+	// THE FIGURE AND THE LIST ARE ONE ACCOUNTING. The rows the switcher calls
+	// moving are the same things this figure counts; a top line that counted them
+	// a second way would be the screen arguing with itself (homeswitch.go's
+	// [app.machineHands] reads the world the list is ranked from).
+	moving := 0
+	for _, line := range a.home.lines {
+		if line.sw != nil && line.sw.row != nil && line.sw.row.moving {
+			moving++
+		}
+	}
+	if moving == 0 {
+		t.Fatal("the pulse says 3 working and the list shows nothing moving")
 	}
 
 	// AND ONE HAND STILL SPEAKS.

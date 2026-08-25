@@ -95,13 +95,12 @@ func theExchange(a *app) *homeExchange {
 
 // exchangeRowAt is the line of the left column that draws one exchange, and -1
 // when the column is not drawing it.
-// It is the errand's row IN THE LIST and not the second view of it a zone above
-// may be drawing (homeattention.go's first law): an errand waiting or thinking
-// is a `needs you` or `moving` row as well, and the row this file's tests are
-// about is the one inside its project's block.
+// ONE ROW PER ERRAND. It used to have two — its own inside a project block, and
+// a second view of it in whichever strip was drawing it — and the strips are
+// gone: an errand has one row, over the ranked list (homeswitch.go).
 func exchangeRowAt(a *app, ex *homeExchange) int {
 	for at, line := range a.home.lines {
-		if line.kind == homeExchangeRow && line.ex == ex && line.zone == nil {
+		if line.kind == homeExchangeRow && line.ex == ex {
 			return at
 		}
 	}
