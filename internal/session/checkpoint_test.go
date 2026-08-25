@@ -482,6 +482,199 @@ func TestTheCeilingHandsOverEvenWhenNobodyCanWriteTheBrief(t *testing.T) {
 	}
 }
 
+// ── what comes back when the dowry is asked for ─────────────────────────────
+
+// dsmlSentinel is the answer a deepseek model actually gave the handoff ask on a
+// live turn: the request carried no tools, and the model wrote its own chat
+// template's tool-call token as text anyway. The person read
+// "task 1 started: <｜DSML｜tool_calls>".
+//
+// NOTHING IN THE CODE MATCHES THIS STRING. [briefIsProse] reads the SHAPE of an
+// answer — words with spaces between them — so this is a fixture here and a
+// pattern nowhere, and the guard holds for the next provider's sentinel too.
+const dsmlSentinel = "<｜DSML｜tool_calls>"
+
+// A DOWRY THAT IS NOT PROSE IS NOT A BRIEF, AND IT IS NEVER THE NAME EITHER.
+//
+// No belt is not the same fact as no tool grammar: the ask goes out with no
+// tools on it, over a transcript in which every turn so far called one. When what
+// comes back is markup, the work still moves — the guarantee is not conditional —
+// but it moves on the person's own sentence, exactly as it does when the provider
+// faults, and the line they read names their words rather than the machinery.
+func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+
+	rounds := checkpointMarkAt(checkpointMarks)
+	completer := &scriptedCompleter{steps: grindingSteps(rounds+2, dsmlSentinel)}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	node := ran.await(t)
+
+	// THE WORK STILL MOVES. A brief nobody could read is the same failure as no
+	// brief at all, and [unshaped]'s answer to it is the person's own words.
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted, want exactly one", count)
+	}
+	if node.spec.brief != asked {
+		t.Errorf("the task runs on %q; a brief that is not prose falls back to the person's words %q",
+			node.spec.brief, asked)
+	}
+	// AND THE LINE THE PERSON READS IS ABOUT THEIR WORK. This is the told-after
+	// line as it is drawn, before the namer has had its second at it.
+	notice := routeNotice(collected)
+	if notice == "" {
+		t.Fatalf("no task was announced; notices were %q", noticeTexts(collected))
+	}
+	if strings.Contains(notice, dsmlSentinel) || strings.Contains(notice, "DSML") {
+		t.Errorf("the sentinel became the task's name: %q", notice)
+	}
+	if !strings.Contains(notice, "work through the four things") {
+		t.Errorf("the task was announced as %q, want the person's own words", notice)
+	}
+}
+
+// AND A CONTINUATION SAYING NOTHING IS LEFT DROPS THE CEILING'S HANDOVER.
+//
+// The ceiling reads a counter, and a counter cannot see that the work finished
+// thirty seconds ago. The one reader that can is the model holding the findings,
+// which is the model this ask is put to — so it is asked, and an answer of
+// [checkpointNothingLeft] ends the matter: no task, no line, no gap spent, and
+// the turn carries on to the answer it was about to give.
+func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
+	const answered = "all eight files are written and the smoke check passed"
+
+	rounds := checkpointMarkAt(checkpointMarks)
+	steps := append(grindingSteps(rounds+1, checkpointNothingLeft), finalText(answered))
+	completer := &scriptedCompleter{steps: steps}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("done", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+
+	events, err := agent.Submit(context.Background(), "write the eight files I listed and smoke-check them")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	// NOTHING WAS STARTED and nothing was said about starting anything.
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were started out of a turn that had nothing left to hand over", count)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
+		t.Errorf("the person was told their answer was being moved and then watched it finish where "+
+			"it was; notices were %q", noticeTexts(collected))
+	}
+	if routeNotice(collected) != "" {
+		t.Errorf("a task was announced: %q", routeNotice(collected))
+	}
+	// AND THE TURN'S OWN ANSWER STANDS. The transcript ends on the model's words,
+	// not on a line the harness wrote over the top of them.
+	if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
+		t.Errorf("the turn ended as a %s saying %q, want the answer the model was about to give",
+			last.Role, messageText(last))
+	}
+	// AND THE ASK IS NOT PUT TWICE. The ladder is spent, so no mark can fire
+	// again, and a turn that declared itself finished is not re-interrogated at
+	// every round that follows.
+	if asks := handoffAsks(completer); asks != 1 {
+		t.Errorf("the dowry was asked for %d times, want once", asks)
+	}
+}
+
+// handoffAsks counts the requests that ended on the handoff ask.
+func handoffAsks(completer *scriptedCompleter) int {
+	asked := 0
+	for index := range completer.requests() {
+		if askedForHandoff(completer.request(index)) {
+			asked++
+		}
+	}
+	return asked
+}
+
+// THE REMAINS CONTRACT IS PINNED, because it is a contract and not a hint.
+//
+// The harness reads one token out of a free-text answer, and it can only read
+// what the ask told the model to write. A wording change on one side alone is a
+// contract with one party — either the harness never sees a done turn again, or
+// it starts guessing at prose, which is the keyword rule this token exists
+// instead of.
+func TestTheHandoffAskCarriesTheRemainsContractItIsReadAgainst(t *testing.T) {
+	if checkpointNothingLeft != "NOTHING LEFT TO DO" {
+		t.Errorf("the done token reads %q; it is quoted in the manual and matched off the first line "+
+			"of the answer, so it is not a string to reword on one side", checkpointNothingLeft)
+	}
+	if !strings.Contains(checkpointHandoffAsk, checkpointNothingLeft) {
+		t.Fatalf("the ask never tells the model the token the harness reads:\n%s", checkpointHandoffAsk)
+	}
+	if !strings.Contains(checkpointHandoffAsk, "WHAT REMAINS") {
+		t.Errorf("the ask never asks what remains, so the token has nothing to be the answer to:\n%s",
+			checkpointHandoffAsk)
+	}
+	// AND THE TOKEN IS WHAT THE READER READS. The ask and [declaresNothingLeft]
+	// are one contract, so the answer the ask demands must be the answer the
+	// harness recognises — bare, emphasised, or followed by the reason.
+	for _, answer := range []string{
+		checkpointNothingLeft,
+		"**" + checkpointNothingLeft + "**",
+		checkpointNothingLeft + " — the eight files are written and checked.",
+		strings.ToLower(checkpointNothingLeft),
+	} {
+		if !declaresNothingLeft(answer) {
+			t.Errorf("the contract's own answer is not read as one: %q", answer)
+		}
+	}
+	// AND A BRIEF IS NOT A DECLARATION. The token found in the middle of an
+	// instruction is a sentence, and reading it as a declaration would drop the
+	// handoff of work that is genuinely left.
+	for _, brief := range []string{
+		"Finish the parser rewrite\nThere is nothing left to do on the lexer.",
+		"Rewrite the lexer, then there is NOTHING LEFT TO DO.",
+	} {
+		if declaresNothingLeft(brief) {
+			t.Errorf("a brief was read as a declaration that the work is done: %q", brief)
+		}
+	}
+}
+
+// AND WHAT COUNTS AS A BRIEF IS PROSE, JUDGED BY SHAPE.
+//
+// The bar is deliberately structural: an instruction is words with spaces
+// between them, in any language and from any provider. A rule spelled in one
+// model's special tokens is a rule that is out of date the next time a template
+// ships.
+func TestOnlyProseIsAcceptedAsADowry(t *testing.T) {
+	for _, refused := range []string{
+		"", "   ", "\n\n",
+		dsmlSentinel,
+		"<|tool_calls_begin|>",
+		"<tool_call>",
+		"{}",
+		"1 2 3 4 5",
+	} {
+		if briefIsProse(refused) {
+			t.Errorf("%q was accepted as a worker's instruction", refused)
+		}
+	}
+	for _, accepted := range []string{
+		"Finish the four pieces, and the auth test is the one still failing.",
+		"what is left, and everything this turn already found out",
+	} {
+		if !briefIsProse(accepted) {
+			t.Errorf("%q was refused as a worker's instruction", accepted)
+		}
+	}
+}
+
 // ── the turns that are never checkpointed ───────────────────────────────────
 
 // A NODE, A SCREENLESS SESSION AND THE SESSION'S OWN VOICE ARE ALL LEFT ALONE.

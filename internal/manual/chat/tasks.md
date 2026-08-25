@@ -311,6 +311,18 @@ have to find again. That is the brief. It is the same handover *An answer that r
 moved* describes below, and it fails the same way — if the brief cannot be written, the task
 still starts, on your own sentence alone.
 
+**If the model says nothing is left, nothing moves.** That same last question asks it what
+still remains, and one of the answers is that everything you asked for is already done here
+— the files written, the checks run, and only saying so left. When it answers that, the
+handover is **dropped**: no task, no lines, no interruption. The reply you were reading
+simply finishes, and it is the answer. This is what happens to a yes that arrives a few
+seconds too late to be right, and it holds at the moment below as well as at this one.
+
+**The task is named after your own message, not after the brief.** The name in the line
+above is cut from the sentence you typed, because the brief is written by a model in the
+middle of tool calls and its first line is sometimes the machinery rather than a name. A
+short name replaces it a second or two later, the way every task on this page is named.
+
 **If the answer finishes first, the yes is thrown away.** A reply that is already done is
 not interrupted after the fact — nothing starts on top of an answer you have read. That
 turn gets the ordinary look afterwards instead, which is the section above.
@@ -401,8 +413,16 @@ every task on this page and it is never rewritten. On top of it, the model is as
 last thing before the answer ends: an instruction for whoever picks the work up, saying what
 is left, what it already found out that they would otherwise have to find again, what it
 ruled out, and how anybody could tell when it is done. That is the brief. If it cannot be
-written — the model fails, or replies with nothing — the task still starts, on your own
-sentence alone.
+written — the model fails, replies with nothing, or replies with something that is not an
+instruction at all — the task still starts, on your own sentence alone. Its name is cut from
+your own message too, for the same reason, and a short name replaces that a second later.
+
+**And the third point can still come to nothing.** Before the answer ends, that last
+question also asks what still remains — and if the model answers that everything you asked
+for is already done, the move is **dropped**. No task, no lines. The answer carries on to its
+own end and stands, which is the right outcome for a turn that was finishing anyway: what
+this whole mechanism is for is an answer that is grinding, and one that is about to stop is
+not. It is not asked again either — the three points are spent.
 
 **The task is armed to split.** An answer that outran one pair of hands is the strongest
 evidence there is that the work has parts in it, so the worker is allowed to hand parts out
