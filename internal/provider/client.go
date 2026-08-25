@@ -105,6 +105,11 @@ type Client struct {
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
 	velocity *velocityLedger
+	// pins is which endpoint holds each prompt lineage's cache (affinity.go).
+	// It is read at the same moment the velocity ledger is — encode time — and
+	// written from the same answers, and the two never disagree: a lane the
+	// velocity ledger refuses drops its pin rather than being asked for again.
+	pins *endpointPins
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
@@ -145,6 +150,7 @@ func NewClient(config Config) (*Client, error) {
 		stream:   streamClient,
 		wait:     waitContext,
 		velocity: sharedVelocity,
+		pins:     sharedPins,
 		now:      time.Now,
 	}
 	if err := client.SetAPIKey(config.APIKey); err != nil {
@@ -302,7 +308,24 @@ func (c *Client) modelFor(request *ai.Request) string {
 // no shape to fix, so the only door left is another model — the same chain,
 // through [Client.recoverFromPacing], which hands the error straight back when
 // there is no chain to walk.
+//
+// IT IS ALSO WHERE A FAILED REQUEST LETS GO OF ITS ENDPOINT. Every way a send
+// can fail passes through here exactly once — a transport error, a 4xx, a 5xx,
+// a refusal the ladder could not repair — and a lineage pinned to an endpoint
+// that just failed it moves (affinity.go's releaseEndpoint). The check is on the
+// way out rather than at each return so that no future rung can be added past
+// it and quietly keep a dead pin.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	response, err := c.sendRecovered(ctx, request, knobs, stream)
+	if err != nil || (response != nil && response.StatusCode >= 400) {
+		c.releaseEndpoint(ctx, c.modelFor(request))
+	}
+	return response, err
+}
+
+// sendRecovered is sendShaped's two recovery passes — the repairable 400s and
+// the endpoint-refusal ladder — with nothing said about pins.
+func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
 		return c.recoverFromPacing(ctx, request, knobs, stream, err)
@@ -451,7 +474,7 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
 	// than "instant" (velocity.go).
 	served := servedProvider(payload)
-	noteServed(ctx, served)
+	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	c.noteVelocity(
 		c.modelFor(request),
 		served,
@@ -618,6 +641,9 @@ func (c *Client) completeWithMessagesStreaming(
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
 				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+				// A stream that went quiet is an endpoint failing this lineage,
+				// which is the one thing that moves a pin (affinity.go).
+				c.releaseEndpoint(ctx, c.modelFor(request))
 				return nil, cut
 			}
 			return nil, fmt.Errorf("decode stream: %w", decodeErr)
@@ -671,6 +697,9 @@ func (c *Client) completeWithMessagesStreaming(
 				if babble != nil && babble.write(choice.Delta.Content) {
 					cut := &StreamCut{Reason: CutBabble}
 					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+					// An endpoint producing soup has failed this lineage as
+					// surely as one that went quiet, so the pin moves too.
+					c.releaseEndpoint(ctx, c.modelFor(request))
 					return nil, cut
 				}
 			}
@@ -726,7 +755,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// still a sighting: its TTFT is the whole call, which is exactly the
 	// complaint a person has about it.
 	generation := c.clock()
-	noteServed(ctx, served)
+	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	if !firstToken.IsZero() {
 		c.noteVelocity(
 			c.modelFor(request),

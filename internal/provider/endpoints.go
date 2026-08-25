@@ -145,7 +145,7 @@ type relaxStep struct {
 // line and does not inflate the attempt counter the person is reading.
 func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model string) []relaxStep {
 	var plan []relaxStep
-	if prefs := c.providerPreferences(model, knobs.intent); prefs != nil &&
+	if prefs := c.providerPreferences(model, knobs); prefs != nil &&
 		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
 		plan = append(plan, relaxStep{
 			bit:   relaxEndpointFilter,
@@ -597,7 +597,7 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		params = append(params, "reasoning")
 	}
-	if prefs := c.providerPreferences(model, knobs.intent); prefs != nil {
+	if prefs := c.providerPreferences(model, knobs); prefs != nil {
 		if prefs.RequireParameters != nil {
 			params = append(params, "provider.require_parameters")
 		}
