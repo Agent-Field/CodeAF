@@ -350,7 +350,7 @@ func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 		// The row's own day, at its first local moment — so the window test and
 		// the bucket search are asking the same question, and both of them are
 		// asking it about the day the writer recorded.
-		when := usageLineDay(line)
+		when := UsageLineDay(line)
 		if when.Before(window.From) || !when.Before(end) {
 			continue
 		}
@@ -370,14 +370,15 @@ func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 	return series
 }
 
-// usageLineDay is the first local moment of the day a row belongs to: the day
+// UsageLineDay is the first local moment of the day a row belongs to: the day
 // the WRITER wrote down, parsed as a local date, and the row's own timestamp
 // where it says nothing.
 //
 // It is one function rather than an expression at each site so that the window
 // test and the bucket search in [UsageByDay] cannot come to disagree about which
 // day a row is on — which would silently drop a row into no bucket at all.
-func usageLineDay(line UsageLine) time.Time {
+// It is exported so page-level window filters use that same writer-recorded day.
+func UsageLineDay(line UsageLine) time.Time {
 	if day := strings.TrimSpace(line.Day); day != "" {
 		if at, err := time.ParseInLocation(usageDayLayout, day, time.Local); err == nil {
 			return at
