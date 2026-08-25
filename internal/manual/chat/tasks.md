@@ -220,8 +220,8 @@ can no longer be answered must stop looking like one.
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
 what you asked and the first two lines of the reply, and decides one thing: should that have
-been work? The same judge also reads your message **before** it is answered, which is its
-own section below.
+been work? The same judge also starts reading your message **the moment you send it**,
+alongside the reply rather than in front of it, which is its own section below.
 
 **A yes is asked twice.** The cheap model only screens — it reads every substantial message
 and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
@@ -280,24 +280,40 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
 
-## Work handed over before your message is answered — the reply is the line that says so
+## A reply that begins normally and stops halfway to become a task — this reads like work
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that
-answered in words alone, above. The other is **before your message is answered at all**:
-the moment you send something substantial, the request itself is read — there is no reply
-yet to read instead.
+answered in words alone, above. The other starts **the moment you press enter**: your
+message itself is read, with no reply to read instead, because there is not one yet.
 
-**If it is work, the task starts and the chat does not answer the message as well.** Your
-message has been handed to the task, whole and in your own words, so answering it here too
-would be the same job done twice. What you get back is the one line that always goes with
-an auto-start:
+**That read happens beside your answer, not in front of it.** Nothing waits for it. The
+reply starts arriving exactly as fast as it always did, and the question is being answered
+somewhere else while you watch it. So a no costs you nothing at all — which is most
+messages, and it is why the read can afford to take its time.
+
+**If both models say yes, the reply you are already reading is handed over.** At the next
+break between rounds of tool calls, the answer stops where it is, the work moves to one
+task, and two dim lines go into the transcript:
 
 ```
+this reads like work · moving it to a task that is watched and can split
 this looked like work, so task 4 started: fix the flaky auth test, upgrade the http client
 ```
 
-That line is the turn's reply, and it is in the transcript as one — so the next thing you
-say is not answered on top of a question nobody replied to.
+The first line is the reason; the second is the ordinary line every task started this way
+carries, with its own number and name. Both are in the transcript, so the next thing you
+say is not answered on top of a message nobody replied to.
+
+**The seconds already spent are not thrown away.** Your own message rides the task **word
+for word**, and on top of it the model is asked for one last thing before the answer ends:
+what is left, and what this turn already found out that whoever picks it up would otherwise
+have to find again. That is the brief. It is the same handover *An answer that runs long is
+moved* describes below, and it fails the same way — if the brief cannot be written, the task
+still starts, on your own sentence alone.
+
+**If the answer finishes first, the yes is thrown away.** A reply that is already done is
+not interrupted after the fact — nothing starts on top of an answer you have read. That
+turn gets the ordinary look afterwards instead, which is the section above.
 
 **What the judge is looking for is a request whose fastest correct answer is not a
 conversation:** several independent deliverables in one message, a sweep over many files or
@@ -307,11 +323,14 @@ subject sounds.
 
 **Everything that bounds the auto-start above bounds this too** — one start every three
 turns across both moments, six words, two models agreeing, silence when either cannot
-answer — with two more that belong to this moment alone:
+answer — with three more that belong to this moment alone:
 
-- **Nothing you can feel.** The read in front of your message gets about three seconds and
-  no second try. A model that has not answered by then is a no: your turn goes ahead
-  exactly as it would have, and nothing is said about it.
+- **Nothing you can feel.** The read never stands in front of your turn, so there is no
+  wait to notice, whatever the models do. It used to get about three seconds and to hold
+  the turn for them, and three seconds was less time than the model needed to answer at
+  all, so it answered nothing and charged every message the wait.
+- **Nothing after you stop it.** Pressing stop ends the question with the turn. Nothing
+  moves onto the rail out of an answer you interrupted.
 - **Nothing on a message with pictures in it.** A task is given words, so a message
   carrying images is always answered here, where they can be looked at.
 
