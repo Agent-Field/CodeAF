@@ -1785,6 +1785,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		return a.steer(), true
 
+	case "ctrl+v":
+		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
+		// moves the install's rung on home at rest and a standing item's on its
+		// own card, bound here to the node whose page this is (taskeffort.go).
+		// Everything that outranks the room outranks it, because it is read from
+		// inside the room's own switch and never above it.
+		a.cycleTaskEffort()
+		return nil, true
+
 	case "ctrl+b":
 		// FREEZE THE ROOM, not the conversation. copymode.go snapshots the
 		// transcript's rows, which while a room is open are not the rows on
@@ -2350,11 +2359,12 @@ func (a *app) roomBackAt(y int) bool {
 	return a.roomOpen() && a.headHeight() != 0 && y == 0
 }
 
-// roomHeadWord is the header's left: the node's mark, the trail, and the three
-// facts about the work. Every one of the three is DROPPED when nobody has
-// published it — a queued node has no clock, an unpriced one has no cost — for
-// the reason the turn footer drops its own fields (timestamps.go): a figure that
-// is zero is a figure nobody measured.
+// roomHeadWord is the header's left: the node's mark, the trail, the three
+// facts about the work, and — where somebody has set one — the rung it thinks
+// at. Every one of them is DROPPED when nobody has published it: a queued node
+// has no clock, an unpriced one has no cost, and a node nobody has dialled has
+// no rung. That is the reason the turn footer drops its own fields
+// (timestamps.go): a figure that is zero is a figure nobody measured.
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
@@ -2379,7 +2389,16 @@ func (a *app) roomHeadWord(width int) string {
 	// same rule when nobody published one. It goes last: the state and the clock
 	// change while you watch, and whose hands the work is in was settled before
 	// it started.
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node), strings.TrimSpace(node.model)} {
+	//
+	// AND THE RUNG GOES AFTER THE MODEL, for the reason the model goes after the
+	// clock, one step further along the same argument: how hard this node is
+	// asked to think is a setting somebody made about it rather than news, it
+	// belongs beside the model because the two together are what a call is made
+	// of, and it is dropped by the same rule — a node nobody has set a rung on
+	// says nothing at all (taskeffort.go's [app.taskEffortClause]). It is
+	// `ctrl+v` on this page that moves it.
+	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node),
+		strings.TrimSpace(node.model), a.taskEffortClause(node)} {
 		if part != "" {
 			word += " · " + part
 		}

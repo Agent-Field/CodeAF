@@ -334,9 +334,15 @@ func TestTheHandsSparkFadesFromItsOldestEndToItsNewest(t *testing.T) {
 }
 
 // THE GEOGRAPHY IS STABLE, AND THE CHART DID NOT TAKE `today`'S PLACE:
-// keeping an eye on · agents · since you left · today.
+// keeping an eye on · agents · since you left · thinking · today · the legend.
+//
+// The two that arrived after the chart both kept the law this test was written
+// for. `thinking` states the install's own rung and sits ABOVE `today`, so the
+// day's figures are still what a glance ends its reading on; `keys` is the foot
+// of every card on this screen and is under everything by construction
+// (homeband_thinking.go, homeband_keys.go).
 func TestTheMachineCardKeepsItsBandOrderWithTheChartOnIt(t *testing.T) {
-	want := []string{"watchlist", "agents", "sinceleft", "today"}
+	want := []string{"watchlist", "agents", "sinceleft", "thinking", "today", "keys"}
 	var got []string
 	for _, band := range homeBandsFor(bandKindMachine) {
 		got = append(got, band.name)

@@ -1330,8 +1330,15 @@ writes one note in the conversation: `room unavailable — this session has no t
 The focus header is an accent line pinned at the top:
 `─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─`. It carries
 the state glyph, a trail that always names `main` as the root, then the state word, the
-clock, the spend and the model — each dropped when nobody published it. It is pinned
+clock, the spend, the model and — where you have set one — how hard this task is asked to
+think, as `thinking high`. Each is dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
+
+**`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
+round to `low` from `max`. It is the same chord home uses on the machine's own default and
+on a standing item, bound here to the task whose page you are standing in; the keys page
+has the whole of it. A worker already running keeps the rung it started with, so the line
+aforge writes says `task 7 · thinking · high · its next call takes it`.
 
 **The header is a button as well as a line.** Press it anywhere along its width and you
 are back in the conversation, which is the pointer's version of the `esc/← main` it

@@ -523,6 +523,20 @@ var settingUI = map[string]settingMeta{
 	// about WHERE a request goes, not about what this conversation may do: one
 	// model id is served by many endpoints, and this is which of their
 	// differences the session pays attention to.
+	// HOW HARD EVERYTHING ON THIS MACHINE THINKS, on the tab that lists the
+	// models it thinks with. The rung is not a model and not a price, but it is
+	// the other half of what a call is made of, and a person who has just picked
+	// a model is exactly the person deciding how hard to work it.
+	//
+	// IT IS ONE OF FOUR DOORS ONTO ONE ROW and it says so plainly, because a
+	// setting a person can reach four ways has to read the same in all of them:
+	// this row, `ctrl+v` on home with the cursor at rest (homeeffort.go), and the
+	// two nearer scopes that outrank it — a conversation's own rung and a task's.
+	config.KeyEffort: {
+		tab: tabProviders, label: "thinking", widget: widgetCycle,
+		about: "how hard the model thinks, when nothing nearer to the work has said. " +
+			"ctrl+v on home, with the cursor on no row, moves this same row.",
+	},
 	config.KeyRouting: {
 		tab: tabProviders, label: "routing", widget: widgetCycle,
 		about: "one model is served by many endpoints. latency asks for the fastest and " +

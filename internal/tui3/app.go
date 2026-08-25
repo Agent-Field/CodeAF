@@ -682,6 +682,15 @@ type app struct {
 	// (dragselect.go's [app.dragSpan]).
 	dragFrom, dragTo int
 
+	// ── the effort ladder's surfaces (effortscope.go) ──
+	//
+	// effortLit is the ONE rung ctrl+v most recently moved, and when — the scope
+	// name and the instant, so the clause that states that rung can step up the
+	// reading ladder while it is news and come back down on the status line's own
+	// fade. It is one and not a map because only one rung can be the newest fact
+	// on a screen.
+	effortLit effortMoved
+
 	state runState
 	model string
 	// title is the name the session gave itself, shown left of the model. Empty
