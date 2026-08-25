@@ -141,6 +141,43 @@ A task is also a job. It shows in `jobs list` labelled `task 7` with the title a
 running task. Its step-by-step log is the job log, at
 `<workspace>/.aforge-v3/jobs/<job id>.log`.
 
+## What git a task may run — merge, pull, checkout, stash, reset are refused
+
+A task works in **its own copy of the repository**, and its copy shares the repository's
+object store with yours: every branch you have is visible from inside it. So the line
+aforge draws around a task's `git` is about **whose work it may take**, not about which
+directory it is standing in.
+
+**It may read anything.** `git status`, `git diff`, `git log`, `git show`, `git branch
+--list`, `git rev-parse`, `git merge-base` — against any branch, including `main` and any
+other task's branch. Knowing what is around it is how it does the work.
+
+**It does not have to save anything.** What lands on your branch is every path the task
+passed to `write` or `edit`, staged by name on the way home — the task is told not to stage
+its own work, and `git add` and `git commit` are neither needed nor refused.
+
+**It may not move its copy onto work it did not do, and may not reach a remote.** These are
+refused before they run, and the task reads the refusal and keeps working:
+
+| Refused | Because |
+| --- | --- |
+| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
+| `pull`, `fetch`, `push`, `clone`, `remote`, `submodule` | a task's copy is a copy of what **you** have, and it reaches no remote |
+| `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
+| `reset --hard`, `--merge`, `--keep`, and `restore --source` | they throw the working copy away or fetch a file off another branch (plain `git reset` to unstage, and `git restore <path>`, are fine) |
+
+The wording it reads names the verb and what it may do instead, for example:
+
+> git merge is not yours to run: it would put work this task did not do into your copy, and
+> only what you write here comes home. Look with git status, diff, log and show — any
+> branch, as much as you want. What you write with write and edit in this copy comes home
+> on its own.
+
+**None of this applies to you.** In your own conversation, in your own checkout, aforge
+runs whatever git you ask for. The rule exists because a task reports work as *its own*,
+and one that fast-forwarded onto `main` really did report somebody else's fixes as the
+thing it had just built.
+
 ## How a task reports back to you
 
 When a task lands, its **report** is its final assistant message, cut to the first **3
@@ -310,6 +347,13 @@ progress: a task writing its own memory again has not learned anything.
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
 stuck and is stopped — which is what the counter is for.
+
+**A task that handed parts of its work out waits for them, and that wait is never counted
+as being stuck.** While any part is still running the counter does not advance, nothing is
+asked of the task, and its clock does not run: its row shows `waiting · its parts`, and the
+next thing it is asked is the one turn that carries every part's report at once. The counter
+starts again from zero when the last report lands, so a task that spins over the *fold* is
+caught exactly as any other is.
 
 Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with

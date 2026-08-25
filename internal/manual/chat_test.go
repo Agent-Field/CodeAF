@@ -71,6 +71,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// Written from a real run too: a task that split its work sat waiting for
+		// its parts and was killed as stuck, and a sibling fast-forwarded its own
+		// copy onto main and reported somebody else's fixes as its own.
+		{"why is my task waiting on its parts", "how-tasks-run"},
+		{"can a task run git pull", "how-tasks-run"},
+		{"why was my task not allowed to merge main", "how-tasks-run"},
+		{"my task says git merge is not yours to run", "how-tasks-run"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},

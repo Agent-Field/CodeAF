@@ -430,10 +430,18 @@ func TestTheEvidencePutToTheGatesIsTheAccountTheReaderJudged(t *testing.T) {
 
 // ── the seam: before the worker's first request ─────────────────────────────
 
-// THE PARTS EXIST BEFORE THE WORKER IS ASKED ANYTHING. That is the whole timing
-// requirement, and it is the difference between a node that coordinates from the
-// start and one that grinds through the work alone and discovers its parts never
-// happened.
+// THE PARTS EXIST BEFORE THE WORKER IS ASKED ANYTHING — and while they are still
+// out, the worker is asked NOTHING AT ALL. That is the whole timing requirement,
+// and it is the difference between a node that coordinates from the start and one
+// that grinds through the work alone and discovers its parts never happened.
+//
+// The second half of it was bought later and at a price. A node whose whole brief
+// was handed out before it started, and which was then opened on that brief
+// anyway, spent the window its parts were working in answering a question about
+// work it no longer had — thirty-one requests on a five second cadence, ending in
+// the no-progress counter killing the one node that could have integrated them
+// (task_park_test.go). So the brief is HELD: the parts run, the node is parked,
+// and the turn the last report starts is the first turn there ever is.
 //
 // It is asserted from the OUTSIDE — a real node run by the real runner — because
 // there is no honest way to test an ordering from inside the function that owns
@@ -469,29 +477,50 @@ func TestThePartsAreHandedOutBeforeTheWorkersFirstRequest(t *testing.T) {
 	spec.model = "test/model"
 	graph.admit(id, spec)
 
+	// The parts are drawn and admitted before anything is asked, and the worker is
+	// then left alone: no request goes out while they are outstanding.
+	var kids []*TaskNode
+	for waited := 0; waited < 100 && len(kids) != 3; waited++ {
+		time.Sleep(50 * time.Millisecond)
+		kids = graph.children(id)
+	}
+	if len(kids) != 3 {
+		t.Fatalf("the node has %d parts under it, want the 3 its drawing named", len(kids))
+	}
+	time.Sleep(300 * time.Millisecond)
+	if asked := completer.firstAsk(); asked != "" {
+		t.Fatalf("the worker was asked %q while all three of its parts were still out, want it left parked", asked)
+	}
+	// AND THE NODE IS STILL OPEN, holding itself for reports that have not come:
+	// the parent-stays law, reached by the same tail loop a mid-run division
+	// reaches (task_run.go's [runTaskChild]).
+	parent := graph.node(id)
+	if parent.stateNow().settled() {
+		t.Fatalf("the divided work landed %s with its parts still outstanding", parent.stateNow())
+	}
+	if !parent.waitingOnItsPieces() {
+		t.Fatal("the divided work is not parked on its parts")
+	}
+
+	// The parts report. NOW the worker is asked, once, and that one request holds
+	// both halves: the person's own words and the receipt for the parts.
+	for _, kid := range kids {
+		kid.finish(kid.title()+" is done", nil, "", "")
+		graph.complete(kid, TaskDone)
+	}
 	first := ""
-	for waited := 0; waited < 100 && first == ""; waited++ {
+	for waited := 0; waited < 200 && first == ""; waited++ {
 		time.Sleep(50 * time.Millisecond)
 		first = completer.firstAsk()
 	}
 	if first == "" {
-		t.Fatal("the worker was never asked anything")
-	}
-
-	if kids := graph.children(id); len(kids) != 3 {
-		t.Fatalf("the node was asked its brief with %d parts under it, want the 3 its drawing named", len(kids))
+		t.Fatal("the worker was never asked anything, even once every part had reported")
 	}
 	if !strings.Contains(first, "split into 3 parts:") {
 		t.Fatalf("the worker's FIRST request does not know its parts exist: %q", first)
 	}
 	if !strings.Contains(first, briefAskHeading) {
 		t.Fatalf("the worker's first request lost the person's own words: %q", first)
-	}
-	// AND THE NODE IS STILL OPEN, holding itself for reports that have not come:
-	// the parent-stays law, reached by the same tail loop a mid-run division
-	// reaches (task_run.go's [runTaskChild]).
-	if parent := graph.node(id); parent.stateNow().settled() {
-		t.Fatalf("the divided work landed %s with its parts still outstanding", parent.stateNow())
 	}
 }
 

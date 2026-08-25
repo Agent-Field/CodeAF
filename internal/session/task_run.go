@@ -174,6 +174,16 @@ const (
 	// provider's pacing (internal/provider's patience.go). It is the only one of
 	// the three that is true of a node with a worktree and a child agent.
 	waitingRateLimited = "rate limited"
+	// waitingOnItsParts is a RUNNING node that handed its work out and is parked
+	// on the reports of the parts it handed out ([TaskGraph.park]). It is the
+	// PARENT-STAYS state said out loud: the node is not finished, nothing has
+	// gone wrong with it, and it is deliberately not being asked anything until
+	// its parts are in (task_divide.go's parent-stays law). Before this it was
+	// drawn as a node simply running, which is the one reading a person must not
+	// be left with — a row that has said nothing for four minutes and a row that
+	// is waiting on three workers look identical, and only one of them is worth
+	// worrying about.
+	waitingOnItsParts = "its parts"
 )
 
 // The three merge outcomes, and the fourth that says a branch never came home.
@@ -1730,12 +1740,18 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	}
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
-	// The two halves of Waiting, and they cannot both be true of one node: held
-	// is written only while a node is queued, paced only while its child agent
-	// is making calls. A running node that is parked on the provider is the one
-	// that outranks, because it is the one that is happening now.
+	// The three halves of Waiting, and no two of them can be true of one node:
+	// held is written only while a node is QUEUED, and the other two are running
+	// nodes — one parked on its parts, which makes no calls at all, and one whose
+	// calls are being paced. A running node outranks a stale hold because it is
+	// the one that is happening now, and the parts outrank the pacing because a
+	// parked node has no call for a provider to pace.
 	waiting := n.held
-	if n.state == TaskRunning && n.paced > 0 {
+	switch {
+	case n.state != TaskRunning:
+	case n.parked:
+		waiting = waitingOnItsParts
+	case n.paced > 0:
 		waiting = waitingRateLimited
 	}
 	return TaskNotice{
@@ -1825,16 +1841,17 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	// already on screen saying what became of it — so a turn started here would be
 	// the model reading their own answer back to them. The note is ambient: real,
 	// carried, and read by whatever they say next (harness_task.go).
-	if notice.Kind == TaskKindHarness {
-		a.enqueueAmbientNote(note)
-	} else {
-		a.deliverTaskNote(node, note)
-	}
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
 	// history instead of telling the model that finished work has just landed
-	// (task_store.go).
-	node.markNoted()
+	// (task_store.go). On the delivery road the mark is made INSIDE the handover,
+	// between the queue and the wake, for the reason stated there.
+	if notice.Kind == TaskKindHarness {
+		a.enqueueAmbientNote(note)
+		node.markNoted()
+	} else {
+		a.deliverTaskNote(node, note)
+	}
 }
 
 // deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
@@ -1861,6 +1878,22 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 		ID: node.id, Title: node.title(), Request: node.request(),
 	}}
 	reader.enqueueNote(message)
+	// ── THE QUEUE, THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER ──
+	//
+	// A parent parked on its pieces asks two questions of this moment and the
+	// answers must not be able to disagree: is anything still outstanding
+	// ([Agent.childrenOutstanding], which is `noted` read from outside), and is
+	// anything owed to the model ([Agent.taskNewsOwed]). Sliding the mark between
+	// the two calls below is what makes both readings safe whichever instant the
+	// waiter took them in.
+	//
+	// MARKED AFTER THE QUEUE, so a waiter that sees this child is no longer
+	// outstanding also sees a note owed and re-enters the model with it. Marked
+	// before the wake, so a waiter that read "still outstanding" a moment ago is
+	// released by the close below rather than parking on a generation that nothing
+	// is ever going to close again. The old order — deliver, wake, mark — left
+	// exactly that gap, and it is a parent asleep for the rest of the run.
+	node.markNoted()
 	reader.postTaskNews()
 }
 
@@ -2232,6 +2265,14 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	if state == "" {
 		// Close interrupted this process-owned run. Keep TaskRunning in the
 		// checkpoint; recovery turns it back into queued work and resumes it.
+		//
+		// THE LANE GOES BACK ANYWAY, because the goroutine that was holding it is
+		// returning on this line. The state is left alone — that is what recovery
+		// reads — but a slot booked against a node nothing is doing is the
+		// concurrency cap quietly falling by one for every node that comes after,
+		// and a frontier that is never turned again is the queue behind it never
+		// moving ([TaskGraph.handBackLane]).
+		node.graph.handBackLane(node)
 		return
 	}
 	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
@@ -2239,8 +2280,9 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// running after its parent has landed is work with nowhere to come home to.
 	// In the ordinary case there is nothing here to stop — the runner above does
 	// not let the node land while a child of it is still going (see
-	// [runTaskChild]) — and this is what answers the parent that was killed or
-	// ran out of time.
+	// [runTaskChild]), and [Agent.workTaskNode] has already cut them on every
+	// road where it did not — and this is what answers the two bodies that are
+	// not a worker in a worktree.
 	node.graph.stopChildren(node.id)
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
@@ -2313,19 +2355,49 @@ func (g *TaskGraph) park(node *TaskNode) {
 		g.running--
 	}
 	g.mu.Unlock()
+	// AND THE ROW SAYS SO. A hold is not a state — nothing about this node moved —
+	// so it travels as [TaskNotice.Waiting] on an update of its own, exactly as a
+	// queued node's slot and a paced node's provider do (see [waitingOnItsParts]).
+	g.announce(node)
 	// The lane is free NOW, and the piece this parent is waiting for is very
 	// often the node that was queued behind it.
 	g.runFrontier()
 }
 
+// handBackLane gives one node's slot back WITHOUT settling it, and turns the
+// frontier on what that freed.
+//
+// It is for the one ending that is not an ending: a run whose process is going
+// away, whose node stays TaskRunning in the checkpoint so the next session
+// resumes it ([Agent.runTaskNode]). The state is deliberately untouched — that
+// is the whole mechanism recovery reads — but the goroutine is gone, and a lane
+// held by nobody is the person's task.parallel cap silently shrinking for the
+// rest of the process.
+//
+// It borrows `parked`, which is exactly the fact being recorded: this node has
+// handed its lane back and is not using one. [TaskGraph.complete] already knows
+// not to hand the same lane back twice for such a node, so a recovery that later
+// settles it cannot double-count.
+func (g *TaskGraph) handBackLane(node *TaskNode) {
+	if node == nil || g == nil {
+		return
+	}
+	g.park(node)
+}
+
 func (g *TaskGraph) unpark(node *TaskNode) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	if !node.parked {
+		g.mu.Unlock()
 		return
 	}
 	node.parked = false
 	g.running++
+	g.mu.Unlock()
+	// A hold ENDING is news the same way a hold starting is, and the row would
+	// otherwise wear "waiting · its parts" until whatever this node does next
+	// happens to send an update.
+	g.announce(node)
 }
 
 // park and unpark reach [TaskGraph.park] from the node, and they are NIL-SAFE on
@@ -2414,6 +2486,32 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		child = nil
 	}
 	defer retire()
+	// ── THE NURSERY LAW: NO PART OUTLIVES THE COORDINATION IT WAS CUT OUT OF ──
+	//
+	// REGISTERED AFTER retire SO IT RUNS BEFORE IT, and the order is the whole
+	// point. A part's job row lives in its OWNER'S registry, and a part's owner is
+	// this node's WORKER (task_divide.go) — so `child.Close()` reaches every part
+	// still running through [jobRegistry.shutdown], which cancels a task job's
+	// context WITHOUT marking it stopped ([job.signal] takes the `stop` handle and
+	// never the explicit one, which only [jobRegistry.kill] calls). A part cut that
+	// way reads its own cancel as A PROCESS QUITTING: it lands on the "paused — it
+	// resumes" road below, whose whole meaning is that a NEXT process will pick the
+	// node up — and it returns "" so the state stays TaskRunning for recovery to
+	// find. There is no next process. The part sat in the graph as running work
+	// nothing was doing, its lane never handed back, its `done` never closed, for
+	// fifty minutes until the run hit its wall.
+	//
+	// So the parts are stopped HERE, on every road out of this function, while the
+	// worker they belong to is still open: [TaskGraph.stop] marks each one before
+	// it cuts it, so a part reads its ending as what it is — stopped, its branch
+	// kept, its report saying so — settles, hands its lane back and cascades. The
+	// ordinary road, where the tail loop already waited for every report, finds
+	// nothing to do: stopChildren skips a settled child.
+	//
+	// IT IS NOT PART OF retire, which also runs mid-loop when a provider fault
+	// sends this node round again on another model — and that node is the SAME node
+	// with the SAME parts still working for it (see `handedOut` below).
+	defer node.graph.stopChildren(node.id)
 
 	var (
 		// A RESUMED NODE STARTS WITH WHAT IT ALREADY WROTE. The landing stages by
@@ -2879,10 +2977,6 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	events, err := child.Submit(runCtx, instruction)
-	if err != nil {
-		return nil, "", err
-	}
 	var (
 		changed    []string
 		seen       = map[string]bool{}
@@ -2968,6 +3062,26 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				// happened").
 				case saved, moved, learned:
 					idle = 0
+				case child.childrenOutstanding():
+					// AND A NODE WHOSE WORK IS IN SOMEBODY ELSE'S HANDS IS NOT
+					// SPINNING. The counter's whole claim is that a step which
+					// taught nothing and saved nothing is a step the node had no
+					// business taking — and that claim is false the moment the
+					// work itself is elsewhere. A parent between its parts' reports
+					// has nothing left to write (the parts hold it), nothing left
+					// to learn (the answer is being made in three other
+					// worktrees), and the only hands it can reach for are the ones
+					// that look at what its parts are doing. Six of those and it
+					// killed itself while every part was still working — the
+					// division bought three workers and delivered nothing, because
+					// the one node that could integrate them was gone.
+					//
+					// SUSPENDED AND NOT SWITCHED OFF. The moment the last report
+					// lands the counter starts again from zero, so a parent that
+					// spins over the FOLD is caught exactly as it always was. What
+					// is still standing over this stretch is the step budget
+					// ([taskLimits.maxSteps]) and the deadline, which are bounds on
+					// spend rather than findings about the work.
 				default:
 					idle++
 				}
@@ -2992,7 +3106,36 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 			}
 		}
 	}
-	drain(events)
+	// ── THE FIRST REQUEST, OR NONE AT ALL ──
+	//
+	// A node that was handed a drawn division before it started has ALREADY given
+	// its work away: the parts were submitted on its behalf between the worker
+	// being built and this line (task_divide_sketch.go), and they are running now.
+	// Asking it anything before their reports are in is buying a turn about
+	// waiting — which is exactly what was measured: thirty-one requests at a five
+	// second cadence, none of them able to write a line the parts were not already
+	// writing, ending in the no-progress counter killing the one node that could
+	// have folded them together.
+	//
+	// SO THE BRIEF IS QUEUED RATHER THAN ASKED. It sits on the steering queue with
+	// nobody having read it, the tail loop below parks, and the turn that reads it
+	// is the turn the last report starts — one request holding the brief, the
+	// drawing's own "AND THIS IS YOURS, ONCE THEIR REPORTS ARE IN"
+	// ([drawnDivision.afterParts]) and every part's news at once, which is the
+	// integration the division was drawn for.
+	//
+	// EVERY OTHER NODE OPENS EXACTLY AS IT ALWAYS DID. A node with no parts out —
+	// which is nearly all of them, including one that divides mid-run and is
+	// already talking when it does — submits its brief here and runs.
+	if child.childrenOutstanding() {
+		child.enqueueNote(briefNote(instruction))
+	} else {
+		events, err := child.Submit(runCtx, instruction)
+		if err != nil {
+			return nil, "", err
+		}
+		drain(events)
+	}
 	if stopped != "" && ctx.Err() == nil {
 		// THE LANDING TURN happens after the active request has drained. It is a
 		// fresh turn so no request is killed mid-flight; the instruction forbids
@@ -3065,15 +3208,56 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		if owed == 0 && !held && !working {
 			break
 		}
-		if owed == 0 && !held {
+		// ── WAITING IS NOT WORKING, AND IT IS NOT ASKED FOR EITHER ──
+		//
+		// While ANY part is still out this node is PARKED: no request, no step, no
+		// counter, no clock. It used to be parked only in the gaps between reports
+		// and re-entered on each one, and the difference is a whole coordination
+		// pattern. A parent asked after the first of three reports has two thirds
+		// of an answer and one honest thing to say about it — that it is waiting —
+		// and every turn it spends saying so is money, transcript and, because the
+		// harness cannot tell waiting from spinning, six steps closer to being
+		// killed on the spot. The reports simply QUEUE instead ([Agent.enqueueNote]
+		// keeps them in the order they landed), and the turn that reads them reads
+		// all of them, which is the only turn whose brief — fold these into one
+		// deliverable — it can actually carry out.
+		//
+		// THE PERSON IS THE EXCEPTION AND THE ONLY ONE. A line steered into this
+		// node's room (task_room.go) is somebody at a keyboard waiting for an
+		// answer, and holding it for as long as the slowest part runs would be the
+		// room going silent on them. `held` takes the loop past the park, the turn
+		// answers them, and the park takes it back on the next pass.
+		if working && !held {
 			// The lane goes back for exactly as long as the wait lasts
 			// ([TaskGraph.park]).
+			since := time.Now()
 			node.park()
 			select {
 			case <-news:
 			case <-runCtx.Done():
 			}
 			node.unpark()
+			// ── AND THE WAIT COSTS THE NODE NOTHING IT WOULD HAVE SPENT WORKING ──
+			//
+			// THE CLOCK IS PUSHED BY EXACTLY THE PARKED TIME. The deadline is a
+			// bound on how long this node may WORK before somebody looks at whether
+			// it is getting anywhere ([taskLimits.deadline]); a stretch in which it
+			// made no request and took no step is not that. Left running, it was a
+			// node whose parts took twenty minutes tripping the deadline checkpoint
+			// on its first step of integration and being audited for spinning while
+			// holding three finished reports it had not been given a chance to read.
+			//
+			// AND THE NO-PROGRESS COUNTER STARTS AGAIN FROM ZERO, because a report
+			// landing is the largest single thing this node can learn. Whatever it
+			// had accrued reaching for the only hands it had while it waited is
+			// spent, and the fold is judged on the fold.
+			//
+			// THE STEP BUDGET NEEDS NOTHING DONE TO IT: a step is one finished tool
+			// call and a parked node makes none. Nor does the harness's own ceiling,
+			// which never stands over a node at all ([Agent.checkpoints] refuses
+			// InTask) — so a park cannot move that meter either.
+			deadline = deadline.Add(time.Since(since))
+			idle = 0
 			continue
 		}
 		next := child.resumeTurn(runCtx)
