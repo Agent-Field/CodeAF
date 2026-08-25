@@ -10,40 +10,24 @@ package tui3
 // my keyboard in" not at all. A person looking at the frame from a foot away
 // sees three columns equally at rest and one faint band somewhere in them.
 //
-// So the answer is given TWICE, at two scales, in the one channel the ladder
-// has: the row keeps its ground, and the HEADING of the section that holds it
-// takes the same ground. Two lifted bands in one column and none in the others
-// is a shape the eye reads before it reads a word — this block, and this row
-// inside it.
+// So the answer is given TWICE, at two scales, IN TWO CHANNELS: the row keeps
+// its ground, and the HEADING of the section that holds it steps up from dim to
+// the body ink ([homeView.sectionInk]). One band and one brightened heading in
+// one column is a shape the eye reads before it reads a word — this block, and
+// this row inside it — and it cannot be misread as two selections, because only
+// one of the two is the selection's shape.
 //
-// ── THE STEP IS THE CURSOR STEP, AND SELECTED WAS THE CANDIDATE ─────────────
+// ── THE HEADING BRIGHTENS AND DELIBERATELY DOES NOT TAKE A GROUND ───────────
 //
-// The obvious reading of the ladder puts the heading on the SELECTED step: the
-// heading is the container of the current thing, selected is "the chosen thing",
-// and it would leave the heading a rung senior to the row it stands over. It is
-// the wrong answer here for one concrete reason — THE SELECTED STEP IS ALREADY
-// SPENT ON THIS COLUMN. A conversation this terminal is holding on screen wears
-// it ([markFront] in palette.go's [overlayRowTinted]), it is persistent, it is
-// about a door rather than about where a person's hands are, and it can sit
-// three rows under a project heading. A heading on that same ground in that same
-// column would be one step carrying two meanings, which is the exact harm the
-// ladder's refusal of a fifth step exists to prevent.
-//
-// And the cursor step is not a compromise: what a marked heading says is "the
-// cursor is in here", which is the cursor step's own sentence read at the scale
-// of a section rather than of a row. ONE FACT, ONE RUNG, SAID TWICE. What buys
-// the heading its seniority is not a louder tint but NOVELTY — a heading on this
-// surface has never worn a ground at all, so a heading wearing one is entirely
-// new information, where a lifted row is one of a hundred a person sees in a
-// session.
-//
-// ── AND THE TEXT DOES NOT MOVE ──────────────────────────────────────────────
-//
-// THE ACCENT BUDGET FORBIDS LIGHTING A HEADING. Headings are furniture: they sit
-// in the same place every time, and a column of lit headings is a column with no
-// answer to "where am I" — which is the defect this whole file is about, arriving
-// from the other direction. So the heading's word stays `dim` exactly as it was,
-// and the ground alone carries the fact.
+// The first build of this law gave the heading the cursor's own band ("one
+// fact, one rung, said twice"), and it read wrong in exactly the way a person
+// said it did: two identical bands in one column are two candidate selections,
+// and the frame is asking them which one enter would act on. A ground on this
+// screen now means one thing — where a person's hands are — so the heading
+// answers in the ladder's other channel, lightness. A heading on this surface
+// has never been anything but dim, so a heading in the body ink is entirely new
+// information; and ink is not the accent, so THE ACCENT BUDGET (a heading is
+// never LIT) is kept to the letter.
 //
 // ── EXACTLY ONE, AND NEVER AT REST ──────────────────────────────────────────
 //
@@ -114,18 +98,21 @@ func (h *homeView) marksSection(at int) bool {
 	return at >= 0 && h.markedSection() == at
 }
 
-// sectionGround puts the cursor step under a heading that owns the cursor, and
-// hands every other heading back exactly as it was drawn.
+// sectionInk is the paint the marked heading's WORD takes — ink while the
+// cursor is somewhere in its section, the ordinary heading dim otherwise.
 //
-// THE GROUND IS THE FULL ROW because that is the shape every ground on this
-// surface has: [palette.cursor] pads to the width it is given and the rows
-// beside this one are painted the same way, so a heading with a tint behind its
-// word alone would be a fifth shape rather than a fourth step. Below the ANSI256
-// rung and in linear mode there is no ground to draw, which is the same trade
-// the cursor's own row already makes one call site over.
-func (h *homeView) sectionGround(text string, at, width int, pal palette) string {
-	if !h.marksSection(at) {
-		return text
+// IT IS LIGHTNESS AND DELIBERATELY NOT A GROUND. The first build of this law
+// put the cursor's own band under the heading too ("said twice"), and the frame
+// then held two identical bands in one column — a shape a person reads as two
+// selections, asking which of them enter would act on. A band is the hand's
+// mark and there is exactly one hand; the heading answers the COLUMN question
+// in the other channel the ladder has, one lightness step up from every other
+// heading on the frame. A heading has never been anything but dim on this
+// surface, so a heading in the body ink is entirely new information — and it
+// cannot be mistaken for a selection, because it is not the selection's shape.
+func (h *homeView) sectionInk(at int, pal palette) func(string) string {
+	if h.marksSection(at) {
+		return pal.ink
 	}
-	return pal.cursor(text, width)
+	return pal.dim
 }

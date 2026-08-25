@@ -41,22 +41,22 @@ func headingWord(line homeLine) string {
 	return line.project
 }
 
-// markedHeadings is every heading on the built column that is drawn ON A
-// GROUND, named by the word it carries — the assertion this whole file is
-// about, and a slice rather than a single value so "exactly one" is a thing a
-// test can see fail.
+// markedHeadings is every heading on the built column whose word has STEPPED UP
+// TO THE BODY INK ([homeView.sectionInk]), named by the word it carries — the
+// assertion this whole file is about, and a slice rather than a single value so
+// "exactly one" is a thing a test can see fail.
 //
 // It draws through [app.homeLine], which is the one painter both of the wide
 // frame's columns go through ([app.homeRows]), so what it reads is what the
 // screen draws and not a second opinion about it.
 func markedHeadings(a *app) []string {
-	ground := cursorGround(a.pal)
+	ink := sgrOf(a.pal.ink)
 	var out []string
 	for at, line := range a.home.lines {
 		if !headingKind(line.kind) {
 			continue
 		}
-		if strings.HasPrefix(a.homeLine(line, at, homeListCap, a.pal), ground) {
+		if strings.Contains(a.homeLine(line, at, homeListCap, a.pal), ink) {
 			out = append(out, headingWord(line))
 		}
 	}
@@ -213,11 +213,12 @@ func TestEveryCursorStopMarksExactlyOneHeadingOrNone(t *testing.T) {
 	}
 }
 
-// THE HEADING TAKES THE CURSOR STEP AND NEVER THE SELECTED ONE, because the
-// selected step is already spent on this column: it is the conversation this
-// terminal is holding on screen. Two meanings for one rung is what the ladder's
-// refusal of a fifth step exists to prevent (homesection.go argues it in full).
-func TestTheMarkedHeadingWearsTheCursorStepAndNotTheSelectedOne(t *testing.T) {
+// THE HEADING BRIGHTENS AND WEARS NO GROUND. Its word steps up from dim to the
+// body ink, and no band goes under it: a ground on this screen means where a
+// person's hands are, and a frame with the cursor's band on a row AND an
+// identical band on the heading read as two selections — the exact confusion
+// this mark exists to end (homesection.go argues it in full).
+func TestTheMarkedHeadingBrightensAndWearsNoGround(t *testing.T) {
 	a := sectionLab(t)
 	at := standInList(t, a, "alpha")
 	heading := homeRest
@@ -231,15 +232,14 @@ func TestTheMarkedHeadingWearsTheCursorStepAndNotTheSelectedOne(t *testing.T) {
 		t.Fatalf("the alpha block has no heading:\n%s", homeText(a))
 	}
 	drawn := a.homeLine(a.home.lines[heading], heading, homeListCap, a.pal)
-	if !strings.HasPrefix(drawn, cursorGround(a.pal)) {
-		t.Fatalf("the marked heading is not on the cursor step: %q", drawn)
+	if !strings.Contains(drawn, a.pal.ink("alpha")) {
+		t.Fatalf("the marked heading's word did not step up to the ink: %q", drawn)
 	}
-	if strings.HasPrefix(drawn, selectedGround(a.pal)) {
-		t.Fatalf("the marked heading took the selected step, which this column already spends: %q", drawn)
+	if strings.HasPrefix(drawn, cursorGround(a.pal)) || strings.HasPrefix(drawn, selectedGround(a.pal)) {
+		t.Fatalf("the marked heading wears a ground, which is the hand's channel: %q", drawn)
 	}
-	// AND THE WORD DOES NOT CHANGE TIER. The accent budget forbids lighting a
-	// heading, so what moved is the ground and only the ground.
-	if !strings.Contains(drawn, a.pal.dim("alpha")) {
-		t.Fatalf("the marked heading's word left the dim tier: %q", drawn)
+	// AND NOT THE ACCENT: brighter is not lit, and the budget stands.
+	if strings.Contains(drawn, sgrOf(a.pal.accent)) {
+		t.Fatalf("the marked heading spent the accent: %q", drawn)
 	}
 }

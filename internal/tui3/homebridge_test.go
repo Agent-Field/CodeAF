@@ -130,9 +130,8 @@ func TestTheThirdColumnIsTheRowsCardAndTheMachinesAtRest(t *testing.T) {
 	width, _ := a.size()
 	_, right := homeColumns(width)
 
-	if !a.home.resting() {
-		t.Fatal("home did not open at rest")
-	}
+	// Rest is walked into now rather than opened onto ([homeView.openAt]).
+	a.home.cursor = homeRest
 	if got := plain(strings.Join(a.homeDetail(right, 20, a.pal), "\n")); !strings.Contains(got, machineWatchWord) {
 		t.Fatalf("the third column at rest is not the machine's card:\n%s", got)
 	}
@@ -150,12 +149,13 @@ func TestTheThirdColumnIsTheRowsCardAndTheMachinesAtRest(t *testing.T) {
 	}
 }
 
-// HOME OPENS AT REST, AND FOCUS WAKES AT THE CENTER OF MASS. The first `↓` at
-// the three-column tier lands in the MIDDLE column — the one the layout declares
-// primary with its width, its density and its place on the frame — and `tab`,
-// the named triage key, still enters `needs you`.
-func TestHomeOpensAtRestAndTheFirstArrowLandsInTheList(t *testing.T) {
-	a, _ := bridgeLab(t)
+// HOME OPENS ON THE CONVERSATION THIS WINDOW HOLDS, VISIBLY SELECTED — the row
+// esc drops back into — so the first frame answers "where am I" before a key is
+// pressed. Rest is still a place ([homeRest]), reached by walking up; and from
+// rest, focus wakes at the center of mass: `↓` lands in the MIDDLE column and
+// `tab`, the named triage key, enters `needs you`.
+func TestHomeOpensOnItsOwnConversationAndRestStillWakesIntoTheList(t *testing.T) {
+	a, mine := bridgeLab(t)
 	if len(zoneNames(a, attentionNeedsWord)) == 0 {
 		t.Fatal("this machine has nothing waiting, so the landing proves nothing")
 	}
@@ -168,14 +168,16 @@ func TestHomeOpensAtRestAndTheFirstArrowLandsInTheList(t *testing.T) {
 		{"tab", func() { a.home.tab() }, attentionNeedsWord},
 	} {
 		a.openHome()
-		if !a.home.resting() {
-			t.Fatalf("home did not open at rest before %s", step.word)
-		}
-		if _, ok := a.home.focusedLine(); ok {
-			t.Fatalf("home opened at rest and still says it is on a row")
-		}
-		step.key()
 		line, ok := a.home.focusedLine()
+		if !ok || line.row.Transcript != mine {
+			t.Fatalf("home opened on %q, want the conversation this window is holding:\n%s",
+				homeName(a.home.focused()), homeText(a))
+		}
+		// Rest is one deliberate state away, and the first key from it still
+		// lands where the old landing law promised.
+		a.home.cursor = homeRest
+		step.key()
+		line, ok = a.home.focusedLine()
 		if !ok || attentionWordOf(line) != step.zone {
 			t.Fatalf("%s from rest landed in zone %q, want %q:\n%s",
 				step.word, attentionWordOf(line), step.zone, homeText(a))
@@ -216,6 +218,9 @@ func TestTheFirstArrowLandsInTheListWhicheverWayTheZonesStand(t *testing.T) {
 			t.Fatalf("the %s machine has %d rows in %q, which is not the case this covers",
 				machine.word, len(zoneNames(a, attentionNeedsWord)), attentionNeedsWord)
 		}
+		// Rest is walked into now rather than opened onto ([homeView.openAt]);
+		// the landing law under test is about the first key FROM rest.
+		a.home.cursor = homeRest
 		a.home.move(1)
 		line, ok := a.home.focusedLine()
 		if !ok || attentionWordOf(line) != "" || a.home.cursor != a.home.placesTop() {
@@ -257,8 +262,10 @@ func TestEnterAtRestReturnsToTheConversationYouAreHolding(t *testing.T) {
 	a, _ := bridgeLab(t)
 	was := a.file
 	a.openHome()
+	// Rest is walked into now rather than opened onto ([homeView.openAt]).
+	a.home.cursor = homeRest
 	if !a.home.resting() {
-		t.Fatal("home did not open at rest")
+		t.Fatal("rest is no longer a state this screen can hold")
 	}
 	a.homeEnter()
 	if a.home.open {

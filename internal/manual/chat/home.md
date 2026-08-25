@@ -27,9 +27,11 @@ you leave.
 would have opened is loaded and waiting underneath it: `esc` drops straight into it. In
 effect the launch is the launch you always had, with home already open on top of it.
 
-**The cursor starts on no row at all** — home opens at rest, so the first thing you see is
-the machine's own card rather than a highlighted row (see *Home opens at rest*). `↓` walks
-into the projects list, `tab` into `needs you`; `esc` goes on with what you were doing.
+**The cursor starts on the conversation this window is holding** — the row `esc` drops
+back into, visibly selected, with its card on the right and its section's heading stepped
+up beside it. So the first frame already answers "where am I". `tab` crosses into `needs
+you`; `↑` off the top of the list walks up to **rest** — no row at all, the machine's own
+card (see *Where the cursor starts*); `esc` goes on with what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
 always did — this directory's most recently spoken-in chat, or a fresh one — before home is
@@ -101,15 +103,16 @@ Home was an unorganised wall before this: every project on the machine got a hea
 four rows, most of them saying `elsewhere`, and the one project you could actually act in
 was wherever recency happened to put it.
 
-The cursor opens on **no row at all** — home opens at rest, with the machine's own card on
-the right (*Home opens at rest*). Once you move it, the preview on the right follows the
+The cursor opens on **the conversation this window is holding**, with that row's card on
+the right (*Where the cursor starts*). As you move it, the preview on the right follows the
 cursor — **or follows your mouse pointer**, whenever the pointer is resting on a row of the
 list. The pane shows the row under the pointer while the pointer is on one, and the
 cursor's row otherwise.
 
 A line is a glyph, the session's name, what it has going on, and how long since you last
-spoke in it — or `open` where **this** terminal is holding the conversation behind the one
-on screen, or `another window` where a *different* terminal is sitting on it and this one
+spoke in it — or `here` on **the conversation this window has on screen** (the row `esc`
+drops back into), or `open` where **this** terminal is holding a conversation behind that
+one, or `another window` where a *different* terminal is sitting on it and this one
 therefore cannot open it (see below). The glyphs: `▲` it is stopped waiting
 on you, `●` something is running in it, `◌` work was left
 unfinished, `✓` work landed since you last looked (see *What landed while I was away*),
@@ -346,48 +349,52 @@ The narrower shapes are the same screen folded down:
 
 Home has several regions on one screen, and the row your cursor is on wears a very quiet
 background — enough to say *which row*, not enough to say *which region*. So the region
-says it too: **the heading over the section holding the cursor is highlighted**, with the
-same faint background the row itself wears.
+says it too: **the heading over the section holding the cursor brightens**, its word
+stepping up from the usual dim grey to the ordinary body ink. Exactly one thing on the
+frame wears a background band — the cursor's row — and exactly one heading is brighter
+than the rest; together they read "this column, this row" without ever offering two
+things that both look selected.
 
 ```
-  needs you                    aforge
+  needs you                    aforge                ← brighter, not banded
   ▲ approve schema      2h   ██████████████████████████
                              ›● odysseys wave 4      8m ██
   moving                       ○ rename plan   yesterday
   ● port sweep          8m
 ```
 
-Move into a project's conversations and that **project's name** lights up its background.
-Move into `needs you` or `moving` and **that word** does instead. It works the same way on
-a narrower frame, where the strips sit above the list rather than beside it.
+Move into a project's conversations and that **project's name** brightens. Move into
+`needs you` or `moving` and **that word** does instead. It works the same way on a
+narrower frame, where the strips sit above the list rather than beside it.
 
 - **Exactly one heading is marked at a time.** If `needs you` is marked, no project name
   is, and the other way round — which is the whole point: one heading marked in one
   column is the answer to "where are my arrow keys".
-- **Nothing is marked when home is at rest.** Home opens on no row at all, so no section
-  is marked either; the first `↓` or `tab` puts the cursor somewhere and a heading lights
-  up with it.
+- **Nothing is marked at rest.** With the cursor walked up off the top of the list onto
+  no row at all, no section is marked either; the next `↓` or `tab` puts the cursor
+  somewhere and a heading brightens with it.
 - **Nothing is marked while you are searching.** With something typed the column is a
   list of matches and its headings are just grouping.
 - **The mouse never moves it.** Hovering a row previews its card on the right without
   moving the selection, and it leaves the marked heading where your cursor put it. The
   marked heading always answers *where the keyboard is*.
-- **The heading's word does not change colour** — it stays the same dim grey it always
-  is. Only the background behind it moves.
+- **The heading never takes a background band and never takes the accent blue** — a band
+  means the cursor's own row and nothing else, and a lit heading would spend the one-
+  accent budget on furniture. Brighter is the whole of the mark.
 - Some sections have no heading to mark. `▸ archive · 4 put away` is a section of one
-  line and nothing lights up above it.
+  line and nothing brightens above it.
 
 ## Why is the needs you heading highlighted — the section your cursor is standing in
 
 Because your cursor is on a row inside that strip. Press `→` or `tab` to cross into the
-projects list and the highlight moves with you: `needs you` goes back to plain and the
-name of the project you land in takes the background instead. It is not a warning and it
-is not saying anything about the rows underneath — it is the screen telling you which of
-its regions your arrow keys are in.
+projects list and the mark moves with you: `needs you` goes back to dim and the name of
+the project you land in brightens instead. It is not a warning and it is not saying
+anything about the rows underneath — it is the screen telling you which of its regions
+your arrow keys are in.
 
-The same is true when a **project name** on home looks highlighted: your cursor is on one
-of that project's conversations. Press `esc` to close home, or walk out of the block, and
-it goes back to plain.
+The same is true when a **project name** on home looks brighter than the others: your
+cursor is on one of that project's conversations. Press `esc` to close home, or walk out
+of the block, and it goes back to dim.
 
 ## Why are most projects collapsed on home — the elsewhere block
 
@@ -517,37 +524,37 @@ money. The clock always draws.
 The count on this line and the rows on the machine's card are **one reading**, taken once
 every three seconds: the top line cannot say `4 orders` over a card that lists three.
 
-## Home opens at rest — the cursor starts on no row
+## Where the cursor starts — your own conversation, with rest one ↑ away
 
-**Home opens with the cursor on nothing.** No row is highlighted, `enter` has nothing to
-open, and the right side is **the machine's own card** — what is keeping an eye on things,
-what happened since you left, what the day has come to. The morning glance is the default
-view rather than somewhere you navigate to.
+**Home opens with the cursor visibly on the conversation this window is holding** — the
+row `esc` drops back into, wearing the quiet selection band, with its `here` word on the
+tail, its card on the right, and its section's heading brightened. The first frame
+answers "where am I" and "which column am I in" before you press anything, and `enter`
+on the first keystroke means something safe: back into your own conversation. Home used
+to open **at rest** — on no row at all — and a frame with nothing lifted read as a screen
+that had lost its selection.
 
-**The first `↓` lands at the top of the projects list** on a frame 110 columns or wider —
-always, whether or not anything is waiting. The middle column is the widest thing on the
-screen and holds everything, so that is where the cursor wakes, and it wakes in the same
-place every morning so the first key can become a habit. The flanks are one key away: `←`
-crosses into `needs you` and `moving`, and `tab` — the key named for them — enters `needs
-you` from rest exactly as it always did.
+**Rest is still a place**: `↑` off the top row of the list walks up onto no row at all.
+Nothing is highlighted there, `enter` has nothing to open, and the right side becomes
+**the machine's own card** — what is keeping an eye on things, what happened since you
+left, what the day has come to. `↓` from rest lands at the top of the projects list on a
+frame 110 columns or wider — always, whether or not anything is waiting — and `tab`, the
+key named for the zones, enters `needs you`. The three-second rescan leaves the cursor
+wherever you put it, rest included.
 
 Below 110 columns the zones are strips standing **over** the list rather than a column
-beside it, so the first `↓` walks down into the top of `needs you` there, which is what
+beside it, so `↓` from rest walks down into the top of `needs you` there, which is what
 that shape reads like. Where nothing is waiting the strip has no row to stop on and the
 key carries on into the list.
 
-`↑` off the top row of the list comes back out to rest again, and the three-second rescan
-leaves the cursor where you left it either way. On a frame too narrow for a card (under 80
-columns) home opens on the conversation this window is in, because there is no card there
-to open onto.
-
-`esc` from rest does what `esc` always does here: back to the conversation you came from.
+`esc` does what `esc` always does here: back to the conversation you came from — and it
+is the same conversation the cursor opened on.
 
 ## The machine's own card — what the right side shows with the cursor on no row
 
-This is the card home opens on, and the one you get back by pressing `↑` off the top row of
-the left column: the cursor **leaves the list**, nothing is highlighted, `enter` has nothing
-to open, and the right side is **the machine's own card** — the morning glance. `↓` walks
+This is the card you reach by pressing `↑` off the top row of the left column: the cursor
+**leaves the list**, nothing is highlighted, `enter` has nothing to open, and the right
+side is **the machine's own card** — the morning glance. `↓` walks
 straight back into the first row. The card stays put while you read it — the three-second
 rescan leaves the cursor off the list.
 
@@ -975,7 +982,10 @@ start a new conversation in a project that exists.
 **It used to.** Every project but the one this window launched in carried a dim `elsewhere`
 on its heading, and `enter` on one of its rows opened nothing and said
 `elsewhere · <the project's path>`. That is gone: the heading is the project's name and
-nothing else, and `enter` opens the row.
+nothing else, and `enter` opens the row. The one heading spelled longer than its name is
+your home directory's, which reads `~ home` — a bare `~` over a whole column read as
+furniture rather than as a name, so the heading carries the word beside the glyph. Rows
+and sentences still say plain `~`.
 
 The reasoning behind the old refusal was right and is still kept — a window's approval
 rules, its crew, its spend ceiling and its saved shapes of work are resolved from the

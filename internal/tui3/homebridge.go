@@ -243,25 +243,37 @@ func (h *homeView) placesTop() int {
 
 // openAt is where the cursor stands the moment home appears.
 //
-// HOME OPENS AT REST (docs/HOME-BRIDGE.md). The morning glance is what this
-// screen is FOR when nobody is pointing at anything yet, so it is the default
-// view and not a state to navigate to: nothing is highlighted, the card on the
-// right is the machine's own, and there are two ways in — [homeView.move], whose
-// first step wakes in the column the layout declares primary ([homeView.wake]),
-// and [homeView.tab], which enters `needs you` because that is what it is named
-// for.
+// HOME OPENS ON THE CONVERSATION THIS WINDOW IS HOLDING — the row esc drops
+// back into — with the cursor visibly on it. It opened AT REST for a wave
+// (nothing highlighted, the machine's card on the right), and the resting frame
+// failed the first thing a person asks of any screen with a keyboard on it:
+// where am I. Nothing was lifted, the one persistent band in sight was the
+// front row's old identity ground, and the answer to "which column is my
+// keyboard in" was "none", which reads as a defect rather than as a state. So
+// the selection is now on screen from the first frame — the cursor's band on
+// the row, its section's heading stepped up beside it (homesection.go) — and
+// REST IS STILL A PLACE: one `↑` off the top of the list walks up into it, the
+// machine's card and all ([homeRest]).
 //
-// AND ONLY WHERE THERE IS A CARD TO OPEN ONTO. Under [homeMinDetail] the frame
-// has no second column at all, so a cursor on nothing would be a screen with
-// nothing selected AND nothing said about it — the emptiness law arguing against
-// itself. That frame opens on the conversation this window is in, which is where
-// home has always opened and which is still the honest answer at that width.
+// The row it lands on is this window's own conversation rather than the top of
+// the list, because the top row can be another window's — a selection that
+// opened on a refusal would make enter mean nothing on the first keystroke.
+// A window whose conversation is not on the list (a memory-only session, an
+// empty machine) falls to the first row a cursor may stand on, and to rest
+// only when there is nothing at all.
 func (h *homeView) openAt(file string) {
-	if h.restable() && h.wide() {
-		h.cursor = homeRest
+	h.point(file)
+	if _, ok := h.focusedLine(); ok {
 		return
 	}
-	h.point(file)
+	if at := h.placesTop(); at != homeRest {
+		h.cursor = at
+		return
+	}
+	h.cursor = h.clamp(0)
+	if _, ok := h.focusedLine(); !ok {
+		h.cursor = homeRest
+	}
 }
 
 // ── the window ──────────────────────────────────────────────────────────────

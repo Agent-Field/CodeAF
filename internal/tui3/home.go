@@ -254,6 +254,11 @@ const (
 	// conversation open here and one open in another window are told apart by
 	// WHICH window rather than by a second word.
 	homeOpenWord = "open"
+	// homeHereWord is the conversation ON SCREEN — the one esc drops back into.
+	// It is a word on the tail rather than a band under the row, because a
+	// ground on this screen means where a person's hands are and this is a fact
+	// about a door (palette.go's overlayRowTinted).
+	homeHereWord = "here"
 	// homeGoneWord is the refusal on a row whose project folder is not there any
 	// more. It is the sentence the door says too ([WorkspaceGoneWord], and the
 	// door quotes this constant so there is one of it), because home can be
@@ -3670,11 +3675,11 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// down, on the rule over the folded block, where it is about the SHAPE of
 		// the list and not about a door ([homeElsewhereRuleWord]).
 		//
-		// AND IT WEARS A GROUND WHILE THE CURSOR IS SOMEWHERE INSIDE THIS PROJECT
-		// — the one heading a frame marks, saying which block the keyboard is
-		// standing in (homesection.go holds the whole law). The word itself does
-		// not change tier: a heading stays dim, and the ground alone moves.
-		return h.sectionGround("  "+pal.dim(fit(line.project, width-2)), at, width, pal)
+		// AND IT STEPS UP TO THE BODY INK WHILE THE CURSOR IS SOMEWHERE INSIDE
+		// THIS PROJECT — the one heading a frame marks, saying which block the
+		// keyboard is standing in (homesection.go holds the whole law, and why
+		// the mark is lightness rather than a second band).
+		return "  " + h.sectionInk(at, pal)(fit(homeHeadingWord(line.project), width-2))
 	case homeQuiet:
 		// THE SAME FOLD MARK THE TASK COLUMN USES (task.go's [glyphShut] and
 		// [glyphOpen]), because it is the same gesture over the same kind of
@@ -3700,8 +3705,8 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		//
 		// IT IS A HEADING FOR THE PURPOSE OF THE ONE MARKED SECTION, because it is
 		// the only thing naming the block under it: a cursor down among the folded
-		// projects marks this rule (homesection.go).
-		return h.sectionGround(pal.dim(fit(homeElsewhereRuleLine(width-2, pal.ascii), width)), at, width, pal)
+		// projects steps this rule up to the ink (homesection.go).
+		return h.sectionInk(at, pal)(fit(homeElsewhereRuleLine(width-2, pal.ascii), width))
 	case homeProject:
 		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
 		// a whole project: `▸` while it is one line, `▾` once it is a block.
@@ -3763,7 +3768,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// ([app.homeTrue]).
 	row := a.homeTrue(line.row)
 	label := a.homeRowGlyph(row, a.homeSpins(at)) + " " + homeName(row)
-	note := homeNote(row, a.homeHeld(row), a.homeMark(row) == markOurs, a.homeRowGone(row),
+	note := homeNote(row, a.homeHeld(row), a.homeMark(row), a.homeRowGone(row),
 		a.homeFresh(row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
@@ -3777,6 +3782,19 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		at == h.cursor, a.homeMark(row), at == h.hover, width, pal)
 }
 
+// homeHeadingWord is the heading's word. The home directory's project is named
+// "~" (session's projectName) — the right identity, and a heading of one glyph:
+// as the title over a whole column it reads as furniture rather than as a name.
+// The heading spells it "~ home", glyph plus word, the way every mark on this
+// surface carries a word beside it. Rows and clauses keep the bare "~": inside
+// a sentence the glyph is doing a path's job.
+func homeHeadingWord(project string) string {
+	if project == "~" {
+		return "~ home"
+	}
+	return project
+}
+
 // homeMark is which of the three kinds of row this is: the conversation on
 // screen, one this terminal is holding behind it, or somebody else's.
 func (a *app) homeMark(row session.SessionRow) rowMark {
@@ -3784,7 +3802,7 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 	case row.Transcript == "":
 		return markNone
 	case convKey(row.Transcript) == convKey(a.file):
-		return markFront
+		return markHere
 	case a.behind[convKey(row.Transcript)] != nil:
 		return markOurs
 	}
@@ -3985,7 +4003,7 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held, ours, gone bool, fresh int, now time.Time) string {
+func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh int, now time.Time) string {
 	var parts []string
 	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
 	// rung BELOW the states, and that ordering is a fact about what the states
@@ -4017,6 +4035,13 @@ func homeNote(row session.SessionRow, held, ours, gone bool, fresh int, now time
 		// there would be absent from precisely the row somebody is about to press
 		// enter on. Under the `elsewhere` rule there is no heading at all.
 		parts = append(parts, homeGoneShort)
+	case mark == markHere:
+		// THE CONVERSATION ON SCREEN SAYS SO IN A WORD, because it no longer
+		// says so with a ground (palette.go's overlayRowTinted). It outranks
+		// every state word below it on purpose: you are IN this conversation,
+		// so its states are already on your screen, and the one fact this row
+		// owes the list is where esc goes.
+		parts = append(parts, homeHereWord)
 	case row.NeedsPerson():
 		// THE CONVERSATION'S OWN WORD, not a second one meaning the same thing.
 		// `waiting on you` is what the presence file says (taskpresence.go's
@@ -4030,7 +4055,7 @@ func homeNote(row session.SessionRow, held, ours, gone bool, fresh int, now time
 		parts = append(parts, itoa(row.Tasks.Incomplete)+" incomplete")
 	case held:
 		parts = append(parts, homeHeldShort)
-	case ours:
+	case mark == markOurs:
 		// A CONVERSATION THIS TERMINAL IS HOLDING. It goes where `another window`
 		// goes and never instead of it — the two are different facts about
 		// different doors, and this one's door is `enter` (keeper.go).
