@@ -1718,7 +1718,7 @@ indent. `❯ ctrl+g hide` is always there, and its `❯` is drawn in ink rather 
 because it is the control the pointer presses — the words beside it are the label for the
 hand that types chords.
 
-## Opening a finished row on the task column: where the merge word, price, branch or job log went
+## Opening a finished row on the task column: how to see the log path of a job that already finished, and where the merge word, price or branch went
 
 A finished task's row is one line, and the line it used to carry underneath is **folded,
 not deleted**. It is the same fold a family of tasks uses, on the same keys and the same
