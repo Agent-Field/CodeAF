@@ -252,6 +252,15 @@ func (r *remoteFiles) mirror(target string, blob remoteBlob) (string, error) {
 	}
 	_ = os.Remove(mirror)
 	if err := os.Link(source, mirror); err == nil {
+		// THE LINK IS THE BLOB — one inode, two names — so a writable mirror
+		// would be a pen aimed at the content-addressed store: save once in a
+		// viewer and the blob no longer hashes to its own ref. Chmod acts on
+		// the inode, which closes the same door under BOTH names, and a
+		// read-only blob is what a store keyed by digest wanted anyway.
+		if err := os.Chmod(mirror, 0o400); err != nil {
+			_ = os.Remove(mirror)
+			return "", fmt.Errorf("could not keep a copy of %s here", path.Base(target))
+		}
 		return mirror, nil
 	}
 	// A LINK ACROSS DEVICES IS NOT AN ERROR TO REPORT, it is the other case: the
