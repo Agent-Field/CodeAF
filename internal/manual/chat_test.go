@@ -673,6 +673,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off hints", "hints-and-tips"},
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
+
+		// The wave that made the files on the far machine things this one can
+		// open. These are the sentences somebody types with a hosted session in
+		// front of them: the click, the download, the drag, the picture they
+		// cannot see, and the two questions the copies provoke.
+		{"how do I open a file that is on the other machine", "opening-files-from-that-machine"},
+		{"why is that path not clickable over --host", "opening-files-from-that-machine"},
+		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
+		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
+		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},
+		{"if I edit the copy does it change the file over there", "opening-files-from-that-machine"},
+		{"how do I see the picture it made on the far machine", "opening-files-from-that-machine"},
+		{"how do I browse the folders on the other machine", "opening-files-from-that-machine"},
+		{"can anyone else open these 127.0.0.1 links", "opening-files-from-that-machine"},
+		{"how big a file can I bring back over a connection", "opening-files-from-that-machine"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

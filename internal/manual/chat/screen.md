@@ -1069,11 +1069,13 @@ below is drawn as plain text on purpose:
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
   which branch it left behind, never where its journal is.
-- **Everything, over a connection.** On a session started with `--host`, the files are
-  on the other machine, and `file:///app/main.go` handed to the terminal in front of you
-  would mean this machine's `/app/main.go` — nothing at all, or somebody else's file. So
-  no path is a link on a hosted session. The paths are still shown in full, and
-  `/status` names them the way you would have to name them to reach them.
+- **A path the other machine has not confirmed, over a connection.** On a session started
+  with `--host` the files are on that machine, so the check is made **there** and only a
+  path it confirms becomes a link. A word it has not answered about yet, or one it says is
+  not a file, is plain text exactly as it would be at home. What a confirmed path links to
+  is not `file://` — that would mean this machine's disk — but a small door this window
+  owns; the whole of it is on *Opening files from that machine*. A confirmed **folder** is
+  not a link over a connection either.
 
 ## Copying a path, and why a reply cannot make its own link
 

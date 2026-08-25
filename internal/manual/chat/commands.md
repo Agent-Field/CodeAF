@@ -204,7 +204,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
 | `/export` | `/save` | `<path>` | …and writes it there; tab completes the path |
-| `/files` | — | — | lists what has been made for you; opens, reveals or copies one |
+| `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
+| `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
@@ -485,8 +486,68 @@ and says so; give it another name.
 
 If nothing has been made yet, `/files` opens no list and answers `nothing made yet.`
 
-Over `--host` the list is the files made on **this** machine; what the session on the
-other machine made is written down over there, and the command says so as it opens.
+On a session running on **this** machine that is the whole of `/files`. Over `--host` it
+means something else — see the next section.
+
+## /files over --host — browse, open and download files on the other machine
+
+On a `--host` session the files the conversation is about are on the **other** machine, so
+`/files` points at that machine instead of at this one's list.
+
+`/files` with nothing after it opens a **browse page** for the far workspace in this
+machine's own browser, and writes the address into the conversation as well, so you can
+paste it into a different browser or reach it when nothing opened. The page is served by a
+listener on `127.0.0.1` that this window owns: it starts the first time you need it, its
+addresses work only while the window is open, and it can only show what the session itself
+chose to show. What may be shown is the far session's own law and not this window's — the
+workspace it is working in and the session's own folder, and nothing outside those two.
+
+`/files <path>` brings **one file** back and opens it the way your desktop would. The path
+is a path on the other machine, relative to that workspace. The bytes are kept here by
+content, under `~/.aforge/v3/remote/`, and a copy under the file's own name is what your
+viewer is handed — so the window title says `report.pdf` and not a row of hex. A file the
+model wrote during the turn is usually already here before you ask, so it opens at once:
+aforge quietly fetches a file of 2MB or less as it sees it being written, and says nothing
+about having done it.
+
+The two open in different places, and that is the difference worth knowing: **a clicked
+path and the browse page open in your browser** — a terminal hands a web address to a
+browser and that is what the link is — while **`/files <path>` hands the file to your own
+program**, `open` on a Mac and `xdg-open` on Linux, so a `.csv` lands in your spreadsheet.
+
+A fetch that takes less than a third of a second says nothing at all. A longer one draws
+one line naming the file. If the other machine refuses — the path is outside those two
+places, or the file is over the 16MB one file may cross this connection — you get that
+machine's own sentence, unchanged.
+
+**Nothing here edits that machine's files.** The copy on this one is a copy: editing it
+changes nothing over there. The one thing you can put ON the other machine is a file
+dropped onto the browse page, and it lands in that session's `attachments/` folder — never
+anywhere else you could name, and never over anything already there. **A drop says
+nothing:** no message is sent, no turn starts, and nothing about it appears in the
+conversation, so the chat only knows about the file when you mention it. `/attach` is the
+same landing place *with* your own message saying what it is for. A file over the 16MB one
+file may cross is refused, and so is a name that is a path.
+
+On a local session `/files <path>` does nothing but say so: `that form of /files is for a
+session on another machine — this one is local, so the paths in it are already yours to
+open`.
+
+The browse page and the links are served by the same listener, which starts the first time
+one is needed and closes with the window; every address it minted stops working then, and
+a wrong one gets a plain `404` with nothing in it to tell one wrong guess from another.
+If it cannot start at all you get one line and no links: `the file door did not open on
+this machine`.
+
+**Paths in replies are links again over `--host`.** A path the reply names is checked with
+the other machine first, and only a real file there becomes clickable; cmd+click opens it
+through the same door the browse page uses. A word that machine did not confirm stays
+plain text, which is the same rule a local session has always followed. A confirmed
+**folder** is not a link over a connection.
+
+*Opening files from that machine* is the whole of this in a person's terms: what turns
+into a link and why one did not, where the copies live on this machine, what a drop on the
+browse page does, the 16MB ceiling, and who else can reach those addresses.
 
 ## /status — everything the status line knows
 

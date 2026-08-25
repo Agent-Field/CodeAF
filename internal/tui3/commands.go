@@ -279,6 +279,21 @@ var commands = []command{
 	// recognizes by title, and a title a model wrote is not a thing anybody
 	// types back correctly.
 	{name: "files", desc: "what has been made for you · open, reveal or copy one"},
+	// AND THE SAME ERRAND POINTED AT THE OTHER MACHINE. On a `--host` session the
+	// bare row above opens the far workspace as a page in this machine's browser,
+	// and this one brings ONE file back and opens it in whatever this machine
+	// opens that kind of file with (remotefiles.go, remoteopen.go).
+	//
+	// TWO ROWS FOR ONE COMMAND, the way /model and /export have two, and for
+	// their reason: [app.runMenu] puts a row that TAKES something into the draft
+	// instead of running it, so a single row carrying <path> would make the bare
+	// form — the one nearly everybody wants — unreachable from this list.
+	//
+	// The row says what it is FOR rather than which flag it needs, because a
+	// person on a local session who chooses it is told in one sentence that this
+	// form is for a session on another machine ([filesLocalWord]) — which is a
+	// better place to learn it than a table nobody reads twice.
+	{name: "files", args: "<path>", desc: "…or bring one back from the machine over there and open it"},
 	// AND THE ONE THAT GOES THE OTHER WAY: those four take something out of this
 	// conversation and this one puts something INTO it — a log, a CSV, a PDF, on
 	// the same tray a picture rides and read rather than looked at (attach.go).
