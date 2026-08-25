@@ -2936,8 +2936,15 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// THE COLLAPSE RULE (thinking.go): the first thing a turn says that is not
 	// reasoning ends the reasoning block. EventThinking is exempt because it is
 	// the marker that OPENED the run — collapsing on it would close the block
-	// before its first word arrived.
-	if ev.Kind != session.EventReasoning && ev.Kind != session.EventThinking {
+	// before its first word arrived. A TEXT DELTA SETTLES, IT DOES NOT SEAL:
+	// providers that interleave reasoning with the answer keep growing the same
+	// block through [app.settleThought], and only a real boundary — a tool
+	// call, the turn ending — lets go of it ([app.collapseThought]).
+	switch ev.Kind {
+	case session.EventReasoning, session.EventThinking:
+	case session.EventTextDelta:
+		a.settleThought()
+	default:
 		a.collapseThought()
 	}
 	// THE WAIT CLOCK IS ANCHORED HERE, on both edges, before anything else reads

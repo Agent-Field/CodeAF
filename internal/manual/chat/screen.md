@@ -2181,3 +2181,21 @@ from outside. No glyph at all means nothing is waiting and nothing landed unseen
 In the screen-reader tier the same two facts are spelled `!` and `+`. The glyphs match
 the home screen's rows, so a `▲` on a tab and a `▲` on home are the same statement
 about the same conversation.
+
+## The dim thought row above a reply — and models that think between their words
+
+Some models put their working on the wire. While it streams you see a dim three-line
+window under a `thinking · N tok` header; the moment the first word of the reply lands it
+collapses to one row — `thought for 6s · 148 tok · ctrl+e` — and `ctrl+e` or a click
+reopens it. The count of tokens on the row is how much working the model wrote, and the
+seconds are how long it spent.
+
+Some models keep thinking in between the words of their own answer, a few tokens at a
+time. That does not split the reply and does not stack up extra rows: the one thought row
+above the answer keeps its place and its numbers grow, while the reply below streams on
+unbroken. A new thought row only appears after a real boundary — a tool call, or the next
+turn — because that is a genuinely new stretch of thinking.
+
+Thinking is never saved into the conversation's record. A reopened session shows the
+answers, not the working behind them — so a `thought for` row you can see now will not be
+there after a restart, and that is deliberate.

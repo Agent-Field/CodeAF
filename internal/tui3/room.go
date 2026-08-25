@@ -932,8 +932,14 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.event],
 	// thinking.go): the first thing a turn says that is not reasoning ends the
 	// reasoning block, and EventThinking is exempt because it is the marker that
-	// opened the run.
-	if ev.Kind != session.EventReasoning && ev.Kind != session.EventThinking {
+	// opened the run. A text delta settles the block and keeps it
+	// ([app.roomSettleThought]) so an interleaved stream grows one block instead
+	// of sawing the answer apart; everything else seals it.
+	switch ev.Kind {
+	case session.EventReasoning, session.EventThinking:
+	case session.EventTextDelta:
+		a.roomSettleThought()
+	default:
 		a.roomCollapseThought()
 	}
 	switch ev.Kind {
@@ -1035,6 +1041,26 @@ func (a *app) roomThink(text string) {
 	e.ended = a.now()
 	e.stale = true
 	a.roomTouched()
+}
+
+// roomSettleThought folds the streaming block without letting go of it — the
+// text-delta half of the collapse rule, [app.settleThought] over the room's
+// list: the next reasoning delta grows this block rather than opening another
+// and closing the answer mid-word.
+func (a *app) roomSettleThought() {
+	room := a.room
+	if room == nil || room.think < 0 || room.think >= len(room.entries) ||
+		room.entries[room.think].kind != entryThinking {
+		return
+	}
+	e := &room.entries[room.think]
+	if !e.settled {
+		e.settled, e.stale = true, true
+		if !e.latched {
+			e.open = false
+		}
+		a.roomTouched()
+	}
 }
 
 // roomCollapseThought settles the streaming reasoning block ([app.collapseThought]).
