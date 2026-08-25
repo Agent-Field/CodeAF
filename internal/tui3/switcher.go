@@ -178,7 +178,12 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 				// more both refuse when they are pressed, and a list that said so only
 				// on a card would be saying it only past a hundred and sixty columns —
 				// which is exactly the trap the short spellings were written for.
-				held:    !atHere && (row.Open || row.Live) && strings.TrimSpace(row.Transcript) != "",
+				// THE LOCK AND NOT THE HEARTBEAT. `Open` is a window holding this
+				// journal, which is exactly what the door refuses on; `Live` is a
+				// conversation saying what it is doing, which the note already
+				// carries and which would put `another window` on the margin of
+				// every row that is asking anything.
+				held:    !atHere && row.Open && strings.TrimSpace(row.Transcript) != "",
 				gone:    gone[switcherWhere(row, project)],
 				options: options,
 			})

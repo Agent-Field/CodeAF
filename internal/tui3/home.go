@@ -218,6 +218,10 @@ const (
 	// key for everything this screen can do would be the cockpit this is
 	// deliberately not (docs/home-design.md).
 	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
+	// homeRestHint is that sentence as the whole foot of the resting screen, with
+	// the one key that leaves it. It is composed rather than spelled a second
+	// time, so the box's prompt and the foot can never drift apart.
+	homeRestHint = homeFootWord + " · tab next place"
 	// homeEmptyWord is a machine that has not held a conversation yet. It is
 	// drawn where the first project's rows will be, under the zones and beside
 	// the machine's card ([homeEmptyRow]), so an empty home keeps the shape of
@@ -4185,39 +4189,29 @@ func (a *app) homeLast(row session.SessionRow) string {
 	return strings.TrimSpace(summary.Last)
 }
 
-// homeHint is the line under the foot: what the keyboard does, and what the box
-// will do with what is in it.
+// homeHint is the whole line under the foot — the router's keys included, which
+// is why pages.go hands this place its own hint rather than tailing it.
 //
-// IT GAINS ONE CLAUSE ON A ROW THAT HAS VERBS, and it gains it here rather than
-// in each of the sentences below so that a hint and the strip can never disagree
-// about whether `→` does anything (verbstrip.go). The zones' own `tab` clause
-// left with the zones: there is one column now, and `tab` belongs to the router.
+// AT REST IT IS THE DESIGN'S SENTENCE, WORD FOR WORD (SCREEN 1a): `type to
+// search or start something new · ↑↓ pick · enter open · tab next place`. That
+// is the whole foot of the resting screen and it names four things and no more —
+// a footer that grew a key for everything this screen can do would be the cockpit
+// this is deliberately not. Every other row says what ITS keys do and takes the
+// router's two on the end.
 func (a *app) homeHint() string {
 	hint := a.homeHintWords()
-	if a.strip.open || len(a.homeRowVerbs()) == 0 {
-		return hint
+	if hint == homeFootWord {
+		return homeRestHint
 	}
-	return homeHintClause(hint, homeVerbsWord)
+	return placeTailed(hint)
 }
 
-// homeVerbsWord is how the foot advertises the strip. It names the key and the
+// homeVerbsWord is how the CARD advertises the strip. It names the key and the
 // noun, in the hint slot's own grammar (render.go's [app.hintWord]), and never
 // the letters themselves — those are drawn on the strip and nowhere else, which
-// is SCREEN 3a's whole clause.
+// is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
+// that does ([placeMapWords]), and the resting foot is four keys exactly.
 const homeVerbsWord = "→ verbs"
-
-// homeHintClause puts one clause on a hint BEFORE THE WAY OUT: every hint this
-// screen draws ends with `esc`, because the way out is the last thing a person
-// needs to be told and the first thing they look for.
-func homeHintClause(hint, clause string) string {
-	if strings.Contains(hint, clause) {
-		return hint
-	}
-	if at := strings.LastIndex(hint, " · esc"); at >= 0 {
-		return hint[:at] + " · " + clause + hint[at:]
-	}
-	return hint + " · " + clause
-}
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {
@@ -4278,7 +4272,9 @@ func (a *app) homeHintWords() string {
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
-	return "↑↓ move · enter open · esc close"
+	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
+	// into the design's whole sentence. Every other row said its own thing above.
+	return homeFootWord
 }
 
 // ── the small arithmetic ────────────────────────────────────────────────────

@@ -1094,12 +1094,18 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The top line carries `esc close` on the right. The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open`, and the line under it
-changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest, with
-`→ verbs` added on a row that has any,
-`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
-row, and `enter or → show them · esc close` on the fold.
+The box row reads `› say what you want done`, with the scope chip — `here ~/aforge-v2` —
+against its right edge. The line under it is the foot, and **at rest it is exactly**
+`type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
+and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
+naming it, and `alt+.` draws the whole map when you want it.
+
+On any other row the foot says what THAT row's keys do and gains the two that are true
+everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
+on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
+on the fold, and
+`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+on the action row.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
 this window is in; a card stands beside it only at 160 columns and wider. **While anything

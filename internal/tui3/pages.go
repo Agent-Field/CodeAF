@@ -445,8 +445,9 @@ const (
 	// is the path beside it.
 	placeScopeWord = "here"
 	// placeRestWord is what the box row says on a place with nothing typed into
-	// it. Home keeps its own ([homeFootWord]) because its box is a filter as well
-	// as a composer and the sentence has to say both.
+	// it — home included, exactly as SCREEN 2b draws it. What home's box ALSO
+	// does is filter, and that is said on the foot rather than in the box, where
+	// the design puts it ([homeRestHint]).
 	placeRestWord = "say what you want done"
 	// placeHintWords is the second line of the composer, in the register SCREEN
 	// 2b sets: what enter does, what the chord does, and the two ways out of this
@@ -462,11 +463,9 @@ const (
 	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close"
 )
 
-// placeRestWord is what this place's box row says with nothing typed in it.
+// placeRestWord is what this place's box row says with nothing typed in it, and
+// it is the same sentence on every place — home included (SCREEN 2b).
 func (a *app) placeRestWord() string {
-	if a.page == pageHome {
-		return homeFootWord
-	}
 	return "› " + placeRestWord
 }
 
@@ -487,7 +486,11 @@ func (a *app) placeHint() string {
 	// seven sentences.
 	switch a.page {
 	case pageHome:
-		return placeTailed(a.homeHint())
+		// HOME OWNS ITS WHOLE LINE, the router's own keys included. At rest that
+		// line is the design's sentence word for word and names four keys exactly
+		// (SCREEN 1a, home.go's [app.homeHint]); a tail appended here would make it
+		// five.
+		return a.homeHint()
 	case pageTasks:
 		if a.taskSheet.open {
 			return placeTailed(a.taskSheetKeysLine())
