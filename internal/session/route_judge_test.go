@@ -1139,6 +1139,114 @@ func TestAConversionSpendsTheGapOnce(t *testing.T) {
 	}
 }
 
+// A YES CANNOT CONVERT A TURN WHOSE WORK IS ALREADY DONE.
+//
+// The measured defect: a model wrote all eight files it was asked for inline in
+// under a minute, the confirm landed at the tail of that, and the conversion
+// started a task on the leftovers of a finished answer — which then stopped,
+// having duplicated a turn nobody needed duplicating. The race reads the REQUEST
+// and cannot know any of that; the model holding the findings can, so the dowry
+// ask asks it, and [checkpointNothingLeft] drops the whole handover.
+func TestARacedYesIsDroppedWhenTheModelSaysNothingIsLeft(t *testing.T) {
+	completer := &routeCompleter{answer: "All eight files are written and the smoke check passed."}
+	agent, _, nodes := racingAgent(t, completer)
+	// The turn calls one tool and then answers, so there IS a boundary for the
+	// verdict to land at — the conversion is declined there rather than missed.
+	completer.toolRounds = 1
+	completer.handoff = checkpointNothingLeft
+
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	// The race ran and answered yes: this is a declined conversion, not a turn
+	// that was never judged.
+	if completer.preAsked() != 1 || completer.preConfirms() != 1 {
+		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
+			completer.preAsked(), completer.preConfirms())
+	}
+	// NO TASK, AND NO LINE ABOUT ONE.
+	if saidSomething(noticeTexts(collected), routeRaceNote) {
+		t.Fatalf("the person was told their answer was being moved and then watched it finish where "+
+			"it was; notices were %q", noticeTexts(collected))
+	}
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a task was announced over a finished turn: %q", notice)
+	}
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatalf("%d tasks were admitted out of a turn with nothing left to hand over", nodes.count())
+	}
+	// AND THE ANSWER STANDS. The turn ends on the model's own words rather than on
+	// two dim lines written over the top of them.
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), "All eight files are written") {
+		t.Fatalf("the transcript ends on %q by %q, want the answer the turn was giving",
+			messageText(last), last.Role)
+	}
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
+	}
+}
+
+// AND THE CONVERTED TASK IS NAMED FROM THE PERSON'S WORDS, NEVER FROM THE DOWRY.
+//
+// The other road into [Agent.launchRouteTask] cuts a title off a goal a judge
+// wrote to a contract. A converted turn's goal is a CONTINUATION written on a
+// transcript full of tool calls, and it has been measured arriving as a
+// provider's tool-call sentinel and as a markdown heading. The person's own
+// sentence is the one thing on this road nobody writes.
+func TestAConvertedTaskIsNamedFromTheAskAndNotFromTheDowry(t *testing.T) {
+	completer := &routeCompleter{answer: "I will start with the auth test."}
+	agent, _, nodes := racingAgent(t, completer)
+	completer.handoff = dsmlSentinel + "\nwhatever this turn found out"
+
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
+
+	notice := routeNotice(collected)
+	if notice == "" {
+		t.Fatalf("no task was announced; notices were %q", noticeTexts(collected))
+	}
+	if strings.Contains(notice, "DSML") {
+		t.Fatalf("the sentinel became the task's name: %q", notice)
+	}
+	if !strings.Contains(notice, "fix the flaky auth test") {
+		t.Errorf("the task was announced as %q, want the person's own words", notice)
+	}
+}
+
+// AND THE NAME IS CLEANED THE WAY EVERY OTHER NAME ON THIS SURFACE IS.
+//
+// The title of an auto-started task is the one that goes straight into a line a
+// person reads and into a rail row twenty-four columns wide, and it is cut off
+// the front of a paragraph nobody wrote to be a name. A row rendering
+// `**refactor beta.py — 15+ single-rename steps, verify each**` was measured, so
+// the markdown comes off with the quotes and the announcements that hand already
+// takes ([cleanTitle], title.go).
+func TestAnAutoStartedTasksNameCarriesNoMarkdown(t *testing.T) {
+	for _, raw := range []string{
+		"**refactor beta.py — 15+ single-rename steps, verify each**",
+		"## refactor the parser",
+		"`refactor the parser`",
+		"> refactor the parser",
+	} {
+		title := routeTaskTitle(raw)
+		if strings.ContainsAny(title, "*`") {
+			t.Errorf("%q was named %q, which draws its own markup on the rail", raw, title)
+		}
+		if strings.HasPrefix(title, "#") || strings.HasPrefix(title, ">") {
+			t.Errorf("%q was named %q, which opens on a heading marker", raw, title)
+		}
+		if title == "" {
+			t.Errorf("%q was named nothing at all", raw)
+		}
+	}
+	// AND A NAME ALWAYS SURVIVES. Unlike the namer's own answer, this is the only
+	// title the task has, so a cleaner that refused everything would announce a
+	// task with no name in it.
+	if title := routeTaskTitle("Title: here is the name"); title == "" {
+		t.Error("a goal the cleaner refuses outright left the task with no name to be announced by")
+	}
+}
+
 // AND THE LINE A PERSON READS IS THAT LINE.
 //
 // Pinned as an exact string rather than as a shape, exactly as the ceiling's is:

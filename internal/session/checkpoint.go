@@ -39,7 +39,10 @@ package session
 //     is already in, and a turn that is genuinely one long job carries on.
 //   - AND PAST THE LAST MARK THE HARNESS STOPS ASKING. Two refusals to hand over
 //     are a judgement; a third is momentum. At the ceiling the turn ends and the
-//     remaining work moves onto the one road, where it is watched.
+//     REMAINING work moves onto the one road, where it is watched — and remaining
+//     is the whole of what is still asked there ([checkpointNothingLeft]): a turn
+//     that answers the handoff by saying it is finished is left to finish, which
+//     is not the harness asking again but the harness having nothing to move.
 //
 // ── WHY THE MARKS ARE GEOMETRIC AND NOT ONE LINE ──
 //
@@ -64,6 +67,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -119,6 +123,23 @@ const (
 	// is asked to put them down, so it gets more room — and it is still clipped to
 	// taskShapeBriefLimit, which is the bound EVERY brief on this road is held to.
 	checkpointBriefTokens = 2000
+
+	// checkpointBriefWords is how many WORDS a dowry must carry before the
+	// harness will hand it to somebody as an instruction.
+	//
+	// IT IS A TEST FOR PROSE AND NOT FOR CONTENT, and it exists because "no belt"
+	// is not the same fact as "no tool grammar". The handoff ask goes out with no
+	// [ai.WithTools] on it, but it goes out on a transcript saturated with tool
+	// calls and to a model whose chat template still holds its tool-call special
+	// tokens — and a measured turn on deepseek answered it with its raw sentinel
+	// and nothing else, which then became the goal a worker was started on. There
+	// is no phrasing of the ask that can guarantee otherwise, so the harness reads
+	// what came back instead: an instruction somebody can work from is words with
+	// spaces between them, and machine markup is one dense token. Four sits under
+	// any real brief — the ask alone demands what is left, what is known, what is
+	// ruled out and how anybody could tell it is done — and above every sentinel
+	// this has been shown, each of which is a single unspaced token.
+	checkpointBriefWords = 4
 )
 
 // checkpointNote is what the model reads at a mark, and every line of it is
@@ -175,11 +196,44 @@ const checkpointCeilingNote = "this is running long · moving it to a task that 
 // IT IS SENT WITH NO BELT (see [Agent.checkpointBrief]), which is what makes it
 // safe to ask a model that has spent the turn grinding: with no tool to reach
 // for, the only legal answer is the document.
+//
+// AND IT ASKS WHAT REMAINS BEFORE IT ASKS FOR THE DOCUMENT, which is the one
+// question neither clock into this door can answer for itself. The ceiling reads
+// a counter and the race reads a request; neither of them can see that the turn
+// finished the work thirty seconds ago. A measured turn wrote all eight files it
+// was asked for inline, the race's confirm landed at the tail of it, and the
+// conversion started a task on the leftovers of a finished answer — junk work,
+// duplicating a turn nobody needed to duplicate. So the model that holds the
+// findings is asked the question it is the only reader able to answer, and
+// [checkpointNothingLeft] is the answer that stops the handover dead.
+//
+// THE FIRST LINE IS THE DECLARATION AND NOT A NAME. It used to ask for a short
+// name for the work there, and the name is not taken from here any more
+// ([Agent.launchRouteTask] takes the converted task's title from the person's own
+// words) — so the first line is free to carry the one thing the harness has to
+// read out of this answer before it reads anything else.
 const checkpointHandoffAsk = "[handing over] This is being handed to somebody who will finish it, and they cannot " +
-	"see any of this — not what you read, not what you tried, not what you found. Write their instruction and " +
-	"nothing else: a short name for the work on the first line, then what is left to do, what you already know " +
-	"that they would otherwise have to find out again, what you have ruled out, and how anybody could tell when " +
-	"it is done. Do not greet them and do not describe this conversation."
+	"see any of this — not what you read, not what you tried, not what you found. Say first WHAT REMAINS. " +
+	"If nothing remains — everything that was asked for is already done here, and all that is left is saying so — " +
+	"answer with the single line " + checkpointNothingLeft + " and write nothing else at all. " +
+	"Otherwise write their instruction and nothing else: what is left to do, what you already know that they " +
+	"would otherwise have to find out again, what you have ruled out, and how anybody could tell when it is done. " +
+	"Do not greet them and do not describe this conversation."
+
+// checkpointNothingLeft is the whole of the remains contract: the ONE line the
+// continuation writes when the turn has already done what was asked.
+//
+// IT IS A TOKEN AND NOT A SENTENCE THE HARNESS SNIFFS FOR. The alternative —
+// reading a brief for phrases that sound finished — is a keyword rule with a
+// model's bill attached, and it would fire on the brief that says "nothing is
+// left to check once the parser is rewritten". A token the ask NAMES, matched on
+// the first line alone, is a thing the model chose to say rather than a thing the
+// harness thought it heard.
+//
+// IT IS SHOUTED because the surrounding ask is prose and a token that reads as
+// prose is one a model folds into a sentence. Nothing person-facing carries it:
+// a turn that answers it is a turn that simply carries on to its own end.
+const checkpointNothingLeft = "NOTHING LEFT TO DO"
 
 // isCheckpointNote reports whether one recorded message is a checkpoint this
 // file wrote into a running turn.
@@ -335,11 +389,22 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one
-// road. It always reports true: past the last mark there is no branch back into
-// the conversation, and a ceiling that could decline would be the guarantee this
-// file exists to make, made conditionally.
+// road. Past the last mark there is no branch back into the conversation on
+// account of the WORK — the model was asked twice and the harness has stopped
+// asking — and it reports whether the turn is over.
 //
-// EVERYTHING IT DOES IS [Agent.handOverRunningTurn]'S, because the ceiling is
+// THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a
+// third refusal: it is the model saying nothing remains at all
+// ([checkpointNothingLeft]). The ceiling exists to move A GRIND somewhere it is
+// watched, and a turn that is finishing is not a grind — the meter simply stops
+// mattering the moment the turn ends. What that answer costs, if the model is
+// wrong about it, is bounded to nothing: the ladder is spent, so no mark can fire
+// again, and the turn carries on to the end it said it was reaching under the
+// same loop detector and the same stop key every turn has. What the OTHER
+// direction would cost is what was measured — a task admitted over the top of a
+// finished answer, which then stops on its own, having duplicated it.
+//
+// EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S, because the ceiling is
 // not the only clock that can decide mid-turn that this belongs on the rail. It
 // contributes the two things that are its own: the line, and a verdict ARMED TO
 // SPLIT. This turn outran one pair of hands by measurement rather than by
@@ -366,6 +431,15 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // the dowry, the task, the gap, and a turn sealed with the transcript left in a
 // state the next turn can open on.
 //
+// AND IT CAN DECLINE, on the one ground neither clock can see for itself: the
+// model answering the dowry ask with [checkpointNothingLeft]. Both clocks decide
+// on evidence that is old by the time it is spent — a counter of rounds already
+// finished, a verdict about a request the turn may since have answered — and the
+// model holding the findings is the only reader that knows whether there is any
+// work left to hand anybody. When there is not, NOTHING HAPPENS: no task, no
+// line, no gap spent, no turn sealed. The turn carries on and its own answer
+// stands, which is the honest outcome for a turn that was already finishing.
+//
 // THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
 // ride the spec's request, verbatim, exactly as they do on every other door into
 // the graph, and [composeBrief] prints them above the work under the rule that
@@ -383,15 +457,30 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // table that knows least.
 func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict) bool {
 	asked := a.taskRequest()
+	goal, remains := a.checkpointBrief(ctx, turn, model, asked)
+	if !remains {
+		// NOTHING HAPPENS, and that includes the line. A person told their answer
+		// was being moved and then left watching it finish where it was would have
+		// been told something that did not happen.
+		return false
+	}
 	verdict.Work = true
-	verdict.Goal = a.checkpointBrief(ctx, turn, model, asked)
+	verdict.Goal = goal
 
 	// THE LINE GOES ABOVE THE TASK'S OWN, which is where taskEscalationNote stands
 	// over the card it explains (task.go). It is [EventNotice] for that line's
 	// reason: the dim one-liner a surface already draws for something the harness
 	// did without stopping to ask.
 	hub.send(Event{Kind: EventNotice, Text: line})
-	said := a.launchRouteTask(hub, verdict)
+	// AND THE TASK IS NAMED FROM THE PERSON'S OWN WORDS AND NEVER FROM THE DOWRY.
+	// The other door into [Agent.launchRouteTask] cuts its title off the front of a
+	// goal a judge wrote to be a goal, which is survivable there; here the goal is
+	// a continuation written on a transcript full of tool calls, and its first line
+	// has been measured arriving as a provider's tool-call sentinel and as the
+	// closing remark of a finished answer. The person's sentence is the one thing
+	// on this road nobody writes, so it is the one thing that cannot come back as
+	// machinery — and the namer improves it a second later anyway (taskname.go).
+	said := a.launchRouteTask(hub, verdict, asked)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
@@ -443,6 +532,14 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 // only answer it can give is the document. That is also why this is not a third
 // checkpoint — it cannot be answered with more work.
 //
+// AND NO BELT IS NOT THE SAME FACT AS NO TOOL GRAMMAR, which is the thing this
+// was measured being wrong about. An omitted tools array takes the hand away; it
+// does not take away the special tokens the model's own chat template is built
+// around, and it does nothing about a transcript in which every previous turn
+// called a tool. On deepseek this request came back as the raw tool-call sentinel
+// and nothing else. So the safety of the shape is real but partial, and the part
+// it cannot cover is covered by reading the answer instead.
+//
 // ── AND IT CANNOT LOSE THE ASK ──
 //
 // Because the ask does not go through it. The person's words ride the spec's
@@ -452,7 +549,25 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 // the same failure at the typed door. A task started on the person's own sentence
 // is a task that lost the dowry; a task that could not start at all would be the
 // guarantee broken.
-func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked string) string {
+//
+// ── AND IT READS WHAT CAME BACK ──
+//
+// Two answers to this ask are not briefs, and both were measured on real turns:
+//
+//   - MACHINE MARKUP, for the reason above. It is refused exactly as a provider
+//     fault is refused — the person's words stand alone as the brief — because a
+//     document nobody can read is worth what no document is worth. The test is
+//     STRUCTURAL ([briefIsProse]) rather than a list of sentinels: an instruction
+//     is words with spaces between them whoever wrote it, and a rule spelled in
+//     one provider's special tokens is a rule that is wrong on the next provider.
+//   - NOTHING LEFT TO DO, which is not a failure at all. It is the remains
+//     contract answered ([checkpointNothingLeft]), and it drops the handover
+//     rather than writing a brief.
+//
+// So it reports the brief AND whether there is anything to hand over, which are
+// two facts rather than one: falling back to the person's ask and dropping the
+// handover are opposite answers to opposite failures.
+func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked string) (string, bool) {
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -462,7 +577,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked s
 	response, err := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
 		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
 	if err != nil || response == nil {
-		return asked
+		return asked, true
 	}
 	// The person pays for it on the turn it belongs to rather than out of the
 	// auxiliary pocket, because this is the conversation's own model reading the
@@ -472,12 +587,76 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked s
 	a.addUsage(turn, response)
 
 	brief := strings.TrimSpace(response.Text())
-	if brief == "" {
-		return asked
+	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that
+	// is about the WORK rather than about the document.
+	if declaresNothingLeft(brief) {
+		return "", false
+	}
+	// An empty reply, a whitespace one and a sentinel are all the same failure to
+	// this line: nothing came back that anybody could work from. The person's own
+	// words stand alone, which is what a provider fault already falls back to.
+	if !briefIsProse(brief) {
+		return asked, true
 	}
 	// THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, and that constant rather
 	// than a second number of this file's own (task_shape.go's
 	// taskShapeBriefLimit): two spellings of one bound are two answers to the
 	// question of how long a worker's instruction may be.
-	return clip(brief, taskShapeBriefLimit)
+	return clip(brief, taskShapeBriefLimit), true
+}
+
+// declaresNothingLeft reports whether the continuation answered the remains
+// contract with its token rather than with an instruction.
+//
+// IT READS THE FIRST LINE AND MATCHES ON WORDS. The ask says to write the token
+// alone, and a model that has just been told to shout one line writes it wrapped
+// in emphasis, or followed by the reason, about as often as it writes it bare —
+// so the match is on the first line BEGINNING with the token's words, folded
+// through [normalizedWords] exactly as both namers' answers are (title.go). What
+// it will not do is find the token in the middle of a brief, because a paragraph
+// that happens to contain those four words is a brief and not a declaration.
+func declaresNothingLeft(brief string) bool {
+	said := normalizedWords(firstLine(brief))
+	token := normalizedWords(checkpointNothingLeft)
+	if len(said) < len(token) {
+		return false
+	}
+	for index, word := range token {
+		if said[index] != word {
+			return false
+		}
+	}
+	return true
+}
+
+// briefIsProse reports whether a dowry is something a person could work from.
+//
+// IT IS A TEST FOR SENTENCES AND NOT FOR SENTINELS. What it counts is WORDS — a
+// whitespace-separated run carrying letters — because that is the one property
+// every instruction in every language has and no machine markup has: prose is
+// spaced, and a tool-call sentinel is one dense token however it is spelled.
+// Matching the sentinels themselves would be a list of one provider's special
+// tokens, out of date the first time a model ships a new template, and wrong
+// about the next provider by construction.
+//
+// A digit-only field is not a word, which is what stops "8" and "2026-08-24"
+// from carrying a brief past the bar on their own.
+func briefIsProse(brief string) bool {
+	words := 0
+	for _, field := range strings.Fields(brief) {
+		letters := 0
+		for _, letter := range field {
+			if unicode.IsLetter(letter) {
+				letters++
+			}
+		}
+		if letters < 2 {
+			continue
+		}
+		words++
+		if words >= checkpointBriefWords {
+			return true
+		}
+	}
+	return false
 }

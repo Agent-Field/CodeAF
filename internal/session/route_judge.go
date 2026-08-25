@@ -372,7 +372,11 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	a.mu.Lock()
 	a.routeOffered = turn
 	a.mu.Unlock()
-	a.launchRouteTask(hub, verdict)
+	// THE TITLE COMES OFF THE GOAL ON THIS ROAD, which it may because the goal was
+	// written BY A JUDGE, to a contract, in one shot, out of the person's own
+	// request — see [Agent.handOverRunningTurn] for why the other road into this
+	// call may not do the same with a goal that is a continuation.
+	a.launchRouteTask(hub, verdict, verdict.Goal)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -567,17 +571,37 @@ type routeRace struct {
 	settled chan struct{}
 	verdict routeVerdict
 	work    bool
+	// spent is the turn's own mark that this verdict has been taken, and it makes
+	// ONE VERDICT PER TURN a property of the race rather than of whoever reads it.
+	//
+	// IT MATTERS BECAUSE A YES CAN NOW BE DECLINED. A conversion whose dowry came
+	// back saying nothing remains leaves the turn RUNNING (checkpoint.go's
+	// [Agent.handOverRunningTurn]), and a settled race that is still answering
+	// would be re-read at every step boundary after it — one more handoff ask,
+	// billed to the person, at every round of a turn that already said it was
+	// finishing.
+	//
+	// IT NEEDS NO LOCK because it is written and read on the TURN'S goroutine
+	// alone. The race's own goroutine touches `verdict` and `work` and closes
+	// `settled`; it never sees this field, so there is nothing here to contend
+	// for.
+	spent bool
 }
 
 // yes reports the both-yes verdict IF ONE HAS ALREADY LANDED, and never waits.
 // A nil race — every gated turn — is a no, which is what lets the loop hold this
 // in one line with no branch around it.
+//
+// A SETTLED RACE ANSWERS ONCE. Whatever the caller does with the verdict, the
+// race has said its piece and has nothing further to offer this turn — including
+// when the answer it gave was a no, which cannot become a yes later.
 func (r *routeRace) yes() (routeVerdict, bool) {
-	if r == nil {
+	if r == nil || r.spent {
 		return routeVerdict{}, false
 	}
 	select {
 	case <-r.settled:
+		r.spent = true
 		return r.verdict, r.work
 	default:
 		return routeVerdict{}, false
@@ -722,6 +746,16 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 // the person has already read. That is precisely the surprise the card used to
 // stand in front of. So the race is asked only at a boundary of a turn that is
 // still running, and the turn's end throws whatever is left of it away.
+//
+// AND A YES CAN STILL COME TO NOTHING. This read is made of the REQUEST, seconds
+// before an answer that may already have finished the job — measured, on a turn
+// that wrote all eight files it was asked for while the confirm was still
+// thinking. The dowry ask puts the question to the one reader that can answer it
+// and the handover drops itself when the answer is that nothing remains
+// (checkpoint.go); this returns false there, which is the turn simply carrying on
+// to the answer it was about to give. The verdict is spent either way
+// ([routeRace.yes]) — it was read, and a read verdict does not get a second
+// boundary.
 func (a *Agent) routeConvert(ctx context.Context, hub *eventHub, race *routeRace, turn *Usage, started time.Time, model string) bool {
 	verdict, ok := race.yes()
 	if !ok {
@@ -857,11 +891,20 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) bool {
 // the pre-turn one ends the turn on this sentence and records it as the turn's
 // answer ([Agent.routeAhead]), and a second copy of the wording assembled there
 // would be the one that drifts.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) string {
+//
+// THE TITLE IS THE CALLER'S TO CHOOSE, and that is the one thing that is not the
+// same on the two roads in. A goal a judge wrote is a sentence about the work and
+// its front makes a serviceable name; a goal that is a MODEL'S CONTINUATION on a
+// transcript full of tool calls is not, and has been measured opening with a
+// provider's tool-call sentinel and with the closing remark of a finished answer
+// (checkpoint.go). So the source is named at each call site rather than assumed
+// here, and whatever arrives is put through the hand that cleans every other name
+// on this surface ([routeTaskTitle]).
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string) string {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
-		title:   clip(firstLine(verdict.Goal), hintLimit),
+		title:   routeTaskTitle(title),
 		summary: verdict.Why,
 		// THE PERSON'S OWN MESSAGE RIDES ALONG, as it does on every other door
 		// into the graph (task_brief.go). It matters most here: this goal was
@@ -895,6 +938,30 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) string {
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
 	hub.send(Event{Kind: EventNotice, Text: said})
 	return said
+}
+
+// routeTaskTitle is the name an auto-started task wears until the namer improves
+// it (taskname.go), and it is the SAME HAND that cleans both namers' answers
+// ([cleanTitle], title.go) rather than a second one of this file's own.
+//
+// IT IS CLEANED BECAUSE THIS ONE IS READ ALOUD. Every other title on this road
+// arrives from a call that asked for a name; this one is cut off the front of a
+// paragraph nobody wrote to be a name, and it goes straight into the told-after
+// line a person reads. A rail row rendering `**refactor beta.py — 15+ steps**`
+// was measured, so the markdown a model emphasises with comes off here with the
+// quotes, the announcements and the trailing full stop that hand already takes.
+//
+// AN ANSWER THE CLEANER REFUSES ENTIRELY still gets a title, which is where this
+// parts company with [cleanTaskName]: that one is choosing whether to REPLACE a
+// name and may answer "leave it alone", and this one is the only name the task
+// has. So the raw first line stands when nothing survives the cleaning, and the
+// namer has the row a second later either way.
+func routeTaskTitle(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if title := cleanTitle(raw); title != "" {
+		return title
+	}
+	return clip(firstLine(raw), hintLimit)
 }
 
 // routeFallbackAcceptance is what an auto-started task is finished against when
