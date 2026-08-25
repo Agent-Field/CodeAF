@@ -139,7 +139,15 @@ connect a new account inside a task.
 A task is also a job. It shows in `jobs list` labelled `task 7` with the title as detail,
 `jobs kill` ends it exactly as a time limit does, and closing the session kills every
 running task. Its step-by-step log is the job log, at
-`<workspace>/.aforge-v3/jobs/<job id>.log`.
+`<session folder>/logs/jobs/<job id>.log`.
+
+**A task's own droppings are kept with the conversation, never in the checkout it works
+in.** The job log above, and the bytes of any long tool result lifted out of a worker's
+live context to save room, both land under the conversation's `logs/` — the same place the
+conversation's own do. A worker reads a lot of files, and none of what the harness keeps
+about that reading is your work: nothing of aforge's is written into your repository or
+into the task's copy of it. Only a conversation with no folder at all falls back to
+`<workspace>/.aforge-v3/`.
 
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
@@ -334,8 +342,10 @@ generates them again has never called `edit` in its life, and is not stuck.
 **It changed the worktree.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under
 everything else, so a tool nobody classified still counts when it actually produced
-something. Job logs under `.aforge-v3` are excluded: the harness's own droppings are not
-the task's work.
+something. Anything under `.aforge-v3` is excluded: what the harness leaves there is not
+the task's work. Job logs and stubbed tool results are not even there any more — they are
+kept with the conversation, under its own `logs/` — and the exclusion stays as the floor
+under everything else aforge may leave in a checkout.
 
 **It learned something.** A read-only call aimed at a target the task has not aimed at
 before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,

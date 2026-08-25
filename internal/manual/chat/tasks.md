@@ -917,7 +917,8 @@ there from the moment the job starts until the moment it ends. This covers every
 
 The row's name is the command itself — `npm run dev` — or the watch's or render's own
 label where it has one, cut to three words like every other name on this column. Under it,
-one dim line: `job 3 · log /path/to/.aforge-v3/jobs/3.log`, cut to the column's width. That
+one dim line: `job 3 · log ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log`, cut
+to the column's width. That
 line is the whole handle back to the work: the number is what `jobs output 3` and `jobs kill
 3` take, and the path is a file you can open yourself.
 
@@ -956,7 +957,8 @@ it ended when aforge closed; its log is kept
 A job is a child of the aforge process and dies with it, so **nothing is restarted** — no
 restored row is running, none of them is counted on the status line, and none can be
 stopped, because there is nothing left to stop. The log file it was writing is still under
-`<workspace>/.aforge-v3/jobs/`.
+this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
+was started here or by a task's worker in its own checkout.
 
 ## The + /task row at the foot of the column — starting a task from the side
 

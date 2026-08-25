@@ -970,7 +970,11 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	child, err := newAgent(Config{
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
-		fixesDir:       a.config.fixesBucket(),
+		fixesDir: a.config.fixesBucket(),
+		// And its litter follows the run's own session rather than the directory
+		// the node works in, for a task node's reason exactly (task_run.go's
+		// newChild counterpart, landing.go).
+		droppings:      parent.droppingsPlace(),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,

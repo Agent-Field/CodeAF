@@ -3947,7 +3947,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// three fields nothing reads. What a node must NOT share is the request
 	// wrapper around that client — see [unwrapCompleter] for the cache lineage.
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(a.familyPlace(node), a.sessionID(), node.id, suffix)
+	// ONE PLACE ANSWERS BOTH QUESTIONS ABOUT THIS WORKER'S FILES, and they are the
+	// same question: the transcript it writes and the litter it leaves both belong
+	// to the family, never to the directory it happens to be working in
+	// ([Agent.familyPlace], landing.go). It is read here, under the lock, because
+	// the literal below is built after it is released.
+	family := a.familyPlace(node)
+	journal := taskJournalPath(family, a.sessionID(), node.id, suffix)
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
@@ -3971,7 +3977,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// alone). A worker hammering a build in a worktree is the richest source
 		// of error→fix pairs this product has, and every one of them would be
 		// lost in a private file nobody reads.
-		fixesDir:       a.config.fixesBucket(),
+		fixesDir: a.config.fixesBucket(),
+		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
+		// session and carries no Place — that is deliberate (session.go) — so with
+		// nothing here its job logs and its stubbed tool results landed in
+		// <workspace>/.aforge-v3, and a worker's workspace is the person's
+		// repository or a worktree of it. landing.go states the law and the
+		// measured failure; this line is the whole of the fix for a task node.
+		droppings:      family,
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,

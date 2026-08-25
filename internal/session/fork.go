@@ -675,6 +675,14 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	hand, err := newAgent(Config{
 		// THE SAME DIRECTORY, WHICH IS THE POINT. A worktree per hand is what
 		// makes a task a task; what stands in for it here is the scope below.
+		//
+		// WHICH IS EXACTLY WHY THE DROPPINGS MAY NOT FOLLOW IT. A hand shares the
+		// caller's workspace and has no folder of its own, so a stubbed tool
+		// result of its own filed itself into that workspace — the person's
+		// repository, for every fork the conversation itself runs (landing.go).
+		// The caller's answer is the family's answer at any depth: a hand of a
+		// worker of a node inherits what that worker was handed.
+		droppings:     parent.droppingsPlace(),
 		Workspace:     parent.Workspace,
 		Model:         model,
 		APIKey:        parent.APIKey,

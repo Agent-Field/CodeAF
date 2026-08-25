@@ -785,11 +785,16 @@ aforge does not jump straight to summarizing. There are rungs before it.
 line naming the tool, its first line, its size and where the whole of it lives:
 
 ```
-[tool: bash · go build ./... — 0 exit · 41208 bytes · full: .aforge-v3/stubs/<hash>.txt]
+[tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.aforge/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
 ```
 
 The bytes are written to disk first, named by their own digest — or the pointer is the id of
 the result already posted to the store — and the model can `read` them back at any time.
+**They are written in this conversation's own folder, under `logs/stubs/`, and never in your
+project**: a stubbed result is the harness's own droppings, not your work. That holds for a
+task's worker too, however long the files it reads — its stubs are filed with the
+conversation that sent it out, not in the checkout it is working in. Only a conversation
+with no folder at all falls back to `<workspace>/.aforge-v3/stubs/`.
 **The journal is never stubbed** — the record on disk keeps the whole result. An interrupted
 or failed turn is left alone, and a session with no workspace does nothing here.
 
