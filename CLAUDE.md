@@ -129,3 +129,17 @@ packages, `internal/session TestTheLegacyWorktreeStaysUnderTheRepository`, and f
 alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
 `TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
 believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
+
+**Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
+
+```sh
+go test ./internal/remote/ ./internal/enginehost/ ./internal/pair/... ./internal/relay/ ./internal/furrow/
+make test-remote          # three containers, no API key, ~50s; SKIPS GREEN with no docker
+```
+
+`make test-remote` builds its container binaries for **this machine's** architecture; an
+`Exec format error` from `modelstub` means that pin was reintroduced. With no second
+machine, `--host localhost` is a real connection over a real ssh pipe and exercises
+everything except the shared-disk law — `docs/remote-access-testing.md` §3.0 has the tmux
+recipe for driving the surface and killing the link on purpose.
+

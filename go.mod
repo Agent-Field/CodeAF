@@ -17,12 +17,15 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
+	github.com/flynn/noise v1.1.0
+	github.com/gtank/ristretto255 v0.1.2
 	github.com/int128/listener v1.3.0
 	github.com/int128/oauth2cli v1.18.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/muesli/termenv v0.16.0
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/yuin/goldmark v1.8.5
+	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0

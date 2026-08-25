@@ -286,6 +286,19 @@ disk when you switched away from them.
 - Closing the terminal window is not a quit aforge sees; the draft written 300ms after
   you stopped typing is what survives that.
 
+## Keys — the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
+
+This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
+listens for is on this page, in the tables below.
+
+If you came here looking for a different kind of key, it is somewhere else:
+
+- an **API key** for a model — see *Models and cost* and *Connected accounts*
+- a **device key** or a **pairing code** for reaching another machine — see
+  *Reaching a machine with a pairing code*
+- an **ssh key** — that is your own ssh setup, and aforge runs your `ssh` unchanged; see
+  *Running on another machine*
+
 ## Keys in the message box: sending, stopping, and queueing
 
 These apply with no overlay up, no room open, and no mode on.
