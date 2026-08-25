@@ -29,6 +29,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"task page is empty", "task-rooms-after-restart"},
 		{"task finished but no chat shown", "task-rooms-after-restart"},
 		{"see what a task did after restarting", "task-rooms-after-restart"},
+		// And the same blank met from INSIDE a row that was never a task at all —
+		// a background job, which has a log where a task has a transcript. This is
+		// the way the defect was actually reported: "inside a task I cannot see
+		// the chat session or the output".
+		{"inside a task I cannot see the chat session or the output", "task-rooms-after-restart"},
+		{"why is the task page hidden", "task-rooms-after-restart"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},

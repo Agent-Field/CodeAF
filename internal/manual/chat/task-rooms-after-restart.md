@@ -41,10 +41,49 @@ That line means the file itself is gone: a session folder you deleted, or work t
 happened on another machine. It is a fact about the disk, not a fault in the task. A room
 with even one block in it never shows the line.
 
+**A room never draws a blank body under its header.** If the roster still holds the task's
+report — and it does, for anything that landed in a conversation you have open — the report
+is drawn above that line, so the page tells you what the work came to even when the
+transcript behind it is gone:
+
+```
+Added the guard in parseRow and covered it with a test.
+this task's transcript is not here any more
+task finished — esc to return
+```
+
+The header is drawn from the same record, which is why it stays correct — the name, the
+state, the elapsed — in every one of these cases.
+
 The room is one of two doors onto old work. The other is the task page (`ctrl+.`,
 `/history`), whose `enter` on an `earlier` row opens a card with the task's report read off
 the same journal — and which says `its transcript is not on this disk any more` in the same
 case. If the room is empty, the card will be too; the file is the same file.
+
+## Inside a task I cannot see the chat, the output or anything else — the page is hidden or blank
+
+If you walked into a row and the body under the header showed nothing you could use, check
+**what kind of row it was**. The column beside the conversation carries two different
+things, and only one of them has a chat inside it.
+
+- **A task** has an agent, a transcript and a report. Its room replays the whole thing. If
+  it draws no transcript, the file is gone and the page says
+  `this task's transcript is not here any more` — with the task's report above it when the
+  roster still holds one.
+- **A background job** — anything `bash background:true` started, a watch, a video render —
+  has none of that. There is no agent inside a job and nothing was ever journaled for it,
+  so its page shows the log line `job 4 · log /path/…` and, under it,
+  `a background job keeps a log, not a transcript`. Reading that log is how you see its
+  output; `jobs output 4` prints it too.
+
+A job's row is easy to tell apart before you open it: it is the row whose dim under-line
+starts with `job` and a number.
+
+Earlier versions of aforge got this wrong in a way worth naming, in case you remember it: a
+job's page came up with a correct header — its name, `done`, its elapsed — over a body
+holding nothing but `· no task 4 in this session` and the foot. That sentence was aforge
+talking to itself, not about anything you did, and it is gone. **No room draws an empty
+body any more**: whatever the row is, the page says what it knows and what it does not.
 
 ## Task finished but no chat shown — where did the task's conversation go
 
