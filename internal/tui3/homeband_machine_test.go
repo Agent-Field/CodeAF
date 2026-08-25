@@ -346,15 +346,11 @@ func TestWalkingUpOffTheTopRowReachesTheMachineCard(t *testing.T) {
 	a := lab.app(mine)
 	band.wire(a)
 	a.openHome()
-	// AND NOW IT OPENS THERE. The bridge lane landed that law (homebridge.go's
+	// Home opens with the cursor on its own conversation now (homebridge.go's
 	// [homeView.openAt]), so the walk this test is about starts from a cursor
-	// standing in the list — which is where the first ↓ puts it.
-	if !a.home.resting() {
-		t.Fatal("home did not open at rest")
-	}
-	a.home.move(1)
+	// standing in the list.
 	if a.home.resting() {
-		t.Fatal("↓ off the machine card did not reach the list")
+		t.Fatal("home opened at rest instead of on its own conversation")
 	}
 	for i := 0; i < len(a.home.lines)+2 && !a.home.resting(); i++ {
 		a.home.move(-1)

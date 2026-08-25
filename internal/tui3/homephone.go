@@ -627,7 +627,13 @@ func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
 	//
 	// The pointer's flag stays `false` and that is the tier's own law rather than
 	// an oversight: a phone has no pointer to shadow a row with.
-	marked := line.kind == homeSession && a.homeMark(line.row) == markFront
+	//
+	// The wide tiers retired the band for home's own conversation ([markHere] —
+	// a dashboard's grounds belong to the hand), and this tier deliberately did
+	// not follow: a phone's inbox is one cramped stacked column whose `here`
+	// tail is the first thing truncation takes, so the band is the one mark
+	// that always survives the width.
+	marked := line.kind == homeSession && a.homeMark(line.row) == markHere
 	return overlayLinesTinted(label, note, tint, at == h.cursor, marked, false, width, pal)
 }
 
@@ -643,7 +649,7 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	switch line.kind {
 	case homeSession:
 		return homeGlyph(line.row, pal.ascii) + " " + homeName(line.row),
-			homeNote(line.row, a.homeHeld(line.row), a.homeMark(line.row) == markOurs,
+			homeNote(line.row, a.homeHeld(line.row), a.homeMark(line.row),
 				a.homeRowGone(line.row), a.homeFresh(line.row), h.world.Read),
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
 	case homeItem:

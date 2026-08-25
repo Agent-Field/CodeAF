@@ -810,13 +810,13 @@ func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
 	}
 }
 
-// AND A LAUNCH THAT GREETS YOU OPENS AT REST, which is what became of the case
-// that broke. A session folder nobody has spoken in yet is not a row the world
-// reports, so the cursor never had a row to open on — it now opens on NO row at
-// all (homebridge.go's [homeView.openAt]), the card beside it is the machine's,
-// and the first ↓ finds a conversation with a card of its own rather than the
-// fold line that used to swallow it.
-func TestAFreshLaunchOpensAtRestAndTheFirstArrowFindsAConversation(t *testing.T) {
+// AND A LAUNCH WHOSE OWN CONVERSATION IS NOT ON THE LIST OPENS ON THE FIRST
+// CONVERSATION INSTEAD, which is what became of the case that broke. A session
+// folder nobody has spoken in yet is not a row the world reports, so the cursor
+// has no own-row to open on — it falls to the first row a cursor may stand on
+// (homebridge.go's [homeView.openAt]), a conversation with a card of its own,
+// rather than the fold line that used to swallow it.
+func TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	// Enough conversations that the project collapses a tail — the fold line was
@@ -849,14 +849,24 @@ func TestAFreshLaunchOpensAtRestAndTheFirstArrowFindsAConversation(t *testing.T)
 	if !strings.Contains(homeText(a), "more") {
 		t.Fatal("nothing collapsed, so the fold line this guards against is not on the screen")
 	}
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeSession {
+		t.Fatalf("the launch landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
+	}
+	if a.home.cursor != a.home.placesTop() {
+		t.Fatalf("the launch landed on line %d, want the first standable row at %d:\n%s",
+			a.home.cursor, a.home.placesTop(), homeText(a))
+	}
+	// Rest is still one ↑ away, machine card and all.
+	a.home.move(-1)
 	if !a.home.resting() {
-		t.Fatalf("a greeted launch did not open at rest:\n%s", homeText(a))
+		t.Fatalf("↑ off the top row did not reach rest:\n%s", homeText(a))
 	}
 	if subject, ok := a.homeSubject(); !ok || subject.kind != bandKindMachine {
 		t.Fatalf("the card at rest is %v (ok=%v), want the machine's", subject.kind, ok)
 	}
 	a.home.move(1)
-	line, ok := a.home.focusedLine()
+	line, ok = a.home.focusedLine()
 	if !ok || line.kind != homeSession {
 		t.Fatalf("the first ↓ landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
 	}
@@ -1770,13 +1780,12 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	if !strings.Contains(ansi.Strip(frame), "esc close") {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
-	// AND THE CURSOR IS ON NO ROW AT ALL: home opens at rest, so the first thing
-	// a greeted person sees is the machine's own card rather than a highlighted
-	// row somewhere in the list (homebridge.go's [homeView.openAt]). esc still
-	// means what it always meant here — go on with what I was doing.
-	if !a.home.resting() {
-		t.Fatalf("a greeted launch opened on %q, want no row at all",
-			homeName(a.home.focused()))
+	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
+	// with the selection on screen — the row esc drops back into — so the first
+	// frame answers "where am I" before a key is pressed (homebridge.go's
+	// [homeView.openAt]). Rest is still a place, one ↑ off the top of the list.
+	if got := homeName(a.home.focused()); got != "The One the Door Picked" {
+		t.Fatalf("a greeted launch opened on %q, want the door's own conversation", got)
 	}
 }
 

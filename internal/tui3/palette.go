@@ -351,8 +351,17 @@ const (
 	// markOurs is a conversation this terminal has open behind the one on
 	// screen: the same treatment as the front one, at the tier below it.
 	markOurs
-	// markFront is the conversation on screen.
+	// markFront is the CHOSEN ROW OF AN OVERLAY — the model in use, the
+	// conversation a picker would re-open — and it keeps the ladder's selected
+	// step: an overlay is a modal list with a visible cursor in it, and the
+	// chosen row's band is the language those lists have always spoken.
 	markFront
+	// markHere is home's own conversation — the row esc drops back into — and
+	// it is a SEPARATE mark because home is a dashboard, not an overlay: a
+	// persistent band on a resting page read, every time, as a cursor nobody
+	// had moved. It paints the label in the body ink, takes no ground at all,
+	// and says what it is in a word instead (home.go's homeHereWord).
+	markHere
 )
 
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
@@ -371,9 +380,19 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	switch {
 	case marked == markFront:
 		painted = pal.accent(label)
+	case marked == markHere:
+		// HOME'S OWN CONVERSATION IS A FACT, NOT A SELECTION. It wore the
+		// front mark's accent-on-selected band for a wave, and on a resting
+		// dashboard that band was the loudest thing in sight — read, every
+		// time, as a cursor nobody had moved. Ground bands on home mean one
+		// thing only: where a person's hands are. So the row says what it is
+		// the way every identity on this surface is said — in words: ink for
+		// the label (readable above its dim siblings, junior to nothing) and
+		// `here` on the tail (homeNote), with no ground and no accent.
+		painted = pal.ink(label)
 	case marked == markOurs:
-		// Open here, and not the one being drawn. The same treatment at dim
-		// strength, so a person's eye reads "this terminal has these" as one
+		// Open here, and not the one being drawn. One tier under the here
+		// row's ink, so a person's eye reads "this terminal has these" as one
 		// group rather than as two unrelated paints.
 		painted = pal.muted(label)
 	case oncursor:
@@ -395,10 +414,11 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 		// a person is reading when they stop on it.
 		line += strings.Repeat(" ", gap) + paintNote(tint, pal, note, lifted)
 	}
-	// THE MARKED ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT. Both can
-	// be true of one row — the cursor lands on the conversation you are in — and
-	// the louder step wins, so that row never gets QUIETER for being arrived at.
-	// The cursor is still said, on the lead.
+	// AN OVERLAY'S CHOSEN ROW OUTRANKS THE CURSOR ON THE ROW IT SHARES WITH IT
+	// — both can be true of one row, and the louder step wins so the row never
+	// gets quieter for being arrived at; the cursor is still said, on the lead.
+	// Home's own conversation deliberately is not in this switch: on a
+	// dashboard the ground is the hand's and only the hand's ([markHere]).
 	switch {
 	case marked == markFront:
 		return pal.selected(line, width)

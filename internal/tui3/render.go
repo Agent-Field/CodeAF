@@ -638,23 +638,25 @@ func (a *app) entryRows(d deck, i, width int) []string {
 func (a *app) renderEntry(i int, e *entry, width int) []string {
 	switch e.kind {
 	case entryUser:
-		// THE PERSON'S OWN WORDS, MARKED BY THE PERSON'S OWN GLYPH — the accent
-		// on the `›` and the body in the ordinary ink, with every continuation
-		// line aligned under the TEXT rather than under the glyph. The glyph
-		// marks the turn; the column belongs to the sentence.
+		// THE PERSON'S OWN WORDS, IN A QUIET BLUE OF THEIR OWN — the accent on
+		// the `›` and the body in MUTED, one full tier calmer, with every
+		// continuation line aligned under the TEXT rather than under the
+		// glyph. The glyph marks the turn; the column belongs to the sentence.
 		//
 		// The whole body wore the accent for a wave, and a wave was long enough
 		// to read the cost: a question is often the longest paragraph on the
 		// screen, and painting all of it in the identity hue spent THE ACCENT
 		// BUDGET (styles.go) on prose — over a working turn whose narration was
-		// also blue, the page read as one blue field. Identity still takes hue
-		// and markdown still keeps weight; the hue is just spent where identity
-		// lives, on the mark, not on the sentence. Nothing the model writes is
-		// ever painted in the accent, its prose never opens on `›`, and its
-		// blocks never indent continuation lines this way — the shapes were
-		// always the marker, and the ink can be shared. The body was bold ink
-		// once before, and bold stays wrong for the stated reason: MARKDOWN
-		// OWNS WEIGHT.
+		// also blue, the page read as one blue field. It then wore plain ink
+		// for a day, and that failed the other way: the question and the answer
+		// were the same colour, and the one distinction a transcript must draw
+		// had nothing carrying it but a glyph. So the body settles one tier
+		// down-and-across, on MUTED — a soft blue a full step calmer than the
+		// accent, which still says "a different voice" without spending the
+		// budget. Nothing the model's prose wears is muted (its narration is
+		// the neutral narr tier, its answer is ink), so the hue stays an
+		// identity. The body was bold ink once before, and bold stays wrong
+		// for the stated reason: MARKDOWN OWNS WEIGHT.
 		body := wrap(e.text, width-2)
 		out := make([]string, 0, len(body))
 		for i, line := range body {
@@ -679,7 +681,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 				// while the scanner still safely recognizes their door on this row.
 				spans = commandSpans([]rune(line), true)
 			}
-			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.ink))
+			out = append(out, lead+paintCommandSpans(line, spans, a.pal, a.pal.muted))
 		}
 		// AND A PATH THE PERSON TYPED IS A DOOR TOO (pathlink.go). The commonest
 		// one here is not typed at all: an `@task` mention leaves a footnote

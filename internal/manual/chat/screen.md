@@ -1615,13 +1615,14 @@ If a colour on this surface could be described as "bright", it is wrong.
 
 Every colour aforge draws is a role, and each role has one job.
 
-The roles: ink for the body — your message and the reply alike — and every tool's
-target; accent for your own `› ` glyph, the tool rail, and the one live or chosen thing
-on the screen; muted for tool names, the spinner, and headings; a neutral narration grey
-for the reply's working prose, one shade under the body; dim for everything the surface
-says about itself — stats, notes, hunk markers, the status line; add and del for a
-diff's `+` and `−`; bad for `✗`, `exit N` and an overdue context meter; warn for a bound
-about to be reached and only that; and violet for **the question hue and nothing else**.
+The roles: ink for the reply's body and every tool's target; accent for your own `› `
+glyph, the tool rail, and the one live or chosen thing on the screen; muted — a soft
+blue one full step calmer than the accent — for your message's words, tool names, the
+spinner, and headings; a neutral narration grey for the reply's working prose, one shade
+under the body; dim for everything the surface says about itself — stats, notes, hunk
+markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
+and an overdue context meter; warn for a bound about to be reached and only that; and
+violet for **the question hue and nothing else**.
 
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
@@ -1635,11 +1636,12 @@ Violet is spent on the moment aforge is waiting for you and on nothing else: the
 question, its glyph, its choices, the status word, and the legend while one is up. Its
 whole value is that seeing it anywhere means one thing.
 
-Hue carries identity; weight carries markdown. Your message is ordinary ink behind its
-accent `› ` glyph — the glyph is the identity mark, the words are just words — and
-nothing the model writes is ever painted accent, opens on `›`, or indents its
-continuation lines the way your message does. On a 16-colour terminal the glyph's accent
-degrades to bold, which is the only marker left there.
+Hue carries identity; weight carries markdown. Your message is the soft muted blue
+behind its accent `› ` glyph — a quiet colour of your own, a full step calmer than the
+accent, so a question and the answer under it never read as one voice — and nothing the
+model's prose ever wears is muted or accent: its narration is the neutral grey, its
+answer is ink. On a 16-colour terminal the glyph's accent degrades to bold, which is the
+only marker left there.
 
 One thing inside your own words is painted differently: a slash command at the start, or
 a live `/task`, `/standing`, or `/orders` tag later in the sentence, wears a **chip** —

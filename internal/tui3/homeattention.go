@@ -774,12 +774,12 @@ func (a *app) attentionLine(line homeLine, at, width int, pal palette) (string, 
 		// facts, and a label that spent a second column on decoration would cost
 		// more than the zone it names.
 		//
-		// AND IT WEARS A GROUND WHILE THE CURSOR IS STANDING IN THIS STRIP, which
-		// is how the wide frame says which of its three columns the keyboard is in
-		// — the one heading a frame marks (homesection.go holds the whole law).
-		// The word stays dim: THE ACCENT BUDGET forbids lighting a label, and the
-		// ground alone carries the fact.
-		return h.sectionGround("  "+pal.dim(fit(line.project, width-2)), at, width, pal), true
+		// AND IT STEPS UP TO THE BODY INK WHILE THE CURSOR IS STANDING IN THIS
+		// STRIP, which is how the wide frame says which of its three columns the
+		// keyboard is in — the one heading a frame marks (homesection.go holds
+		// the whole law, and why the mark is lightness rather than a second
+		// band). Ink is not the accent, so THE ACCENT BUDGET is kept.
+		return "  " + h.sectionInk(at, pal)(fit(line.project, width-2)), true
 	case line.kind == homeAttentionTeach:
 		// THE SAME DIM AS THE LABEL IT HANGS UNDER, in the same indent, with no
 		// mark and no chip. It is a caption on the label rather than a row of its
