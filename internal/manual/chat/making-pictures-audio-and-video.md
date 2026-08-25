@@ -116,7 +116,7 @@ image model" and it can, just in time.
 
 ## Why does a picture or video look generic, blurry, or like AI slop?
 
-Three causes, all fixable — none of them is "the model is bad at this".
+Four causes, all fixable — none of them is "the model is bad at this".
 
 **The prompt left too much undecided.** Every dimension a prompt does not
 decide — the medium, the light, the palette, the mood, the era — the image or
@@ -126,6 +126,17 @@ specificity: aforge writes the decisions into the prompt rather than asking for
 "a nice picture of X" and hoping. Ask it to redo a generic render "as a
 photograph, natural light" or "as a flat diagram, two colours" and the words go
 straight to the model.
+
+**Every dimension was decided — to the genre's own cliché.** A fully detailed
+prompt can still land on the average when each detail is what everyone in that
+genre writes: the glowing shape on a dark field, the neon palette, the adjective
+pile ("ultra-detailed", "cinematic"). Eight models given that prompt return
+eight competent copies of the same picture, because the prompt asked for the
+mean of the genre. Distinctive work states at least one concrete decision the
+average would not make — a real medium, an unexpected palette, a metaphor
+specific to the subject rather than the industry. This applies however the
+render is made: the same law covers a prompt sent through `generate_image` and
+one a script of aforge's own sends to an API.
 
 **Nothing asked for sharpness.** `generate_image` takes `size` (for example
 `1024x1024`) and `generate_video` takes `resolution` (for example `1080p`), both
