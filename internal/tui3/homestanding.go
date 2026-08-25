@@ -386,7 +386,11 @@ func standRowInk(view StandingItemView) noteInk {
 		if selected {
 			return pal.ink(note)
 		}
-		return pal.accent(note)
+		// AMBER, BECAUSE IT IS A PERSON BEING WAITED ON. The design spends one
+		// colour on that reading everywhere it appears (styles.go's
+		// [hueAskPlace]); this note used to take the accent, which on a place now
+		// means work in flight — the opposite fact.
+		return pal.warn(note)
 	}
 }
 
@@ -576,7 +580,10 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 		// The one thing on this card that is not a fact about the past. It is
 		// somebody's to do, and it is the only line here that is not dim.
 		for _, line := range wrap("needs your look · "+item.NeedsPerson, width) {
-			state = append(state, pal.accent(line))
+			// Amber: this is the card's one line about a person being waited on,
+			// and the design gives that reading one colour (styles.go's
+			// [hueAskPlace]).
+			state = append(state, pal.warn(line))
 		}
 	}
 	if view.Running {

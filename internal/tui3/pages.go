@@ -237,7 +237,12 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		}
 		chip := tabPad + word + tabPad
 		if id == a.page {
-			line += pal.selected(pal.bold(pal.accent(chip)), ansi.StringWidth(word)+tabPadCols)
+			// THE WORD YOU ARE STANDING IN IS TIER 1, BOLD, AND NOT AN ACCENT.
+			// SCREEN 2a's first level is spelled out: "1 · page — bright, bold,
+			// one word, only in the tab bar", and the accent on a place is spent
+			// on the two live states and on nothing else (styles.go's THE
+			// ONE-ACCENT LAW). The band under it is what says "here".
+			line += pal.selected(pal.bold(pal.ink(chip)), ansi.StringWidth(word)+tabPadCols)
 		} else {
 			line += pal.dim(chip)
 		}
@@ -295,6 +300,16 @@ func placeFrame[H any](a *app, width, height int, blank H, body func(width, room
 // row that was actually drawn, exactly as every other row on the frame does.
 func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	body func(width, room int) []placeRow[H], bar func(width int) (string, H, bool)) ([]string, []H, int, int) {
+	// THE PLACE LADDER IS IN FORCE FOR THE WHOLE OF THIS FRAME, and it is put back
+	// before this function returns (styles.go's [palette.onPlaces]). Every row
+	// below — the pulse, the tab bar, the body the place itself builds, the
+	// composer and the foot — asks `a.pal` for its colours, so swapping the ladder
+	// here is what makes the design's palette reach two thousand call sites
+	// without one of them being edited. The conversation is untouched because it
+	// is never drawn inside this frame: a place takes the whole terminal.
+	was := a.pal
+	a.pal = was.onPlaces()
+	defer func() { a.pal = was }()
 	pal := a.pal
 	lines := make([]string, 0, height)
 	hits := make([]H, 0, height)
@@ -399,7 +414,13 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	for len(lines) < height {
 		add("", blank)
 	}
-	return lines, hits, caretX, caretY
+	// AND THE PAGE GROUND GOES ON LAST, OVER EVERY CELL THE FRAME OWNS — the pad
+	// rows above included, which is where a person actually reads the ground as a
+	// page (styles.go's [palette.pageGround] states the three things it does and
+	// why each is load-bearing). It is applied here, once, on a finished frame,
+	// rather than by each place: a place that had to remember to paint its own
+	// ground is a place that will one day forget on the row it added last.
+	return pal.groundRows(lines, width), hits, caretX, caretY
 }
 
 // placeChipped puts the scope chip against the right edge of the box row, and
@@ -449,15 +470,29 @@ const (
 	// does is filter, and that is said on the foot rather than in the box, where
 	// the design puts it ([homeRestHint]).
 	placeRestWord = "say what you want done"
-	// placeHintWords is the second line of the composer, in the register SCREEN
-	// 2b sets: what enter does, what the chord does, and the two ways out of this
-	// place. It is the whole hint on every place but home, which has its own
-	// sentence per row and takes this one's tail.
-	placeHintWords = "enter talk about it · alt+enter send it off as a task · alt+. map · tab next place · esc close"
+	// placeHintWords is the second line of the composer, AND IT IS THE DESIGN'S
+	// OWN SENTENCE WORD FOR WORD (SCREEN 2b, and FIDELITY.md item 3 quotes it as
+	// the composer's foot). Four clauses: what enter does, what the chord does,
+	// how the map appears, and the way to the next place.
+	//
+	// TWO THINGS ABOUT IT WERE DRIFT AND ARE NOW FIXED. It said `alt+. map`,
+	// which is a key and a noun rather than a key and what it does — every other
+	// clause on this line is a verb phrase — and it carried a fifth clause,
+	// `esc close`, that the design does not draw here. `esc` still closes: SCREEN
+	// 3a puts it in the first of the six key classes, beside ↑↓, enter and tab,
+	// as a key that is true on every screen and therefore does not have to be
+	// re-advertised on each one.
+	placeHintWords = "enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place"
 	// placeHintTail is what every other place's hint ends with, appended rather
 	// than written into each sentence so that a hint and the router can never
 	// disagree about which keys exist.
-	placeHintTail = "alt+. map · tab next place"
+	//
+	// IT IS THE ONE CLAUSE THE DESIGN PUTS ON EVERY PLACE'S FOOT. Screens 1e, 1f,
+	// 2c, 2d and 2f each end their own sentence with `tab next place` and with
+	// nothing after it; `alt+. for the map` belongs to the composer's line above,
+	// where FIDELITY.md item 3 puts it, and a tail that repeated it would put the
+	// same chord on two lines of the same frame.
+	placeHintTail = "tab next place"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
 	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close"

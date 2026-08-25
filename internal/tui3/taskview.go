@@ -152,7 +152,14 @@ func taskAwayNote(name string) string {
 
 // The two lines at the foot, which are what this page offers each hand.
 const (
-	taskSheetRoomKeys = "esc close · ↑↓ move · enter opens its room"
+	// THE VERB LEADS AND THE WAY OUT IS LAST, which is the register every foot the
+	// design draws is written in (SCREEN 1e: `enter open its room · → verbs: run it
+	// again, stop it · type to filter · tab next place`). This page said `esc close`
+	// first for three waves, which put the one key a person never has to be told
+	// about in the cell their eye lands on first. The keys are unchanged; only the
+	// order and the wording are, and `tab next place` is appended by the router
+	// ([placeTailed]) rather than written here.
+	taskSheetRoomKeys = "enter open its room · ↑↓ move · type to filter · esc close"
 	// taskSheetInsideKeys is the foot over a row of the project's record, and it
 	// promises what enter now does: it GOES INSIDE that task — the card carrying
 	// what the work came to, what it cost, where it left its changes and the last
@@ -161,7 +168,7 @@ const (
 	// It used to read "enter puts it in your message", which was the truth about a
 	// key answering the wrong question. The mention is still one keystroke away
 	// and the card's own foot names it.
-	taskSheetInsideKeys = "esc close · ↑↓ move · enter goes inside it"
+	taskSheetInsideKeys = "enter goes inside it · ↑↓ move · type to filter · esc close"
 	// taskSheetFilterWord opens the line that says what was typed, and
 	// taskSheetFilterNone is what that line adds when the query has taken every
 	// row off the page. A filtered page with nothing on it and nothing said is a
@@ -171,13 +178,13 @@ const (
 	// taskSheetFilterKeys replaces the enter line while a filter is being typed:
 	// esc means the filter first and the page second, and a foot that went on
 	// promising to close would be lying about the next keystroke.
-	taskSheetFilterKeys = "esc clears the filter · ↑↓ move · enter opens the row"
+	taskSheetFilterKeys = "enter opens the row · ↑↓ move · esc clears the filter"
 	// taskSheetReadKeys is the foot for a page with nothing under the cursor to
 	// act on, which is a page whose only rows are another window's work. It
 	// PROMISES NOTHING ABOUT enter, because enter does nothing there — a foot
 	// still offering a room over work this window cannot open would be the page
 	// lying about its own door.
-	taskSheetReadKeys = "esc close · ↑↓ move"
+	taskSheetReadKeys = "↑↓ move · esc close"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when

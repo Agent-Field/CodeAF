@@ -580,7 +580,7 @@ func (a *app) homeErrandSheet(width, height int) ([]string, []int, int, int) {
 
 	add(pal.dim(rule(width)), -1, homeSheetHit{})
 	text := ex.box.String()
-	add(" "+pal.accent("› ")+pal.ink(fit(text, width-4)), -1, homeSheetHit{})
+	add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1, homeSheetHit{})
 	caretX, caretY := 3+ansi.StringWidth(text), len(lines)-1
 	if caretX > width-1 {
 		caretX = width - 1
