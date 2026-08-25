@@ -515,10 +515,12 @@ four.
   and the fourth, `in other projects`, is what this computer holds that does not reach the
   conversation you are in. Inside a shelf the order is the same triage home uses: what
   needs you, then what is moving, then everything else.
-- **A row says what home says about the same order** — its mark, its name, and one clause:
-  `needs your look · …`, `checking now`, `paused`, `holds`, `checked 4m ago · …`, or its
-  cadence. There is one derivation of that clause for the whole program, so this page and
-  home can never disagree about an order in front of you.
+- **A row says how much rope the order has, then what home says about it** — its mark, its
+  name, the rope (*How much rope one has* below), and one clause: `needs your look · …`,
+  `checking now`, `paused`, `holds`, `checked 4m ago · …`, or its cadence. There is one
+  derivation of that clause for the whole program, so this page and home can never disagree
+  about an order in front of you. On a narrow terminal the clause gives way first and the
+  rope stays: it is the fact that decides whether you have to watch the thing.
 - **Nothing is folded away.** `↑ ↓` walks every row and the window scrolls with the cursor;
   `pgup` and `pgdown` move by a screenful of your terminal, not by a fixed twelve.
 - **The `last look` paragraph belongs to the row your cursor is on**, and is drawn only
@@ -528,10 +530,68 @@ four.
   three shelves that reach this conversation. Writes on the fourth shelf go to the stored
   order and the page is redrawn from what was saved.
 
-Typing remains composer text, `tab` moves to the next place, and no shift-arrow window is
-drawn or bound here. When nothing at all stands on this computer the place does not open;
+- **`shift+←` and `shift+→`** move the time window in the header — *When it fired* below.
+
+Typing remains composer text and `tab` moves to the next place. When nothing at all stands
+on this computer the place does not open;
 aforge says `nothing stands here yet — say what should always be true, and I'll hold it.`
 and leaves the screen you were on alone.
+
+## How much rope one has — asks first, earning trust, trusted alone
+
+Every row on the standing orders page says how much rope that order has, in three words at
+most. It is the one column that decides whether you have to watch the thing:
+
+| What the row says | What it means |
+| --- | --- |
+| `asks first` | You have never told it what it may do unattended. It can tell you things and nothing else |
+| `earning trust 3/5` | You gave it a licence, and it has fired 3 times in a row without needing you. Five in a row earns the next rung |
+| `trusted alone` | It has a licence and 5 clean firings in a row behind it |
+
+**The licence is the thing you said on the card**, in your own words — "open a pull request
+but never merge it". With none, an order is on `asks first` however long it stands and
+however often it fires; firing is not how rope is earned, it is how a licence you already
+gave is confirmed.
+
+**A clean firing is one that came back with nothing waiting for you and no failure.** One
+firing that stops on a question, or that could not finish, puts the count back to `0/5` — so
+`earning trust 0/5` after a run of good ones means the last one asked you something.
+Trust is a run, not a tally: five good mornings do not buy an order past the one that asked.
+
+**A rule that only `holds` says nothing about rope at all.** Nothing examines it and nothing
+fires it, so it can never act unattended and the question does not arise.
+
+Two honest limits. The count starts at zero for every order that existed before aforge began
+keeping it — nothing on disk says those old firings were clean, so they are not counted.
+And **the rung is a label, never a permission**: what a firing is allowed to do is your
+banked approval rules and only those. Nothing widens because a count went up.
+
+## When it fired — the time window on the standing orders page
+
+The standing orders page has a time window, drawn in its header as the control and the
+reading at once:
+
+```
+  standing orders                                       shift+← aug 12 – aug 25 →
+```
+
+- **`shift+←` and `shift+→`** move the window **by its own length** — one press is the
+  previous or next span, not the previous day.
+- **`shift+↑`** makes it coarser (days → weeks → months) and **`shift+↓`** finer, keeping
+  the same number of buckets.
+
+**It opens holding everything.** The span it starts on reaches back to the oldest firing this
+computer has, so the first frame hides nothing — narrowing is something you do on purpose.
+Once narrowed, orders whose last firing falls outside the window are not listed.
+
+**An order that has never fired is never hidden by it.** A rule that only holds, and a watch
+whose first moment has not come, have no firing to be outside a window — so they stay on the
+page at every span. Moving the window never reads the disk: the orders are already in hand,
+so you can hold the arrow down.
+
+**On a narrow terminal there is no window at all.** Below about 60 columns the header has no
+room for the control, so it is not drawn — and the four keys do nothing there rather than
+moving something you cannot see.
 
 ## What standing orders cannot do yet
 
