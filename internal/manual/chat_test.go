@@ -344,6 +344,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// were landing generic and soft, and the person said it in these words.
 		{"the image you made looks like generic ai slop", "making-pictures-audio-and-video"},
 		{"can you make the video higher resolution", "making-pictures-audio-and-video"},
+		// From the hero-image batch: eight models, one clichéd prompt, eight
+		// copies of the same picture — a detailed prompt is not yet a
+		// distinctive one.
+		{"all the images you generated look the same generic style", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught
