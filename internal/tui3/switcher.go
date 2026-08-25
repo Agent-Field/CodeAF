@@ -1,13 +1,18 @@
 package tui3
 
 import (
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── DETACH AND ATTACH ───────────────────────────────────────────────────────
@@ -480,4 +485,570 @@ func (a *app) enginePending() bool {
 		return true
 	}
 	return len(door.PendingConsent()) > 0
+}
+
+const switcherShown = 8
+
+type switcherVerb struct {
+	key  rune
+	word string
+}
+
+type switcherLedgerInput struct {
+	learned int
+	letGo   int
+}
+
+type switcherKind uint8
+
+const (
+	switcherConversation switcherKind = iota
+	switcherStanding
+	switcherLedger
+	switcherFold
+)
+
+// switcherRow holds every kind of door the router can open. Zero fields are
+// deliberately meaningful: a row never fabricates an address it was not given.
+type switcherRow struct {
+	kind     switcherKind
+	session  session.SessionRow
+	item     StandingItemView
+	place    string
+	project  string
+	title    string
+	note     string
+	age      string
+	at       time.Time
+	needs    bool
+	moving   bool
+	paused   bool
+	here     bool
+	fold     bool
+	foldWord string
+	options  []session.AnswerOption
+}
+
+type switcherLine struct {
+	row     *switcherRow
+	heading string
+	section bool
+	blank   bool
+}
+
+type switcherReading struct {
+	lines        []switcherLine
+	chatCount    int
+	hasAttention bool
+	grouped      bool
+	hideQuiet    bool
+	now          time.Time
+}
+
+// readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
+// outranks everything; moving is Tasks.Running or a fresh PresenceWorking
+// conversation, and a standing item moves only while view.Running. An item's
+// own NeedsPerson likewise outranks its running marker.
+func readSwitcher(world session.World, items map[string][]StandingItemView, bucket string, seen time.Time, now time.Time, grouped bool, hideQuiet bool, ledger switcherLedgerInput) switcherReading {
+	r := switcherReading{grouped: grouped, hideQuiet: hideQuiet, now: now}
+	projectByDir := make(map[string]session.Project, len(world.Projects))
+	var all []switcherRow
+	hereSet := false
+	for _, project := range world.Projects {
+		projectByDir[filepath.Clean(project.Dir)] = project
+		for _, row := range project.Sessions {
+			if row.Archived {
+				continue
+			}
+			r.chatCount++
+			needs := row.NeedsPerson()
+			moving := !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking)
+			here := filepath.Clean(row.Dir) == filepath.Clean(bucket) || row.ID == bucket
+			// Existing home passes a project bucket, not a session id. An open row
+			// in that project is the narrowest honest identification available.
+			if !here && !hereSet && row.Open && filepath.Clean(project.Dir) == filepath.Clean(bucket) {
+				here = true
+			}
+			if here {
+				hereSet = true
+			}
+			all = append(all, switcherRow{
+				kind: switcherConversation, session: row, project: project.Name,
+				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
+				at: switcherSortAt(row), needs: needs, moving: moving, here: here,
+				options: append([]session.AnswerOption(nil), row.Presence.Question.Options...),
+			})
+		}
+		for _, view := range items[project.Dir] {
+			if strings.TrimSpace(view.Item.NeedsPerson) == "" && !view.Running {
+				continue
+			}
+			needs := strings.TrimSpace(view.Item.NeedsPerson) != ""
+			all = append(all, switcherRow{
+				kind: switcherStanding, item: view, project: project.Name,
+				title: strings.TrimSpace(view.Item.Words), note: switcherStandingNote(view),
+				age: sinceAt(switcherItemAt(view), now), at: switcherItemAt(view),
+				needs: needs, moving: !needs && view.Running, paused: view.Item.Status == standing.StatusPaused,
+			})
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return switcherLess(all[i], all[j]) })
+	for _, row := range all {
+		if row.needs || row.moving {
+			r.hasAttention = true
+			break
+		}
+	}
+
+	r.addLedger(items, world, seen, ledger)
+	if grouped {
+		r.addGrouped(all, bucket, projectByDir)
+	} else {
+		r.addFlat(all)
+	}
+	return r
+}
+
+func switcherSortAt(row session.SessionRow) time.Time {
+	if row.NeedsPerson() {
+		return attentionWaitedSince(row)
+	}
+	if row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking {
+		return attentionMovingSince(row)
+	}
+	return row.At
+}
+
+func switcherItemAt(view StandingItemView) time.Time {
+	if strings.TrimSpace(view.Item.NeedsPerson) != "" {
+		return view.Item.Updated
+	}
+	if view.Running {
+		return view.Mark.Since
+	}
+	return view.Item.LastFired
+}
+
+func switcherLess(a, b switcherRow) bool {
+	ra, rb := switcherRank(a), switcherRank(b)
+	if ra != rb {
+		return ra > rb
+	}
+	if ra == 3 { // A longer wait belongs first.
+		return attentionOlder(a.at, b.at)
+	}
+	if ra == 2 { // More live work is the useful tie-break before recency.
+		ba, bb := switcherBusy(a), switcherBusy(b)
+		if ba != bb {
+			return ba > bb
+		}
+	}
+	return a.at.After(b.at)
+}
+
+func switcherRank(row switcherRow) int {
+	if row.needs {
+		return 3
+	}
+	if row.moving {
+		return 2
+	}
+	return 1
+}
+
+func switcherBusy(row switcherRow) int {
+	if row.kind == switcherConversation && row.session.Tasks.Running > 0 {
+		return row.session.Tasks.Running
+	}
+	if row.moving {
+		return 1
+	}
+	return 0
+}
+
+func switcherConversationNote(row session.SessionRow, seen time.Time) string {
+	if row.NeedsPerson() {
+		line := switcherFirstLine(row.Presence.Question.Text)
+		if line == "" {
+			line = switcherFirstLine(row.Reason())
+		}
+		if line == "" {
+			return ""
+		}
+		if row.Presence.Question.Kind == session.QuestionConsent {
+			return "wants to " + strings.TrimSpace(strings.TrimSuffix(line, "?"))
+		}
+		return "asks: " + line
+	}
+	if row.Tasks.Running > 0 {
+		note := fmt.Sprintf("%d %s running", row.Tasks.Running, switcherPlural(row.Tasks.Running, "task", "tasks"))
+		for _, entry := range row.Tasks.Rows {
+			if row.Runs(entry) && strings.TrimSpace(entry.Activity) != "" {
+				return note + " · " + switcherFirstLine(entry.Activity)
+			}
+		}
+		return note
+	}
+	files := 0
+	saved := false
+	for _, entry := range row.Tasks.Rows {
+		if !entry.EndedAt.After(seen) {
+			continue
+		}
+		files += entry.FilesChanged
+		if session.TaskKindWord(entry.Kind) == "saved shape" {
+			saved = true
+		}
+	}
+	if files > 0 {
+		return fmt.Sprintf("%d files made", files)
+	}
+	if saved {
+		return "ran a saved shape"
+	}
+	return ""
+}
+
+func switcherStandingNote(view StandingItemView) string {
+	if need := switcherFirstLine(view.Item.NeedsPerson); need != "" {
+		return "asks: " + need
+	}
+	if view.Running && strings.TrimSpace(view.Mark.What) != "" {
+		return switcherFirstLine(view.Mark.What)
+	}
+	return ""
+}
+
+func switcherFirstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if at := strings.IndexByte(s, '\n'); at >= 0 {
+		s = s[:at]
+	}
+	return strings.TrimSpace(s)
+}
+
+func switcherPlural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+func (r *switcherReading) addLedger(items map[string][]StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
+	var events []switcherRow
+	for _, views := range items {
+		for _, view := range views {
+			if !view.Item.LastFired.After(seen) {
+				continue
+			}
+			line := standing.LastLookLine(view.Item, r.now)
+			if line == "" {
+				line = switcherFirstLine(view.Item.LastCheckLine)
+			}
+			if line != "" {
+				events = append(events, switcherRow{kind: switcherLedger, item: view, title: line, place: "standing", at: view.Item.LastFired})
+			}
+		}
+	}
+	landed := 0
+	for _, row := range world.Sessions() {
+		for _, entry := range row.Tasks.Rows {
+			if entry.EndedAt.After(seen) && entry.Status != string(session.TaskRunning) && entry.Status != string(session.TaskQueued) {
+				landed++
+			}
+		}
+	}
+	if input.learned > 0 || input.letGo > 0 {
+		parts := []string{}
+		if input.learned > 0 {
+			parts = append(parts, fmt.Sprintf("learned %d %s", input.learned, switcherPlural(input.learned, "thing", "things")))
+		}
+		if input.letGo > 0 {
+			parts = append(parts, fmt.Sprintf("let go of %d", input.letGo))
+		}
+		events = append(events, switcherRow{kind: switcherLedger, title: strings.Join(parts, ", "), place: "memory", at: r.now})
+	}
+	if landed > 0 {
+		events = append(events, switcherRow{kind: switcherLedger, title: fmt.Sprintf("%d tasks landed", landed), place: "tasks", at: r.now})
+	}
+	if len(events) == 0 {
+		return
+	}
+	sort.SliceStable(events, func(i, j int) bool { return events[i].at.After(events[j].at) })
+	age := sinceAt(seen, r.now)
+	head := "since you left"
+	if age != "" {
+		head += " · " + age
+	}
+	r.lines = append(r.lines, switcherLine{heading: head})
+	for i := range events {
+		row := events[i]
+		r.lines = append(r.lines, switcherLine{row: &row})
+	}
+}
+
+func (r *switcherReading) addFlat(all []switcherRow) {
+	if r.hasAttention {
+		r.lines = append(r.lines, switcherLine{section: true})
+	}
+	r.addRowsAndFold(all)
+}
+
+func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects map[string]session.Project) {
+	var active, quiet []switcherRow
+	for _, row := range all {
+		if row.needs || row.moving {
+			active = append(active, row)
+		} else {
+			quiet = append(quiet, row)
+		}
+	}
+	selected := append([]switcherRow(nil), active...)
+	quietShown := 0
+	if !r.hideQuiet {
+		quietShown = min(max(0, switcherShown-len(active)), len(quiet))
+		selected = append(selected, quiet[:quietShown]...)
+	}
+	byProject := map[string][]switcherRow{}
+	for _, row := range selected {
+		byProject[row.project] = append(byProject[row.project], row)
+	}
+	type group struct {
+		name string
+		at   time.Time
+		here bool
+	}
+	var groups []group
+	for name, rows := range byProject {
+		g := group{name: name}
+		for _, row := range rows {
+			if row.at.After(g.at) {
+				g.at = row.at
+			}
+			g.here = g.here || row.here
+		}
+		for dir, project := range projects {
+			if project.Name == name && filepath.Clean(dir) == filepath.Clean(bucket) {
+				g.here = true
+			}
+		}
+		groups = append(groups, g)
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].here != groups[j].here {
+			return groups[i].here
+		}
+		return groups[i].at.After(groups[j].at)
+	})
+	if r.hasAttention {
+		r.lines = append(r.lines, switcherLine{section: true})
+	}
+	for _, group := range groups {
+		r.lines = append(r.lines, switcherLine{heading: group.name})
+		for _, row := range byProject[group.name] {
+			copy := row
+			r.lines = append(r.lines, switcherLine{row: &copy})
+		}
+	}
+	if r.hideQuiet {
+		if len(quiet) > 0 {
+			r.addFold(fmt.Sprintf("%s %d quiet", tokens.GlyphCollapsed, len(quiet)))
+		}
+	} else if more := len(quiet) - quietShown; more > 0 {
+		word := fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, more)
+		if !quiet[quietShown].at.IsZero() {
+			word += ", quiet since " + strings.ToLower(quiet[quietShown].at.Format("Jan 2"))
+		}
+		r.addFold(word)
+	}
+}
+
+func (r *switcherReading) addRowsAndFold(all []switcherRow) {
+	shown := 0
+	var quiet []switcherRow
+	for _, row := range all {
+		if row.needs || row.moving {
+			copy := row
+			r.lines = append(r.lines, switcherLine{row: &copy})
+			shown++
+		} else {
+			quiet = append(quiet, row)
+		}
+	}
+	if r.hideQuiet {
+		if len(quiet) > 0 {
+			r.addFold(fmt.Sprintf("%s %d quiet", tokens.GlyphCollapsed, len(quiet)))
+		}
+		return
+	}
+	room := max(0, switcherShown-shown)
+	showQuiet := min(room, len(quiet))
+	for _, row := range quiet[:showQuiet] {
+		copy := row
+		r.lines = append(r.lines, switcherLine{row: &copy})
+	}
+	if more := len(quiet) - showQuiet; more > 0 {
+		word := fmt.Sprintf("%s %d more", tokens.GlyphCollapsed, more)
+		if showQuiet < len(quiet) && !quiet[showQuiet].at.IsZero() {
+			word += ", quiet since " + strings.ToLower(quiet[showQuiet].at.Format("Jan 2"))
+		}
+		r.addFold(word)
+	}
+}
+
+func (r *switcherReading) addFold(word string) {
+	row := switcherRow{kind: switcherFold, fold: true, foldWord: word}
+	r.lines = append(r.lines, switcherLine{row: &row})
+}
+
+func (r switcherReading) rows(width int, pal palette) []string {
+	if width < 1 {
+		return nil
+	}
+	out := make([]string, 0, len(r.lines))
+	for _, line := range r.lines {
+		switch {
+		case line.section:
+			left := fmt.Sprintf("%d chats · what wants you first", r.chatCount)
+			right := "alt+g group by project"
+			if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · alt+q hide the quiet ones")+3 <= width {
+				right += " · alt+q hide the quiet ones"
+			}
+			out = append(out, switcherSides(width, left, right, pal.dim, pal.dim))
+		case line.heading != "":
+			out = append(out, pal.dim(fit(line.heading, width)))
+		case line.row != nil:
+			out = append(out, switcherPaintRow(*line.row, width, pal, r.grouped))
+		case line.blank:
+			out = append(out, "")
+		}
+	}
+	return out
+}
+
+func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) string {
+	if row.fold {
+		return pal.dim(fit(row.foldWord, width))
+	}
+	if row.kind == switcherLedger {
+		return switcherSides(width, row.title, row.place, pal.ink, pal.dim)
+	}
+	glyph, glyphInk := tokens.GlyphQueued, pal.dim
+	if row.paused {
+		glyph = tokens.GlyphPaused
+	}
+	if row.moving {
+		glyph, glyphInk = tokens.GlyphWorking, pal.accent
+	}
+	if row.needs {
+		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
+	}
+	age := row.age
+	project, note := row.project, row.note
+	if grouped {
+		project = ""
+	}
+	if row.here {
+		age = "here"
+	}
+	if width < 80 {
+		note = ""
+	}
+	parts := []string{project, note, age}
+	for switcherTailWidth(parts)+ansi.StringWidth(glyph)+2+8 > width {
+		if parts[1] != "" {
+			parts[1] = ""
+			continue
+		}
+		if parts[0] != "" {
+			parts[0] = ""
+			continue
+		}
+		if parts[2] != "" {
+			parts[2] = ""
+			continue
+		}
+		break
+	}
+	tail := switcherTailWidth(parts)
+	room := max(0, width-ansi.StringWidth(glyph)-1-tail)
+	line := glyphInk(glyph) + " " + pal.ink(fit(row.title, room))
+	used := ansi.StringWidth(line)
+	if pad := width - used - tail; pad > 0 {
+		line += strings.Repeat(" ", pad)
+	}
+	for _, part := range parts {
+		if part != "" {
+			line += " " + pal.dim(part)
+		}
+	}
+	return fit(line, width)
+}
+
+func switcherTailWidth(parts []string) int {
+	n := 0
+	for _, p := range parts {
+		if p != "" {
+			n += 1 + ansi.StringWidth(p)
+		}
+	}
+	return n
+}
+
+func switcherSides(width int, left, right string, leftInk, rightInk func(string) string) string {
+	if right == "" {
+		return leftInk(fit(left, width))
+	}
+	if ansi.StringWidth(right) >= width {
+		return rightInk(fit(right, width))
+	}
+	room := width - ansi.StringWidth(right) - 1
+	l, lw := fitWidth(left, room)
+	return leftInk(l) + strings.Repeat(" ", max(1, width-lw-ansi.StringWidth(right))) + rightInk(right)
+}
+
+func (r switcherReading) at(i int) (switcherRow, bool) {
+	if i < 0 || i >= len(r.lines) || r.lines[i].row == nil {
+		return switcherRow{}, false
+	}
+	return *r.lines[i].row, true
+}
+
+func (r switcherReading) verbs(i int) []switcherVerb {
+	row, ok := r.at(i)
+	if !ok {
+		return nil
+	}
+	if row.kind == switcherStanding {
+		verbs := switcherQuestionVerbs(row.options)
+		if strings.TrimSpace(row.item.Item.NeedsPerson) != "" && len(verbs) == 0 {
+			verbs = append(verbs, switcherVerb{'y', "yes"}, switcherVerb{'n', "no"})
+		}
+		return append(verbs, switcherVerb{'p', "pause it"})
+	}
+	if row.kind != switcherConversation {
+		return nil
+	}
+	verbs := switcherQuestionVerbs(row.options)
+	verbs = append(verbs,
+		switcherVerb{'a', "put it away"}, switcherVerb{'t', "new chat here"},
+		switcherVerb{'o', "open folder"}, switcherVerb{'c', "copy path"})
+	return verbs
+}
+
+func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
+	var verbs []switcherVerb
+	for i, option := range options {
+		if i > 1 {
+			break
+		}
+		key := 'y'
+		if i == 1 {
+			key = 'n'
+		}
+		if word := strings.TrimSpace(option.Label); word != "" {
+			verbs = append(verbs, switcherVerb{key, word})
+		}
+	}
+	return verbs
 }
