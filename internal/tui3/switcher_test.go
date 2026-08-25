@@ -19,6 +19,7 @@ type switcherLab struct {
 	seen   time.Time
 	now    time.Time
 	bucket string
+	here   string
 }
 
 func newSwitcherLab() switcherLab {
@@ -47,13 +48,13 @@ func newSwitcherLab() switcherLab {
 	standingAsk := standing.Item{ID: "stand-ask", Words: "Standing question", NeedsPerson: "send the digest?", Updated: now.Add(-8 * time.Hour)}
 	fired := standing.Item{ID: "stand-fired", Words: "Morning watch", LastFired: now.Add(-time.Hour), LastChecked: now.Add(-time.Hour), LastCheckLine: "nothing had changed", LastOutcome: standing.OutcomeNothing}
 	return switcherLab{
-		world: session.World{Projects: []session.Project{beta, alpha}, Read: now}, now: now, seen: seen, bucket: alpha.Dir,
+		world: session.World{Projects: []session.Project{beta, alpha}, Read: now}, now: now, seen: seen, bucket: alpha.Dir, here: asking.Dir,
 		items: map[string][]StandingItemView{alpha.Dir: {{Item: standingAsk}}, beta.Dir: {{Item: fired}}},
 	}
 }
 
 func (l switcherLab) read(grouped, hideQuiet bool, ledger switcherLedgerInput) switcherReading {
-	return readSwitcher(l.world, l.items, l.bucket, l.seen, l.now, switcherView{grouped: grouped, hideQuiet: hideQuiet}, ledger)
+	return readSwitcher(l.world, l.items, switcherHere{session: l.here, project: l.bucket}, l.seen, l.now, switcherView{grouped: grouped, hideQuiet: hideQuiet}, ledger)
 }
 
 func switcherText(r switcherReading, width int) string {
@@ -140,7 +141,7 @@ func TestTheSwitcherCapsAllGroupsInAttentionOrder(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		project.Sessions = append(project.Sessions, session.SessionRow{ID: fmt.Sprintf("quiet-%d", i), Title: fmt.Sprintf("Quiet %d", i)})
 	}
-	r := readSwitcher(session.World{Projects: []session.Project{project}}, nil, "", time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	r := readSwitcher(session.World{Projects: []session.Project{project}}, nil, switcherHere{}, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	stops := switcherStops(r)
 	shown := 0
 	for _, row := range stops {
@@ -271,7 +272,7 @@ func TestSwitcherVerbsRequireTheStateAndAddressTheyActOn(t *testing.T) {
 	bare := session.SessionRow{ID: "bare", Title: "Bare", Presence: session.SessionPresence{Question: session.PresenceQuestion{Options: []session.AnswerOption{{Label: "yes"}, {Label: "no"}}}}}
 	paused := standing.Item{ID: "paused", Words: "Paused", Status: standing.StatusPaused, NeedsPerson: "old words without a pending question"}
 	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{bare}}}}
-	r := readSwitcher(world, map[string][]StandingItemView{"": {{Item: paused}}}, "", time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	r := readSwitcher(world, map[string][]StandingItemView{"": {{Item: paused}}}, switcherHere{}, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	for i := range r.lines {
 		row, ok := r.at(i)
 		if !ok {
@@ -304,12 +305,12 @@ func wordsOfSwitcherVerbs(verbs []switcherVerb) string {
 func TestSwitcherNeverCallsAnEmptyBucketHereOrDrawsZeroChats(t *testing.T) {
 	now := time.Date(2026, time.August, 25, 13, 0, 0, 0, time.UTC)
 	world := session.World{Projects: []session.Project{{Name: "p", Sessions: []session.SessionRow{{Title: "Missing address"}}}}}
-	r := readSwitcher(world, nil, "", time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	r := readSwitcher(world, nil, switcherHere{}, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	if strings.Contains(switcherText(r, 80), "here") {
 		t.Fatal("two empty addresses became here")
 	}
 	item := standing.Item{ID: "ask", Words: "Standing only", NeedsPerson: "look"}
-	standingOnly := readSwitcher(session.World{Projects: []session.Project{{Dir: "/p", Name: "p"}}}, map[string][]StandingItemView{"/p": {{Item: item}}}, "", time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	standingOnly := readSwitcher(session.World{Projects: []session.Project{{Dir: "/p", Name: "p"}}}, map[string][]StandingItemView{"/p": {{Item: item}}}, switcherHere{}, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	text := switcherText(standingOnly, 80)
 	if strings.Contains(text, "0 chats") || !strings.Contains(text, "what wants you first") {
 		t.Fatalf("standing-only section is %q", text)
@@ -321,7 +322,7 @@ func TestTheSwitcherRepeatsAConsentQuestionInItsOwnWords(t *testing.T) {
 	question := session.PresenceQuestion{Kind: session.QuestionConsent, ID: 9, Text: "send the report on your behalf?", Asked: now.Add(-time.Hour), Options: []session.AnswerOption{{Key: "1", Label: "let it send"}, {Key: "3", Label: "not this time"}}}
 	row := session.SessionRow{ID: "consent", Title: "Consent", At: now.Add(-time.Hour), Live: true, Presence: session.SessionPresence{State: session.PresenceWaiting, Reason: question.Text, Question: question}}
 	world := session.World{Projects: []session.Project{{Dir: "/p", Name: "p", Sessions: []session.SessionRow{row}}}}
-	reading := readSwitcher(world, nil, "/p", time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	reading := readSwitcher(world, nil, switcherHere{project: "/p"}, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	if text := switcherText(reading, 120); !strings.Contains(text, "wants to send the report on your behalf") {
 		t.Fatalf("consent was respelled:\n%s", text)
 	}
@@ -335,7 +336,7 @@ func TestTheSwitcherRepeatsAConsentQuestionInItsOwnWords(t *testing.T) {
 
 func TestTheSwitcherKeepsUnknownAndZeroFactsEmpty(t *testing.T) {
 	world := session.World{Projects: []session.Project{{Dir: "/p", Name: "p", Sessions: []session.SessionRow{{ID: "empty", Title: "Empty"}}}}}
-	text := switcherText(readSwitcher(world, nil, "/p", time.Time{}, time.Time{}, switcherView{}, switcherLedgerInput{}), 80)
+	text := switcherText(readSwitcher(world, nil, switcherHere{project: "/p"}, time.Time{}, time.Time{}, switcherView{}, switcherLedgerInput{}), 80)
 	for _, invented := range []string{"0 tasks", "0 files", "Jan 1", "since you left"} {
 		if strings.Contains(text, invented) {
 			t.Fatalf("zero became %q:\n%s", invented, text)

@@ -576,15 +576,29 @@ type switcherReading struct {
 	hidden int
 }
 
+// switcherHere is WHERE THIS WINDOW IS STANDING, and it is two addresses because
+// two different questions are asked of it: `session` is the conversation on
+// screen — the one row that wears `here` instead of an age — and `project` is
+// the bucket it lives in, which is what puts a person's own project first when
+// `alt+g` groups the list.
+//
+// THE CONVERSATION IS THE EXACT ANSWER AND THE PROJECT IS THE BROAD ONE. A
+// window standing in a project with no conversation of its own has the second
+// and not the first, and a reading that only had the project would have to guess
+// which of its rows was `here` (it used to, and it guessed the first open one).
+type switcherHere struct {
+	session string
+	project string
+}
+
 // readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, bucket string, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
+func readSwitcher(world session.World, items map[string][]StandingItemView, here switcherHere, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
 	r := switcherReading{view: view, now: now}
 	projectByDir := make(map[string]session.Project, len(world.Projects))
 	var all []switcherRow
-	hereSet := false
 	for _, project := range world.Projects {
 		projectByDir[filepath.Clean(project.Dir)] = project
 		for _, row := range project.Sessions {
@@ -594,15 +608,11 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 			r.chatCount++
 			needs := row.NeedsPerson()
 			moving := !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking)
-			here := bucket != "" && ((row.Dir != "" && filepath.Clean(row.Dir) == filepath.Clean(bucket)) || (row.ID != "" && row.ID == bucket))
-			// Existing home passes a project bucket, not a session id. An open row
-			// in that project is the narrowest honest identification available.
-			if !here && !hereSet && bucket != "" && project.Dir != "" && row.Open && filepath.Clean(project.Dir) == filepath.Clean(bucket) {
-				here = true
-			}
-			if here {
-				hereSet = true
-			}
+			// EXACTLY THE ONE CONVERSATION THIS WINDOW IS HOLDING. A broader test
+			// would put `here` on a row somebody would then press enter on and go
+			// nowhere, which is the worst thing a word on a door can do.
+			atHere := here.session != "" && ((row.Dir != "" && filepath.Clean(row.Dir) == filepath.Clean(here.session)) ||
+				(row.ID != "" && row.ID == here.session))
 			options := []session.AnswerOption(nil)
 			if row.NeedsPerson() && strings.TrimSpace(row.Presence.Question.Text) != "" {
 				options = append(options, row.Presence.Question.Options...)
@@ -610,7 +620,7 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 			all = append(all, switcherRow{
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
-				at: switcherSortAt(row), needs: needs, moving: moving, here: here,
+				at: switcherSortAt(row), needs: needs, moving: moving, here: atHere,
 				options: options,
 			})
 		}
@@ -637,7 +647,7 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 
 	r.addLedger(items, world, seen, ledger)
 	if view.grouped {
-		r.addGrouped(all, bucket, projectByDir)
+		r.addGrouped(all, here.project, projectByDir)
 	} else {
 		r.addFlat(all)
 	}

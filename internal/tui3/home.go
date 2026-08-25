@@ -579,6 +579,11 @@ type homeView struct {
 	// bucket is the project directory THIS window is in, which is what decides
 	// whether enter can open a row (see this file's header).
 	bucket string
+	// here is the SESSION directory this window is holding — the one row that
+	// wears `here` instead of an age (homeswitch.go). It is the exact address
+	// where [homeView.bucket] is the broad one, and the two are kept apart
+	// because the questions they answer are.
+	here string
 	// gone is which project folders were NOT on the disk when the world was last
 	// read, keyed by the path [homeWhere] answers for a row. A path this map has
 	// never heard of is not gone: the map is filled from the world and only ever
@@ -733,6 +738,7 @@ func (a *app) openHome() tea.Cmd {
 		world:        a.readWorld(),
 		seen:         session.LastLook(a.placesRoot()),
 		bucket:       homeBucketOf(a.file),
+		here:         homeSessionDirOf(a.file),
 		tier:         a.homeTierNow(),
 		hover:        -1,
 		last:         map[string]session.Summary{},
@@ -2924,6 +2930,17 @@ func homeWhere(line homeLine) string {
 		return path
 	}
 	return line.project
+}
+
+// homeSessionDirOf is the SESSION folder a transcript lives in — one level
+// inside the bucket, and the bucket itself for a legacy flat journal, which is
+// the same climb [homeBucketOf] makes one floor up.
+func homeSessionDirOf(transcript string) string {
+	transcript = strings.TrimSpace(transcript)
+	if transcript == "" {
+		return ""
+	}
+	return filepath.Clean(filepath.Dir(transcript))
 }
 
 // homeBucketOf is the project directory a transcript belongs to. A session

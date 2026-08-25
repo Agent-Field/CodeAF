@@ -473,12 +473,12 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	// left column is built from rather than on where the words land in the
 	// frame, because the detail pane repeats the focused conversation's name and
 	// a search over the whole screen would find that copy first.
-	// The LIST's rows and not the zones' above it: a waiting conversation is a
-	// `needs you` row as well, which is a second view of the same object and not
-	// a second conversation (homeattention.go's first law).
+	// ONE ROW PER THING. A waiting conversation used to have two rows — its own
+	// and a `needs you` strip's — and the strips are gone: the rank IS the list
+	// now, so the waiting one is simply first (homeswitch.go).
 	var order []string
 	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.zone == nil {
+		if line.kind == homeSession {
 			order = append(order, homeName(line.row))
 		}
 	}
@@ -2208,15 +2208,13 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		width int
 		want  []string
 	}{
-		// The columns tier: both zone labels in their own column, each with its
-		// teaching line, and the sentence at the top of the places column.
-		{homeMinColumns, []string{attentionNeedsWord, attentionMovingWord,
-			attentionNeedsTeach, attentionMovingTeach}},
-		// The card tier: the labels stand over the list, then the sentence.
-		{homeMinDetail, []string{attentionNeedsWord, attentionMovingWord}},
-		// The list tier: the zones vanish whole below the wide tier (their own
-		// law), and the sentence is the column.
-		{homeMinDetail - 1, nil},
+		// The card tier, and the two below it. NO TIER DRAWS FURNITURE OF ITS
+		// OWN ANY MORE — the strips that used to keep their labels over nothing
+		// went with the tree (homeswitch.go), and an empty machine at every
+		// width is the head, the sentence and the foot.
+		{homeCardMin, nil},
+		{homeSwitchFull, nil},
+		{80, nil},
 	}
 	for _, tc := range cases {
 		a := lab.app("")
