@@ -637,8 +637,11 @@ label, and in the `3 running` line in the footer, exactly as a task worker is.
 
 Three things a job's row deliberately does **not** have, because a job has none of them:
 
-- **no room.** `→` on the row opens nothing — there is no agent inside a job and no
-  transcript to read. The log file named under the row is where you read it.
+- **no room in the sense a task has one.** There is no agent inside a job and no
+  transcript to read, so `enter` on the row opens a page that carries what a job actually
+  leaves behind: the same `job 3 · log /path/…` line, and under it
+  `a background job keeps a log, not a transcript`. The log file named there is where you
+  read what it did. What that page never shows is a chat — there was never one to show.
 - **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
   `jobs kill`; every running job is also killed when the conversation closes.
 - **no branch, no changed-files list and no price.** A job runs in the workspace itself,
