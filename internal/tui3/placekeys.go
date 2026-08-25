@@ -183,9 +183,8 @@ func (a *app) placeAlt(letter rune) bool {
 		if letter == 's' && a.memPanel.open {
 			// WHICH SHELF THIS PLACE IS SHOWING. It was `tab` while memory was a
 			// modal overlay; `tab` is the way between places now, so the view key
-			// moved into the class views belong to.
-			a.memPanel.scope = (a.memPanel.scope + 1) % len(memoryScopes)
-			a.memPanel.rank()
+			// moved into the class views belong to ([memoryPanel.cycleShelf]).
+			a.memPanel.cycleShelf()
 			return true
 		}
 	}
@@ -193,8 +192,20 @@ func (a *app) placeAlt(letter rune) bool {
 }
 
 // placeWindow is the time-window hook: which stretch of time a place is showing,
-// and how coarse. Nothing answers it yet — see [app.placeKey]'s note.
-func (a *app) placeWindow(string) bool { return false }
+// and how coarse.
+//
+// THE SPEND PLACE IS THE FIRST TO ANSWER IT, which is what SCREEN 3d asks of
+// these four keys — `shift+←→` pages the window by its own length, `shift+↑↓`
+// changes how coarse its buckets are. The tasks and standing places have
+// windows of their own to move and are another lane's; a place that has not
+// wired one answers false, and the key then does nothing rather than doing
+// something undrawn.
+func (a *app) placeWindow(key string) bool {
+	if a.page == pageSpend {
+		return a.spendWindowKey(key)
+	}
+	return false
+}
 
 // placeBox is the composer: the one box this place types into.
 //

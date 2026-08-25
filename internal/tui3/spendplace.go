@@ -36,6 +36,45 @@ type spendReading struct {
 	subjects []session.SubjectSpend
 	loudest  session.DaySpend
 	loudFor  session.SubjectSpend
+	// names is the join THE LEDGER CANNOT MAKE FOR ITSELF: a task id, a standing
+	// id or a conversation id against the word a person calls that thing. The
+	// ledger holds ids and nothing else and says so
+	// ([session.SubjectSpend.ID]), so the page reads the titles off the records
+	// it is already holding — the world's task index, the standing seam — and
+	// hands them here ([spendReading.naming]). A subject nobody could name keeps
+	// its id, which is a worse row than a title and a better one than a blank.
+	names map[string]string
+}
+
+// spendStop is what one drawn row is ABOUT, so that `enter` opens the thing the
+// row named rather than the row's position. Rows with nothing behind them — the
+// header, the sparkline, a section heading — carry the zero value.
+type spendStop struct {
+	subject session.SubjectSpend
+	ok      bool
+}
+
+// naming hands the reading the titles for the ids it is holding. It answers a
+// copy, because a reading is an immutable answer and a caller that mutated one
+// in place would be changing a frame that has already been drawn.
+func (r spendReading) naming(names map[string]string) spendReading {
+	r.names = names
+	return r
+}
+
+// name is what to call one subject: the title the page joined, and the id
+// itself when nobody could name it.
+func (r spendReading) name(subject session.SubjectSpend) string {
+	if title := strings.TrimSpace(r.names[spendSubjectKey(subject)]); title != "" {
+		return title
+	}
+	return spendSubjectName(subject)
+}
+
+// spendSubjectKey is the one spelling of a subject's identity, so the page that
+// fills the map and the row that reads it cannot key it two ways.
+func spendSubjectKey(subject session.SubjectSpend) string {
+	return subject.Kind + "\x00" + strings.TrimSpace(subject.ID)
 }
 
 // readSpend answers only from the supplied facts. A zero-priced line is kept
@@ -106,10 +145,26 @@ func sameSpendBucket(at, bucket time.Time, grain session.UsageGrain) bool {
 // has done the arithmetic. Every returned row is already clipped in terminal
 // cells; colour sequences never participate in the width decision.
 func (r spendReading) rows(width int, pal palette) []string {
+	rows, _ := r.body(width, pal)
+	return rows
+}
+
+// body is [spendReading.rows] with the door beside each row: what that row is
+// about, for the `enter` that opens it. The two are ONE function because a hit
+// map written by anything other than the draw is a hit map that resolves a
+// keypress against a row the draw did not put there — the law every hit map on
+// this surface is held to (home's own says it first).
+func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	if width < 1 || r.totals.USD <= 0 {
-		return nil
+		return nil, nil
 	}
 	var out []string
+	// doors are recorded BY THE INDEX THE ROW LANDED AT, taken as it is appended.
+	// [appendPlaceSection] eats a trailing blank before it writes a heading, so a
+	// second slice grown in lockstep would come apart by one row exactly where
+	// the sections meet — and a hit map off by one row is a `f forget it` on the
+	// wrong line.
+	doors := map[int]session.SubjectSpend{}
 	out = append(out, r.windowHeaderRow(width, pal))
 
 	if spark := r.sparkline(); spark != "" {
@@ -146,13 +201,18 @@ func (r spendReading) rows(width int, pal palette) []string {
 			shown = spendSubjectCap
 		}
 		for _, subject := range r.subjects[:shown] {
-			out = append(out, spendSubjectRow(subject, width, pal))
+			doors[len(out)] = subject
+			out = append(out, spendSubjectRow(subject, r.name(subject), width, pal))
 		}
 		if more := len(r.subjects) - shown; more > 0 {
 			out = append(out, pal.dim(fit(foldLine(more, ""), width)))
 		}
 	}
-	return out
+	stops := make([]spendStop, len(out))
+	for at, subject := range doors {
+		stops[at] = spendStop{subject: subject, ok: true}
+	}
+	return out, stops
 }
 
 func (r spendReading) windowHeader() string {
@@ -202,7 +262,7 @@ func (r spendReading) loudestRow(width int, pal palette) string {
 	if r.loudest.USD <= 0 {
 		return ""
 	}
-	name := spendSubjectName(r.loudFor)
+	name := r.name(r.loudFor)
 	left := r.loudest.Label + " was the loudest day — " + spendMoneyWord(r.loudest.USD)
 	if name != "" {
 		left += ", " + name
@@ -274,8 +334,7 @@ func spendBar(fraction float64, cap int) string {
 	return strings.Repeat("█", cells)
 }
 
-func spendSubjectRow(subject session.SubjectSpend, width int, pal palette) string {
-	name := spendSubjectName(subject)
+func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal palette) string {
 	tag := filepath.Base(strings.TrimSpace(subject.Workspace))
 	if subject.Kind == session.SubjectStanding && subject.Calls > 0 {
 		tag = fmt.Sprintf("standing · %d firings", subject.Calls)
@@ -358,12 +417,10 @@ func (r spendReading) step(win session.UsageWindow, key string) session.UsageWin
 	}
 }
 
-// spendTeach spends the empty page on the boundary a person most needs: this
-// place explains money, but the status segment remains where its rail changes.
-func spendTeach(pal palette) []string {
-	return []string{
-		pal.ink("Spend shows which days and models cost money, and what the work was for."),
-		pal.dim("It only reports what was spent; nothing in this place changes how work runs."),
-		pal.dim("Raise or lower the rail on the status line's money segment — there is no budget editor here."),
-	}
-}
+// THE EMPTY SPEND PAGE IS THE ROUTER'S TEACHING AND NOT A SECOND ONE. A ledger
+// with nothing priced in the window draws no rows at all ([spendReading.body]
+// answers nil), and the frame then falls through to the three sentences every
+// place-with-no-body says — [page.explain], drawn by teachplace.go. This file
+// used to carry a near-identical trio of its own; two teachings for one place is
+// two places for the wording to drift, and the router's is the one the manual
+// already quotes.

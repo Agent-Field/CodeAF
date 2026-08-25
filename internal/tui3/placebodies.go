@@ -56,13 +56,32 @@ func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
 // nobody writes would be a highlight on whatever row it used to be.
 func (a *app) standPageHover() int { return -1 }
 
-// memoryFrame draws the memory place.
+// memoryFrame draws the memory place: the shelves, or the one line whose card
+// is open.
+//
+// THE BODY IS A READING AND THE READING IS PURE (memoryplace.go's [readMemory]).
+// Nothing here opens the store, and the reading itself was built when the
+// snapshot, the filter or a fold last changed — so a resize is a re-measure of
+// words already decided rather than five hundred rows re-ranked.
 func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
 	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
-		body := a.memPanel.rows(width, room, a.pal, -1)
+		p := &a.memPanel
+		var body []string
+		switch {
+		case p.expanded != "":
+			body = p.card(width, a.pal)
+		default:
+			body = p.reading.rows(width, a.pal)
+		}
 		rows := make([]placeRow[int], 0, room)
-		for _, text := range body {
-			rows = append(rows, placeRow[int]{text: text, hit: -1})
+		for i, text := range body {
+			if len(rows) >= room {
+				break
+			}
+			if _, stop := p.reading.at(i); stop && p.expanded == "" && i == p.cursor {
+				text = a.pal.selected(text, width)
+			}
+			rows = append(rows, placeRow[int]{text: text, hit: i})
 		}
 		for len(rows) < room {
 			rows = append(rows, placeRow[int]{text: "", hit: -1})
