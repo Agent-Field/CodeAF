@@ -47,7 +47,13 @@ type quirksStore struct {
 	// one record because the two facts are independent — a model may reason
 	// unconditionally and take breakpoints, or neither, or both.
 	noCacheControl map[string]time.Time
-	loaded         bool
+	// noReasoningBudget is the third learned set: models whose endpoint rejected
+	// the thinking budget the ladder's top two rungs carry (wire.go's
+	// refusesReasoningBudget). Independent of both maps above for the same
+	// reason they are independent of each other — an endpoint may take the
+	// effort word and refuse the budget, or the other way round.
+	noReasoningBudget map[string]time.Time
+	loaded            bool
 
 	// writes counts saves in flight. The save is deliberately off the request
 	// path — the call that learned the fact is waiting to be re-sent and must
@@ -60,8 +66,9 @@ type quirksStore struct {
 }
 
 var quirks = &quirksStore{
-	mandatory:      map[string]time.Time{},
-	noCacheControl: map[string]time.Time{},
+	mandatory:         map[string]time.Time{},
+	noCacheControl:    map[string]time.Time{},
+	noReasoningBudget: map[string]time.Time{},
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
@@ -95,6 +102,12 @@ type quirksWire struct {
 	// rejected call per model per profile, after which the adapter falls back to
 	// the automatic prefix cache every provider has anyway.
 	CacheControlRejected map[string]time.Time `json:"cache_control_rejected,omitempty"`
+
+	// ReasoningBudgetRejected maps a model to when its endpoint refused a
+	// thinking budget. It costs what the two above cost — one rejected call per
+	// model per profile — after which the top two ladder rungs are served as the
+	// deepest thing that endpoint has a word for.
+	ReasoningBudgetRejected map[string]time.Time `json:"reasoning_budget_rejected,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -112,6 +125,7 @@ func (q *quirksStore) load(path string) {
 	}
 	seed(q.mandatory, wire.ReasoningMandatory)
 	seed(q.noCacheControl, wire.CacheControlRejected)
+	seed(q.noReasoningBudget, wire.ReasoningBudgetRejected)
 }
 
 // seed folds a loaded set into a live one without ever dropping a fact learned
@@ -143,6 +157,16 @@ func (q *quirksStore) noteNoCacheControl(model string, at time.Time) bool {
 
 func (q *quirksStore) knowsNoCacheControl(model string) bool {
 	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noCacheControl }, model)
+}
+
+// noteNoReasoningBudget records that this model's endpoint rejected a thinking
+// budget.
+func (q *quirksStore) noteNoReasoningBudget(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.noReasoningBudget }, model, at)
+}
+
+func (q *quirksStore) knowsNoReasoningBudget(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noReasoningBudget }, model)
 }
 
 func (q *quirksStore) record(set func(*quirksStore) map[string]time.Time, model string, at time.Time) bool {
@@ -178,14 +202,18 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	wire := quirksWire{
-		ReasoningMandatory:   make(map[string]time.Time, len(q.mandatory)),
-		CacheControlRejected: make(map[string]time.Time, len(q.noCacheControl)),
+		ReasoningMandatory:      make(map[string]time.Time, len(q.mandatory)),
+		CacheControlRejected:    make(map[string]time.Time, len(q.noCacheControl)),
+		ReasoningBudgetRejected: make(map[string]time.Time, len(q.noReasoningBudget)),
 	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt
 	}
 	for model, learnedAt := range q.noCacheControl {
 		wire.CacheControlRejected[model] = learnedAt
+	}
+	for model, learnedAt := range q.noReasoningBudget {
+		wire.ReasoningBudgetRejected[model] = learnedAt
 	}
 	return q.path, wire
 }

@@ -314,7 +314,10 @@ the picker's **ctrl+t** effort does — so the id sent to the provider is
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
   provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,
-  `:xhigh` and the other near-misses are refused the same way.
+  `:xhigh` and the other near-misses are refused the same way. That refusal is about this
+  notation alone — the effort ladder has rungs called `xhigh` and `max`, and they are a
+  separate thing from a suffix on a class value (see *Making the model think harder, deeper,
+  or less*).
 - Where a level is set, the role rows print it after the id, `kimi-k3:low`, which is the
   same notation the model picker and `/status` use.
 
@@ -471,6 +474,63 @@ Each press walks it round: off → low → medium → high → off.
   model and back. `/new` forgets it.
 - Where the level is set, it is shown after the id as `<id>:<level>` — in the picker row, and
   on the `model` line of `/status`.
+
+**A level set here wins over everything else that asks for thinking.** It is the most
+specific thing anybody said about how hard this model should work, so it beats the
+conversation's own rung, a task's rung and the **thinking** default — see *Making the model
+think harder, deeper, or less*. The cycle itself is unchanged and still walks
+off → low → medium → high → off; it does not offer `xhigh` or `max`.
+
+## Making the model think harder, deeper, or less — the effort ladder from low to max
+
+How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
+`high`, `xhigh`, `max`. There is also **off**, which is the dial left alone — aforge asks
+for nothing and the model thinks however it thinks.
+
+**The default is `high`.** It is the **thinking** row in `/settings`, among the model rows
+beside the model you talk to, and its choices are `off, low, medium, high, xhigh, max`. The
+row is written to the profile as `effort`.
+Move it down to make the model think less, which is what gives you faster and cheaper
+answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
+
+Several things can name a rung, and the most specific one wins:
+
+1. **The level dialled onto the model in use** — the model picker's **ctrl+t**, or
+   `--reasoning` on the command line. It beats everything under it.
+2. **This conversation's own rung.** It is sticky: it is kept in the session's own
+   `meta.json`, so it is still there after you close aforge and come back.
+3. **The piece of work's own rung** — a task carries one in `tasks.json`, and a standing
+   item carries one as its `does.effort`.
+4. **What the call is for.** A standing item firing, and the sentinel run that watches for
+   it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
+   summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
+   and the task workers you hand work out to, take the default.
+5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
+
+There is no chip on the frame for this yet, and no key or slash command of its own: the
+**thinking** row, and the more specific places listed above it, are where a rung is chosen
+today.
+
+## What low, medium, high, xhigh and max actually ask the model for
+
+`low`, `medium` and `high` are the provider's own three words, and they are sent as they
+are.
+
+`xhigh` and `max` send `high` **and a thinking budget** — 32,000 tokens for `xhigh`, 64,000
+for `max`. `high` is the top of the word ladder every provider shares, so the two rungs
+above it say "more than high" the only way that travels: with a number beside the word. An
+endpoint that understands the word and not the budget therefore sees `high` on all three of
+the top rungs, which is the honest answer — it cannot think harder than its own ceiling.
+
+**None of this can fail a turn.**
+
+- A model whose endpoint refuses the thinking budget has the budget dropped and the refusal
+  remembered, so it costs one rejected request for that model and never a failed reply.
+- A model whose catalog row says it takes no reasoning knob at all is sent nothing about
+  thinking.
+
+These rungs are not the same notation as a thinking level written onto a crew class value
+(`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
 
 ## The model went quiet, or stopped answering halfway through — the request is cut when nothing comes back, and how long it waits first
 

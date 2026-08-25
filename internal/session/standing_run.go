@@ -73,6 +73,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -730,6 +731,23 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	if model := strings.TrimSpace(item.Does.Model); model != "" {
 		cfg.Model = model
 	}
+	// ── how hard a firing thinks ────────────────────────────────────────────
+	//
+	// A FIRING IS CHEAP UNLESS THE ITEM SAYS OTHERWISE. It runs unattended, it
+	// runs on a schedule, and it runs forever — which is the whole reason the
+	// standing role carries a floor of its own (internal/effort's RoleStanding)
+	// instead of inheriting whatever the person happened to dial in the
+	// conversation that set the item up. An install on max must not quietly
+	// turn every check on the machine into a deep pass.
+	//
+	// The item's own rung sits above that floor, so an item that genuinely
+	// needs thinking says so once, on the card, and gets it on every firing.
+	cfg.EffortRole = effort.RoleStanding
+	cfg.Effort = restoredRung(item.Does.Effort)
+	// The conversation's dial does not reach here: a firing is not the
+	// conversation that proposed it, and the person who dialled that
+	// conversation has long since closed it.
+	cfg.DefaultEffort = effort.None
 	// The folder says what it is without anybody opening its journal, the way
 	// every session folder does (place.go). It is a citation and never a
 	// prerequisite, so a write that fails costs a row and not the run.
@@ -738,6 +756,7 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 		Title:     item.Words,
 		Workspace: item.Workspace,
 		Model:     cfg.Model,
+		Effort:    cfg.Effort.String(),
 		Created:   time.Now(),
 	})
 	return cfg, nil
@@ -944,11 +963,29 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		if built != nil {
 			return false, "", 0, built
 		}
+		// THE SENTINEL ASKS THE LADDER AND THE LADDER SAYS LOW.
+		//
+		// It is the one call in this package where deliberation buys nothing: a
+		// yes-or-no on evidence somebody else already gathered, run on every
+		// check of every item forever. So the role carries its own floor
+		// (internal/effort's RoleSentinel), and the item's rung sits above it for
+		// the judgment somebody has decided is genuinely hard.
+		//
+		// The stamp is the CONFIGURED setter because this client is built here,
+		// without the catalog seam — a harness-default rung would be dropped
+		// every time and the floor would do nothing (provider's requestedEffort).
+		callCtx := provider.WithoutStream(ctx)
+		if rung := effort.Resolve(effort.Scope{
+			Task: restoredRung(judgment.Item.Does.Effort),
+			Role: effort.RoleSentinel,
+		}); rung != effort.None {
+			callCtx = provider.WithConfiguredEffortRung(callCtx, rung)
+		}
 		response, err := client.CompleteWithMessages(
 			// WithoutStream for the reason the guardian and the route judge use
 			// it: nobody is watching this, and a stream would be typing into a
 			// room that is not open.
-			provider.WithoutStream(ctx),
+			callCtx,
 			[]ai.Message{
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),

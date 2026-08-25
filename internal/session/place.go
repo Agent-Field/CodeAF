@@ -152,6 +152,17 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// Effort is the rung on the effort ladder this conversation was set to —
+	// how hard its turns ask the model to think (internal/effort). Empty is
+	// "nobody set one for this conversation", which is every session until
+	// somebody dials it, and it means the rung below decides instead: the work,
+	// the role, or the install's own `effort` row.
+	//
+	// IT IS HERE SO A DIAL SURVIVES A RESTART. The rung was a live field on the
+	// agent and only that, which made it the same defect the Model row above was
+	// written to fix: a person set it, worked in it, closed the terminal, and
+	// came back to a conversation that had quietly forgotten.
+	Effort string `json:"effort,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on

@@ -1265,6 +1265,19 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
 		},
+		// How hard the models think, when nothing nearer to the work has said.
+		// It sits with the models rather than with spending because that is the
+		// question a person is answering when they touch it — the money is a
+		// consequence and not the subject.
+		Setting{
+			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
+			Label: "thinking", Choices: EffortChoices,
+			Hint: "how hard the model thinks about your turns and the work you hand out. " +
+				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
+				"Standing items and their checks stay low whatever this says.",
+			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
+			write: func(raw string) error { return writeChoice(dir, KeyEffort, raw, EffortChoices) },
+		},
 		Setting{
 			Key: KeyDocumentEngine, Category: CategoryModels, Kind: SettingChoice,
 			Label: "reading", Env: "AFORGE_DOC_ENGINE", Choices: DocumentEngines,

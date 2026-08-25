@@ -262,6 +262,10 @@ var settingReaders = map[string]string{
 	KeyCompletionReserve: "AFORGE_COMPLETION_RESERVE",
 	KeyWorkingSet:        "AFORGE_WORKING_SET",
 	KeyContextReuse:      "AFORGE_CONTEXT_REUSE_PCT",
+	// The install's rung on the effort ladder. The v3 door reads it into the
+	// session's posture, from where the resolver hands it to every model call
+	// that has nothing more specific to go on (internal/effort).
+	KeyEffort: "DefaultEffortAt",
 }
 
 // Every persisted row names a reader, and every named reader is really there.

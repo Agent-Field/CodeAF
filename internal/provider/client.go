@@ -351,16 +351,25 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 // a 400 that could not be ours costs no extra read.
 func (c *Client) repairable(model string, knobs callKnobs) bool {
 	return c.resolveEffort(model, knobs.effort) == EffortOff ||
+		c.resolveReasoningBudget(model, knobs.effort) > 0 ||
 		c.dialectFor(model) == cacheDialectBreakpoints
 }
 
 // learn reads a refusal for the facts this adapter can remember and reports
-// whether the next encode will differ. Both memos are consulted rather than the
-// first match winning, because a single 400 can name both fields.
+// whether the next encode will differ. Every memo is consulted rather than the
+// first match winning, because a single 400 can name more than one field.
 func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
 	learned := false
 	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
 		noteReasoningMandatory(model)
+		learned = true
+	}
+	// THE BUDGET IS DROPPED AND THE LEVEL IS KEPT. An endpoint that will not take
+	// a thinking allowance still takes the effort word, so the two top rungs of
+	// the ladder degrade to the deepest thing this endpoint has a word for
+	// instead of falling off it (wire.go's resolveReasoningBudget).
+	if c.resolveReasoningBudget(model, knobs.effort) > 0 && refusesReasoningBudget(payload) {
+		noteReasoningBudgetRefused(model)
 		learned = true
 	}
 	if c.dialectFor(model) == cacheDialectBreakpoints && refusesCacheControl(payload) {

@@ -491,6 +491,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 
+		// The effort ladder. One dial with five rungs under a default of `high`,
+		// and nothing on the frame to see it with yet — so every question about
+		// it is asked in the words somebody uses for the *feeling* they want:
+		// a deeper answer, a faster one, a model that is thinking too long for
+		// what they asked. The last two are asked by somebody who has met a rung
+		// name in the settings row and wants to know what it costs them.
+		{"how do I make it think less", "models-and-cost"},
+		{"how do I make it think deeper", "models-and-cost"},
+		{"how do I get faster answers from the model", "models-and-cost"},
+		{"what does xhigh mean", "models-and-cost"},
+		{"what is the default reasoning effort", "models-and-cost"},
+		{"does the thinking level stick after a restart", "models-and-cost"},
+
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
 		// these is said in the ordinary words somebody uses when they are NOT

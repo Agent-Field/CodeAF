@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -242,6 +243,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// only model it can be about: --reasoning names a strength, not a model, and
 	// the level is kept per model from here on (internal/session's agent.go).
 	agent.SetReasoning(level)
+	// AND THE RUNG THIS CONVERSATION WAS LEFT ON. It is the meta.json half of
+	// the same law the model row keeps (internal/session's Meta): a person who
+	// dialled a conversation deeper, worked in it and came back found it at the
+	// install's default as though they had chosen nothing. Absence sets nothing
+	// and stamps nothing, so a conversation nobody has dialled is unchanged.
+	if saved := strings.TrimSpace(v3SavedEffort(cfg.Place)); saved != "" {
+		agent.SetConversationEffort(saved)
+	}
 	proc.track(agent)
 	// EVERY CONVERSATION THIS PROCESS OPENED, CLOSED HOWEVER THE SURFACE RETURNS.
 	// Close is the surface's to call — /quit and ctrl+c both go through it — but
@@ -754,6 +763,26 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	}, nil
 }
 
+// v3SavedEffort is the rung this conversation was last left on, read back off
+// its own folder, and "" for a session that has none — a fresh conversation, a
+// build before the field existed, or a launch with no folder at all.
+//
+// A UNREADABLE FILE IS ABSENCE AND NEVER A FAILURE, exactly as [session.LoadMeta]
+// answers everything else about a folder: the rung is a convenience, and a
+// launch that refused to open because it could not read one would be the
+// convenience costing the thing it was meant to serve.
+func v3SavedEffort(place session.Place) string {
+	dir := strings.TrimSpace(place.Dir)
+	if dir == "" {
+		return ""
+	}
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		return ""
+	}
+	return meta.Effort
+}
+
 // v3TalkModel is which model this conversation opens on, and the order is the
 // whole content: what the person named on the command line, then what they
 // last chose and it was written down (internal/config's chatmodel.go), then
@@ -942,6 +971,17 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// this could send a visitor's work — and their credit — to a model they never
 	// picked, by being cloned.
 	cfg.TaskModel = config.TaskModelAt(profileDir)
+	// HOW HARD EVERYTHING HERE THINKS, when nothing nearer to the work has said.
+	// PROFILE-ONLY for the same reason the row above it is: a repository that
+	// could answer this could spend a visitor's money on a depth they never
+	// asked for, by being cloned. It is the ladder's last rung and every model
+	// call in the session reaches it through one resolver (internal/effort).
+	cfg.DefaultEffort = config.DefaultEffortAt(profileDir)
+	// A CONVERSATION IS A PERSON'S TURN AND SO IS THE WORK THEY HAND OUT. The
+	// role is set here rather than defaulted in the engine so that a session
+	// built without a door — a test, a headless --once — is not silently opted
+	// into paying for depth nobody configured.
+	cfg.EffortRole = effort.RoleChat
 	if oneModel {
 		// Empty is not "no model", it is "the model this conversation is on
 		// right now" (internal/session's defaultTaskModel), which is precisely

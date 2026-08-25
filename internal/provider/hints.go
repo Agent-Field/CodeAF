@@ -85,7 +85,15 @@ func CacheKeyFrom(ctx context.Context) string {
 // catalog entry does not confirm reasoning support, because a harness default
 // that 400s an unknown model would be a self-inflicted outage.
 type effortRequest struct {
-	effort   Effort
+	effort Effort
+
+	// budget is the thinking allowance in tokens that the two ladder rungs
+	// above high carry, and zero on every other request. It lives beside the
+	// effort rather than in a context key of its own because it is one half of
+	// one decision: nothing can ask for a budget without asking for a level, and
+	// a second key would let the two be set apart and disagree.
+	budget int
+
 	explicit bool
 }
 

@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -1216,6 +1217,35 @@ type Config struct {
 	// would mean a clock, and the whole point of the signal is that it is free.
 	pacing func(bool)
 
+	// ── the effort ladder's two posture fields ──────────────────────────────
+	//
+	// Between them they say what this session IS, so its every model call can be
+	// answered by one resolver instead of by each spawn site's own judgment
+	// (effort.go, internal/effort).
+
+	// Effort is the rung this session was HANDED — the work's own rung, filling
+	// the ladder's task scope. It is set on a child: a task worker gets the
+	// task's rung, a standing firing gets the item's. EMPTY IS THE HONEST
+	// DEFAULT and means nobody set one for this piece of work, which is every
+	// conversation a person opens themselves.
+	Effort effort.Rung
+
+	// EffortRole is what this session is FOR, and it is the rung of last resort
+	// before the install's default: a standing firing and its checks stay cheap
+	// however deep the install is dialled, and an errand asks for nothing at
+	// all. THE ZERO VALUE IS NOT A ROLE and falls through to DefaultEffort,
+	// which is the right answer for a caller that has not thought about it — a
+	// headless --once, a test — because it is the same answer a person's own
+	// conversation gets.
+	EffortRole effort.Role
+
+	// DefaultEffort is the install's `effort` row, read by the door
+	// (config.DefaultEffortAt). EMPTY ASKS FOR NOTHING, which is what a session
+	// built without a door has always sent: config.Ship is the shipped answer to
+	// the settings row and never a default this package invents, so a caller
+	// that wires no profile is not silently opted into paying for depth.
+	DefaultEffort effort.Rung
+
 	// TaskModel is the model a task runs on when its proposal names none — the
 	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
 	// the behaviour every task had before this field existed: a node is the same
@@ -1576,10 +1606,20 @@ type Agent struct {
 	// is a MAP rather than a field for the reason agent.go's block states: the
 	// level is a choice about a model, and a /model switch must not carry one
 	// model's answer onto another. Absent means "send nothing"; it holds no
-	// EffortNone entries. Nil until somebody sets a level, which is most
+	// absent entries. Nil until somebody sets a level, which is most
 	// sessions.
-	reasoning map[string]provider.Effort
-	messages  []ai.Message
+	//
+	// It is the TURN scope of the effort ladder (effort.go): the most specific
+	// thing anything can say about how hard to think, and the one a person's own
+	// hand is on.
+	reasoning map[string]effort.Rung
+	// effort is the rung this whole conversation was set to, kept in the session
+	// folder's meta.json so it survives a restart (placemeta.go). It is one
+	// field and not a map because it is a choice about THIS CONVERSATION rather
+	// than about a model: a person dialling their session deeper means the
+	// session, whatever they switch the model to inside it.
+	effort   effort.Rung
+	messages []ai.Message
 	// earlier is the conversation ABOVE the latest compaction marker, shaped for
 	// a surface's scrollback and held for no other reason: nothing here ever
 	// sends it, and the model does not carry it (see [Agent.EarlierTranscript]).
@@ -1668,8 +1708,8 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
-	steering      []userMessage
-	closed        bool
+	steering  []userMessage
+	closed    bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding

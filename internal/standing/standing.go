@@ -199,15 +199,26 @@ const (
 )
 
 // Action is what a firing does. Say is read for ActionSay; Brief, Acceptance,
-// Model and MaxSteps for ActionTask. Either kind may template the probe's
-// evidence into its text with {{evidence}}.
+// Model, Effort and MaxSteps for ActionTask. Either kind may template the
+// probe's evidence into its text with {{evidence}}.
 type Action struct {
 	Kind       ActionKind `json:"kind"`
 	Say        string     `json:"say,omitempty"`
 	Brief      string     `json:"brief,omitempty"`
 	Acceptance string     `json:"acceptance,omitempty"`
 	Model      string     `json:"model,omitempty"`
-	MaxSteps   int        `json:"maxSteps,omitempty"`
+
+	// Effort is the rung on the effort ladder this item's firings and its checks
+	// ask for (internal/effort), and empty on almost every item.
+	//
+	// EMPTY IS NOT THE CHEAPEST RUNG, IT IS "NOBODY SAID". An item that says
+	// nothing runs at the standing role's own floor — low — because a firing is
+	// unattended and repeats forever, and an install dialled deep must not turn
+	// every check on the machine into a deep pass. This field is how the one
+	// item that genuinely needs thinking says so once and gets it every time.
+	Effort string `json:"effort,omitempty"`
+
+	MaxSteps int `json:"maxSteps,omitempty"`
 }
 
 // Rails bound an item. They are mandatory by construction: [Store.Create]

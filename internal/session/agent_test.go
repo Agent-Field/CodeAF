@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -920,7 +921,7 @@ func TestRetryDoesNotConcatenatePartialAttempts(t *testing.T) {
 		}
 	}()
 
-	if _, _, err := agent.completeWithRetry(ctx, nil, "test/model", provider.EffortNone, partial, &warmBatch{}, &formingBatch{}); err == nil {
+	if _, _, err := agent.completeWithRetry(ctx, nil, "test/model", effort.None, partial, &warmBatch{}, &formingBatch{}); err == nil {
 		t.Fatal("completeWithRetry returned no error after the cancel")
 	}
 	if got := partial.take(); got != "second attempt" {
