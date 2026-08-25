@@ -791,6 +791,13 @@ same results are usually part of a batch worth doing. This is why one middling t
 sitting in a long conversation can stay whole for several turns and then vanish all at once
 alongside others.
 
+**What changes while you work is kept at the back, for the same arithmetic.** The two short
+notes aforge keeps in front of the model that move as the work moves — `<state>`, what this
+conversation is doing, and `<elsewhere>`, what other windows on this project have landed —
+are appended at the *end* of the conversation and never written into the system message,
+because a system message that changed would make every message behind it new again, while a
+note at the end costs only the note.
+
 **Rung 2 — page images.** Instead of summarizing the part being dropped, it can be
 photographed: rendered verbatim to monospaced page images that the model reads back. No model
 call, nothing paraphrased. This rung is chosen only when you gave `/compact` no focus, there
@@ -901,3 +908,13 @@ is no way to zero a conversation's recorded spend while keeping the conversation
 The settings panel's **Session** tab carries a row for it, labelled `session ceiling`. The
 panel's search matches a row's registry key as well as its label, so typing either `spendRail`
 or `ceiling` finds it.
+
+## Which endpoint answers, and what it charges
+
+One model id is served by many endpoints, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no endpoint is obliged to match it, and the fastest one often does not.
+
+So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
+
+Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
+
+Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.

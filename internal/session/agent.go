@@ -56,6 +56,7 @@ func New(config Config) (*Agent, error) {
 		// behaviour exactly — knobs travel only when explicit, and a refusal
 		// ends in the diagnosis rather than on another model.
 		SupportsParameter: config.SupportsParameter,
+		ModelPrice:        config.ModelPrice,
 		Fallbacks:         config.ModelFallbacks,
 		NearestModels:     config.NearestModels,
 	})
@@ -217,12 +218,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// minted for its cache lineage. Deriving a second identity here would give
 	// one conversation two threads the day somebody resumed it (chatlog.go).
 	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.Place)
-	// And the state card is rendered into the first request before any turn has
-	// run: a resumed conversation's card is what it knew yesterday, and a model
-	// that had to wait for the first post-turn pass to be told would answer one
-	// question in the dark (card.go).
+	// And the state card is held before any turn has run, so that the note the
+	// first request carries already has it: a resumed conversation's card is what
+	// it knew yesterday, and a model that had to wait for the first post-turn
+	// pass to be told would answer one question in the dark (card.go).
 	agent.cardText = agent.stateCardText()
-	agent.refreshSystemLocked()
 	// The client is wrapped LAST, once the lineage is known: the wrapper is the
 	// one place every request this agent makes passes through, so it is where
 	// the prompt-cache key is stamped. Wrapping earlier would have to read the
@@ -1354,11 +1354,125 @@ func (a *Agent) snapshot() []ai.Message {
 	return messages
 }
 
+// volatileNoteOpening is the first line of the note the two moving blocks ride
+// in, and it does two jobs at once.
+//
+// It tells the MODEL what it is reading. The note arrives in the user role
+// because that is the only role a transcript may grow in between an answer and
+// the next request, and a block of state in the user role with no opening reads
+// as the person having typed it. It is context, not somebody speaking.
+//
+// And it is what [Agent.landVolatileLocked] MATCHES ON to find the last note it
+// landed. That is deliberately read out of the transcript rather than held in a
+// field beside it: a compaction fold and a rewind both rebuild the transcript
+// without asking this file, and a remembered "what I last said" would go on
+// believing a note was still in front of the model long after the fold ate it.
+const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
+
+// volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
+// card, rewritten by the post-turn pass whenever a delta lands (card.go), and
+// what the other windows on this project have landed and have running, re-read
+// at the start of every turn (taskdelta.go).
+//
+// Both used to be rendered into message[0] beside the base prompt, and that is
+// the bug this exists to have fixed: message[0] is in front of every message
+// there is, so a card that moved re-priced the WHOLE conversation as a cold
+// prefix on the next request. Invisible on a one-turn benchmark and brutal in
+// the long interactive session that is this program's normal life.
+//
+// Empty is empty: a conversation with no card and no other window produces no
+// note at all, which is the emptiness law and not an optimisation.
+func (a *Agent) volatileBlockLocked() string {
+	return strings.TrimSpace(a.cardText + a.elsewhereText)
+}
+
+// landVolatileLocked appends the volatile note to the transcript when what it
+// says has moved since the last one landed, and does nothing whatsoever
+// otherwise.
+//
+// IT IS AN APPEND AND NEVER A REWRITE, which is the whole of why this is cheap.
+// Every request of a turn re-sends the transcript, and the provider bills the
+// leading bytes at the cached rate only for as long as they are the SAME
+// leading bytes: the transcript may grow at the back and may not change in the
+// middle. So a note that moved is a new note at the tail, the one before it is
+// left exactly where it was said, and the only thing anybody pays for twice is
+// the note itself.
+//
+// It is also why the note is a real message rather than something stitched onto
+// the request on its way out. A block appended after the transcript on every
+// request would sit at a different index each time — request N's copy where
+// request N+1 has a tool result — and the endpoints that cache behind explicit
+// markers write their entry AT the last user or tool message
+// (internal/provider's caching.go). Put the marker on something that moves and
+// every request writes a cache entry no later request can ever read.
+//
+// A NOTE THAT WENT EMPTY IS NOT WITHDRAWN. The card never empties once it has
+// something to say — a merge replaces the goal and appends to the lists — and
+// the other windows' block does empty, as landings age out of the short memory
+// behind it. Neither is worth a message: what an old note says was true when it
+// was said, and a retraction would cost a message to tell the model nothing.
+func (a *Agent) landVolatileLocked() {
+	// A transcript with no system message is one nothing has opened yet, and a
+	// note that landed there would BE message[0].
+	if len(a.messages) == 0 {
+		return
+	}
+	block := a.volatileBlockLocked()
+	if block == "" {
+		return
+	}
+	note := volatileNoteOpening + "\n\n" + block
+	if a.lastVolatileNoteLocked() == note {
+		return
+	}
+	// Not [Agent.recordLocked]: the note is not the conversation. Journaling it
+	// would draw a block of state on the screen of anybody replaying the session,
+	// on the row that is supposed to be theirs, and posting it to the store would
+	// make it answer searches of what was said. It is context assembled for one
+	// request, and a resume rebuilds it from the card and the index on the first
+	// turn that needs it.
+	a.messages = append(a.messages, textMessage("user", note))
+}
+
+// lastVolatileNoteLocked is the newest volatile note in the transcript, or ""
+// when none has landed since the last fold. See [volatileNoteOpening] for why
+// the transcript is the only place this is read from.
+func (a *Agent) lastVolatileNoteLocked() string {
+	for index := len(a.messages) - 1; index >= 0; index-- {
+		text := messageContentText(a.messages[index])
+		if isVolatileNote(text) {
+			return text
+		}
+	}
+	return ""
+}
+
+// isVolatileNote reports whether a user-role message is the session's own note
+// rather than something anybody said.
+//
+// EVERY READER OF THE USER ROLE HAS TO ASK. The note is user-role because that
+// is the only role the model can be told something in, and it is the second line
+// in this package that has to be told apart from the person's own by a marker —
+// the compaction note ([isCompactionNote]) is the first. Without this one the
+// note would be drawn on the screen as a paragraph the person typed, offered as
+// a rewind point in their own words, and quoted by `/why` as the instruction the
+// turn is working on. It is recognized by the opening it is built with and never
+// by guessing at wording.
+func isVolatileNote(text string) bool {
+	return strings.HasPrefix(text, volatileNoteOpening)
+}
+
 // drainSteering moves queued steering messages into the transcript at a step
 // boundary and reports how many landed.
 func (a *Agent) drainSteering() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
+	// drain itself is here: this seam runs immediately before the next request
+	// (loop.go) with the transcript tail on a tool result or an assistant answer,
+	// which is the one shape a user message may legally follow. Ahead rather than
+	// behind because the note is the ground the person's line is said against.
+	a.landVolatileLocked()
 	// THIS DRAIN IS THE ONE THAT ANSWERS. It runs immediately before the next
 	// request (loop.go), so anything on the queue is in front of the model from
 	// here — which is precisely what a task node's runner is waiting to be true
@@ -2262,6 +2376,16 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	var replyTags []TaskReplyTag
 	for _, msg := range messages {
 		if msg.Role == "system" {
+			continue
+		}
+		// AND THE SESSION'S OWN VOLATILE NOTE IS DRAWN NOWHERE, which is stricter
+		// than the aside below and is the promise the manual already makes about
+		// the block inside it: it goes into the chat's context, never on your
+		// screen. It was assembled for one request out of the state card and the
+		// project index, nobody saw it happen, and a replay that drew it would put
+		// a paragraph of machinery in the conversation on the strength of the role
+		// it had to travel in.
+		if msg.Role == "user" && isVolatileNote(messageContentText(msg)) {
 			continue
 		}
 		role := msg.Role

@@ -191,23 +191,26 @@ func TestTheDeltaIsDeliveredOnceAndTheStampAdvances(t *testing.T) {
 	if !strings.Contains(first, "Fix the nil-map crash") || !strings.Contains(first, "Sweep the call sites") {
 		t.Fatalf("the first delivery says %q, want both halves", first)
 	}
-	if !strings.Contains(messageContentText(agent.messages[0]), "<elsewhere>") {
-		t.Fatal("the block was built and never reached message[0]")
+	if !strings.Contains(volatileNote(agent), "<elsewhere>") {
+		t.Fatal("the block was built and never reached the note the request carries")
 	}
 	if LastTold(mine).IsZero() {
 		t.Fatal("the model was told and the stamp did not advance")
 	}
 
 	// NOTHING HAS MOVED, so nothing is rebuilt: the same landing is not read out
-	// of the index a second time, and the bytes in message[0] are identical, so
-	// the prompt prefix stays cached.
-	before := messageContentText(agent.messages[0])
+	// of the index a second time, and no second note lands, so the transcript
+	// the provider cached is still the transcript it is sent.
+	before := len(agent.messages)
 	agent.refreshElsewhere()
 	if agent.elsewhereText != first {
 		t.Fatalf("an unchanged project changed the block:\nwas %q\nnow %q", first, agent.elsewhereText)
 	}
-	if messageContentText(agent.messages[0]) != before {
-		t.Fatal("an unchanged block was written into message[0] again")
+	if got := volatileNote(agent); !strings.Contains(got, "Fix the nil-map crash") {
+		t.Fatalf("the standing note lost its block:\n%s", got)
+	}
+	if len(agent.messages) != before {
+		t.Fatalf("an unchanged block landed a second note: %d messages, was %d", len(agent.messages), before)
 	}
 	if strings.Count(agent.elsewhereText, "Fix the nil-map crash") != 1 {
 		t.Fatalf("the landing is named twice:\n%s", agent.elsewhereText)

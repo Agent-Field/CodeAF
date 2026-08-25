@@ -954,6 +954,16 @@ type Config struct {
 	// behaviour every caller had before this field existed.
 	SupportsParameter func(model, parameter string) (bool, bool)
 
+	// ModelPrice is a model's own published list price, per token in US dollars,
+	// and whether anybody published one (internal/catalog's PriceNow). The
+	// adapter bounds a latency-sorted request against it, so this session asks
+	// for the fastest endpoint that is not also charging several times what the
+	// model itself costs.
+	//
+	// NIL IS "NO PRICE IS KNOWN", which sends no ceiling and routes exactly as an
+	// unwired session always did.
+	ModelPrice func(model string) (prompt, completion float64, known bool)
+
 	// TaskProgressCheck is the test seam for leash checkpoints. Production uses
 	// the node's ordinary read-only checker; a test may answer deterministically.
 	TaskProgressCheck func(brief string, evidence []string) (working bool, reason string)
@@ -1632,10 +1642,11 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
-	// cardText is the <state> block message[0] currently carries (card.go). It
-	// sits under mu beside memoryText and for the same reason: both are
-	// rendered into the transcript's first message, and message[0] is rebuilt
-	// from a.system plus the two of them rather than appended to.
+	// cardText is the <state> block (card.go): what this conversation is doing,
+	// as the post-turn pass has folded it. It sits under mu because it is
+	// rendered into the transcript — at the TAIL, in the volatile note
+	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
+	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
 	// standingText is the <standing> block message[0] currently carries
 	// (standing_world.go): the orders the person holds over this conversation,
@@ -1644,11 +1655,11 @@ type Agent struct {
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText string
-	// elsewhereText is the <elsewhere> block message[0] currently carries
-	// (taskdelta.go): what the OTHER windows on this project landed and are
-	// running. It sits under mu beside the two above for their reason, and it
-	// is REPLACED only when the facts in it move — an unchanged block leaves
-	// message[0] byte-identical, which is what keeps the prompt prefix cached.
+	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
+	// windows on this project landed and are running. It sits under mu beside
+	// cardText and rides where cardText rides, at the tail of the transcript —
+	// an unchanged block lands no second note, which is what keeps the whole
+	// conversation in front of it cached.
 	elsewhereText string
 	// elsewhereTold is the short memory of landings this session's model has
 	// already been handed, newest first and capped at [deltaLandedRows]. The

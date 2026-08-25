@@ -952,44 +952,56 @@ func (a *Agent) memoryTools() []bare.Tool {
 	}}
 }
 
-// refreshSystemLocked rebuilds message[0] from the base prompt, the memory block
-// this turn was routed, and the state card. It is called at construction — where
-// the block is empty, or is the one a task node opened with — and again once the
-// router has answered, at the start of every turn.
+// refreshSystemLocked rebuilds message[0] from the base prompt, the person's
+// standing orders and the memory block this turn was routed. It is called at
+// construction — where the block is empty, or is the one a task node opened with
+// — and again once the router has answered, at the start of every turn.
 //
 // message[0] is REPLACED rather than appended to: a.system stays the base, so
 // every refresh renders base + current blocks instead of stacking one turn's
 // memories on top of the last one's.
 //
-// THE CARD RIDES AFTER THE MEMORY BLOCK, and the order is the argument for it.
-// Memory is what is true across conversations; the card is what is true in this
-// one. A model reading downward meets the standing facts first and the live
-// situation last, which is the order it needs them in — and it is also the order
-// that keeps the prompt prefix stable for the cache, because the card is the
-// half that moves.
+// WHAT LIVES HERE IS WHAT HOLDS FOR THE LIFE OF THE CONVERSATION, and that is
+// the whole rule. message[0] sits in front of every message there is, so one
+// changed byte in it re-prices the entire transcript at the uncached rate — five
+// times the cached one — on the very next request. The base prompt never moves.
+// An order was agreed on a card and holds until the person says otherwise, and a
+// conversation may run all day without one moving (standing_world.go). The
+// memory block is the one thing in here that is not free, and it was measured
+// rather than assumed: it is routed per turn, so it moves when the SUBJECT
+// moves, and [renderMemoryBlock] stamps each line with an age label whose
+// granularity is hourly for a memory learned today and daily after that
+// (store.AgeLabel) — so a set that did not change re-renders byte for byte for
+// a session's whole length unless it is carrying something learned this
+// morning. It stays because it is REPLACED and never stacked: a turn's memories
+// are that turn's, superseded lines are the one thing the memory store works to
+// keep out of a prompt, and a tail note that appended each turn's set would put
+// them all back. What it costs when it does move is the same cold prefix the
+// clock costs when it is brought forward (prompt.go's clockRefresh), and for the
+// same reason: a model reasoning from a stale standing fact is worse than a
+// re-priced conversation.
+//
+// THE TWO BLOCKS THAT MOVE WITH THE WORK ARE NOT HERE. The state card is
+// rewritten by the post-turn pass every time a delta lands, and the other
+// windows' work is re-read at the start of every turn; both used to ride at the
+// end of this string, and between them they re-priced the whole conversation on
+// most turns of a working session. They ride at the TAIL of the transcript now,
+// as one appended note ([Agent.landVolatileLocked]), where a change costs the
+// note and nothing behind it.
 func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	// AND THE OTHER WINDOWS COME LAST, after the card, because that is the order
-	// of volatility and the cache reads downward: the base prompt never moves,
-	// memory moves per turn, the card moves when the conversation moves, and
-	// what a window three desks away is doing moves on nobody's schedule
-	// (taskdelta.go).
-	// AND THE STANDING ORDERS COME FIRST OF THE FOUR, immediately after the base
-	// prompt, because the order of these blocks is the order of volatility and
-	// the cache reads downward. An order is the least volatile thing here: it was
-	// agreed on a card, it holds until the person says otherwise, and a
-	// conversation may run all day without one moving (standing_world.go).
-	a.messages[0] = textMessage("system", a.system+a.standingText+a.memoryText+a.cardText+a.elsewhereText)
+	a.messages[0] = textMessage("system", a.system+a.standingText+a.memoryText)
 }
 
-// refreshCardLocked re-renders the state card into message[0]. It is the card's
-// own door onto [Agent.refreshSystemLocked], called by the post-turn pass once a
-// delta has actually changed something.
+// refreshCardLocked holds the state card's new text for the note that carries
+// it. It is the card's own door, called by the post-turn pass once a delta has
+// actually changed something — and it does NOT touch message[0] any more, for
+// the reason [Agent.refreshSystemLocked] states: the card moves with the work,
+// and what moves with the work rides at the tail.
 func (a *Agent) refreshCardLocked(text string) {
 	a.cardText = text
-	a.refreshSystemLocked()
 }
 
 // mergeStateCard folds one exchange's delta into the card and, when something
