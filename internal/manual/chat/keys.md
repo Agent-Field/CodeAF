@@ -330,6 +330,7 @@ an ordinary `enter` and the message waits instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
+| `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
 | `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -620,6 +621,55 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
+## The thinking chip above the message box — `ctrl+v`, and making this chat think harder
+
+The row above the message box carries a small chip naming how hard the model will think
+about your next turn:
+
+```
+                                                                      ⠿ high
+› what changed in the relay this week
+```
+
+The word is one of the five rungs of the effort ladder — `low`, `medium`, `high`,
+`xhigh`, `max` — and it is **what will actually happen**, not what somebody chose: it is
+the rung the next turn will ask for, whichever setting decided it. See *Making the model
+think harder, deeper, or less* on the "Models and cost" page for the whole ladder and for
+what each rung asks the provider for.
+
+**`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
+low → medium → high → xhigh → max → low. It works with a sentence half typed — it is a
+chord, it carries no text of its own, and it leaves your draft and your caret exactly
+where they were. Ordinary letters keep typing.
+
+**Clicking the chip opens the ladder**: five rows, cheapest first, with the rung you are
+on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes, and `ctrl+v` moves the cursor
+down a row while the list is up. While the list is up **every key belongs to it** — a
+plain letter does not type into the message box underneath. Clicking the chip a second
+time puts the list away, and a click on the chip never moves the caret in your draft.
+
+What it changes and what it does not:
+
+- It sets **this conversation's** rung. It is sticky — kept in this session's own
+  `meta.json` — so it is still there after you close aforge and come back.
+- The rung reaches the work this conversation hands out: task workers start at it too.
+- It does **not** change other conversations. The default for those is the **thinking**
+  row in `/settings`, which ships at `high`.
+- **`off` is not on the chip or in the list.** The five rungs are the ladder; turning
+  thinking off entirely is the `off` choice on the **thinking** settings row.
+- With thinking set to `off` and nothing else asking for any, there is **no chip at all** —
+  there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
+
+**When the chip will not move.** A thinking level dialled onto the model itself — the
+model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
+`ctrl+v` there and aforge says so in a note, naming the model and pointing at `ctrl+t`:
+*thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
+/model changes it*. Clear that level and the chip moves again.
+
+The chip is dim, like the rest of that row. It brightens for about two seconds after it
+changes, so you can see the new word without looking away from what you are typing, and
+then it goes quiet again.
+
 ## Attaching a picture
 
 There are three ways in.
@@ -903,6 +953,12 @@ chosen · `esc` leaves with nothing changed.
 
 **Harness panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`.
+
+**Thinking ladder** (click the `⠿ high` chip above the message box): `esc` closes ·
+`up`/`ctrl+p`, `down`/`ctrl+n` walk the five rungs · `ctrl+v` moves down one · `enter`
+applies the rung under the cursor. Clicking a rung applies it; clicking either of the
+two sentences around the rungs does nothing. Its foot reads
+`↑↓ · enter apply · esc · ctrl+v next rung`.
 
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
 `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` · `enter` **or `d`** to drop the
@@ -1227,7 +1283,9 @@ Only the left button acts. A press is resolved in this order:
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
-4. An attachment chip — removes it.
+4. The row above the message box: an **attachment chip** or a picked harness's chip
+   removes it, and the **thinking chip** at the right end of that row opens the five-rung
+   ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
    the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
@@ -1477,7 +1535,7 @@ answer:
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
-| `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
+| `ctrl+v` | **Bound.** In the message box it walks this conversation's thinking rung — see "The thinking chip above the message box" above. Paste is still your terminal's own paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |

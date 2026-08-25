@@ -336,6 +336,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.crewPickerKey(msg)
 		return nil
 	}
+	// AND THE THINKING CHOOSER IS MODAL ON THE CREW CHOOSER'S TERMS AND FOR ITS
+	// REASON (effortchip.go): it is five fixed words with no filter under them, so
+	// a plain letter falling through to the box would be a letter typed into a
+	// sentence the person is not looking at. ctrl+c is the one exception, as it is
+	// for every modal on this surface.
+	if a.effPick.open && msg.String() != "ctrl+c" {
+		return a.effortMenuKey(msg)
+	}
 	if a.memPanel.open && msg.String() != "ctrl+c" {
 		a.memoryKey(msg)
 		return nil
@@ -656,6 +664,20 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// slash is the other door onto the same panel (settings.go).
 		a.openSettings()
 		return nil
+
+	case effortKey:
+		// WALK THE THINKING LADDER (effortchip.go). It is bound here, in the plain
+		// switch, so it survives a draft: a chord is not a character, ctrl+v
+		// carries no text of its own, and everything above this line has already
+		// had its say — so a person mid-sentence can dial the conversation up and
+		// keep typing into the same words. It sits beside ctrl+, because the two
+		// are the surface's two dials and the chip above the box is this one's
+		// visible door, exactly as the panel is that one's.
+		//
+		// The chord does nothing at all on a session that cannot say how hard it
+		// thinks, which is the design law about a capability with nothing behind
+		// it rather than a guard: there is no chip on that frame either.
+		return a.cycleEffort()
 
 	case "pgup":
 		a.scroll(-a.page())
@@ -1031,6 +1053,12 @@ func (a *app) completePath() tea.Cmd {
 // inputBlock renders the draft — or the picker's filter box in its place — and
 // says where the caret sits inside it.
 func (a *app) inputBlock(width int) ([]string, int, int) {
+	// THE TRAY BELONGS TO THE MAIN DRAFT AND TO NOTHING THAT STANDS IN ITS
+	// POSITION, so the dial's recorded columns are cleared here rather than only
+	// in [app.chipStrip] (effortchip.go): every early return below draws a box
+	// with no tray above it, and a span left over from the frame before would let
+	// a click on a filter box open the thinking ladder.
+	a.effortSpan = hudSpan{}
 	// THE REWIND'S MODE BAR STANDS IN THE BOX'S OWN POSITION (rewind.go), for the
 	// reason the two filter boxes below take it: the keyboard is pointed somewhere
 	// else, and a draft drawn under a mode that has taken its keys is a box that
