@@ -16,6 +16,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
@@ -201,9 +202,21 @@ const (
 	jobsMaxTail     = 200
 )
 
-const jobsDescription = "Inspect background work: commands started with bash background:true, and watches started with the watch tool. Actions: 'list' — every job this session started, with id, kind, command, status (running, exited(N), killed, stopped) and elapsed time; 'output' — the last lines of one job's output (default 50, maximum 200) from an in-memory buffer of its last 64KB, which for a watch is the accumulated output of its ticks; 'kill' — SIGTERM the job's process group, then SIGKILL after 2 seconds, or stop a watch. The complete log of every job is a file on disk, named when the job started: read it with the read tool when the tail is not enough. Every running job is also a row on the person's screen, beside the conversation, naming the command and its log — so they can see that something is going without asking, and they can see it settle when it ends."
+// WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST OF EVERY
+// TURN. The belt's schemas ride in front of every request the model makes, so
+// each word here is paid dozens of times in one task and the prose around it is
+// paid never. Every rule the longer version stated is still stated, once.
+//
+// AND EVERY FIGURE IS INTERPOLATED. The ring's size, the kill grace and the
+// tail's bounds are all enforced somewhere else in this package ([jobRingBytes],
+// [jobTermGrace], [jobsDefaultTail], [jobsMaxTail]); a digit typed here would be
+// the second copy, and the second copy is the one that goes stale.
+var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
+	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
+	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
 
-const jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"What to do: list, output, or kill","enum":["list","output","kill"]},"id":{"type":"number","description":"Job id (required for output and kill)"},"tail":{"type":"number","description":"Number of trailing output lines to return (default: 50, maximum: 200)"}},"required":["action"],"additionalProperties":false}`
+var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"number","description":"Job id (output and kill need one)"},"tail":{"type":"number","description":"Lines returned (default: ` +
+	strconv.Itoa(jobsDefaultTail) + `, max: ` + strconv.Itoa(jobsMaxTail) + `)"}},"required":["action"],"additionalProperties":false}`
 
 // jobsTool is the window onto the registry. It is a belt tool like any other —
 // same Tool shape, same wire discipline — and it is deliberately the ONLY way

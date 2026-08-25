@@ -46,6 +46,31 @@ func TestTheWorkingStylePromptTeachesProportionateChecking(t *testing.T) {
 	}
 }
 
+// THE OTHER HALF OF WHAT CHECKING COSTS: not how many calls, but how many turns
+// they are spread over. A round trip is a wait the person sits through, and work
+// issued one call at a time serializes what the harness would have run
+// concurrently — so a model that reads three files in three turns has bought the
+// same evidence for three times the wall clock. The law lives in Tool Policy's
+// General section, beside the bounded-work rule it strengthens, and it is pinned
+// here for the same reason the proportion sentences are: the prompt is the whole
+// of the mechanism, and nothing else in the suite would notice it going.
+//
+// It carries no number, deliberately, and names reads/searches/checks rather
+// than files — a literature review batches its lookups on exactly this law.
+func TestTheSystemPromptTeachesAskingInOneBreath(t *testing.T) {
+	const law = "ASK FOR EVERYTHING YOU NEED IN ONE BREATH"
+	if !strings.Contains(systemPrompt, law) {
+		t.Fatalf("prompts/system.md does not say %q, so nothing tells the model to batch independent calls", law)
+	}
+	taught := section(systemPrompt, "- "+law, "\n\n")
+	if strings.ContainsAny(taught, "0123456789") {
+		t.Errorf("the batching law carries a number, which reads as a budget rather than a habit:\n%s", taught)
+	}
+	if !strings.Contains(taught, "ONE batch of calls") {
+		t.Errorf("the batching law never says what to do instead of one call per turn:\n%s", taught)
+	}
+}
+
 // THE WORKER'S REPORT SIDE. A task's report is often all the person ever reads,
 // and the answer "nothing needed doing" is exactly the one that tempts a worker
 // into shipping the tour instead of the finding.

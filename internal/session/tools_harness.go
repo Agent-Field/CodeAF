@@ -55,13 +55,25 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to a harness that is already SAVED is a new design, so say what the whole harness must do rather than only what is different. A design that is still on its card is not: the person changes that one by saying so in the design's own room and it is rewritten in place, so never start a second design because they want the first one altered. Use it for a recipe worth repeating; for one-off work use propose_task, wide or not — `wide` starts one worker that splits itself once it has opened the material, so width is never a reason to reach past propose_task."
+// THE TWO DESCRIPTIONS ARE PROMPT TEXT AND ARE PAID FOR ON EVERY REQUEST OF
+// EVERY TURN — the whole tool-schema block is re-sent in front of each one, some
+// seventy times in a single task — so they are written for density. That is not
+// a licence to drop a rule: every judgement these two hands used to teach is
+// still taught, once each, in the fewest words that keep it.
+//
+// What build_harness must still decide for the model is RECURRENCE against
+// one-off work (a recipe worth repeating, or propose_task), whether the thing
+// already exists (list_harnesses first), and which of the two revisions it is
+// looking at — a SAVED harness is re-designed whole, a design still on its card
+// is rewritten in place in its own room. What the goal must contain is stated on
+// the goal field below and no longer twice.
+const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do AGAIN, which the turn then offers on a match. Call list_harnesses first: one that already does this is to run, not build. NEVER for one-off work - that is propose_task, whose `wide` splits a worker after it opens the material, so width is no reason to come here. Changing a SAVED harness is a new design: give the whole goal, not the difference; one still on its card is rewritten in place in its own room. Returns a TASK NUMBER; nothing is saved unless the person approves the card."
 
 const buildHarnessSchemaJSON = `{"type":"object","properties":{` +
-	`"goal":{"type":"string","description":"What the harness must do, self-contained. The designer never sees this conversation, so fold in whatever the person's words were pointing at: the work, the files, how a good result is checked."}` +
+	`"goal":{"type":"string","description":"What the harness must do, self-contained - the designer never sees this conversation: its steps, their tools, its bounds, the files, the checks."}` +
 	`},"required":["goal"],"additionalProperties":false}`
 
-const listHarnessesDescription = "List the sub-harnesses saved on this machine: each one's name, version and what it is for, and — for the ones this conversation designed — the task their design thread is in. Call it before build_harness — a harness that already does the work is one to run rather than design again — and whenever the person asks what shapes of work are saved here. A saved one is a subharness like any other: it is on `/subharness` and runs from there, and it is also offered by the turn itself when somebody's words match it closely enough, and the person answers that card. So a name from this list is one to say in the conversation or to hand to `/subharness`."
+const listHarnessesDescription = "The sub-harnesses saved here: name, version, purpose, and for ones designed here their design thread's task. Call it before build_harness: one that already does the work is to run, not design again. Each also runs from `/subharness`."
 
 const listHarnessesSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 

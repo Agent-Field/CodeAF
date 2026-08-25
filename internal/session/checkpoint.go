@@ -961,7 +961,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked s
 	// conversation's own transcript — the errand pocket is for the session's
 	// side-calls, and this is the last step of the answer.
 	turn.Turns++
-	a.addUsage(turn, response)
+	a.addUsage(turn, response, provider.ServedEndpointFrom(ctx).Name())
 
 	brief := strings.TrimSpace(response.Text())
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that

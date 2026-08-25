@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/reflex"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -589,5 +590,57 @@ func TestRewindPointsSkipTheCompactionNote(t *testing.T) {
 	// And the cut the list forbids is the cut RewindAt forbids.
 	if _, err := agent.RewindAt(1); err == nil {
 		t.Fatal("RewindAt(1) succeeded; the summary note is not a point")
+	}
+}
+
+// THE SESSION'S OWN VOLATILE NOTE IS NOT SOMETHING ANYBODY SAID, and the user
+// role it has to travel in is the only reason this needs saying. It carries the
+// state card and the other windows' work at the tail of the transcript, where a
+// change costs the note instead of the whole conversation (agent.go's
+// landVolatileLocked) — and every surface that reads the user role has to know
+// the difference, or a person is shown a paragraph of machinery as their own
+// words: drawn in the replay, offered as a rewind point, quoted by `/why` as the
+// instruction the turn is working on.
+func TestTheVolatileNoteIsNeverTakenForSomethingThePersonSaid(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the parser is in hand"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	agent.mergeStateCard(reflex.StateDelta{Goal: "ship the parser"})
+	collect(t, mustSubmit(t, agent, "how is the parser going?"))
+
+	agent.mu.Lock()
+	landed := false
+	for _, message := range agent.messages {
+		if isVolatileNote(messageContentText(message)) {
+			landed = true
+		}
+	}
+	agent.mu.Unlock()
+	if !landed {
+		t.Fatal("no note reached the transcript; this test would pass on nothing")
+	}
+
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "<state>") || isVolatileNote(entry.Text) {
+			t.Fatalf("the note was drawn as a %q row: %.120q", entry.Role, entry.Text)
+		}
+	}
+	for _, point := range agent.RewindPoints() {
+		if isVolatileNote(point.Said) {
+			t.Fatalf("the note was offered as a rewind point: %.120q", point.Said)
+		}
+	}
+	agent.mu.Lock()
+	index, ok := agent.lastTurnStartLocked()
+	said := ""
+	if ok {
+		said = messageContentText(agent.messages[index])
+	}
+	agent.mu.Unlock()
+	if !ok || said != "how is the parser going?" {
+		t.Fatalf("the last turn started at %q, want the person's own sentence", said)
 	}
 }
