@@ -65,9 +65,11 @@ const videoLabel = "video"
 const generateVideoDescription = "Generate a video from a text prompt. This tool RETURNS IMMEDIATELY with a background job id, because a render takes minutes: the work keeps going while you and the user carry on talking, and when it lands you are told in a note naming the file — you do not wait for it, poll it, or call it twice. Give frame_paths to pin the motion (the first image is the opening frame, a second is the closing one) and reference_paths for pictures that set the style. EVERY CALL IS AN INDEPENDENT RENDER: the video model sees only this prompt and these images — no earlier clip, none of this conversation — so anything that must hold across clips (a face, a costume, a setting) must be described or passed as a picture on every call, and one clip continues from another only when the earlier clip's final frame is handed in as the next call's opening frame, which makes connected clips a sequence rather than a parallel batch. The landing note reports the clip's measured length and whether it carries sound, whenever the file can be measured. Watch it with the jobs tool and stop it with jobs kill; a stopped render saves nothing."
 
 const generateVideoSchemaJSON = `{"type":"object","properties":{` +
-	`"prompt":{"type":"string","description":"What happens in the shot: subject, action, camera movement, style, lighting. The whole prompt reaches the video model, so detail is worth writing."},` +
+	`"prompt":{"type":"string","description":"What happens in the shot: subject, action, camera movement, style, lighting. The whole prompt reaches the video model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI footage looks like. Decide the medium, the light, the lens and the mood yourself and write them down; specificity is the difference between the shot you meant and a generic one."},` +
 	`"duration":{"type":"number","description":"How many seconds long, if the model takes a length. Leave it out for the model's own default."},` +
 	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the video model spells it (for example 16:9 or 9:16). Passed through untouched; leave it out for the model's own default."},` +
+	`"resolution":{"type":"string","description":"How sharp the render is, as the video model spells it (for example 720p or 1080p). Passed through untouched; leave it out for the model's own default, and name one when sharpness is part of the brief — a higher resolution is a slower, costlier render."},` +
+	`"seed":{"type":"integer","description":"Fixed number that makes the render's randomness repeatable, if the video model takes one. The same seed with the same prompt and pictures re-renders close to the same shot, so hold it steady to change one thing about a shot you mostly liked. Passed through untouched; leave it out for a fresh roll."},` +
 	`"frame_paths":{"type":"array","items":{"type":"string"},"description":"One or two pictures in the workspace (png, jpeg, webp or gif) that the shot must start and end on: the first is the opening frame, a second is the closing one. More than two is refused. An image generate_image just made is a valid frame, and a frame saved out of an earlier clip is how one shot carries into the next."},` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures whose look the render should follow — style, palette, a character's face. They set the appearance, not the motion; use frame_paths for that. The same references handed to every clip keep a character steady across renders that otherwise share nothing."},` +
 	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its video. An existing file at this path is overwritten, as with the write tool."}` +
@@ -86,11 +88,15 @@ func (a *Agent) videoTools() []bare.Tool {
 
 // generateVideoArguments is the wire form. Duration is a plain int because zero
 // and absent mean the same thing here — the model's own default length — and
-// provider.VideoRequest omits a zero on the way out.
+// provider.VideoRequest omits a zero on the way out. Seed is a pointer because
+// zero is a seed a model may legitimately ask for, and collapsing it into
+// "absent" would quietly re-roll a shot the model was trying to hold still.
 type generateVideoArguments struct {
 	Prompt         string   `json:"prompt"`
 	Duration       int      `json:"duration"`
 	AspectRatio    string   `json:"aspect_ratio"`
+	Resolution     string   `json:"resolution"`
+	Seed           *int     `json:"seed"`
 	FramePaths     []string `json:"frame_paths"`
 	ReferencePaths []string `json:"reference_paths"`
 	Path           string   `json:"path"`
@@ -143,6 +149,8 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			request := provider.VideoRequest{
 				Model: model, Prompt: prompt, Duration: parsed.Duration,
 				AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
+				Resolution:      strings.TrimSpace(parsed.Resolution),
+				Seed:            parsed.Seed,
 				FrameImages:     frames,
 				InputReferences: styles,
 			}

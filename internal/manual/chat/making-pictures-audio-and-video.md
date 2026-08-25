@@ -114,6 +114,36 @@ This is the same freedom you have yourself in `/settings` → Providers, handed
 to aforge per call: ask it to "draw this one with gemini" or "try the best
 image model" and it can, just in time.
 
+## Why does a picture or video look generic, blurry, or like AI slop?
+
+Three causes, all fixable — none of them is "the model is bad at this".
+
+**The prompt left too much undecided.** Every dimension a prompt does not
+decide — the medium, the light, the palette, the mood, the era — the image or
+video model fills with its statistical average, and that average is exactly what
+generic AI output looks like: over-smooth, over-lit, style-less. The fix is
+specificity: aforge writes the decisions into the prompt rather than asking for
+"a nice picture of X" and hoping. Ask it to redo a generic render "as a
+photograph, natural light" or "as a flat diagram, two colours" and the words go
+straight to the model.
+
+**Nothing asked for sharpness.** `generate_image` takes `size` (for example
+`1024x1024`) and `generate_video` takes `resolution` (for example `1080p`), both
+passed to the model untouched; left out, the model's own default decides, and a
+default can be modest. Ask for "1080p" or "a larger size" and it is passed
+through — a sharper render costs more and, for video, takes longer.
+
+**The first render was accepted as the last.** A first render is a draft. aforge
+can look at what it made (`view_image`, or `read` on the file), judge it against
+the brief, and iterate — the path a render returned is a valid
+`reference_paths` entry, so "fix the hands, keep everything else" is one more
+call, not a fresh roll of the dice. For video, `seed` holds a shot steady while
+one thing about it is changed.
+
+A different model is also a real lever: the `model` argument tries another one
+for a single call, and `best` picks the strongest advertised — see "Can you use
+a different model for one picture, sound or video?".
+
 ## Can you read this out loud, or make a voiceover?
 
 Yes, with `speak`, when a speech model is available.
@@ -230,13 +260,20 @@ With no video model set in `/settings` → Providers, the default is
 `bytedance/seedance-2.5`, falling back to `bytedance/seedance-2.0-mini` on a
 catalog that does not advertise it. A model you set yourself wins over both.
 
-Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`, `model`,
-`frame_paths`, `reference_paths`, `path`.
+Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
+`resolution`, `seed`, `model`, `frame_paths`, `reference_paths`, `path`.
 
 - `frame_paths` pins the motion: the first picture is the opening frame, a second
   is the closing one. **More than two is refused** — the wire has no third slot.
 - `reference_paths` sets the look — style, palette, a face — and not the motion.
 - An image `generate_image` just made is a valid frame or reference.
+- `resolution` is how sharp the render is, spelled the video model's way (for
+  example `720p` or `1080p`) and passed through untouched. Leave it out for the
+  model's own default; a higher resolution is a slower, costlier render.
+- `seed` is a fixed number that makes the render's randomness repeatable, when
+  the model takes one. The same seed with the same prompt and pictures
+  re-renders close to the same shot — hold it steady to change one thing about
+  a shot that was mostly right, leave it out for a fresh roll.
 
 The render **is** a job: it shows in `jobs list` as
 `job 3 · video · running · 42.1s · a ferry at dawn`, and `jobs kill 3` stops it —

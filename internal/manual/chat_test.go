@@ -331,6 +331,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"keep the same character across the clips", "making-pictures-audio-and-video"},
 		{"how long is the music you compose", "making-pictures-audio-and-video"},
 		{"can you keep working while the music is composing", "making-pictures-audio-and-video"},
+		// Written from the complaint that produced the quality section: renders
+		// were landing generic and soft, and the person said it in these words.
+		{"the image you made looks like generic ai slop", "making-pictures-audio-and-video"},
+		{"can you make the video higher resolution", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught
