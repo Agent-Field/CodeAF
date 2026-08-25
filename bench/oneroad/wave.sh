@@ -12,6 +12,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK="${1:?usage: wave.sh <task> [arms...]}"; shift
 ARMS="${*:-aforge-new-flash aforge-new-crew aforge-old-flash pi opencode}"
+# SEED rides through so a wave can be repeated: wave 1f runs the same arm twice
+# over the same five tasks, and the two runs must land in different cells.
+SEED="${SEED:-s1}"
 
 mkdir -p "$ROOT/results"
 # The load at the instant the wave fired. Five cells on one box contend for CPU
@@ -22,7 +25,7 @@ printf 'wave %s fired %s loadavg %s\n' "$TASK" "$(date -Is)" "$(cut -d' ' -f1-3 
 
 pids=()
 for arm in $ARMS; do
-  bash "$ROOT/cell.sh" "$arm" "$TASK" > "$ROOT/results/.$arm-$TASK.out" 2>&1 &
+  SEED="$SEED" bash "$ROOT/cell.sh" "$arm" "$TASK" > "$ROOT/results/.$arm-$TASK-$SEED.out" 2>&1 &
   pids+=($!)
   sleep 2
 done

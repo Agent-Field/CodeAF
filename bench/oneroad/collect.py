@@ -3,10 +3,12 @@
 import csv, glob, json, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-FIELDS = ["task", "harness", "seed", "outcome", "wall_s", "wall_s_active",
-          "cost_usd", "cost_source",
+FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "wall_s", "wall_s_active",
+          "cost_usd", "cost_usd_calls", "cost_list_usd", "cost_source", "calls", "endpoint_mix", "marks", "ceiling_decision", "forks", "cost_by_role", "cost_usd_usage", "mark_reader_calls", "mark_reader_model",
           "tests_before", "tests_after", "changed_files",
-          "road", "armed", "parts", "peak_workers", "refused",
+          "changed_files_landed", "stranded_worktree_files", "changed_files_total", "upstream_commits_in_head", "contaminated",
+          "road", "route", "armed", "parts", "peak_workers", "refused", "chat_tool_calls",
+          "checkpoint_marks", "escalated", "escalation_seen_on_pane", "pre_turn_line",
           "exit", "model", "base_commit", "loadavg_before", "loadavg_after"]
 
 
