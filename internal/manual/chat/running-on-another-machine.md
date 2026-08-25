@@ -212,9 +212,10 @@ The second half of the list, with the exact sentence each one says.
 ## Reminders and watches over --host — they work, and they belong to that machine
 
 **Standing items are the one ambient capability a connection does not take away.** A
-sub-harness design and an adaptive run are both switched off at the engine because their
-card would arrive in an empty room; this card does not — it crosses the wire as an
-ordinary event and your answer crosses back as its own frame.
+sub-harness design is switched off at the engine because its card would arrive in an empty
+room, and an adaptive run cannot be started from a conversation at all; this card is
+neither — it crosses the wire as an ordinary event and your answer crosses back as its own
+frame.
 
 So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host`. What to know is **whose machine they are on**:
@@ -318,13 +319,14 @@ is that the card asking whether to keep the finished page arrives on a standing 
 remote connection does not carry, so a design left switched on would write a page and ask a
 question in an empty room. Build harnesses in a session running on that machine directly.
 
-**Adaptive runs are switched off over a remote connection**, and for the same reason: a
-run's fuel gate arrives on that same standing lane. A run left switched on would spend the
-money, stop at its cap, and wait four hours for an answer nobody could give it. So this
-session is built with no adaptive runner at all, and the one door onto a run — a message
-beginning `orchestrate …` — does nothing here: those words run as an ordinary turn. That is
-a remote condition on the door, not on aforge: the same sentence opens a run in a session
-running on that machine directly.
+**Adaptive runs are not something you can start here — and not because of the wire.** No
+conversation opens an adaptive run any more, on this machine or the far one: there is no
+command, no setting, no tool and no sentence that does it (*adaptive runs*, under *How do I
+start an adaptive run*). So a message beginning `orchestrate …` is an ordinary turn over
+`--host` for exactly the reason it is an ordinary turn locally. The remote session is also
+built with no adaptive runner at all, which is belt and braces rather than the reason: a
+run's fuel gate would arrive on the standing lane a connection does not carry, and a run
+that stopped at its cap would wait four hours for an answer nobody could give it.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering

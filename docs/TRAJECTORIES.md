@@ -27,6 +27,18 @@ the audit's value is in showing which trajectories closed and when. Everything
 about the ENGINE (`internal/orchestrate`, `Agent.RunOrchestrate`, the fuel tank,
 `/subharness`, `cmd/harness-design`) is unchanged.*
 
+*Updated w44, later the same day, by the CUE-DOOR lane. **Law 2 below changed shape
+again**, and this time it closed: the anchored `orchestrate …` cue is gone from the
+turn loop, so a conversation has NO door onto the planner DAG — not a hand, not a
+command, not a preference, and not a form of words. `routeOrchestrate`,
+`orchestrateGoal` and the cue's three regexps went with it; `startOrchestrate`,
+`announceOrchestrate`, `Agent.RunOrchestrate`, the roster family, the fuel gate and
+`Config.OrchestrateRunner` were deliberately LEFT STANDING, marked where they stand as
+having no chat-side caller, because ripping the engine's wiring out is a separate
+decision nobody has made. Rows and bullets naming the cue as an open door are marked
+where they stood. The ENGINE is still unchanged: `internal/orchestrate`,
+`cmd/harness-design`, and `/subharness` on its own runner.*
+
 ## The world this is measured against
 
 Four laws, decided across waves 35–40, are what "as-intended" means here.
@@ -35,12 +47,13 @@ Four laws, decided across waves 35–40, are what "as-intended" means here.
    starts; it splits itself under two gates — the evidence gate
    (`internal/splitgate`) and the free-hands gate (`TaskGraph.freeHands`) — and
    the parts are picked up as hands free. The parent stays and folds.
-2. **The planner DAG is the explicit exception, and since w44 a person is the
-   only one who can ask for it.** The typed `orchestrate …` cue is the whole of
-   it in a conversation; `run_adaptive` and `/task adaptive` are gone. Width
-   alone was never the reason and now cannot be — nothing but a person's own
-   sentence opens a planned graph. Narrow work is byte-identical to the
-   pre-swarm world.
+2. **The planner DAG is the explicit exception, and since w44 a conversation
+   cannot take it at all.** `run_adaptive`, `/task adaptive`, the `adaptive`
+   preference and finally the typed `orchestrate …` cue are all gone, in that
+   order. Width alone was never the reason and now nothing is: no hand, no
+   command, no setting and no sentence opens a planned graph from chat. The
+   engine is reached by `cmd/harness-design` on a driver of its own. Narrow work
+   is byte-identical to the pre-swarm world.
 3. **Consent.** Nothing runs from a model decision without the person's yes
    where a yes is required. Headless never auto-approves a question. A
    subharness `ask()` with nobody there is never a yes.
@@ -89,7 +102,7 @@ are not suggestions" over a reminder (**M7**).
 | ctrl+enter (home) | `internal/tui3/home.go:2002-2010` → `homeexchange.go:805` | an errand conversation | n/a | as-intended | not a task and not a planner |
 | the margin's `+` doors | `internal/tui3/margin.go:76-82`, press `:313-317` → `:340-352` | **types into the draft; starts nothing** | n/a | as-intended | the file's own law at `margin.go:39-42`: "THE `+` ROW TYPES, IT DOES NOT ARM." |
 | home's work doors | `home.go:2398-2404` | a new conversation, or an `ask here` errand | n/a | as-intended | neither admits a task |
-| `orchestrate …` typed | `internal/session/orchestrate.go:502-504`, routed `loop.go:209` → `:568` | **planner DAG, immediately, no card** | n/a | as-intended | the typed sentence *is* the consent: "IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT" (`orchestrate.go:492-497`), anchored to the head of the message, with three gates in front — a runner, a watcher (`:572-574`), and only what a person typed (`:577-580`) |
+| ~~`orchestrate …` typed~~ | **CLOSED w44 (cue-door lane)** — the cue, its parser and its route are deleted; `loop.go` says where they stood and why | **an ordinary turn** — the model answers, and the route judge starts a task if it reads as work | as the judge arms anything | closed | this was the last door of any kind onto the planner from a conversation, so law 2's exception is now unreachable from chat; `internal/session/orchestrate_test.go` pins the six old cue sentences as ordinary turns that never call the runner |
 
 ## B. Model-decided — the model reached for a verb
 
@@ -965,10 +978,11 @@ structural finding above was left as a finding.
 - `TaskGraph.admit` is genuinely the one arming door: two production
   `&TaskNode{}` constructions (`task_run.go:687`, `task_store.go:995`), two
   writers of `spec.divide` (`task_run.go:686`, `task_store.go:1041`).
-- The planner is unreachable from every autonomous path, and since w44 from every
-  MODEL path too: the belt has no `run_adaptive`, and the one door left,
-  `routeOrchestrate`, wants a runner, somebody watching, and a turn that a person
-  actually typed — it refuses woken and authored turns outright.
+- The planner is unreachable from every autonomous path, from every MODEL path,
+  and — since the cue-door lane closed `routeOrchestrate` later in w44 — from
+  every TYPED path as well. There is no door onto it in a conversation at all;
+  the engine's chat-side seams stand with no caller, marked as such where they
+  stand (`loop.go`, `orchestrate.go`).
 - Headless never auto-approves a tool question: `consent.go:282-284` refuses when
   nobody is watching, `:276` refuses inside a node, and the memo is barred from
   swallowing the critical floor (`consent.go:246`, `internal/approval/floor.go:27-45`).

@@ -25,17 +25,28 @@ package session
 // the arrangement a designed harness already uses one file over, for the same
 // reason.
 //
-// WHAT IS NOT HERE. Nothing in this file decides how much a run may spend, and
-// nothing in it decides that a turn wanted one. The cap comes from the person's
-// sentence or from the default below; and a run is commissioned from exactly ONE
-// place in a conversation — an anchored cue in what a person typed
-// ([orchestrateCue], which is a lookup and never a judgement). THERE WERE TWO:
-// the model had a `run_adaptive` hand on the belt, and it went with the wave that
-// left ordinary work one road, because a planner guessing the parts from a
-// request it can only read lost to a worker that opens the material first
-// (task_divide.go). So a planned graph is now something somebody asks for in so
-// many words and nothing a turn decides on their behalf. A build with no runner
-// wired (Config.OrchestrateRunner) never reaches past one nil check.
+// WHAT IS NOT HERE, AND IS NOT ANYWHERE ELSE EITHER: A DOOR. Nothing in this
+// file decides that a turn wanted a run, because NO CHAT TURN CAN OPEN ONE AT
+// ALL any more. There were three ways in and all three are closed — the model's
+// `run_adaptive` hand, which went with the wave that left ordinary work one road
+// (a planner guessing the parts from a request it can only read lost to a worker
+// that opens the material first, task_divide.go); `/task adaptive`, retired with
+// the preference that spelled it; and last the anchored cue, a lookup on the head
+// of what somebody typed, which is now gone too (loop.go states the whole of it).
+// Typing `orchestrate the migration` is an ordinary turn today: absence, not
+// refusal.
+//
+// SO WHO STILL DRIVES THE ENGINE. cmd/harness-design, on a driver of its own
+// straight onto internal/orchestrate. /subharness is NOT a second answer and is
+// worth naming so nobody looks for one: a saved program is a task node started
+// by its own runner (subharness_contract.go's startSubharnessRun) and it never
+// enters this file. So what stands below is the whole of what a conversation
+// would need to hold a run — the doorways, the fuel gate's answer, the snapshot
+// and the steering a room draws, the roster family — with no chat-side caller
+// left. IT IS KEPT DELIBERATELY: those seams are exercised by this package's
+// tests, a surface would come back in through exactly them, and taking the organ
+// out is a separate decision nobody has made. Where a piece here has no caller
+// at all, it says so where it stands.
 
 import (
 	"context"
@@ -44,7 +55,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +87,11 @@ const (
 	// nag rather than a decision — the owner raised it to ten. The gate is
 	// still where more money is asked for; it just fires when a run is
 	// genuinely large rather than merely ordinary.
+	//
+	// NOTHING READS IT TODAY: it was read by the cue that turned a typed sentence
+	// into a run, and every caller now names its own cap. It is kept because the
+	// figure is a decision about money rather than a piece of the door that went,
+	// and a re-wired chat road would otherwise have to invent it again.
 	orchestrateDefaultCap = 10.00
 
 	// The planner's own budget. It writes an amendment, not a page, and the
@@ -125,11 +140,13 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	source, session := a.config.RolesSource, a.model
 	a.mu.Unlock()
 	// THE PERSON'S OWN MESSAGE, TAKEN HERE AND NOT ASKED FOR. Whatever door
-	// started this run — the tool on the belt, the anchored cue, /task — the
-	// sentence that caused it is the newest thing the person typed, and this is
-	// the last moment anybody has it: from here the run is a goal, a planner and
-	// a fleet of workers that have never met them. It reaches the planner above
-	// the goal and every node above its own (task_brief.go).
+	// started this run — every one a conversation had is closed now, and what is
+	// left is a surface's own runner — the sentence that caused it is the newest
+	// thing the person typed, and this is the last moment anybody has it: from
+	// here the run is a goal, a planner and a fleet of workers that have never met
+	// them. It reaches the planner above the goal and every node above its own
+	// (task_brief.go). A run nobody typed anything for simply has none, and the
+	// heading is absent rather than empty.
 	request := a.taskRequest()
 
 	// The id is the run's number written out. Both spellings name one run: the
@@ -479,6 +496,12 @@ func doneNodes(snap orchestrate.Snapshot) int {
 // startOrchestrate launches one adaptive run for goal on a fuel cap, through
 // the runner the config was handed (Config.OrchestrateRunner). NIL RUNNER IS
 // ORCHESTRATION OFF, the same posture RunHarness keeps one seam over.
+//
+// NO CHAT DOOR REACHES THIS TODAY. Its one caller was the anchored cue in the
+// turn loop, and that door is closed (loop.go says why); the engine's chat-side
+// wiring is kept deliberately rather than removed, because the gate and the
+// steering it feeds are still exercised by this package's tests and this seam is
+// where a surface would come back in.
 func (a *Agent) startOrchestrate(ctx context.Context, goal, model string, capDollars float64) (string, error) {
 	run := a.config.OrchestrateRunner
 	if run == nil {
@@ -487,138 +510,30 @@ func (a *Agent) startOrchestrate(ctx context.Context, goal, model string, capDol
 	return run(ctx, goal, model, capDollars)
 }
 
-// ── the turn that asks for one ──────────────────────────────────────────────
-
-// orchestrateCue is the whole of adaptive-run detection: a verb that names the
-// thing, and the goal it hands over.
+// ── the news of a run ───────────────────────────────────────────────────────
 //
-// IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT, and the bargain is worth stating
-// because a run costs money: a wrong yes here is a wrong yes with a fuel tank
-// attached. So the sentence says so in words or this path does nothing. THE
-// JUDGEMENT IT REFUSES TO MAKE IS NOT MADE ANYWHERE ELSE EITHER, and that is the
-// change this cue outlived: the belt used to carry it (`run_adaptive`) and does
-// not now, so nothing decides on a person's behalf that their work wants a
-// planner. Width is answered by the worker that opens the material instead
-// (task_divide.go), and this lookup is what is left for somebody who names a
-// planned run outright.
+// THE TURN THAT ASKED FOR ONE STOOD HERE, and it is gone. An anchored cue read
+// the head of what somebody typed — `orchestrate …`, `adaptively work on …` —
+// stripped the courtesies off it, took the money and the model clause out of the
+// sentence, and started a run with what was left. It was a lookup and never a
+// judgement, and it was still the last way a conversation could reach a planned
+// graph, which is a thing this product has decided a conversation does not do
+// (loop.go carries the whole statement). The parser went with it: nothing in this
+// package reads a person's sentence for a run any more.
 //
-// It is anchored for the same reason that one is: "orchestrate the migration"
-// at the head of what somebody typed is a request, and the same words inside a
-// paragraph are usually somebody describing one.
-var orchestrateCue = regexp.MustCompile(
-	`(?is)^(?:orchestrate|adaptively\s+(?:run|work\s+on|do)|` +
-		`(?:run|start|kick\s+off)\s+(?:an?\s+)?adaptive\s+run\s*(?:on|for|to|that|:)?)\s+(.+)$`)
-
-// orchestrateBudget reads the money out of a sentence: "with a $5 budget",
-// "on $2.50", "$10". The FIGURE IS THE PERSON'S DECISION and the only one
-// they get to make up front, so it is read wherever in the sentence they put
-// it — and the clause comes out of the goal, because "with a $5 budget" is not
-// part of the work.
-var orchestrateBudget = regexp.MustCompile(`(?i)\s*(?:\b(?:with|on|under|for)\s+)?(?:a\s+)?\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:dollar[s]?\s*)?(?:budget|cap|tank)?`)
-
-// orchestrateOpeners are the courtesies a request is wrapped in, stripped
-// before the cue is read so that "please orchestrate X" is the same request as
-// "orchestrate X". They are openers only — each is removed from the FRONT and
-// the rest is re-read — so none of them can match anything in the middle of a
-// sentence.
-//
-// They lived in harness_build.go until commissioning a harness became a tool the
-// model calls (tools_harness.go), which left this the only cue in the package
-// and these the only courtesies anything strips.
-var orchestrateOpeners = []string{
-	"please ", "can you ", "could you ", "would you ", "let's ", "lets ",
-	"i want you to ", "i'd like you to ", "i would like you to ",
-}
-
-// orchestrateGoal reads one turn's request for a run: what to work on, and how
-// much of somebody's money it may spend. false is every other sentence.
-func orchestrateGoal(text string) (goal string, cap float64, ok bool) {
-	text = strings.TrimSpace(text)
-	// The openers come off one at a time, so "please can you orchestrate X" is
-	// read too. The loop terminates because every pass strips a prefix.
-	for stripped := true; stripped; {
-		stripped = false
-		for _, opener := range orchestrateOpeners {
-			if len(text) >= len(opener) && strings.EqualFold(text[:len(opener)], opener) {
-				text = strings.TrimSpace(text[len(opener):])
-				stripped = true
-				break
-			}
-		}
-	}
-	found := orchestrateCue.FindStringSubmatch(text)
-	if found == nil {
-		return "", 0, false
-	}
-	goal = strings.TrimSpace(found[1])
-	cap = orchestrateDefaultCap
-	if money := orchestrateBudget.FindStringSubmatchIndex(goal); money != nil {
-		if amount, err := strconv.ParseFloat(goal[money[2]:money[3]], 64); err == nil && amount > 0 {
-			cap = amount
-			goal = strings.TrimSpace(goal[:money[0]] + " " + goal[money[1]:])
-		}
-	}
-	if goal = strings.TrimSpace(goal); goal == "" {
-		return "", 0, false
-	}
-	return goal, cap, true
-}
-
-// routeOrchestrate is this file's place in a turn, called from [Agent.runTurn]
-// beside the harness routes.
-//
-// It reports (answered, completed) on routeHarness's own terms: answered=true
-// means the turn is OVER because the run has started and there is nothing else
-// this turn is going to do, and completed=true because it is over the ordinary
-// way.
-func (a *Agent) routeOrchestrate(ctx context.Context, hub *eventHub, user userMessage, started time.Time) (bool, bool) {
-	// THE GATES ARE THE OFFER'S GATES. A runner to run it, and somebody
-	// watching who can answer the fuel gate: a run nobody can top up is a run
-	// that stops halfway and stays there.
-	if a.config.OrchestrateRunner == nil || !a.config.AskConsent {
-		return false, false
-	}
-	// ONLY WHAT A PERSON TYPED. A woken turn's note is the session talking to
-	// itself, and a run commissioned out of one would be the session spending
-	// somebody's money on its own suggestion.
-	if user.empty() || user.wake || user.authored {
-		return false, false
-	}
-	goal, cap, ok := orchestrateGoal(user.text())
-	if !ok {
-		return false, false
-	}
-	// The model is read off the goal by the clause reader the offer already
-	// uses (harness.go): "orchestrate the migration with opus" chose a model
-	// and asked for work on a migration, and the run is handed the second thing
-	// without the first.
-	model, _, goal := a.harnessTurnModel(goal)
-	if goal = strings.TrimSpace(goal); goal == "" {
-		return false, false
-	}
-
-	id, err := a.startOrchestrate(ctx, goal, model, cap)
-	if err != nil {
-		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started, a.Model())})
-		return true, false
-	}
-	if id == "" {
-		// The runner declined without saying why. Nothing started, so the turn
-		// the person typed runs exactly as it would have.
-		return false, false
-	}
-	a.announceOrchestrate(id, goal, model, cap)
-	// The turn ends HERE, with no assistant message: the run is the answer and
-	// it has not happened yet.
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
-	return true, true
-}
+// What is left below is the announcement a run makes when one is started, kept
+// for the reason everything else on this side is kept.
 
 // announceOrchestrate says one run has started, on the standing lane where
 // every other thing that run will say arrives. It is the FIRST NEWS OF A RUN and
 // the only line a surface has to go on: a run is not a node, so it is on no
 // roster and has no row, and this event is what tells a surface one exists at
 // all (internal/tui3's roomorch.go).
+//
+// NOBODY CALLS IT TODAY — the cue that stood above it was its one caller — and
+// it stands for the reason the rest of the engine's chat-side wiring stands: a
+// surface that starts a run through [Config.OrchestrateRunner] still needs the
+// line, and the tui3 reader that draws it is untouched.
 //
 // THE ID IS THE RUN'S NUMBER, AND A RUNNER MAY NOT HAVE ONE. Every question in
 // this package is answered by [Event.ID], which is a uint64, and the engine here
@@ -1137,9 +1052,9 @@ func (e *orchestrateExec) root() string {
 // shows: a run's goal is also its title on the roster and in the room header
 // (roomorch.go draws it as one line), so the contract lives INSIDE the goal
 // rather than in fields beside it. NOBODY ASKS FOR IT SEPARATELY ANY MORE —
-// run_adaptive's schema used to, and the one door left is a person's own
-// sentence read off an anchored cue ([orchestrateGoal]), which arrives as goal
-// and contract at once. Everything else about the layout is decided in
+// run_adaptive's schema used to, and every door that could have is closed: a run
+// arrives here as one goal that is its contract too, from /subharness or from
+// cmd/harness-design. Everything else about the layout is decided in
 // [composeBrief] and not here.
 func orchestrateRootBrief(request, goal string) string {
 	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "")

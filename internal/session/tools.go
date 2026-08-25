@@ -67,10 +67,11 @@ import (
 // MORE. The judgement it asked the model to make — is this wide enough to plan up
 // front — is a guess made before anybody opens the material, and the road that
 // won makes it from the material instead: one task, admitted wide, handing the
-// parts out as it finds them (task_divide.go). The engine still ships and a
-// person can still name a run outright (orchestrate.go's anchored cue); the model
-// simply has no verb for it, which is what "absent, not refusing" means when the
-// thing taken away is a hand.
+// parts out as it finds them (task_divide.go). The engine still ships, and since
+// the cue that read a typed request for a run went too (loop.go) NOTHING in a
+// conversation reaches it: the model has no verb for a run, and neither does
+// anybody typing — which is what "absent, not refusing" means when the thing
+// taken away is a hand.
 //
 // settings and change_setting (tools_settings.go) are the person's own
 // configuration: the sheet read back by its registry keys, and one row of it

@@ -129,9 +129,10 @@ case the context window is left alone.
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
-the summary a compaction keeps, the safety gate, the check on finished task work, the planner
-of an adaptive run and the nodes under it, the designer of a saved harness page, looking at an
-image. Each of those is a
+the summary a compaction keeps, the safety gate, the check on finished task work, the second
+look before a task starts itself, the reading of a task's parts before they are handed out,
+the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
+looking at an image. Each of those is a
 **role**, and every role sits on one of four **classes** — the **crew** — which you set in
 `/settings` → Providers, or in one word with `/crew`:
 
@@ -203,25 +204,37 @@ under the class answering it, saying which model comes out. As shipped:
 | `title` | small work | the name a session gives itself |
 | `worker` | small work | one node of an adaptive run |
 | `guardian` | small work | is this one tool call plainly safe |
-| `router` | small work | which surface a request belongs to |
+| `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
 | `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
+| `careful` | careful work | a part of a task that needs judgement |
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
+| `routerconfirm` | mastermind | a second look before work starts itself |
+| `division` | mastermind | the parts a worker hands its own work out in |
 
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date. Stop on a row and the line under the
 list is that role's own description followed by which class it follows.
 
-**`planner` and `designer` are the mastermind's two roles**, and they used to sit on careful
-work beside the compaction summary — which made one model id answer two unrelated bills.
-The careful calls are many and short; these two are few, and each one decides what all the
-other calls do. A planner that cuts badly spends a whole run on work nobody wanted; a
-designer that writes badly puts a wrong answer on the menu with a name on it.
+**What the mastermind's roles have in common is that one answer decides what all the other
+calls do.** `planner` and `designer` used to sit on careful work beside the compaction
+summary, which made one model id answer two unrelated bills: the careful calls are many and
+short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
+a designer that writes badly puts a wrong answer on the menu with a name on it;
+`routerconfirm` stands between a cheap model's "that should have been work" and a task
+starting itself, and it is asked on nothing else, so it costs a call only where something was
+about to be spent; `division` reads a task's parts before any of them exists, and every turn
+every part ever takes runs on the brief it leaves behind.
+
+**`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
+the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
+the same reason: the failure it guards against is work that looks finished and is quietly
+wrong.
 
 ## I changed the crew but the model at the bottom did not change — why did my model not change
 
@@ -344,10 +357,12 @@ next to the money it is spending:
 ```
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
-run started, from the model you named in the sentence, then the `planner` role's pin, then
-the **mastermind** class, then the model you are talking to. Since the mastermind ships with
-a model in it, this is usually *not* the model in the rest of this conversation, which is why
-the run's own page says it rather than leaving you to work it out.
+run started, from the model whatever started the run named, then the `planner` role's pin,
+then the **mastermind** class, then the model you are talking to. Since the mastermind ships
+with a model in it, this is usually *not* the model in the rest of this conversation, which
+is why the run's own page says it rather than leaving you to work it out. You cannot name it
+yourself from a conversation, because a conversation cannot start a run at all — see
+*adaptive runs*.
 
 It never changes while a run is going: the ladder is walked once, at the start.
 
@@ -392,9 +407,10 @@ Two things worth knowing:
   longer does. A turn already in flight finishes on what it started with: nothing you change
   lands in the middle of one. The one thing that *can* move a turn mid-flight is aforge
   rescuing it from a model that has stopped answering — see *The model went quiet*.
-- Naming a model in the sentence outranks all of it for that piece of work. `orchestrate
-  the migration with opus` runs the planner *and* every node on opus; `make a harness for
-  triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
+- Naming a model in the sentence outranks all of it for that piece of work. `make a
+  harness for triaging flakes with opus` designs on opus. The roles decide only when you
+  named nothing. (There is no such sentence for an **adaptive run**: a conversation cannot
+  start one at all — see *adaptive runs* — so a run's models are whatever started it.)
 
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 

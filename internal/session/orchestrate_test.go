@@ -18,55 +18,10 @@ import (
 // asks for one, the turn it must not hold, the run itself, and the bound a
 // node works inside.
 
-// ── the intent ──────────────────────────────────────────────────────────────
-
-func TestARunTurnIsReadAsOneAndOtherTurnsAreNot(t *testing.T) {
-	for _, c := range []struct {
-		turn string
-		goal string // empty means this is not a request for a run
-		cap  float64
-	}{
-		{"orchestrate the migration off the old client", "the migration off the old client", orchestrateDefaultCap},
-		{"Orchestrate a full audit of the pricing code", "a full audit of the pricing code", orchestrateDefaultCap},
-		{"run an adaptive run on the flaky test suite", "the flaky test suite", orchestrateDefaultCap},
-		{"start adaptive run: rewrite the docs", "rewrite the docs", orchestrateDefaultCap},
-		{"adaptively work on the release notes", "the release notes", orchestrateDefaultCap},
-		{"please orchestrate the migration", "the migration", orchestrateDefaultCap},
-		{"can you orchestrate the audit with a $5 budget", "the audit", 5},
-		{"orchestrate the audit on $2.50", "the audit", 2.50},
-		{"orchestrate the audit, $10 cap", "the audit,", 10},
-
-		// The negatives, and each one is a different way of not asking.
-		{"research the pricing tiers", "", 0},                              // an ordinary turn
-		{"make a harness for triaging flakes", "", 0},                      // the other route
-		{"orchestrate", "", 0},                                             // no goal to run against
-		{"we should orchestrate the migration at some point", "", 0},       // talking about one
-		{"the adaptive run you started yesterday found three bugs", "", 0}, // talking about one
-	} {
-		goal, cap, ok := orchestrateGoal(c.turn)
-		if c.goal == "" {
-			if ok {
-				t.Errorf("%q was read as a run for %q", c.turn, goal)
-			}
-			continue
-		}
-		if !ok {
-			t.Errorf("%q was not read as a run", c.turn)
-			continue
-		}
-		if goal != c.goal {
-			t.Errorf("%q gave the goal %q, want %q", c.turn, goal, c.goal)
-		}
-		if cap != c.cap {
-			t.Errorf("%q gave the cap %v, want %v", c.turn, cap, c.cap)
-		}
-	}
-}
-
-// ── the turn ────────────────────────────────────────────────────────────────
-
-// runConfig is a build that can orchestrate: a runner to launch one, and
-// somebody watching who can answer the fuel gate.
+// runConfig is the most permissive build there is on this side: a runner wired
+// to launch a run, and somebody watching who could have answered its fuel gate.
+// Those were the two gates the old cue asked about, so a build that passes both
+// is the one where a door, if there were one, would certainly be open.
 func runConfig(started *startedRun) func(*Config) {
 	return func(config *Config) {
 		config.AskConsent = true
@@ -74,7 +29,8 @@ func runConfig(started *startedRun) func(*Config) {
 	}
 }
 
-// startedRun records what a turn asked the runner for.
+// startedRun records anything that reaches the runner. Nothing in a conversation
+// does any more, which is what the tests below are for.
 type startedRun struct {
 	goal  string
 	model string
@@ -88,112 +44,78 @@ func (s *startedRun) launch(_ context.Context, goal, model string, capDollars fl
 	return "7", nil
 }
 
-// A RUN TURN DOES NOT WAIT AND DOES NOT ASK THE MODEL ANYTHING. The run is the
-// answer and it has not happened yet.
-func TestARunTurnStartsTheRunAndEndsTheTurn(t *testing.T) {
-	var started startedRun
-	completer := &scriptedCompleter{}
-	agent, _ := newTestAgent(t, completer, runConfig(&started))
-	lane := agent.Orchestrations()
+// ── the door that is not there ──────────────────────────────────────────────
 
-	events, err := agent.Submit(context.Background(), "orchestrate the migration off the old client with a $5 budget")
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	collected := collect(t, events)
-	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
-		t.Fatalf("the turn never ended: %v", kinds(collected))
-	}
-	if _, ok := firstOfKind(collected, EventTextDelta); ok {
-		t.Fatalf("the turn answered on its own: %v", kinds(collected))
-	}
-	if completer.requests() != 0 {
-		t.Fatalf("the turn spent %d model calls on a sentence it had already answered", completer.requests())
-	}
-	if started.calls != 1 {
-		t.Fatalf("the runner was called %d times", started.calls)
-	}
-	if started.goal != "the migration off the old client" {
-		t.Fatalf("the run was asked for %q", started.goal)
-	}
-	if started.cap != 5 {
-		t.Fatalf("the tank is %v, want the $5 the person named", started.cap)
-	}
-	opening := nextRunEvent(t, lane)
-	if opening.Kind != EventOrchestrateNote || !strings.Contains(opening.Text, "$5.00") {
-		t.Fatalf("the lane opened with %v / %q", opening.Kind, opening.Text)
+// NO SENTENCE OPENS A RUN. A message beginning `orchestrate …` was the last way
+// a conversation could reach the planner, and it is gone: those words are an
+// ordinary turn now, answered by the model like any other, and the work they ask
+// for goes out on the one road everything else takes.
+//
+// This is ABSENCE AND NOT REFUSAL, so what the test asserts is that the turn is
+// UNREMARKABLE — the model was asked, it answered, the turn ended — and that the
+// runner, wired and watched and as ready as a build can be, was never called.
+func TestTheWordsThatOnceOpenedARunAreAnOrdinaryTurn(t *testing.T) {
+	const answer = "the old client is used in four places; here is what a migration touches"
+	for _, typed := range []string{
+		"orchestrate the migration off the old client",
+		"orchestrate the migration off the old client with a $5 budget",
+		"please orchestrate the audit with opus",
+		"adaptively work on the release notes",
+		"run an adaptive run on the flaky test suite",
+		"start adaptive run: rewrite the docs",
+	} {
+		var started startedRun
+		completer := &scriptedCompleter{steps: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse(answer), nil
+			},
+		}}
+		agent, _ := newTestAgent(t, completer, runConfig(&started))
+
+		events, err := agent.Submit(context.Background(), typed)
+		if err != nil {
+			t.Fatalf("submit %q: %v", typed, err)
+		}
+		collected := collect(t, events)
+
+		if started.calls != 0 {
+			t.Fatalf("%q started a run: %+v", typed, started)
+		}
+		if completer.requests() == 0 {
+			t.Fatalf("%q never reached the model", typed)
+		}
+		if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+			t.Fatalf("%q did not finish as a turn: %v", typed, kinds(collected))
+		}
+		if said := lastSaid(agent); !strings.Contains(said, answer) {
+			t.Fatalf("%q was answered with %q", typed, said)
+		}
 	}
 }
 
-// THE MODEL CLAUSE IS READ OFF THE GOAL, exactly as the harness routes read it:
-// "with opus" chose a model and is not part of the work.
-func TestARunTurnReadsTheModelOffTheSentence(t *testing.T) {
+// AND THE SENTENCE IS NOT SPECIAL-CASED ANYWHERE ELSE EITHER: the words carry no
+// note, no refusal and no offer, so the goal reaches the model exactly as typed.
+func TestTheOldCueReachesTheModelWordForWord(t *testing.T) {
+	const typed = "orchestrate the migration off the old client with a $5 budget"
 	var started startedRun
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		runConfig(&started)(config)
-		config.TaskModels = func() []string { return []string{"anthropic/claude-sonnet-5"} }
-	})
-	events, err := agent.Submit(context.Background(), "orchestrate the audit with sonnet")
+	completer := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, completer, runConfig(&started))
+
+	events, err := agent.Submit(context.Background(), typed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	collect(t, events)
-	if started.goal != "the audit" {
-		t.Fatalf("the run was asked for %q, want the work without the model clause", started.goal)
-	}
-	if started.model != "anthropic/claude-sonnet-5" {
-		t.Fatalf("the run rides %q", started.model)
-	}
-}
 
-// A BUILD WITH NO RUNNER, OR NOBODY WATCHING, HAS NO SUCH TURN: the sentence
-// goes to the model exactly as it did before this file existed.
-func TestARunTurnIsRefusedWhereNobodyCouldAnswerTheGate(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		undo func(*Config)
-	}{
-		{"no runner", func(config *Config) { config.OrchestrateRunner = nil }},
-		{"nobody watching", func(config *Config) { config.AskConsent = false }},
-	} {
-		var started startedRun
-		completer := &scriptedCompleter{}
-		agent, _ := newTestAgent(t, completer, func(config *Config) {
-			runConfig(&started)(config)
-			c.undo(config)
-		})
-		events, err := agent.Submit(context.Background(), "orchestrate the migration")
-		if err != nil {
-			t.Fatal(err)
-		}
-		collect(t, events)
-		if started.calls != 0 {
-			t.Fatalf("%s: a run started anyway", c.name)
-		}
-		if completer.requests() == 0 {
-			t.Fatalf("%s: the ordinary turn did not run either", c.name)
-		}
+	if completer.requests() == 0 {
+		t.Fatal("the turn was answered without asking the model anything")
 	}
-}
-
-// A NOTE THE SESSION WROTE IS NOT SOMEBODY ASKING FOR A RUN. A run
-// commissioned out of one would be the session spending money on its own
-// suggestion.
-func TestARunTurnIsOnlyEverWhatAPersonTyped(t *testing.T) {
-	var started startedRun
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, runConfig(&started))
-	turn := "orchestrate the migration"
-	for _, user := range []userMessage{
-		{message: textMessage("user", turn), wake: true},
-		{message: textMessage("user", turn), authored: true},
-		{},
-	} {
-		if answered, _ := agent.routeOrchestrate(context.Background(), newEventHub(), user, time.Now()); answered {
-			t.Fatalf("a note the session wrote started a run: %+v", user)
-		}
+	sent := completer.request(0)
+	if len(sent) == 0 || !strings.Contains(lastUserText(sent), typed) {
+		t.Fatalf("the model was sent %q, want the sentence as typed", lastUserText(sent))
 	}
 	if started.calls != 0 {
-		t.Fatalf("the runner ran %d times", started.calls)
+		t.Fatalf("a run started anyway: %+v", started)
 	}
 }
 

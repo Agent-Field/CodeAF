@@ -220,8 +220,13 @@ can no longer be answered must stop looking like one.
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
 what you asked and the first two lines of the reply, and decides one thing: should that have
-been work? When it says yes, the work is started there and then and one dim line goes into
-the transcript:
+been work?
+
+**A yes is asked twice.** The cheap model only screens — it reads every wordy turn, which is
+why it is cheap — and it cannot start anything on its own. Before a task exists, the same
+question is put once more to your **mastermind** model, in the same words, with none of the
+first answer in front of it. Only if both say yes does the work start, and then one dim line
+goes into the transcript:
 
 ```
 this looked like work, so task 4 started: audit the pricing code
@@ -247,8 +252,13 @@ different about it: a row, a room, a report, and everything else on this page.
   the tests", "what does this key do" are answered in words by construction.
 - **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
   no router model to ask are all silent.
-- **Silence when it cannot answer.** A judge that cannot be reached, or that replies with
-  anything but the small JSON object it was asked for, starts nothing and says nothing.
+- **Two models have to agree.** The cheap one can only screen; the thinking model confirms
+  the yes before anything is started. A confirmed no starts nothing and says nothing at all
+  — and it does not spend the one-every-three-turns allowance either, because nothing was
+  interrupted, so the next turn is read exactly as this one was.
+- **Silence when it cannot answer.** Either model failing is the same silence: one that
+  cannot be reached, or that replies with anything but the small JSON object it was asked
+  for, starts nothing and says nothing. A yes nobody could confirm is not a start.
 
 **Stopping one you did not want** is the ordinary stop: `x` on its row over an empty message
 box, or the ✕ on the pointer. Nothing about it is special from the moment it exists.
@@ -1677,6 +1687,33 @@ If either says no, **nothing happens** — nothing is cancelled, nothing extra i
 the worker carries straight on as one worker. That is why this costs nothing on ordinary
 work: a task that is not wide is never split, and finding that out is free.
 
+**And then the plan itself is read once, by your `mastermind` model.** Both tests above are
+about whether a split is worth it; neither of them reads the parts. But a part's
+brief is everything that worker will ever know — it never sees your conversation and cannot
+ask anybody anything — and the briefs were written by whatever model the task itself runs on.
+So once the two tests have passed, the whole division goes to the mastermind at once: the
+evidence, the work it came out of, and every part beside its siblings. It can sharpen a
+brief, fix a boundary two parts share, fold two parts into one, or say the parts are really
+stages of one procedure and not a division at all — in which case nothing is split and the
+worker carries on, exactly as a no from either test above. So the parts you see may be fewer
+than the worker asked for, and their briefs may not be word for word what it wrote.
+
+**This reading can only ever improve a split; it cannot lose you one.** If the mastermind
+cannot be reached, times out, or answers something unusable, the division goes ahead **as the
+worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
+cannot be had is not a reason to throw work away.
+
+**Some parts are done with more thinking than others.** Each part carries a grade the worker
+sets. Most parts are ordinary work — the failure mode is simply not being done yet, and you
+can see whether it happened — and those run on the same model the task itself is on. A part
+graded **careful** is one whose failure mode is subtle wrongness: a design decision, a tricky
+piece of debugging, a judgement about somebody else's code, where the work can look finished
+and be quietly wrong. Those run on your **careful work** model instead — the same class
+the check at the end of a task uses. The mastermind that reads the plan can promote a part to
+careful too. If you have not set the four class rows at all, every part runs where its task
+runs and the grade costs you nothing; *Models and cost* has the rows and the `/crew` word
+that writes all four.
+
 **A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
 and the parts simply **wait** — the same wait any queued task does, drawn as
@@ -1692,9 +1729,9 @@ what this section is about. It promises nothing: the two tests below still have 
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
 work broad — a sweep across many files, research across many sources, the same change over
 many separate items. It still starts **one** task, armed to split itself; it is not a
-planner and not three tasks. **There is no planner on my belt at all any more**, so width
-has nowhere else to go — an adaptive run is reached only by asking for one by name, and
-*adaptive runs* says which words do that.
+planner and not three tasks. **There is no planner on my belt at all any more**, and there
+is no sentence you can type that reaches one either, so width has nowhere else to go —
+*adaptive runs*, under *How do I start an adaptive run*, is the whole of that answer.
 
 A task that was never read for width at all (`/task solo`, the `single` row, a proposal I
 did not mark wide) says nothing up front and can still split, off the items its own brief
@@ -1703,9 +1740,9 @@ already names.
 **And so can work that runs while you are asleep.** A standing order that fires and starts
 work is on this road too, armed the same last way — off the items its own brief names,
 with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The two tests still decide,
-and the machine is still respected: a division at 3am on a loaded box is admitted and the
-parts wait for it. The firing stays open until its parts are home and their spend is on its
+night to re-read the same sentence is a bill nobody agreed to. The two tests still decide and
+the plan is still read once before the parts exist, and the machine is still respected: a
+division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree

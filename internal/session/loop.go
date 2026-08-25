@@ -206,15 +206,25 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
-	// And the third thing a turn can be instead of a request to the model: a
-	// request for an ADAPTIVE RUN — work whose shape nobody knows yet, planned
-	// and executed against a fuel cap while the conversation carries on
-	// (orchestrate.go). It is the same bargain the two above keep: an anchored
-	// cue and nothing else enters it, the turn ends the moment the run starts,
-	// and a build with no runner never reaches past one nil check.
-	if answered, completed := a.routeOrchestrate(ctx, hub, user, started); answered {
-		return completed
-	}
+	// AND THERE IS NO THIRD THING. A turn used to be able to be a request for an
+	// ADAPTIVE RUN — the planned graph of nodes in orchestrate.go — read off an
+	// anchored cue at the head of what somebody typed, and that cue was routed
+	// from exactly here. IT IS GONE, AND NO CHAT DOOR REACHES THE PLANNED DAG
+	// ANY MORE. Somebody who types `orchestrate the migration` gets an ordinary
+	// turn: the model answers it, and if it reads as work the route judge starts
+	// a task on the one road every other piece of work takes (route_judge.go).
+	// That is ABSENCE AND NOT REFUSAL — nothing special-cases those words,
+	// nothing says no to them, and there is no phrasing that gets a run instead.
+	//
+	// THE ENGINE ITSELF IS UNTOUCHED, and its chat-side wiring is kept
+	// deliberately rather than ripped out: [Agent.RunOrchestrate], the roster
+	// family, the fuel gate, the snapshot and steering seams a run's page is
+	// drawn from, and [Config.OrchestrateRunner] all stand. What drives
+	// internal/orchestrate today is cmd/harness-design, on a driver of its own.
+	// A saved program from /subharness is NOT a run — it is a task node started
+	// by its own runner (subharness_contract.go) — so nothing in a conversation
+	// enters that package by any road. The pieces of orchestrate.go that no chat
+	// door reaches any more say so where they stand.
 
 	// AND THE LAST THING BEFORE THE FIRST REQUEST: which of the things this
 	// person has had aforge remember bear on what they just said (memory.go).

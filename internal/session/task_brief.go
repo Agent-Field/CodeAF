@@ -96,9 +96,9 @@ func composeBrief(request, work, deliverable, acceptance string) string {
 // rememberAskLocked keeps the last thing THE PERSON said, so that work handed
 // out later in the turn can carry it verbatim.
 //
-// It is the same test three other lanes in this package already make of a user
-// message — routeOrchestrate, routeJudge and routeHarness all ask "did somebody
-// actually type this" the same way — and it is made here for the same reason: a
+// It is the same test the other lanes in this package make of a user message —
+// routeJudge and routeHarness both ask "did somebody actually type this" the
+// same way — and it is made here for the same reason: a
 // wake note is the session talking to itself, and a task briefed with "task 4
 // has finished" as the person's request would be quoting a sentence nobody
 // said.

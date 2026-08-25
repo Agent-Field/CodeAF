@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -21,15 +22,39 @@ import (
 
 const routeAsk = "audit the pricing code across every package and tell me what is wrong"
 
+// THE TWO MODELS OF THE CASCADE, and the reason these tests configure tiers at
+// all. The screen and the confirm are asked the SAME BRIEF in the same words
+// (route_judge.go: a second reader handed the first reader's verdict is a
+// reader agreeing with it), so the system prompt cannot tell them apart and the
+// only honest thing that can is the model each one actually rode. Setting the
+// two tiers here is therefore both the fixture and one of the assertions: a
+// confirm that resolved anywhere but the mastermind's model never reaches
+// routeConfirmModel and every both-yes test below fails.
+const (
+	routeScreenModel  = "test/cheap-router"
+	routeConfirmModel = "test/thinking-router"
+)
+
 type routeCompleter struct {
-	mu       sync.Mutex
-	answer   string // what the assistant says on an ordinary turn
-	verdict  string // what the judge answers when it is asked
-	judged   int
-	question string
+	mu      sync.Mutex
+	answer  string // what the assistant says on an ordinary turn
+	verdict string // what the SCREEN answers when it is asked
+	// confirm is what the mastermind answers on the screen's yes. EMPTY MEANS
+	// IT AGREES: most of these tests are about the first judge, and one that
+	// says nothing about the second gets a cascade that behaves as the screen
+	// alone used to.
+	confirm   string
+	judged    int
+	confirmed int
+	question  string
+	confirmQ  string
 }
 
-func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
 	system, asked := "", ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
@@ -39,11 +64,18 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 	}
 	if system == routeJudgeBrief {
 		c.mu.Lock()
+		defer c.mu.Unlock()
+		if request.Model == routeConfirmModel {
+			c.confirmed++
+			c.confirmQ = asked
+			if c.confirm == "" {
+				return textResponse(c.verdict), nil
+			}
+			return textResponse(c.confirm), nil
+		}
 		c.judged++
 		c.question = asked
-		verdict := c.verdict
-		c.mu.Unlock()
-		return textResponse(verdict), nil
+		return textResponse(c.verdict), nil
 	}
 	c.mu.Lock()
 	answer := c.answer
@@ -55,6 +87,28 @@ func (c *routeCompleter) asked() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.judged
+}
+
+// answerConfirmWith changes what the mastermind says from the next turn on.
+func (c *routeCompleter) answerConfirmWith(verdict string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.confirm = verdict
+}
+
+// confirms is how many times the mastermind was asked to stand behind a yes.
+func (c *routeCompleter) confirms() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.confirmed
+}
+
+// sawConfirmQuestion is what the confirm was shown, which must be the screen's
+// own question and nothing about the screen's answer.
+func (c *routeCompleter) sawConfirmQuestion() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.confirmQ
 }
 
 func (c *routeCompleter) sawQuestion() string {
@@ -112,6 +166,10 @@ func routeAgent(t *testing.T, completer Completer) (*Agent, *routeRun, *ran) {
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.OrchestrateRunner = runs.start
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierLow):        routeScreenModel,
+			roles.TierKey(roles.TierMastermind): routeConfirmModel,
+		})
 	})
 	nodes := &ran{}
 	stubbedGraph(agent, func(node *TaskNode) {
@@ -436,4 +494,165 @@ func TestAnUnwatchedSessionNeverJudges(t *testing.T) {
 	if agent.graph().node(1) != nil {
 		t.Fatal("an unwatched session started work anyway")
 	}
+}
+
+// ── THE CONFIRM: a cheap yes is not a start ─────────────────────────────────
+//
+// Auto-start is what made this necessary. While a yes raised a card, a wrong one
+// cost a row somebody dismissed; a yes now spends a task's money in a worktree,
+// and the model that answers it is on the cheap tier because it is asked after
+// every substantial wordy turn. So the cascade: the cheap model SCREENS, and its
+// yes is put once more to the tier that thinks before anything is admitted.
+
+const routeConfirmNo = `{"work": false}`
+
+// THE ROLE IS THE DECISION, so the tier is asserted rather than assumed. A
+// confirm registered anywhere but the mastermind tier is the whole feature
+// quietly not happening — it would resolve to the same cheap model, agree with
+// itself, and every test below would still pass.
+func TestTheConfirmIsAskedOfTheTierThatThinks(t *testing.T) {
+	tier, ok := roles.TierOf(roles.RoleRouterConfirm)
+	if !ok {
+		t.Fatal("the confirm is not a registered role at all, so it resolves to nothing")
+	}
+	if tier != roles.TierMastermind {
+		t.Fatalf("the confirm resolves on %q, want the mastermind tier", tier)
+	}
+	// AND THE SCREEN STAYS CHEAP. It reads every substantial wordy turn, and
+	// paying for thinking on all of them to correct the rare yes is the bill
+	// this shape exists to avoid.
+	if tier, ok := roles.TierOf(roles.RoleRouter); !ok || tier != roles.TierLow {
+		t.Fatalf("the screen resolves on %q, want the low tier", tier)
+	}
+}
+
+// BOTH-YES STARTS EXACTLY ONE TASK, and the confirm is asked the SCREEN'S OWN
+// QUESTION — the same turn, not the screen's answer about it. A second reader
+// handed the first reader's verdict is a reader agreeing with it.
+func TestBothJudgesMustAgreeBeforeWorkStarts(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeYes}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeAsk))
+
+	if completer.asked() != 1 || completer.confirms() != 1 {
+		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
+			completer.asked(), completer.confirms())
+	}
+	if question := completer.sawConfirmQuestion(); question != completer.sawQuestion() {
+		t.Fatalf("the confirm was shown %q, want the same turn the screen was shown", question)
+	}
+	if strings.Contains(completer.sawConfirmQuestion(), `"work"`) {
+		t.Fatal("the confirm was shown the screen's own verdict, so it is agreeing rather than judging")
+	}
+	noCard(t, collected)
+	waitFor(t, "the task both judges agreed to", func() bool { return nodes.count() == 1 })
+	if agent.graph().node(2) != nil {
+		t.Fatal("one turn admitted two tasks")
+	}
+	if notice := routeNotice(collected); !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the turn said %q about the work it started", notice)
+	}
+}
+
+// A CONFIRM THAT REFUSES STARTS NOTHING AND SAYS NOTHING. There is no note, no
+// card and no line about a judgement nobody asked for: the turn ends exactly as
+// it would have if neither model had ever been called.
+func TestAYesTheConfirmRefusesStartsNothingAndSaysNothing(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeConfirmNo}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeAsk))
+
+	if completer.asked() != 1 || completer.confirms() != 1 {
+		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
+			completer.asked(), completer.confirms())
+	}
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a refused yes started work anyway")
+	}
+	noCard(t, collected)
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a refused yes said %q out loud", notice)
+	}
+	for _, event := range collected {
+		if event.Kind == EventError {
+			t.Fatalf("a refused yes said %q out loud", event.Text)
+		}
+	}
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
+	}
+}
+
+// A CONFIRM THAT CANNOT ANSWER IS A NO, and this is the one place the cascade
+// fails CLOSED — the opposite of the division review, which admits its parts
+// when it cannot be reached (task_divide.go). The difference is what each stands
+// in front of: a division has already passed two measured gates, and this yes
+// has nothing behind it but a cheap model's opinion. There is no repair turn
+// either: the confirm is asked once and prose is silence.
+func TestAConfirmThatAnswersProseStartsNothing(t *testing.T) {
+	completer := &routeCompleter{
+		answer:  "Here is what I would look at.",
+		verdict: routeYes,
+		confirm: "Yes, I think that really should have been a task.",
+	}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeAsk))
+
+	if completer.confirms() != 1 {
+		t.Fatalf("the confirm was asked %d times, want once and never repaired", completer.confirms())
+	}
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a yes nobody could confirm started work")
+	}
+	noCard(t, collected)
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a yes nobody could confirm said %q", notice)
+	}
+}
+
+// THE CONFIRM IS NEVER ASKED ABOUT A NO, and that is the whole economy of the
+// cascade: the mastermind is billed once per yes, and a yes is the rare half of
+// a rare case.
+func TestTheConfirmIsNeverAskedAboutANo(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: `{"work": false}`}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collect(t, mustSubmit(t, agent, routeAsk))
+
+	if completer.asked() != 1 {
+		t.Fatalf("the screen was asked %d times", completer.asked())
+	}
+	if completer.confirms() != 0 {
+		t.Fatalf("a no paid for %d thinking calls", completer.confirms())
+	}
+	if nodes.count() != 0 {
+		t.Fatal("a no started work")
+	}
+}
+
+// A CONFIRMED NO DOES NOT SPEND THE GAP. The rate limit is a person's patience
+// about work that STARTED over the top of them ([routeJudgeGap]) — three turns
+// of quiet after an interruption. A yes the confirm refused is not an
+// interruption: nothing began and nothing was said, so silencing the screen for
+// the next three turns would charge the person twice for one cheap model's
+// mistake. The cost of that decision is one thinking call per screened yes
+// rather than one every three turns, which is bounded by the screen saying yes
+// at all.
+func TestAConfirmedNoDoesNotSpendTheGap(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeConfirmNo}
+	agent, _, nodes := routeAgent(t, completer)
+
+	if notice := routeNotice(collect(t, mustSubmit(t, agent, routeAsk))); notice != "" {
+		t.Fatalf("the refused turn said %q", notice)
+	}
+	completer.answerConfirmWith(routeYes)
+	// THE VERY NEXT TURN, which is inside the gap a start would have opened.
+	collected := collect(t, mustSubmit(t, agent, routeAsk))
+	if notice := routeNotice(collected); !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the turn after a refused yes said %q, want the work it agreed to", notice)
+	}
+	waitFor(t, "the task the second turn started", func() bool { return nodes.count() == 1 })
 }

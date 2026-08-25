@@ -26,11 +26,11 @@ package session
 // wins (one worker that divides itself from the material it opened,
 // task_divide.go) had been looked at once. So a chat turn now has propose_task
 // and nothing else for work that leaves it. THE PLANNER ENGINE IS UNTOUCHED —
-// orchestrate.go still runs it for a conversation, and cmd/harness-design runs
-// internal/orchestrate on a driver of its own — but in a conversation it is
-// reached only by somebody NAMING a run in so many words, off the anchored cue
-// ([orchestrateGoal]), never by a model deciding that this piece of work looks
-// wide.
+// orchestrate.go still holds the whole of it, and cmd/harness-design runs
+// internal/orchestrate on a driver of its own — but NO CHAT DOOR REACHES IT AT
+// ALL now: the anchored cue that read a typed request for a run is gone too
+// (loop.go), so a conversation has no way to open a planned graph, by a model's
+// judgement or by anybody's words.
 //
 // WHAT THE TOOLS DO NOT DECIDE. No hand here commits anything a person did not
 // approve: build_harness starts a design that ends in a card somebody says yes
@@ -95,10 +95,10 @@ func (a *Agent) canDesignHarness() bool {
 
 // THE RUN GATE THAT USED TO SIT HERE IS GONE WITH THE HAND IT GUARDED. It read
 // `OrchestrateRunner != nil && AskConsent`, and it was here because `run_adaptive`
-// was on the belt above. The one path left that may open a planned run spells the
-// same two conditions where it stands ([Agent.routeOrchestrate], orchestrate.go),
-// and a gate kept alive in this file for a caller in another one is the second
-// source of truth this codebase does not keep.
+// was on the belt above. Nothing in a conversation asks that question any more:
+// the last path that could open a planned run was an anchored cue in the turn
+// loop and it is closed (loop.go), so there is no caller anywhere to keep a gate
+// alive for.
 
 // ── THE HAND A DESIGN'S OWN THREAD HAS ──────────────────────────────────────
 //
