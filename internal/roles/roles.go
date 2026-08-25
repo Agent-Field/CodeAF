@@ -155,6 +155,27 @@ const (
 	// hard: at most three calls, and only on a turn that has already run ten rounds
 	// of tools, which most turns never do.
 	RoleMarkReader Role = "markreader"
+	// RoleHandoff WRITES THE BRIEF a handed-over turn gives the worker that takes
+	// it: the person's ask, the state card, an account of what the turn did and
+	// what came back, and the draft the running model wrote — in, and one
+	// instruction somebody who saw none of it can work from, out
+	// (internal/session/checkpoint.go, which owns the call).
+	//
+	// IT IS ITS OWN ROLE BECAUSE THE DRAFT AND THE DOCUMENT ARE DIFFERENT JOBS.
+	// The model that spent the turn is the only one holding the findings, so it
+	// still drafts; it is also, by then, a tired model at the end of forty rounds,
+	// and asking it to be its own editor was measured producing 5,882 characters
+	// in which 39 of 85 clauses were distinct and 62% was one six-sentence loop —
+	// which a cold worker was then started on as its whole world.
+	//
+	// IT SITS ON THE MASTERMIND TIER FOR THE MARK READER'S REASON, arrived at from
+	// the other side: this document is the ENTIRE context of everything that
+	// happens after the handover — the worker's instruction, what the division
+	// reviewer reads, what the checker is eventually held against — so a cheap
+	// answer here is not a cheap answer, it is a whole task's spend on the wrong
+	// work. What it costs is bounded hard: at most two calls, and only on a turn
+	// that is being handed over at all, which most turns never are.
+	RoleHandoff Role = "handoff"
 	// RoleTaskName is the two or three words a piece of work is CALLED on the
 	// rail, the home card and the task list — made from the node's own gloss and
 	// brief when whoever started it left a raw sentence there instead of a name.
@@ -347,6 +368,7 @@ var roleDescriptions = map[Role]string{
 	// The cascade's second half, and the two calls a division makes.
 	RoleRouterConfirm: "a second look before work starts itself",
 	RoleMarkReader:    "what is left of a long answer, and whether it has parts",
+	RoleHandoff:       "the instruction a handed-over turn gives whoever finishes it",
 	RoleDivision:      "the parts a worker hands its own work out in",
 	RoleCareful:       "a part of a task that needs judgement",
 	RoleReflex:        "reads every turn for memory — routing and keeping",

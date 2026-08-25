@@ -502,6 +502,27 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// actually weigh.
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
+			// AND BEFORE THE TURN IS ALLOWED TO END: DID THE ASK END WITH IT?
+			//
+			// A turn stops when the model emits no tool call, and until this line
+			// nothing anywhere checked whether that stop meant the work was finished.
+			// It very often does not — "I've finished the parser, next I'll wire the
+			// handlers" ends a turn exactly as firmly as a finished job does — and on
+			// a measured ten-hour run every harness in the comparison, this one
+			// included, stopped with hours of the ask unused.
+			//
+			// So the same reader the marks use is shown the same account of the work
+			// and asked the same remains question the ceiling asks (checkpoint.go). A
+			// turn whose last words put a question to the PERSON is never re-opened,
+			// because it is waiting rather than stopping; everything else that is not
+			// finished is re-opened with one line saying what is left, ON THE SAME
+			// METER — so the ceiling still bounds it and a re-opened turn that reaches
+			// the ceiling hands off exactly as any other does.
+			if again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response.Text()); over {
+				return true
+			} else if again {
+				continue
+			}
 			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
 			// in words alone: should that have been WORK? It is the same judge the
 			// front of this function asked about the request, reading what the
@@ -2507,6 +2528,13 @@ const (
 	// journal and say which of a turn's tokens the hands spent and which the
 	// caller did.
 	auxRoleHand = "hand"
+	// auxRoleHandoff is the fifth, and it is the one that names REAL MONEY ON THE
+	// MASTERMIND TIER. The brief a handed-over turn gives its worker is written by
+	// a second model at the end of a turn the person did not ask for a second model
+	// on (checkpoint.go's [Agent.writeHandoff]); without the tag its line is an
+	// anonymous errand at the dearest price in the catalog, which is precisely the
+	// shape of bill the mark reader's own journal line exists because of.
+	auxRoleHandoff = "handoff"
 )
 
 // addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a

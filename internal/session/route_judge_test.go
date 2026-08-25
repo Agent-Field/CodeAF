@@ -698,12 +698,19 @@ func TestTheJudgesDoneConditionIsWhatTheWorkIsFinishedAgainst(t *testing.T) {
 	}
 }
 
-// AND A JUDGE THAT WROTE NO CONDITION STILL LEAVES ONE THE CHECKER CAN READ.
-// The stand-in points at the TITLE, which is on the checker's page, rather than
-// at a goal it is never shown — which is what the sentence that stood here
-// before did, and it made the check against an auto-started task a check
-// against a blank.
-func TestAnAutoStartedTaskWithNoDoneConditionStillHasOneToCheck(t *testing.T) {
+// AND A JUDGE THAT WROTE NO CONDITION IS ANSWERED WITH THE PERSON'S OWN WORDS.
+//
+// THIS IS THE ACCEPTANCE STAYING THEIRS, and it is the correction to a measured
+// failure rather than a preference. What stood here before was a generic stand-in
+// pointing at the task's TITLE — and on the checkpoint road the title is a
+// sentence cut off the front of a handoff brief, so a ten-hour ask was measured
+// being finished against "the work named at the top is done", where the work
+// named at the top was whatever compile to-do the turn happened to be holding.
+// The person's question had stopped being the question anybody was answering.
+//
+// So their sentence is the done-condition wherever no judge wrote a better one,
+// and the generic line survives only for the door that has no request at all.
+func TestAnAutoStartedTaskWithNoDoneConditionIsFinishedAgainstThePersonsWords(t *testing.T) {
 	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
 	agent, _, _ := routeAgent(t, completer)
 
@@ -717,19 +724,34 @@ func TestAnAutoStartedTaskWithNoDoneConditionStillHasOneToCheck(t *testing.T) {
 	if node == nil {
 		t.Fatal("no node was admitted")
 	}
-	if node.acceptance() != routeFallbackAcceptance {
-		t.Fatalf("the work is finished against %q, want the stand-in", node.acceptance())
+	acceptance := node.acceptance()
+	if !strings.Contains(acceptance, routeAsk) {
+		t.Fatalf("the work is finished against %q, want the person's own words %q", acceptance, routeAsk)
 	}
-	// The stand-in may not point at anything the checker is not shown. The brief
-	// and the goal are both withheld from it on purpose, so a condition naming
-	// either is a condition nobody can check.
+	// AND IT SAYS "ALL OF IT". The checker reads this and the title and nothing
+	// else, so it has no way of knowing the paragraph it is holding is the whole
+	// ask — and a half-finished piece of work reads as finished against a
+	// done-condition that quotes only the easy part.
+	if !strings.Contains(acceptance, "all of it") {
+		t.Errorf("the frame around their words does not say the whole ask is meant: %q", acceptance)
+	}
+	// The stand-in underneath may not point at anything the checker is not shown.
+	// The brief and the goal are both withheld from it on purpose, so a condition
+	// naming either is a condition nobody can check.
 	for _, absent := range []string{"the goal above", "the brief above"} {
 		if strings.Contains(routeFallbackAcceptance, absent) {
 			t.Fatalf("the stand-in says %q, which is not on the checker's page", absent)
 		}
 	}
-	if question := auditQuestion(node, taskTree{}, auditGround{}, nil, ""); !strings.Contains(question, routeFallbackAcceptance) {
-		t.Fatalf("the checker was asked %q, want the stand-in in it", question)
+	// AND IT REACHES THE CHECKER, which is the whole point of writing one.
+	if question := auditQuestion(node, taskTree{}, auditGround{}, nil, ""); !strings.Contains(question, routeAsk) {
+		t.Fatalf("the checker was asked %q, want the person's own words in it", question)
+	}
+	// AND THE GENERIC LINE IS THE LAST RUNG AND NOT THE SECOND. It is what a door
+	// carrying no request at all falls to, which is a graph built by hand or a node
+	// restored from before requests were carried.
+	if got := routeAcceptance(routeVerdict{}, "   "); got != routeFallbackAcceptance {
+		t.Errorf("a verdict with neither a condition nor a request produced %q", got)
 	}
 }
 

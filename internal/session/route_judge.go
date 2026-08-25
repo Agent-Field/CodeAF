@@ -953,9 +953,24 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// into the graph (task_brief.go). It matters most here: this goal was
 		// written by a judge that read their turn and summarised it, so the node
 		// would otherwise open on a summary of a summary.
-		request:    a.taskRequest(),
+		request: a.taskRequest(),
+		// THE BRIEF IS THE STATE AND THE ACCEPTANCE IS THE ASK, and they are two
+		// different documents that were quietly collapsing into one.
+		//
+		// A goal that arrives here off the checkpoint road is a HANDOFF BRIEF: what
+		// is left, what is known, what was ruled out (checkpoint.go). That is the
+		// right thing to open a worker on and the wrong thing to finish it against —
+		// and with no done-condition from a judge, the stand-in used to point the
+		// checker at the task's TITLE, which on that road is a sentence cut off the
+		// front of the brief. Measured, the acceptance of a ten-hour ask became "the
+		// work named at the top is done", where the work named at the top was a
+		// compile to-do the turn happened to be holding. The person's question had
+		// stopped being the question anybody was answering.
+		//
+		// So the person's own words stand behind the judge's own done-condition and
+		// in front of the generic stand-in ([routeAcceptance]).
 		brief:      verdict.Goal,
-		acceptance: routeAcceptance(verdict),
+		acceptance: routeAcceptance(verdict, a.taskRequest()),
 		model:      a.resolveTaskModel("").model,
 		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. It is the same
 		// judgement the sizing judge is asked at the typed door and the same one
@@ -1025,11 +1040,41 @@ func routeTaskTitle(raw string) string {
 // is asked for.
 const routeFallbackAcceptance = "the work named at the top is actually done, and the report says what was done and how it was checked"
 
-// routeAcceptance is the done-condition an auto-started task carries: the
-// judge's, or the stand-in.
-func routeAcceptance(verdict routeVerdict) string {
+// routeAskAcceptance is what stands in front of the person's own words when they
+// become the done-condition, and it is one line because the words under it are
+// the target and this is only the frame.
+//
+// IT SAYS "EVERYTHING" ON PURPOSE. The checker reads this and the title and
+// nothing else (task_audit.go's auditQuestion), so it has no way of knowing that
+// the paragraph it is holding is the WHOLE ask rather than one piece of it — and a
+// half-finished piece of work reads as finished against a done-condition that
+// quotes only the piece. It also asks for the account, which is the one thing
+// every done-condition on this road asks for.
+const routeAskAcceptance = "everything asked for below is actually done — all of it, not the part that was easiest to " +
+	"reach — and the report says what was done and how that was checked:\n\n"
+
+// routeAcceptance is the done-condition an auto-started task carries, and the
+// ladder is THE PERSON'S QUESTION FIRST WHERE NOBODY WROTE A BETTER ONE.
+//
+//  1. THE JUDGE'S OWN, when a judge wrote one. It read the request and composed a
+//     done-condition for it, which is a sentence about this work rather than a
+//     frame around it.
+//  2. THE PERSON'S OWN WORDS, framed. This rung is new and it is the one the
+//     measurement demanded: work that starts out of a turn nobody groomed has no
+//     judge's sentence on the checkpoint road, and what it used to fall to was a
+//     generic line pointing at a title. Their words are the one thing on this road
+//     nobody wrote, they are already carried on the spec's request, and a task
+//     finished against them is a task finished against what was asked.
+//  3. AND THE GENERIC STAND-IN LAST, for the case with neither: a graph built by
+//     hand, a restored node, a door that carried no request at all. It is still
+//     weak and still deliberately so — a sentence invented here in specifics would
+//     be a target nobody set.
+func routeAcceptance(verdict routeVerdict, request string) string {
 	if acceptance := strings.TrimSpace(verdict.Acceptance); acceptance != "" {
 		return acceptance
+	}
+	if asked := clip(strings.TrimSpace(request), briefAskLimit); asked != "" {
+		return routeAskAcceptance + asked
 	}
 	return routeFallbackAcceptance
 }

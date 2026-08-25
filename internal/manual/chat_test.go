@@ -383,6 +383,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my answer was moved to a task", "tasks"},
 		{"how long can one answer go before it hands the work over", "tasks"},
 
+		// And the other end of the same meter: a reply that STOPPED before the
+		// question was finished. People meet this as the dim line that said the ask
+		// is not finished, or as the thing they noticed happening without them —
+		// and the ones who meet it before it fires ask the question that names the
+		// old defect, which is why it stopped with the job half done.
+		{"the ask is not finished carrying on", "tasks"},
+		{"my reply stopped halfway through what I asked for", "tasks"},
+		{"it said it would do the rest and then stopped", "tasks"},
+		{"why did it keep going without me after it finished answering", "tasks"},
+		{"does it check whether my question is actually done", "tasks"},
+
 		// The eleventh wave, from the one state people found genuinely stuck: a
 		// task that lands "needs your look" and sits there. Three questions get
 		// asked in front of it — what am I supposed to do, what does each answer

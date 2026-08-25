@@ -371,10 +371,15 @@ the whole point: a model in the middle of tool calls answers a question like tha
 another tool call about half the time, so it is asked of somebody who is not busy.
 
 **That second reader is shown a short account of the work, not the whole conversation** —
-your message word for word, one line per tool call naming the tool and what it touched, what
-has been written or changed, and the last thing the answer said. No tool results at all.
-Reading the whole conversation instead was measured costing more than the work it was
-judging.
+your message word for word, one line per tool call naming the tool and what it touched, **the
+end of what came back from the most recent of those calls**, what has been written or
+changed, and the last thing the answer said. Reading the whole conversation instead was
+measured costing more than the work it was judging, so what is carried is bounded: each
+result is cut to its last 400 bytes, newest first, and the account says how many older ones
+it left out. The tail rather than the top, because what a command concluded — `Passed: 0`,
+`97 errors`, `no such file` — is in its last lines. Results used to be left out entirely, and
+that made the one reader deciding whether to hand your work over the only participant who
+could not see the evidence.
 
 **If the sketch has independent parts in it, the reply is handed over.** It stops halfway,
 your answer is moved to one task, and two dim lines go into the transcript:
@@ -407,15 +412,30 @@ this looked like work, so task 4 started: finish the four pieces
 ```
 
 **What the task is given.** Your own message rides it **word for word** — that is true of
-every task on this page and it is never rewritten. On top of it, the model that wrote the
-answer is asked for one last thing before the turn ends: an instruction for whoever picks the
-work up, saying what is left, what it already found out that they would otherwise have to
-find again, what it ruled out, and how anybody could tell when it is done. That is the brief.
-Where the work was handed over because it had parts, the sketch and its sentence sit at the
-top of that brief, so the worker starts with the pieces already named. If the brief cannot be
-written — the model fails, replies with nothing, or replies with something that is not an
-instruction at all — the task still starts, on your own sentence alone. Its name is cut from
-your own message too, and a short name replaces that a second later.
+every task on this page and it is never rewritten. On top of it comes the brief: an
+instruction for whoever picks the work up, saying what is left, what was already found out
+that they would otherwise have to find again, what was ruled out, and how anybody could tell
+when it is done. Where the work was handed over because it had parts, the sketch and its
+sentence sit at the top of that brief, so the worker starts with the pieces already named.
+Its name is cut from your own message too, and a short name replaces that a second later.
+
+**The brief is drafted by one model and written by another.** The model that wrote your
+answer is asked first, because it is the only one that knows what the answer found out — but
+by then it is a tired model at the end of a long turn, and asking it to be its own editor was
+measured producing 5,882 characters in which the same six sentences went round and round. So
+its answer is a **draft**, and a second model on the thinking tier writes the real one: it is
+handed your message word for word, what the conversation already knew before this turn, the
+account of the work with what came back in it, and the draft. If what comes back is not prose,
+or is a document that has stopped saying new things, it is asked once more and then given up
+on — and then the draft stands, and if there is no draft either, your own sentence alone. A
+task always starts; the only question is how much it starts knowing.
+
+**And the task is finished against your question, not against the brief.** The brief says
+what is left of the work right now; the thing the independent reader at the end checks
+against is **your own message**, in full — "everything asked for below is actually done — all
+of it, not the part that was easiest to reach". A task handed over halfway used to be
+finished against whatever the brief happened to be holding, which on a long piece of work
+meant a ten-hour request being accepted as met the moment the code compiled.
 
 **And it can still come to nothing — when both readers agree.** That last question also asks
 what still remains, and if the model answers that everything you asked for is already done,
@@ -454,11 +474,63 @@ decision, and it still has to justify them inside the task; the roster says so i
 see *When a task turns out to be too wide for one worker*.
 
 **What it costs.** At most three calls to that second model, and only on an answer that has
-already spent ten rounds of tool calls, which most answers never do. The read at the front of
-your turn is one cheap call and now starts nothing by itself.
+already spent ten rounds of tool calls, which most answers never do. Handing over adds two
+more: the draft, and the model that writes the brief out of it. One further call goes at the
+**end** of any answer that touched a tool at all, asking whether your question is finished —
+see the section below. An answer that called no tools costs none of this. The read at the
+front of your turn is one cheap call and now starts nothing by itself.
+
+**This applies to replies aforge started by itself, too.** When a task lands, the chat
+answers it without you typing anything (see *Why did the chat reply on its own* in *how tasks
+run*). That reply is priced exactly like one you asked for: same three points, same ceiling,
+same handover. It used to be exempt, on the grounds that a reply about a task already had a
+budget somewhere — it does not, and a measured run had one such reply make 127 tool calls
+over 46 minutes with nobody watching, and then the session sat idle for seven and a half
+hours. A line aforge writes to itself that nobody owes an answer for is still left alone.
 
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.
+
+## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
+
+**A reply ends when the model stops calling tools, and that happens for two different
+reasons.** One is that the work is done. The other is that it reached a comfortable place to
+stop — "I've finished the parser, next I'll wire the handlers" ends a reply exactly as firmly
+as a finished job does. Until this, nothing checked which of the two it was, and a measured
+ten-hour request ended with hours of it never touched.
+
+**So at the end of a reply that touched any tools, the same second reader is asked one
+question**: is what you asked for finished? It is shown the same short account of the work —
+your message, the steps, what came back — and it answers either the single line
+`NOTHING LEFT TO DO`, or one line saying what of your request is still not done.
+
+- **Finished** — the reply ends, exactly as it always did. Nothing is said and nothing is
+  added.
+- **Not finished** — the reply **carries on**. One dim line goes on the screen:
+
+  ```
+  the ask is not finished · carrying on rather than stopping here
+  ```
+
+  and the model is handed the reader's one line as the thing still to do. It picks up from
+  where it stopped rather than starting again.
+
+**A reply that ends by asking you something is never carried on.** If the last thing it said
+finishes with a question mark, it is waiting on you, and carrying it on would be aforge
+answering a question that was addressed to you. That is the whole of the test — the mark
+itself, so it works whatever language you are talking in.
+
+**A reply that called no tools at all is not read either.** There was no work in it to leave
+half done, and reading every conversational reply would cost a thinking-tier call on every
+message you send.
+
+**What bounds it is the same meter as everything else on this page.** Carrying on counts as a
+round, so it climbs the same three points, and a carried-on reply that reaches the third one
+is handed to a task in the ordinary way. There is no separate limit and no number to raise.
+
+**And if nobody can be reached, the reply just ends.** No second model configured, a reader
+that faults, a reader that takes too long: each of those ends the reply as it would have
+ended before this existed.
 
 ## Every key the proposal card takes
 
