@@ -129,6 +129,14 @@ import (
 // registry law). Its tier is the mastermind's for the measured reason the role's
 // own comment carries: the cheap reader and the running model both answer this
 // question with a tool call too often to be relied on.
+//
+// AND IT STAYS THERE, ON A SECOND MEASUREMENT THAT IS WORSE THAN THE FIRST. Read
+// off-policy over the same digests, the flash tier answered `(done)` on
+// HALF-FINISHED batches 15 times out of 18 (bench/oneroad/replay/RESULTS-2.md) —
+// which is not a cheaper reading of the work, it is the one answer that drops the
+// handover a person is owed ([checkpointSketch.saysDone] is what a `(done)`
+// corroborates). A tier that is wrong in that direction cannot be bought with any
+// saving.
 func init() { roles.Register(roles.RoleMarkReader, roles.TierMastermind) }
 
 const (
@@ -694,6 +702,10 @@ func parseCheckpointSketch(answer string) checkpointSketch {
 // topLevelParts counts the independent parts of a shape, and it is the whole of
 // the harness's reading of what a sidecar drew.
 //
+// THE QUESTION IT ANSWERS IS "HOW MANY PAIRS OF HANDS COULD START NOW", which is
+// the only question a mark is entitled to ask: what stands in front of the turn
+// at THIS moment, before anything else has to have happened.
+//
 // THE RULES, WITH THE EXAMPLES THE ASK ITSELF GIVES:
 //
 //   - `A | B | C` is THREE parts, and a SPLIT. Nothing has to happen before
@@ -705,22 +717,88 @@ func parseCheckpointSketch(answer string) checkpointSketch {
 //     the turn is A, which is one job. This is the stricter reading of the
 //     benchmark's own scoring, and re-scoring variant C that way took the
 //     mastermind's trap accuracy from 58% to 100%.
-//   - `(A | B) > C` is ONE part for the same reason read from the other end: the
-//     whole line is one bracketed group, so there is no top-level separator, and
-//     the thing this counts is what stands at the TOP LEVEL of the line.
+//   - `A > B | C > D` is TWO parts, and a SPLIT: two chains that wait on nothing
+//     but themselves. THE BAR BINDS LOOSER THAN THE ARROW, which is why it is read
+//     first — a reading that cut on arrows first would find `A` in front of
+//     everything and call two independent chains one job.
+//   - `(A | B | C) > D` is THREE parts, and a SPLIT: three jobs that can start now
+//     and one step that gathers them afterwards. So is `(A | B) > C`, at two. The
+//     gathering step is not a fourth part and is not lost — it is what the PARENT
+//     does once the reports land (task_divide_sketch.go's [drawnDivision.afterParts]).
 //   - anything with no separator at all — a word, a sentence, an apology — is one
 //     part, and a CONTINUE.
+//
+// THE BRACKETED FIRST STAGE IS WHY THIS STOPPED READING THE WHOLE LINE ALONE, and
+// it is a measurement rather than a preference. A whole-line reading counted
+// `(A | B | C) > D` as one bracketed group and therefore as one part — and on the
+// four-issue batch that is the shape kimi actually draws: it found the four-way
+// fork 6 times out of 6 at round ten and wrote it as parts-then-gather every
+// time, so the shipping parser read SPLIT on 2 of 12 batch reads where reading the
+// first stage reads 6 of 6 (bench/oneroad/replay/RESULTS-2.md). The cost of the
+// rule on the traps is 4 more splits out of 72 reads, every one a genuine
+// two-way `(A | B) > C`, which is a division the evidence gate and the reviewer
+// stand behind anyway (task_divide.go).
 //
 // A separator with nothing beside it does not make a part, so a line that opens
 // or ends on one counts what is actually there. Brackets of any kind nest, and an
 // unbalanced closer is ignored rather than taken below zero: a shape a model
 // mis-typed is still a shape, and the honest failure is to read it as narrow.
 func topLevelParts(shape string) int {
-	parts, depth := 0, 0
+	return len(readShape(shape).parts)
+}
+
+// shapeReading is one shape read out: the parts that could be started now, and
+// the stages that wait behind ALL of them.
+//
+// after is only ever filled where the parts came out of a bracketed first stage —
+// `(A | B) > C` — because that is the only shape in which a trailing stage waits
+// on every part rather than on one of them. In `A > B | C > D` the arrows belong
+// INSIDE the parts and there is nothing standing after the division at all.
+type shapeReading struct {
+	parts []string
+	after []string
+}
+
+// readShape is the whole of the harness's reading of what a sidecar drew, and it
+// is one function rather than a count and a list because a count and a list that
+// disagreed would mean the harness split a turn on three parts and then handed out
+// two of them (task_divide_sketch.go builds a division out of these).
+//
+// Each piece is returned as the sidecar wrote it, trimmed and nothing else: the
+// arrows and brackets inside one piece are that piece's own internal order, and a
+// harness that tidied them away would be rewriting a drawing it did not make.
+func readShape(shape string) shapeReading {
+	// THE BAR FIRST, because it binds looser than the arrow: what a bar separates
+	// is whole jobs, and what an arrow separates is steps of one.
+	if parts := splitAtTopLevel(shape, '|'); len(parts) > 1 {
+		return shapeReading{parts: parts}
+	}
+	// No bar at the top level leaves one line of stages, and the only parts that
+	// could be started now are inside the FIRST of them.
+	stages := splitAtTopLevel(shape, '>')
+	if len(stages) == 0 {
+		return shapeReading{}
+	}
+	parts := splitAtTopLevel(unbracket(stages[0]), '|')
+	if len(parts) < 2 {
+		// ONE JOB IN FRONT OF THE TURN, so the stages behind it are not anybody
+		// else's work — they are the rest of this one, and saying otherwise would
+		// hand a worker an integration step for a division that never happened.
+		return shapeReading{parts: parts}
+	}
+	return shapeReading{parts: parts, after: stages[1:]}
+}
+
+// splitAtTopLevel cuts a shape on one separator, ignoring the separator inside
+// brackets of any kind. An empty piece is not a piece: a line that opens or ends
+// on a separator says what is actually beside it.
+func splitAtTopLevel(shape string, separator rune) []string {
+	var pieces []string
+	depth := 0
 	var current strings.Builder
 	closeOne := func() {
-		if strings.TrimSpace(current.String()) != "" {
-			parts++
+		if piece := strings.TrimSpace(current.String()); piece != "" {
+			pieces = append(pieces, piece)
 		}
 		current.Reset()
 	}
@@ -732,7 +810,7 @@ func topLevelParts(shape string) int {
 			if depth > 0 {
 				depth--
 			}
-		case '|':
+		case separator:
 			if depth == 0 {
 				closeOne()
 				continue
@@ -741,7 +819,48 @@ func topLevelParts(shape string) int {
 		current.WriteRune(letter)
 	}
 	closeOne()
-	return parts
+	return pieces
+}
+
+// unbracket takes ONE enclosing pair of brackets off a stage, and only where the
+// pair really does enclose the whole of it: `(A | B)` becomes `A | B`, and
+// `(A | B) or (C)` is left exactly as it is because its first bracket closes in
+// the middle. One pair and not all of them — a model that wrote `((A | B))` meant
+// a group inside a group, and unwrapping until nothing was left would be the
+// harness deciding what its brackets meant.
+func unbracket(stage string) string {
+	stage = strings.TrimSpace(stage)
+	if len(stage) < 2 {
+		return stage
+	}
+	var closer byte
+	switch stage[0] {
+	case '(':
+		closer = ')'
+	case '[':
+		closer = ']'
+	case '{':
+		closer = '}'
+	default:
+		return stage
+	}
+	if stage[len(stage)-1] != closer {
+		return stage
+	}
+	depth := 0
+	for index := 0; index < len(stage); index++ {
+		switch stage[index] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			// The opening bracket closes before the end, so it is not enclosing.
+			if depth == 0 && index < len(stage)-1 {
+				return stage
+			}
+		}
+	}
+	return strings.TrimSpace(stage[1 : len(stage)-1])
 }
 
 // readMark is the sidecar: ONE call, at one mark, asking somebody who is not the
@@ -801,6 +920,12 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 		read.costUSD = costOf(response.Usage)
 	}
 	read.sketch = parseCheckpointSketch(response.Text())
+	// AND WHAT THE READER WAS SHOWN RIDES BACK WITH WHAT IT DREW. The drawing is
+	// one line of letters; the account under those letters is the only thing
+	// anybody downstream could weigh as EVIDENCE, and it is honest evidence
+	// because it is exactly the page a mastermind read before it said the work
+	// had parts (task_divide_sketch.go).
+	read.digest = digest
 	return read
 }
 
@@ -819,13 +944,23 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 // failed: a turn with nothing to show a reader never asks, and a line about a
 // reading that never happened would be the emptiness law broken in the one file a
 // person reads.
+// digest is the account the reader was shown ([checkpointDigest]). It is kept
+// because a drawing is not evidence and this is: see [drawnDivision].
 type checkpointRead struct {
 	sketch  checkpointSketch
+	digest  string
 	asked   bool
 	failed  bool
 	model   string
 	costUSD float64
 	took    time.Duration
+}
+
+// drawn is this reading as the DIVISION IT PROPOSES, which is the one thing about
+// it that outlives the turn. Everything else here — the cost, the model, the
+// window it took — is accounting for a call that has already been made.
+func (r checkpointRead) drawn() drawnDivision {
+	return drawnDivision{sketch: r.sketch, digest: r.digest}
 }
 
 // journalMarkRead writes one mark's reading down (sessionfile.go's
@@ -1135,13 +1270,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
 		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, meter.raced, read.sketch).moved
+			checkpointSplitNote, meter.raced, read).moved
 	}
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
 	// where what happened to the turn is recorded.
 	a.journalMarkRead(read, mark, rounds, checkpointDecisionContinue)
-	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read.sketch)
+	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -1221,9 +1356,9 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 // it never fired read identically in the file, which is why the measured failure
 // could not be attributed without re-reading provider logs. So one line, with the
 // round it fired on and what it decided (sessionfile.go's [journalCeiling]).
-func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, sketch checkpointSketch) bool {
+func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead) bool {
 	verdict.Wide = true
-	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, sketch)
+	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, read)
 	a.file.appendCeiling(journalCeiling{Rounds: rounds, Decision: over.decision, TaskID: over.taskID})
 	return over.moved
 }
@@ -1291,7 +1426,8 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // written before the turn began — the race's own, from the request alone — would
 // be the one thing on the table that knows least, which is why it is dropped
 // where the other two fields of that verdict are kept.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, sketch checkpointSketch) checkpointHandover {
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
+	sketch := read.sketch
 	asked := a.taskRequest()
 	goal, remains := a.checkpointBrief(ctx, turn, model, asked)
 	if !remains {
@@ -1315,7 +1451,25 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	}
 	verdict.Work = true
 	verdict.Goal = sketch.head(goal)
+	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
+	// after the parts stopped being only a paragraph.
+	//
+	// A SKETCH WITH PARTS IN IT IS A DIVISION SOMEBODY HAS ALREADY WRITTEN. It was
+	// drawn by a mastermind, out of an account of this turn, and putting it at the
+	// head of the brief and then hoping a cheap worker would re-derive it was
+	// measured failing outright: over three converted cells the worker never once
+	// reached for `divide_work`, and every task that had been read as four jobs ran
+	// as one. So the drawing rides the spec ([taskSpec.drawn]) and the harness
+	// submits it FOR the worker at the moment the worker is started — through the
+	// same verb, the same gates and the same reviewer a worker's own division goes
+	// through (task_divide_sketch.go). Nothing is minted from the conversation: the
+	// parts exist only if the road inside the task admits them.
+	//
+	// IT IS ONLY CARRIED WHERE THERE ARE PARTS TO CARRY. A shape saying one job has
+	// no division in it, and the ceiling reaches this with such a shape routinely.
+	drawn := drawnDivision{}
 	if sketch.split() {
+		drawn = read.drawn()
 		// AND THE ROAD IS ARMED BY THE READER THAT ACTUALLY READ THE WORK. A
 		// mastermind was shown this turn's transcript and drew independent parts out
 		// of it, which is the same fact the sizing judge banks at the typed `/task`
@@ -1326,10 +1480,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// admission happens on the next line, so there is nothing in between for the
 		// single-entry bank to lose.
 		//
-		// DIVISION IS STILL THE WORKER'S OWN ACT AND IS NEVER MINTED FROM CHAT. The
-		// parts named above are an instruction, not a graph: the worker must put its
-		// own division to the evidence gate and to the reviewer inside the task, and
-		// arming only means it is allowed to try.
+		// IT STILL MATTERS WITH THE DRAWING CARRIED. Arming is what puts the verb on
+		// the worker's belt at all, and it is what the below-floor tiebreak turns on
+		// — a division of four whole jobs enumerates nothing a counter can see, so a
+		// harness-submitted one reaches the reviewer by exactly the road a worker's
+		// own would.
 		a.rememberDivisible(verdict.Goal)
 	}
 
@@ -1346,7 +1501,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

@@ -430,11 +430,28 @@ long answer saying "everything is done" is that model marking its own work at th
 has a reason to. So if the second reader still sees work left, the move happens anyway — on
 your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
 
-**The task is allowed to split.** At the first two points a model has just read the work and
-named its parts, and at the third the answer outran one pair of hands by measurement — either
-way the worker is allowed to hand parts out once it has opened the material. Whether it
-actually does is its own decision, and it still has to justify the parts inside the task; the
-roster says so if it happens — see *When a task turns out to be too wide for one worker*.
+**When the second reader names parts, the task starts already divided.** The sketch is not
+only a paragraph at the top of the brief — it is put to the task's own splitting road before
+the worker is asked anything, so each part named in the sketch becomes a worker of its own
+with its own copy of your folder, and the task they came out of stays open to gather their
+reports into one answer. Nothing about that road is skipped: the parts are read together by a
+second model that can sharpen their instructions, merge two that overlap, or say this is one
+job after all — and if it says that, or if there is no free lane to run them in, the task
+simply runs as **one worker**, which is what it would have done anyway. Where the sketch drew
+a final step behind the parts — `(A | B | C) > D` — the parts are handed out and `D` stays
+with the task itself, to do once their reports are in.
+
+**Whether the sketch is read as parts.** What counts is what could be started **now**.
+`A | B | C` is three. `A > B > C` is one job in three steps. `A > (B | C)` is one job too —
+the fork is behind a step nobody has taken yet. `(A | B | C) > D` is three, with a fourth
+step waiting on all of them. `A > B | C > D` is two chains that wait on nothing but
+themselves.
+
+**At the third point the task is allowed to split but nothing is handed out.** There the
+answer outran one pair of hands by measurement and no parts were drawn, so the worker is
+merely allowed to hand parts out once it has opened the material. Whether it does is its own
+decision, and it still has to justify them inside the task; the roster says so if it happens —
+see *When a task turns out to be too wide for one worker*.
 
 **What it costs.** At most three calls to that second model, and only on an answer that has
 already spent ten rounds of tool calls, which most answers never do. The read at the front of
@@ -1843,6 +1860,14 @@ name.
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
 report reaches it as that part lands, and the one thing it owes you at the end is a single
 deliverable made out of all of it. A task never finishes while a part of it is still running.
+
+**The worker is not the only one who can ask.** When a long answer of mine was handed over
+because a second model read it and drew its parts, that drawing is put to this same road
+before the new task's worker is asked anything — so the task starts already divided rather
+than being asked to find parts somebody has already named. Everything below applies to it
+without exception: the same two tests, the same reading by the mastermind, the same refusals.
+The receipt reads the same too, and the worker is told the parts are already running so it
+does not do them again. *An answer that runs long is read and moved* is where that happens.
 
 **Two things have to be true, and neither is the worker's confidence.**
 

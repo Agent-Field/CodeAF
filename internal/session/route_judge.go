@@ -403,7 +403,10 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// written BY A JUDGE, to a contract, in one shot, out of the person's own
 	// request — see [Agent.handOverRunningTurn] for why the other road into this
 	// call may not do the same with a goal that is a continuation.
-	a.launchRouteTask(hub, verdict, verdict.Goal)
+	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
+	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
+	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
+	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{})
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -932,10 +935,18 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // (checkpoint.go). So the source is named at each call site rather than assumed
 // here, and whatever arrives is put through the hand that cleans every other name
 // on this surface ([routeTaskTitle]).
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string) (string, uint64) {
+//
+// AND IT CARRIES THE DIVISION A MARK ALREADY DREW, where a mark drew one. It is a
+// PARAMETER and not a field on the verdict because the verdict is the judge's own
+// vocabulary and no judge writes this: it is the second reader's drawing of what
+// is left, taken at a checkpoint mark, and the spec is where it has to land so
+// that the worker this admits can be started on it (task_divide_sketch.go). An
+// empty one is every other door, and changes nothing.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision) (string, uint64) {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
+		drawn:   drawn,
 		title:   routeTaskTitle(title),
 		summary: verdict.Why,
 		// THE PERSON'S OWN MESSAGE RIDES ALONG, as it does on every other door

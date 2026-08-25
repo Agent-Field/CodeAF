@@ -237,30 +237,38 @@ func TestTheSketchAskIsTheMeasuredWording(t *testing.T) {
 
 // AND THE SHAPES ARE READ THE WAY THE BENCHMARK SCORED THEM.
 //
-// The rules, stated once here and once in [topLevelParts]: a top-level ' | ' is
-// what makes a part, a chain is one job, and a fork BEHIND a step is one job too —
-// because at this mark the work in front of the turn is that first step. Reading
-// nested pipes as width was the loose scoring; the strict reading took the
-// mastermind's trap accuracy from 58% to 100% on the same answers.
-func TestTheShapeIsReadAsPartsAtTheTopLevelOnly(t *testing.T) {
+// The rules, stated once here and once in [topLevelParts]: what could be started
+// NOW is what counts. A ' | ' is what makes a part and it binds looser than an
+// arrow, a chain is one job, and a fork BEHIND a step is one job too — because at
+// this mark the work in front of the turn is that first step. Reading nested pipes
+// as width was the loose scoring; the strict reading took the mastermind's trap
+// accuracy from 58% to 100% on the same answers.
+//
+// AND THE PARTS-THEN-GATHER SHAPE IS A SPLIT, which is the reading the replay
+// bought: `(A | B | C) > D` is what kimi actually draws for a batch of jobs, 6 of
+// 6 at round ten, and reading it as one bracketed group took the batch's recall to
+// 2 of 12 (bench/oneroad/replay/RESULTS-2.md).
+func TestTheShapeIsReadAsWhatCouldBeStartedNow(t *testing.T) {
 	for _, c := range []struct {
 		shape string
 		parts int
 		split bool
+		after []string
 		why   string
 	}{
-		{"A | B | C", 3, true, "three parts with nothing in front of them"},
-		{"A > B > C", 1, false, "a chain: the second step cannot begin until the first is done"},
-		{"A > (B | C)", 1, false, "the fork is behind a step that has not happened yet"},
-		{"(A | B) > C", 1, false, "one bracketed group, so nothing stands at the top level"},
-		{"(A | B | C | D) > E", 1, false, "the same, however many parts are inside the bracket"},
-		{"Validation | (Arithmetic & Currency) > Shared updates", 2, true, "a real top-level split"},
-		{"A > B > E | C > D > F", 2, true, "two chains that do not wait on each other"},
-		{"(done)", 1, false, "one atom and no separator at all"},
-		{"I will keep going with the parser rewrite.", 1, false, "prose is one part"},
-		{"", 0, false, "nothing was drawn"},
-		{"|", 0, false, "a separator with nothing beside it is not a part"},
-		{"| A", 1, false, "the empty side does not count"},
+		{"A | B | C", 3, true, nil, "three parts with nothing in front of them"},
+		{"A > B > C", 1, false, nil, "a chain: the second step cannot begin until the first is done"},
+		{"A > (B | C)", 1, false, nil, "the fork is behind a step that has not happened yet"},
+		{"(A | B) > C", 2, true, []string{"C"}, "two jobs that can start now, and one step that gathers them"},
+		{"(A | B | C) > D", 3, true, []string{"D"}, "the shape a reader draws for a batch: the parts, then the gather"},
+		{"(A | B | C | D) > E", 4, true, []string{"E"}, "the same, however many parts are inside the bracket"},
+		{"Validation | (Arithmetic & Currency) > Shared updates", 2, true, nil, "a real top-level split"},
+		{"A > B > E | C > D > F", 2, true, nil, "two chains that do not wait on each other, and nothing after them"},
+		{"(done)", 1, false, nil, "one atom and no separator at all"},
+		{"I will keep going with the parser rewrite.", 1, false, nil, "prose is one part"},
+		{"", 0, false, nil, "nothing was drawn"},
+		{"|", 0, false, nil, "a separator with nothing beside it is not a part"},
+		{"| A", 1, false, nil, "the empty side does not count"},
 	} {
 		got := topLevelParts(c.shape)
 		if got != c.parts {
@@ -268,6 +276,11 @@ func TestTheShapeIsReadAsPartsAtTheTopLevelOnly(t *testing.T) {
 		}
 		if split := (checkpointSketch{parts: got}).split(); split != c.split {
 			t.Errorf("%q decided split=%v, want %v — %s", c.shape, split, c.split, c.why)
+		}
+		// AND WHAT WAITS BEHIND ALL OF THE PARTS IS THE PARENT'S OWN STEP, never a
+		// part and never lost (task_divide_sketch.go's afterParts).
+		if after := readShape(c.shape).after; !equalStrings(after, c.after) {
+			t.Errorf("%q leaves %v after the parts, want %v — %s", c.shape, after, c.after, c.why)
 		}
 	}
 }
