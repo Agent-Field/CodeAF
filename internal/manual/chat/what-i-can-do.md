@@ -237,7 +237,8 @@ under `<workspace>/.aforge-v3/jobs/` stay on disk for you to read afterwards.
 
 **You can see a job without asking.** Every job this conversation starts is also a row on
 the task column on the right, from the moment it starts until it ends — the command as its
-name, and `job 3 · log <path>` under it. A running job counts in the column's `N working`
+name, and `job 3 · log <path>` under it while it runs, folded under the row once it has
+ended (`→` on the row brings it back). A running job counts in the column's `N working`
 tail. It has no room to walk into and no `✕`: the log is where a job is read, and `jobs
 kill` is how one is ended. The tasks page has the whole of it under *Background jobs on the
 column*.

@@ -1674,7 +1674,18 @@ lot of quiet ones. (This is its `tasks` section. The same column's other section
   colour, so a glyph can never be misread as a state paint.
 
 **Rows that are running never scroll off**, however long the list gets: they are pinned to
-the top of the column and everything under them scrolls.
+the top of the column and everything under them scrolls. The `tasks` label above them is
+pinned too, so the heading is still there when you have scrolled a long way down.
+
+**A task that has finished is one line.** While a task is running, waiting on you, or
+held, its row carries the detail lines under its title — what it is doing, what it is
+costing, what it waits on, where a job's log is going. Once it is over, the row is its
+glyph, its name and its `#7` and nothing else, so the column's height goes to what is
+still moving rather than to a day's history. Queued work is not finished and keeps its
+`waits: Collect sources` line; a finished task that still **needs you** — `conflicted ·
+task/fix-nil`, `stopped — branch kept · task/fix-nil`, `finished — look it over` — keeps
+its line too, because it is something to act on rather than something that is over.
+Nothing is thrown away: see *Opening a finished row on the task column*.
 
 **The roster is this conversation's work and nothing else.** No rows of the project's
 record are drawn under it. It used to carry a dulled footnote of up to six of them — a
@@ -1706,6 +1717,45 @@ column has folded. There is never more than one such line.
 indent. `❯ ctrl+g hide` is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses — the words beside it are the label for the
 hand that types chords.
+
+## Opening a finished row on the task column: where the merge word, price, branch or job log went
+
+A finished task's row is one line, and the line it used to carry underneath is **folded,
+not deleted**. It is the same fold a family of tasks uses, on the same keys and the same
+cell:
+
+- **From the keyboard:** `ctrl+t` hands the column the keyboard, `↑` and `↓` walk to the
+  row, `→` opens it, `←` folds it away again. `esc` gives the keyboard back.
+- **With the pointer:** hover the row and its state glyph turns into `▸`; click that one
+  cell to open it, and `▾` in the same cell to close it. Clicking anywhere else on the
+  row opens that task's room, as it always did.
+- The fold is remembered per row, exactly as a family's fold is, and it lasts as long as
+  the conversation does.
+
+What comes back is that task's own last word: `merged · $0.42` for work that came home
+clean, and `job 3 · log /tmp/aforge/jobs/3.log` for a background job, which is the handle
+`jobs output` and the `read` tool take. A row with nothing to say — a task that ended with
+no merge word and no price — offers no `▸` at all, because a mark that answered a press
+with silence would be a lie. The full record of any task is on the task page (`ctrl+.`,
+`/history`) whether the row is folded or not.
+
+## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
+
+**Turn the wheel with the pointer over the column and the column scrolls.** It moves the
+column's own window and leaves the conversation beside it exactly where it was; a wheel
+turned over the conversation still scrolls the conversation. Three rows a notch, the same
+as everywhere else on this screen. Work that is running is pinned to the top and does not
+scroll away, and the `tasks` label stays with it.
+
+From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
+follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `w` to
+widen the column, and `esc` to give the keyboard back. The column's hint line says the
+same: `↑↓ move · →← tree · enter open · w wide · esc`. While the column holds the keyboard
+the wheel walks that cursor instead of the window, so the two never fight.
+
+There is **one scrollbar-less window and no second one**: the wheel, the arrow keys and a
+landing task all move the same offset. What the window cannot show is said at the foot of
+the column — the totals, and `ctrl+. earlier` onto the full task page.
 
 ## What is that column on the right — tasks, standing and an empty rail
 
@@ -1741,6 +1791,18 @@ ctrl+. earlier
   only, and nothing at all for an order governing this project. A row's mark becomes the
   spinner while that order is being checked or fired right now. Clicking one opens
   `/standing` with the cursor already on it.
+- **The `standing` section keeps its rows however long the roster gets.** The two sections
+  do not compete for the column: the roster is given what is left over after the label,
+  the doors and the standing rows have been reserved, and it is the roster that scrolls.
+  A session with forty tasks in it still shows the orders standing over it, at the foot of
+  the column, without scrolling.
+- **At most three orders are drawn, and the label counts the rest** — `standing · 7 more`,
+  in the same shape as `tasks · 4 working`. Past a handful the rows stop being read one at
+  a time; `+ /standing` (or `/standing`) opens the page that lists them all. A section
+  showing every order it has says nothing extra: the label is simply `standing`.
+- On a **short terminal** the standing rows give way one at a time so that the roster
+  keeps at least six rows, and under that the whole section stands down rather than
+  drawing a label over nothing.
 - **An empty section has no label and no absence sentence.** When both are empty, only
   `+ /task` and `+ /standing` remain as the discoverable doors.
 - **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
