@@ -76,6 +76,13 @@ outside them with `No task "…" among the pieces you handed out.` Its brief is 
 whole world; the project's history is not its to read. The tasks page has the whole of it,
 under *When a task splits its own work*.
 
+**And it can use hands.** `fork` is on a task's belt for the same reason it is on the
+conversation's: a task worker is a mind in the middle of its own work, so it can copy
+itself into two to four hands inside one of its own turns, in its own copy of the
+repository, and stitch what they bring back. The tasks page has the whole of it, under
+*Hands*. The one agent that cannot fork is a hand — the fork is one level deep, and a hand
+simply does not have the tool.
+
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that
 floor there is nobody to ask, so the task reads the refusal

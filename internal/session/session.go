@@ -1212,8 +1212,27 @@ type Config struct {
 	// agent it built — and it is set in exactly one place: the executor that
 	// runs one node of an adaptive run, from that node's own declared scope.
 	//
-	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node.
+	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node
+	// and a fork's hand (fork.go), which is the second citizen this bound got and
+	// the reason it is stated in the agent's own voice rather than a node's.
 	writeScope []string
+
+	// inHand says this agent IS one of a fork's hands (fork.go), and it exists to
+	// take one verb away: a hand may not fork again. It is a flag rather than a
+	// belt decision made at the fork because a belt is assembled once, inside
+	// [newAgent], so a verb withheld afterwards would be a verb the model was
+	// already told it had.
+	//
+	// It is unexported for writeScope's reason: it is not a caller's choice but a
+	// fact about an agent this package built.
+	inHand bool
+
+	// handLeash is a hand's round budget, as a citizen of the control plane
+	// (fork.go, hooks.go). It is a pointer because the budget is state that the
+	// running turn writes and the fork reads afterwards, and it is nil for every
+	// agent that is not a hand — which is what leaves the plane exactly as it was
+	// for everybody else.
+	handLeash *handLeash
 
 	// pacing is how a node hears that its own calls have parked on the
 	// provider's rate limiting, and it is unexported for connectHub's reason: it

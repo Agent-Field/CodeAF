@@ -410,6 +410,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// Hands: the third weight, and the one a person meets as a line they did
+		// not ask for in the middle of their own answer. They ask in the words on
+		// the screen — "three hands on it" — or in the words for what they saw,
+		// which is one reply doing several things at once.
+		{"what does three hands on it mean", "tasks"},
+		{"can you work on several parts of my answer at once", "tasks"},
 		// And the half of division a person meets from the other side: they walk
 		// into the parent's room, type, and the page does not move — because the
 		// task is waiting on its own pieces and their line is what wakes it.

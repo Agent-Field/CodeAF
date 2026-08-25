@@ -1935,6 +1935,71 @@ turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and
 worker's request to split be taken at its word — both are for somebody rolling something
 back, not preferences, which is why neither is in the settings panel.
 
+## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
+
+Sometimes the work is not big enough to hand away and still has separate parts in it. Three
+files to change that do not touch each other. A page to write and a table to fill in beside
+it. For that, aforge can **copy itself, right there in the middle of your answer**, into two,
+three or four **hands** that work side by side. Its tool for it is `fork`.
+
+A hand is not a task and it is not a part of one. Nobody writes a brief for it: it starts
+with **everything the answer has already read and said**, the whole conversation up to that
+moment, and is told exactly one line — what its part is, which files it may write, and what
+each of the others is doing so it does not redo their work. That is the whole trick, and it
+is why hands are cheap: the expensive thing about handing work over is explaining it, and a
+hand needs no explaining.
+
+**What you see** is one dim line while they are out:
+
+```
+three hands on it · back when they are done
+```
+
+Then nothing until the answer carries on. Hands draw no rows on the task column and get no
+ids — they live and die inside one reply, so there is nothing to open, steer or stop. What
+they cost is folded into that turn's own cost, which is where it belongs: it is your answer
+being worked on, not work that left.
+
+Do not confuse it with `this one wants more hands · handing it over with everything found so
+far`, which is the opposite move — that one is your answer **leaving** to become a task.
+
+**Every hand owns a slice of the files and can write nowhere else.** They share one working
+copy — no branches, no copies of the repository — so what keeps them out of each other's way
+is that the slices are declared before any of them starts, and two hands claiming the same
+path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
+by good manners, and it carries on inside its own.
+
+## What hands cannot do, and how they differ from a task
+
+**They cannot build and they cannot run tests.** All of them are writing the same working
+copy at once, so a build in the middle of that reads a half-written repository: a pass would
+prove nothing and a failure would be a neighbour's unfinished work. Their `bash` runs
+`git diff`, `git log`, `git status`, `git show`, `pwd`, `wc`, `head` and `cat` and refuses
+everything else. The build, the tests and the review happen **after they are all back**, in
+the answer itself.
+
+**They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
+declared files comes back refused, naming the files it does own. So a fork cannot leave your
+repository in a state two of them fought over.
+
+**They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
+simply does not have the tool.
+
+**They cannot outlive your turn.** Interrupt the answer and every hand stops with it. There
+is no such thing as a hand still running after the reply has finished, and nothing about them
+survives a restart because nothing about them was ever written down as work.
+
+**Each has a budget of 15 rounds of tool calls.** A hand that runs out comes back saying so,
+with whatever it did finish, and the answer is told plainly that this part was left
+unfinished — it is not quietly treated as done.
+
+**How it differs from the other two roads.** A **task** is work that leaves: its own copy of
+the repository, its own room, a check, a landing, and it survives you closing the window. A
+**divided task** is that again, several workers under one, for material too wide for one
+worker. **Hands** are neither — they are one answer being worked on in parallel and finished
+in the same breath. If the work should still exist after this reply, it wants a task; if it
+is this reply, it wants hands.
+
 ## How deep tasks nest, and how many pieces one task may hand out
 
 Two hard bounds, and they behave differently on purpose.

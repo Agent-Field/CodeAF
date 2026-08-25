@@ -1512,19 +1512,52 @@ func boundedResult(tool bare.Tool) bare.Tool {
 	return tool
 }
 
+// shellLeash is WHO is holding a read-only bash, in the words its own refusals
+// are written in.
+//
+// The gate below is one mechanism with two citizens — the auditor, and a fork's
+// hand (fork.go) — and the two are doing different jobs, so a refusal that told
+// a hand it was an auditor would be a lie in the one sentence the model is
+// supposed to act on. What is shared is the DECISION, which is the part that has
+// to be right; what differs is three fragments of prose.
+type shellLeash struct {
+	// who names the agent as it is named to itself: "an auditor", "a hand".
+	who string
+	// forWhat is what its bash is FOR, as a noun: "verification", "orientation".
+	forWhat string
+	// hint is the last line of every refusal and says where to go instead. A no
+	// that does not say where to go costs another step.
+	hint string
+}
+
+// auditShell is the auditor's voice, and it is the wording every refusal in this
+// file has always carried.
+var auditShell = shellLeash{who: "an auditor", forWhat: "verification", hint: auditReaderHint}
+
 // verifyOnlyBash wraps pi's bash so it runs the repository's own verification
 // and nothing else.
-//
-// The refusal is a RESULT, not an error: the auditor reads "I am not allowed to
-// run that, here is what I am allowed to run" and gets on with the job, exactly
-// as a node reads a refused consent (consent.go). A Go error would end its turn
-// and cost a verdict over one wrong reach.
 func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
-	inner := tool.Execute
+	tool = readingOnlyBash(tool, allowed, auditShell)
 	tool.Description = "Run one of the repository's own verification commands and read its output: " +
 		strings.Join(allowed, ", ") + ". Every other command is refused, including anything that " +
 		"edits, installs, fetches, or chains a second command onto one of these. " +
 		auditReaderHint + " " + tool.Description
+	return tool
+}
+
+// readingOnlyBash is the gate itself: pi's bash, allowed to run one command off
+// a list and refusing everything else.
+//
+// The refusal is a RESULT, not an error: the agent reads "I am not allowed to
+// run that, here is what I am allowed to run" and gets on with the job, exactly
+// as a node reads a refused consent (consent.go). A Go error would end its turn
+// and cost a verdict — or a hand's whole errand — over one wrong reach.
+//
+// The DESCRIPTION is left to the caller, because what a bash is for is the one
+// thing the two citizens disagree about and it is the sentence the model reads
+// before it ever reaches a refusal.
+func readingOnlyBash(tool bare.Tool, allowed []string, voice shellLeash) bare.Tool {
+	inner := tool.Execute
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		var fields struct {
 			Command string `json:"command"`
@@ -1532,7 +1565,7 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 		if err := json.Unmarshal(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
-		if refusal, ok := auditRefusal(fields.Command, allowed); !ok {
+		if refusal, ok := refuseOutsideAllowlist(fields.Command, allowed, voice); !ok {
 			return refusal, true, nil
 		}
 		return inner(ctx, args)
@@ -1540,23 +1573,33 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 	return tool
 }
 
-// auditRefusal decides one command, and it decides it in two steps because a
-// prefix check on its own is not a gate: `go test ./... && rm -rf .` starts with
-// an allowed prefix and is not an allowed command.
+// auditRefusal is [refuseOutsideAllowlist] in the auditor's own voice. It is a
+// door rather than a call site so that everything already written against the
+// auditor's gate — this package's tests included — asks the same question with
+// the same two arguments it always did.
+func auditRefusal(command string, allowed []string) (string, bool) {
+	return refuseOutsideAllowlist(command, allowed, auditShell)
+}
+
+// refuseOutsideAllowlist decides one command, and it decides it in two steps
+// because a prefix check on its own is not a gate: `go test ./... && rm -rf .`
+// starts with an allowed prefix and is not an allowed command.
 //
 // So SHELL COMPOSITION IS REFUSED OUTRIGHT — every operator that can start a
 // second command, redirect output, or substitute one — and only then is what
 // remains matched against the allowlist. That order is the whole safety
 // argument: after the first check there is exactly one command in the string,
 // and the second check is about that command.
-func auditRefusal(command string, allowed []string) (string, bool) {
+func refuseOutsideAllowlist(command string, allowed []string, voice shellLeash) (string, bool) {
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return "refused: an auditor runs verification, and that was an empty command.\n" + auditReaderHint, false
+		return fmt.Sprintf("refused: %s runs %s, and that was an empty command.\n%s",
+			voice.who, voice.forWhat, voice.hint), false
 	}
 	if index := strings.IndexAny(command, ";|&<>`$(){}\n\r\\"); index >= 0 {
-		return fmt.Sprintf("refused: an auditor runs ONE verification command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
-			string(command[index]), clip(command, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
+		return fmt.Sprintf("refused: %s runs ONE %s command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
+			voice.who, voice.forWhat, string(command[index]), clip(command, auditCommandLimit),
+			strings.Join(allowed, ", "), voice.hint), false
 	}
 	// Whitespace is normalized so "go  test" is the same command as "go test":
 	// the allowlist is about which program runs, not about how it was typed.
@@ -1566,6 +1609,7 @@ func auditRefusal(command string, allowed []string) (string, bool) {
 			return "", true
 		}
 	}
-	return fmt.Sprintf("refused: %s is not verification, and an auditor only runs verification.\nYou may run: %s\n%s",
-		clip(normalized, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
+	return fmt.Sprintf("refused: %s is not %s, and %s only runs %s.\nYou may run: %s\n%s",
+		clip(normalized, auditCommandLimit), voice.forWhat, voice.who, voice.forWhat,
+		strings.Join(allowed, ", "), voice.hint), false
 }

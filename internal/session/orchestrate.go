@@ -1158,21 +1158,29 @@ func orchestrateJournalPath(session, run, node string) string {
 
 // ── the write scope ─────────────────────────────────────────────────────────
 
-// writeGuard is the control plane's citizen for [Config.writeScope]: a node
+// writeGuard is the control plane's citizen for [Config.writeScope]: an agent
 // that was given a slice of the tree may write in that slice and nowhere else.
 //
 // IT IS A HOOK AND NOT A SENTENCE IN THE BRIEF, and that is the whole point. A
 // scope written into a prompt is a request; a scope on the pre-action seam is
-// the one moment every execution passes through (hooks.go), so a node that
+// the one moment every execution passes through (hooks.go), so an agent that
 // wandered is refused by the harness rather than trusted not to wander. The
 // refusal is a result the model READS — it can pick a different file and carry
-// on — because a veto that ended the turn would cost the node its work.
+// on — because a veto that ended the turn would cost it its work.
+//
+// IT HAS TWO CITIZENS NOW and they want it for opposite reasons. A node of an
+// adaptive run is scoped so that nodes running in DIFFERENT places do not both
+// claim the same corner of the plan; a fork's hand is scoped so that hands
+// running in THE SAME working copy cannot collide at all, which is what stands
+// in for the worktree a hand does not get (fork.go).
 //
 // IT BINDS THE HANDS WHOSE TARGET IS A KNOWN PATH, which is edit and write
 // (recovery.go's mutatingTools). bash is deliberately out of reach: a shell
 // command's effects are whatever it did, and a guard that pattern-matched
 // commands would be claiming a guarantee it cannot keep. What bounds a node's
-// shell is the same thing that bounds every other agent's — the approval floor.
+// shell is the same thing that bounds every other agent's — the approval floor;
+// what bounds a hand's is that a hand's bash cannot write at all (fork.go's
+// [forkBelt]), which is the one place this hole is closed rather than named.
 type writeGuard struct{ agent *Agent }
 
 func (writeGuard) Name() string { return "write-scope" }
@@ -1190,8 +1198,9 @@ func (g writeGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call a
 		return call, toolResult{}, true
 	}
 	return call, toolResult{
-		text: fmt.Sprintf("%s is outside this node's write scope (%s), so nothing was written. "+
-			"Work inside the scope, or report what needs changing elsewhere and let the run decide.",
+		text: fmt.Sprintf("%s is outside your write scope (%s), so nothing was written. "+
+			"Work inside your scope, or say what needs changing elsewhere and leave it to whoever "+
+			"is putting this work together.",
 			shown, strings.Join(scope, ", ")),
 		isError: true,
 	}, false
