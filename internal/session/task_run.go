@@ -257,7 +257,16 @@ type TaskNode struct {
 	// word its history still needs (task_store.go).
 	kind  TaskKind
 	brief string
-	state TaskState
+	// adjudicated says this node has already spent its one tiebreak: a division
+	// the evidence gate refused on the floor has been put to the mastermind once
+	// on the strength of a judge's wide reading, and the answer — whatever it was
+	// — is the answer ([TaskNode.takeTiebreak], task_divide.go). It is guarded by
+	// the graph's lock like every other field a worker's goroutine touches, and it
+	// is deliberately NOT on the checkpoint: a restart loses the judge's reading
+	// too (task_store.go re-arms from the text alone), so a node that comes back
+	// cannot reach this path at all.
+	adjudicated bool
+	state       TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
 	// written by the goroutine that ran it and read by everybody else. worktree
 	// is where it worked, and it is kept for one reader only: a recovery that has
@@ -688,7 +697,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// because the conversation is where the road is wired and where the sizing
 	// judge's answer was banked; a scripted graph in a test has no conversation
 	// and gets the honest false ([Agent.armDivision] is nil-safe).
-	spec.divide = g.home.armDivision(spec)
+	spec.armed = g.home.armDivision(spec)
 	node := &TaskNode{
 		graph:     g,
 		id:        id,

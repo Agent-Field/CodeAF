@@ -160,6 +160,24 @@ type TaskIndexEntry struct {
 	// invent an answer (the emptiness law), which is why [LandedTouching] answers
 	// with two lists instead of one.
 	Files []string `json:"files,omitempty"`
+	// MaySplit is WHETHER THIS WORK WAS EVER ALLOWED TO HAND ITS PARTS OUT, and
+	// which reader allowed it: "wide" for a model's own judgement of breadth,
+	// "judged" for the sizing call at the typed door, "counted" for a brief that
+	// named enough separate items on its own (task_divide.go's arming words).
+	// ABSENT MEANS THE VERB WAS NEVER ON THE BELT.
+	//
+	// IT IS HERE BECAUSE THE ABSENCE OF PARTS IS THREE DIFFERENT FACTS. A row for
+	// a task that ran alone can mean the worker was never given `divide_work`,
+	// or had it and never reached for it, or asked and was told no — and until
+	// this field existed the file said the same thing about all three, so anybody
+	// reading the record to find out whether the road was working could only
+	// count parts and guess. The reason word separates the first from the other
+	// two, and separates a road nobody armed from a road nobody used.
+	//
+	// IT IS THE READING AND NOT THE OUTCOME. A task armed and never divided still
+	// says so, because what this answers is what the task was ALLOWED to do; the
+	// parts themselves are rows of their own, carrying this node's id as Parent.
+	MaySplit string `json:"maySplit,omitempty"`
 	// Cost is what the node spent, in dollars, or 0 when nobody could say.
 	Cost float64 `json:"cost,omitempty"`
 	// Model is what the node ran on, and empty when it simply took the
@@ -613,6 +631,10 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,
 		Files:        files,
+		// WHETHER THIS WORK COULD EVER HAVE SPLIT ITSELF, straight off the spec's
+		// own arming word — the graph is already held here, which is the lock
+		// [TaskNode.armedBy] would otherwise take.
+		MaySplit: n.spec.armed,
 		// The FROZEN figure, read straight off the node: this runs with the graph
 		// held and [TaskNode.spend] takes that lock itself. A row for a node still
 		// running carries no price, which is what it has always carried.

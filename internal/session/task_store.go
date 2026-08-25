@@ -1057,7 +1057,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 	// comes back carrying none at all — so [Agent.armDivision]'s own kind guard
 	// would read a design as ordinary work here and arm a page writer.
 	if record.Kind == "" {
-		node.spec.divide = graph.home.armDivision(node.spec)
+		node.spec.armed = graph.home.armDivision(node.spec)
 	}
 	// A QUEUED DESIGN IS ONLY EVER A FINISHED PAGE ASKING AGAIN ([interrupt]'s
 	// Offer branch), and the Offer is the one record that can rebuild the design

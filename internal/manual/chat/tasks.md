@@ -1851,7 +1851,9 @@ deliverable made out of all of it. A task never finishes while a part of it is s
 
 - **There must be enough separate items.** Below six, one worker doing them in order beats
   paying for a copy of the repository, a check and a wait for each part. This was measured,
-  not guessed: twelve image files won, four modules and three bugs lost.
+  not guessed: twelve image files won, four modules and three bugs lost. This count reads
+  what the worker says it saw, and it only counts a number standing beside a thing —
+  "11 adapter files", "nine sections" — so evidence that names no items at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -1863,6 +1865,15 @@ deliverable made out of all of it. A task never finishes while a part of it is s
 If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
 the worker carries straight on as one worker. That is why this costs nothing on ordinary
 work: a task that is not wide is never split, and finding that out is free.
+
+**With one exception, and it is about the count only.** If the work was started because a
+model read your request and judged it broad — the wide line before a `/task`, a proposal I
+marked wide, a message the harness moved to a task — and the count then says the evidence
+names too few items, those are two readings of the same work disagreeing. So the count is
+not the last word there: the division goes to the mastermind below, which decides it on the
+parts themselves. That is the whole of the exception. A count that says no on work nobody
+read for width is final and free, exactly as it always was, and the free-lane test is never
+waived by anything.
 
 **And then the plan itself is read once, by your `mastermind` model.** Both tests above are
 about whether a split is worth it; neither of them reads the parts. But a part's
@@ -1879,6 +1890,12 @@ than the worker asked for, and their briefs may not be word for word what it wro
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
 worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
 cannot be had is not a reason to throw work away.
+
+**Except on the one division it is deciding rather than sharpening** — the exception above,
+where the count said too few items and a model's reading of your request said broad. There
+the mastermind is the only thing that has said yes to those parts, so if it cannot be
+reached the count's answer stands and the work carries on as one worker. Nothing is lost
+either way: an unreachable mastermind cannot admit a split, and it cannot cancel any work.
 
 **Some parts are done with more thinking than others.** Each part carries a grade the worker
 sets. Most parts are ordinary work — the failure mode is simply not being done yet, and you
