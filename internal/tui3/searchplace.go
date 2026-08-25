@@ -250,9 +250,18 @@ func searchTeach(pal palette) []string {
 	}
 }
 
-type searchStore interface {
+// SearchStore is the exact durable seam the search place needs: ONE call, which
+// is one full-text query over every message on this machine and a left join for
+// the thread's name. Keeping it to one method is what keeps the place's promise
+// that a search costs one round trip rather than one per row.
+type SearchStore interface {
 	SearchConversations(terms string, limit int) ([]store.ConversationHit, error)
 }
+
+// searchStore is the lowercase spelling this file was written against, kept as
+// an alias for [MemoryStore]'s reason: the seam is named in the package's own
+// register inside the package, and exported so a door can wire it.
+type searchStore = SearchStore
 
 type searchAsk struct {
 	query string

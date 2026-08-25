@@ -80,10 +80,11 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-Two of those are still nearly empty and say so. `alt+<letter>` today is `alt+s` on the
-memory place, which changes which shelf it is showing, and nothing else. `shift+<arrow>` is
-bound to nothing at all yet: no place has a time window to move, so the keys do nothing
-rather than doing something that is not drawn.
+Two of those are still thinly bound and say so. `alt+<letter>` today is `alt+s` on the memory
+place, which walks the shelves, and nothing else. `shift+<arrow>` is the spend place's time
+window — `shift+←→` moves it, `shift+↑↓` changes how coarse it is — and nothing anywhere else
+yet: a place with no window to move answers those keys with nothing rather than with
+something that is not drawn.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
 
@@ -146,37 +147,54 @@ became a place with a composer under it, because every printable key belongs to 
 
 ## memory — what is held true
 
-What aforge holds true about you and this machine, with what kind of thing each line is and
-how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+4`.
+What aforge holds true about you and this machine, with what kind of thing each line is, how
+it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+4`.
 
-Type to filter — **every letter, including `u`**. `alt+s` walks the shelves: everything, then
-what is about you, then this project, then this machine. `enter` opens a line and shows where
-it was learned. `→` opens the verbs — `e fix the wording`, `f forget it`, and `u put it back`
-while there is something to put back.
+The page is **shelves** — you, this project, this machine — biggest first, with the biggest
+one open and the rest rolled up. Type to filter what is already on the page, **every letter
+including `u`**; the store is read when you walk in and on the place beat, never on a
+keystroke. `enter` opens or closes a shelf, and `enter` on a line opens that line's card and
+shows where it was learned. `alt+s` walks the shelves one at a time. `→` opens the verbs on a
+line — `e fix the wording`, `f forget it`, and `u put it back` while there is something to
+put back.
 
 `delete` also forgets the line under the cursor.
 
 ## spend — what it cost
 
-**This place has no body yet.** It says what it is for, and nothing else:
+What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
+it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
+and not an estimate.
 
-> What this machine has cost, by the day, by the model, and by what it was for. Every model
-> call writes a line, so the figures here are the bill and not an estimate. There is nothing
-> to set here — the allowance is edited on the status line that shows it.
+Three blocks: the window with its sparkline, `what ran it` by the model, and `what it was
+for`. `enter` on a row of the last one opens the thing the money went on — a task, a standing
+promise, or a conversation. `shift+←` and `shift+→` move the window by its own length;
+`shift+↑` and `shift+↓` change how coarse it is.
 
-`alt+5` opens it. Until it is built, `/cost` (also `/usage`, `/tokens`, `/spend`) is where the
-figures are, printed into the conversation.
+**There is nothing to set here.** The allowance is a rail and it is edited on the status
+line's money segment, which is where it is shown. `/cost` (also `/usage`, `/tokens`,
+`/spend`) still prints **this conversation's** figures into the conversation — a different
+question from this place's, which is the whole machine.
+
+With nothing spent inside the window, the place says what it is for and nothing else.
 
 ## search — finding anything said or run
 
-**This place has no body yet either.** It says what it is for:
+Everything that has been said on this machine. `alt+6` opens it, and typing searches: the
+matches come back with the conversation they were said in, how long ago, and the project it
+belongs to, with your own words picked out in the line.
 
-> Everything that has been said on this machine, and everything that has been run. You type
-> what you remember of it and the matches come back with the place they live in. Nothing is
-> indexed behind your back: this reads the record that was already kept.
+Nothing is indexed behind your back — this reads the record that was already being kept. The
+read happens after the box has been quiet for a moment, never on the keystroke, so typing
+never waits on a search.
 
-`alt+6` opens it. Until it is built, typing on home searches the conversations on this
-machine, which is what home's box has always done.
+`enter` opens the conversation the matching turn was said in. Above the results, a legend
+counts the projects the matches came from. Twelve conversations are shown and the rest fold
+into one line.
+
+Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
+the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
+would be two rankings that could disagree.
 
 ## settings — how this machine is set
 
@@ -190,13 +208,17 @@ everywhere.
 
 ## Why a nearly-empty place says what it is for
 
-You only ever arrive at spend or search on purpose — from the tab bar, from a number, or by
-typing the word. That arrival is the one moment somebody is asking "what is this", so the
-place answers, in three sentences, and says nothing else.
+You only ever arrive at a place on purpose — from the tab bar, from a number, or by typing
+the word. That arrival is the one moment somebody is asking "what is this", so a place with
+nothing of its own to draw answers, in three sentences, and says nothing else.
+
+Today that is **spend on a machine that has spent nothing inside the window it is showing**,
+and **memory on a machine that has remembered nothing** — which says what memory is for
+rather than what the place is.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
-a plan.
+a plan — which is also why a heading is never drawn over an absence.
 
 ## What a number beside a place means
 
@@ -208,9 +230,19 @@ Home, tasks, standing and memory can wear one. Spend is a sum, search is somethi
 and settings is how this machine is set — a number in front of any of those would be a number
 about nothing.
 
-**Today no tab wears a number at all**, because the record of when you last looked at each
-place separately is not written yet. An unknown count is drawn as nothing rather than as a
-zero.
+**Leaving a place is what counts as having looked at it.** The stamp is written on the way
+out, not on the way in: a stamp taken on arrival would call everything seen the instant it
+appeared, before your eye had crossed a row. A window closed with a place still open writes
+nothing, and the same things are news again next time.
+
+A place you have never left has no stamp and therefore **no number at all** — the first look
+greets you with a bare bar rather than with a count over every tab. An unknown count is drawn
+as nothing rather than as a zero.
+
+On memory the number is the memories learned plus the ones let go of since you were last
+there. The counts are recomputed on the same three-second beat the places read on, so a tab
+loses its number within a few seconds of the place being read rather than the instant you
+walk in.
 
 ## The rewind timeline is not a place
 

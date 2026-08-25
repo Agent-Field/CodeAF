@@ -129,10 +129,17 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 
 	// No memory status asks for a look: active is held, while forgotten and
 	// superseded are history. Drawing that section would invent a fourth state.
-	if len(r.lines) > 0 {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingBlank})
+	//
+	// AND THE SECTION LINE IS DRAWN ONLY OVER SHELVES. A machine that has
+	// remembered nothing meets the three teaching sentences and nothing else; a
+	// heading with no rows under it is furniture over an absence, which is the
+	// emptiness law applied to a label instead of to a number.
+	if len(ranked) > 0 {
+		if len(r.lines) > 0 {
+			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingBlank})
+		}
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: "shelves · biggest first", note: memoryTypeLegend(ranked)})
 	}
-	r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: "shelves · biggest first", note: memoryTypeLegend(ranked)})
 	shownShelves := min(len(ranked), memoryShelvesShown)
 	for i := 0; i < shownShelves; i++ {
 		shelf := ranked[i]
@@ -399,9 +406,14 @@ func (r memoryReading) verbs(i int) []memoryVerb {
 	return []memoryVerb{{key: 'e', word: "e fix the wording"}, {key: 'f', word: "f forget it"}}
 }
 
-// memoryTeach reuses the command surface's exact two empty-state sentences so
-// the page cannot disagree with the transcript about whether memory is empty
-// or unavailable.
-func memoryTeach(pal palette) []string {
-	return []string{pal.dim("nothing is remembered yet"), pal.dim(memoryOffNote)}
-}
+// THERE IS ONE EMPTY STATE HERE AND THE READING ITSELF IS IT.
+//
+// This file used to carry a `memoryTeach` that said "nothing is remembered yet"
+// and then repeated the command surface's `memory is off for this session` note
+// under it. Both halves were wrong on a PLACE. A machine that has remembered
+// nothing meets [memoryTeaching] — the three sentences that say what this is
+// for, which is what a nearly-empty page is worth — and a machine with memory
+// switched off never reaches a body at all: [app.openMemory] refuses to open
+// the place and says so on the transcript's own note line ([memoryOffNote]).
+// So an empty page teaching that memory might be off would be a page guessing
+// at a state the door has already ruled out.
