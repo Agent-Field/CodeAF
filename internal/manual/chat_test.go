@@ -356,6 +356,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
 
+		// The answer that gets moved because it ran long. People meet this as a
+		// line that appeared under a reply they were reading, so they say it back
+		// in the words of the line and in the words of what it did to them: the
+		// answer stopped, and something started instead.
+		{"why did it say this is running long", "tasks"},
+		{"it stopped answering and started a task instead", "tasks"},
+		{"my answer was moved to a task", "tasks"},
+		{"how long can one answer go before it hands the work over", "tasks"},
+
 		// The eleventh wave, from the one state people found genuinely stuck: a
 		// task that lands "needs your look" and sits there. Three questions get
 		// asked in front of it — what am I supposed to do, what does each answer
