@@ -170,7 +170,14 @@ cleanup() {
     docker run --rm -v "$CELL:/c" ubuntu:24.04 chown -R "$HOST_UID:$HOST_GID" /c >/dev/null 2>&1
   fi
 }
-trap cleanup EXIT INT TERM
+# A SIGNAL TRAP THAT CLEANS UP BUT DOES NOT EXIT LEAVES A CELL HAUNTING ITS OWN
+# GRAVE. `trap cleanup EXIT INT TERM` runs cleanup on TERM and then RESUMES the
+# script: the container has been removed, but the settle loop keeps polling a
+# name that no longer resolves, reads an empty fingerprint as a stable one,
+# settles on it, and writes a record over whatever record was already there.
+# That very nearly cost the s1 row its verifier numbers. A signal ends the cell.
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
 
 # ── the progress curve, alongside the run ───────────────────────────────────
 # It scores in its OWN short-lived container so it never steals the running
@@ -246,8 +253,29 @@ PY
       tmux kill-session -t "$SESSION_NAME" 2>/dev/null
       echo DNF > "$CELL/outcome"; echo wall > "$CELL/settle_reason"; return 124
     fi
+    # THE FINGERPRINT MUST NOT SEE THE HEARTBEATS, AND THIS COST s1 ITS ENDING.
+    #
+    # aforge's standing-work ticker appends one line to /prof/v3/standing/wake.log
+    # every 300 seconds for as long as the profile is open. The line it writes
+    # when there is nothing to do says so in its own words —
+    # `examined=0 checked=0 fired=0 said=0` — but the file's size and mtime change
+    # all the same, so a fingerprint over the whole store was reset every five
+    # minutes by a record of NOTHING HAPPENING. With SILENCE_SECONDS at 900 the
+    # `stable` counter could never reach its threshold, and the 2700-second
+    # escape hatch for a pane still showing `working` could never be reached
+    # either: the same heartbeat resets `quiet`. The aforge s1 cell therefore sat
+    # idle from 12:14 with every task landed and would have run to the ten-hour
+    # wall no matter what — its settle rule was arithmetically unreachable.
+    #
+    # So the two known heartbeats are excluded and nothing else is: presence.json
+    # (the pane saying it is still attached) and standing/ (the ticker). Both are
+    # the harness reporting that it is ALIVE, which is the opposite of the
+    # question being asked. Everything a turn or a worker actually writes —
+    # transcript.jsonl, tasks.json, tasks/*.jsonl, logs/jobs/* — is still counted,
+    # so a wake that starts real work still shows up, in the files that work
+    # writes rather than in the log that says it was considered.
     now="$(docker exec "$CONTAINER" sh -c \
-      'find /prof/v3 -type f ! -name presence.json -printf "%s %T@ %p\n" 2>/dev/null | sort | md5sum' 2>/dev/null)"
+      'find /prof/v3 -type f ! -name presence.json ! -path "*/standing/*" -printf "%s %T@ %p\n" 2>/dev/null | sort | md5sum' 2>/dev/null)"
     screen="$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null)"
     printf '%s\n' "$screen" > "$CELL/tmux-live.txt"
     if [ "$now" = "$last" ]; then quiet=$((quiet + POLL)); else quiet=0; fi
