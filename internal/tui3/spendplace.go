@@ -45,7 +45,7 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 	win = win.Normalized()
 	priced := make([]session.UsageLine, 0, len(lines))
 	for _, line := range lines {
-		if line.USD > 0 && win.Holds(line.At) {
+		if line.USD > 0 && win.Holds(session.UsageLineDay(line)) {
 			priced = append(priced, line)
 		}
 	}
@@ -77,7 +77,7 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 	if r.loudest.USD > 0 {
 		var onDay []session.UsageLine
 		for _, line := range subjectPriced {
-			if sameSpendBucket(line.At, r.loudest.At, win.Grain) {
+			if sameSpendBucket(session.UsageLineDay(line), r.loudest.At, win.Grain) {
 				onDay = append(onDay, line)
 			}
 		}

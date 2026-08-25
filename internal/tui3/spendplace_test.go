@@ -47,6 +47,21 @@ func TestTheSpendSparklineKeepsEveryDayInTheWindow(t *testing.T) {
 	}
 }
 
+func TestReadSpendKeepsARowWhoseWrittenDayIsInsideTheWindow(t *testing.T) {
+	win := session.UsageWindow{From: spendTestNow, To: spendTestNow, Grain: session.GrainDay}
+	// The writer booked this at 23:30 on august 25, but the reader's shifted
+	// clock puts its timestamp just outside the one-day window on august 26.
+	line := session.UsageLine{At: time.Date(2026, time.August, 26, 0, 30, 0, 0, time.Local), Day: "2026-08-25",
+		Model: "opus 4.1", Calls: 1, Input: 100, Output: 20, USD: 7, Task: "writer-day"}
+	r := readSpend([]session.UsageLine{line}, win, spendTestNow)
+	if r.totals.USD != 7 || len(r.days) != 1 || r.days[0].USD != 7 {
+		t.Fatalf("the inside written day was dropped before bucketing: %+v", r)
+	}
+	if r.loudFor.ID != "writer-day" {
+		t.Fatalf("the loudest written day lost its subject: %+v", r.loudFor)
+	}
+}
+
 func TestTheSpendPageSaysWhichDayWasLoudest(t *testing.T) {
 	text := strings.Join(plainSpendRows(spendTestReading().rows(120, newPalette(tokens.NoColor, false))), "\n")
 	if !strings.Contains(text, "aug 20 was the loudest day — $21.40, the-filings-sweep") || !strings.Contains(text, "tasks") {

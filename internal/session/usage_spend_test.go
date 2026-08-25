@@ -118,6 +118,13 @@ func TestUsageByDayChargesTheDayTheWriterWroteDown(t *testing.T) {
 	}
 }
 
+func TestUsageLineDayExposesTheWriterRecordedDayToWindowReaders(t *testing.T) {
+	line := UsageLine{At: usageAt(t, "2026-08-26 00:30"), Day: "2026-08-25"}
+	if got := UsageLineDay(line); !got.Equal(usageAt(t, "2026-08-25 00:00")) {
+		t.Fatalf("the row resolves to %v, want the writer's august 25", got)
+	}
+}
+
 // WEEKS AND MONTHS BUCKET BY THAT SAME DAY. A sunday's spending recorded in
 // Toronto belongs to the week that sunday closes, whoever is reading it and
 // whatever their clock says the stamp is.
