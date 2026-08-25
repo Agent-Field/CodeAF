@@ -155,22 +155,32 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 		t.Fatal("the page refused to open")
 	}
 
-	// The last earlier card is below the fold to begin with.
-	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), "Read the law twice") {
-		t.Fatal("the last card was already on screen; widen the fixture so scrolling is tested")
-	}
-
-	// Walk the cursor to the bottom of the list.
+	// Walk the cursor to the bottom of the list, and find out what is down there:
+	// the fixture is grouped by what you do next, so which card is last is the
+	// place's business rather than the test's.
 	for i := 0; i < 40; i++ {
 		a.taskSheetMove(1)
 	}
+	last, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("the walk left the cursor on nothing")
+	}
 	lines := taskSheetLines(a)
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "Read the law twice") {
-		t.Fatalf("scrolling did not bring the last card into view:\n%s", joined)
+	head := -1
+	for i, line := range lines {
+		if strings.Contains(line, last.entry.Title) {
+			head = i
+		}
 	}
-	if !strings.Contains(joined, "it came home clean · 6h") {
-		t.Fatalf("the last card's whole tail is not on screen:\n%s", joined)
+	if head < 0 {
+		t.Fatalf("scrolling did not bring the cursor's card into view:\n%s", joined)
+	}
+	// AND IT IS DRAWN WHOLE. A card is two lines, so a window that counted rows
+	// rather than lines would leave the tail of the one a thumb scrolled to
+	// clipped at the fold.
+	if head+1 >= len(lines) || !strings.Contains(lines[head+1], "it came home clean") {
+		t.Fatalf("the cursor's card is clipped at the fold:\n%s", joined)
 	}
 	for i, line := range lines {
 		if w := ansi.StringWidth(line); w > a.width {
@@ -180,7 +190,7 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 
 	// A wheel walks the cursor the same way a key does, so it reaches the fold too.
 	a.taskSheetScroll(-40)
-	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), "Read the law twice") {
+	if strings.Contains(strings.Join(taskSheetLines(a), "\n"), last.entry.Title) {
 		t.Fatal("the wheel did not scroll the list back up")
 	}
 }

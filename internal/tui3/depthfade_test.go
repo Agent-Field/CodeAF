@@ -155,12 +155,24 @@ func TestTheHistoryPagesTailFadesWithDepthAndItsHeadDoesNot(t *testing.T) {
 	}
 
 	// The last three step DOWN the ladder: the deepest row is the faintest.
+	//
+	// A BLANK LINE IS EXEMPT AND SAYS SO. The place separates its sections with
+	// whitespace, so the foot of a window can land on one — and a blank line has
+	// no ink to fade, which is the emptiness law rather than a hole in the ladder.
+	lit := 0
 	for depth := 0; depth < fadeSteps; depth++ {
 		at := len(rows) - 1 - depth
+		if strings.TrimSpace(plain(rows[at])) == "" {
+			continue
+		}
+		lit++
 		if stop := fadeStopOf(a.pal, rows[at]); stop != depth {
 			t.Fatalf("row %d (depth %d) came back at stop %d, want %d:\n%s",
 				at, depth, stop, depth, strings.Join(rows, "\n"))
 		}
+	}
+	if lit == 0 {
+		t.Fatalf("the last %d rows of the window are all blank:\n%s", fadeSteps, strings.Join(rows, "\n"))
 	}
 	// And nothing above them is faded at all.
 	noFadeAnywhere(t, a.pal, rows[:len(rows)-fadeSteps], "the head of the record")
@@ -187,7 +199,7 @@ func TestTheHistoryPageNeverFadesTheRowTheCursorIsOn(t *testing.T) {
 	}
 	rows := historyRows(a)
 	current, ok := a.taskSheetCurrent()
-	if !ok || current.entry == nil {
+	if !ok || current.entry.Title == "" {
 		t.Fatal("the cursor is not standing on a row of the record")
 	}
 	title := current.entry.Title
@@ -223,21 +235,29 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	rows := historyRows(a)
 	head := -1
 	for i, row := range rows {
-		if strings.TrimSpace(plain(row)) == taskSheetPastHead {
+		if strings.TrimSpace(plain(row)) == taskSheetNowHead {
 			head = i
 		}
 	}
 	if head <= 0 {
-		t.Fatalf("the record's own section word is not on the page:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("a section word is not on the page:\n%s", strings.Join(rows, "\n"))
 	}
 	if got := strings.TrimSpace(plain(rows[head-1])); got != "" {
-		t.Fatalf("the line above the record's section is %q, want a blank line:\n%s",
+		t.Fatalf("the line above a section's word is %q, want a blank line:\n%s",
 			got, strings.Join(rows, "\n"))
 	}
-	// AND THE FIRST SECTION DOES NOT CARRY ONE: a blank line under the page's own
-	// rule would be the head of the page drifting away from it.
-	if got := strings.TrimSpace(plain(rows[0])); got != taskSheetNowHead {
-		t.Fatalf("the page opens on %q rather than on its first section word", got)
+	// AND ONE BLANK LINE AND NOT TWO: the breath between sections is a rhythm, and
+	// a double gap reads as a section that lost its rows.
+	if head >= 2 {
+		if got := strings.TrimSpace(plain(rows[head-2])); got == "" {
+			t.Fatalf("two blank lines stand above a section's word:\n%s", strings.Join(rows, "\n"))
+		}
+	}
+	// AND THE PAGE OPENS ON WHAT IT IS HOLDING rather than on air: a blank line
+	// under the router's own rule would be the head of the page drifting away
+	// from it.
+	if got := strings.TrimSpace(plain(rows[0])); !strings.HasPrefix(got, "work aforge ran on its own.") {
+		t.Fatalf("the page opens on %q rather than on what it is holding", got)
 	}
 }
 

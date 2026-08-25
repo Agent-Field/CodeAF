@@ -84,18 +84,7 @@ func (a *app) placeNote(width int) []string {
 	pal := a.pal
 	switch a.page {
 	case pageTasks:
-		if !a.taskSheet.open || a.taskSheet.detailOn {
-			return nil
-		}
-		items := a.taskSheetItems()
-		note := []string{" " + pal.dim(fit(a.taskSheetTally(items), width-2))}
-		if a.taskSheetFiltering() {
-			// WHAT WAS TYPED HAS TO BE ON SCREEN. A list that has lost rows for a
-			// reason a reader cannot see is a list that has lost them for no
-			// reason at all.
-			note = append(note, " "+pal.dim(fit(a.taskSheetFilterLine(items), width-2)))
-		}
-		return note
+		return a.taskSheet.note(a, width)
 	case pageSettings:
 		if !a.sheet.open {
 			return nil

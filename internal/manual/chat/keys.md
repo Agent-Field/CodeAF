@@ -331,7 +331,7 @@ an ordinary `enter` and the message waits instead.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
-| `ctrl+.` | Open the task page (`/history`) — every task this project has run, across every session; type to filter it. Does nothing when the project has run none |
+| `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. Does nothing when nothing has run |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on this machine, and an empty home on a fresh one. Does nothing when the box has words in it; not bound over `--host` |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
@@ -1144,7 +1144,7 @@ does nothing.
 
 **The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
-project's record. Old tasks from earlier sessions are on the task page, reached from the
+project's record. Old tasks from earlier sessions are on the tasks place, reached from the
 column's own `ctrl+. earlier` line, from `ctrl+.` or from `/history`; `enter` on an
 `earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
 tasks but where **this** conversation has run none, `ctrl+t` falls through — there is

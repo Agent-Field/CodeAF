@@ -1322,13 +1322,13 @@ type app struct {
 	// terminal has. Closed, it costs the frame nothing, and it is only ever
 	// opened at tierPhone.
 	expand expand
-	// taskSheet is the task page (taskview.go): the FOURTH fullscreen thing this
-	// surface draws, and the second of them that exists at EVERY width — the deck
-	// and the tool detail above it are the phone tier's alone. It holds the
-	// project's whole task record rather than this session's, which is the one
-	// question the roster's column cannot answer. Closed, it costs the frame
-	// nothing.
-	taskSheet taskSheet
+	// taskSheet is the tasks place (place_tasks.go): the FOURTH fullscreen thing
+	// this surface draws, and the second of them that exists at EVERY width — the
+	// deck and the tool detail above it are the phone tier's alone. It holds the
+	// MACHINE'S whole record of work that ran on its own rather than this
+	// session's, which is the one question the roster's column cannot answer.
+	// Closed, it costs the frame nothing.
+	taskSheet tasksPlace
 	// home is /home (home.go): the FIFTH fullscreen thing, the third that exists
 	// at every width, and the only one of them that is not about this
 	// conversation at all. It is every project on the machine and every
@@ -5154,11 +5154,12 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runTaskCommand(rest)
 
 	case "history":
-		// The page onto every task this PROJECT has run, this session's and every
-		// conversation's before it (taskview.go). It is NOT spelled /tasks: the
+		// The place onto every task this MACHINE has run, this session's and every
+		// conversation's before it, across every project (place_tasks.go). It is
+		// NOT spelled /tasks: the
 		// three /task rows all mean give aforge work, and a plural among them was a
 		// command that answered the muscle memory for starting one (commands.go
-		// says it at more length). It refuses on a project that has
+		// says it at more length). It refuses on a machine that has
 		// run nothing rather than raising a page with a title and nothing under it
 		// — the emptiness law reaches modals — and it says so, because a command
 		// typed on purpose that answers with silence reads as a command that broke.
@@ -5166,8 +5167,11 @@ func (a *app) slash(line string) tea.Cmd {
 		// It arms the read as well as opening the page: the record is a file, and a
 		// session whose "@" list has never been opened has never paid for it
 		// (taskmention.go's [app.loadTasks]). Both doors onto the page go through
-		// one function, because a bare /task opens it too (taskcommand.go).
-		return a.showPage(pageTasks)
+		// one function, because a bare /task opens it too (taskcommand.go) — and it
+		// is that function rather than [app.showPage] because a COMMAND refuses on
+		// an empty machine where the TAB BAR walks in and is taught
+		// (place_tasks.go's [app.openTaskPage] states the difference).
+		return a.openTaskPage()
 
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER
