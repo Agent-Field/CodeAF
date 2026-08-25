@@ -572,7 +572,3 @@ func (a *app) homeTabbable() bool {
 	}
 	return a.home.columns() && len(a.home.tabStops()) > 1
 }
-
-// homeZoneWord is [homeTabWord] said the other way, for the row that is already
-// standing in a zone: → walks back out into the list.
-const homeZoneWord = "→ the list"
