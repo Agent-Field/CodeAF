@@ -506,7 +506,14 @@ workspace it is working in and the session's own folder, and nothing outside tho
 is a path on the other machine, relative to that workspace. The bytes are kept here by
 content, under `~/.aforge/v3/remote/`, and a copy under the file's own name is what your
 viewer is handed — so the window title says `report.pdf` and not a row of hex. A file the
-model wrote during the turn is usually already here before you ask, so it opens at once.
+model wrote during the turn is usually already here before you ask, so it opens at once:
+aforge quietly fetches a file of 2MB or less as it sees it being written, and says nothing
+about having done it.
+
+The two open in different places, and that is the difference worth knowing: **a clicked
+path and the browse page open in your browser** — a terminal hands a web address to a
+browser and that is what the link is — while **`/files <path>` hands the file to your own
+program**, `open` on a Mac and `xdg-open` on Linux, so a `.csv` lands in your spreadsheet.
 
 A fetch that takes less than a third of a second says nothing at all. A longer one draws
 one line naming the file. If the other machine refuses — the path is outside those two
@@ -526,10 +533,21 @@ On a local session `/files <path>` does nothing but say so: `that form of /files
 session on another machine — this one is local, so the paths in it are already yours to
 open`.
 
+The browse page and the links are served by the same listener, which starts the first time
+one is needed and closes with the window; every address it minted stops working then, and
+a wrong one gets a plain `404` with nothing in it to tell one wrong guess from another.
+If it cannot start at all you get one line and no links: `the file door did not open on
+this machine`.
+
 **Paths in replies are links again over `--host`.** A path the reply names is checked with
 the other machine first, and only a real file there becomes clickable; cmd+click opens it
 through the same door the browse page uses. A word that machine did not confirm stays
-plain text, which is the same rule a local session has always followed.
+plain text, which is the same rule a local session has always followed. A confirmed
+**folder** is not a link over a connection.
+
+*Opening files from that machine* is the whole of this in a person's terms: what turns
+into a link and why one did not, where the copies live on this machine, what a drop on the
+browse page does, the 16MB ceiling, and who else can reach those addresses.
 
 ## /status — everything the status line knows
 
