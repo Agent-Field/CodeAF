@@ -49,7 +49,7 @@ import (
 // version-1 engine would silently interrupt a turn the surface believed was
 // detached — but it does mean this file stayed a superset rather than becoming
 // a second protocol.
-const Version = 2
+const Version = 3
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -167,6 +167,19 @@ const (
 	// questions this session raised while nobody was looking. See
 	// [HeldQuestion] for why they wait rather than expire.
 	MethodHeldQuestions = "Held.Questions" // nothing → []HeldQuestion
+
+	// MethodListDir is one directory of the engine's, as a listing rather than
+	// as bytes: what the browse view and the surface's file picker over a
+	// connection read. It answers under the SAME two-roots law as
+	// [MethodFetchFile] (file.go's handOver): the workspace and the session's
+	// own folder, and nothing outside them crosses.
+	MethodListDir = "List.Dir" // ListDirArgs → DirListing
+
+	// MethodStatPaths is the honesty rule of tui3's pathlink.go carried over
+	// the wire: nothing on a hosted session becomes a link until the ENGINE
+	// says the path exists, because a stat is a fact about the other machine.
+	// It is batched — one call per burst of new rows, never one per word.
+	MethodStatPaths = "Stat.Paths" // StatPathsArgs → []PathFact
 )
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -362,9 +375,58 @@ type FetchedFile struct {
 	// base name of the engine's path, and it is the engine's answer rather than
 	// something this side derives, for the reason [WireFile.Name] states in the
 	// other direction.
-	Name  string `json:"name"`
-	MIME  string `json:"mime,omitempty"`
+	Name string `json:"name"`
+	MIME string `json:"mime,omitempty"`
+	// Size and Hash describe the whole file the bytes came from. Hash is the
+	// lowercase hex SHA-256 of Bytes — the same digest internal/cas keys on —
+	// so a surface that caches by content can ask "do I already have this"
+	// before it writes anything down.
+	Size  int64  `json:"size,omitempty"`
+	Hash  string `json:"hash,omitempty"`
 	Bytes []byte `json:"bytes"`
+}
+
+// ListDirArgs names the directory the surface wants to read. A relative path
+// is resolved against the workspace, exactly as [FetchFileArgs.Path] is.
+type ListDirArgs struct {
+	Path string `json:"path"`
+}
+
+// DirEntry is one row of a listing. ModTime is unix seconds because a listing
+// is drawn, not computed with, and a whole time.Time per row is frame weight.
+type DirEntry struct {
+	Name    string `json:"name"`
+	Dir     bool   `json:"dir,omitempty"`
+	Size    int64  `json:"size,omitempty"`
+	ModTime int64  `json:"mtime,omitempty"`
+	MIME    string `json:"mime,omitempty"`
+}
+
+// DirListing is the engine's answer: the path AS THE ENGINE RESOLVED IT — the
+// surface must never derive it — and the entries, directories first, then
+// files, each half sorted by name. Truncated says the cap (listDirMax,
+// file.go) cut the tail rather than the directory ending there.
+type DirListing struct {
+	Path      string     `json:"path"`
+	Entries   []DirEntry `json:"entries"`
+	Truncated bool       `json:"truncated,omitempty"`
+}
+
+// StatPathsArgs is a bounded batch of candidate paths, relative ones meaning
+// the workspace. Over statPathsMax (file.go) the engine refuses the call
+// rather than trimming it silently.
+type StatPathsArgs struct {
+	Paths []string `json:"paths"`
+}
+
+// PathFact is the engine's word on one candidate: it exists under the
+// two-roots law, and whether it is a directory. A path outside the roots
+// reports Exists false — to a surface deciding whether to draw a door, a file
+// that will refuse to open IS absent.
+type PathFact struct {
+	Path   string `json:"path"`
+	Exists bool   `json:"exists,omitempty"`
+	Dir    bool   `json:"dir,omitempty"`
 }
 
 // HeldQuestion is a card this session raised while nobody was attached.
