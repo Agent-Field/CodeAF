@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug test test-swepro vet check clean
+.PHONY: all build debug test test-swepro test-remote vet check clean
 
 # The imported swe-pro engine (internal/swepro) arrived with fifteen tests
 # already failing on macOS in a clean upstream checkout — /var-vs-/private/var,
@@ -34,6 +34,18 @@ test:
 # failure sets were equal, which is what proved the import changed nothing.
 test-swepro:
 	go test ./internal/swepro/...
+
+# TWO MACHINES, ACTUALLY TWO. Three containers on one network — a scripted
+# model, an engine with sshd, and a surface — sharing no path, no home and no
+# credential, so a session that only works because both halves happen to be one
+# filesystem fails here instead of passing by coincidence. It is deliberately
+# NOT part of `make test`: it wants a docker daemon and about a minute, which
+# is a nightly or pre-release gate rather than an every-change one.
+#
+# It SKIPS, green, wherever there is no docker — so it is safe in any pipeline
+# on the day the pipeline cannot yet run it.
+test-remote:
+	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
 
 vet:
 	go vet ./...

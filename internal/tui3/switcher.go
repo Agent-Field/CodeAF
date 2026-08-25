@@ -389,7 +389,12 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// [Agent.WatchTaskUpdates]), so watchTasks re-grows the column row by row
 	// through the same taskUpdate door every live event uses. loadTasks
 	// refreshes only the "@" completion's snapshot (taskmention.go).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks()}
+	// AND THE WAITING ROOM IS ASKED ABOUT AGAIN, because the conversation being
+	// taken up is a DIFFERENT one: the far machine holds each session's
+	// outstanding questions with that session, and the list this surface was
+	// handed on the first frame belongs to the one it just left (hostlink.go's
+	// [app.askHeld]).
+	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks(), a.askHeld()}
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}

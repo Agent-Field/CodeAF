@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,9 +27,26 @@ import (
 //
 // THREE GOROUTINES AND NO MORE. One writer, serialized by a mutex, because two
 // halves of two frames interleaved on one pipe is a stream nobody can decode.
-// One reader, which is the ONLY thing that touches the routing maps. And one
-// pump per open stream, which exists for the reason stated on [stream]: the
-// reader must never be the thing that blocks.
+// One reader, which is the ONLY thing that touches the routing maps — and, on a
+// client that roams (redial.go), the thing that opens the next pipe as well: a
+// reader whose link has died has nothing to read, so it is exactly the goroutine
+// that should be redialling. And one pump per open stream, which exists for the
+// reason stated on [stream]: the reader must never be the thing that blocks.
+//
+// EVERY EVENT IS DELIVERED EXACTLY ONCE, and that is the whole correctness
+// argument for replay. A returning surface tells the engine how far it got
+// ([Hello.Resume]) and the engine sends what came after, but the boundary is
+// agreed by two machines over a link that just failed, so the surface must be
+// able to survive being sent a little of what it already has. So every stream
+// remembers the highest [Frame.Seq] it has actually HANDED TO THE SURFACE, and
+// an event whose seq is at or below that is DROPPED rather than delivered —
+// because the alternative is a turn's text drawn twice on the screen, which is
+// the one failure a person would read as the program having lost its mind.
+//
+// SEQ ZERO IS NOT A DUPLICATE. Numbering starts at 1 (wire.go says so), so a
+// zero means this engine does not number its events at all; those are always
+// delivered and never move the cursor. A client must not go quiet because the
+// far end declined to count.
 //
 // EVERY CALL HAS A DEADLINE. The surface asks half of these questions from its
 // update loop — Model, Usage, ContextTokens, Title — and an update loop that
@@ -54,7 +72,9 @@ type Client struct {
 	// purpose: the sentence a broken connection says names the machine they were
 	// working on. A person with three windows open needs to know WHICH.
 	host string
-	// conn is the pipe pair, and closing it is what ends the ssh process.
+	// conn is the pipe pair, and closing it is what ends the ssh process. A
+	// roaming client replaces it with the next one rather than dying with it, so
+	// it is read under mu and never cached by anything that outlives a frame.
 	conn io.ReadWriteCloser
 	// lines is the decoder over the read half, owned by the reader goroutine
 	// after the handshake and touched by nothing else.
@@ -64,6 +84,27 @@ type Client struct {
 	// cmd/aforge reads its Options out of.
 	mu      sync.Mutex
 	welcome Welcome
+
+	// hello is the door's own first frame, kept because a redial has to say it
+	// again — the same workspace, the same session, the same model and level
+	// (redial.go's [Client.resume] fills the cursors in).
+	hello Hello
+
+	// roam is the redial policy, and nil is a client that dies with its pipe.
+	// See redial.go for everything it means.
+	roam *Roaming
+	// reconnecting is true between the link dying and the next one answering,
+	// which is the whole of what [Client.LinkNote] reports and the reason a call
+	// made in that gap is refused rather than written onto a dead pipe.
+	reconnecting bool
+	// notice is one sentence the surface should show once — the two facts a
+	// redial can discover that a person must not be left to guess at. See
+	// [Client.TakeNotice].
+	notice string
+	// stop is closed by Close, and it is what takes a roaming client out of its
+	// backoff without waiting for the timer it is sitting on.
+	stop     chan struct{}
+	stopOnce sync.Once
 
 	// writeMu serializes frames onto the pipe. It is separate from mu because a
 	// write must not be held up by a map lookup and vice versa.
@@ -105,47 +146,115 @@ type result struct {
 // still the person's, so ssh's own passphrase and host-key questions, and the
 // sentence below about a version mismatch, are plain text on a plain screen.
 func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
+	c := newClient(host, hello)
+	if _, err := c.attach(conn); err != nil {
+		return nil, err
+	}
+	go c.read()
+	return c, nil
+}
+
+// newClient is the empty client both doors build — [Dial] and [Roam] — before
+// anything has been said on a pipe.
+func newClient(host string, hello Hello) *Client {
 	hello.Version = Version
-	c := &Client{
+	return &Client{
 		host:    strings.TrimSpace(host),
-		conn:    conn,
-		lines:   json.NewDecoder(conn),
+		hello:   hello,
 		calls:   map[uint64]chan result{},
 		streams: map[uint64]*stream{},
 		done:    make(chan struct{}),
+		stop:    make(chan struct{}),
 	}
+}
+
+// attach says hello on one pipe and reads the welcome back. It is the handshake
+// for BOTH doors: the first one and every redial, because a returning surface
+// says exactly what an arriving one says plus how far it got.
+//
+// It runs before the reader goroutine exists — on [Dial]'s caller, and on the
+// reader itself once it has stopped reading — so it decodes that one frame
+// itself and nothing races it for the pipe.
+func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
+	hello := c.helloNow()
 	payload, err := json.Marshal(hello)
 	if err != nil {
-		return nil, err
+		return Welcome{}, err
 	}
+	lines := json.NewDecoder(conn)
+	c.mu.Lock()
+	c.conn, c.lines = conn, lines
+	c.mu.Unlock()
+
 	if err := c.write(Frame{Kind: "hello", Payload: payload}); err != nil {
-		return nil, c.gone(err)
+		return Welcome{}, c.gone(err)
 	}
 	var frame Frame
-	if err := c.lines.Decode(&frame); err != nil {
-		return nil, c.gone(err)
+	if err := lines.Decode(&frame); err != nil {
+		return Welcome{}, c.gone(err)
 	}
 	switch frame.Kind {
 	case "welcome":
 	case "fatal":
-		return nil, errors.New(strings.TrimSpace(frame.Error))
+		// A REFUSAL THE FAR END MADE IS CARRIED AS ONE, which is what
+		// [spokenError] is for: the door prints the reason unchanged, and a
+		// redial that meets it stops trying rather than spending its whole
+		// window rediscovering the same no (redial.go).
+		return Welcome{}, spokenError{reason: strings.TrimSpace(frame.Error)}
 	default:
-		return nil, fmt.Errorf("%s answered with a %q where a welcome belongs", c.where(), frame.Kind)
+		return Welcome{}, fmt.Errorf("%s answered with a %q where a welcome belongs", c.where(), frame.Kind)
 	}
 	var welcome Welcome
 	if err := json.Unmarshal(frame.Payload, &welcome); err != nil {
-		return nil, err
+		return Welcome{}, err
 	}
 	// THE REFUSAL IS AT THE DOOR, which is what wire.go's Version says. Two
 	// builds that might disagree about a frame must not find that out three
 	// turns into a conversation, and the sentence names the fix — one machine
 	// has an older aforge on it, and the person knows which machine is which.
 	if welcome.Version != Version {
-		return nil, fmt.Errorf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())
+		return Welcome{}, spokenError{reason: fmt.Sprintf("%s runs a different version of aforge than this machine does — update the older one so both ends speak the same protocol", c.where())}
 	}
+	c.mu.Lock()
 	c.welcome = welcome
-	go c.read()
-	return c, nil
+	c.mu.Unlock()
+	return welcome, nil
+}
+
+// helloNow is the hello as it should be said RIGHT NOW: the door's own, plus the
+// session this client is actually in and how far it got on every stream still
+// open. On the first dial there is nothing open and nothing has been swapped, so
+// it is the door's hello unchanged.
+func (c *Client) helloNow() Hello {
+	c.mu.Lock()
+	hello := c.hello
+	open := c.welcome.SessionFile
+	c.mu.Unlock()
+	// The session file the engine last told us about beats the one the door
+	// asked for: /new and /resume both move it, and a redial that asked for the
+	// launch's file would reopen the conversation the person left behind.
+	if strings.TrimSpace(open) != "" {
+		hello.Session = open
+	}
+	if cursors := c.cursors(); len(cursors) > 0 {
+		hello.Resume = cursors
+	}
+	return hello
+}
+
+// cursors is how far this surface got on every stream still open, which is the
+// only thing an engine needs to send the gap and not the conversation.
+func (c *Client) cursors() []StreamCursor {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []StreamCursor
+	for id, s := range c.streams {
+		if seen, open := s.cursor(); open {
+			out = append(out, StreamCursor{Stream: id, Seq: seen})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Stream < out[j].Stream })
+	return out
 }
 
 // Welcome is what the engine said at the door: the workspace it resolved, the
@@ -159,6 +268,83 @@ func (c *Client) Welcome() Welcome {
 // Host is the ssh destination this client dialled.
 func (c *Client) Host() string { return c.host }
 
+// Attached is how many OTHER surfaces are on this session, as the engine
+// counted them at the door.
+//
+// IT IS A FACT A PERSON MUST BE ABLE TO LEARN. Two windows on one conversation
+// — two people, or one person and their own forgotten laptop — is a thing that
+// changes what typing into it means, and a screen that hid it would be the one
+// place aforge kept a secret about who is in the room. Zero draws nothing, by
+// the emptiness law.
+func (c *Client) Attached() int { return c.Welcome().Attached }
+
+// Held is the questions this session raised while nobody was attached, as they
+// arrived in the welcome. They are already here on the first frame a returning
+// surface draws — see [HeldQuestion] for why they waited rather than expired.
+func (c *Client) Held() []HeldQuestion { return c.Welcome().Held }
+
+// Live is the turn that was already running when this surface arrived, and the
+// channel its events come out of. It answers zero and nil when the session was
+// idle, which is the ordinary case.
+//
+// THE CHANNEL IS THE SAME KIND OF CHANNEL A SUBMIT ANSWERS WITH, on purpose: a
+// surface that reattaches mid-turn should draw that turn with the code that
+// draws every turn, and the only thing it lacks is the [StreamRef] it would
+// have got from opening it. This hands that back.
+func (c *Client) Live() (uint64, <-chan session.Event) {
+	id := c.Welcome().Live
+	if id == 0 {
+		return 0, nil
+	}
+	return id, c.stream(id).events()
+}
+
+// LinkNote is the quiet true sentence about the connection right now, and the
+// empty string whenever there is nothing to say — which is almost always, and
+// is what the emptiness law asks a status line to draw as nothing at all.
+//
+// THE LOUD SENTENCE IS NOT THIS ONE. A link that has merely dropped is being
+// redialled and says `reconnecting to devbox…`; the sentence about a connection
+// that is gone belongs to a client that has stopped trying, and [Client.Err] is
+// where that one lives.
+func (c *Client) LinkNote() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dead != nil || !c.reconnecting {
+		return ""
+	}
+	return c.roamingNote()
+}
+
+// TakeNotice is one sentence the surface should show once and then forget, and
+// the empty string when there is none. IT DRAINS: the sentence is a piece of
+// news about something that just happened to this connection, not a condition
+// that stays true, so a second reading answers nothing.
+//
+// Only a redial writes one, and only for the two things a redial can discover
+// that a person must not be left to work out from the screen: the engine did not
+// keep the turn, and the engine came back with a different conversation open.
+func (c *Client) TakeNotice() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	said := c.notice
+	c.notice = ""
+	return said
+}
+
+// note puts one sentence where [Client.TakeNotice] will find it. Two notices
+// before anybody reads are joined rather than dropped: both are news, and a
+// person who was away for both should be told both.
+func (c *Client) note(sentence string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.notice == "" {
+		c.notice = sentence
+		return
+	}
+	c.notice += " — " + sentence
+}
+
 // Close ends the connection, which ends the ssh process. It is NOT what the
 // surface's /new and /resume call — see [Agent.Close], which flushes the remote
 // session file and leaves the connection standing.
@@ -169,8 +355,28 @@ func (c *Client) Close() error {
 		return nil
 	}
 	c.closing = true
+	conn := c.conn
 	c.mu.Unlock()
-	return c.conn.Close()
+	// A CLOSE ENDS THE ROAMING TOO, and it has to end it now rather than at the
+	// end of whatever backoff the redial loop is sitting in: the person quit,
+	// and a client that went on dialling a machine nobody is watching would be
+	// an ssh process spawned after the terminal was given back.
+	c.stopOnce.Do(func() { close(c.stop) })
+	if conn == nil {
+		return nil
+	}
+	return conn.Close()
+}
+
+// stopped says Close has been called, which is the one answer that outranks
+// every reason to keep trying.
+func (c *Client) stopped() bool {
+	select {
+	case <-c.stop:
+		return true
+	default:
+		return false
+	}
 }
 
 // Err is why this connection stopped, or nil while it is alive.
@@ -218,7 +424,9 @@ type spokenError struct{ reason string }
 
 func (e spokenError) Error() string { return e.reason }
 
-// write puts one frame on the wire, whole, under the writer's lock.
+// write puts one frame on the wire, whole, under the writer's lock. The pipe is
+// read fresh every time because a roaming client replaces it, and a writer
+// holding the one it was born with would be writing into a link that is gone.
 func (c *Client) write(frame Frame) error {
 	line, err := json.Marshal(frame)
 	if err != nil {
@@ -227,7 +435,13 @@ func (c *Client) write(frame Frame) error {
 	line = append(line, '\n')
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	_, err = c.conn.Write(line)
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return errors.New("no link")
+	}
+	_, err = conn.Write(line)
 	return err
 }
 
@@ -235,16 +449,24 @@ func (c *Client) write(frame Frame) error {
 // only thing that writes to the routing maps.
 func (c *Client) read() {
 	for {
+		c.mu.Lock()
+		lines := c.lines
+		c.mu.Unlock()
 		var frame Frame
-		if err := c.lines.Decode(&frame); err != nil {
-			c.bury(err)
+		if err := lines.Decode(&frame); err != nil {
+			// The link under this reader stopped. On a roaming client that is a
+			// pause and not an ending, so [Client.lost] is what decides which of
+			// the two this was, and it comes back true holding a live pipe.
+			if c.lost(err) {
+				continue
+			}
 			return
 		}
 		switch frame.Kind {
 		case "result":
 			c.deliver(frame)
 		case "event":
-			c.stream(frame.ID).push(frame.Payload)
+			c.stream(frame.ID).push(frame.Seq, frame.Payload)
 		case "closed":
 			c.stream(frame.ID).finish()
 		case "fatal":
@@ -319,11 +541,16 @@ func (c *Client) bury(cause error) {
 	} else {
 		c.dead = c.gone(cause)
 	}
+	c.reconnecting = false
 	dead := c.dead
 	calls, streams := c.calls, c.streams
 	c.calls, c.streams = map[uint64]chan result{}, map[uint64]*stream{}
 	close(c.done)
 	c.mu.Unlock()
+	// Nothing is roaming any more either: this is the end, and a backoff still
+	// counting down behind it would dial a machine whose conversation has
+	// already been declared gone on the screen.
+	c.stopOnce.Do(func() { close(c.stop) })
 
 	for _, waiting := range calls {
 		waiting <- result{err: dead}
@@ -356,13 +583,31 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 		c.mu.Unlock()
 		return nil, dead
 	}
+	// A CALL MADE IN THE GAP IS REFUSED, NOT QUEUED. There is no pipe to write
+	// it onto, and holding it until one exists would turn a keystroke into a
+	// thing that hangs for as long as the redialling takes. The refusal says
+	// what is happening and that it is worth trying again, which is the truth:
+	// every getter on this client is asked again on the next frame, and a
+	// message the person typed is still in the composer.
+	if c.reconnecting {
+		c.mu.Unlock()
+		return nil, errors.New(c.roamingRefusal())
+	}
 	c.calls[id] = waiting
 	c.mu.Unlock()
 
 	if err := c.write(Frame{Kind: "call", ID: id, Method: method, Payload: payload}); err != nil {
 		c.mu.Lock()
 		delete(c.calls, id)
+		roaming := c.roam != nil && !c.closing
 		c.mu.Unlock()
+		// A write that failed on a roaming client is the link dying a moment
+		// before the reader noticed it. The person is about to see
+		// `reconnecting`, so this call says the same thing rather than the
+		// sentence that means it is over.
+		if roaming {
+			return nil, errors.New(c.roamingRefusal())
+		}
 		return nil, c.gone(err)
 	}
 
@@ -460,6 +705,31 @@ func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
 func (c *Client) SaveStanding(item standing.Item) error {
 	_, err := c.call(nil, MethodStandingSave, item)
 	return err
+}
+
+// HeldQuestions is what this session asked while nobody was attached, asked for
+// over the wire rather than read off the welcome.
+//
+// THERE ARE TWO DOORS ONTO THE SAME LIST BECAUSE THERE ARE TWO MOMENTS. The
+// welcome carries them so the first frame a returning surface draws already has
+// them ([Client.Held]); this asks again, which is what a surface wants after it
+// has answered one, after a session swap, or when it has been sitting attached
+// for a while and something was raised on another surface's watch.
+//
+// AN ERROR IS AN ERROR HERE and not an empty list, for [Client.StandingItems]'
+// reason: "nothing is waiting" and "the far end did not answer" are different
+// facts, and a surface that drew the second as the first would be quietly
+// telling a person there is nothing to answer.
+func (c *Client) HeldQuestions() ([]HeldQuestion, error) {
+	payload, err := c.call(nil, MethodHeldQuestions, nil)
+	if err != nil {
+		return nil, err
+	}
+	var held []HeldQuestion
+	if err := json.Unmarshal(payload, &held); err != nil {
+		return nil, err
+	}
+	return held, nil
 }
 
 func (c *Client) swap(method string, args any) (Welcome, error) {
@@ -765,6 +1035,18 @@ type stream struct {
 	closed bool
 	out    chan session.Event
 	once   sync.Once
+	// seen is the highest [Frame.Seq] this stream has QUEUED FOR THE SURFACE,
+	// and it is the whole of the replay law stated at the top of this file: an
+	// event at or below it has already been drawn once and is dropped. It is
+	// also what a redial's [Hello.Resume] cursor carries, so the number the
+	// engine resumes from is the number a person actually saw.
+	seen uint64
+	// count is how many events have been queued for the surface, ever. It is
+	// what a resumed stream is watched by (redial.go's [Client.watchTail]),
+	// because "has this turn said anything since the link came back" is a
+	// question [stream.seen] cannot answer about an engine that does not
+	// number its events.
+	count uint64
 }
 
 func newStream() *stream {
@@ -780,7 +1062,13 @@ func (s *stream) events() <-chan session.Event { return s.out }
 // push queues one encoded event. A payload that will not decode is DROPPED
 // rather than fatal: one unreadable line is one lost event, which is the bargain
 // wire.go's framing was chosen for.
-func (s *stream) push(payload json.RawMessage) {
+//
+// AND AN EVENT THIS STREAM HAS ALREADY DELIVERED IS DROPPED TOO, which is the
+// law the file header states: a replay after a redial overlaps by however much
+// the two ends disagree about, and drawing that overlap would repeat a turn's
+// text on the screen. Seq zero is an engine that does not number and is always
+// delivered — see the header for why that is not a duplicate.
+func (s *stream) push(seq uint64, payload json.RawMessage) {
 	if len(payload) == 0 {
 		return
 	}
@@ -788,7 +1076,28 @@ func (s *stream) push(payload json.RawMessage) {
 	if err := json.Unmarshal(payload, &wired); err != nil {
 		return
 	}
+	if seq != 0 {
+		s.mu.Lock()
+		already := seq <= s.seen
+		if !already {
+			s.seen = seq
+		}
+		s.mu.Unlock()
+		if already {
+			return
+		}
+	}
 	s.deliver(wired.Unwire())
+}
+
+// cursor is how far the surface got and whether this turn is still open — the
+// pair a redial's [Hello.Resume] is made of. A stream that has closed is not
+// asked about again: it ended, and the transcript is the authority on a turn
+// that ended.
+func (s *stream) cursor() (uint64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.seen, !s.closed
 }
 
 // fail puts one error event on the stream — what a turn says when the
@@ -804,8 +1113,16 @@ func (s *stream) deliver(ev session.Event) {
 		return
 	}
 	s.queue = append(s.queue, ev)
+	s.count++
 	s.mu.Unlock()
 	s.wake.Signal()
+}
+
+// delivered is how many events this stream has handed the surface.
+func (s *stream) delivered() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
 }
 
 // finish is the "closed" frame: no more events, and the channel closes once

@@ -114,6 +114,20 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "serve":
+		// The other half of reaching this machine, for the machines ssh cannot
+		// reach: it dials OUT to a relay and holds the connection open, so a
+		// router or a firewall in front of this machine stops mattering. It
+		// prints the name this machine answers to and a pairing code, and it
+		// is a command a person runs and watches — which is why it is in the
+		// usage text and `engine` is not (chatv3_at.go).
+		return runServe(os.Args[2:])
+	case "devices":
+		// Who is allowed to open a conversation here, and the door for taking
+		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
+		// MACHINE'S, which is why it is a command here rather than something a
+		// surface can do down the wire (chatv3_at.go).
+		return runDevices(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -167,9 +181,19 @@ func run() error {
 const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
-  aforge chat [--db path] [--session id|new]
+  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
+              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
+                         --session names a transcript FILE to resume, not an id and not
+                         the word "new": a path that does not exist yet is a new
+                         conversation written there, and no --session at all resumes
+                         this directory's most recent
   aforge resume          pick an earlier conversation by name and open it
                          the same list is /resume inside the chat
+  aforge serve [--workspace path] [--relay url]
+                         be reachable from your other devices without ssh: this machine dials out,
+                         prints the name it answers to, and shows a pairing code for a new device
+  aforge devices [revoke [--all] <name>]
+                         list the devices paired with this machine, and stop one
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                        [--subharness name] [--context-fill 60] [--completion-reserve 65536]
                          do one task and exit — the same living brain the chat runs, with nobody watching

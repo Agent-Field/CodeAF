@@ -1098,6 +1098,11 @@ type app struct {
 	// capability that cannot work is absent, not broken.
 	stand  *standingCard
 	stands StandingSeam
+	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
+	// about the connection the conversation is on the far end of. Its zero value
+	// is every local session — no segment, no notice, no waiting room — which is
+	// the same absence the seam above draws when the ambient side is off.
+	link LinkSeam
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
 	// is every frame of a conversation nobody has pressed the chord in.
@@ -1526,6 +1531,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
 		stands:           opts.Standing,
+		link:             opts.Link,
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
 		memory:           opts.Memory,
@@ -1726,8 +1732,13 @@ func (a *app) Init() tea.Cmd {
 	// simply keeps the authored ladder it has been painting since the first
 	// frame. There is no timer behind it and no fallback path to take, because
 	// the fallback is what is already on screen.
+	// AND THE FAR MACHINE'S WAITING ROOM IS ASKED ABOUT ONCE, HERE. A question
+	// raised while nobody was attached has been holding that turn since; this is
+	// the moment somebody arrived, so it is the moment to be handed it
+	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
+	// the seam saying there is no far machine to have a waiting room.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
-		a.loadTasks(), a.stirLane(), tea.RequestBackgroundColor}
+		a.loadTasks(), a.stirLane(), a.askHeld(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -1747,6 +1758,14 @@ func (a *app) Init() tea.Cmd {
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
+	// The seam forgets the sentence as it hands it over, so a second caller
+	// would not show it twice — it would swallow it. This is the one place the
+	// surface sees every message there is, which is what makes the drain prompt
+	// on a window with nothing running: a redial that discovered the turn did
+	// not survive has news, and a person who presses a key gets it rather than
+	// waiting for whatever repaints next.
+	a.takeLinkNotice()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
@@ -2595,6 +2614,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// one event off it, and the stream ending.
 		return a, a.errandUpdate(msg)
 
+	case heldMsg:
+		// The far machine's waiting room, answered. Each question is redrawn
+		// through the door its live twin comes through, and a kind this build
+		// does not know is left waiting (hostlink.go).
+		return a, a.replayHeld(msg)
+
 	case frameMsg:
 		return a, a.paint()
 	}
@@ -2712,7 +2737,14 @@ func (a *app) paint() tea.Cmd {
 		// be the whole of what is happening: no turn runs while the expansion call
 		// is out, so without this the spinner in the hint slot would be a still
 		// photograph for the ten seconds the call is allowed (spellout.go).
-		a.spell.asking {
+		a.spell.asking ||
+		// AND A LINK BEING REDIALLED IS THE TWELFTH, and the fifth that can be
+		// the whole of what is happening: the redialling runs in another
+		// goroutine on a connection nothing here is waiting on, and without this
+		// the `reconnecting to devbox` segment would arrive on one frame and
+		// then sit there after the link came back, until something unrelated
+		// repainted the row (hostlink.go).
+		a.linkNoting() {
 		return a.frameTick()
 	}
 	a.painting = false
@@ -4622,6 +4654,14 @@ func (a *app) slash(line string) tea.Cmd {
 		// The other door onto the tray, for a picture that is not under this
 		// directory or not in the walk: a path, attached (attach.go).
 		a.attachPath(rest)
+		return nil
+
+	case "attach":
+		// The same tray, for everything that is not a picture: a log, a CSV, a
+		// stack trace saved to a file. The model is handed the PATH rather than
+		// the contents, because an attached file is a file and the session
+		// already has a `read` tool (attach.go).
+		a.attachFilePath(rest)
 		return nil
 
 	case "settings":
