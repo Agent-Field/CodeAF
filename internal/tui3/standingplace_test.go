@@ -192,3 +192,15 @@ func TestTheStandingPlaceObeysTheEmptinessLaw(t *testing.T) {
 		t.Fatalf("empty teaching has %d lines", len(teach))
 	}
 }
+
+func TestStandingChangedSinceCountsFiringsAfterTheLook(t *testing.T) {
+	seen := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	a := &app{}
+	a.home.items = map[string][]StandingItemView{"p": {
+		{Item: standing.Item{ID: "new", LastFired: seen.Add(time.Minute)}},
+		{Item: standing.Item{ID: "old", LastFired: seen.Add(-time.Minute)}},
+	}}
+	if got := a.standingChangedSince(seen); got != 1 {
+		t.Fatalf("changed standing items = %d, want 1", got)
+	}
+}

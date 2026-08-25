@@ -6,8 +6,40 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
+
+// standingReadingFrame draws the machine-wide reading and writes its own hover
+// map because the conversation chrome underneath no longer owns these rows.
+func (a *app) standingReadingFrame(width, height int) ([]string, []int, int, int) {
+	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+		r := a.standPage.reading
+		body := r.rows(width, a.standPage.cursor, a.pal)
+		if len(body) == 0 {
+			body = standingTeach(a.pal)
+		}
+		rows := make([]placeRow[int], 0, min(room, len(body)))
+		for i, line := range body {
+			if len(rows) == room {
+				break
+			}
+			hit := -1
+			if _, ok := r.at(i); ok {
+				hit = i
+				if i == a.standPage.cursor {
+					line = a.pal.selected(line, width)
+				}
+			}
+			rows = append(rows, placeRow[int]{text: line, hit: hit})
+		}
+		a.standPage.owner = make([]int, len(rows))
+		for i, row := range rows {
+			a.standPage.owner[i] = row.hit
+		}
+		return rows
+	})
+}
 
 // /standing: WHAT STANDS OVER THIS CONVERSATION, IN THREE SHELVES.
 //
@@ -287,7 +319,8 @@ type standPage struct {
 	// owner maps each screen line back to the row that drew it, written at
 	// layout for the pointer — the same bargain the other panels make
 	// (permissions.go, connectpanel.go). A heading answers to no row.
-	owner []int
+	owner   []int
+	reading standingReading
 }
 
 func (p *standPage) close() { *p = standPage{} }
@@ -394,6 +427,10 @@ func (p *standPage) at(index int) (standRow, bool) {
 // current is the order under the cursor, and false when there is none — a verb
 // pressed on a page with nothing to act on must do nothing at all.
 func (p *standPage) current() (standing.Item, bool) {
+	if !p.reading.now.IsZero() {
+		view, ok := p.reading.at(p.cursor)
+		return view.Item, ok
+	}
 	row, ok := p.at(p.cursor)
 	if !ok || row.kind != standRowItem {
 		return standing.Item{}, false
@@ -515,11 +552,15 @@ func (a *app) openStanding() { a.openStandingAt("") }
 // the honest answer to an order that has just been stood down in another window.
 func (a *app) openStandingAt(id string) {
 	a.noticeEvent(eventStandingOpened)
-	rows := a.standingRows()
-	if len(rows) == 0 {
+	if a.stands.Items == nil {
 		a.note(standNothingWord)
 		return
 	}
+	now := a.now()
+	world := a.readWorld()
+	a.home.world = world
+	a.readStandBands()
+	views := a.standingPlaceViews()
 	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
 	// stood under the draft and could sit beneath any page; as a place it owns
 	// the whole screen, so a page opened under it would take keys nobody can see
@@ -528,8 +569,13 @@ func (a *app) openStandingAt(id string) {
 	a.page = pageStanding
 	a.closeLists()
 	a.dismissWelcome()
-	a.standPage.start(rows)
-	a.standPage.land(id)
+	a.standPage = standPage{open: true, cursor: 1, reading: readStanding(views, a.standWeek(now), now)}
+	for i, view := range a.standPage.reading.views {
+		if view.Item.ID == id {
+			a.standPage.cursor = i + 1
+			break
+		}
+	}
 	a.touch()
 }
 
@@ -547,27 +593,104 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
-		p.close()
+		a.closeStandingPlace()
 	case "up", "ctrl+p":
-		p.move(-1)
+		if !p.reading.now.IsZero() {
+			p.cursor = max(1, p.cursor-1)
+		} else {
+			p.move(-1)
+		}
 	case "down", "ctrl+n":
-		p.move(1)
+		if !p.reading.now.IsZero() {
+			p.cursor = min(len(p.reading.views), p.cursor+1)
+		} else {
+			p.move(1)
+		}
 	case "pgup":
 		p.move(-(standRowsMax - 1))
 	case "pgdown":
 		p.move(standRowsMax - 1)
 	case "enter":
 		cmd = a.standPageEnter()
-	// `p`, `s` AND `n` USED TO BE BARE LETTERS HERE, and the comment above this
-	// function said exactly why they could be: "no draft is under this list for a
-	// letter to fall through into". There is one now — this is a place, and a
-	// place has a composer — so the three verbs moved onto the row's `→` strip,
-	// where a letter is a verb only while the line naming it is on screen
-	// (verbstrip.go's [app.standRowVerbs]). Every printable key belongs to the
-	// composer again, which is the trade the promotion makes.
+		// `p`, `s` AND `n` USED TO BE BARE LETTERS HERE, and the comment above this
+		// function said exactly why they could be: "no draft is under this list for a
+		// letter to fall through into". There is one now — this is a place, and a
+		// place has a composer — so the three verbs moved onto the row's `→` strip,
+		// where a letter is a verb only while the line naming it is on screen
+		// (verbstrip.go's [app.standRowVerbs]). Every printable key belongs to the
+		// composer again, which is the trade the promotion makes.
 	}
 	a.touch()
 	return cmd
+}
+
+func (a *app) closeStandingPlace() {
+	if a.standPage.open {
+		session.NoteLookAt(a.placesRoot(), pageStanding.word(), a.now())
+	}
+	a.standPage.close()
+}
+
+// standingPlaceViews flattens the bands already collected with the world read,
+// so neither drawing nor counting asks the store again.
+func (a *app) standingPlaceViews() []StandingItemView {
+	var views []StandingItemView
+	for _, band := range a.home.items {
+		views = append(views, band...)
+	}
+	return views
+}
+
+// standingChangedSince counts firings in the cached bands for the tab bar.
+func (a *app) standingChangedSince(seen time.Time) int {
+	n := 0
+	for _, view := range a.standingPlaceViews() {
+		if !view.Item.LastFired.IsZero() && view.Item.LastFired.After(seen) {
+			n++
+		}
+	}
+	return n
+}
+
+// standingPlaceVerbs offers only writes the supplied store seam can perform.
+func (a *app) standingPlaceVerbs() []verb {
+	view, ok := a.standPage.reading.at(a.standPage.cursor)
+	if !ok || a.stands.Save == nil {
+		return nil
+	}
+	status, word, key := standing.StatusPaused, "pause", 'p'
+	if view.Item.Status == standing.StatusPaused {
+		status, word, key = standing.StatusActive, "resume", 'r'
+	}
+	return []verb{
+		{key: key, word: word, do: func() tea.Cmd { return a.writeStandingPlace(view.Item, status) }},
+		{key: 'x', word: "retire", do: func() tea.Cmd { return a.writeStandingPlace(view.Item, standing.StatusRetired) }},
+	}
+}
+
+// writeStandingPlace redraws from the accepted item and removes a retired row.
+func (a *app) writeStandingPlace(item standing.Item, status standing.Status) tea.Cmd {
+	item.Status = status
+	if err := a.stands.Save(item); err != nil {
+		a.note(err.Error())
+		return nil
+	}
+	for i := range a.standPage.reading.views {
+		if a.standPage.reading.views[i].Item.ID == item.ID {
+			a.standPage.reading.views[i].Item = item
+		}
+	}
+	if status == standing.StatusRetired {
+		views := a.standPage.reading.views[:0]
+		for _, view := range a.standPage.reading.views {
+			if view.Item.ID != item.ID {
+				views = append(views, view)
+			}
+		}
+		a.standPage.reading.views = views
+		a.standPage.cursor = min(a.standPage.cursor, len(views))
+	}
+	return nil
 }
 
 // standPagePress resolves a click on one of the page's rows.

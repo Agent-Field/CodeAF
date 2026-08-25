@@ -176,3 +176,17 @@ func TestTheEmptyTasksPlaceTeachesWithoutInventingRows(t *testing.T) {
 		t.Fatalf("an empty reading drew %#v", rows)
 	}
 }
+
+func TestTasksChangedSinceCountsOnlyLandedWorkAfterTheLook(t *testing.T) {
+	seen := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	a := &app{}
+	a.taskSheet.open = true
+	a.taskSheet.world = session.World{Projects: []session.Project{{Sessions: []session.SessionRow{{
+		Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{
+			{EndedAt: seen.Add(time.Minute)}, {EndedAt: seen.Add(-time.Minute)}, {},
+		}},
+	}}}}}
+	if got := a.tasksChangedSince(seen); got != 1 {
+		t.Fatalf("changed tasks = %d, want 1", got)
+	}
+}

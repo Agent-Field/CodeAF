@@ -247,6 +247,8 @@ type taskSheet struct {
 	// journal that had nothing in it.
 	tail     string
 	tailRead bool
+	reading  tasksReading
+	world    session.World
 }
 
 // taskSheetItem is one row of the page: a heading, a node of the tree, or one
@@ -492,17 +494,18 @@ func (a *app) openTaskSheet() bool {
 	// and answering out of a reading taken while the column was stowed would
 	// refuse to open over work that is happening right now.
 	a.refreshElsewhere()
-	if !a.taskSheetHasAnything() {
-		return false
-	}
 	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and home both
 	// ([app.standDownFullscreen] states the law). Only one of the three may
 	// believe it owns the frame: view.go draws them in a fixed order, so a page
 	// opened under another would take the keyboard and never be seen.
 	a.standDownFullscreen()
 	a.page = pageTasks
-	a.taskSheet = taskSheet{open: true}
-	a.taskSheetFollow()
+	now := a.now()
+	world := a.readWorld()
+	a.taskSheet = taskSheet{open: true, world: world}
+	a.taskSheet.reading = readTasks(world, session.LastDays(now, 14),
+		session.LastLookAt(a.placesRoot(), pageTasks.word()), now)
+	a.taskSheet.cursor = a.tasksSettle(0)
 	a.noticeEvent(eventTaskPageOpened)
 	a.touch()
 	return true
@@ -527,6 +530,9 @@ func (a *app) openTaskPage() tea.Cmd {
 }
 
 func (a *app) closeTaskSheet() {
+	if a.taskSheet.open {
+		session.NoteLookAt(a.placesRoot(), pageTasks.word(), a.now())
+	}
 	a.taskSheet = taskSheet{}
 	a.touch()
 }
@@ -710,6 +716,10 @@ func taskSheetKeepAway(away []session.ElsewhereTask, needle string) []session.El
 // is a page a person types one letter into and finds empty.
 func (a *app) taskSheetTyped() {
 	a.taskSheet.cursor, a.taskSheet.top = 0, 0
+	if !a.taskSheet.reading.now.IsZero() {
+		a.taskSheet.cursor = a.tasksSettle(0)
+		return
+	}
 	a.taskSheetFollow()
 }
 
@@ -952,6 +962,21 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // taskSheetMove walks the rows, stepping over the section words and clamping at
 // both ends the way every other list on this surface does ([moveCursor]).
 func (a *app) taskSheetMove(delta int) {
+	if a.taskSheet.reading.now.IsZero() == false {
+		at, step := a.taskSheet.cursor, 1
+		if delta < 0 {
+			step, delta = -1, -delta
+		}
+		for n := 0; n < delta; n++ {
+			next := a.tasksSettle(at + step)
+			if next == at {
+				break
+			}
+			at = next
+		}
+		a.taskSheet.cursor = at
+		return
+	}
 	items := a.taskSheetItems()
 	if len(items) == 0 {
 		return
@@ -1011,6 +1036,20 @@ func (a *app) taskSheetCurrent() (taskSheetItem, bool) {
 // write a sentence around and pay a turn for. The mention did not go away — it
 // is `m` on the card, named in the card's own foot.
 func (a *app) taskSheetEnter() tea.Cmd {
+	if !a.taskSheet.reading.now.IsZero() {
+		entry, row, ok := a.tasksFiltered().at(a.taskSheet.cursor)
+		if !ok {
+			return nil
+		}
+		cmd, refusal := a.openSession(Session{File: row.Transcript})
+		if refusal != "" {
+			a.note(refusal)
+			return nil
+		}
+		a.closeTaskSheet()
+		copy := entry
+		return tea.Batch(cmd, a.openTaskRecord(&copy))
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
@@ -1175,6 +1214,8 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 		lines, _, caretX, caretY := a.taskCardFrame(width, height)
 		return lines, nil, caretX, caretY
 	}
+	return a.tasksPlaceFrame(width, height)
+	/* The legacy project-local layout remains below while its detail mode is shared.
 	// THE HEAD AND THE FOOT BELONG TO THE ROUTER (pages.go). This page's own
 	// title, its tally and its keys line are gone from here: the tab bar says
 	// which place this is, the tally is the place's note above the composer, and
@@ -1242,7 +1283,93 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 			}
 			line, _ := a.taskSheetBar(width)
 			return line, taskSheetHit{kind: taskSheetHitBar}, true
-		})
+		})*/
+}
+
+// tasksPlaceFrame gives the pure reading the same frame and hit-map authority
+// the old project-local list had, so paint and pointer cannot disagree.
+func (a *app) tasksPlaceFrame(width, height int) ([]string, []taskSheetHit, int, int) {
+	return placeFrameWithBar(a, width, height, taskSheetHit{}, func(width, room int) []placeRow[taskSheetHit] {
+		r := a.tasksFiltered()
+		body := r.rows(width, a.pal)
+		if len(body) == 0 {
+			body = tasksTeach(a.pal)
+		}
+		rows := make([]placeRow[taskSheetHit], 0, min(room, len(body)))
+		for i, line := range body {
+			if len(rows) == room {
+				break
+			}
+			hit := taskSheetHit{}
+			if _, _, ok := r.at(i); ok {
+				hit = taskSheetHit{kind: taskSheetHitRow, index: i}
+				if i == a.taskSheet.cursor {
+					line = a.pal.selected(line, width)
+				}
+			}
+			rows = append(rows, placeRow[taskSheetHit]{text: line, hit: hit})
+		}
+		return rows
+	}, func(width int) (string, taskSheetHit, bool) {
+		if layoutTier(width) != tierPhone {
+			return "", taskSheetHit{}, false
+		}
+		line, _ := a.taskSheetBar(width)
+		return line, taskSheetHit{kind: taskSheetHitBar}, true
+	})
+}
+
+// tasksFiltered applies the existing type-to-filter behavior to the snapshot
+// without mutating the rows the next edit starts from.
+func (a *app) tasksFiltered() tasksReading {
+	r := a.taskSheet.reading
+	needle := strings.ToLower(strings.TrimSpace(a.taskSheet.query.String()))
+	if needle == "" {
+		return r
+	}
+	kept := make([]tasksItem, 0, len(r.items))
+	for _, item := range r.items {
+		hay := item.entry.Label + " " + item.entry.Title + " " + item.entry.Activity + " " + item.entry.Outcome + " " + item.row.Title + " " + item.row.Project
+		if strings.Contains(strings.ToLower(hay), needle) {
+			kept = append(kept, item)
+		}
+	}
+	r.items = kept
+	return r
+}
+
+// tasksSettle skips every heading and fold because only task rows are doors.
+func (a *app) tasksSettle(from int) int {
+	r := a.tasksFiltered()
+	rows := r.rows(1000, a.pal)
+	for i := max(0, from); i < len(rows); i++ {
+		if _, _, ok := r.at(i); ok {
+			return i
+		}
+	}
+	for i := min(from, len(rows)-1); i >= 0; i-- {
+		if _, _, ok := r.at(i); ok {
+			return i
+		}
+	}
+	return 0
+}
+
+// tasksPlaceWindow re-groups the cached world, never starting a disk walk from
+// a time-window key or a subsequent frame.
+func (a *app) tasksPlaceWindow(key string) bool {
+	if !a.taskSheet.open {
+		return false
+	}
+	before := a.taskSheet.reading.win
+	a.taskSheet.reading.win = a.taskSheet.reading.step(before, key)
+	if a.taskSheet.reading.win == before {
+		return false
+	}
+	a.taskSheet.reading = readTasks(a.taskSheet.world, a.taskSheet.reading.win,
+		a.taskSheet.reading.seen, a.now())
+	a.taskSheet.cursor = a.tasksSettle(0)
+	return true
 }
 
 // taskSheetTop follows the cursor with the window. On a wide frame an item is a
