@@ -567,6 +567,13 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.usage.Duration += turn.Duration
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false, "")
+	// AND THE MACHINE'S LEDGER GETS THE SAME LINE, because the transcript's copy
+	// of it is unreachable from anywhere but this conversation (usage_ledger.go
+	// opens with the whole argument). It is written here rather than inside
+	// [sessionFile.appendUsage] because the file knows the figures and this knows
+	// WHOSE they are — the session, the node, the standing item, the workspace —
+	// and a ledger row without those is a row nothing can be asked of.
+	a.recordUsageLine(turn, model, "")
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
@@ -2409,6 +2416,21 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 	a.addAuxiliaryUsageAs(response, model, calls, "")
 }
 
+// addFoldedUsage is [Agent.addAuxiliaryUsage] for a tally SOMEBODY ELSE ALREADY
+// JOURNALED — a task node's whole life folded into the conversation that
+// spawned it ([Agent.foldTaskUsage]) — and it exists to keep that fold out of
+// the machine's usage ledger.
+//
+// A FOLD IS NOT A CALL. The node ran its own turns in its own journal and wrote
+// its own ledger lines as it went; folding the total in again is right for this
+// session's books, where the law is that a conversation's spend includes the
+// work it started, and would be the same money counted twice in a file whose
+// whole purpose is "what did this machine spend". So the session's counters and
+// the session's journal move exactly as before, and the ledger hears nothing.
+func (a *Agent) addFoldedUsage(response *ai.Response, model string, calls int) {
+	a.addUsageAs(response, model, calls, "", false)
+}
+
 // The roles an auxiliary line can name. A line is journaled with the role that
 // made the call so a bad answer can be traced to the model that gave it: the
 // session's name and a piece of work's name are the two that a person SEES, and
@@ -2432,6 +2454,14 @@ const (
 // empty role journals no field at all, by the emptiness law the rest of the
 // line keeps.
 func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls int, role string) {
+	a.addUsageAs(response, model, calls, role, true)
+}
+
+// addUsageAs is the body both auxiliary doors share, with one bit of difference:
+// whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
+// machine's ledger — or a fold of work that already wrote its own
+// ([Agent.addFoldedUsage]).
+func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger bool) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -2461,4 +2491,7 @@ func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls i
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role)
+	if ledger {
+		a.recordUsageLine(aux, model, role)
+	}
 }
