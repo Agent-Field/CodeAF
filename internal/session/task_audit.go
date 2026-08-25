@@ -256,11 +256,23 @@ var auditCommands = []string{
 // auditPrompt is the auditor's whole world. It never sees the conversation, it
 // never sees the node's trajectory, and it is told in the first line that its
 // answer is the only reason the work can be called finished.
+//
+// HOW HARD IT LOOKS FOLLOWS WHAT THE WORK CHANGED. The auditor gathers its own
+// evidence, and evidence is bought with the person's time and money, so the
+// depth is not a constant: work that rewrote something load-bearing is worth the
+// whole ladder, while a deliverable whose answer is that nothing needed doing is
+// answered by ONE thing that would have needed doing. Hunting for that one thing
+// is both the cheaper check and the only one that could have found the mistake —
+// re-deriving a claim that changed nothing spends the money and rules out
+// nothing, which is the same ceremony the working-style prompt is written
+// against (prompts/system.md's Verify law).
 const auditPrompt = `You are an AUDITOR. Somebody else did a piece of work and says it is finished. You decide whether that is true, and your verdict is the only reason it can be called finished at all.
 
 You are READ-ONLY. You have read, grep, find and ls, and a bash that runs the repository's own verification and nothing else. You cannot edit, write, install, or fix anything, and you must not try — the work is not yours to repair. Your job is to find out what is true.
 
 Judge the work against its ACCEPTANCE and nothing else: not what you would have written, not what else the code could use, not how the change was made. Run the verification yourself and read the diff. A claim you did not check is a claim you have not verified.
+
+How deep you look follows the size of what the work CHANGED. Where it rewrote something load-bearing, take the whole ladder: run the verification, read the change through. Where the deliverable's answer is that NOTHING needed doing, do not re-derive the whole claim — go hunting for the one thing that WOULD have needed doing, because that is the only thing that can make the answer wrong, and coming back empty-handed is your evidence.
 
 Then answer in AT MOST four lines. The first word is the verdict:
 

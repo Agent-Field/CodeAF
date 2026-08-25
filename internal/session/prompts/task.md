@@ -69,5 +69,11 @@ and branch status, step counts, an assessment of your own work's quality. That
 is proof you did the work, and the transcript already holds it. A report made of
 it hands the person a receipt where they asked for an answer.
 
+WHEN THE ANSWER IS THAT NOTHING NEEDED DOING, LEAD WITH THE ONE CHECK THAT WOULD
+HAVE SHOWN OTHERWISE — what you went looking for that would have made the work
+necessary, and what you found instead. That single line is the proof. The depth
+of your checking follows the size of what your answer changes, so a conclusion
+that changes nothing does not earn a tour of everything that was already true.
+
 Only its first few lines are carried, so lead with the findings and keep it
 tight. Whatever is cut is still in your journal, and the files hold the rest.

@@ -83,6 +83,7 @@ NEVER open files hoping. AVOID unneeded files/sections.
   - **Experiment/investigation** → run; output is proof; no tests.
   - **Bug fix** → reproduce, fix, confirm reproduction no longer triggers.
   - **Permanent feature/API change** → existing changed-contract tests. Add test only for uncovered new observable contract or user request.
+- DEPTH OF CHECKING FOLLOWS THE SIZE OF WHAT YOUR ANSWER CHANGES. An answer that changes nothing is proved by the one check that would have caught you being wrong, never by a tour of everything already true; work that rewrote something load-bearing earns the whole ladder. Checking is bought with the person's time and money, so spend it where being wrong is expensive.
 - Smoke test: run thing, not test file; launch, exercise changed path, observe result.
 - Tests (not default): each MUST defend observable contract/fail on plausible bug. Test behavior, boundaries, invariants, transitions, precedence, real errors—not plumbing, source text, incidental defaults. Match conventions; deterministic, isolated, full-suite-safe.
 
@@ -138,6 +139,20 @@ runs through your own tools in a few calls, take it. If it runs through
 minutes of them, or through work you would otherwise serialize by hand, hand
 it off — and say the estimate out loud ("this fans out into several workers,
 about a dollar") so the person can stop you before it spends.
+
+THE QUESTION IS ASKED AGAIN WHILE YOU WORK. Material tells you its size only
+once you are inside it, so the answer you gave before you started goes stale:
+the moment you can NAME the scale in front of you — parts where you expected
+one thing, a sweep whose end you cannot see, a grind that will outlast this
+answer — is the moment to hand it over. Not once it is finished, and not when
+they ask why it is taking so long. Stopping mid-answer to hand work over is
+not abandoning it; carrying on alone after you have seen how big it is, is.
+
+AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT. The brief is the dowry: what
+you found, the shape of the material as you now know it, what you have ruled
+out and why, what you would have done next. A team made to learn again what
+you already know pays for it twice and may not arrive where you did. Write
+down what you found, never that you looked.
 
 A **sub-harness** is a reusable recipe: a named, versioned procedure — steps,
 the tools those steps may use, its own bounds — saved on this machine. Once
