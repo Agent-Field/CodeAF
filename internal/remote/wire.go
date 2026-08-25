@@ -180,6 +180,26 @@ const (
 	// says the path exists, because a stat is a fact about the other machine.
 	// It is batched — one call per burst of new rows, never one per word.
 	MethodStatPaths = "Stat.Paths" // StatPathsArgs → []PathFact
+
+	// MethodDepositFile is [MethodFetchFile] walked backwards: a file going
+	// from the surface's machine to the engine's, and NOT AS A MESSAGE.
+	//
+	// IT EXISTS BECAUSE THE BROWSE PAGE HAS A DRAG-DROP LANE AND THE WIRE HAD
+	// NOWHERE TO PUT WHAT LANDED ON IT. [MethodSubmitFiles] already writes a
+	// person's files into a session's attachments, but it is a MESSAGE: the
+	// engine keeps the bytes and then opens a turn on them. A file dropped on
+	// a web page is not a sentence anybody said, so submitting it would start a
+	// turn nobody at this end asked for, spend somebody's money on it, and
+	// stream its answer into a channel that page is not reading.
+	//
+	// SO THIS METHOD KEEPS AND DOES NOTHING ELSE. The bytes land in the far
+	// session's attachments/ folder — the same place [SubmitFilesArgs]'s files
+	// land, under the same name law, and NOWHERE ELSE; an arbitrary path on the
+	// engine's disk is not a thing this wire will ever write to. No turn opens,
+	// no event is sent, nothing reaches the transcript: a deposit is a FACT ON
+	// DISK, and the conversation learns of it only when a person mentions it.
+	// The lane for a person's own message with a file on it is still /attach.
+	MethodDepositFile = "Deposit.File" // WireFile → DepositedFile
 )
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -384,6 +404,19 @@ type FetchedFile struct {
 	Size  int64  `json:"size,omitempty"`
 	Hash  string `json:"hash,omitempty"`
 	Bytes []byte `json:"bytes"`
+}
+
+// DepositedFile is the engine's word on a file it just kept: the path ON THE
+// ENGINE'S DISK where the bytes landed.
+//
+// IT IS THE ENGINE'S ANSWER AND IS NEVER DERIVED HERE, the same law
+// [FetchedFile.Name] and [DirListing.Path] state from their own directions.
+// The surface named the file and the ENGINE chose the directory, stamped the
+// name and made it unique ([writeAttachment]), so the only machine that can say
+// where the thing now is is the one it is now on — a surface that guessed would
+// be showing a person a path that is nearly right.
+type DepositedFile struct {
+	Path string `json:"path"`
 }
 
 // ListDirArgs names the directory the surface wants to read. A relative path

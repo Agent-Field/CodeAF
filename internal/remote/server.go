@@ -962,6 +962,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodStatPaths:
 		return s.statPaths(call)
 
+	// And the one door that WRITES without anybody saying anything: a file
+	// dropped on the browse page, kept in this session's attachments and
+	// nowhere else. It opens no turn, which is the whole of why it is not
+	// [MethodSubmitFiles].
+	case MethodDepositFile:
+		return s.depositFile(call)
+
 	case MethodInterrupt:
 		agent.Interrupt()
 		return nil, nil

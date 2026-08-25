@@ -23,17 +23,27 @@ import (
 type fakeWire struct {
 	mu sync.Mutex
 
-	statCalls  [][]string
-	fetchCalls []string
-	listCalls  []string
+	statCalls    [][]string
+	fetchCalls   []string
+	listCalls    []string
+	depositCalls []depositCall
 
 	facts    map[string]remote.PathFact
 	listings map[string]remote.DirListing
 	files    map[string]remote.FetchedFile
 
-	statErr  error
-	listErr  error
-	fetchErr error
+	statErr    error
+	listErr    error
+	fetchErr   error
+	depositErr error
+}
+
+// depositCall is one drop as the far machine saw it, so a test can say what
+// crossed and not merely that something did.
+type depositCall struct {
+	name string
+	mime string
+	body string
 }
 
 func newFakeWire() *fakeWire {
@@ -85,6 +95,19 @@ func (w *fakeWire) FetchFile(path string) (remote.FetchedFile, error) {
 		return remote.FetchedFile{}, fmt.Errorf("engine: no such file: %s", path)
 	}
 	return file, nil
+}
+
+// DepositFile is the far session's attachments folder, as a map would keep it:
+// the engine chooses the directory and answers with the path, which is the one
+// thing about a deposit the surface may not derive.
+func (w *fakeWire) DepositFile(name, mime string, data []byte) (string, error) {
+	w.mu.Lock()
+	w.depositCalls = append(w.depositCalls, depositCall{name: name, mime: mime, body: string(data)})
+	w.mu.Unlock()
+	if w.depositErr != nil {
+		return "", w.depositErr
+	}
+	return "/srv/app/.aforge-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-" + name, nil
 }
 
 func (w *fakeWire) fetched() []string {
@@ -422,17 +445,62 @@ func TestFilesWithAPathRefusesHonestlyOnALocalSession(t *testing.T) {
 	}
 }
 
-// Dropping a file onto the browse page is refused, and the refusal names the
-// lane that works. It is a wave-1 fact and the manual says the same thing.
-func TestDepositIsRefusedAndNamesTheLaneThatWorks(t *testing.T) {
-	a, _, _ := hostedFixture(t)
+// A file dropped onto the browse page crosses on the deposit door and comes
+// back as THE PATH THE ENGINE PUT IT AT. Nothing here derives that path: the
+// far machine stamped the name and chose the folder, and this side shows what
+// it was told (internal/remote's [remote.DepositedFile]).
+func TestDepositCrossesAndAnswersWithTheEnginesOwnPath(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
 	source := &hostSource{files: a.rfiles}
+	landed, err := source.Deposit("notes.txt", []byte("hello"))
+	if err != nil {
+		t.Fatalf("a deposit has to cross: %v", err)
+	}
+	if landed != "/srv/app/.aforge-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-notes.txt" {
+		t.Fatalf("the path is the engine's answer and came back as %q", landed)
+	}
+	wire.mu.Lock()
+	calls := append([]depositCall(nil), wire.depositCalls...)
+	wire.mu.Unlock()
+	if len(calls) != 1 || calls[0].name != "notes.txt" || calls[0].body != "hello" {
+		t.Fatalf("what crossed the wire was %+v", calls)
+	}
+	// THE NAME CROSSES AS THE PAGE GAVE IT. A name that is really a path is the
+	// engine's to refuse, and a surface that pre-empted that would be taking a
+	// permission decision on the wrong machine.
+	if calls[0].mime != "" {
+		t.Fatalf("the door carries no type and the surface must not invent one: %q", calls[0].mime)
+	}
+}
+
+// The engine's refusal — a name that is a path, a file over the ceiling — is
+// passed through with nothing softening it, which is [remote.Client.FetchFile]'s
+// law and applies in this direction for the same reason.
+func TestADepositRefusedByTheEngineKeepsTheEnginesSentence(t *testing.T) {
+	a, wire, _ := hostedFixture(t)
+	wire.depositErr = errors.New("engine: \"../../.ssh/authorized_keys\" is a path and not a name")
+	source := &hostSource{files: a.rfiles}
+	landed, err := source.Deposit("../../.ssh/authorized_keys", []byte("x"))
+	if err == nil || landed != "" {
+		t.Fatalf("a deposit the engine refused was accepted: %q", landed)
+	}
+	if err.Error() != wire.depositErr.Error() {
+		t.Fatalf("the engine's sentence was reworded: %q", err)
+	}
+}
+
+// And a drop with no wire under it at all says so rather than panicking. It is
+// a state the door should never be open in — a session whose agent bears no
+// client gets no [remoteFiles] and therefore no door — so the sentence is about
+// the connection and not about what the person did.
+func TestADepositWithNoConnectionSaysSo(t *testing.T) {
+	source := &hostSource{files: &remoteFiles{}}
 	landed, err := source.Deposit("notes.txt", []byte("x"))
 	if err == nil || landed != "" {
-		t.Fatalf("a deposit was accepted: %q", landed)
+		t.Fatalf("a deposit with no wire was accepted: %q", landed)
 	}
-	if !strings.Contains(err.Error(), "/attach") {
-		t.Fatalf("the refusal does not name the lane that works: %q", err)
+	if err.Error() != depositUnreachableWord {
+		t.Fatalf("the sentence is %q", err)
 	}
 }
 

@@ -513,10 +513,14 @@ one line naming the file. If the other machine refuses — the path is outside t
 places, or the file is over the 16MB one file may cross this connection — you get that
 machine's own sentence, unchanged.
 
-**Read-only.** Nothing you do here writes on the other machine. The copy on this one is a
-copy: editing it changes nothing over there. Dropping a file onto the browse page is
-refused, and the refusal names what works instead — `/attach` puts a file in that session's
-`attachments/` folder with your own message saying what it is for.
+**Nothing here edits that machine's files.** The copy on this one is a copy: editing it
+changes nothing over there. The one thing you can put ON the other machine is a file
+dropped onto the browse page, and it lands in that session's `attachments/` folder — never
+anywhere else you could name, and never over anything already there. **A drop says
+nothing:** no message is sent, no turn starts, and nothing about it appears in the
+conversation, so the chat only knows about the file when you mention it. `/attach` is the
+same landing place *with* your own message saying what it is for. A file over the 16MB one
+file may cross is refused, and so is a name that is a path.
 
 On a local session `/files <path>` does nothing but say so: `that form of /files is for a
 session on another machine — this one is local, so the paths in it are already yours to

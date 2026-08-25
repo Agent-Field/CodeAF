@@ -81,6 +81,16 @@ import (
 // /files, and closed with the surface ([app.quit]). It is a capability that
 // costs a port and a goroutine, and a conversation that has no use for one
 // should not be paying.
+//
+// ── THE ONE WRITE, AND WHY IT IS SILENT ─────────────────────────────────────
+//
+// Everything above reads. The browse page's drag-drop lane is the single thing
+// on this seam that puts a byte on the far machine, and what bounds it is not
+// this surface's good behavior: [remote.MethodDepositFile] lands a file in that
+// session's attachments/ folder and has no argument for a directory, so there
+// is no path this side could name even if it wanted one. It opens NO TURN,
+// which is the whole reason it is a door of its own rather than SubmitFiles —
+// [hostSource.Deposit] says the rest.
 
 const (
 	// statBatchMax is how many candidate paths one call carries. It is
@@ -139,12 +149,22 @@ type remoteFetcher interface {
 	FetchFile(path string) (remote.FetchedFile, error)
 }
 
-// remoteWire is the three of them together, which is [remote.Client] by shape
+// depositor is the one door on this seam that WRITES, and the whole of what it
+// may write is a file into the far session's attachments folder — never a path
+// of this side's choosing (internal/remote's [remote.MethodDepositFile] states
+// the law it obeys over there). It opens no turn, which is what makes a drag
+// onto a web page something other than a message nobody said.
+type depositor interface {
+	DepositFile(name, mime string, data []byte) (string, error)
+}
+
+// remoteWire is the four of them together, which is [remote.Client] by shape
 // and is what a test fakes in one struct.
 type remoteWire interface {
 	pathStater
 	remoteLister
 	remoteFetcher
+	depositor
 }
 
 // clientBearer is how the surface reaches the wire from the agent it was handed.
@@ -204,7 +224,7 @@ type remoteFiles struct {
 	// host is the machine as the person typed it, which is the browse page's
 	// title and the mirror's own directory name.
 	host string
-	// wire is the three questions. Never nil: a session whose agent bears no
+	// wire is the four doors. Never nil: a session whose agent bears no
 	// client gets no [remoteFiles] at all, which is the absence law rather than
 	// a surface holding a seam that answers errors.
 	wire remoteWire
@@ -689,35 +709,40 @@ func (s *hostSource) Fetch(target string) (filedoor.File, error) {
 	return file, err
 }
 
-// Deposit is the one thing this wave does not do, and it says so.
+// Deposit is a file dropped on the browse page, landing in the far session's
+// attachments folder — and landing there WITHOUT SAYING ANYTHING.
 //
-// THE WIRE HAS NO LANE THAT PUTS A FILE ON THE FAR DISK WITHOUT OPENING A TURN.
-// [remote.MethodSubmitFiles] is the only door that writes into a session's
-// attachments folder, and it is a MESSAGE: the engine writes the files down and
-// then submits them, so a drag onto the browse page would start a model turn
-// nobody at this end asked for, spend somebody's money on it, and stream its
-// answer into a channel this surface is not reading — a turn that happened with
-// no trace of it on the screen it happened for.
+// A DRAG ONTO A WEB PAGE IS NOT A SENTENCE ANYBODY SAID, which is the whole
+// reason this goes through [remote.MethodDepositFile] and not through
+// SubmitFiles. That door writes into the same folder and then SUBMITS, so a
+// drop here would start a model turn nobody at this end asked for, spend
+// somebody's money on it, and stream its answer into a channel this surface is
+// not reading. The deposit door keeps the bytes and stops: no turn, no event,
+// nothing in the transcript. The conversation learns of the file when a person
+// mentions it, and /attach is still the lane for a file WITH a person's own
+// sentence on it.
 //
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN (CLAUDE.md's law, and
-// host.go's whole table is written under it). So the refusal is the honest
-// answer AND it names the lane that does work, which is the same lane one
-// keystroke away: /attach puts a file in that session's attachments/ folder with
-// the person's own sentence attached, which is what makes the model able to do
-// anything with it.
+// WHERE IT LANDS AND WHAT REFUSES IT ARE BOTH THE ENGINE'S. The path comes back
+// from over there and is never derived here ([remote.DepositedFile] says why),
+// and a name that is really a path, or a file over the ceiling, is refused by
+// the machine that owns the disk, in its own words.
 //
-// WHAT WOULD REMOVE THIS: one wire method that keeps a file without submitting —
-// internal/remote's server.keep is already the whole of the implementation, and
-// it is called from exactly one place today. Lane D should document the refusal
-// as it stands and not as it is about to be.
+// The MIME is empty because the door does not carry one: [filedoor.Source]
+// hands over a name and bytes, and the engine treats the type as a hint it can
+// do without — an attachment is stored, not decoded.
 func (s *hostSource) Deposit(name string, data []byte) (string, error) {
-	return "", errors.New(depositWord)
+	if s.files == nil || s.files.wire == nil {
+		return "", errors.New(depositUnreachableWord)
+	}
+	return s.files.wire.DepositFile(name, "", data)
 }
 
-// depositWord is what a file dropped on the browse page is told. It is one
-// sentence because it is read inside a browser tab with no room for a paragraph,
-// and it points at the lane that works rather than only at the one that does not.
-const depositWord = "aforge cannot put a file on that machine from this page yet — drop it on the chat instead: /attach lands it in that session's attachments/ folder, with your message saying what it is for"
+// depositUnreachableWord is what a drop is told when this window has no wire to
+// put it on — a state the door should never be open in, because a session with
+// no client gets no [remoteFiles] and therefore no door (newRemoteFiles). It is
+// one sentence because it is read inside a browser tab with no room for a
+// paragraph, and it says what is wrong rather than what the person did.
+const depositUnreachableWord = "this window is not connected to that machine any more"
 
 // filesDoorWord is the door failing to open. The listener is loopback and
 // OS-chosen, so the ways it can fail are few and none of them are the person's

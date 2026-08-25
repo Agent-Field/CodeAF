@@ -367,3 +367,118 @@ func TestAFileRoundTripsThroughTheRealWire(t *testing.T) {
 		t.Fatalf("came back as %q / %q", got.Name, got.Bytes)
 	}
 }
+
+// ── the door that keeps and says nothing ────────────────────────────────────
+
+// depositLoop is a live client against a real engine with the two roots on this
+// machine's disk, and the agent behind it — because half of what a deposit has
+// to prove is about what that agent was NOT asked to do.
+func depositLoop(t *testing.T) (*Loop, *fakeAgent, string, string) {
+	t.Helper()
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	folder := filepath.Join(root, "session")
+	for _, dir := range []string{workspace, folder} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("make %s: %v", dir, err)
+		}
+	}
+	agent := &fakeAgent{model: "m"}
+	place := session.Place{Dir: folder, Workspace: workspace}
+	loop, err := Loopback(Hello{}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: agent, Workspace: workspace, Place: place}, nil
+	}})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	return loop, agent, workspace, folder
+}
+
+// A DEPOSIT IS A FACT ON DISK AND NOT A THING ANYBODY SAID. It is the browse
+// page's drag-drop lane, so it lands in exactly the folder an attachment lands
+// in — and then it stops: no turn opens, no event is sent, and the transcript
+// does not know the file exists. That silence is the whole of why this is a
+// door of its own and not [MethodSubmitFiles], and it is what this test pins.
+func TestADepositedFileLandsInAttachmentsAndOpensNoTurn(t *testing.T) {
+	loop, agent, _, folder := depositLoop(t)
+
+	landed, err := loop.Client.DepositFile("notes.csv", "text/csv", []byte("a,b\n1,2\n"))
+	if err != nil {
+		t.Fatalf("a deposit has to cross: %v", err)
+	}
+	// THE PATH IS THE ENGINE'S ANSWER, and it names the attachments folder of
+	// the session's own directory — the one place this door may write.
+	want := filepath.Join(folder, attachmentsDirectory)
+	if filepath.Dir(landed) != want {
+		t.Fatalf("the file landed at %q, and the only place it may land is %q", landed, want)
+	}
+	if !strings.HasSuffix(landed, "-notes.csv") {
+		t.Fatalf("the person's own name is kept on the end: %q", landed)
+	}
+	body, err := os.ReadFile(landed)
+	if err != nil || string(body) != "a,b\n1,2\n" {
+		t.Fatalf("the bytes at the path the engine named are %q (%v)", body, err)
+	}
+
+	// And nothing else happened. No turn was opened, no stream was born to
+	// carry events, and the conversation is exactly as long as it was.
+	agent.mu.Lock()
+	sent, streams, transcript := len(agent.sent), len(agent.streams), len(agent.transcript)
+	agent.mu.Unlock()
+	if sent != 0 {
+		t.Fatalf("a deposit opened %d turn(s)", sent)
+	}
+	if streams != 0 {
+		t.Fatalf("a deposit opened %d event stream(s)", streams)
+	}
+	if transcript != 0 {
+		t.Fatalf("a deposit wrote %d entries into the transcript", transcript)
+	}
+	if entries := loop.Client.Agent().Transcript(); len(entries) != 0 {
+		t.Fatalf("the surface reads %d transcript entries after a deposit", len(entries))
+	}
+}
+
+// A BOUNDARY THAT TRUSTS ITS INPUT IS NOT A BOUNDARY, and this door is reached
+// from a web page on a machine the engine cannot see — so the name law is the
+// attachment law, unchanged, and the refusal happens over there.
+func TestADepositedNameThatIsAPathIsRefusedAndNothingLands(t *testing.T) {
+	loop, _, _, folder := depositLoop(t)
+
+	for _, name := range []string{"../../.ssh/authorized_keys", "/etc/passwd", `..\windows\hosts`, "sub/dir.txt", ""} {
+		landed, err := loop.Client.DepositFile(name, "", []byte("x"))
+		if err == nil {
+			t.Fatalf("%q was accepted as a deposit and landed at %q", name, landed)
+		}
+		if landed != "" {
+			t.Fatalf("%q was refused and answered with a path: %q", name, landed)
+		}
+		if entries, err := os.ReadDir(filepath.Join(folder, attachmentsDirectory)); err == nil && len(entries) > 0 {
+			t.Fatalf("%q was refused and %d files landed", name, len(entries))
+		}
+	}
+}
+
+// The ceiling is the fetch's, because a file is the same weight in both
+// directions, and the sentence is the fetch's too. The handler is called
+// directly here: what is being proved is the guard and its words, and pushing
+// seventeen megabytes through the pipe to hear the same sentence would be
+// paying for a fact about frames nobody is asking about.
+func TestADepositOverTheCeilingIsRefusedWithTheLimitInIt(t *testing.T) {
+	s, _, _, place := attachEngine(t)
+	payload := mustJSON(WireFile{Name: "dump.bin", Bytes: make([]byte, maxFetchBytes+1)})
+	_, err := s.depositFile(Frame{Kind: "call", ID: 1, Method: MethodDepositFile, Payload: payload})
+	if err == nil {
+		t.Fatal("a deposit over the ceiling crossed anyway")
+	}
+	if !strings.Contains(err.Error(), "the most one file may cross this connection is 16MB") {
+		t.Fatalf("the refusal has to name the limit: %v", err)
+	}
+	if !strings.Contains(err.Error(), "dump.bin") {
+		t.Fatalf("the refusal has to name the file: %v", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(place.Dir, attachmentsDirectory)); err == nil && len(entries) > 0 {
+		t.Fatalf("a refused deposit left %d files behind", len(entries))
+	}
+}
