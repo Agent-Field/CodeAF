@@ -154,8 +154,11 @@ answers with the path, the size and the model, e.g.
 ```
 
 **There is no length argument**, because the endpoint has none: the model writes
-a piece of its own choosing — around a minute in practice — and you cannot ask
-for eight seconds. Nor is there a format argument; you get what the model sends.
+a piece of its own choosing — half a minute to a minute in practice — and you
+cannot ask for eight seconds, or for three minutes. Nor is there a format
+argument; you get what the model sends. To put a piece under anything timed — a
+video, a slideshow — aforge measures the file it got and loops or trims it to
+fit, because the length is the model's choice, not the brief's.
 
 **Every call costs the same whatever comes back**, around **$0.08**, because the
 price is per call and not per second. That makes a short clip and a long one the
@@ -202,9 +205,12 @@ job 3 started; filming on <model> — the finished video arrives as a note namin
 
 It keeps working while you and aforge carry on talking. When it lands, aforge is
 told in a note at the next step:
-`job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, filmed on <model>`.
-A render that fails says so the same way: `job 3 failed: video generation timed
-out (<model>); no video was saved`. Nothing waits for it and nothing polls it.
+`job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
+The length and the sound answer are measured from the file itself — a clip that
+landed silent says `without sound` — and when the file cannot be measured the
+note simply omits both rather than guessing. A render that fails says so the
+same way: `job 3 failed: video generation timed out (<model>); no video was
+saved`. Nothing waits for it and nothing polls it.
 
 With no video model set in `/settings` → Providers, the default is
 `bytedance/seedance-2.5`, falling back to `bytedance/seedance-2.0-mini` on a
@@ -223,6 +229,52 @@ The render **is** a job: it shows in `jobs list` as
 `video (job 3) stopped; no video was saved`. Like every job, it dies when the
 conversation ends. The provider gives up after **10 minutes** and no file is
 saved.
+
+## Can you make a longer video — several clips, a whole story, 2 minutes of film?
+
+Not in one render, and yes by joining several — a single render is a short
+clip, around ten seconds in practice. A longer video is several
+`generate_video` calls stitched together with ffmpeg in the shell, and whether
+the result hangs together is decided by three facts about the tool:
+
+- **Every render is independent.** The video model sees one prompt and the
+  pictures passed to that one call — never the conversation, never an earlier
+  clip. A prompt that says "the hero" without describing him reaches a model
+  that has never met the hero, so everything that must match across clips is
+  described in every prompt.
+- **Pictures are the only thread between clips.** The same `reference_paths`
+  handed to every call keep a face and a costume steady. For clips that should
+  **connect** — one shot flowing into the next — the last frame of a finished
+  clip is passed as the next call's opening `frame_paths` entry. That chain
+  makes connected clips a sequence: they cannot all render in parallel.
+- **Each clip lands with its own sound**, and its note says so. A stitch keeps
+  that sound only if the join carries the audio streams as well as the video,
+  and a continuous score is `generate_music`, looped under the whole cut.
+
+Even chained, clips are distinct shots with some drift between them — a
+stitched video is a cut, not one continuous take. Fewer scenes in one setting
+read as more coherent than many scattered ones.
+
+## Why is a stitched video incoherent, or silent after the first clip?
+
+Both come from the facts above, and both are fixable.
+
+**The story or the characters are not coherent:** the clips were rendered
+independently with nothing shared — each `generate_video` call reaches the
+video model alone, with no memory of the other clips. The fixes are the
+threads that do cross: the same reference images on every call, every prompt
+describing everything that must match, and — for shots that should flow into
+each other — the previous clip's final frame passed as the next clip's opening
+frame, which means rendering those clips one after another rather than all at
+once.
+
+**No sound, or no audio after the first clip:** the clips almost certainly
+landed with sound — each clip's landing note says `with sound` or `without
+sound`, measured from the file — and the join dropped it. An ffmpeg filter
+that only crossfades the video streams carries just the first input's audio;
+the stitch has to map or crossfade the audio streams too, or concatenate both
+streams together. Music is separate either way: a score under the whole cut is
+`generate_music`, measured and looped to fit, mixed in at the join.
 
 ## Where do the pictures, audio, music and video you make end up?
 
