@@ -261,3 +261,57 @@ func TestANodesRoomSettlesLikeTheConversation(t *testing.T) {
 		t.Fatalf("the settled page lost the answer:\n%s", strings.Join(settled, "\n"))
 	}
 }
+
+// ── the promoted head is rendered once ──────────────────────────────────────
+
+// THE PROMOTED HEAD IS THE PART THAT HAS STOPPED MOVING, so it is rendered when
+// the cut moves and not once per delta ([entry.mdHead], render.go's
+// [app.promotedRows]). Everything here is about the memo staying invisible.
+func TestThePromotedHeadIsRememberedAndStillTheSameRows(t *testing.T) {
+	a, at := settleLab(t)
+	e := &a.entries[at]
+
+	first := append([]string(nil), a.assistantRows(at, e, 60)...)
+
+	// A DELTA IS NOT A PROMOTION. More bytes arrive on the tail, the cut has not
+	// moved, and the head must come back exactly as it was.
+	e.text += " and then dropping the remainder"
+	grown := a.assistantRows(at, e, 60)
+	head := len(a.promotedRows(e, 60))
+	if strings.Join(grown[:head], "\n") != strings.Join(first[:head], "\n") {
+		t.Fatalf("the head changed under a delta:\n%s\n\n%s",
+			strings.Join(first[:head], "\n"), strings.Join(grown[:head], "\n"))
+	}
+	if !strings.Contains(plain(strings.Join(grown, "\n")), "and then dropping") {
+		t.Fatalf("the tail lost the bytes that arrived:\n%s", strings.Join(grown, "\n"))
+	}
+
+	// A PROMOTION IS. The cut moves to the new last newline and the head is the
+	// rows the whole prefix renders to — which is what a fresh render answers.
+	e.text += ".\nSo the second read saw its own tail"
+	promoteBlock(e, &a.mdAt)
+	a.mdAt = a.mdAt.Add(-2 * markdownThrottle)
+	promoteBlock(e, &a.mdAt)
+	if e.mdCut == len("The parser is fixed.\n") {
+		t.Fatal("the promotion did not move the cut, so this proves nothing")
+	}
+	memo := strings.Join(a.promotedRows(e, 60), "\n")
+	fresh := strings.Join(a.renderMarkdown(e.text[:e.mdCut], 60), "\n")
+	if memo != fresh {
+		t.Fatalf("the remembered head is not what the renderer draws:\n%s\n\n%s", memo, fresh)
+	}
+
+	// AND A DRAGGED FRAME IS A DIFFERENT HEAD, because these rows are laid out to
+	// the width they were rendered for.
+	if narrow := strings.Join(a.promotedRows(e, 34), "\n"); narrow == memo {
+		t.Fatal("the head came back unchanged at half the width")
+	}
+
+	// AND A RE-MEASURED GROUND DROPS IT, the one thing the key cannot see
+	// (adaptive.go's [app.repaintPalette]).
+	a.promotedRows(e, 60)
+	a.repaintPalette()
+	if a.entries[at].mdHead != nil {
+		t.Fatal("a re-measured ground left yesterday's paint in the promoted head")
+	}
+}

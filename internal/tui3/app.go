@@ -338,6 +338,44 @@ type entry struct {
 	settled bool
 	mdCut   int
 
+	// mdHead is the PROMOTED HALF of a still-streaming block, already rendered,
+	// kept beside the cut and the width it was rendered at (render.go's
+	// [promotedHead]). It is a pointer for [entry.hung]'s reason: at most one
+	// block on a deck is streaming, and every other entry would be carrying the
+	// fields past three whole-deck passes per frame to say nothing with them.
+	//
+	// It exists because the two clocks on a streaming reply run at wildly
+	// different speeds. A delta lands a hundred times a second and marks the
+	// block stale; the promotion that moves [entry.mdCut] runs once every
+	// [markdownThrottle], which is a second and a half. Every frame in between
+	// re-ran [app.renderMarkdown] over the WHOLE settled prefix — sanitize,
+	// goldmark, chroma, the lot — to arrive at rows identical to the ones it drew
+	// on the last frame, when the only thing that had actually changed was the
+	// plain tail underneath them ([app.assistantRows]).
+	//
+	// THE CUT AND THE WIDTH ARE THE WHOLE KEY, because they are the whole of what
+	// decides these rows. The prefix is `text[:mdCut]` and a prefix cannot change
+	// without the cut moving: text only ever GROWS at its end, and a promotion
+	// only ever moves the cut forward ([promoteBlock] refuses a cut that did not).
+	//
+	// The one thing the key cannot see is the PALETTE, for the reason codeview.go's
+	// block cache cannot: these are finished strings with escape sequences already
+	// inside them, and a re-measured ground changes neither the text nor the width.
+	// [app.repaintPalette] drops it by hand, with everything else that holds paint.
+	mdHead *promotedHead
+
+	// hung is the memo of the block a TOOL row hangs — its diff, its source, its
+	// output — and toolview.go's [app.toolBlock] is the whole of its story.
+	//
+	// IT IS A POINTER TO KEEP THIS STRUCT SMALL. Every deck is a slice of these
+	// and three passes walk the whole of one on every frame ([stampHierarchy],
+	// [app.deckRows], THE INDENT LAW's own loop), so a hundred and fifty bytes
+	// added to an entry is a hundred and fifty bytes of cache line spent by every
+	// block on the screen to carry a memo only tool rows ever read. Measured: as
+	// a value it cost the idle frame seven percent, which is most of what the
+	// memo was buying.
+	hung *toolBlock
+
 	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
 	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
 	// (hierarchy.go states the law and [stampHierarchy] writes this field).
@@ -443,6 +481,15 @@ type (
 	streamEventMsg struct {
 		gen int
 		ev  session.Event
+		// then is the event that ENDED a fold and had to travel with it.
+		//
+		// [waitEvent] coalesces a run of deltas by taking them off the channel,
+		// and the only way to find out whether an event folds is to have it in
+		// hand — a channel cannot be put back. So the one event that stopped a
+		// run rides beside the run it stopped, and [app.Update] applies the two
+		// in the order they arrived. It is nil on every message that folded
+		// nothing, which is every message a test builds and most of the rest.
+		then *session.Event
 	}
 	streamClosedMsg struct{ gen int }
 	compactedMsg    struct{ err error }
@@ -1765,8 +1812,8 @@ func (a *app) Init() tea.Cmd {
 	// the moment somebody arrived, so it is the moment to be handed it
 	// (hostlink.go's [app.askHeld]). It is nil on every local session, which is
 	// the seam saying there is no far machine to have a waiting room.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(),
-		a.loadTasks(), a.stirLane(), a.askHeld(), tea.RequestBackgroundColor}
+	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
+		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2436,7 +2483,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.gen != a.gen {
 			return a, nil
 		}
-		return a, a.event(msg.ev)
+		// THE STREAM IS WAITED ON ONCE, however many events this message
+		// carried. Two [app.event] calls would be two [app.streamOn] calls and
+		// so two goroutines reading one channel, which is two events delivered
+		// in whichever order they happened to win — so the applying and the
+		// re-arming are separated here and nowhere else ([app.apply]).
+		after := a.apply(msg.ev)
+		if msg.then != nil {
+			after = tea.Batch(after, a.apply(*msg.then))
+		}
+		return a, a.streamOn(after)
 
 	case streamClosedMsg:
 		if msg.gen != a.gen {
@@ -2893,12 +2949,23 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	return tea.Batch(waitEvent(msg.ch, a.gen), a.wake())
 }
 
-// event folds one session event into the conversation.
+// event folds one session event into the conversation and waits on the stream
+// for the next one.
 //
 // Text deltas mark the live entry stale and stop there: they are the flood, and
 // the clock decides when a flood becomes a frame. Everything else is discrete
 // and paints at once — a tool beginning is a fact a person is waiting for.
+//
+// IT IS THE ONE-EVENT DOOR. The message pump takes the two halves separately,
+// because a message may carry two events and the stream must be waited on once
+// however many it carried ([streamEventMsg.then]).
 func (a *app) event(ev session.Event) tea.Cmd {
+	return a.streamOn(a.apply(ev))
+}
+
+// apply is the whole of the above except the wait: it answers what this event
+// asks the program loop to DO, and nothing about listening for the next one.
+func (a *app) apply(ev session.Event) tea.Cmd {
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
@@ -2923,7 +2990,7 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// that arrived before the key is taken away, and the partial reply the engine
 	// keeps is the partial reply on screen.
 	if a.windingDown() && !keptAfterStop(ev.Kind) {
-		return a.streamOn(nil)
+		return nil
 	}
 	// THE BURN WINDOW OPENS ON THE FIRST EVENT of any turn that did not open one
 	// itself. A turn starts in three places — a submit, an attached message, a
@@ -3243,7 +3310,7 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.take(ev.Usage)
 		after = a.settle()
 	}
-	return a.streamOn(after)
+	return after
 }
 
 // streamOn is what every road out of [app.event] owes the program loop: the next
@@ -4211,16 +4278,93 @@ func (a *app) quiet() bool {
 	return !a.lastDelta.IsZero() && time.Since(a.lastDelta) >= quietBeforeEllipsis
 }
 
-// waitEvent takes one event from the stream. Re-issued after each one, this is
-// the whole bridge between the session's goroutine and the program loop.
+// waitEvent takes the next event off the stream — and, while more of the same
+// kind are ALREADY QUEUED behind it, takes those too and folds them into one.
+// Re-issued after each message, this is the whole bridge between the session's
+// goroutine and the program loop.
+//
+// ── WHY ONE MESSAGE PER DELTA WAS THE WRONG SHAPE ───────────────────────────
+//
+// bubbletea runs Update and then View for every message it is handed. A provider
+// streaming a reply sends a hundred to two hundred text deltas a second, and each
+// one used to be a message: a hundred and fifty whole frames a second built for a
+// screen the paint clock repaints thirty times a second, of which a hundred and
+// twenty were laid out, styled and thrown away without ever reaching a terminal.
+//
+// THE FOLD IS THE HUB'S OWN LAW, borrowed rather than invented — see
+// [foldsInto], and internal/session's function of the same name, which the hub
+// already folds a slow subscriber's backlog by.
+//
+// IT DRAINS AND NEVER WAITS. The loop takes only what the channel is already
+// holding and stops the instant it would block, so a stream that has gone quiet
+// delivers its one event exactly as promptly as before. What it coalesces is the
+// backlog that piled up while the previous frame was being built, which is the
+// only moment there is anything to coalesce — the fold is therefore self-limiting:
+// a surface that is keeping up folds nothing.
+//
+// THE TIMING SEMANTICS ARE THE LAST FOLDED DELTA'S. [app.lastDelta] and a
+// reasoning block's own end stamp are written when the MESSAGE is handled, so a
+// folded run stamps once, at the moment the run's last delta was taken off the
+// channel — which is the moment [app.quiet] and [elapsedWord] are asking about.
 func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-ch
 		if !ok {
 			return streamClosedMsg{gen: gen}
 		}
-		return streamEventMsg{gen: gen, ev: ev}
+		// The run is accumulated rather than appended to in place: a backlog is
+		// bounded by the channel and not by anything this side controls, and
+		// growing one string per fold would be quadratic in a burst.
+		var run strings.Builder
+		var then *session.Event
+		// An event only folds into one of its own kind, so an event that does not
+		// fold into itself cannot start a run and the drain is skipped entirely.
+	drain:
+		for foldsInto(ev, ev) {
+			var next session.Event
+			var open bool
+			select {
+			case next, open = <-ch:
+			default:
+				// Nothing queued. The surface is keeping up, so there is nothing
+				// to fold and nothing to wait for.
+				break drain
+			}
+			if !open {
+				// The stream ended behind the run. The fold is delivered and the
+				// close comes back on the next wait, which is where every other
+				// close on this surface comes from.
+				break drain
+			}
+			if !foldsInto(ev, next) {
+				held := next
+				then = &held
+				break drain
+			}
+			run.WriteString(next.Text)
+		}
+		if run.Len() > 0 {
+			ev.Text += run.String()
+		}
+		return streamEventMsg{gen: gen, ev: ev, then: then}
 	}
+}
+
+// foldsInto reports whether two consecutive stream events are exactly their two
+// texts joined, which is true for the two kinds that are A STREAM OF TEXT and
+// carry nothing else.
+//
+// IT IS internal/session's OWN [foldsInto] SAID ON THIS SIDE OF THE CHANNEL. The
+// hub folds a slow subscriber's backlog by that rule; [waitEvent] folds a fast
+// stream's arrivals by this one, and both rest on the same law: EventTextDelta
+// and EventReasoning are each emitted as a kind and a text and nothing more, at
+// every one of the places that emit them. A kind that grows a second field comes
+// off BOTH lists in the same change, or each fold quietly drops it.
+func foldsInto(prev, next session.Event) bool {
+	if prev.Kind != next.Kind {
+		return false
+	}
+	return prev.Kind == session.EventTextDelta || prev.Kind == session.EventReasoning
 }
 
 // unfold is ctrl+o: every call of the current turn on its own line, or back to

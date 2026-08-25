@@ -38,6 +38,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -269,13 +270,21 @@ func (p *v3Process) closeAll() {
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
 		waiting.Add(1)
-		go func(agent *session.Agent) {
+		// THE CLOSE IS SPAWNED UNDER THE GUARD, like every other fire-and-forget
+		// goroutine in this tree (internal/guard's sweep_test.go states the law).
+		// It matters most exactly here: this runs while the process is on its way
+		// out, and one agent whose Close faults would take down the surface
+		// mid-teardown — with the Wait below never returning, since the panic
+		// would carry the deferred Done away with the goroutine. Under
+		// [guard.Go] the fault is noted, Done still runs, and the remaining
+		// conversations still get closed.
+		guard.Go("chatv3/close-agent", func() {
 			defer waiting.Done()
 			// The error is dropped for the reason the door's defer always
 			// dropped it: nothing is left to say it to, and a session file that
 			// would not flush is not a reason to hold the terminal.
 			_ = agent.Close()
-		}(agent)
+		})
 	}
 	waiting.Wait()
 

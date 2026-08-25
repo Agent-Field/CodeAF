@@ -91,9 +91,26 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// The turn, token and deadline ceilings are left at zero, which is how this
 	// file states them without restating them: internal/exec owns every one of
 	// those numbers and applies its own when it is handed nothing.
+	//
+	// THE WINDOW IS ASKED THROUGH THE ONE READING THAT NEVER WAITS ([v3Window]),
+	// and that is a launch-path law rather than a preference here.
+	// [catalog.Catalog.ContextLength] RESOLVES the lazy catalog, and resolving it
+	// on a stale cache is a GET /models with a fifteen-second ceiling
+	// (internal/catalog's LoadLazy says so in as many words) — so asked on this
+	// line it holds the FIRST FRAME of a conversation behind a fetch, for a
+	// number no frame reads. What it configures is a subharness runner, and
+	// nothing touches one until somebody runs a program minutes later.
+	//
+	// Zero is the honest answer while the catalog is still warming, and it is the
+	// SAME zero session.Config.ContextWindow is filled with by the same call on
+	// the same model a few lines later (chatv3.go): internal/exec applies its own
+	// conservative default for it — "an unknown or unavailable model is zero,
+	// which is not an error", [exec.Linear.WithContextLength] — exactly as
+	// internal/session does for the window it was handed. One question, one
+	// non-blocking answer, two readers.
 	linear := exec.NewLinear(client, space, web, 0, 0, 0).
 		WithAttribution(settings.Attribution).
-		WithContextLength(models.ContextLength(model))
+		WithContextLength(v3Window(models, model))
 	registry := exec.NewRegistry(linear)
 	// THE GENERALIST IS WHAT THE DEOPTIMIZATION PATH FALLS BACK TO, so it is
 	// registered before anything else can need it: a guard that does not pass
@@ -135,6 +152,13 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// ([v3GitRoot]: no git, no repository and an unreadable one are one answer).
 	// A repository with no such directory registers a source that lists nothing,
 	// which is the correct and quiet outcome.
+	//
+	// FOR A BORROWED CONVERSATION THIS COSTS NO SUBPROCESS AT ALL. The workspace
+	// under it IS the root the launch already resolved a moment ago
+	// ([v3Workspace]), and [v3GitRoot] hands that answer straight back out of
+	// [v3GitRoots] rather than spending a second `git rev-parse` learning it
+	// twice. An owned session's work directory is a different repository and is
+	// genuinely asked, which is the same call it always was.
 	if root, ok := v3GitRoot(space.Root()); ok {
 		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectDir(root)).Source(build))
 	}

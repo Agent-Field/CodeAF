@@ -264,11 +264,30 @@ func (w *stallWatch) alive() {
 	w.lastAlive = w.clock()
 }
 
+// fire is the timer's callback, and it is two things on purpose: a decision
+// taken entirely under the lock, and a cancellation taken entirely outside it.
+//
+// THE CANCEL MAY NOT RUN UNDER THIS LOCK. Cancelling a context runs whatever is
+// waiting on it, in this goroutine, before the call returns — so holding the
+// watch's lock across it would put this mutex underneath somebody else's
+// ordering. That is why the unlock used to sit in the middle of the reasoning,
+// and [stallWatch.verdict] is the same code with the whole critical section
+// wrapped in a function, so the unlock can be a defer that no future early
+// return can slip past (internal/guard's lockdefer_test.go states the law).
 func (w *stallWatch) fire() {
+	if cancel := w.verdict(); cancel != nil {
+		cancel()
+	}
+}
+
+// verdict is the whole of fire's reasoning, under the lock from first line to
+// last. It answers with the cancellation the caller owes the stream, or nil when
+// the watch re-armed instead and the stream lives.
+func (w *stallWatch) verdict() context.CancelFunc {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.tripped != nil {
-		w.mu.Unlock()
-		return
+		return nil
 	}
 	now := w.clock()
 	bound := stallFirstBound
@@ -288,8 +307,7 @@ func (w *stallWatch) fire() {
 			wait = allowance
 		}
 		w.timer.Reset(wait)
-		w.mu.Unlock()
-		return
+		return nil
 	}
 	// Waited is the figure that actually decided: the plain bound when the
 	// endpoint went silent outright, the cap when patience was extended and
@@ -303,9 +321,7 @@ func (w *stallWatch) fire() {
 	} else {
 		w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	}
-	cancel := w.cancel
-	w.mu.Unlock()
-	cancel()
+	return w.cancel
 }
 
 // cut is the trip, or nil. It is read after the stream has died, to tell a
@@ -316,11 +332,21 @@ func (w *stallWatch) cut() *StreamCut {
 	return w.tripped
 }
 
+// stop ends the watch. The timer is READ under the lock and stopped outside it,
+// for [stallWatch.fire]'s reason one function up: Stop is somebody else's code
+// and this lock stays underneath none of it. [stallWatch.heldTimer] is that read
+// as its own function, so the unlock is a defer rather than a line in the middle.
 func (w *stallWatch) stop() {
+	if timer := w.heldTimer(); timer != nil {
+		timer.Stop()
+	}
+}
+
+// heldTimer is the watch's timer, read under the lock.
+func (w *stallWatch) heldTimer() *time.Timer {
 	w.mu.Lock()
-	timer := w.timer
-	w.mu.Unlock()
-	timer.Stop()
+	defer w.mu.Unlock()
+	return w.timer
 }
 
 // ── the degeneration guard ──────────────────────────────────────────────────
@@ -388,6 +414,14 @@ type babbleWatch struct {
 	inFence bool
 	// since counts bytes of clean text added since the last test.
 	since int
+	// squeeze is the compressor [babbleWatch.loopedTail] runs the window
+	// through, and counter is what it writes into. Both are held for the life of
+	// the stream rather than built per test: zlib.NewWriter carries a deflate
+	// state a hundred kilobytes wide, the test runs once every babbleEvery bytes
+	// of a reply, and Reset leaves the writer in exactly the state a new one
+	// would be in — so the ratio measured is the same ratio, bit for bit.
+	squeeze *zlib.Writer
+	counter countingWriter
 }
 
 func (b *babbleWatch) write(delta string) bool {
@@ -465,7 +499,7 @@ func (b *babbleWatch) window() []byte {
 
 func (b *babbleWatch) tripped() bool {
 	window := b.window()
-	return loopedTail(window) || churnedTail(window)
+	return b.loopedTail(window) || churnedTail(window)
 }
 
 type fenceKind int
@@ -512,20 +546,24 @@ func fenceLine(line []byte) (fenceKind, bool) {
 // The window must be FULL before this may say anything. A short reply that
 // happens to be one repeated line is somebody answering "no, no, no" and is not
 // a model that has come off the rails.
-func loopedTail(window []byte) bool {
+func (b *babbleWatch) loopedTail(window []byte) bool {
 	if len(window) < babbleWindow {
 		return false
 	}
 	tail := window[len(window)-babbleWindow:]
-	var counter countingWriter
-	writer := zlib.NewWriter(&counter)
-	if _, err := writer.Write(tail); err != nil {
+	b.counter.n = 0
+	if b.squeeze == nil {
+		b.squeeze = zlib.NewWriter(&b.counter)
+	} else {
+		b.squeeze.Reset(&b.counter)
+	}
+	if _, err := b.squeeze.Write(tail); err != nil {
 		return false
 	}
-	if err := writer.Close(); err != nil {
+	if err := b.squeeze.Close(); err != nil {
 		return false
 	}
-	return float64(counter.n)/float64(len(tail)) < babbleFloor
+	return float64(b.counter.n)/float64(len(tail)) < babbleFloor
 }
 
 // countingWriter is how many bytes the compressor produced. The compressed
@@ -554,15 +592,26 @@ var _ io.Writer = (*countingWriter)(nil)
 // "このAPIはHTTPリクエストを受け取り" is ordinary Japanese and scored 27 switches
 // per hundred runes before the tolerance existed.
 func churnedTail(window []byte) bool {
-	runes := []rune(string(window))
-	if len(runes) < churnWindow {
+	// The window is walked rather than materialized. Decoding it into a []rune
+	// first cost sixteen kilobytes of garbage on every test to read six hundred
+	// runes off the end of it, and a byte that is not valid UTF-8 becomes the
+	// same replacement rune either way — which is what keeps this the same
+	// measurement it was.
+	total := utf8.RuneCount(window)
+	if total < churnWindow {
 		return false
 	}
-	runes = runes[len(runes)-churnWindow:]
-	counts := make(map[scriptClass]int, 8)
+	tail := window
+	for skip := total - churnWindow; skip > 0; skip-- {
+		_, size := utf8.DecodeRune(tail)
+		tail = tail[size:]
+	}
+	var counts [scriptCount]int
 	switches := 0
 	previous := scriptNeutral
-	for _, r := range runes {
+	for len(tail) > 0 {
+		r, size := utf8.DecodeRune(tail)
+		tail = tail[size:]
 		class := scriptOf(r)
 		if class == scriptNeutral {
 			previous = scriptNeutral
@@ -605,6 +654,10 @@ const (
 	scriptHan
 	scriptHangul
 	scriptOther
+	// scriptCount is the width of [churnedTail]'s tally and not an alphabet. It
+	// must stay last in this block, which is what makes the tally an array
+	// rather than a map allocated once per test.
+	scriptCount
 )
 
 // tolerant names the alphabets that legitimately sit against each other with no

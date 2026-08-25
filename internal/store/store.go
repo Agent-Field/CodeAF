@@ -498,6 +498,9 @@ type Store struct {
 	// — process configuration rather than journaled policy, so it is installed
 	// on the handle and never written to the brain file.
 	roleDefaults roleDefaultsCell
+	// statements holds the parsed form of the reads taken often enough that the
+	// driver's own re-parse is most of what they cost (prepared.go).
+	statements statementCache
 }
 
 const schema = `
@@ -565,6 +568,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS nodes_one_spine_root
     ON nodes ((1)) WHERE parent_id IS NULL;
 CREATE INDEX IF NOT EXISTS nodes_parent ON nodes (parent_id);
 CREATE INDEX IF NOT EXISTS nodes_ready ON nodes (status, folded, created_seq, created_order);
+-- "which nodes belong to this errand?" is asked several times a second by a
+-- headless run watching its own work settle, and session_id is a base column,
+-- so the index lives here rather than beside nodes_charter: every store, new or
+-- old, executes this schema at open.
+CREATE INDEX IF NOT EXISTS nodes_session ON nodes (session_id);
 CREATE INDEX IF NOT EXISTS edges_to_kind ON edges (to_id, kind);
 CREATE INDEX IF NOT EXISTS events_node_seq ON events (node_id, seq);
 CREATE INDEX IF NOT EXISTS events_kind_ts ON events (kind, ts);
@@ -741,7 +749,10 @@ func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	return s.db.Close()
+	// Statements first, always: a prepared statement holds a driver handle of
+	// its own, and closing the database out from under one is how a cache like
+	// this leaks the connection it was meant to save work on.
+	return errors.Join(s.closeStatements(), s.db.Close())
 }
 
 func (s *Store) ensureSpine() error {

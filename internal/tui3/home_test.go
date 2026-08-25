@@ -2390,6 +2390,39 @@ func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
 	}
 }
 
+// A LAUNCH THAT IS NOT BEING GREETED DOES NOT WALK THE DISK TO GET ITS FIRST
+// FRAME UP. [app.landHome] runs inside [newApp], before bubbletea exists, and
+// the walk under the places root is four system calls per session across every
+// project on the machine. So a launch that named a conversation — `--session`,
+// `aforge resume`, `--once`, every headless frame — reads nothing at all: the
+// door at the foot of the conversation stopped depending on what the disk holds
+// ([app.homeDoorOpen]), so there is no question left for the launch to answer.
+func TestALaunchThatIsNotGreetedNeverWalksTheDiskForTheDoor(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.app(mine)
+	a.landHome()
+	if len(a.home.world.Projects) != 0 {
+		t.Fatal("the launch walked the disk for a door nothing was waiting on")
+	}
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is shut on a launch that read nothing")
+	}
+
+	// AND A GREETED LAUNCH TAKES THE WALK EXACTLY ONCE, because the frame it is
+	// about to draw IS home and every row on it comes out of that reading.
+	greeted := lab.launch(mine, true)
+	if !greeted.home.open {
+		t.Fatal("the landing launch was not greeted, so this proves nothing")
+	}
+	if len(greeted.home.world.Projects) == 0 {
+		t.Fatal("the greeted launch drew home off a reading of nothing")
+	}
+}
+
 // The advertisement shows at rest and vanishes on the first character.
 func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	lab := newHomeLab(t)

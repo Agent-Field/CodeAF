@@ -588,11 +588,15 @@ func opensTurn(es []entry, i int) bool {
 // entryRows is the per-entry cache for everything that is not a tool call.
 //
 // Tool lines never come through here — [app.clusterRows] draws them, because
-// their marker depends on their position in the cluster — and they are
-// deliberately NOT cached: one of them is animating, all of them are one line
-// plus a bounded expansion, and a cache with an animation in it is a cache that
-// has to be invalidated thirty times a second, which is not a cache but a bug
-// with a field.
+// their marker depends on their position in the cluster — and the LINE is
+// deliberately not cached: one of them is animating, and a cache with an
+// animation in it is a cache that has to be invalidated thirty times a second,
+// which is not a cache but a bug with a field.
+//
+// THE BLOCK UNDER THE LINE IS A DIFFERENT QUESTION and has a memo of its own
+// ([toolBlock]): what moves is the spinner, the clock and the pointer's
+// brightness, all of which live on the line, while the diff, the source and the
+// output hanging under it are facts about a payload that arrived once.
 func (a *app) entryRows(d deck, i, width int) []string {
 	e := &d.entries[i]
 	// A RUNNING COMPACTION IS NOT CACHED, for the reason the tool lines are not:
@@ -851,10 +855,40 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	e.feet = nil
 	var out []string
 	if e.mdCut > 0 {
-		out = append(out, a.renderMarkdown(e.text[:e.mdCut], width)...)
+		out = append(out, a.promotedRows(e, width)...)
 	}
 	out = append(out, a.liveTail(e.text[e.mdCut:], width)...)
 	return append(tags, trimBlanks(out)...)
+}
+
+// promotedRows is the head of a streaming reply — the bytes the throttle has
+// already declared final — off the memo beside the block, or rendered into it.
+//
+// THE PROMOTED HEAD IS THE PART THAT HAS STOPPED MOVING, which is the fact
+// [app.assistantRows]'s own note above states about the ink and this states
+// about the work: bytes that are not going to change do not need rendering
+// twice. The rows are re-made when the cut moves (once every
+// [markdownThrottle]) and when the frame is dragged to another width, and on
+// every other frame of the turn — which at thirty frames a second is forty-four
+// out of forty-five of them — the block's whole cost is wrapping the plain tail.
+//
+// See [entry.mdHead] for why the key is only those two facts, and for the one
+// thing it deliberately cannot see.
+func (a *app) promotedRows(e *entry, width int) []string {
+	if h := e.mdHead; h != nil && h.cut == e.mdCut && h.width == width {
+		return h.rows
+	}
+	rows := a.renderMarkdown(e.text[:e.mdCut], width)
+	e.mdHead = &promotedHead{rows: rows, cut: e.mdCut, width: width}
+	return rows
+}
+
+// promotedHead is that memo: the rendered rows, and the two facts that decided
+// them. See [entry.mdHead].
+type promotedHead struct {
+	rows  []string
+	cut   int
+	width int
 }
 
 // liveTail is the growing edge of a streaming reply: the bytes since the last

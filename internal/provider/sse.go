@@ -38,6 +38,18 @@ type sseDecoder struct {
 	// speaking — the stall watch — would never hear it (streamguard.go says
 	// what it buys). It is called from the read loop, so it must be cheap.
 	alive func()
+	// chunk and wire are the decode targets, held here rather than declared per
+	// event: a streamed answer is thousands of events, and the address of a
+	// local one escapes into json.Unmarshal every single time.
+	//
+	// BOTH ARE ZEROED BEFORE EVERY DECODE, and that is not tidiness. Unmarshal
+	// leaves a field the event did not mention exactly as it found it, so a
+	// target carried forward unzeroed would give one event the previous one's
+	// role, id or finish reason. Zeroing also nils every slice in them before
+	// the decode, which is what keeps the chunk handed back from aliasing the
+	// next one's.
+	chunk ai.StreamChunk
+	wire  streamChunk
 }
 
 // sseReadBuffer is the read size. Larger than the SDK's 8 KB because the read
@@ -57,11 +69,11 @@ func (d *sseDecoder) Decode() (ai.StreamChunk, error) {
 		if err != nil {
 			return ai.StreamChunk{}, err
 		}
-		var chunk ai.StreamChunk
-		if json.Unmarshal(payload, &chunk) != nil {
+		d.chunk = ai.StreamChunk{}
+		if json.Unmarshal(payload, &d.chunk) != nil {
 			continue
 		}
-		return chunk, nil
+		return d.chunk, nil
 	}
 }
 
@@ -75,11 +87,11 @@ func (d *sseDecoder) DecodeChunk() (streamChunk, error) {
 		if err != nil {
 			return streamChunk{}, err
 		}
-		var chunk streamChunk
-		if json.Unmarshal(payload, &chunk) != nil {
+		d.wire = streamChunk{}
+		if json.Unmarshal(payload, &d.wire) != nil {
 			continue
 		}
-		return chunk, nil
+		return d.wire, nil
 	}
 }
 

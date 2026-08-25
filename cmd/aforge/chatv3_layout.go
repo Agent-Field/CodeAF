@@ -22,6 +22,7 @@ package main
 // EVERY PATH GOES THROUGH internal/home, so AFORGE_HOME moves all of it.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -116,12 +117,63 @@ func v3NoProjectPlace(dir string) bool {
 	return false
 }
 
+// v3GitRootTimeout bounds the one subprocess this answer costs.
+//
+// IT IS A BACKSTOP AND NOT A BUDGET. `git rev-parse --show-toplevel` walks the
+// directory chain and refreshes nothing — no index, no lock — so a tree that
+// answers at all answers in milliseconds. What the ceiling is for is the tree
+// that does NOT: a dead network mount, a filesystem stalled on somebody else's
+// lock, a git that never returns. Unbounded, that is a launch held open forever
+// on a question whose "no" was already a legal answer.
+//
+// It is stated far more generously than internal/tui3's own git budget, which
+// is a quarter of a second for a branch name in a border. That answer is
+// furniture; THIS one decides which project the conversation is about, and a
+// repository whose root was given up on because a disk was briefly slow would
+// open the session in the wrong directory. Two seconds is internal/plan's
+// terrain budget for the same reason and to the same end — long enough that
+// only a wedged git ever reaches it.
+const v3GitRootTimeout = 2 * time.Second
+
+// v3GitRoots is every root this process has already watched git name, and it is
+// the whole of why one launch shells out once rather than twice.
+//
+// A LAUNCH ASKS THIS QUESTION TWICE ABOUT ONE REPOSITORY: once for the directory
+// the person is standing in ([v3Workspace], deciding which project this is), and
+// again for the workspace that came out of it ([v3Subharnesses], looking for the
+// project's bundle store). The second call spent a second subprocess on an
+// answer the first was already holding.
+//
+// The dedup is sound because A GIT ROOT IS A FIXED POINT: asked inside the
+// toplevel of a worktree, `rev-parse --show-toplevel` prints that same toplevel,
+// so a directory git has already named as a root answers itself. The string
+// handed back is git's own, recorded exactly as git printed it.
+//
+// ONLY ROOTS ARE REMEMBERED, NEVER THE ABSENCE OF ONE. A directory that is not
+// in a repository is asked again every time, because a repository can appear
+// under a running process — [initOwnedRepository] does precisely that to an
+// owned session's work directory, before [v3Subharnesses] goes looking for a
+// project store in it — and a cached "there is nothing here" would outlive the
+// truth by the whole life of the process.
+var v3GitRoots struct {
+	sync.Mutex
+	known map[string]bool
+}
+
 // v3GitRoot is `git rev-parse --show-toplevel` in one directory. A machine with
 // no git, a directory that is not in a repository, and a repository this build
 // cannot read all answer the same thing — no root — because all three mean the
-// same to the caller: there is nothing here to call a project.
+// same to the caller: there is nothing here to call a project. A git that hangs
+// past [v3GitRootTimeout] joins them, and the silence is deliberate: this
+// function has one way of saying it could not tell, and every caller already
+// handles it.
 func v3GitRoot(dir string) (string, bool) {
-	command := exec.Command("git", "rev-parse", "--show-toplevel")
+	if root, known := v3KnownGitRoot(dir); known {
+		return root, true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), v3GitRootTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
 	command.Dir = dir
 	out, err := command.Output()
 	if err != nil {
@@ -131,7 +183,37 @@ func v3GitRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
+	v3RememberGitRoot(root)
 	return root, true
+}
+
+// v3KnownGitRoot answers from [v3GitRoots] when this directory is one git has
+// already named a root of, and nothing at all otherwise.
+func v3KnownGitRoot(dir string) (string, bool) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" || !filepath.IsAbs(dir) {
+		// A relative directory is resolved against the subprocess's own working
+		// directory rather than against anything this table holds, so it is not a
+		// key here and never becomes one.
+		return "", false
+	}
+	dir = filepath.Clean(dir)
+	v3GitRoots.Lock()
+	defer v3GitRoots.Unlock()
+	if v3GitRoots.known[dir] {
+		return dir, true
+	}
+	return "", false
+}
+
+// v3RememberGitRoot records a root git has just printed.
+func v3RememberGitRoot(root string) {
+	v3GitRoots.Lock()
+	defer v3GitRoots.Unlock()
+	if v3GitRoots.known == nil {
+		v3GitRoots.known = map[string]bool{}
+	}
+	v3GitRoots.known[filepath.Clean(root)] = true
 }
 
 // ── which conversation ──────────────────────────────────────────────────────

@@ -533,6 +533,55 @@ func TestAPausedRunSaysWaitingOnYouInTheRunsOwnWords(t *testing.T) {
 	}
 }
 
+// THE FOLD IS AN ACCUMULATION, AND IT SPELLS THE SAME STRING. The backlog holds
+// a run of text deltas as chunks and joins them only when somebody can read it
+// ([eventHub.foldedLocked]), because `Text += delta` per delta copies the whole
+// answer so far and turns one long reply into a quadratic amount of copying
+// under the hub's lock. Two attaches on either side of the same run is the shape
+// that catches a wrong accumulation: the first settles the run and the second
+// must still be handed every word of it, in order, once.
+func TestABacklogFoldedAcrossTwoAttachesStillSpellsTheWholeAnswer(t *testing.T) {
+	hub := newEventHub()
+	whole := ""
+	send := func(chunks ...string) {
+		for _, chunk := range chunks {
+			whole += chunk
+			hub.send(Event{Kind: EventTextDelta, Text: chunk})
+		}
+	}
+
+	send("the ", "answer ")
+	early, running := hub.attach()
+	if !running {
+		t.Fatal("attach to a live hub said nothing was running")
+	}
+	// The run CONTINUES past the attach, into the same backlog entry the first
+	// reader was just handed.
+	send("so ", "far", ", and ", "the rest")
+	late, running := hub.attach()
+	if !running {
+		t.Fatal("the second attach to a live hub said nothing was running")
+	}
+	hub.close()
+
+	earlyText, earlyDeltas := deltaText(collect(t, early.out))
+	if earlyText != whole {
+		t.Fatalf("the first reader saw %q, want the whole run %q", earlyText, whole)
+	}
+	// One folded delta for the two chunks that had already gone out, then the
+	// four that came after it live.
+	if earlyDeltas != 5 {
+		t.Fatalf("the first reader saw %d deltas, want 5", earlyDeltas)
+	}
+	lateText, lateDeltas := deltaText(collect(t, late.out))
+	if lateText != whole {
+		t.Fatalf("the second reader saw %q, want the whole run %q", lateText, whole)
+	}
+	if lateDeltas != 1 {
+		t.Fatalf("the second reader saw %d deltas, want the run folded into 1", lateDeltas)
+	}
+}
+
 // ── shared reading ──────────────────────────────────────────────────────────
 
 // deltaText is one stream's assistant text, joined, and how many events carried

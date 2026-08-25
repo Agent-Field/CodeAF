@@ -33,6 +33,10 @@ carry vocabulary or assumptions between them.
   through a temporary detached worktree (`git worktree add --detach … origin/chat-v3-task`)
   rather than touching their tree.
 
+`make check` is vet, the tests, the build, and the binary-size ratchet in `SIZE-BUDGET`.
+The performance laws it and the suite enforce — and the rule that changing any cap
+changes the doc in the same commit — are in [PERF.md](PERF.md).
+
 ## THE MANUAL LAW — a feature is not done until the manual knows about it
 
 `internal/manual/chat/` is v3's own account of itself, compiled into the binary. The
@@ -54,6 +58,11 @@ Three gates fail the build if you forget:
 | `internal/manual/chat_test.go` | every probe in its table — real questions in a person's own words (over a hundred by now) — still reaches the page that answers it |
 
 The failure message names the exact missing string.
+
+The corpus ships **packed** — `internal/manual/{pages,chat}.pack.gz`, generated from the
+folders by `make build` (see `internal/packed`). Edit the Markdown and never the archive;
+`internal/manual/packed_test.go` fails when the two disagree, so a page changed without a
+build is a page the binary has not learned.
 
 **When a question reaches the wrong page, fix the page, never the test.** Write the
 asker's vocabulary into a `## ` heading — people search for "saved" where a writer wrote
