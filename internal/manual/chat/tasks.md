@@ -363,12 +363,18 @@ read like work, the first of those points comes at the very next break instead �
 section above.)
 
 **At each point, a second model reads the answer so far.** Not the model writing your reply
-— a different one, which is shown the conversation and asked for one line: a sketch of what
-is left, as parts and arrows. `A | B | C` means three pieces that do not wait on each other.
-`A > B > C` means one job in three steps. Then one sentence saying what the letters are.
-**The model answering you is never asked and never sees the question**, which is the whole
-point: a model in the middle of tool calls answers a question like that with another tool
-call about half the time, so it is asked of somebody who is not busy.
+— a different one, asked for one line: a sketch of what is left, as parts and arrows.
+`A | B | C` means three pieces that do not wait on each other. `A > B > C` means one job in
+three steps. Then one sentence saying what the letters are. If nothing is left, that line is
+`(done)`. **The model answering you is never asked and never sees the question**, which is
+the whole point: a model in the middle of tool calls answers a question like that with
+another tool call about half the time, so it is asked of somebody who is not busy.
+
+**That second reader is shown a short account of the work, not the whole conversation** —
+your message word for word, one line per tool call naming the tool and what it touched, what
+has been written or changed, and the last thing the answer said. No tool results at all.
+Reading the whole conversation instead was measured costing more than the work it was
+judging.
 
 **If the sketch has independent parts in it, the reply is handed over.** It stops halfway,
 your answer is moved to one task, and two dim lines go into the transcript:
@@ -411,11 +417,18 @@ written — the model fails, replies with nothing, or replies with something tha
 instruction at all — the task still starts, on your own sentence alone. Its name is cut from
 your own message too, and a short name replaces that a second later.
 
-**And it can still come to nothing.** That last question also asks what still remains — and
-if the model answers that everything you asked for is already done, the move is **dropped**.
-No task, no lines. The answer carries on to its own end and stands, which is the right
-outcome for a turn that was finishing anyway: what this whole mechanism is for is an answer
-that is grinding, and one that is about to stop is not. This holds at all three points.
+**And it can still come to nothing — when both readers agree.** That last question also asks
+what still remains, and if the model answers that everything you asked for is already done,
+**and the second reader's sketch at that same point said `(done)` too**, the move is
+**dropped**. No task, no lines. The answer carries on to its own end and stands, which is the
+right outcome for a turn that was finishing anyway: what this whole mechanism is for is an
+answer that is grinding, and one that is about to stop is not. This holds at all three
+points.
+
+**One reader saying so is not enough**, and that is deliberate: a model in the middle of a
+long answer saying "everything is done" is that model marking its own work at the moment it
+has a reason to. So if the second reader still sees work left, the move happens anyway — on
+your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
 
 **The task is allowed to split.** At the first two points a model has just read the work and
 named its parts, and at the third the answer outran one pair of hands by measurement — either

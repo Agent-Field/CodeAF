@@ -24,6 +24,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -179,12 +181,28 @@ func TestTheHandoffPriceStaysAFloorAndTheLadderStaysShort(t *testing.T) {
 // asked for a JUDGEMENT was ignored on a quarter to a half of the turns. The
 // harness parses what comes back, so a reworded ask is a contract with one party.
 func TestTheSketchAskIsTheMeasuredWording(t *testing.T) {
-	const want = "[checkpoint] In one line, sketch what remains as parts and arrows: " +
-		"independent parts separated by ' | ', ordered steps joined by ' > '. " +
+	// THE GRAMMAR HALF IS VARIANT C WORD FOR WORD. What the reader is shown moved
+	// — a digest of the work rather than the transcript — so the framing sentence
+	// in front of this one moved with it, and the parser is pinned to everything
+	// from here on.
+	const grammar = "independent parts separated by ' | ', ordered steps joined by ' > '. " +
 		"Example shapes: 'A | B | C' or 'A > B > C' or 'A > (B | C)'. " +
 		"Nothing else on that line. Then one sentence saying what each letter is."
-	if checkpointSketchAsk != want {
-		t.Fatalf("the mark's ask reads:\n%s\nwant:\n%s", checkpointSketchAsk, want)
+	if !strings.Contains(checkpointSketchAsk, grammar) {
+		t.Fatalf("the mark's ask reads:\n%s\nand no longer carries the measured grammar:\n%s",
+			checkpointSketchAsk, grammar)
+	}
+	// AND IT IS ANCHORED TO THE ASK, which is what the digest put in front of it:
+	// "what remains" of a conversation is a different question from what remains
+	// of what the person actually wanted.
+	if !strings.Contains(checkpointSketchAsk, "what remains of the ask") {
+		t.Errorf("the ask never anchors the question to what was asked:\n%s", checkpointSketchAsk)
+	}
+	// AND IT TEACHES THE READER HOW TO SAY NOTHING IS LEFT. The ceiling's drop now
+	// needs this answer ([checkpointSketch.saysDone]), and a token the question
+	// never named is one the reader has no reason to write.
+	if !strings.Contains(checkpointSketchAsk, "(done)") {
+		t.Errorf("the ask never names the shape that means the work is finished:\n%s", checkpointSketchAsk)
 	}
 	// IT CARRIES NO THRESHOLD. This is task_escalation_test.go's pin on
 	// prompts/system.md applied here: a number invites the reader to answer about
@@ -374,6 +392,11 @@ const (
 		"A is the validation workflow, B is the arithmetic module, C is the currency module."
 	checkpointChainSketch = "A > B > C\n" +
 		"A is reading the rest of the file, B is the one fix it needs, C is running the suite."
+	// AND THE THIRD ANSWER, which the digest's ask now teaches the reader to give:
+	// nothing is left. It is the second mind the ceiling's drop is corroborated
+	// against ([checkpointSketch.saysDone]).
+	checkpointDoneSketch = "(done)\n" +
+		"Everything that was asked for has been written and checked."
 )
 
 // checkpointSlack is how many of a script's steps a grinding turn spends on
@@ -754,14 +777,20 @@ func TestASidecarThatCannotBeReachedCarriesOnAndTheCeilingStillFires(t *testing.
 func TestASidecarThatMissesItsWindowIsACarryOn(t *testing.T) {
 	held := &holdingCompleter{}
 	agent := checkpointAgent(t, held)
+	// THE READER IS SHOWN AN ACCOUNT OF THE WORK, so there has to be work: a turn
+	// with nothing in it is one the harness declines to pay a reader for at all.
+	workedTurn(agent, "work through the four things I listed", 3)
 
 	ctx, done := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer done()
 	started := time.Now()
-	sketch := agent.readMark(ctx)
+	read := agent.readMark(ctx)
 
-	if sketch.drawn() || sketch.split() {
-		t.Fatalf("a read that never answered produced %+v", sketch)
+	if read.sketch.drawn() || read.sketch.split() {
+		t.Fatalf("a read that never answered produced %+v", read.sketch)
+	}
+	if !read.asked || !read.failed {
+		t.Errorf("a read that timed out was recorded as asked=%v failed=%v", read.asked, read.failed)
 	}
 	if waited := time.Since(started); waited > checkpointSketchWindow {
 		t.Errorf("the harness waited %s on a reader that never answered", waited)
@@ -1019,18 +1048,22 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	}
 }
 
-// AND A CONTINUATION SAYING NOTHING IS LEFT DROPS THE CEILING'S HANDOVER.
+// AND A CONTINUATION SAYING NOTHING IS LEFT DROPS THE CEILING'S HANDOVER — WHEN
+// THE READER AGREES.
 //
 // The ceiling reads a counter, and a counter cannot see that the work finished
 // thirty seconds ago. The one reader that can is the model holding the findings,
 // which is the model this ask is put to — so it is asked, and an answer of
 // [checkpointNothingLeft] ends the matter: no task, no line, no gap spent, and
 // the turn carries on to the answer it was about to give.
+//
+// AND THE MARK'S OWN READER SAID THE SAME THING at the same moment, which is what
+// makes this a drop rather than a model grading itself — see the two tests below.
 func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
 	const answered = "all eight files are written and the smoke check passed"
 
 	rounds := checkpointMarkAt(checkpointMarks)
-	steps := append(grindingSteps(rounds+checkpointSlack, checkpointChainSketch, checkpointNothingLeft), finalText(answered))
+	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft), finalText(answered))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -1254,4 +1287,506 @@ func TestAnInterruptedTurnIsNotCheckpointed(t *testing.T) {
 		t.Errorf("the turn made %d requests after an interrupt at round %d",
 			completer.requests(), ceiling)
 	}
+}
+
+// ── what the reader is actually shown ───────────────────────────────────────
+
+// THE READER IS SHOWN AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION.
+//
+// This is the assertion the wave turns on. Reading the raw transcript was
+// measured at 57k, 65k and 91k input tokens across three marks of one crew run —
+// $0.62 on the mastermind tier against $0.123 for the sixty-two calls that did
+// the work — and all three answered "carry on". So the four things that actually
+// bear on what is left are assembled by hand, and everything else, which is the
+// bulk and the bill, is left out.
+func TestTheDigestIsTheAskTheLedgerWhatWasWrittenAndTheLastWord(t *testing.T) {
+	const asked = "add the validation workflow, then fix the arithmetic and the currency"
+	const bulk = "SEVENTY LINES OF SEARCH RESULTS NOBODY NEEDS TO SEE"
+
+	digest := checkpointDigest(asked, []ai.Message{
+		textMessage("user", asked),
+		toolCallMessage("c1", "grep", `{"pattern":"validate(","path":"./internal"}`),
+		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: bulk}}},
+		toolCallMessage("c2", "write", `{"path":"./workflow.yml","content":"`+strings.Repeat("x", 4000)+`"}`),
+		{Role: "tool", ToolCallID: "c2", Content: []ai.ContentPart{{Type: "text", Text: "wrote 4000 bytes"}}},
+		toolCallMessage("c3", "edit", `{"path":"./money.go","edits":[]}`),
+		{Role: "tool", ToolCallID: "c3", Content: []ai.ContentPart{{Type: "text", Text: "edited"}}},
+		textMessage("assistant", "the workflow is in; the currency module is still untouched"),
+	})
+
+	// THE ASK, VERBATIM AND FIRST. Everything else in the digest is measured
+	// against it, and it is the one thing on this road nobody rewrites.
+	if !strings.HasPrefix(digest, checkpointDigestAsked+"\n"+asked) {
+		t.Fatalf("the digest does not open on the person's own words:\n%s", digest)
+	}
+	// THE LEDGER: one line per call, naming the tool and the thing it touched.
+	for _, line := range []string{
+		"grep validate(",
+		"write ./workflow.yml",
+		"edit ./money.go",
+	} {
+		if !strings.Contains(digest, line) {
+			t.Errorf("the ledger is missing %q:\n%s", line, digest)
+		}
+	}
+	// AND NO RESULTS AT ALL, which is where the tokens and the noise both were.
+	if strings.Contains(digest, bulk) || strings.Contains(digest, "wrote 4000 bytes") {
+		t.Errorf("a tool result reached the reader:\n%s", digest)
+	}
+	// AND NO PAYLOAD EITHER. `write` names a path here precisely because the
+	// argument that carries the bytes is the thing this exists to leave out.
+	if strings.Contains(digest, strings.Repeat("x", 200)) {
+		t.Errorf("a written file's contents reached the reader:\n%s", digest)
+	}
+	// WHAT HAS BEEN WRITTEN, deduplicated — a part of the ask already discharged
+	// is exactly what the reader is being asked to subtract.
+	written := digest[strings.Index(digest, checkpointDigestWritten):]
+	for _, path := range []string{"./workflow.yml", "./money.go"} {
+		if !strings.Contains(written, path) {
+			t.Errorf("%q is not in what has been written:\n%s", path, digest)
+		}
+	}
+	if strings.Contains(written, "grep") {
+		t.Errorf("a search was recorded as something written:\n%s", digest)
+	}
+	// AND THE LAST THING THE RUNNING MODEL SAID.
+	if !strings.Contains(digest, checkpointDigestSaid+"\nthe workflow is in") {
+		t.Errorf("the last thing said did not reach the reader:\n%s", digest)
+	}
+}
+
+// AND A SECTION WITH NOTHING IN IT IS NOT WRITTEN AT ALL.
+//
+// The emptiness law, applied to a document a model reads: an empty heading is an
+// invitation to answer about the emptiness.
+func TestTheDigestWritesNoEmptySections(t *testing.T) {
+	digest := checkpointDigest("count the rows in the ledger", []ai.Message{
+		toolCallMessage("c1", "read", `{"path":"./ledger.csv"}`),
+	})
+	if strings.Contains(digest, checkpointDigestWritten) {
+		t.Errorf("a turn that wrote nothing carries a heading saying so:\n%s", digest)
+	}
+	if strings.Contains(digest, checkpointDigestSaid) {
+		t.Errorf("a turn that said nothing carries a heading saying so:\n%s", digest)
+	}
+	// AND A TURN WITH NOTHING IN IT AT ALL IS NOT A DIGEST. [Agent.readMark]
+	// spends nothing on one, which is the emptiness law reaching the bill.
+	if got := checkpointDigest("", nil); got != "" {
+		t.Errorf("an empty turn produced a digest:\n%s", got)
+	}
+}
+
+// AND THE WHOLE OF IT IS BOUNDED, WITH THE OLDEST STEPS THE FIRST TO GO.
+//
+// The ledger is the one section that grows without bound, and a turn of ninety
+// calls is exactly the turn whose last words and written things matter most — so
+// they are fitted first and the ledger takes what room is left. What it drops it
+// says it dropped: a silent truncation would let the reader believe the turn had
+// done less than it had.
+func TestTheDigestIsBoundedAndDropsTheOldestStepsFirst(t *testing.T) {
+	const asked = "sweep every one of these and report"
+	messages := []ai.Message{textMessage("user", asked)}
+	for index := 0; index < 4000; index++ {
+		messages = append(messages, toolCallMessage(fmt.Sprintf("c%d", index), "read",
+			fmt.Sprintf(`{"path":"./%s/%d.txt"}`, strings.Repeat("deep", 12), index)))
+	}
+	messages = append(messages,
+		toolCallMessage("last-write", "write", `{"path":"./report.md"}`),
+		textMessage("assistant", "the last thing this turn said"))
+
+	digest := checkpointDigest(asked, messages)
+
+	if len(digest) > checkpointDigestBytes {
+		t.Fatalf("the digest is %d bytes against a bound of %d", len(digest), checkpointDigestBytes)
+	}
+	// AND THE THREE SECTIONS THAT ARE NOT THE LEDGER SURVIVED IT WHOLE.
+	if !strings.Contains(digest, asked) {
+		t.Errorf("the ask was squeezed out by the ledger:\n%s", digest[:400])
+	}
+	if !strings.Contains(digest, "./report.md") {
+		t.Error("what was written was squeezed out by the ledger")
+	}
+	if !strings.Contains(digest, "the last thing this turn said") {
+		t.Error("the last thing said was squeezed out by the ledger")
+	}
+	// THE NEWEST STEPS ARE THE ONES KEPT.
+	if !strings.Contains(digest, "/3999.txt") {
+		t.Error("the ledger dropped the most recent step, which is the work in front of the turn")
+	}
+	if strings.Contains(digest, "/0.txt") {
+		t.Error("a bounded ledger kept its oldest line")
+	}
+	// AND IT SAYS WHAT IT DROPPED.
+	if !strings.Contains(digest, "earlier steps") {
+		t.Errorf("the ledger was truncated in silence:\n%s", digest[:400])
+	}
+}
+
+// AND THE SIDECAR'S REQUEST IS THAT DIGEST AND NOTHING ELSE.
+//
+// The unit above pins what the digest says; this pins that it is what actually
+// goes on the wire — one message, with the ask under it, and not a line of the
+// transcript the running model is holding.
+func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
+	const bulk = "A TOOL RESULT LONG ENOUGH TO PAY FOR THE WHOLE MECHANISM"
+
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse(checkpointChainSketch), nil
+		},
+	}}
+	agent := checkpointAgent(t, completer)
+	workedTurn(agent, "read the four modules and fix what is broken", 3)
+	agent.mu.Lock()
+	agent.messages = append(agent.messages,
+		ai.Message{Role: "tool", ToolCallID: "call-0", Content: []ai.ContentPart{{Type: "text", Text: bulk}}})
+	agent.mu.Unlock()
+
+	read := agent.readMark(context.Background())
+	if read.sketch.shape != "A > B > C" {
+		t.Fatalf("the reader's answer came back as %+v", read.sketch)
+	}
+	if completer.requests() != 1 {
+		t.Fatalf("the sidecar made %d requests, want one", completer.requests())
+	}
+	sent := completer.request(0)
+	if len(sent) != 1 {
+		t.Fatalf("the reader was sent %d messages, want the one digest", len(sent))
+	}
+	if strings.Contains(messageText(sent[0]), bulk) {
+		t.Errorf("a tool result's body was sent to the reader:\n%s", messageText(sent[0]))
+	}
+	if !strings.Contains(messageText(sent[0]), "read the four modules") {
+		t.Errorf("the person's ask was not sent to the reader:\n%s", messageText(sent[0]))
+	}
+	if !strings.HasSuffix(messageText(sent[0]), checkpointSketchAsk) {
+		t.Errorf("the digest does not end on the ask:\n%s", messageText(sent[0]))
+	}
+	// AND THE CALL WAS PRICED, which is what the journal line beside it carries.
+	if !read.asked || read.failed {
+		t.Errorf("a read that answered was recorded as asked=%v failed=%v", read.asked, read.failed)
+	}
+}
+
+// ── what the journal now holds ──────────────────────────────────────────────
+
+// EVERY MARK READ IS WRITTEN DOWN, WITH WHAT IT DECIDED AND WHAT IT COST.
+//
+// None of this existed. Three reads on one measured run cost five times the work
+// they were judging, all three answered "carry on", and the file held three
+// anonymous auxiliary usage lines — no ask, no answer, no decision. A mechanism
+// that cannot be measured cannot be tuned, so the reading is journaled beside the
+// money.
+func TestEveryMarkReadIsJournaledWithItsDecisionAndItsCost(t *testing.T) {
+	rounds := checkpointMarkAt(checkpointMarks)
+	completer := &scriptedCompleter{steps: grindingSteps(rounds+checkpointSlack, checkpointChainSketch,
+		"Finish the four pieces\nwhat is left, and everything this turn already found out")}
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	ran.await(t)
+
+	marks := journaledMarks(t, path)
+	if len(marks) != checkpointMarks {
+		t.Fatalf("%d marks were journaled over a turn that crossed %d", len(marks), checkpointMarks)
+	}
+	for index, mark := range marks {
+		if mark.N != index+1 {
+			t.Errorf("mark %d is journaled as rung %d", index+1, mark.N)
+		}
+		if mark.Rounds != checkpointMarkAt(index+1) {
+			t.Errorf("rung %d fired at round %d, want %d", mark.N, mark.Rounds, checkpointMarkAt(index+1))
+		}
+		if mark.Decision != checkpointDecisionContinue {
+			t.Errorf("rung %d decided %q, want %q", mark.N, mark.Decision, checkpointDecisionContinue)
+		}
+		if mark.Sketch != "A > B > C" {
+			t.Errorf("rung %d journaled the sketch as %q", mark.N, mark.Sketch)
+		}
+		if mark.Model != checkpointMarkModel {
+			t.Errorf("rung %d was journaled against %q, want the mastermind %q",
+				mark.N, mark.Model, checkpointMarkModel)
+		}
+	}
+	// AND THE CEILING SAYS WHAT IT DID WITH THE TURN, with the node that took it.
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 1 {
+		t.Fatalf("%d ceiling lines were journaled, want exactly one", len(ceilings))
+	}
+	if ceilings[0].Decision != checkpointCeilingMoved {
+		t.Errorf("the ceiling journaled %q, want %q", ceilings[0].Decision, checkpointCeilingMoved)
+	}
+	if ceilings[0].Rounds != rounds {
+		t.Errorf("the ceiling is journaled at round %d, want %d", ceilings[0].Rounds, rounds)
+	}
+	if ceilings[0].TaskID == 0 {
+		t.Error("the ceiling moved the work and named no task")
+	}
+	// AND EVERY DOLLAR HAS A LINE. The errand's own call line is what makes the
+	// journal's calls sum to the bill rather than to the turn's share of it.
+	reads := 0
+	for _, call := range journaledCalls(t, path) {
+		if call.Role == string(roles.RoleMarkReader) {
+			reads++
+		}
+	}
+	if reads != checkpointMarks {
+		t.Errorf("%d call lines name the mark reader, want one per mark (%d)", reads, checkpointMarks)
+	}
+}
+
+// AND A MARK THAT NOBODY COULD READ IS JOURNALED AS A FAILURE AND NOT AS A
+// CARRY-ON.
+//
+// They are the same thing to the turn and opposite things to anybody reading the
+// file: one is a reader that looked and saw one job, the other is a mechanism
+// that is not running at all.
+func TestAMarkNobodyCouldReadIsJournaledAsAFailure(t *testing.T) {
+	rounds := checkpointMarkAt(checkpointMarks)
+	steps := grindingSteps(rounds+checkpointSlack, "", "Finish it\nwhat is left and what was found")
+	for index := range steps {
+		inner := steps[index]
+		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				return nil, errors.New("the reader is down")
+			}
+			return inner(ctx, messages)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	ran.await(t)
+
+	marks := journaledMarks(t, path)
+	if len(marks) != checkpointMarks {
+		t.Fatalf("%d marks were journaled, want one per rung", len(marks))
+	}
+	for _, mark := range marks {
+		if mark.Decision != checkpointDecisionFailed {
+			t.Errorf("rung %d journaled %q for a reader nobody could reach, want %q",
+				mark.N, mark.Decision, checkpointDecisionFailed)
+		}
+	}
+	// AND THE CEILING STILL MOVED THE WORK, which is the recovery bound the whole
+	// fail-open design leans on.
+	if ceilings := journaledCeilings(t, path); len(ceilings) != 1 ||
+		ceilings[0].Decision != checkpointCeilingMoved {
+		t.Errorf("the ceiling behind a dead reader journaled %+v", ceilings)
+	}
+}
+
+// ── the ceiling's drop needs two minds ──────────────────────────────────────
+
+// THE RUNNING MODEL CANNOT DROP THE HANDOVER ON ITS OWN SAY-SO.
+//
+// A model mid-grind declaring "everything is done" at round forty is that model
+// grading its own work at the exact moment it has a reason to. It was measured:
+// the handover was dropped and the same model then ground on for twenty more
+// rounds unwatched. So a declaration the mark's own reader contradicts moves the
+// work anyway — on the person's own sentence, because a continuation that spent
+// its answer on the token wrote no instruction to hand anybody.
+func TestTheCeilingIsNotDroppedOnTheRunningModelsSayS0Alone(t *testing.T) {
+	const asked = "write the eight files I listed and smoke-check them"
+
+	rounds := checkpointMarkAt(checkpointMarks)
+	// A CHAIN AT EVERY MARK: the reader says work remains, all the way to the
+	// ceiling. The continuation then says it does not.
+	steps := append(grindingSteps(rounds+checkpointSlack, checkpointChainSketch, checkpointNothingLeft),
+		finalText("done"))
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	node := ran.await(t)
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted; one mind grading itself does not drop a handover", count)
+	}
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
+		t.Errorf("the ceiling moved the work and said nothing; notices were %q", noticeTexts(collected))
+	}
+	// AND IT MOVED ON THE PERSON'S OWN WORDS, because the continuation wrote no
+	// brief — the same fallback a dowry of machine markup gets.
+	if node.spec.brief != asked {
+		t.Errorf("the task runs on %q, want the person's own sentence %q", node.spec.brief, asked)
+	}
+	if ceilings := journaledCeilings(t, path); len(ceilings) != 1 ||
+		ceilings[0].Decision != checkpointCeilingMoved {
+		t.Errorf("the ceiling journaled %+v, want %q", ceilings, checkpointCeilingMoved)
+	}
+}
+
+// AND IT IS DROPPED WHEN THE SECOND MIND AGREES.
+//
+// Both readers say the same thing at the same moment — the reader's sketch is
+// `(done)` and the continuation answers with the remains token — and that is
+// evidence rather than a claim. Nothing happens: no task, no line, and the turn's
+// own answer stands.
+func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
+	const answered = "all eight files are written and the smoke check passed"
+
+	rounds := checkpointMarkAt(checkpointMarks)
+	steps := append(grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft),
+		finalText(answered))
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("done", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+
+	events, err := agent.Submit(context.Background(), "write the eight files I listed and smoke-check them")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were started out of a turn two readers agreed was finished", count)
+	}
+	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
+		t.Errorf("the person was told their answer was being moved; notices were %q", noticeTexts(collected))
+	}
+	if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
+		t.Errorf("the turn ended as a %s saying %q, want the answer it was about to give",
+			last.Role, messageText(last))
+	}
+	// AND THE DROP IS IN THE FILE, which is the whole reason the measured failure
+	// could not be attributed: a run that dropped and a run that never fired read
+	// identically.
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 1 || ceilings[0].Decision != checkpointCeilingNothing {
+		t.Fatalf("the ceiling journaled %+v, want %q", ceilings, checkpointCeilingNothing)
+	}
+	if ceilings[0].TaskID != 0 {
+		t.Errorf("a dropped ceiling named task %d", ceilings[0].TaskID)
+	}
+}
+
+// AND A SPLIT'S HANDOVER CAN NEVER BE DROPPED, because a sketch with parts in it
+// is a reader stating that work remains — it cannot corroborate a claim that none
+// does.
+func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
+	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6,
+		checkpointSplitSketch, checkpointNothingLeft)}
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	ran.await(t)
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted at a split the running model declared finished", count)
+	}
+	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+		t.Errorf("the split never said its line; notices were %q", noticeTexts(collected))
+	}
+}
+
+// ── the fixtures these use ──────────────────────────────────────────────────
+
+// workedTurn puts a turn's worth of work into an agent by hand: the person's ask
+// and n finished tool calls. It is what the digest is assembled out of, so a test
+// about the reader needs one before there is anything to read.
+func workedTurn(a *Agent, asked string, calls int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.personAsk = asked
+	for index := 0; index < calls; index++ {
+		a.messages = append(a.messages, toolCallMessage(fmt.Sprintf("call-%d", index), "read",
+			fmt.Sprintf(`{"path":"./%d.txt"}`, index)))
+	}
+}
+
+// toolCallMessage is one assistant message that called one tool and said nothing,
+// which is what nearly every message of a grinding turn is.
+func toolCallMessage(id, name, arguments string) ai.Message {
+	return ai.Message{
+		Role:    "assistant",
+		Content: []ai.ContentPart{{Type: "text", Text: ""}},
+		ToolCalls: []ai.ToolCall{{ID: id, Type: "function",
+			Function: ai.ToolCallFunction{Name: name, Arguments: arguments}}},
+	}
+}
+
+// journaledMarks, journaledCeilings and journaledCalls read one kind of line back
+// out of a session file. They parse the file rather than a struct the agent kept,
+// because the file is what the bench reads.
+func journaledMarks(t *testing.T, path string) []journalMark {
+	t.Helper()
+	var marks []journalMark
+	for _, entry := range journaledEntries(t, path, "mark") {
+		if entry.Mark != nil {
+			marks = append(marks, *entry.Mark)
+		}
+	}
+	return marks
+}
+
+func journaledCeilings(t *testing.T, path string) []journalCeiling {
+	t.Helper()
+	var ceilings []journalCeiling
+	for _, entry := range journaledEntries(t, path, "ceiling") {
+		if entry.Ceiling != nil {
+			ceilings = append(ceilings, *entry.Ceiling)
+		}
+	}
+	return ceilings
+}
+
+func journaledCalls(t *testing.T, path string) []journalCall {
+	t.Helper()
+	var calls []journalCall
+	for _, entry := range journaledEntries(t, path, "call") {
+		if entry.Call != nil {
+			calls = append(calls, *entry.Call)
+		}
+	}
+	return calls
+}
+
+func journaledEntries(t *testing.T, path, kind string) []sessionEntry {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the journal: %v", err)
+	}
+	var entries []sessionEntry
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal([]byte(line), &entry) != nil || entry.Type != kind {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	return entries
 }
