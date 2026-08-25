@@ -3393,42 +3393,65 @@ var knowledgeTools = map[string]bool{
 }
 
 // taughtSomething reports whether one call advanced the node's KNOWLEDGE: a
-// knowledge tool, or a bash, aimed at a target it has not aimed at before. The
-// same search retried is not new information, and SUCCESS is not required — a
-// new target that failed still taught the node that it failed. The seen map
-// keys tool+target so re-reading one file while reading another new one still
-// counts exactly once.
+// knowledge tool, or a bash, whose RESULT the node has not been told before.
+//
+// ── PROGRESS IS INFORMATION, NEVER ACTIVITY ──
+//
+// This used to ask whether the CALL was new — a target the node had not aimed at
+// before — and the difference between the two questions was measured at nine
+// wasted polls in a row. A model waiting on a background job wrote
+// `sleep 30 && tail jobs/1.log`, then `sleep 45 && tail jobs/1.log`, then
+// `sleep 60 && …`: nine distinct command strings, nine identical `(no output)`
+// answers, and every one of them reset the no-progress counter, because typing a
+// different number is activity and the counter was measuring activity. The node
+// learned nothing nine times and the one mechanism built to notice that told it
+// it was doing well.
+//
+// So the key is the RESULT and not the call. A new command whose answer the node
+// has already been given is not a discovery; the same command run twice with a
+// different answer IS one, which is the honest reading of `go test` after an
+// edit. SUCCESS is still not required — a new failure is new information — and
+// the seen map still keys per node, so one node's discoveries say nothing about
+// another's.
 //
 // BASH IS BOTH HANDS and is admitted here on the knowledge half alone. `go
 // build` writes, `go test ./...`, `git log` and `rg` do not, and the tool name
-// says nothing about which one this was — so a command the node has never run
-// counts as the world answering a question it has never asked, and the writing
-// half of the same call is answered by the worktree, one caller up
+// says nothing about which one this was — so a command whose output the node has
+// never read counts as the world answering a question it has never asked, and
+// the writing half of the same call is answered by the worktree, one caller up
 // ([worktreeMoved]), which asks it of every hand rather than of this one.
 //
 // It RECORDS AS IT ANSWERS, so the caller must ask it on every step and never
-// behind a short-circuit: a call that was already progress for some other
-// reason must not also be spendable as a fresh target the next time it is made.
+// behind a short-circuit: a result that was already progress for some other
+// reason must not also be spendable as a fresh one the next time it comes back.
 //
-// The judgement is made on the CALL and never on the result: [Event.Output] is
-// a display copy, capped, and a counter that read it would be deciding a node's
-// life from bytes that were truncated for a person's screen.
+// THE TOOL NAME STAYS IN THE KEY. Two different hands that happen to answer the
+// same bytes — an `ls` and a `bash ls` — are two ways of learning the same
+// thing, and only the second of them is a spin.
 func taughtSomething(event Event, seen map[string]bool) bool {
 	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
 		return false
 	}
-	return freshTarget(event, seen)
+	return freshAnswer(event, seen)
 }
 
-// freshTarget reports whether this call aimed somewhere the node has not aimed
-// before, and records it either way.
+// freshAnswer reports whether this call came back with bytes the node has not
+// been told before, and records them either way.
 //
-// The WHOLE CALL is the target, not one field of it: paging one long file by
-// offset is exploration, fetching one page twice is a spin, and only the args in
-// full tell them apart. Display-capped args compare fine — two calls capped at
-// the same mark are the same call as far as anyone can see.
-func freshTarget(event Event, seen map[string]bool) bool {
-	key := event.Tool + " " + strings.TrimSpace(event.Args)
+// [Event.Output] is a display copy, capped ([capOutput]) — which is the right
+// thing to compare and not a compromise: two results capped at the same mark are
+// the same result as far as anybody, model included, can see, and the cap is the
+// same on every call so it can never make two different answers look alike more
+// than one truncated page deep.
+//
+// THE JOB FOOTER COMES OFF FIRST, and it is the reason this function cannot just
+// hash the string it is handed. Every result carries the state of every
+// outstanding job at its foot (jobfooter.go), and that line holds an elapsed
+// time — so it differs on every single call, and a hash taken over it would
+// report novelty for a result that had not changed a byte. That is exactly the
+// defect above, with the counter's one honest signal inverted into noise.
+func freshAnswer(event Event, seen map[string]bool) bool {
+	key := event.Tool + "\x00" + stripJobFooter(event.Output)
 	if seen[key] {
 		return false
 	}

@@ -305,7 +305,12 @@ func newBashTool(cwd string) Tool {
 				return fmt.Sprintf("Working directory does not exist: %s\nCannot execute bash commands.", cwd), true, nil
 			}
 
-			shell, shellArgs := getShellConfig()
+			// THE OUTPUT HAS TO EXIST BEFORE THE COMMAND ENDS, which is what
+			// [StreamingShell] and [StreamingEnv] buy: a command whose output is
+			// held in a 4KB buffer until it exits is a command that looks dead to
+			// anybody reading its log, and a long one gets killed for it
+			// (streaming.go states the whole case).
+			shell, shellArgs := StreamingShell(p.Command)
 
 			// THE COMMAND IS NOT BOUND TO THE CONTEXT, and the watcher below
 			// does the binding by hand. exec.CommandContext's own watcher kills
@@ -314,9 +319,9 @@ func newBashTool(cwd string) Tool {
 			// turn, and fatal for one that has been PROMOTED into a job that is
 			// supposed to outlive it (promote.go). The cancel semantics are
 			// unchanged: SIGKILL to the whole group, the moment ctx is done.
-			cmd := exec.Command(shell, append(shellArgs, p.Command)...)
+			cmd := exec.Command(shell, shellArgs...)
 			cmd.Dir = cwd
-			cmd.Env = os.Environ()
+			cmd.Env = StreamingEnv()
 			processgroup.Configure(cmd)
 			// A COMMAND THAT LEAVES A BACKGROUND CHILD SHARING ITS STDOUT MUST
 			// STILL COST ITS TIMEOUT AND NOTHING MORE. Killing the shell is not

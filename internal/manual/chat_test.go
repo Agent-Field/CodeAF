@@ -261,6 +261,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"tell me when the build stops changing", "what-i-can-do"},
 		{"how do I know when something has finished", "what-i-can-do"},
 
+		// The streams wave. Every one of these was asked with a running job on
+		// screen and a model that either could not see it or was burning turns
+		// asking about it: the polling loop, the empty log, the search that
+		// failed on every machine without ripgrep.
+		{"does it poll a background job or does it get told", "what-i-can-do"},
+		{"why is it running sleep and tail over and over", "what-i-can-do"},
+		{"how does aforge know a job finished", "what-i-can-do"},
+		{"why is the job log empty while it is still running", "what-i-can-do"},
+		{"how long does a command wait before it goes to the background", "what-i-can-do"},
+		{"does grep work without ripgrep", "what-i-can-do"},
+		{"can you search the code on a machine with no rg", "what-i-can-do"},
+
 		// The sixth wave: work that went wrong quietly. Every one of these is
 		// asked with a screen full of something that looks finished and is not —
 		// a row still saying "running" long after anything was, a worker that

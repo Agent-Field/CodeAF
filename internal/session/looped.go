@@ -271,9 +271,15 @@ func callSignature(call ai.ToolCall) string {
 
 // errorSignature identifies a failure by its text. Whitespace is folded because
 // the same failure re-run is the same failure however a shell wrapped its lines.
+//
+// THE JOB FOOTER COMES OFF FIRST, for the reason task_run.go's progress counter
+// strips it (jobfooter.go): every result carries the elapsed time of every
+// outstanding job, so two identical failures a minute apart hash differently and
+// a detector built to notice a repeat would notice nothing at all whenever a
+// background job happened to be running.
 func errorSignature(text string) string {
 	digest := fnv.New64a()
-	_, _ = digest.Write([]byte(strings.Join(strings.Fields(text), " ")))
+	_, _ = digest.Write([]byte(strings.Join(strings.Fields(stripJobFooter(text)), " ")))
 	return fmt.Sprintf("error:%x", digest.Sum64())
 }
 

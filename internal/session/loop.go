@@ -1416,7 +1416,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, matching pi's thrown-Error semantics.
-			return ep.noteToolOutcome(call, toolResult{text: err.Error(), isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -1430,9 +1430,23 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		return ep.noteToolOutcome(call, toolResult{text: text, isError: isError})
+		return a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
 	}
 	return toolResult{text: "Unknown tool: " + call.Function.Name, isError: true}
+}
+
+// finishToolResult is THE ONE PLACE A TOOL RESULT GROWS ANYTHING, and the order
+// of the two things it can grow is fixed here so nothing downstream has to
+// guess at it.
+//
+// First the error→fix sidecar (fixrecall.go), which is about THIS call and
+// belongs against the text that call produced. Then the outstanding jobs
+// (jobfooter.go), which are about the session and belong at the very bottom,
+// where the model reads them the way a shell prints its background jobs under
+// the prompt — and where [stripJobFooter] can take them off again for anything
+// that has to compare two results as bodies.
+func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+	return a.withJobState(ep.noteToolOutcome(call, result))
 }
 
 // glossField names the argument that says what a call is DOING, per tool. A
