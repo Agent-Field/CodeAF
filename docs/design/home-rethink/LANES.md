@@ -28,8 +28,9 @@ router). This file is the plan those four feed.
    the next key. Digits keep answering a drawn question (the existing `answers.go` path); the
    verb strip may offer letters for the same answers.
 5. **Vocabulary.** No resident words. `tenured` / `earning tenure 3/5` do not exist here — there is
-   no probation counter — so the rope column is exactly two words: **asks first** (the item's grant
-   names something it must ask for) or **on its own**. `alt+1` is allowed only as the chat's place
+   no probation counter — so the rope column is exactly two words: **on its own** (the item has a grant —
+   `Item.Grant` is what it may do *without* asking) or **asks first** (no grant; it may only tell
+   you things). See `standing.RopeWord`'s comment; `NeedsPerson` is a state, not rope. `alt+1` is allowed only as the chat's place
    key. No machinery words on screen.
 6. **Data we add (cheap, additive), all in `internal/session` / `internal/store`:**
    - `TaskIndexEntry.Kind` — from `taskSpec.kind()`, so a row can say *adaptive*, *saved shape*, *job*.
