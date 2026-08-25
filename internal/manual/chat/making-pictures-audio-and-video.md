@@ -146,12 +146,23 @@ aloud — so a machine can easily have one and not the other.
 
 Arguments: `prompt` (required), `path` and `model`. The prompt describes the **music** —
 genre, instruments, tempo, key or mood, how it should develop — and is not lyrics
-to sing and not text to be read out. It writes an audio file, usually mp3, and
-answers with the path, the size and the model, e.g.
+to sing and not text to be read out.
+
+**The call returns immediately with a background job**, exactly as
+`generate_video` does, because a compose takes most of a minute:
 
 ```
-.aforge-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>
+job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.aforge-v3/jobs/4.log
 ```
+
+aforge keeps working — on other clips, on a stitch, on the conversation —
+while the piece is written, and when it lands aforge is told in a note at the
+next step:
+`job 4 finished: .aforge-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
+A compose that fails says so the same way: `job 4 failed: music generation
+failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
+· a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
+no music was saved`. Like every job, it dies when the conversation ends.
 
 **There is no length argument**, because the endpoint has none: the model writes
 a piece of its own choosing — half a minute to a minute in practice — and you
@@ -196,7 +207,8 @@ tooling available.
 ## Can you make a video?
 
 Yes, with `generate_video`, when a video model is available — and this one
-behaves differently from every other tool, because a render takes **minutes**.
+behaves differently from most tools, because a render takes **minutes**.
+(`generate_music` behaves the same way, for the same reason.)
 
 **The call returns immediately with a background job**, like `bash` with
 `background: true`:
@@ -254,7 +266,8 @@ the result hangs together is decided by three facts about the tool:
   sequence: they cannot all render in parallel.
 - **Each clip lands with its own sound**, and its note says so. A stitch keeps
   that sound only if the join carries the audio streams as well as the video,
-  and a continuous score is `generate_music`, looped under the whole cut.
+  and a continuous score is `generate_music` — a background job of its own,
+  whose file exists only once its note has landed — looped under the whole cut.
 
 Even chained, clips are distinct shots with some drift between them — a
 stitched video is a cut, not one continuous take. Fewer scenes in one setting
@@ -279,7 +292,8 @@ sound`, measured from the file — and the join dropped it. An ffmpeg filter
 that only crossfades the video streams carries just the first input's audio;
 the stitch has to map or crossfade the audio streams too, or concatenate both
 streams together. Music is separate either way: a score under the whole cut is
-`generate_music`, measured and looped to fit, mixed in at the join.
+`generate_music` — started early, because it is a background job whose file
+arrives as a note — then measured and looped to fit, mixed in at the join.
 
 ## Where do the pictures, audio, music and video you make end up?
 
