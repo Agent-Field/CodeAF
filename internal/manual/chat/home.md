@@ -1228,10 +1228,17 @@ being predictable. What was left is the one keystroke that reliably means nothin
 message that starts with two spaces is a message nobody meant to send that way.
 
 **The first space types itself, plainly.** There is no pending state and no ghost
-character. It is the *second* space, arriving to find a box holding exactly one space, that
-takes both away and opens home. So a space you actually wanted is never eaten: space then
-`x` leaves ` x` alone, because the gesture only fires on a space and only when a single
-space is all there is.
+character. It is the *second* space, arriving to find a box that still shows nothing with
+that space behind the cursor, that takes the whole draft away and opens home. So a space
+you actually wanted is never eaten: space then `x` leaves ` x` alone, because the gesture
+only fires on a space and only over a box with no words in it.
+
+**Wherever the door is drawn, two spaces open it.** That includes a box that looks empty
+and is not — one holding only blank lines, from a `ctrl+j` or an `alt+enter` you did not
+mean, or from `ctrl+enter`/`shift+enter` on a terminal that cannot send them. The gesture
+used to ask for exactly one space and refuse those, so the foot advertised `space space
+home` over a chord that could not fire; it does not any more, and the blank lines go with
+the draft when home opens.
 
 It works with a turn running. Home takes the frame the way the settings panel does, and the
 answer goes on streaming underneath — `esc` puts you back in it, still running.
@@ -1268,8 +1275,11 @@ greeted by home and not being able to reach it are two different things.
 
 Four reasons, and the machine holding nothing is not one of them any more:
 
-- **The box had something in it.** The gesture fires only when the second space arrives to
-  find a box holding exactly one space. ` x` and then two spaces is three characters.
+- **The box had words in it.** The gesture fires only when the second space arrives to find
+  a box with nothing in it a person would call text. ` x` and then two spaces is a draft.
+  Blank lines are not words — a box holding only those still answers the gesture, and the
+  dim line at the foot is the honest test: if it reads `space space home`, two spaces open
+  home.
 - **It was a paste.** Pasted text arrives whole and never reaches the key router, so two
   leading spaces in a paste are two spaces (*Is there a key for home?*).
 - **The session is over `--host`.** Home refuses there — the projects it would read are on

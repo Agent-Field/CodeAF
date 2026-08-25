@@ -688,6 +688,12 @@ that has moved on. There is nothing to press; it is automatic.
   vanishing with the session.
 - It is cleared **only** when you send it, or queue it as a follow-up. `/new` does
   **not** clear it.
+- **A box holding only blank lines or spaces is not a draft**, and nothing is written
+  for it — the file is removed instead. Blank lines are what `ctrl+j` and `alt+enter`
+  leave behind, and what `ctrl+enter` and `shift+enter` leave behind on a terminal that
+  cannot send those chords, and nothing on the frame draws them. One kept on disk used
+  to be adopted by the next window in the directory, which then opened with a box that
+  looked empty, was not, and refused `space space` for home.
 - The file is keyed by the directory plus this process's id, and is written with mode
   0600.
 - At startup, if this window's own draft file is missing, aforge takes the newest
@@ -1113,11 +1119,18 @@ letters — arrive in some terminals and do nothing at all in others. `esc` was 
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
-**The first space types itself.** The second one, finding a box holding exactly one space,
-takes both away and opens home — so a leading space you actually wanted is never eaten
-(space then `x` leaves ` x`). It does nothing when the box has words in it, it is not bound
-over `--host` where home refuses, and it is not a paste: text pasted with two leading
-spaces is two spaces. A machine with one conversation, or none, opens an empty home.
+**The first space types itself.** The second one, finding a box that still shows nothing
+with that space behind the cursor, takes the whole draft away and opens home — so a leading
+space you actually wanted is never eaten (space then `x` leaves ` x`). It does nothing when
+the box has words in it, it is not bound over `--host` where home refuses, and it is not a
+paste: text pasted with two leading spaces is two spaces. A machine with one conversation,
+or none, opens an empty home.
+
+**A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
+`alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
+draw nothing on the frame — and the gesture reads the box the same way the frame does, so
+two spaces open home and the blank lines go with the draft. The rule in one sentence:
+wherever the foot advertises `space space home`, two spaces open it.
 
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
