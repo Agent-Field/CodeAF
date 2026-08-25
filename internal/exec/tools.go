@@ -863,11 +863,11 @@ func (t *Toolbox) optionalDefinitions() map[string]ai.ToolDefinition {
 			// No format and no duration: the composing endpoint takes neither,
 			// and the format argument that used to be here promised a choice
 			// the wire never offered (internal/provider/music.go).
-			define("generate_music", "Compose music into the workspace media directory. The prompt describes the music — genre, instruments, tempo, mood — not lyrics to sing and not text to read out; use speak for a voiceover. There is no length argument: the model writes a piece of its own choosing, around a minute, and the call costs the same however long it turns out.", map[string]any{
+			define("generate_music", "Compose music into the workspace media directory. The prompt describes the music — genre, instruments, tempo, mood — not lyrics to sing and not text to read out; use speak for a voiceover. There is no length argument: the model writes a piece of its own choosing, half a minute to a minute in practice, and the call costs the same however long it turns out — measure the file before laying it under anything timed.", map[string]any{
 				"prompt": prop("string", "a description of the music to compose"),
 				"model":  prop("string", mediaModelArgDescription),
 			}, "prompt"),
-			define("generate_video", "Generate a video into the workspace media directory. This call waits for the asynchronous provider job to finish, for up to ten minutes. The first two reference_paths become first/last frames; any remaining images are style references.", map[string]any{
+			define("generate_video", "Generate a video into the workspace media directory. This call waits for the asynchronous provider job to finish, for up to ten minutes. The first two reference_paths become first/last frames; any remaining images are style references. Every call is an independent render — the video model sees only this prompt and these images, so anything that must hold across clips must be described or passed as an image every time, and one clip continues from another only when the earlier clip's final frame is this call's first reference.", map[string]any{
 				"prompt":          prop("string", "what to generate"),
 				"duration":        prop("integer", "optional duration in seconds"),
 				"resolution":      prop("string", "optional resolution such as 480p, 720p, or 1080p"),
