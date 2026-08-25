@@ -2078,3 +2078,42 @@ steps above still show there.
 The mouse is aforge's by default for the whole session, which is what makes the click
 targets on this screen work. `ctrl+s` hands the pointer back to the terminal so you can
 drag-to-select with it, and takes those targets away until you take the mouse back.
+
+## The terminal tab and window title — why my tab is renamed after my project
+
+aforge sets the terminal's window title, which is what your terminal shows on the tab,
+in the cmd-tab switcher, and in a tmux or screen window name. It says which aforge this
+is: the project folder first, then the conversation's own name once it has one, joined
+with a dot — `myproject · porting the parser`. Before the conversation names itself the
+tab is just the project, and with no workspace at all it says `openaf`.
+
+The project comes first on purpose: tabs truncate from the right, so when the bar is
+narrow the part that tells your aforge windows apart is the part that survives. The
+title only changes when a fact changes — a conversation naming itself, a question
+coming up, you switching conversations — never on a clock, so an idle window's tab
+never flickers.
+
+There is no setting to turn this off. If your tmux windows keep their own names, that
+is tmux's `allow-rename` setting refusing outside renames, and aforge respects the
+refusal by simply being refused. When aforge exits, your shell's next prompt sets the
+title back the way your shell normally does.
+
+## The ▲ and ✓ on the terminal tab — does it need me, did something finish while I was away
+
+The tab can carry one glyph ahead of the name, from the same vocabulary the rest of the
+surface uses:
+
+- `▲` — something is waiting on you: a permission question in this conversation, or in
+  any conversation this window is keeping in the background. It stays until the
+  question is answered. This is the one to come back for.
+- `✓` — a turn finished while you were looking at another window, and you have not been
+  back since. Clicking back into the window clears it; the answer itself is on screen.
+
+A question outranks a tick: if both are true you see `▲`. While work is simply running
+there is no glyph and no spinner in the tab — a window you walked away from is assumed
+to be working, and the tab only speaks when something changed that is worth a glance
+from outside. No glyph at all means nothing is waiting and nothing landed unseen.
+
+In the screen-reader tier the same two facts are spelled `!` and `+`. The glyphs match
+the home screen's rows, so a `▲` on a tab and a `▲` on home are the same statement
+about the same conversation.

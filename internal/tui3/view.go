@@ -188,6 +188,11 @@ func (a *app) View() tea.View {
 	// each of which would submit. v2 enables it unless this says otherwise, and
 	// it says so out loud because the default is the thing being relied on.
 	v.DisableBracketedPasteMode = false
+	// The tab's one line (windowtitle.go). Declared rather than written: the
+	// renderer compares it with the last frame's and emits OSC 2 only when it
+	// moved, so declaring it on every frame costs nothing on the frames where
+	// nothing changed.
+	v.WindowTitle = a.windowTitle()
 	// The caret is hidden on surfaces with nothing to type into (home at rest),
 	// where a blinking bar over the heading would be a cursor with no box to
 	// live in. [app.frame] sets [app.caret] on every render.
