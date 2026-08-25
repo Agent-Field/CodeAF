@@ -12,16 +12,23 @@ import (
 //
 // Above the adapter, how hard to think is a word on a five-rung ladder and
 // nothing else (internal/effort). Here it becomes OpenRouter's unified
-// `reasoning` object, which speaks two dialects at once: an `effort` word, which
-// is what OpenAI-family endpoints understand, and a `max_tokens` thinking
-// budget, which is what Anthropic- and Gemini-family endpoints understand.
+// `reasoning` object, which speaks two dialects: an `effort` word, which is what
+// OpenAI-family endpoints understand, and a `max_tokens` thinking budget, which
+// is what Anthropic- and Gemini-family endpoints understand. IT TAKES EXACTLY
+// ONE OF THEM — a body carrying both is a 400 — and translates whichever it was
+// given for the endpoint that speaks the other.
 //
 // "high" is the top of the word dialect. There is nothing above it to SAY, so
-// the two rungs above high say it with the budget instead — the same word, and
-// an allowance the endpoint that reads budgets will spend. An endpoint that
-// reads only the word sees high on all three, which is the honest degradation:
-// it cannot think harder than its own ceiling, and inventing a word for it would
-// be a 400 on every call.
+// the two rungs above high say it with the budget INSTEAD of the word: an
+// allowance the endpoint that reads budgets will spend, and which the router
+// turns back into a word for the endpoint that does not. The budget is what
+// makes those two rungs different from high at all, so it is the half that
+// travels; wire.go's reasoningFor is where that choice is made, and it is made
+// in one place.
+//
+// The word is still carried on the request through this layer, because it is
+// what the catalog gate is asked about and what the top rungs fall back to when
+// an endpoint refuses a budget outright.
 
 const (
 	// xhighReasoningTokens is a deep pass that still leaves the answer room.

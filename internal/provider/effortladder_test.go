@@ -17,8 +17,9 @@ import (
 
 // THE FIVE RUNGS, AND WHAT EACH ONE ASKS FOR.
 //
-// low, medium and high are the provider's own three words. xhigh and max are
-// high plus a thinking budget, because there is no word above high — see
+// low, medium and high are the provider's own three words, sent as words. xhigh
+// and max are a thinking budget instead of a word, because there is no word
+// above high and the wire takes one field or the other but never both — see
 // effortladder.go for why the two figures are the two figures.
 func TestEveryRungOfTheLadderReachesTheWireAsItsOwnShape(t *testing.T) {
 	for _, want := range []struct {
@@ -29,8 +30,8 @@ func TestEveryRungOfTheLadderReachesTheWireAsItsOwnShape(t *testing.T) {
 		{effort.Low, "low", 0},
 		{effort.Medium, "medium", 0},
 		{effort.High, "high", 0},
-		{effort.XHigh, "high", xhighReasoningTokens},
-		{effort.Max, "high", maxReasoningTokens},
+		{effort.XHigh, "", xhighReasoningTokens},
+		{effort.Max, "", maxReasoningTokens},
 	} {
 		t.Run(want.rung.String(), func(t *testing.T) {
 			client, recorded := newTestClient(t, Config{
@@ -48,6 +49,8 @@ func TestEveryRungOfTheLadderReachesTheWireAsItsOwnShape(t *testing.T) {
 			switch {
 			case want.budget == 0 && present:
 				t.Fatalf("%s sent a thinking budget of %.0f; the three word rungs carry none", want.rung, budget)
+			case want.budget != 0 && !present:
+				t.Fatalf("%s sent no thinking budget, which is the only thing that tells it from high", want.rung)
 			case want.budget != 0 && budget != want.budget:
 				t.Fatalf("%s sent a budget of %.0f, want %.0f", want.rung, budget, want.budget)
 			}
@@ -183,5 +186,36 @@ func TestAModelThatRefusesAThinkingBudgetKeepsTheLevelAndLosesTheBudget(t *testi
 func TestAnUnknownRungAsksForNothing(t *testing.T) {
 	if got := effortRequestFor(effort.Rung("deepest"), true); got.effort != EffortNone || got.budget != 0 {
 		t.Fatalf("an unknown rung mapped to %+v, want an empty request", got)
+	}
+}
+
+// ONE KNOB TRAVELS, NEVER TWO.
+//
+// The router's unified `reasoning` object takes the effort word or the thinking
+// budget and refuses a body carrying both outright — `Only one of
+// "reasoning.effort" and "reasoning.max_tokens" can be specified` is a 400 on
+// the whole turn, not a warning. So the two rungs that have a budget send the
+// budget on its own, and the three that do not send the word on its own.
+func TestNoRungEverSendsBothReasoningKnobsAtOnce(t *testing.T) {
+	for _, rung := range []effort.Rung{effort.Low, effort.Medium, effort.High, effort.XHigh, effort.Max} {
+		t.Run(rung.String(), func(t *testing.T) {
+			client, recorded := newTestClient(t, Config{
+				SupportsParameter: func(string, string) (bool, bool) { return true, true },
+			})
+			ctx := WithConfiguredEffortRung(context.Background(), rung)
+			if _, err := client.CompleteWithMessages(ctx, userMessages("think")); err != nil {
+				t.Fatal(err)
+			}
+			reasoning, _ := recorded.body(0)["reasoning"].(map[string]any)
+			_, hasLevel := reasoning["effort"]
+			_, hasBudget := reasoning["max_tokens"]
+			if hasLevel && hasBudget {
+				t.Fatalf("%s sent both reasoning knobs, which the router answers with a 400: %#v",
+					rung, reasoning)
+			}
+			if !hasLevel && !hasBudget {
+				t.Fatalf("%s sent neither reasoning knob: %#v", rung, recorded.body(0))
+			}
+		})
 	}
 }
