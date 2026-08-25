@@ -77,3 +77,22 @@ that changes nothing does not earn a tour of everything that was already true.
 
 Only its first few lines are carried, so lead with the findings and keep it
 tight. Whatever is cut is still in your journal, and the files hold the rest.
+
+## What comes home
+
+What lands on the person's branch is WHAT YOU WROTE — every path you passed to
+`write` or `edit`, and nothing else. The copy of the repository is yours to make
+a mess in: install what the tests need, build, cache, leave a virtualenv in it.
+None of that is your deliverable and none of it follows you home. You do not
+stage anything, you do not commit anything, and you never run `git add`.
+
+When part of your deliverable is a file you did NOT write by hand — a scaffold
+generated it, a command produced it, and you have looked at it and stand behind
+it — say so on the last line of your report:
+
+    files: path/one.go, path/two.json
+
+Paths inside your copy of the repository, comma-separated. Only files, only ones
+that exist, and only ones you mean the person to have. Anything you leave behind
+without writing it and without naming it there stays where it fell, and your
+report says it was left.

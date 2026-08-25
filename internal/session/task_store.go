@@ -187,6 +187,17 @@ type taskRecord struct {
 	Worktree string   `json:"worktree,omitempty"`
 	Merge    string   `json:"merge,omitempty"`
 
+	// Wrote is what a node's own hands have written SO FAR, kept while it runs
+	// rather than only when it lands ([TaskNode.noteWrote]).
+	//
+	// IT IS ON THE RECORD BECAUSE A LANDING STAGES BY NAME. Only the paths a node
+	// wrote come home (task_run.go's [stageTaskWork]), and a process that died
+	// took the run's own tally of them with it while leaving the files on disk —
+	// so without this the run that resumes stages only what IT wrote and quietly
+	// abandons everything the first attempt made. Absent in every checkpoint
+	// written before this field existed, and a node that never ran has none.
+	Wrote []string `json:"wrote,omitempty"`
+
 	// Journal is where the node's own transcript was written — the file a
 	// person's "open that task" replays (task_room.go's [Agent.TaskJournal]).
 	// It is on the record because the name is MINTED WITH A TIMESTAMP
@@ -553,6 +564,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 	}
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
+	wrote := make([]string, len(n.wrote))
+	copy(wrote, n.wrote)
 	dependsOn := make([]uint64, len(n.dependsOn))
 	copy(dependsOn, n.dependsOn)
 	return taskRecord{
@@ -570,6 +583,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Report:      n.report,
 		Claim:       n.claim,
 		Changed:     changed,
+		Wrote:       wrote,
 		Branch:      n.branch,
 		Worktree:    n.worktree,
 		Merge:       n.merge,
@@ -1029,6 +1043,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		kind:        record.Kind,
 		claim:       record.Claim,
 		changed:     record.Changed,
+		wrote:       record.Wrote,
 		branch:      record.Branch,
 		worktree:    record.Worktree,
 		merge:       record.Merge,

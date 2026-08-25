@@ -1423,6 +1423,19 @@ func (n *TaskNode) noteWrote(path string) {
 	n.wrote = append(n.wrote, path)
 }
 
+// rememberedWrites is everything this node has already put its name to: the
+// live list a running claim is drawn from ([TaskNode.noteWrote], carried in the
+// checkpoint) and the list a landing kept. Both, because a node can be resumed
+// from either side of a landing and the two are the same fact at two ages.
+func (n *TaskNode) rememberedWrites() []string {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return mergePaths(append([]string(nil), n.wrote...), n.changed)
+}
+
 // leavings is what a landed node left behind: what it said, what it wrote, and
 // where its branch stands. A resolution that changes one of them has to carry
 // the other three forward, because [TaskNode.finish] writes all four and a
@@ -2403,7 +2416,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	defer retire()
 
 	var (
-		changed []string
+		// A RESUMED NODE STARTS WITH WHAT IT ALREADY WROTE. The landing stages by
+		// name ([stageTaskWork]), and the process that died took this run's own
+		// tally with it while leaving the files on disk — so a second attempt that
+		// started from nothing would abandon everything the first one made. A node
+		// that has never run answers with nothing, which is every other node.
+		changed = node.rememberedWrites()
 		stopped string
 		runErr  error
 		report  string
@@ -2460,6 +2478,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// still the node's leavings.
 		changed = mergePaths(changed, wrote)
 		report = taskReport(child)
+		// AND THE FILES THE NODE MADE WITH A COMMAND AND THEN NAMED. They are
+		// folded into the same list on the way past, so everything downstream —
+		// the card, the auditor's packet, the index it stages — reads ONE account
+		// of what this node produced ([declaredFiles]).
+		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
 
 		if movedFrom != "" || stopped != "" || ctx.Err() != nil || !terminalProviderFailure(runErr) {
 			break
@@ -2528,8 +2551,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return a.landShifted(node, tree, changed,
 				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
 		}
-		merge, detail := tree.comeHome(node.title())
+		merge, detail := tree.comeHome(node.title(), changed)
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
+		if merge == mergeConflicted {
+			return a.landConflicted(node, tree, changed,
+				withReport("nothing checked this work: the task.audit setting is off", report), detail, log)
+		}
 		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
 		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
 		// off, this is the row's name, and a sentence that translated it would
@@ -2578,8 +2605,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 	}
 
-	merge, detail := tree.comeHome(node.title())
+	merge, detail := tree.comeHome(node.title(), changed)
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
+	if merge == mergeConflicted {
+		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes
 	// its first sentence as what came of the work, the project's index keeps that
@@ -2652,8 +2682,11 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 			if shift := a.groundShift(node, changed); shift != "" {
 				return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 			}
-			merge, detail := tree.comeHome(node.title())
+			merge, detail := tree.comeHome(node.title(), changed)
 			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
+			if merge == mergeConflicted {
+				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+			}
 			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
 			// leads, what it was checked on stands under it, and nothing anywhere in
 			// it mentions the counter — the run was interrupted, the deliverable was
@@ -2697,6 +2730,33 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 	merge, kept := keptWork(tree, node.title(), changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
 	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
+	return TaskUnverified
+}
+
+// landConflicted settles a node whose work holds and whose branch WOULD NOT
+// MERGE — the same file changed here and on the person's branch while the node
+// worked.
+//
+// A CONFLICTED MERGE IS NOT A LANDING, and that is the defect this repairs. The
+// merge was already attempted and abandoned by [taskTree.comeHome]; what came
+// back was a branch nobody had taken, and every caller marked the node done
+// anyway. A measured task settled with a patch that was an unresolved merge —
+// no reviewable diff, its own report admitting the branch had not merged —
+// while the card read as finished work. Nothing about "done" was true.
+//
+// SO IT ENDS WHERE [Agent.landShifted] ENDS: needs your look, the branch kept
+// with the work committed on it, the conflicting files named in the report. The
+// person's tree is untouched — no markers, no half-merge ([abandonMerge]) — and
+// merging is a thing they do when they are ready, which is what the completion
+// note has always said a kept branch means.
+//
+// IT DOES NOT COMMIT AGAIN. comeHome committed before it tried the merge, so
+// the branch already holds the work; the mark stays [mergeConflicted] rather
+// than becoming aborted because the two are different news — one says nobody
+// took it, the other says it would not go.
+func (a *Agent) landConflicted(node *TaskNode, tree taskTree, changed []string, report, detail string, log io.Writer) TaskState {
+	fmt.Fprintf(log, "not merged: %s\n", detail)
+	node.finish(withReport(needsLookLead+detail, report), changed, tree.branch, mergeConflicted)
 	return TaskUnverified
 }
 
@@ -2776,7 +2836,7 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	return mergeAborted, alsoChanged(changed, commitTaskWork(tree.dir, title))
+	return mergeAborted, alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
 }
 
 // runTaskChild submits the brief, consumes the node's own events internally,
@@ -3263,8 +3323,12 @@ const aforgeDroppings = ".aforge-v3"
 // A call that saved something under a name it did NOT give — generate_image
 // with no path, which lands under a timestamped name of its own — is not
 // nameable from the arguments and is not listed here as a file. It is still
-// progress: the worktree noticed it ([worktreeMoved]), and what it left behind
-// is picked up by name when the node's work is committed ([commitTaskWork]).
+// progress: the worktree noticed it ([worktreeMoved]). What it is NOT is
+// something that comes home on its own. Inside a node the unnamed picture lands
+// in the harness's own corner (landing.go's ImagesDir over a node's empty
+// Place), which is the one directory a landing never stages; a node whose
+// deliverable that picture IS says so in its report and it lands by name
+// ([declaredFiles]).
 //
 // IT IS ALSO THE LANDING BELT. The turn that lands a stopped node is allowed
 // exactly these hands and no others ([runTaskChild]'s LAND NOW pass), because
@@ -3346,6 +3410,96 @@ func changedPath(event Event, dir string) (string, bool) {
 		return filepath.ToSlash(relative), true
 	}
 	return filepath.ToSlash(path), true
+}
+
+// declaredFiles are the deliverables a node NAMED in its last words, and they
+// are the one door left open by the law that only what a node's own hands wrote
+// comes home ([stageTaskWork]).
+//
+// THE HONEST CASE IT EXISTS FOR: a node whose job is to run a scaffold. The
+// files are real, they are the deliverable, and no `write` or `edit` call ever
+// named one of them — so the node says so, on one line, and they land. A node
+// that ran `pip install` says nothing and the virtualenv stays where it fell.
+// The declaration is the node taking responsibility for a file it did not type,
+// which is exactly the difference between a deliverable and a dropping.
+//
+// IT IS READ OFF THE NODE'S WHOLE LAST MESSAGE and not off the carried report,
+// which is cut to its first few lines ([taskReport]): the line belongs at the
+// bottom, under the account of the work, where it is out of the person's way.
+//
+// EVERY NAME IS CHECKED AGAINST THE DISK BEFORE IT IS BELIEVED. A model listing
+// a file it meant to write is the ordinary failure here, and a name with nothing
+// behind it must not become a path on a card or an error in a staging call.
+func declaredFiles(said, dir string) []string {
+	var declared []string
+	for _, line := range strings.Split(said, "\n") {
+		rest, found := cutDeclaration(line)
+		if !found {
+			continue
+		}
+		for _, name := range strings.Split(rest, ",") {
+			name = strings.Trim(strings.TrimSpace(name), "`'\"*")
+			if name == "" || len(declared) >= declaredFilesLimit {
+				continue
+			}
+			relative, ok := insideWorktree(dir, name)
+			if !ok {
+				continue
+			}
+			if info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(relative))); err != nil || info.IsDir() {
+				continue
+			}
+			declared = append(declared, relative)
+		}
+	}
+	return declared
+}
+
+// declaredFilesLimit bounds one report's declaration. A node that names two
+// hundred files has stopped declaring a deliverable and started pasting a
+// directory listing, and the cap is what keeps a report from becoming a staging
+// script.
+const declaredFilesLimit = 50
+
+// cutDeclaration finds the `files:` line and hands back what it named. The
+// leading bullet and the bold markers a model reaches for are trimmed first,
+// because "- **files:** a.go" is the same sentence and refusing it would teach
+// nobody anything.
+func cutDeclaration(line string) (string, bool) {
+	trimmed := strings.TrimLeft(strings.TrimSpace(line), "-*• \t")
+	if len(trimmed) < len(declarationWord) {
+		return "", false
+	}
+	if !strings.EqualFold(trimmed[:len(declarationWord)], declarationWord) {
+		return "", false
+	}
+	return strings.TrimLeft(trimmed[len(declarationWord):], "* \t"), true
+}
+
+// declarationWord is the one spelling, said once here and once in the node's
+// own prompt (prompts/task.md's "What comes home"), because a prompt that asked
+// for a word this did not read would be a promise the harness does not keep.
+const declarationWord = "files:"
+
+// insideWorktree answers whether a name the model wrote points at something in
+// the node's own working copy, and gives it back worktree-relative.
+func insideWorktree(dir, name string) (string, bool) {
+	name = filepath.FromSlash(strings.TrimSpace(name))
+	if name == "" {
+		return "", false
+	}
+	if filepath.IsAbs(name) {
+		relative, err := filepath.Rel(dir, name)
+		if err != nil {
+			return "", false
+		}
+		name = relative
+	}
+	clean := filepath.ToSlash(filepath.Clean(name))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", false
+	}
+	return clean, true
 }
 
 // taskReport is the node's last word: the final assistant message, cut to three
@@ -3965,11 +4119,19 @@ func taskTreeSession(session string) string {
 // use and stable for the life of the process.
 var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID() })
 
-// comeHome commits whatever the node wrote and merges its branch into the
-// person's. It reports the outcome and, ONLY when the outcome needs explaining,
-// one line for the node's report: an ordinary merge is already said by the
-// Merge and Branch fields and by the completion note, and saying it a third
-// time inside the report is the same sentence three times on one card.
+// comeHome commits what the node WROTE and merges its branch into the person's.
+// It reports the outcome and, ONLY when the outcome needs explaining, a line or
+// two for the node's report: an ordinary merge is already said by the Merge and
+// Branch fields and by the completion note, and saying it a third time inside
+// the report is the same sentence three times on one card. A conflict and a
+// working copy full of things nobody wrote are both worth explaining, and both
+// come back here.
+//
+// WHAT COMES HOME IS WHAT THE NODE'S OWN HANDS WROTE, which is the whole of
+// [stageTaskWork]'s law and the reason wrote is an argument rather than a walk
+// of the directory. A node that ran `pip install` inside its worktree has a
+// virtualenv in it and did not write one; landing it committed 26 hunks of
+// vendored noise over a change nobody could find.
 //
 // THE MERGE IS ATTEMPTED WHATEVER THE PERSON'S TREE LOOKS LIKE. A dirty
 // checkout is the normal state of somebody who has been working, and refusing
@@ -3977,11 +4139,15 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string) (string, string) {
+func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, ""
 	}
-	_ = commitTaskWork(t.dir, title)
+	_ = commitTaskWork(t.dir, title, wrote)
+	// Read AFTER the commit and BEFORE the worktree is removed: what is still
+	// sitting there once the node's own work is committed is by definition what
+	// the node did not write, and this is the only moment it can be named.
+	left := leftBehind(t.dir)
 
 	defer lockGitRoot(t.place, t.root)()
 	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
@@ -3993,11 +4159,15 @@ func (t taskTree) comeHome(title string) (string, string) {
 	if out, err := git(t.root,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"merge", "--no-edit", t.branch); err != nil {
-		// --abort is best-effort: a merge that never started (git refused
-		// before touching the index) has nothing to abort, and it says so.
-		_, _ = git(t.root, "merge", "--abort")
-		return mergeConflicted, fmt.Sprintf("its branch %s did not merge cleanly and was kept: %s",
-			t.branch, firstLine(out))
+		// THE PATHS ARE READ BEFORE THE MERGE IS ABANDONED, because abandoning it
+		// is what removes the evidence: a conflicted index knows which files were
+		// changed on both sides, and one second later nothing does.
+		clashing := conflictedPaths(t.root)
+		abandonMerge(t.root)
+		// The working copy outlives a conflict, so the sentence says the leavings
+		// are still in it.
+		return mergeConflicted, withReport(conflictSentence(t.branch, clashing, out),
+			leftBehindSentence(left, true))
 	}
 	// The branch is gone only once its work is in: removing the worktree first
 	// keeps `git branch -d` from refusing on a checked-out branch.
@@ -4013,28 +4183,164 @@ func (t taskTree) comeHome(title string) (string, string) {
 	// remove empties trees/ when the last node comes home, which costs nothing
 	// and leaves the folder listing honest.
 	_ = os.Remove(filepath.Dir(t.dir))
-	return mergeMerged, ""
+	// The working copy has just gone, and the sentence says where its leavings
+	// went with it rather than sending anybody to look in a directory that is no
+	// longer there.
+	return mergeMerged, leftBehindSentence(left, false)
 }
 
-// commitTaskWork puts everything the node wrote into one commit on its own
-// branch. Without it there would be nothing to merge: a node's work is files on
-// disk, and git only moves what has been committed.
+// conflictSentence is what a person reads when a branch would not merge: which
+// files were changed on both sides, in their own words and by name.
+//
+// It NAMES THE FILES rather than quoting git, because git's first line on a
+// failed merge is usually "Auto-merging x" — the last thing that worked, not the
+// thing that did not. The quote is kept for the other shape of failure, the
+// merge git refused before it started (local changes it would have to
+// overwrite), where git's own sentence is the only account there is.
+func conflictSentence(branch string, clashing []string, out string) string {
+	line := "its branch " + branch + " did not merge cleanly and was kept: "
+	if len(clashing) == 0 {
+		return line + firstLine(out)
+	}
+	return line + namedFew(clashing, conflictNamesShown) + " changed on both sides"
+}
+
+// conflictNamesShown and leftBehindNamesShown are how many paths a sentence
+// carries before it stops naming them. A conflict is usually one or two files
+// and a person wants every one; a working copy full of somebody's virtualenv is
+// three thousand, and a report that listed them would be the noise this whole
+// file exists to keep off their branch.
+const (
+	conflictNamesShown   = 8
+	leftBehindNamesShown = 5
+)
+
+// conflictedPaths are the files a merge could not settle, read off the index
+// while the merge is still in progress. An empty answer is a merge that failed
+// before it touched the index.
+func conflictedPaths(root string) []string {
+	out, err := git(root, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil
+	}
+	return nonEmptyLines(out)
+}
+
+// abandonMerge takes the person's checkout back out of a merge, and it exists
+// because of one law: A CONFLICT MARKER IS NEVER WRITTEN ONTO THE PERSON'S
+// BRANCH. A task that leaves `<<<<<<<` in a file they did not open has handed
+// them a broken tree and called it a landing.
+//
+// `merge --abort` is the whole answer whenever there is a merge to abort, and it
+// fails harmlessly when git refused before touching the index — so the second
+// move is asked for only when the repository says it is still mid-merge, which
+// is the one case where doing nothing would leave the markers behind.
+func abandonMerge(root string) {
+	if _, err := git(root, "merge", "--abort"); err == nil {
+		return
+	}
+	if _, err := git(root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); err != nil {
+		return
+	}
+	_, _ = git(root, "reset", "--merge")
+}
+
+// leftBehind is what is sitting in the node's working copy that the node did
+// not write: a virtualenv a command built, a compiler's output, a cache. It is
+// read after [commitTaskWork] has staged and committed the node's own work, so
+// everything git still reports is by definition something nothing wrote down.
+//
+// IGNORED FILES ARE NOT IN IT, exactly as they are not in the commit: a
+// repository that has said it does not care about a path has already answered
+// this question, and repeating it in the report would be the harness arguing
+// with the person's .gitignore.
+func leftBehind(dir string) []string {
+	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
+		"--", ".", ":(exclude)"+aforgeDroppings)
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, line := range nonEmptyLines(out) {
+		if len(line) < 4 {
+			continue
+		}
+		// The porcelain line is two status letters, a space, then the path; a
+		// rename carries both names and the one that exists now is the second.
+		path := strings.TrimSpace(line[3:])
+		if _, renamed, found := strings.Cut(path, " -> "); found {
+			path = renamed
+		}
+		if path = strings.Trim(path, `"`); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// leftBehindSentence is the one line a person gets about those files, and WHERE
+// THEY ARE NOW is the half of it that has to be true.
+//
+// A merged node's working copy is removed the moment its work is in, taking an
+// installed environment and a directory of build output with it — which is what
+// a throwaway checkout is for, and which a sentence saying the files are "still
+// there" would send somebody looking for. A kept one is still on disk, and there
+// the same files really are waiting.
+func leftBehindSentence(paths []string, kept bool) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	line := "it left files it did not write, and they went with its working copy rather than onto your branch: "
+	if kept {
+		line = "it left files it did not write, and they are still in its working copy rather than on its branch: "
+	}
+	return line + namedFew(paths, leftBehindNamesShown)
+}
+
+// namedFew lists paths the way a sentence does — the first few by name and the
+// rest as a count, because a person reading a card wants to recognise the thing
+// rather than audit it.
+func namedFew(paths []string, most int) string {
+	if len(paths) <= most {
+		return strings.Join(paths, ", ")
+	}
+	return strings.Join(paths[:most], ", ") + fmt.Sprintf(" and %d more", len(paths)-most)
+}
+
+// nonEmptyLines is the shape every plumbing answer in this file comes back in:
+// one path per line, blanks dropped.
+func nonEmptyLines(out string) []string {
+	var lines []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// commitTaskWork puts what the node wrote into one commit on its own branch.
+// Without it there would be nothing to merge: a node's work is files on disk,
+// and git only moves what has been committed.
 //
 // The identity is passed per-command rather than configured, so a machine with
 // no git identity still commits and the person's own config is not touched.
 // "nothing to commit" is not a failure — a node that only read is a node with
 // an empty branch, and an empty branch merges cleanly.
 //
-// It ANSWERS WITH THE FILES IT COMMITTED, read off the index it just built,
-// because the index is the only complete account of what a node left behind: a
-// hand that saved a file under a name it chose for itself is in there, and no
-// argument the model wrote ever said that name ([savingTools]). A node whose
-// branch never comes home is told about its work out of this list.
-func commitTaskWork(dir, title string) []string {
-	if !stageTaskWork(dir) {
+// It ANSWERS WITH THE FILES IT COMMITTED, read off the index it just built
+// rather than off the list it was handed, because the two can differ honestly:
+// a path the node wrote and then deleted, a path .gitignore refuses, a path the
+// node saved outside its own worktree. A node whose branch never comes home is
+// told about its work out of this list.
+func commitTaskWork(dir, title string, wrote []string) []string {
+	if !stageTaskWork(dir, wrote) {
 		return nil
 	}
 	saved := stagedPaths(dir)
+	if len(saved) == 0 {
+		return nil
+	}
 	_, _ = git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", "task: "+clip(firstLine(title), 72))
@@ -4048,13 +4354,7 @@ func stagedPaths(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			paths = append(paths, line)
-		}
-	}
-	return paths
+	return nonEmptyLines(out)
 }
 
 // stagedDiffStat is the node's change AS A SHAPE: one line per file with how
@@ -4075,8 +4375,8 @@ func stagedDiffStat(dir string) string {
 	return strings.TrimSpace(out)
 }
 
-// stageTaskWork puts everything the node wrote into the worktree's index, and
-// it is the step BOTH the audit and the commit need.
+// stageTaskWork puts THE PATHS THE NODE'S OWN HANDS WROTE into the worktree's
+// index, and it is the step BOTH the audit and the commit need.
 //
 // The audit needs it because `git diff` shows tracked files only: a node whose
 // whole change was three new files has an empty diff and a full index, and an
@@ -4087,15 +4387,85 @@ func stagedDiffStat(dir string) string {
 // two places would be the audit and the merge disagreeing about what the node
 // wrote.
 //
-// The harness's own droppings are not the node's work: a background job the
-// node started wrote its log under the workspace (jobs.go), and a build log in
-// the diff — or merged into the person's branch — is noise they did not ask for.
-func stageTaskWork(dir string) bool {
-	if _, err := git(dir, "add", "-A"); err != nil {
+// IT IS NOT `git add -A`, AND THAT IS THE WHOLE POINT OF IT. A node works in a
+// directory it is free to make a mess in: it runs the test suite, it installs
+// what the suite needs, it builds. `add -A` called every one of those droppings
+// the deliverable — one measured task landed twenty-six hunks of vendored
+// virtualenv and not one line of the change it was asked for, and another
+// committed three thousand files of a `.venv_test`. A file a COMMAND made is
+// not what the node wrote; a file the node's own `write` or `edit` made is
+// (see [savingTools], and [declaredFiles] for the deliverable a command
+// generated and the node then named).
+//
+// wrote is worktree-relative and comes from the run's own record of its saving
+// calls ([runTaskChild]'s changed, the same list the auditor is shown and the
+// same list the card names) — ONE source of truth, never a second walk of the
+// directory that could disagree with it.
+//
+// The batch is one call because the ordinary node writes a handful of files. It
+// falls back to one call per path because a single path git refuses — one that
+// .gitignore covers, one the node deleted from outside its own worktree — fails
+// the whole batch, and one unstageable name must not cost the node everything
+// else it wrote. IGNORED PATHS STAY IGNORED either way, exactly as they did
+// under `add -A`: git refuses them and the loop moves on.
+//
+// The harness's own droppings are not the node's work either: a background job
+// the node started wrote its log under the workspace (jobs.go), and a build log
+// in the diff — or merged into the person's branch — is noise they did not ask
+// for.
+func stageTaskWork(dir string, wrote []string) bool {
+	if _, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return false
+	}
+	paths := stageableWork(dir, wrote)
+	if len(paths) == 0 {
+		return true
+	}
+	if _, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
+		for _, path := range paths {
+			_, _ = git(dir, "add", "--all", "--", path)
+		}
 	}
 	_, _ = git(dir, "reset", "--quiet", "--", aforgeDroppings)
 	return true
+}
+
+// stageableWork turns the run's record of what it wrote into pathspecs git can
+// be handed: inside the worktree, deduped, and never the harness's own corner.
+//
+// EVERY PATH IS LITERAL. A file a node wrote called `report[1].md` is a glob to
+// git's pathspec parser and a filename to everybody else, and the `:(literal)`
+// prefix is how a name gets to mean itself.
+//
+// A path OUTSIDE the worktree is dropped rather than reached for. A node that
+// saved something into the person's home has not made it part of this branch,
+// and `git add ../..` is either an error or a much worse kind of success.
+func stageableWork(dir string, wrote []string) []string {
+	seen := make(map[string]bool, len(wrote))
+	paths := make([]string, 0, len(wrote))
+	for _, raw := range wrote {
+		clean := strings.TrimSpace(raw)
+		if clean == "" {
+			continue
+		}
+		if filepath.IsAbs(filepath.FromSlash(clean)) {
+			relative, err := filepath.Rel(dir, filepath.FromSlash(clean))
+			if err != nil {
+				continue
+			}
+			clean = relative
+		}
+		clean = filepath.ToSlash(filepath.Clean(filepath.FromSlash(clean)))
+		switch {
+		case clean == "" || clean == "." || clean == "..", strings.HasPrefix(clean, "../"),
+			clean == aforgeDroppings, strings.HasPrefix(clean, aforgeDroppings+"/"),
+			seen[clean]:
+			continue
+		}
+		seen[clean] = true
+		paths = append(paths, ":(literal)"+clean)
+	}
+	return paths
 }
 
 // repositoryRoot is the top of the repository a directory sits in.

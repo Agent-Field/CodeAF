@@ -107,26 +107,24 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
-	// What the node made: one file at a path a call named, and one under a name
-	// it chose for itself — a picture generated with no path argument, which no
-	// reader of the arguments could ever have listed.
+	// What the node made: one file at a path its own call named. Beside it, what
+	// a COMMAND left in the same directory — an environment a test run built —
+	// which is not the node's work however much of the directory it fills.
 	writeFile(t, filepath.Join(tree.dir, "marketing", "linkedin.png"), "png\n")
-	writeFile(t, filepath.Join(tree.dir, "marketing", "20260819-blueprint.png"), "png\n")
-	// And the harness's own droppings, which are not the node's work.
+	writeFile(t, filepath.Join(tree.dir, ".venv", "lib", "site.py"), "vendored\n")
+	// And the harness's own droppings, which are not the node's work either.
 	writeFile(t, filepath.Join(tree.dir, aforgeDroppings, "jobs", "1.log"), "building\n")
 
 	merge, changed := keptWork(tree, "make the sheets", []string{"marketing/linkedin.png"})
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want %q — a kept branch is still not a merged one", merge, mergeAborted)
 	}
-	for _, want := range []string{"marketing/linkedin.png", "marketing/20260819-blueprint.png"} {
-		if !containsString(changed, want) {
-			t.Fatalf("changed = %v, want it to name %s", changed, want)
-		}
+	if !containsString(changed, "marketing/linkedin.png") {
+		t.Fatalf("changed = %v, want it to name marketing/linkedin.png", changed)
 	}
 	for _, unwanted := range changed {
-		if strings.HasPrefix(unwanted, aforgeDroppings) {
-			t.Fatalf("changed = %v, want the harness's own droppings left out", changed)
+		if strings.HasPrefix(unwanted, aforgeDroppings) || strings.HasPrefix(unwanted, ".venv") {
+			t.Fatalf("changed = %v, want what the node did not write left out", changed)
 		}
 	}
 
@@ -135,10 +133,13 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git ls-tree: %v\n%s", err, listed)
 	}
-	for _, want := range []string{"marketing/linkedin.png", "marketing/20260819-blueprint.png"} {
-		if !strings.Contains(listed, want) {
-			t.Fatalf("branch %s holds:\n%s\nwant %s on it", tree.branch, listed, want)
-		}
+	if !strings.Contains(listed, "marketing/linkedin.png") {
+		t.Fatalf("branch %s holds:\n%s\nwant marketing/linkedin.png on it", tree.branch, listed)
+	}
+	// AND NOTHING ELSE. A kept branch a person is invited to merge must be the
+	// change and not the directory it was made in.
+	if strings.Contains(listed, ".venv") {
+		t.Fatalf("branch %s carries an environment the node did not write:\n%s", tree.branch, listed)
 	}
 	if strings.Contains(listed, aforgeDroppings) {
 		t.Fatalf("branch %s carries the harness's own droppings:\n%s", tree.branch, listed)

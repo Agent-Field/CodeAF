@@ -593,8 +593,13 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// It is done ONCE, out here, so both attempts judge the same tree: a retry
 	// that re-staged would be a second evidence packet, and "the same question
 	// asked again" is the only thing a retry is allowed to be.
+	//
+	// AND IT STAGES WHAT THE NODE WROTE, not the whole directory: the auditor
+	// judges exactly the change that would merge, so a virtualenv a test run left
+	// behind is neither in the diff it reads nor on the branch it approves
+	// (task_run.go's [stageTaskWork]).
 	if tree.root != "" {
-		stageTaskWork(tree.dir)
+		stageTaskWork(tree.dir, changed)
 	}
 
 	verdict, again := a.auditOnce(ctx, node, tree, changed, claim, log)
@@ -1219,7 +1224,18 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		return err
 	}
 	report, changed, _, _ := node.leavings()
-	merge, detail := tree.comeHome(node.title())
+	merge, detail := tree.comeHome(node.title(), changed)
+	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
+	// however sure the person was about the work. The node stays where it was —
+	// needing a look — with the conflicting files named, because what is being
+	// asked of them has changed: they said the work was good, and it is; what is
+	// left is two versions of the same file (task_run.go's [Agent.landConflicted]).
+	if merge == mergeConflicted {
+		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
+			changed, tree.branch, merge)
+		node.graph.resettle(node, TaskUnverified)
+		return nil
+	}
 	node.finish(withReport(acceptedLine(why), withReport(report, detail)), changed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 	return nil
@@ -1339,7 +1355,18 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		merged, detail := tree.comeHome(node.title())
+		merged, detail := tree.comeHome(node.title(), changed)
+		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
+		// EITHER. The node keeps the one state that is true of it — somebody has
+		// to look — with the work committed on its branch and the clashing files
+		// named (task_run.go's [Agent.landConflicted] makes the same call on the
+		// gate's own road).
+		if merged == mergeConflicted {
+			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
+				changed, tree.branch, merged)
+			node.graph.resettle(node, TaskUnverified)
+			return
+		}
 		// THE CLAIM, NOT THE CARRIED REPORT — and the claim LEADS, exactly as it
 		// does on the gate's own landing (task_run.go's workTaskNode). The carried
 		// report opens with the line that said nobody could judge this work, and a

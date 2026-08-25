@@ -47,6 +47,53 @@ Two limits:
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
 
+## What a finished task brings home, and what it leaves behind
+
+A task lands **the files it wrote** — every path it handed to its `write` or `edit` hand,
+plus anything its own report names on a `files:` line. Nothing else is committed and
+nothing else merges.
+
+That is why a task's branch is a change you can read. Its checkout is its own to make a
+mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
+`node_modules`, a `target/`, a `.pytest_cache`, a downloaded model — none of those is
+something the task wrote, so none of them reaches your branch. Tasks used to land with the
+virtualenv attached and the actual change buried inside it.
+
+What it leaves behind is named in the landing, and the sentence says where it went:
+
+`it left files it did not write, and they went with its working copy rather than onto your branch: .venv/bin/activate, .venv/pyvenv.cfg and 812 more`
+
+A task's checkout is removed once its work is merged, and the leavings go with it — that is
+what a throwaway checkout is for. When the branch is kept instead, the checkout is kept too
+and the sentence reads `they are still in its working copy rather than on its branch`. The
+first few files are named and the rest are counted. Your `.gitignore` is respected exactly as
+it always was: a path your repository ignores is not committed and is not mentioned.
+
+**When a command made the deliverable.** A task that runs a scaffold, a code generator or a
+formatter produces real files it never typed. It brings them home by naming them on the last
+line of its report — `files: site/index.html, site/app.css` — and only names that really
+exist in its checkout are believed. A task that says nothing about them has left them
+behind, and that is the difference between a deliverable and a dropping.
+
+## My task's branch would not merge — what happens then
+
+Nothing is forced onto your branch. A merge that hits a conflict is **abandoned** and your
+checkout is put back exactly as it was: no `<<<<<<<` markers in your files, no half-finished
+merge to get yourself out of.
+
+The task then lands as **needs your look** rather than finished, and the report names the
+files that changed on both sides:
+
+`finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
+
+The work is committed on that branch, so `git merge task/…` is a real offer whenever you are
+ready to reconcile the two versions. Nothing waiting on the task fails — it waits until you
+decide, exactly as with any other task that needs a look.
+
+Pressing **accept** on the card does not change this. Accepting says the work is good, and
+it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
+leaves the task needing your look with the same sentence.
+
 ## What a task can do while it runs
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
@@ -130,12 +177,14 @@ door onto that page. `enter` on an `earlier` row goes inside it, and the card
 carries the whole of that final message — read back off the task's own journal — under
 `what it said at the end`.
 
-When a task's work does come home, everything it wrote is staged with `.aforge-v3` reset
-out, committed on its own branch as `task: <first line of title, at most 72 chars>` with
-the identity `aforge <aforge@localhost>`, then merged into your branch with
-`git merge --no-edit`. The merge is attempted whatever your tree looks like — a dirty
-checkout is normal. On success the worktree is removed and the branch is deleted. Two
-tasks finishing at once are serialized, so a merge is never lost.
+When a task's work does come home, the paths it wrote are staged by name — never
+`git add -A`, and never `.aforge-v3` — then committed on its own branch as
+`task: <first line of title, at most 72 chars>` with the identity
+`aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
+merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
+the worktree is removed and the branch is deleted. A merge that conflicts is abandoned, the
+worktree and the branch are both kept, and the task needs your look. Two tasks finishing at
+once are serialized, so a merge is never lost.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
 
@@ -384,7 +433,8 @@ stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
+its own section below — or the work held and its branch would not merge cleanly. The task
+is neither done nor failed: nothing merges, the branch is kept, and nothing
 waiting on it fails. The report leads
 `finished, but needs your look — ` and then what was said, or
 `finished, but needs your look — nobody could say whether it holds` when nothing was said.
@@ -476,8 +526,11 @@ without exception:
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
   "Not proven" is not "throw it away";
 - a task that needs your look keeps its branch;
-- a task whose merge conflicted keeps its branch, and you are told
+- a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
+  finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+- a task that left files it did not write keeps them too — in its own checkout, named in the
+  report, never on your branch;
 - a session that ended mid-run keeps the branch, and says where it is.
 
 A task that ran **in place** — no repository to branch from — is never described as
