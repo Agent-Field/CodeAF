@@ -1442,10 +1442,14 @@ func (s *Settings) build() []Setting {
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +
-				"different speeds for the same price. latency asks for the fastest one and " +
-				"times every answer, demoting an endpoint that keeps being slow; price asks " +
-				"for the cheapest; off asks for nothing and measures nothing. " +
-				"A change lands on the next session.",
+				"different speeds AND very different prices. Left alone, aforge asks for the " +
+				"fastest endpoint for your own turns — capped at a quarter over the model's " +
+				"list price, because no endpoint is worth four times that — and asks for the " +
+				"cheapest for work you are not waiting on: task workers, judges, titles, the " +
+				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
+				"fastest one for everything and times every answer, demoting an endpoint that " +
+				"keeps being slow; price asks for the cheapest for everything; off asks for " +
+				"nothing and measures nothing. A change lands on the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
@@ -2773,6 +2777,28 @@ func RoutingAt(profileDir string) string {
 		}
 	}
 	return DefaultRouting
+}
+
+// RoutingChoiceAt is the routing row A PERSON ACTUALLY WROTE, empty when they
+// have written nothing readable.
+//
+// It is the same read as [RoutingAt] without the fallback, and the two are both
+// needed because they answer different questions. A settings sheet asks "what
+// is in force?" and must be told latency, which is what an unset row does. The
+// adapter asks "did somebody CHOOSE?", and it must be able to hear no — that is
+// the whole of what lets it route a person's own turn by speed and an errand
+// nobody is waiting on by price, while an explicit word still wins over both
+// (internal/provider's velocity.go).
+func RoutingChoiceAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyRouting); ok {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, mode := range RoutingModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 // TaskAuditAt resolves the audit row to its word, default on.

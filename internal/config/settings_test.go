@@ -1024,3 +1024,38 @@ func TestAProfileStillHoldingTheRetiredWordReadsAsSized(t *testing.T) {
 		t.Fatalf("the row reads %q over a session running %q", got, TaskStartSized)
 	}
 }
+
+// THE ROW HAS TO BE ABLE TO SAY "NOBODY ANSWERED". The settings sheet asks what
+// is in force and is owed the default; the adapter asks whether a person CHOSE,
+// and the difference is the whole of what lets it route a person's own turn on
+// speed and a task node or an errand on price while a written word still wins
+// (internal/provider's velocity.go).
+func TestTheRoutingRowReadsAsAChoiceAndAsAnAnswer(t *testing.T) {
+	dir := t.TempDir()
+	if got := RoutingAt(dir); got != DefaultRouting {
+		t.Fatalf("an unwritten row is in force as %q, want %q", got, DefaultRouting)
+	}
+	if got := RoutingChoiceAt(dir); got != "" {
+		t.Fatalf("an unwritten row reads as the choice %q, want nobody having chosen", got)
+	}
+	if err := writeProfileValue(dir, KeyRouting, RoutingPrice); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := RoutingChoiceAt(dir); got != RoutingPrice {
+		t.Fatalf("the written row reads as %q, want %q", got, RoutingPrice)
+	}
+	if got := RoutingAt(dir); got != RoutingPrice {
+		t.Fatalf("the written row is in force as %q, want %q", got, RoutingPrice)
+	}
+	// A word this build does not know is nobody's choice either, and the sheet
+	// still reads the default rather than an error.
+	if err := writeProfileValue(dir, KeyRouting, "sideways"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := RoutingChoiceAt(dir); got != "" {
+		t.Fatalf("a word this build does not know read as the choice %q", got)
+	}
+	if got := RoutingAt(dir); got != DefaultRouting {
+		t.Fatalf("a word this build does not know is in force as %q, want %q", got, DefaultRouting)
+	}
+}

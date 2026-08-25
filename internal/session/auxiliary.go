@@ -89,7 +89,14 @@ func (a *Agent) callRole(
 	for _, rung := range rungs {
 		// WithoutStream because nobody asked for this call: left on the turn's
 		// stream it would type itself into the room in the model's voice.
-		callCtx := provider.WithoutStream(ctx)
+		//
+		// And IntentBackground for the other half of the same sentence. Nobody
+		// asked for it and nobody is waiting on it, so the fastest endpoint is
+		// worth nothing here and its price is worth everything — every errand in
+		// this package routes by price rather than by speed
+		// (internal/provider's velocity.go). This is the one place that says so,
+		// because this is the one place an errand is made.
+		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
 		if effort, ok := provider.ParseEffort(rung.Effort); ok && effort != provider.EffortNone {
 			// WithReasoningEffort and not the configured setter: a level carried
 			// on a tier value is a HARNESS default, which the adapter drops for a

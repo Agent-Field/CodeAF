@@ -162,7 +162,39 @@ type sessionEntry struct {
 	// file written before it existed.
 	Usage *journalUsage `json:"usage,omitempty"`
 
+	// Call is ONE request's accounting, beside the seal rather than inside it.
+	// Absent from every line that is not a call line, and from every file
+	// written before it existed.
+	Call *journalCall `json:"call,omitempty"`
+
 	Timestamp string `json:"timestamp"`
+}
+
+// journalCall is what ONE provider response reported, on its own line.
+//
+// IT IS EVIDENCE AND NEVER SPEND. The seal above already carries every one of
+// these numbers, summed; a replay that added these lines too would bill the
+// session twice for the same calls. Nothing reads them back into the session's
+// totals, and [replaySessionFile] says so where it drops them.
+//
+// It exists because a turn is sixty-odd requests with wildly different shapes —
+// a cold first call, then fifty that are almost all cache read — and the sum of
+// them cannot answer what a call with THIS many cached tokens actually cost.
+// That question had to be reconstructed from transcript byte counts once, in a
+// cost autopsy that found this surface paying 3.5× its models' list prices; the
+// line is so the next one is a read rather than a reconstruction.
+//
+// Endpoint is who served it, exactly as the router spelled it, and it is the
+// field the summed seal could never carry: a turn routed across three endpoints
+// has one bill and three tariffs.
+type journalCall struct {
+	Model      string  `json:"model,omitempty"`
+	Endpoint   string  `json:"endpoint,omitempty"`
+	Input      int     `json:"input,omitempty"`
+	CacheRead  int     `json:"cacheRead,omitempty"`
+	CacheWrite int     `json:"cacheWrite,omitempty"`
+	Output     int     `json:"output,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.
@@ -811,6 +843,13 @@ func replaySessionFile(path string) (replayedSession, error) {
 			if !used.Aux {
 				spent.Turns += used.Calls
 			}
+		case "call":
+			// DROPPED ON PURPOSE, and this arm exists to say so rather than to
+			// leave it to the switch falling off the end. A call line is the
+			// SHAPE of one request — who served it, how much of its prompt was
+			// warm — and every dollar on it is already counted in the seal that
+			// closed its turn. Folding it in here would bill the session twice
+			// for the same money.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
@@ -1315,6 +1354,26 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 		},
 		Timestamp: stamp(),
 	})
+}
+
+// appendCall writes ONE response's own accounting down, beside the seal that
+// will sum it.
+//
+// A RESPONSE THAT REPORTED NO USAGE WRITES NOTHING. The emptiness law, and the
+// same test the seal keeps: a call with no tokens and no cost is a call the
+// provider said nothing about, and a row of zeroes would read as a fact. A
+// stream that was cut before its final chunk is exactly that case.
+//
+// The nil receiver writes nothing, as everywhere in this file: a memory-only
+// session has no journal and no caller should have to know it.
+func (s *sessionFile) appendCall(call journalCall) {
+	if s == nil {
+		return
+	}
+	if call.Input == 0 && call.Output == 0 && call.CacheRead == 0 && call.CacheWrite == 0 && call.CostUSD == 0 {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "call", Call: &call, Timestamp: stamp()})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

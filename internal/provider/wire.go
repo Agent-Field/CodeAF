@@ -199,7 +199,7 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
-	wire.Provider = c.providerPreferences(model)
+	wire.Provider = c.providerPreferences(model, knobs.intent)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		// The two fields that can narrow the endpoint set to nothing: the hard
 		// parameter filter, and this process's own refusals. The SORT stays —

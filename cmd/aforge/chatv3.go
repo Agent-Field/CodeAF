@@ -590,6 +590,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
 		SupportsParameter: models.SupportsParameter,
+		// And the model's own published price, which is what bounds the latency
+		// ask: this session wants the fastest endpoint, not the dearest one
+		// wearing the model's name (internal/provider's latencyPriceCeiling).
+		ModelPrice: models.PriceNow,
 		// Where a conversation goes when nothing serving its model will take the
 		// request at all. Closures again, and for the same reason as the vision
 		// gate: the question is about the model the failing turn was ON, which
@@ -940,10 +944,17 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// process, built at the door and assigned by the launch
 	// (chatv3_process.go's [v3Process.Conns]), because two managers on one store
 	// are two caches with no way to tell each other that a token has moved.
-	// How this session chooses among the endpoints serving its model. The word
-	// is validated by the row; the parse is total, so a word this build does not
-	// know falls back to the default rather than taking routing away.
-	cfg.Routing, _ = provider.ParseRoutingStrategy(config.RoutingAt(profileDir))
+	// How this session chooses among the endpoints serving its model — and it is
+	// read as the CHOICE rather than as the resolved default, so an unwritten row
+	// arrives here empty. The adapter needs to be able to tell "nobody said" from
+	// "somebody said latency": with nothing said it routes a person's own turn by
+	// speed and a task node or an errand by price, and with a word written that
+	// word wins outright (internal/provider's velocity.go). The parse is still
+	// total, so a word this build does not know leaves the row unset rather than
+	// taking routing away.
+	if word := config.RoutingChoiceAt(profileDir); word != "" {
+		cfg.Routing, _ = provider.ParseRoutingStrategy(word)
+	}
 	return cfg, nil
 }
 
