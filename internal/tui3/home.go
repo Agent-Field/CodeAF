@@ -2924,11 +2924,28 @@ const homeDoorWord = "space space home"
 //
 // THE INTERMEDIATE SPACE IS REAL, AND THAT IS THE POINT. The first space types
 // itself, plainly, the way every other character does — there is no pending
-// state, no timer, and no ghost. The SECOND one, arriving to find a box holding
-// exactly one space, takes both away and opens home. So somebody who genuinely
-// wanted a leading space types it and carries on: space then `x` leaves ` x`,
-// untouched, because the gesture only ever fires on a space and only ever when
-// a single space is all there is.
+// state, no timer, and no ghost. The SECOND one, arriving to find a box that
+// still SHOWS nothing with that space behind the caret, takes the whole draft
+// away and opens home. So somebody who genuinely wanted a leading space types it
+// and carries on: space then `x` leaves ` x`, untouched, because the gesture only
+// ever fires on a space and only ever over a box with no words in it.
+//
+// WHEREVER THE DOOR IS ADVERTISED, TWO SPACES OPEN IT — and the two halves used
+// to disagree, which is the bug this asks [editor.empty] rather than counting
+// runes. The foot draws `space space home` whenever the box holds nothing a
+// person would call text ([app.homeDoorShowing]), and the gesture demanded a box
+// holding EXACTLY one space. Every draft the two disagreed about was a door
+// drawn over a gesture that could not fire — and one of them is easy to land in
+// and impossible to see: `ctrl+enter` and `shift+enter` (standmark.go,
+// bargein.go) arrive as a bare `ctrl+j` on every terminal that cannot spell
+// them, and `ctrl+j` opens a line (input.go). Two of those on an empty box left
+// `\n\n` in it, the frame drew an empty box over an advertised door, and the
+// chord was dead in that conversation for good — [writeDraft] kept the invisible
+// draft and the next window on the directory adopted it (draft.go).
+//
+// THE CARET IS WHAT "THE SPACE YOU JUST TYPED" MEANS, rather than the end of the
+// draft: a space typed at the FRONT of a box holding a blank line is the same
+// two keystrokes against the same blank-looking box as one typed after it.
 //
 // PASTED TEXT CANNOT FIRE IT. A bracketed paste arrives as its own message and
 // never reaches this router at all, and a paste whose brackets leak is absorbed
@@ -2946,7 +2963,8 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 	if msg.Key().Text != " " || !a.homeDoorOpen() {
 		return false
 	}
-	return len(a.input.value) == 1 && a.input.value[0] == ' '
+	return a.input.empty() && a.input.cursor > 0 &&
+		a.input.value[a.input.cursor-1] == ' '
 }
 
 // homeDoorOpen reports whether home is reachable from this conversation. It is

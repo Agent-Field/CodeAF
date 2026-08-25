@@ -2070,6 +2070,112 @@ func TestASingleSpaceThenALetterTypesNormally(t *testing.T) {
 	}
 }
 
+// A BOX THAT SHOWS NOTHING IS A BOX THE GESTURE ANSWERS. This is the bug the
+// owner hit: `ctrl+enter` and `shift+enter` arrive as a bare `ctrl+j` on every
+// terminal that cannot disambiguate them, and input.go spends `ctrl+j` on
+// opening a line — so the two chords the steer wave taught left a NEWLINE in a
+// box that had nothing in it. Nothing on the screen changed: [editor.empty]
+// calls a whitespace-only draft empty, so the foot went on advertising
+// `space space home`, and the gesture — which asked for exactly one space and
+// found "\n " — never fired again. Worse, [writeDraft] kept that draft on disk
+// and the next window on the directory ADOPTED it, so the door stayed dead
+// across restarts.
+func TestDoubleSpaceGoesHomeFromABoxThatShowsNothingButHoldsANewline(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	// ctrl+j is the key a terminal sends for both of the enter chords it cannot
+	// spell, and over an empty box it opens a line.
+	a.key(key("ctrl+j"))
+	if got := a.input.String(); got != "\n" {
+		t.Fatalf("ctrl+j left %q in the box, want a newline", got)
+	}
+	if !a.homeDoorShowing() {
+		t.Fatal("the foot stopped advertising the door, so the test is no longer about the bug")
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatalf("two spaces did not open home from a box holding %q", a.input.String())
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the gesture left %q behind in the box", got)
+	}
+}
+
+// AND THE LAW IN ONE SENTENCE: WHEREVER THE DOOR IS ADVERTISED, TWO SPACES OPEN
+// IT. The advertisement and the gesture used to ask different questions about
+// the same box — one whitespace-insensitive, one demanding exactly one space —
+// and every draft the two disagreed about was a door drawn over a gesture that
+// could not fire.
+func TestEveryBoxTheFootCallsEmptyAnswersTheDoubleSpace(t *testing.T) {
+	for _, held := range []string{"", " ", "  ", "\n", "\n\n", "\n  ", " \n", "\t"} {
+		lab := newHomeLab(t)
+		now := time.Now()
+		mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+		lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", now.Add(-time.Hour))
+
+		a := lab.door(mine)
+		a.input.setText(held)
+		if !a.homeDoorShowing() {
+			t.Fatalf("a box holding %q is not advertising the door", held)
+		}
+		a.key(key(" "))
+		a.key(key(" "))
+		if !a.home.open {
+			t.Errorf("a box holding %q advertised the door and refused the gesture", held)
+		}
+	}
+}
+
+// AND THE CARET IS WHAT "THE SPACE YOU JUST TYPED" MEANS. A space typed at the
+// FRONT of a box holding a newline is behind the caret exactly as one typed at
+// the back is, so the gesture fires either way — it is the same two keystrokes
+// against the same blank-looking box.
+func TestTheGestureReadsTheSpaceBehindTheCaretAndNotTheEndOfTheDraft(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.input.setText("\n")
+	// Straight onto the caret: [editor.home] is line-relative, and the line this
+	// draft ends on is the empty one after the break.
+	a.input.cursor = 0
+	a.key(key(" "))
+	if got := a.input.String(); got != " \n" {
+		t.Fatalf("the first space landed as %q", got)
+	}
+	a.key(key(" "))
+	if !a.home.open {
+		t.Fatal("two spaces at the front of a blank-looking box did not open home")
+	}
+}
+
+// AND A DRAFT WITH WORDS IN IT IS STILL A DRAFT. The widened gesture may not
+// reach past the one thing it was always forbidden to touch: a sentence.
+func TestTheGestureStillRefusesABoxWithWordsInIt(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	a.input.setText("indent this line:\n")
+	a.key(key(" "))
+	a.key(key(" "))
+	if a.home.open {
+		t.Fatal("two spaces on a new line of a real draft opened home")
+	}
+	if got := a.input.String(); got != "indent this line:\n  " {
+		t.Fatalf("the box holds %q", got)
+	}
+}
+
 // A PASTE IS NOT A GESTURE. Pasted text arrives as its own message and never
 // reaches the key router, so two leading spaces in pasted text are two spaces.
 func TestAPasteThatStartsWithTwoSpacesDoesNotGoHome(t *testing.T) {
