@@ -186,7 +186,7 @@ var homeZones = []homeZone{{
 	gather: (*homeView).attentionNeeds,
 	order:  func(a, b *homeAttention) bool { return attentionOlder(a.at, b.at) },
 	mark:   func(ascii bool) string { return attentionPick(ascii, homeAskGlyph, homeAskASCII) },
-	ink:    func(pal palette, s string) string { return pal.askBold(s) },
+	ink:    func(pal palette, s string) string { return pal.warnBold(s) },
 }, {
 	word:   attentionMovingWord,
 	teach:  attentionMovingTeach,
@@ -842,9 +842,14 @@ func attentionRoomy(left, name int) bool {
 // mark is the one cell a person's eye lands on first, so it is the one cell
 // worth a hue:
 //
-//   - `▲` takes the QUESTION HUE ([palette.askBold]). A row in `needs you` is
-//     the state that hue exists for — a person being waited on — and this is the
-//     only place outside a question card that has any business wearing it.
+//   - `▲` takes the WAITING-ON-YOU HUE ([palette.warnBold], amber). A row in
+//     `needs you` is the state that hue exists for — a person being waited on —
+//     and on this screen it is the ONLY colour that says so. It used to be the
+//     violet of [palette.askBold] while the "finished, needs your look" glyph
+//     three columns away wore amber, so home said one thing in two colours; the
+//     places wave settled both on the amber the glyph already had
+//     ([hueWarn] holds the reasoning). The chat's own consent block keeps the
+//     violet, deliberately, and screen.md says so out loud.
 //   - `●` takes [palette.muted], the still blue one rung under the accent. It is
 //     the machine working rather than the person being asked, and it stays under
 //     the accent the cursor's own lead is drawn in so a strip of live rows can

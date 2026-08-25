@@ -1633,8 +1633,9 @@ blue one full step calmer than the accent — for your message's words, tool nam
 spinner, and headings; a neutral narration grey for the reply's working prose, one shade
 under the body; dim for everything the surface says about itself — stats, notes, hunk
 markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
-and an overdue context meter; warn for a bound about to be reached and only that; and
-violet for **the question hue and nothing else**.
+and an overdue context meter; amber for a bound about to be reached **and for anything
+waiting on you**; a mint green for **money and only money**; and violet for **the
+question hue inside a conversation**.
 
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
@@ -1644,9 +1645,22 @@ home's top line, and every band heading on the machine's card are **structure**,
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
 
-Violet is spent on the moment aforge is waiting for you and on nothing else: the consent
-question, its glyph, its choices, the status word, and the legend while one is up. Its
-whole value is that seeing it anywhere means one thing.
+Violet is spent on the moment aforge is waiting for you **inside this conversation** and
+on nothing else: the consent question, its glyph, its choices, the status word, and the
+legend while one is up. Its whole value is that seeing it anywhere means one thing.
+
+**On home and the other places, "waiting on you" is amber, not violet.** The `▲` mark and
+the `needs you` label at the head of that strip, the answer chips on a card, and the strip
+under the list where you answer without opening anything — all amber, the same amber the
+`?` on a finished-but-unchecked task already wore. Home used to say the one thing in two
+colours; it no longer does. This is a deliberate one-sided move: the conversation's own
+consent block stays violet, so the two surfaces differ on purpose, and whether the chat
+should follow is the owner's call rather than a bug.
+
+**Money has its own colour.** A figure in dollars — on the spend place, on a task's row,
+on a standing order's cost — is a mint green that nothing else on the surface wears. It is
+not the green of a finished tick: landing and paying are two different events, and a table
+where they share a colour is a table that says they are one.
 
 Hue carries identity; weight carries markdown. Your message is the soft muted blue
 behind its accent `› ` glyph — a quiet colour of your own, a full step calmer than the
