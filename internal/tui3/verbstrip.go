@@ -211,22 +211,23 @@ func (a *app) standRowVerbs() []verb { return a.standPage.verbs(a) }
 func (a *app) memoryRowVerbs() []verb {
 	p := &a.memPanel
 	var verbs []verb
-	// THE TWO THAT ACT ON A LINE ARE OFFERED ONLY WHILE THERE IS A LINE. An
-	// empty shelf — everything filtered away, or everything let go — has nothing
-	// to fix and nothing to forget.
+	// THE TWO THAT ACT ON A LINE ARE OFFERED ONLY WHILE THERE IS A LINE. A shelf
+	// heading, a section line, the prose at the top of a nearly-empty page — the
+	// cursor stands on all of them and none of them has wording to fix or
+	// anything to forget ([memoryPanel.choice] answers only on a line).
 	if memory, ok := p.choice(); ok {
 		verbs = append(verbs,
 			verb{key: 'e', word: memoryFixWord, do: func() tea.Cmd {
 				box := editor{}
 				box.setText(memory.Text)
-				p.expanded, p.edit = memory.ID, &box
+				p.edit, p.editID = &box, memory.ID
 				return nil
 			}},
 			verb{key: 'f', word: memoryForgetWord, do: func() tea.Cmd {
 				if a.memory != nil && a.memory.ForgetMemory(memory.ID) == nil {
 					p.undoID, p.undoName = memory.ID, memory.Title
 					p.footer = "forgot '" + memory.Title + "' · → " + memoryUndoWord
-					p.remove(memory.ID)
+					p.forget(memory.ID)
 				}
 				return nil
 			}})
@@ -241,10 +242,13 @@ func (a *app) memoryRowVerbs() []verb {
 			if a.memory == nil || a.memory.RestoreMemory(p.undoID) != nil {
 				return nil
 			}
-			if memories, err := a.memory.ListMemories("", 500); err == nil {
-				p.all = memories
-				p.reindex()
-			}
+			// AND THE PAGE IS RE-READ RATHER THAN PATCHED. Every other change this
+			// place makes is one field this process just wrote and can therefore
+			// correct in the held snapshot; a restore puts back a row that was
+			// REMOVED from it, with counts and a shelf and a status the store owns,
+			// so the honest redraw is the store's own answer ([app.refreshMemory]
+			// is the same two statements the clock runs).
+			a.refreshMemory()
 			p.footer = "put '" + p.undoName + "' back"
 			p.undoID, p.undoName = "", ""
 			return nil

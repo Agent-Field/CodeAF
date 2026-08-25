@@ -737,8 +737,8 @@ covers the requests made before the restart.
 
 ## Is there a record of what I spent across all my conversations, by day or by model
 
-Yes, on disk — and nothing on any screen reads it yet, so `/cost` and `/status` remain the
-only way to see money in this build.
+Yes — a file on disk, and **the spend place reads it**. Press `alt+5`, or `tab` to it from any
+other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
 whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
@@ -755,18 +755,64 @@ ran against.
 
 Three things are worth knowing about it:
 
-- **It is what a spend page will be built from.** Until this file existed, "what did opus cost
+- **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
   me this month" could only be answered by opening every transcript on the machine, and "what
   did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
   in it.
 - **A turn or a call that cost nothing writes no line.** So a day with no lines is a day
-  nothing was spent, rather than a day of zeroes.
+  nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
+  nothing for an unpriced call rather than calling it free.
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice.
 
-It is not a second bill and nothing reads it back into a conversation: `/cost` and the status
-line are still rebuilt from this conversation's own transcript, exactly as described above.
+`/cost` and the status line are unchanged and are still rebuilt from **this conversation's**
+own transcript. The spend place is the whole machine; `/cost` is this conversation. They
+answer two different questions and neither is a correction of the other.
+
+## The spend place — what days and models cost, and what the money was for
+
+`alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
+same three-second beat every place runs on, and it draws three things:
+
+- **the window and its total** — `aug 12 – aug 25 · $34.10 · 41.2M tokens` — with a sparkline
+  under it, one cell per day, and today's figure at the right;
+- **what ran it**, by the model and the role it named itself under, dearest first, each row
+  with a bar, its call count and its tokens;
+- **what it was for** — the three things money is ever spent on, because the ledger holds
+  three ids: a piece of work, a standing promise, or a conversation. The dearest three are
+  shown and the rest fold into one line.
+
+The ledger holds **ids and no titles**, so the place joins each id against the records it is
+already reading — the project's own index of what it ran, and the standing store — to put a
+name on the row. A thing neither of them knows keeps its id.
+
+**`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
+place, a standing promise to the standing place, a conversation to home.
+
+**There is no budget editor here and there will not be one.** The allowance is a rail and it
+is edited on the status line's money segment — the one that shows it. See "Spending limits"
+below.
+
+Until the ledger has a priced line inside the window, the place says what it is for and
+nothing else, which is what every place with nothing to draw does.
+
+## Moving the spend window — the time keys
+
+Time is two questions, so it gets two arrow axes and no letters:
+
+| | |
+| --- | --- |
+| `shift+←` `shift+→` | move the window **by its own length** — one press is the previous or next fortnight, not the previous day |
+| `shift+↑` | coarser — a fortnight of days becomes a fortnight of weeks, then of months |
+| `shift+↓` | finer, the exact inverse |
+
+The window opens on **the last 14 days, by the day**. The label between the arrows is the
+reading and the control at once. A week buckets from Monday; there is no year rung, because a
+window of years is a question about a machine older than this program.
+
+Moving the window costs nothing on disk: the lines are already in memory, so a fortnight back
+is the same reading answering a different question.
 
 ## Everything at once — /status
 

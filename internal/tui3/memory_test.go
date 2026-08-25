@@ -74,7 +74,47 @@ type panelMemoryStore struct {
 	updated   []string
 	forgotten []string
 	restored  []string
+	learned   int
+	letGo     int
+	snapshots int
 }
+
+// Snapshot is the fake's half of the seam the place actually draws from: the
+// rows shelved by scope and counted by status, exactly as internal/store does
+// it in two statements. It is here rather than in a helper because the shape IS
+// the contract — a page that could not tell "held" from "let go" would draw
+// forgotten lines as though nothing had happened to them.
+func (s *panelMemoryStore) Snapshot(limit int) (store.MemoryShelves, error) {
+	s.snapshots++
+	shelves := map[string]*store.MemoryShelf{}
+	var out store.MemoryShelves
+	for _, row := range s.rows {
+		shelf := shelves[row.Scope]
+		if shelf == nil {
+			shelf = &store.MemoryShelf{Scope: row.Scope, Label: store.MemoryShelfWord(row.Scope), ByType: map[string]int{}}
+			shelves[row.Scope] = shelf
+		}
+		shelf.Memories = append(shelf.Memories, row)
+		shelf.ByType[row.Type]++
+		switch row.Status {
+		case store.MemoryForgotten:
+			shelf.LetGo, out.LetGo = shelf.LetGo+1, out.LetGo+1
+		case store.MemorySuperseded:
+			shelf.Superseded, out.Superseded = shelf.Superseded+1, out.Superseded+1
+		default:
+			shelf.Held, out.Held = shelf.Held+1, out.Held+1
+		}
+		out.Total, out.Shown = out.Total+1, out.Shown+1
+	}
+	for _, scope := range []string{store.MemoryScopeUser, store.MemoryScopeProject, store.MemoryScopeEnv} {
+		if shelf := shelves[scope]; shelf != nil {
+			out.Shelves = append(out.Shelves, *shelf)
+		}
+	}
+	return out, nil
+}
+
+func (s *panelMemoryStore) ChangedSince(time.Time) (int, int, error) { return s.learned, s.letGo, nil }
 
 func (s *panelMemoryStore) ListMemories(scope string, limit int) ([]store.Memory, error) {
 	var rows []store.Memory
@@ -312,15 +352,25 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	}
 }
 
-func TestMemoryPanelEmptyOffFilterAndEscape(t *testing.T) {
+// THE EMPTY PLACE TEACHES, AND IT DOES NOT GUESS THAT MEMORY MIGHT BE OFF.
+//
+// A machine that has remembered nothing meets the three sentences that say what
+// this place is for. The other empty state — memory switched off in the
+// settings — never reaches a body at all: the door refuses to open the place
+// and says so on the transcript's own note line.
+func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 	a, _ := memoryPanelApp(t, nil)
 	a.slash("/memory")
-	if got := plain(frame(a)); !strings.Contains(got, "nothing is remembered here") {
-		t.Fatalf("empty panel:\n%s", got)
+	got := plain(frame(a))
+	if !strings.Contains(got, memoryTeaching[0]) {
+		t.Fatalf("the empty place did not teach:\n%s", got)
+	}
+	if strings.Contains(got, "shelves · biggest first") {
+		t.Fatalf("a heading was drawn over no shelves:\n%s", got)
 	}
 	drive(t, a, key("esc"))
 	if a.memPanel.open {
-		t.Fatal("esc did not close the memory panel")
+		t.Fatal("esc did not close the memory place")
 	}
 
 	off := newTestApp(&rememberingAgent{off: true})
@@ -329,25 +379,49 @@ func TestMemoryPanelEmptyOffFilterAndEscape(t *testing.T) {
 		t.Fatalf("off note was %q", got)
 	}
 
+	// TYPING FILTERS THE HELD SNAPSHOT AND READS NOTHING. The store is asked
+	// once, when the place opens; every letter after that narrows shelves and
+	// lines already in memory.
 	rows := []store.Memory{
 		{ID: "m1", Title: "terminal editor", Text: "uses neovim", Scope: store.MemoryScopeUser},
 		{ID: "m2", Title: "deploys", Text: "deploys Fridays", Scope: store.MemoryScopeProject},
 	}
-	a, _ = memoryPanelApp(t, rows)
+	a, brain := memoryPanelApp(t, rows)
 	a.slash("/memory")
+	asked := brain.snapshots
 	typeInto(t, a, "nvm")
-	if memory, ok := a.memPanel.choice(); !ok || memory.ID != "m1" {
-		t.Fatalf("fuzzy filter chose %#v, %v", memory, ok)
+	body := plain(frame(a))
+	if !strings.Contains(body, "terminal editor") || strings.Contains(body, "deploys") {
+		t.Fatalf("the filter did not narrow the shelves:\n%s", body)
+	}
+	if brain.snapshots != asked {
+		t.Fatalf("typing read the store %d more times", brain.snapshots-asked)
 	}
 }
 
-func TestMemoryExpandProvenanceEditAndCancel(t *testing.T) {
+// `enter` ON A SHELF OPENS AND CLOSES IT, and `enter` on a line opens that
+// line's own card — one provenance read, for one line, on the keystroke that
+// asked for it.
+func TestMemoryShelvesOpenAndALineCarriesItsProvenance(t *testing.T) {
 	a, memory := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
 	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
 	a.slash("/memory")
+	if _, ok := a.memPanel.shelfUnder(); !ok {
+		t.Fatal("the cursor did not open on a shelf heading")
+	}
+	// The biggest shelf opens itself, so enter here ROLLS IT UP.
+	drive(t, a, key("enter"))
+	if strings.Contains(plain(frame(a)), "uses neovim") {
+		t.Fatalf("enter did not close the shelf:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("enter"))
+	drive(t, a, key("down"))
+	if got, ok := a.memPanel.choice(); !ok || got.ID != "m1" {
+		t.Fatalf("down did not land on the line: %#v %v", got, ok)
+	}
 	drive(t, a, key("enter"))
 	if got := plain(frame(a)); !strings.Contains(got, "in 'Editor setup'") || !strings.Contains(got, "tags · editor") {
-		t.Fatalf("expanded row:\n%s", got)
+		t.Fatalf("the line's card:\n%s", got)
 	}
 	drive(t, a, key("enter"))
 	if a.memPanel.edit == nil || a.memPanel.edit.String() != "uses neovim daily" {
@@ -366,13 +440,8 @@ func TestMemoryExpandProvenanceEditAndCancel(t *testing.T) {
 	if len(memory.updated) != 1 || memory.updated[0] != "uses helix" {
 		t.Fatalf("updates were %v", memory.updated)
 	}
-
-	a.memPanel.expanded = ""
-	memory.origins["m1"] = memoryOrigin{at: time.Now().Add(-time.Hour)}
-	a.memPanel.origins["m1"] = memory.origins["m1"]
-	drive(t, a, key("enter"))
-	if got := plain(frame(a)); !strings.Contains(got, "learned") || !strings.Contains(got, "ago") {
-		t.Fatalf("unknown provenance:\n%s", got)
+	if got := plain(frame(a)); !strings.Contains(got, "uses helix") {
+		t.Fatalf("the corrected wording is not on the page:\n%s", got)
 	}
 }
 
@@ -383,13 +452,14 @@ func TestMemoryExpandProvenanceEditAndCancel(t *testing.T) {
 // letter could not be TYPED — a search for a word with a `u` in it lost it and
 // put something back instead. It is on the `→` strip now, offered only while
 // there is something to put back, and `tab` — which cycled the shelves — is the
-// way to the next place, so the shelf moved to `alt+s` (verbstrip.go).
-func TestMemoryForgetUndoIsOneDeepAndScopeCycles(t *testing.T) {
+// way to the next place, so the shelf walk moved to `alt+s` (verbstrip.go).
+func TestMemoryForgetUndoIsOneDeepAndAltSWalksTheShelves(t *testing.T) {
 	a, memory := memoryPanelApp(t, []store.Memory{
 		{ID: "m1", Title: "uses neovim", Text: "uses neovim", Scope: store.MemoryScopeUser},
 		{ID: "m2", Title: "release branch", Text: "release is main", Scope: store.MemoryScopeProject},
 	})
 	a.slash("/memory")
+	drive(t, a, key("down"))
 	drive(t, a, key("delete"))
 	if len(memory.forgotten) != 1 || !strings.Contains(a.memPanel.footer, "forgot 'uses neovim'") {
 		t.Fatalf("forget state: %v %q", memory.forgotten, a.memPanel.footer)
@@ -398,23 +468,31 @@ func TestMemoryForgetUndoIsOneDeepAndScopeCycles(t *testing.T) {
 	if len(memory.restored) != 1 {
 		t.Fatalf("restore calls %v", memory.restored)
 	}
-	drive(t, a, key("delete"))
-	drive(t, a, key("delete"))
-	drive(t, a, key("right"), key("u"))
-	if len(memory.restored) != 2 || memory.restored[1] != "m2" {
-		t.Fatalf("one-deep restore calls %v", memory.restored)
-	}
 
-	// Reload the two rows, then alt+s narrows all to user and project in order.
-	memory.rows[0].Status, memory.rows[1].Status = store.MemoryActive, store.MemoryActive
-	a.memPanel.start(memory.rows)
-	drive(t, a, key("alt+s"))
-	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeUser {
-		t.Fatalf("user scope chose %#v", got)
+	// `alt+s` WALKS THE SHELVES, one open at a time, and ends with them all
+	// rolled up — a state `enter` cannot reach in one press.
+	a.slash("/memory")
+	open := func() []string {
+		var found []string
+		for scope, on := range a.memPanel.shelfOpen {
+			if on {
+				found = append(found, scope)
+			}
+		}
+		return found
+	}
+	first := open()
+	if len(first) != 1 {
+		t.Fatalf("the place opened with %v unrolled, want exactly one", first)
 	}
 	drive(t, a, key("alt+s"))
-	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeProject {
-		t.Fatalf("project scope chose %#v", got)
+	second := open()
+	if len(second) != 1 || second[0] == first[0] {
+		t.Fatalf("alt+s left %v unrolled, want the next shelf after %v", second, first)
+	}
+	drive(t, a, key("alt+s"))
+	if rest := open(); len(rest) != 0 {
+		t.Fatalf("alt+s past the last shelf left %v unrolled", rest)
 	}
 }
 

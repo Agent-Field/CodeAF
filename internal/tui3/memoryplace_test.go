@@ -197,9 +197,23 @@ func TestMemoryCountsObeyTheEmptinessLaw(t *testing.T) {
 	}
 }
 
-func TestMemoryTeachUsesTheExistingEmptyAndOffWords(t *testing.T) {
-	got := strings.Join(memoryTeach(newPalette(tokens.NoColor, false)), "\n")
-	if got != "nothing is remembered yet\n"+memoryOffNote {
-		t.Fatalf("memoryTeach = %q", got)
+// A MACHINE THAT HAS REMEMBERED NOTHING MEETS THE TEACHING AND NOTHING ELSE.
+//
+// There is no second empty state to draw: memory switched off never reaches a
+// body, because the door refuses to open the place and says [memoryOffNote] on
+// the transcript instead. So an empty reading is three sentences, one footer,
+// and no heading over an absence.
+func TestAnEmptyMemoryPlaceIsTheTeachingAndNoFurniture(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	text := memoryPlaceText(readMemory(store.MemoryShelves{}, nil, "", now), 120)
+	for _, sentence := range memoryTeaching {
+		if !strings.Contains(text, sentence) {
+			t.Fatalf("the empty place did not teach %q:\n%s", sentence, text)
+		}
+	}
+	for _, furniture := range []string{"shelves · biggest first", memoryOffNote} {
+		if strings.Contains(text, furniture) {
+			t.Fatalf("the empty place drew %q:\n%s", furniture, text)
+		}
 	}
 }

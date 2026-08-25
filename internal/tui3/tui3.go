@@ -247,9 +247,38 @@ type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 
-	// Memory is the durable memory store behind /memory. Nil means the panel is
-	// unavailable; the live door passes the same store it gave the session.
+	// Memory is the durable memory store behind the memory place. Nil means the
+	// place is unavailable; the live door passes the same store it gave the
+	// session, wrapped so that the two READING methods are spelled the way this
+	// surface asks for them (cmd/aforge's v3MemorySeam).
 	Memory MemoryStore
+
+	// Search is the conversation index the search place reads: one full-text
+	// query over every message this machine has kept ([store.Store.SearchConversations]).
+	//
+	// IT IS A SEAM AND NOT THE STORE for [Options.Memory]'s reason — the door
+	// owns where the database lives — and it is a SECOND seam beside Memory
+	// rather than a method on it because the two are different capabilities that
+	// fail apart: memory turned off in the settings opens no store, and searching
+	// what was said is not memory at all. A build with one and not the other is
+	// the ordinary case, and each place is absent on its own terms.
+	//
+	// Nil is a surface that cannot search, and the place says what it is for
+	// rather than drawing an empty result list.
+	Search SearchStore
+
+	// UsageLedger is the machine-wide spending ledger the spend place reads —
+	// one line per model call, written where the turn was taken
+	// (internal/session's usage_ledger.go). Empty falls through to
+	// [session.UsageLedgerPath], which is where every window on this machine
+	// writes: the field exists so a test can point one surface at a file it
+	// wrote itself, exactly as [Options.ArtifactsIndex] does.
+	//
+	// IT IS A PATH AND NOT A CACHE. The cache holds parsed lines and a file
+	// offset and belongs to ONE surface's goroutine ([session.UsageCache] says
+	// so in as many words), so a door handing one in would be handing over a
+	// thing two surfaces could then share.
+	UsageLedger string
 
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls when no
