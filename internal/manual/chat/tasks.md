@@ -1450,8 +1450,13 @@ instruction it was given, its prose between calls, its thinking blocks, every to
 its arguments and result, anything you steered into it, and the report at the end. A landed
 task's room is the whole transcript, not the summary.
 
-Two bounded things do still hold something back, and both name themselves and open:
+Three bounded things do still hold something back, and every one of them names itself and
+opens:
 
+- the **instruction at the very top** — the brief the task was given — shows its first
+  three lines above a line reading `▸ …14 more lines · ctrl+o` when it is longer than
+  that. It is the only message on this surface that folds; see "The long brief at the top
+  of a task's page" below;
 - a **thinking block** shows three lines until you press `ctrl+e` or click it —
   `⠿ thought for 6s · 148 tok · ctrl+e`;
 - a run of **more tool calls in a row than fit your window** shows a screenful of the
@@ -1459,6 +1464,48 @@ Two bounded things do still hold something back, and both name themselves and op
   up at the top of the page, `ctrl+o`, or a click on that line unfolds the run. (The
   conversation keeps three and its line reads `· ctrl+o`; a task's page keeps as many as
   the window is tall — see "Reading a task's page".)
+
+## The long brief at the top of a task's page — `▸ …N more lines`, view more, expanding and collapsing the instruction, a task description that fills the whole screen
+
+**A long task description no longer takes over the page. It shows its first three lines,
+then a line you can click or press to see the rest.**
+
+The first block on a task's page is the instruction the task was given — the words you
+typed after `/task`, or the brief aforge shaped from them, or a spec you pasted in. On a
+long one that used to be the whole screen: you walked into a task to watch it work and
+were shown the assignment, with the first tool call somewhere below the fold.
+
+So the block folds:
+
+```
+› Port the key table and the escape table out of the old parser, keeping the
+  behaviour identical. The tests in internal/parse must pass unchanged, and
+  the public function names must not move — anything that imports them is
+  ▸ …14 more lines · ctrl+o
+```
+
+- **Three lines are always shown**, and they are the first three, so you can tell what the
+  work was asked for without opening anything.
+- **The number is real.** `…14 more lines` is fourteen more lines *as drawn at your
+  current width* — resize the window and the number changes with it.
+- **Click the `▸ …14 more lines · ctrl+o` line to open it**, or press `ctrl+o`. Opening
+  shows the whole instruction, however long it is. There is no second cap behind it.
+- **The line stays after you open it**, reading `▾ …14 fewer · ctrl+o`. Click it or press
+  `ctrl+o` again to fold it back.
+- **A short instruction has no such line at all** and is simply drawn whole. Nothing is
+  hidden and there is nothing to press.
+
+**Only the instruction folds.** Anything you steer into a running task afterwards, and
+every message you send out in the main thread, is drawn in full and has no fold line —
+your own words in a conversation are the one thing this surface will not hide.
+
+**Nothing is remembered.** Opening the instruction is a thing you did to the page you are
+looking at, not a setting: leave the task and come back and it is folded again. There is
+no preference for it and nothing is written to disk.
+
+`ctrl+o` is a chord, so it costs you no character — you can press it with a half-typed
+sentence in the box and carry on. The three visible lines are drawn exactly as they would
+be if nothing were folded.
 
 Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
 there is no work chip for it to mean instead.

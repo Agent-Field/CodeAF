@@ -741,7 +741,12 @@ func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
 			// A node's first "message" is the instruction it was given, so a page
 			// opens on turn one the way a conversation does.
 			turn++
-			out = append(out, entry{kind: entryUser, text: said, turn: turn})
+			// AND THE FIRST OF THEM IS THE INSTRUCTION THIS NODE WAS GIVEN, marked
+			// here because here is where it is knowable: it is the message that
+			// opened turn one, and everything after it is somebody steering work that
+			// was already running. It is the one message on this surface that folds,
+			// and brieffold.go states why.
+			out = append(out, entry{kind: entryUser, text: said, turn: turn, brief: turn == 1})
 
 		case "assistant":
 			if text != "" {

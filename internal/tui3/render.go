@@ -37,6 +37,12 @@ const (
 	hitFold             // the "N earlier tool calls" line: click expands the turn
 	hitWorkFold         // one completed turn's folded machinery
 	hitMore             // the "… N more lines" foot of a capped expansion: click lifts the cap
+	// hitBrief is the door under a node's folded instruction (brieffold.go):
+	// click opens the rest of it, click again folds it back. It is a hit of its
+	// own rather than another hitMore because the two answer the same gesture
+	// with different things — hitMore lifts a cap and can never put it back,
+	// while a fold is a thing a person opens AND shuts.
+	hitBrief
 	hitTask             // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
@@ -486,6 +492,19 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			out = append(out, drawn)
 		}
+		// AND THE INSTRUCTION'S DOOR, under the lines it is holding back
+		// (brieffold.go). It is emitted HERE, and not by the block, for the reason
+		// the worked chip above is: a row a click acts on is screen geometry, and
+		// this pass is where blocks become screen geometry. It carries the block's
+		// index so the press knows which instruction it opened, and it is drawn
+		// whether the fold is shut or open — an opened fold keeps its door, which
+		// is how it is shut again.
+		if hidden := briefFoldHidden(e, width); hidden > 0 {
+			out = append(out, row{
+				text:  a.briefFoldLine(hidden, !e.full, width),
+				entry: i, hit: hitBrief,
+			})
+		}
 		wasCluster = false
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
@@ -564,6 +583,10 @@ func (a *app) isHot(r row) bool {
 		return r.entry >= 0 && r.entry == a.hot.entry
 	case hoverFold:
 		return (r.hit == hitFold || r.hit == hitWorkFold) && r.turn == a.hot.turn
+	case hoverBrief:
+		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
+		// person's own words, and nothing happens when they are pressed.
+		return r.hit == hitBrief && r.entry == a.hot.entry
 	}
 	return false
 }
@@ -632,6 +655,17 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	return e.rows
 }
 
+// userLead is the column the person's own words are drawn in: the turn glyph on
+// the first row and this much alignment under it, so every continuation line
+// sits under the TEXT rather than under the mark ([app.renderEntry]'s entryUser
+// case). It is named because the fold that counts those lines has to wrap at
+// exactly the width the paint wraps at (brieffold.go's [briefFoldHidden]), and a
+// literal 2 in two files is a literal 2 that will drift.
+const userLead = "  "
+
+// userLeadCols is what that lead costs, in cells.
+const userLeadCols = len(userLead)
+
 // renderEntry paints one block. Nothing here appends a blank row — see
 // [app.layout].
 //
@@ -661,10 +695,17 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// the neutral narr tier, its answer is ink), so the hue stays an
 		// identity. The body was bold ink once before, and bold stays wrong
 		// for the stated reason: MARKDOWN OWNS WEIGHT.
-		body := wrap(e.text, width-2)
+		body := wrap(e.text, width-userLeadCols)
+		// AND A NODE'S INSTRUCTION SHOWS ITS OPENING AND NOT ALL OF ITSELF
+		// (brieffold.go). The cut is made on the WRAPPED lines, so it lands where
+		// a reader's eye would land rather than at some count of bytes; the door
+		// under it is drawn by the pass that turns these rows into screen
+		// geometry ([app.deckRows]), because a row a click acts on is that pass's
+		// business and never a block's.
+		body = briefFoldCut(e, body)
 		out := make([]string, 0, len(body))
 		for i, line := range body {
-			lead := "  "
+			lead := userLead
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
