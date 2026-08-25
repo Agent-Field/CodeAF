@@ -250,6 +250,11 @@ request, the line shows its identity mark and name alone rather than an empty qu
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
 
+**That reply is priced exactly like one you typed.** It climbs the same three points, has the
+same ceiling, and is handed to a task the same way — see *An answer that runs long is read and
+moved* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
+minutes with nobody watching and then leave the session idle for seven and a half hours.
+
 ## Which task is this answer about
 
 Read the dim line immediately above the answer. Its task mark and short name are the same
@@ -397,6 +402,13 @@ The checker has no shared context and no memory of the work. Its whole world is 
 acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
 of files written, and where to look. **The brief is deliberately withheld** so it grades
 the contract, not the effort.
+
+**On work that started itself, the acceptance is your own message.** Nobody groomed a
+done-condition for a task aforge started out of a reply, so what the checker is held against
+is your request in full, framed as "everything asked for below is actually done — all of it,
+not the part that was easiest to reach". Before that it was a generic line pointing at the
+task's name, and on a long piece of work that meant a request being accepted as met the moment
+the small piece the reply happened to be holding was finished.
 
 What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist —
 `go test`, `go build`, `go vet`, `git diff`, `git log`, `git status`, `git show`, `pwd`,

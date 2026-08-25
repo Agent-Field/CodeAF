@@ -139,6 +139,22 @@ import (
 // saving.
 func init() { roles.Register(roles.RoleMarkReader, roles.TierMastermind) }
 
+// The handoff writer is registered here for the same reason and on the same
+// terms: beside the call it belongs to, on the mastermind tier, and CREW-ONLY —
+// [Agent.callRole] is given an empty `sessionDefault`, so an install with no
+// mastermind gets no handoff writer at all rather than a fall-through to the
+// conversation's own model.
+//
+// THAT REFUSAL IS THE WHOLE POINT OF THE ROLE. What this writes is a
+// REPLACEMENT for a document the running model already wrote badly: measured on
+// a real ten-hour run, the turn's own model answered the dowry ask with 5,882
+// characters of degeneration — 85 `Also:` clauses of which 39 were distinct, 62%
+// of it one six-sentence loop, and not one term from the task's own domain in any
+// of it. Falling back to that same model here would be asking the author of the
+// broken document to be its editor, which is the reading this file has already
+// been measured being wrong about twice ([Agent.readMark]).
+func init() { roles.Register(roles.RoleHandoff, roles.TierMastermind) }
+
 const (
 	// checkpointPrice is what handing this turn over costs, in the same unit the
 	// turn is measured in: FINISHED TOOL ROUNDS.
@@ -207,6 +223,42 @@ const (
 	// this has been shown, each of which is a single unspaced token.
 	checkpointBriefWords = 4
 
+	// checkpointBriefSentences is how many sentences a brief must carry before
+	// the harness will judge it for REPETITION at all ([briefRepeats]).
+	//
+	// Eight, because a variety ratio over a short document is noise: a four-line
+	// brief whose two middle lines both begin "the parser" is a writer being
+	// consistent, and refusing it would cost a regeneration on the honest case
+	// this check exists to catch the dishonest one of. Every measured degeneration
+	// was tens of sentences long — the loop is what makes it long — so the floor
+	// costs the check nothing it was built to see.
+	checkpointBriefSentences = 8
+
+	// checkpointBriefVariety is the share of a brief's sentences that must be
+	// DISTINCT, as a percentage, before it may become somebody's instruction.
+	//
+	// A model that has run out of things to say does not stop; it loops. The
+	// measured brief was 85 clauses of which 39 were distinct — 45% — and
+	// [briefIsProse] passed it without a murmur, because a repeat loop is words
+	// with spaces between them. So the second structural test is about the
+	// document rather than the token: prose written by somebody who still had
+	// something to say repeats almost nothing, and sixty sits far above every
+	// honest brief and far below every degeneration this has been shown.
+	//
+	// IT IS STRUCTURE AND NEVER CONTENT, which is the law this whole file is held
+	// to. Nothing here reads what the brief is about, asks whether it names the
+	// domain, or scores it for usefulness — a rule that did would be a rule tuned
+	// to one kind of work.
+	checkpointBriefVariety = 60
+
+	// checkpointBriefTries is how many times a brief may be asked for before the
+	// harness stops paying for one. Two: one draft and one regeneration, because
+	// a mastermind that looped once may not loop twice and a mastermind that
+	// looped twice is a mastermind that is going to. The fallback ladder underneath
+	// ([Agent.handOverRunningTurn]) is what catches the second failure, and it
+	// costs nothing.
+	checkpointBriefTries = 2
+
 	// checkpointSketchTokens is the sidecar's whole budget. What it is asked for
 	// is one line of shape and one sentence naming the letters, and a reader that
 	// runs out of room halfway through the shape writes a line the parser reads as
@@ -235,6 +287,18 @@ const (
 	// is, and the ceiling still stands behind both.
 	checkpointSketchWindow = 30 * time.Second
 
+	// checkpointHandoffWindow is how long the mastermind gets to WRITE the brief,
+	// and it is longer than the sketch's window for the one honest reason: what is
+	// being asked for is a document of up to [checkpointBriefTokens] rather than a
+	// line of shape, and a bound that fits a sketch would time out most of the
+	// documents this exists to produce.
+	//
+	// It is still a person's patience and not a generous bound. It stands at the
+	// END of a turn that has already run to its ceiling — minutes of tool calls —
+	// and the answer to missing it is the fallback ladder, which is the draft the
+	// running model already wrote, then the person's own sentence. Nothing hangs.
+	checkpointHandoffWindow = 90 * time.Second
+
 	// checkpointSketchParts is how many top-level parts in the shape make a SPLIT.
 	// Two: one part is one job, and the only question being asked is whether what
 	// is left can be held by more than one pair of hands.
@@ -259,14 +323,23 @@ const (
 	// the largest line on their bill — and all three reads answered "carry on".
 	//
 	// So the reader is shown an ACCOUNT of the work instead ([checkpointDigest]):
-	// the ask, one line per tool call, what has been written, and the last thing
-	// said. Five thousand tokens is more room than any of those three turns
-	// actually needed and a fifteenth of what the smallest of them was charged
-	// for, which puts a read back at cents — and the thing being asked for is a
-	// shape, which is a judgement about the SPREAD of the work rather than about
-	// its contents. Nothing in a tool result changes the shape of what is left;
-	// what changes it is what has been asked, what has been done, and what is
-	// still open.
+	// the ask, one line per tool call, WHAT CAME BACK FROM THE NEWEST OF THOSE
+	// CALLS, what has been written, and the last thing said. Five thousand tokens
+	// is more room than any of those three turns actually needed and a fifteenth of
+	// what the smallest of them was charged for, which puts a read back at cents.
+	//
+	// AND IT USED TO CARRY NO RESULTS AT ALL, ON AN ARGUMENT THAT WAS MEASURED
+	// FALSE. The argument was that nothing inside a tool result changes the SHAPE
+	// of what is left — that the shape is decided by what was asked, what was done
+	// and what is still open. On a real ten-hour benchmark run that turned the
+	// reader into the one participant who could not see the evidence: the turn had
+	// `Loaded 68186 golden test points … Passed: 0` in front of it, had enumerated
+	// twelve protocol methods and had ninety-seven compile errors on the screen,
+	// and the reader — shown a ledger of verbs and paths — sketched a serial chain
+	// three times running. A result is not noise when it is the only statement of
+	// how much of the ask is actually discharged. So the results ride, bounded hard
+	// (see [checkpointResultBytes]) and newest-first, and the ledger keeps saying
+	// what the older calls touched.
 	checkpointDigestTokens = 5000
 
 	// checkpointDigestBytes is that bound in the unit the builder can actually
@@ -285,6 +358,23 @@ const (
 	// the reader from: it is answered with the path, because the argument that
 	// names the work is never the argument that carries the bytes.
 	checkpointLedgerBytes = 80
+
+	// checkpointResultBytes is how much of ONE tool result the reader is shown,
+	// and it is the SINGLE SOURCE for that bound — no other file may spell a
+	// second one, by the law CLAUDE.md states about a number written twice.
+	//
+	// FOUR HUNDRED IS A VERDICT AND NOT AN OUTPUT. What a result says about the
+	// ask is almost never in its middle: it is `Passed: 0 / 68186`, `97 errors`,
+	// `no such file`, the three lines a suite prints after it has run. Enough for
+	// those and nowhere near enough for a file's contents, which is what keeps a
+	// digest of ninety calls inside [checkpointDigestBytes] with the ledger whole.
+	//
+	// AND IT IS THE TAIL THAT IS KEPT, from the end backwards. A tool's opening
+	// bytes are its preamble — the command echoed back, the header, the first of
+	// four hundred matches — and its closing bytes are what it concluded. A digest
+	// that kept the head would show the reader that a suite had started and never
+	// that it had failed.
+	checkpointResultBytes = 400
 
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
@@ -308,11 +398,23 @@ const (
 // applied to a document a model reads: an empty section is an invitation to
 // answer about the emptiness.
 const (
-	checkpointDigestAsked   = "WHAT WAS ASKED"
-	checkpointDigestDone    = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	checkpointDigestAsked = "WHAT WAS ASKED"
+	checkpointDigestDone  = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	// checkpointDigestFound heads the results, and its heading SAYS THE ORDER
+	// because the order is not the one a reader would assume. The newest call is
+	// printed first, so a reader that runs out of attention has spent it on the
+	// evidence in front of the turn rather than on the evidence behind it — and
+	// the same order is what the fitting drops from, oldest end first.
+	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
 	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
 	checkpointDigestSaid    = "THE LAST THING SAID"
 )
+
+// checkpointResultArrow joins one call to what came back from it. It is a
+// character and not a word for the digest's own reason: a heading that named
+// what a result was would be a sentence about the kind of work, and an arrow is
+// the same mark the sketches are drawn with.
+const checkpointResultArrow = " → "
 
 // checkpointSketchAsk is what the sidecar is asked at every mark, and it is
 // PINNED WORD FOR WORD because the wording is the measurement.
@@ -446,6 +548,98 @@ const checkpointHandoffAsk = "[handing over] This is being handed to somebody wh
 // prose is one a model folds into a sentence. Nothing person-facing carries it:
 // a turn that answers it is a turn that simply carries on to its own end.
 const checkpointNothingLeft = "NOTHING LEFT TO DO"
+
+// ── what the handoff writer is shown, and asked ─────────────────────────────
+
+// The sections of the message [Agent.writeHandoff] puts in front of the
+// mastermind. They are SHOUTED and named for what each one IS rather than for
+// what it is worth, because the ask below is what says which of them wins.
+//
+// THE DRAFT IS LAST AND IT IS NAMED AS A DRAFT. It was written by the model that
+// has just spent the turn, which is the only reader in the building holding the
+// findings — and on the measured run it was also the model that had run out of
+// anything to say. A section headed with the word "draft" is a document the
+// writer may take from and may throw away; a section headed "the brief" is one it
+// will paraphrase.
+const (
+	checkpointHandoffAskedHeading = "WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS"
+	checkpointHandoffStateHeading = "WHERE THE CONVERSATION HAD GOT TO BEFORE THIS TURN"
+	checkpointHandoffWorkHeading  = "WHAT THIS TURN ACTUALLY DID, AND WHAT CAME BACK"
+	checkpointHandoffDraftHeading = "A DRAFT THE MODEL THAT DID THE WORK WROTE, WHICH MAY BE WRONG OR MAY BE EMPTY"
+)
+
+// checkpointHandoffWriteAsk is what the MASTERMIND is asked for, and it demands
+// exactly the four things [checkpointHandoffAsk] demands of the draft.
+//
+// THE CONTRACT IS THE SAME CONTRACT ON PURPOSE. A worker's instruction has one
+// shape on this road — what is left, what is already known, what has been ruled
+// out, how anybody can tell it is done — and a second door that asked for a
+// different four would be two kinds of brief in a graph whose readers cannot tell
+// which one they are holding.
+//
+// AND IT NAMES THE ONE THING IT MAY NOT DO. The person's own words are above it,
+// verbatim, and they are what the work is finished against; a writer that
+// narrowed the ask down to the piece the turn happened to be holding is the
+// measured failure this whole role exists to correct, where a ten-hour ask became
+// "make it compile".
+//
+// IT IS ASKED FOR PROSE AND NOT FOR HEADINGS. The reader of this document is a
+// worker opening on it cold, and a brief with four shouted headings over four
+// empty sections is a form somebody filled in.
+const checkpointHandoffWriteAsk = "[write the handoff] The work above is being handed to somebody who will finish it, and they " +
+	"cannot see any of this — not the conversation, not the tool results, not the draft. Write their instruction " +
+	"and nothing else: what is left to do, what is already known that they would otherwise have to find out " +
+	"again, what has been ruled out, and how anybody could tell when it is done. Finish against the person's own " +
+	"words at the top, never against whatever the draft happens to be holding. Do not greet them, do not " +
+	"describe this conversation, and do not repeat yourself."
+
+// checkpointRemainsAsk is what the mark's reader is asked AT THE END OF A TURN,
+// and it is the other half of defect four: a turn ends, and nothing has ever
+// checked whether the ask ended with it.
+//
+// IT IS THE SAME READER, THE SAME DIGEST AND THE SAME REMAINS CONTRACT as the
+// ceiling's ([checkpointNothingLeft]), which is why it is a second ask and not a
+// second mechanism. What differs is the shape of the answer: a mark wants a
+// DRAWING because the harness parses it for width, and this wants ONE LINE
+// because what the harness does with it is hand it back to the running model as
+// the thing still to do.
+//
+// AND IT NAMES NOTHING ABOUT THE KIND OF WORK, by the law [checkpointSketchAsk]
+// is held to.
+const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
+	"The model working on it has just stopped. In one line, say what of the ASK is still not done. " +
+	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
+	" and write nothing else at all. Otherwise write that one line and nothing else: no preamble, " +
+	"no list, no question."
+
+// checkpointCarryOnNote is the ONE line a person reads when a turn stopped and
+// the ask had not.
+//
+// It is the fourth in the register ([checkpointSplitNote], [checkpointCeilingNote],
+// task.go's [taskEscalationNote]): an observation, a middle dot, a promise, all
+// lowercase, no full stop, no machinery. WHAT IT OBSERVES IS THE ONE HONEST THING
+// AT THIS MOMENT — somebody who is not the running model read the ask against the
+// work and said the ask is not finished — and what it promises is the only thing
+// this door does, which is carry on rather than start anything.
+const checkpointCarryOnNote = "the ask is not finished · carrying on rather than stopping here"
+
+// checkpointCarryOnLead opens the synthetic continuation the running model is
+// handed, and it is the reader's line that follows it.
+//
+// IT SAYS WHO IS SPEAKING, because the alternative is a model reading an
+// instruction in the person's lane that the person did not type and answering it
+// as though they had — "you asked me to…" over a sentence nobody said. This is
+// the harness's own line and it says so, in the same plain register the loop
+// detector's notes use.
+//
+// AND ITS MARKER IS ITS OWN. It opened with [checkpointRemainsAsk]'s marker for
+// exactly one measured minute: the continuation then sat at the tail of the very
+// next request, and anything reading a request's last message to tell the ask
+// apart from the answer read the continuation as the question. Two lanes, two
+// markers.
+const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
+	"Somebody reading the work against the request says this is what is left. " +
+	"Carry on with it, and do not summarise what you have already done:\n"
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -1023,9 +1217,15 @@ const (
 //     against it and it is the one thing on this road nobody may rewrite
 //     (task_brief.go).
 //   - THE LEDGER: one line per tool call, the tool's name and the argument that
-//     says what it touched. WITH NO RESULTS AT ALL — that is where the tokens went
-//     and it is also where the noise is. What a search returned does not change
-//     the shape of what is left; that the search happened does.
+//     says what it touched. It is the COMPLETE account — ninety calls at eighty
+//     bytes is seven thousand — and it is fitted before the results for that
+//     reason: a reader that has lost the far end of the history has lost less than
+//     a reader that has lost the newest thing it learned.
+//   - WHAT CAME BACK, from the newest calls, each clipped to
+//     [checkpointResultBytes] and printed newest-first. This is where the evidence
+//     is. A ledger says a suite was run; a result says it reported `Passed: 0`,
+//     which is the difference between a reader that can subtract the finished part
+//     of the ask and a reader guessing at it.
 //   - WHAT HAS BEEN WRITTEN OR CHANGED, deduplicated out of the same ledger,
 //     because a thing already produced is a part of the ask already discharged and
 //     that is exactly what the reader is being asked to subtract.
@@ -1041,7 +1241,7 @@ const (
 // AN EMPTY DIGEST IS THE HONEST ANSWER TO AN EMPTY TURN, and [Agent.readMark]
 // spends nothing on one.
 func checkpointDigest(asked string, messages []ai.Message) string {
-	ledger, written := checkpointLedger(messages)
+	ledger, written, results := checkpointLedger(messages)
 
 	var head strings.Builder
 	if asked = strings.TrimSpace(asked); asked != "" {
@@ -1085,7 +1285,7 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		elision := func(dropped int) string {
 			return fmt.Sprintf("… and %d earlier steps\n", dropped)
 		}
-		kept, dropped := checkpointLedgerThatFits(ledger,
+		kept, dropped := checkpointNewestThatFit(ledger,
 			checkpointDigestBytes-out.Len()-tail.Len()-len(elision(len(ledger))))
 		if dropped > 0 {
 			out.WriteString(elision(dropped))
@@ -1096,6 +1296,39 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		}
 		out.WriteString("\n")
 	}
+	// AND THE RESULTS TAKE WHAT ROOM IS LEFT, WHICH IS THE WHOLE OF THE PRIORITY
+	// RULE AND IT IS AN ORDER OF EVICTION RATHER THAN AN OPINION.
+	//
+	// The boundary sections are fitted first, as they always were. Then the ledger,
+	// which is bounded per line and is the complete account of what was touched.
+	// Then the results, newest-first, into whatever is left — so a digest under
+	// pressure DROPS THE OLDEST RESULTS FIRST, and only a digest whose ledger alone
+	// cannot fit goes on to drop the oldest ledger lines. Nothing can push out the
+	// ask, which is the one thing on this road nobody may rewrite.
+	//
+	// A HEADING WITH NOTHING UNDER IT IS NOT WRITTEN AT ALL, so a turn whose
+	// results were all squeezed out says nothing about results rather than heading
+	// an empty section.
+	if len(results) > 0 {
+		elision := func(dropped int) string {
+			return fmt.Sprintf("… and %d earlier results\n", dropped)
+		}
+		room := checkpointDigestBytes - out.Len() - tail.Len() -
+			len(checkpointDigestFound) - len("\n\n") - len(elision(len(results)))
+		kept, dropped := checkpointNewestThatFit(results, room)
+		if len(kept) > 0 {
+			out.WriteString(checkpointDigestFound)
+			out.WriteString("\n")
+			for index := len(kept) - 1; index >= 0; index-- {
+				out.WriteString(kept[index])
+				out.WriteString("\n")
+			}
+			if dropped > 0 {
+				out.WriteString(elision(dropped))
+			}
+			out.WriteString("\n")
+		}
+	}
 	out.WriteString(tail.String())
 	// The final clip is a backstop and not the policy: the fitting above is what
 	// keeps the sections whole, and this is what guarantees the bound whatever a
@@ -1103,10 +1336,15 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 	return clip(strings.TrimSpace(out.String()), checkpointDigestBytes)
 }
 
-// checkpointLedgerThatFits keeps the NEWEST lines that fit in room, and reports
+// checkpointNewestThatFit keeps the NEWEST lines that fit in room, and reports
 // how many older ones it dropped. Room that is gone already keeps nothing, which
 // is the honest answer rather than one line over the bound.
-func checkpointLedgerThatFits(lines []string, room int) ([]string, int) {
+//
+// IT SERVES BOTH GROWING SECTIONS — the ledger and the results — because the
+// eviction rule is one rule: the far end of a turn is history a reader can infer,
+// and the near end is the work in front of it. Two copies of this arithmetic
+// would be two answers to the question of what a digest drops first.
+func checkpointNewestThatFit(lines []string, room int) ([]string, int) {
 	spent := 0
 	first := len(lines)
 	for index := len(lines) - 1; index >= 0; index-- {
@@ -1120,15 +1358,26 @@ func checkpointLedgerThatFits(lines []string, room int) ([]string, int) {
 	return lines[first:], first
 }
 
-// checkpointLedger walks the transcript once and answers the two questions the
-// digest asks of it: what was DONE, one line per tool call, and what of that was
-// WRITTEN.
+// checkpointLedger walks the transcript once and answers the three questions the
+// digest asks of it: what was DONE, one line per tool call; what CAME BACK from
+// each of those calls; and what of it was WRITTEN.
 //
-// The two come out of one pass because they are one fact read twice — a file
-// written is a `write` in the ledger — and because a second walk could disagree
-// with the first the day a tool is renamed.
-func checkpointLedger(messages []ai.Message) (ledger, written []string) {
+// The three come out of one pass because they are one fact read three ways — a
+// file written is a `write` in the ledger and a confirmation in the results — and
+// because a second walk could disagree with the first the day a tool is renamed.
+//
+// A RESULT IS TIED TO ITS CALL BY ID AND NEVER BY POSITION. A batch's results are
+// recorded in the order the calls were issued rather than the order they finished
+// (loop.go), a warm call may have started a step early, and a turn that was
+// interrupted mid-batch has calls with no result at all. So a result whose id
+// names no call this walk has seen is dropped rather than attached to whichever
+// line happens to be beside it: a digest that credited one tool's output to
+// another tool's line would be evidence that is worse than none.
+func checkpointLedger(messages []ai.Message) (ledger, written, results []string) {
 	seen := make(map[string]bool)
+	// The line each call wrote, by id, so its result can be printed under the same
+	// words the ledger used and a reader can match the two.
+	calls := make(map[string]string)
 	for _, message := range messages {
 		for _, call := range message.ToolCalls {
 			name := strings.TrimSpace(call.Function.Name)
@@ -1140,6 +1389,9 @@ func checkpointLedger(messages []ai.Message) (ledger, written []string) {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
+			if id := strings.TrimSpace(call.ID); id != "" {
+				calls[id] = line
+			}
 			if !checkpointWriters[name] {
 				continue
 			}
@@ -1150,8 +1402,45 @@ func checkpointLedger(messages []ai.Message) (ledger, written []string) {
 			seen[path] = true
 			written = append(written, path)
 		}
+		if message.Role != "tool" {
+			continue
+		}
+		line, known := calls[strings.TrimSpace(message.ToolCallID)]
+		if !known {
+			continue
+		}
+		var came strings.Builder
+		for _, part := range message.Content {
+			came.WriteString(part.Text)
+		}
+		if tail := checkpointResultTail(came.String()); tail != "" {
+			results = append(results, line+checkpointResultArrow+tail)
+		}
 	}
-	return ledger, written
+	return ledger, written, results
+}
+
+// checkpointResultTail is the END of what one call returned, bounded by
+// [checkpointResultBytes] and marked where it was cut.
+//
+// IT CUTS FROM THE FRONT, which is the opposite of [clip] and is the whole point:
+// what a tool concluded is in its last lines, and a result kept from the head
+// would show a reader that a suite had started and never that it had failed. The
+// cut walks forward to a rune boundary for [clip]'s reason — a string cut through
+// a multi-byte character is not a string anybody can read.
+//
+// A RESULT THAT SAID NOTHING PRODUCES NO LINE, by the emptiness law: a heading
+// pointing at an empty arrow is an invitation to answer about the emptiness.
+func checkpointResultTail(came string) string {
+	came = strings.TrimSpace(came)
+	if len(came) <= checkpointResultBytes {
+		return came
+	}
+	cut := len(came) - checkpointResultBytes + len("…")
+	for cut < len(came) && !utf8RuneStart(came[cut]) {
+		cut++
+	}
+	return "…" + came[cut:]
 }
 
 // checkpointWriters are the verbs on this belt that CHANGE something a person
@@ -1163,30 +1452,121 @@ func checkpointLedger(messages []ai.Message) (ledger, written []string) {
 // rather than one that says something untrue.
 var checkpointWriters = map[string]bool{"write": true, "edit": true}
 
-// checkpointArgumentKeys is what to show of ONE tool call, in the order the
-// answer is looked for: the thing being run, then the thing being looked for,
-// then the thing being touched.
+// checkpointArgument is the one clipped thing a ledger line says about a call,
+// and IT KNOWS NO TOOL'S NAME FOR ANYTHING.
 //
-// THE ORDER IS THE POINT AND IT IS NOT ALPHABETICAL. A search names itself by its
-// pattern and a read by its path; asking for the path first would draw every
-// search in a turn as the same directory over and over.
-var checkpointArgumentKeys = []string{"command", "query", "pattern", "path", "url"}
-
-// checkpointArgument is the one clipped thing a ledger line says about a call.
+// IT USED TO BE A LIST OF KEYS — command, query, pattern, path, url — and the
+// list was measured being the wrong shape of rule. `fork` (fork.go) takes
+// `parts`, so a turn that had already fanned out twice was drawn in the digest as
+// two bare lines reading `fork`, and the reader sketched serial work over the top
+// of a turn that was demonstrably already parallel. A list of anticipated keys is
+// a list that is wrong about every verb added after it was written, silently, in
+// the one document a second mind reads the turn out of.
 //
-// A CALL WHOSE ARGUMENTS NAME NONE OF THE KEYS still gets a line, off the raw
-// arguments — clipped like everything else, so a tool nobody anticipated is
-// described badly rather than not at all. What it can never do is carry a
-// payload: `write` names a path here, which is the key that stands ahead of its
-// content precisely because the content is the thing this digest exists to leave
-// out.
+// SO IT READS THE ARGUMENTS AS THEY CAME AND TAKES THE FIRST THING THAT SAYS
+// ANYTHING: the first string, or the first array rendered as its elements. Wire
+// order rather than a preference, because the order a model writes its arguments
+// in IS the order it thinks about them — a search leads with its pattern and a
+// read with its path — and a harness cannot know the order for a verb it has
+// never seen.
+//
+// AND IT STILL CANNOT CARRY A PAYLOAD, which is the one thing the old list bought
+// that had to be kept. The first pass skips any argument that is longer than the
+// bound a ledger line is held to, so `write`'s content — the argument this digest
+// exists to leave out — never wins over the path beside it, whichever order they
+// arrive in. Only if nothing shorter says anything does the second pass take the
+// long one, clipped; and a call whose arguments are an object of numbers and
+// booleans falls through to the compacted JSON, so a verb nobody anticipated is
+// described badly rather than not at all.
 func checkpointArgument(arguments string) string {
-	for _, key := range checkpointArgumentKeys {
-		if value := checkpointArgumentNamed(arguments, key); value != "" {
-			return clip(value, checkpointLedgerBytes)
-		}
+	if value := checkpointFirstArgument(arguments, true); value != "" {
+		return value
+	}
+	if value := checkpointFirstArgument(arguments, false); value != "" {
+		return clip(value, checkpointLedgerBytes)
 	}
 	return clip(strings.Join(strings.Fields(arguments), " "), checkpointLedgerBytes)
+}
+
+// checkpointFirstArgument walks one call's arguments IN THE ORDER THEY WERE
+// WRITTEN and answers the first value that says what is being touched.
+//
+// A decoder rather than a map, because a map has no order and the order is the
+// whole of the rule above. Everything that is not an object — arguments a model
+// sent as a bare string, as an array, as nothing at all — answers "" and lets the
+// caller fall through to the compacted form.
+//
+// short asks for the first value that FITS a ledger line; false takes the first
+// that exists. The two passes are one function because a second walk could
+// disagree with the first about what order the arguments were in.
+func checkpointFirstArgument(arguments string, short bool) string {
+	decoder := json.NewDecoder(strings.NewReader(arguments))
+	opening, err := decoder.Token()
+	if err != nil {
+		return ""
+	}
+	if delimiter, ok := opening.(json.Delim); !ok || delimiter != '{' {
+		return ""
+	}
+	for decoder.More() {
+		// The key, which is read and thrown away: this is deliberately blind to
+		// what an argument is CALLED.
+		if _, err := decoder.Token(); err != nil {
+			return ""
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return ""
+		}
+		said := checkpointArgumentValue(value)
+		if said == "" || (short && len(said) > checkpointLedgerBytes) {
+			continue
+		}
+		return said
+	}
+	return ""
+}
+
+// checkpointArgumentValue renders ONE argument: a string as itself, an array as
+// its elements — strings bare, anything else compacted — and everything else as
+// nothing at all.
+//
+// A NUMBER AND A BOOLEAN SAY NOTHING ABOUT WHAT WAS TOUCHED. `{"lines": 200,
+// "path": "./x"}` must draw the path, and a rule that took the first value of any
+// kind would draw `200`. So the scalar kinds that cannot name work are skipped
+// and the walk goes on to the next argument.
+func checkpointArgumentValue(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return ""
+	}
+	switch trimmed[0] {
+	case '"':
+		var value string
+		if json.Unmarshal(raw, &value) != nil {
+			return ""
+		}
+		return strings.TrimSpace(value)
+	case '[':
+		var elements []json.RawMessage
+		if json.Unmarshal(raw, &elements) != nil {
+			return ""
+		}
+		said := make([]string, 0, len(elements))
+		for _, element := range elements {
+			var text string
+			if json.Unmarshal(element, &text) == nil {
+				text = strings.TrimSpace(text)
+			} else {
+				text = strings.Join(strings.Fields(string(element)), " ")
+			}
+			if text != "" {
+				said = append(said, text)
+			}
+		}
+		return strings.TrimSpace(strings.Join(said, " "))
+	}
+	return ""
 }
 
 // checkpointArgumentNamed reads one string field out of a call's arguments, and
@@ -1294,15 +1674,35 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 //     with nobody watching has no one to read the line, and a ceiling there would
 //     end a turn somebody is waiting on the answer of with a task nobody will see
 //     land.
-//   - AND ONLY WHAT A PERSON TYPED. A woken turn and an authored one are the
-//     session talking to itself — a task's report landing, a standing run's own
-//     instruction — and both already carry budgets of their own. Ending one of
-//     those and starting a task against it would be the session spending money on
-//     its own sentence, which is the law harness.go, route_judge.go and
-//     task_brief.go all keep.
+//   - AND NOT A LINE THE SESSION WROTE THAT NOBODY OWES AN ANSWER FOR. An ambient
+//     note — a standing run's own instruction, a delta nobody has to reply to — is
+//     the session talking to itself, and ending one of those with a task would be
+//     the session spending money on its own sentence.
 //   - AND NOT MID-INTERRUPT. A turn the person has just stopped is a turn they
 //     have said they do not want; moving its remains onto the rail would be
 //     answering an interrupt with a task.
+//
+// AND A WOKEN TURN IS METERED NOW, WHICH IS A REVERSAL AND A MEASURED ONE.
+//
+// The rule used to be "only what a person typed", and both of the shapes a wake
+// arrives in were refused by it: a note the model owes an answer for is `wake`,
+// and the turn it starts opens with an EMPTY message because the note itself is
+// on the steering queue ([Agent.wakeLocked]). So the first two lines of the old
+// gate turned the meter off for every turn a landing task began.
+//
+// ON A REAL TEN-HOUR RUN THAT WAS THE WHOLE FAILURE. A task landed, the wake note
+// started a turn, and that turn made 127 tool calls over 46 minutes with no mark,
+// no ceiling and no handover — it ended when the model stopped talking, and the
+// harness then sat idle for the remaining seven and a half hours of the ask. The
+// argument for the refusal was that a woken turn "already carries a budget of its
+// own", and it does not: a budget belongs to the TASK that landed, and the
+// conversation turn that reads its report is an ordinary chat turn with an
+// ordinary chat turn's total absence of governance.
+//
+// SO THE ONLY THING THAT STILL DECIDES IS WHETHER ANYBODY IS OWED AN ANSWER. A
+// wake is owed one by definition ([userMessage.wake]) and an empty opening
+// message is what a wake looks like from in here, so both are metered exactly as
+// a typed message is — same ladder, same price, same ceiling, same handover.
 //
 // IT IS ALSO WHAT STOPS THE SIDECAR BEING BILLED ON THOSE TURNS, because it
 // stands in front of the meter and therefore in front of every call this file
@@ -1311,7 +1711,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	if a.config.InTask || !a.config.AskConsent {
 		return false
 	}
-	if user.empty() || user.wake || user.authored {
+	if user.authored && !user.wake {
 		return false
 	}
 	if ctx.Err() != nil {
@@ -1320,6 +1720,149 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.closed
+}
+
+// ── a turn ends; the ask does not ───────────────────────────────────────────
+
+// checkpointReopen is the FIFTH moment, and it is the only one in this file that
+// looks at a turn AFTER the model has stopped rather than while it is running.
+//
+// ── THE HOLE IT FILLS ──
+//
+// Everything above this line prices a turn that is going on too long. Nothing
+// anywhere priced a turn that stopped too soon, and on a measured ten-hour
+// benchmark all three harnesses in the comparison — this one included — ended
+// with hours of the ask unused. A turn ends when the model emits no tool call,
+// and a model emits no tool call for two quite different reasons: because the
+// work is done, and because it has reached a natural-sounding place to stop. "I
+// have finished the parser, next I will wire up the handlers" is the second one,
+// and it ended the turn just as firmly as the first.
+//
+// ── SO THE ASK IS READ AGAINST THE WORK, BY SOMEBODY ELSE ──
+//
+// The same reader, the same digest and the same remains contract the ceiling uses
+// ([checkpointRemainsAsk]). MET ends the turn exactly as today. NOT MET re-opens
+// it with the reader's one line as a synthetic continuation, and the running
+// model carries on from where it stopped.
+//
+// ── AND THREE THINGS BOUND IT ──
+//
+//   - THE PERSON'S OWN QUESTION ENDS A TURN, ALWAYS. A turn whose last words ask
+//     the person something is a turn WAITING, and re-opening it would be the
+//     harness answering a question that was addressed to somebody else. It is read
+//     structurally ([endsAskingThePerson]) and never by keyword, because a rule
+//     that knew what "shall I" looked like would be a rule about English.
+//   - A TURN THAT TOUCHED NOTHING IS NOT READ AT ALL. The gate is the meter's own
+//     currency — one finished tool round — and it is a cost gate rather than a
+//     content one, exactly like every other trigger in this file. A conversational
+//     turn that answered in words alone had no work in it to leave half-done, and
+//     charging every such turn a mastermind call would be the bill this file's own
+//     digest exists to prevent. route_judge.go already reads that turn and asks
+//     the other question about it.
+//   - AND THE METER IS THE ONLY COUNTER. A re-open is charged as a ROUND, through
+//     the ordinary [Agent.checkpointRound], which is what "on the same meter"
+//     has to mean if it is to mean anything: the marks still fire, a re-opened
+//     turn that reaches the ceiling hands off as usual, and a model that would
+//     answer the continuation with the same sentence forever is stopped by the
+//     ceiling rather than by a second number invented here. There is no re-open
+//     counter, and there must not be one.
+//
+// EVERY FAILURE ENDS THE TURN, which is the opposite fail-open direction from the
+// marks and is the honest one here. A reader nobody can reach, a window that ran
+// out, an install with no mastermind: each answers MET, and the turn ends as it
+// did before this existed. The alternative — re-opening on silence — is a harness
+// that will not let a conversation finish on the day its sidecar goes down.
+//
+// It reports whether the turn CARRIES ON, and whether it is OVER: a re-open that
+// crossed the ceiling is a turn that ended by being handed over, which is neither
+// of the two ordinary answers and belongs to the caller's `return true`.
+func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model, said string) (again, over bool) {
+	if !a.checkpoints(ctx, user) {
+		return false, false
+	}
+	if meter == nil || meter.rounds == 0 {
+		return false, false
+	}
+	if endsAskingThePerson(said) {
+		return false, false
+	}
+	remains := a.readRemains(ctx)
+	if remains == "" {
+		return false, false
+	}
+	// THE METER IS CHARGED BEFORE THE CONTINUATION IS WRITTEN, so a re-open that
+	// lands on the ceiling hands the work over instead of asking the model for one
+	// more round nobody is going to watch. The mark's own reading is made there and
+	// not reused from here: they ask different questions, and a shape is what the
+	// handover needs.
+	if a.checkpointRound(ctx, hub, user, meter, turn, started, model) {
+		return false, true
+	}
+	hub.send(Event{Kind: EventNotice, Text: checkpointCarryOnNote})
+	a.record(textMessage("user", checkpointCarryOnLead+remains))
+	return true, false
+}
+
+// readRemains asks the mark's own reader the one question the end of a turn
+// raises: is the person's ask finished?
+//
+// IT IS [Agent.readMark] WITH A DIFFERENT ASK AND A DIFFERENT ANSWER SHAPE, and
+// it is a second function rather than a flag on the first because the two answers
+// are read by completely different code — a sketch is parsed for width, and this
+// is handed back to the running model as prose.
+//
+// AN EMPTY ANSWER MEANS THE ASK IS MET, and every failure produces one: no
+// mastermind, a fault, a window that ran out, a reply that is not prose, and the
+// remains contract answered with its own token. Reading silence as "there is more
+// to do" would re-open turns on every install without a crew.
+//
+// AND IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
+// side-call to a different model that the person did not ask for.
+func (a *Agent) readRemains(ctx context.Context) string {
+	digest := checkpointDigest(a.taskRequest(), a.snapshot())
+	if digest == "" {
+		return ""
+	}
+	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
+	defer done()
+	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointRemainsAsk)}
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
+		ai.WithMaxTokens(checkpointSketchTokens),
+		ai.WithTemperature(checkpointSketchTemp))
+	if err != nil || response == nil {
+		return ""
+	}
+	a.addAuxiliaryUsage(response, reader, 1)
+	said := strings.TrimSpace(response.Text())
+	if declaresNothingLeft(said) || !briefIsProse(said) {
+		return ""
+	}
+	// ONE LINE, because that is what was asked for and because what the harness
+	// does with it is hand it to a model as the thing still to do. A reader that
+	// wrote an essay is clipped to its first line rather than argued with.
+	return clip(firstLine(said), checkpointSketchBytes)
+}
+
+// endsAskingThePerson reports that a turn's last words put a question to whoever
+// is reading them.
+//
+// IT IS STRUCTURAL AND IT NAMES NO WORDS, which is the law every trigger in this
+// file is held to: a list of openers — "shall I", "would you like", "do you want"
+// — is a rule about English, and this harness answers in whatever language it was
+// asked in. A question mark at the end of the last thing said is the one mark
+// every written language that has questions actually uses for them.
+//
+// THE TRAILING DECORATION COMES OFF FIRST, because a model that ends on a
+// question ends on `**…?**` and on `"…?"` about as often as it ends on the bare
+// mark — the same fold [parseCheckpointSketch] makes of a shape written in a code
+// span, for the same measured reason.
+//
+// AND A TURN THAT SAID NOTHING ASKED NOTHING. Silence is not a question, and
+// reading it as one would exempt from this check exactly the turns that stopped
+// without explaining themselves.
+func endsAskingThePerson(said string) bool {
+	said = strings.TrimRight(strings.TrimSpace(said), "`*_\"'”’) \t\n")
+	return strings.HasSuffix(said, "?")
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one
@@ -1429,7 +1972,7 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
 	sketch := read.sketch
 	asked := a.taskRequest()
-	goal, remains := a.checkpointBrief(ctx, turn, model, asked)
+	draft, remains := a.checkpointBrief(ctx, turn, model)
 	if !remains {
 		if sketch.saysDone() {
 			// NOTHING HAPPENS, and that includes the line. A person told their answer
@@ -1437,9 +1980,31 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			// been told something that did not happen.
 			return checkpointHandover{decision: checkpointCeilingNothing}
 		}
-		// UNCORROBORATED, so the work moves on the person's own words. The
-		// continuation spent its answer on the token instead of on an instruction,
-		// which leaves nothing else to give a worker.
+		// UNCORROBORATED, so the work moves — and the continuation spent its answer
+		// on the token instead of on an instruction, so there is no draft. The writer
+		// below still has the ask and the digest, which is more than the person's
+		// bare sentence and is the whole reason it is asked at all.
+		draft = ""
+	}
+	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
+	//
+	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
+	// the measurement forced. The running model is the only reader holding what the
+	// turn learned, so it still drafts; but it is also a tired weak model at the end
+	// of forty rounds, and what it produced on the measured run was 5,882 characters
+	// of loop that [briefIsProse] passed and a worker was then started on. Nothing
+	// stood between that document and a spec. This does.
+	//
+	// AND THE LADDER UNDER IT DESCENDS THROUGH THE THINGS THAT ARE STILL TRUE. The
+	// written brief, then the draft the runner wrote, then the person's own
+	// sentence — which is what this road used to reach SECOND and now reaches LAST,
+	// because a bare ask hands a worker everything the turn found out except the
+	// findings.
+	goal := a.writeHandoff(ctx, asked, read.digest, draft)
+	if goal == "" {
+		goal = draft
+	}
+	if strings.TrimSpace(goal) == "" {
 		goal = asked
 	}
 	if strings.TrimSpace(goal) == "" {
@@ -1538,8 +2103,25 @@ type checkpointHandover struct {
 	taskID   uint64
 }
 
-// checkpointBrief is the dowry: what this turn found out, written down for
-// somebody who will never see it.
+// checkpointBrief is the DRAFT of the dowry: what this turn found out, written
+// down by the one reader that holds it.
+//
+// ── IT IS A DRAFT NOW AND IT USED TO BE THE DOCUMENT ──
+//
+// Everything below about WHY it is asked of the running model is unchanged and
+// still true: this model is the only one in the building that knows what the turn
+// found out. What changed is what happens to the answer. It used to become the
+// worker's brief with two structural tests in front of it — the remains contract
+// and [briefIsProse] — and a measured run walked straight between them: 5,882
+// characters, 85 clauses of which 39 distinct, 62% one six-sentence loop, and a
+// cold worker was started on it. So this hands a DRAFT to [Agent.writeHandoff]
+// and the mastermind there writes what the worker actually opens on.
+//
+// AND WHAT IT REPORTS ON FAILURE CHANGED WITH IT. It used to answer the person's
+// own ask when the draft was unusable, which made a bare sentence the SECOND best
+// document on the table. It now answers the empty string, because the second best
+// document is the one the writer below composes out of the digest, and the bare
+// ask is what is left when even that cannot be had.
 //
 // ── WHY THE MODEL'S OWN CONTINUATION AND NOT A SUMMARISER ──
 //
@@ -1602,7 +2184,7 @@ type checkpointHandover struct {
 // So it reports the brief AND whether there is anything to hand over, which are
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
-func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked string) (string, bool) {
+func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool) {
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -1612,7 +2194,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked s
 	response, err := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
 		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
 	if err != nil || response == nil {
-		return asked, true
+		return "", true
 	}
 	// The person pays for it on the turn it belongs to rather than out of the
 	// auxiliary pocket, because this is the conversation's own model reading the
@@ -1628,16 +2210,195 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model, asked s
 		return "", false
 	}
 	// An empty reply, a whitespace one and a sentinel are all the same failure to
-	// this line: nothing came back that anybody could work from. The person's own
-	// words stand alone, which is what a provider fault already falls back to.
-	if !briefIsProse(brief) {
-		return asked, true
+	// this line: nothing came back that anybody could work from.
+	//
+	// AND SO IS A LOOP, which is the second structural test and the one the
+	// measured failure needed ([briefRepeats]). A draft that has stopped saying new
+	// things is not findings this turn holds — it is a tired model filling its
+	// token budget — and the writer below is better off with the digest alone than
+	// with a document that will drag its own repetition into the spec.
+	if !briefIsProse(brief) || briefRepeats(brief) {
+		return "", true
 	}
 	// THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, and that constant rather
 	// than a second number of this file's own (task_shape.go's
 	// taskShapeBriefLimit): two spellings of one bound are two answers to the
 	// question of how long a worker's instruction may be.
 	return clip(brief, taskShapeBriefLimit), true
+}
+
+// writeHandoff is the OTHER HALF of the dowry: the mastermind that turns what the
+// running model drafted into the document a cold worker opens on.
+//
+// ── WHY THERE ARE TWO CALLS AND NOT ONE ──
+//
+// They hold different things and neither can be the other. The runner has the
+// FINDINGS — it read the files, it ran the suite, it knows which of four
+// approaches was ruled out — and nothing else in the building does. The
+// mastermind has the JUDGEMENT: it is fresh, it is not the model that just spent
+// forty rounds, and it is the tier this file has twice measured as the only one
+// that answers this kind of question at all ([Agent.readMark]).
+//
+// Asking one model to be both was the shipping arrangement and it was measured
+// failing in the way a tired model fails: it wrote until it hit its cap, and what
+// it wrote past the point of having anything to say was the same six sentences
+// over and over. Asking the mastermind ALONE would lose the findings, which is
+// exactly [Agent.checkpointBrief]'s own argument against the shaper and the state
+// card. So both, in that order.
+//
+// ── WHAT IT IS SHOWN ──
+//
+// The person's ask verbatim, the state card where the session keeps one
+// (card.go), the digest WITH the results in it ([checkpointDigest]), and the
+// draft. The digest is the same page the mark's reader was shown a moment ago and
+// is taken from the read rather than rebuilt, so the two calls cannot disagree
+// about what happened this turn; a ceiling reached on a reader nobody could
+// reach has no page, and one is assembled here rather than the writer being sent
+// a document with a hole in it.
+//
+// ── AND IT IS READ EXACTLY AS THE DRAFT IS ──
+//
+// Prose and not a loop, on the same two structural tests, because a mastermind
+// asked to write two thousand tokens can run out of things to say too. A
+// degenerate answer buys ONE regeneration ([checkpointBriefTries]) and then this
+// gives up and answers "", which drops the caller onto the draft and then onto
+// the person's own sentence. It never retries a fault: a provider that failed is
+// a provider, and the ladder underneath is what that failure is for.
+//
+// ── AND IT IS BILLED UNDER ITS OWN NAME ──
+//
+// To the errand pocket and tagged with the role ([Agent.addAuxiliaryUsageAs]),
+// which is where this parts company with the draft. The draft is the
+// conversation's own model reading the conversation's own transcript — the last
+// step of the answer, and the turn pays. This is a side-call to a different model
+// that the person did not ask for, and a journal that could not name it would
+// leave a mastermind-priced line on the bill with nothing beside it saying what
+// it bought.
+func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) string {
+	if strings.TrimSpace(digest) == "" {
+		digest = checkpointDigest(asked, a.snapshot())
+	}
+	page := checkpointHandoffPage(asked, a.stateCardText(), digest, draft)
+	if page == "" {
+		// NOTHING TO WRITE FROM IS NOT A DOCUMENT. A turn with no ask, no account
+		// and no draft has nothing a second mind could compose out of, and a call
+		// made on an empty page is a mastermind asked to invent an instruction.
+		return ""
+	}
+	ctx, done := context.WithTimeout(ctx, checkpointHandoffWindow)
+	defer done()
+	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointHandoffWriteAsk)}
+	for try := 0; try < checkpointBriefTries; try++ {
+		// NO BELT, for [Agent.checkpointBrief]'s reason: a writer with no hand to
+		// reach for can only answer with the document.
+		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages,
+			ai.WithMaxTokens(checkpointBriefTokens),
+			ai.WithTemperature(checkpointSketchTemp))
+		if err != nil || response == nil {
+			return ""
+		}
+		a.addAuxiliaryUsageAs(response, writer, 1, auxRoleHandoff)
+		brief := strings.TrimSpace(response.Text())
+		if !briefIsProse(brief) {
+			return ""
+		}
+		if !briefRepeats(brief) {
+			return clip(brief, taskShapeBriefLimit)
+		}
+	}
+	return ""
+}
+
+// checkpointHandoffPage lays out what the writer is shown. It is a function of
+// its own for [composeBrief]'s reason (task_brief.go): a layout written at the
+// call site is a layout that will disagree with itself the day a second caller
+// appears, and the headings are read by a model rather than by a person.
+//
+// AN EMPTY SECTION IS ABSENT, not an empty heading — the emptiness law, applied
+// to a document a model reads. A session with no state card, a turn whose draft
+// was refused, a reader nobody could reach: each simply has fewer sections.
+//
+// THE DRAFT IS CLIPPED LIKE EVERY OTHER BRIEF ON THIS ROAD, so a runner that
+// filled its whole token budget cannot push the ask and the account off the top
+// of the page it is supposed to be read against.
+func checkpointHandoffPage(asked, card, digest, draft string) string {
+	var out strings.Builder
+	section := func(heading, body string) {
+		if body = strings.TrimSpace(body); body == "" {
+			return
+		}
+		if out.Len() > 0 {
+			out.WriteString("\n\n")
+		}
+		out.WriteString(heading)
+		out.WriteString("\n")
+		out.WriteString(body)
+	}
+	section(checkpointHandoffAskedHeading, clip(strings.TrimSpace(asked), briefAskLimit))
+	section(checkpointHandoffStateHeading, card)
+	section(checkpointHandoffWorkHeading, digest)
+	section(checkpointHandoffDraftHeading, clip(strings.TrimSpace(draft), taskShapeBriefLimit))
+	return out.String()
+}
+
+// briefRepeats reports that a brief has stopped saying new things.
+//
+// IT IS THE SECOND STRUCTURAL TEST AND IT IS NOT A TEST FOR CONTENT. [briefIsProse]
+// asks whether an answer is words at all; this asks whether those words are still
+// going somewhere. Neither reads what the brief is ABOUT, because a rule that did
+// would be a rule tuned to one kind of work — the law this whole file is held to.
+//
+// WHAT IT COUNTS IS DISTINCT SENTENCES AGAINST TOTAL SENTENCES, folded through
+// [normalizedWords] so that "Also: rerun the suite." and "**Also: rerun the
+// suite**" are the one sentence they plainly are. A model that has run out of
+// things to say does not stop, it loops — the measured brief was 85 clauses of
+// which 39 were distinct — and a loop is the one degeneration that is invisible
+// to every test for shape.
+//
+// A SHORT BRIEF IS NEVER DEGENERATE, which is [checkpointBriefSentences]: a ratio
+// over four sentences is noise, and refusing an honest short brief would cost a
+// regeneration on exactly the document that needed none.
+//
+// SENTENCES AND NOT N-GRAMS, deliberately. A sliding window over tokens catches
+// the same loop and catches a great deal else — a brief that names one file in
+// six places, a list with a repeated stem — and this file would rather miss a
+// degeneration than refuse a brief that was doing its job.
+func briefRepeats(brief string) bool {
+	sentences := briefSentences(brief)
+	if len(sentences) < checkpointBriefSentences {
+		return false
+	}
+	distinct := make(map[string]bool, len(sentences))
+	for _, sentence := range sentences {
+		distinct[sentence] = true
+	}
+	return len(distinct)*100 < len(sentences)*checkpointBriefVariety
+}
+
+// briefSentences cuts a brief into the units [briefRepeats] counts, normalised so
+// that two spellings of one sentence are one string.
+//
+// IT CUTS ON LINES AND ON SENTENCE PUNCTUATION BOTH, because a brief written as a
+// list repeats whole bullets and a brief written as prose repeats whole sentences,
+// and a rule that knew only one of those shapes would be blind to half of what it
+// is for. A piece with no letters in it is not a sentence — a bullet's dash, a
+// rule of hyphens — and dropping those is what stops a heavily formatted brief
+// counting its own decoration as variety.
+func briefSentences(brief string) []string {
+	pieces := strings.FieldsFunc(brief, func(letter rune) bool {
+		switch letter {
+		case '.', '!', '?', ';', '\n':
+			return true
+		}
+		return false
+	})
+	sentences := make([]string, 0, len(pieces))
+	for _, piece := range pieces {
+		if words := normalizedWords(piece); len(words) > 0 {
+			sentences = append(sentences, strings.Join(words, " "))
+		}
+	}
+	return sentences
 }
 
 // declaresNothingLeft reports whether the continuation answered the remains
