@@ -33,9 +33,12 @@ func (l *homeLab) says(transcript, role, text string) {
 //
 // IT WIDENS THE FRAME TO A CARD TIER FIRST. There is no card at all below
 // [homeCardMin] any more — at every ordinary width the row's own note carries
-// the fact the card was for (SCREEN 1a) — so a test whose subject is a BAND has
-// to be asked at a width where a card exists, and a hundred and sixty columns is
-// where one does.
+// the fact the card was for (SCREEN 1a) — so a test whose subject is the CARD
+// has to be asked at a width where a card exists, and a hundred and sixty
+// columns is where one does. What it answers is the design's five bands, which
+// the card composes itself (place_home.go's [app.homeSwitchCard]) rather than
+// asking the registry for; the registered bands are asked on the surfaces that
+// still draw them (homeband_work_test.go's [workSheet]).
 func homeCardFor(t *testing.T, a *app, transcript string) []string {
 	t.Helper()
 	if width, _ := a.size(); width < homeCardMin {
@@ -53,6 +56,29 @@ func homeCardFor(t *testing.T, a *app, transcript string) []string {
 		out = append(out, ansi.Strip(line))
 	}
 	return out
+}
+
+// homeCardPainted is [homeCardFor] with the paint left on, for the assertions
+// whose subject is an INK rather than a word.
+//
+// The card's one remaining news claim is a colour: a piece of work that landed
+// since home was last closed wears its tick in the accent
+// ([app.homeTaskGlyph] reads [app.homeEntryFresh]), and one that was already
+// looked at wears the same tick muted. A stripped reading cannot tell those two
+// rows apart, so the tests about news ask for the painted one.
+func homeCardPainted(t *testing.T, a *app, transcript string) []string {
+	t.Helper()
+	if width, _ := a.size(); width < homeCardMin {
+		a.width, a.height = homeCardMin, max(a.height, 30)
+		a.home.build()
+	}
+	a.home.point(transcript)
+	width, _ := a.size()
+	_, right := homeColumns(width)
+	if right <= 0 {
+		t.Fatalf("no detail column at width %d", width)
+	}
+	return a.homeDetail(right, 20, a.pal)
 }
 
 // cardLine finds the first card line containing a phrase, or -1.
@@ -127,17 +153,26 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 
 // ── THE CARD IS SHAPED BY THE ROW'S STATE ───────────────────────────────────
 
-// A quiet conversation's work reads as a ledger: the task NAMED FIRST, and what
-// it came to on the line under it (homeband_work.go). Nothing spells a state
-// word on a landed row — done wears no mark at all.
+// A quiet conversation's work reads as a ledger: the mark, the task NAMED, and
+// what it cost at the right margin — one row (place_home.go's
+// [app.homeCardWork]).
 //
-// THE LAST THING SAID IS NOT ON THIS CARD ANY MORE, AND NOTHING CARRIES IT. The
-// `leftoff` band is one of the eleven the switcher's card dropped (place_home.go's
-// [homeCardBands]): the card exists only where the width is genuinely spare, and
-// a card drawn there has to be worth more than the row beside it — showing a
-// person the sentence that `enter` shows a beat later is the one thing it may not
-// spend that width on. So this test no longer asks for it; the band is still
-// registered and still drawn for the surfaces that want it.
+// THE LAW THAT DIED IS "THE OUTCOME HANGS UNDER THE NAME" — on this card. It was
+// the registered band's shape and it still is (homeband_work.go, and the phone
+// sheet draws it), but SCREEN 1d spells a landed row of the ≥160 card as
+// `✓ toy-scale validation of decomposition   $1.63` and nothing else, and the
+// owner ordered the design followed exactly (FIDELITY.md item 8). So the
+// sentence about how a done task went belongs to the tasks place the fold names,
+// and this test asks for the row the design draws. A task that is NOT done keeps
+// its sentence here — [TestARunningCardLeadsTheRowWithItsState] is that half —
+// because a card that drew every outcome as one more tick with a price on it
+// would be calling every outcome the same outcome.
+//
+// THE LAST THING SAID IS NOT ON THIS CARD EITHER, AND NOTHING CARRIES IT. The
+// `leftoff` band is one of the eleven the switcher's card dropped: the card
+// exists only where the width is genuinely spare, and a card drawn there has to
+// be worth more than the row beside it — showing a person the sentence that
+// `enter` shows a beat later is the one thing it may not spend that width on.
 func TestAQuietCardReadsItsWorkAsALedger(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -147,30 +182,36 @@ func TestAQuietCardReadsItsWorkAsALedger(t *testing.T) {
 	lab.task("-tmp-alpha", session.TaskIndexEntry{
 		ID: "1", Name: "hero-rewrite", Label: "Hero rewrite", Title: "Hero rewrite",
 		Status: string(session.TaskDone), SessionID: "aaaa000000000002",
-		EndedAt: now.Add(-time.Hour), Outcome: "Led with the outcome and cut the copy by half.",
+		EndedAt: now.Add(-time.Hour), Cost: 1.63,
+		Outcome: "Led with the outcome and cut the copy by half.",
 	})
 
 	a := lab.app(mine)
 	a.openHome()
 	card := homeCardFor(t, a, other)
 	work := cardLine(card, "Hero rewrite")
-	outcome := cardLine(card, "Led with the outcome")
-	if work < 0 || outcome < 0 {
-		t.Fatalf("the quiet card is missing a band (work %d, outcome %d):\n%s",
-			work, outcome, strings.Join(card, "\n"))
+	if work < 0 {
+		t.Fatalf("the quiet card has no work on it:\n%s", strings.Join(card, "\n"))
+	}
+	// THE WHOLE LEDGER ROW IS ONE LINE: the mark, the name, and the figure hard
+	// against the right edge, which is where every figure on this surface sits.
+	row := strings.TrimRight(card[work], " ")
+	if !strings.HasPrefix(strings.TrimSpace(row), glyphDone+" Hero rewrite") {
+		t.Fatalf("the ledger row does not lead with the mark and the name: %q", row)
+	}
+	if !strings.HasSuffix(row, dollars(1.63)) {
+		t.Fatalf("the ledger row does not end on what it cost: %q", row)
 	}
 	if said := cardLine(card, "tighten the hero copy"); said >= 0 {
 		t.Fatalf("the card spent its width repeating what enter would show:\n%s",
 			strings.Join(card, "\n"))
 	}
-	if outcome != work+1 {
-		t.Fatalf("the outcome does not hang under its task:\n%s", strings.Join(card, "\n"))
+	if outcome := cardLine(card, "Led with the outcome"); outcome >= 0 {
+		t.Fatalf("a landed task kept its outcome sentence on the card:\n%s",
+			strings.Join(card, "\n"))
 	}
-	if !strings.HasPrefix(card[outcome], strings.Repeat(" ", homeWorkIndent)) {
-		t.Fatalf("the outcome is not indented under its task: %q", card[outcome])
-	}
-	// And nothing on a landed row claims to be happening, or claims to be done:
-	// the absence of a mark is what `done` looks like here.
+	// And nothing on a landed row claims to be happening, or spells `done` in a
+	// word: the design's mark is what says it, and it says it once.
 	if text := strings.Join(card, "\n"); strings.Contains(text, "done Hero") || strings.Contains(text, "running") {
 		t.Fatalf("the ledger still spells state words:\n%s", text)
 	}
@@ -278,8 +319,16 @@ func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 //   - THE `since you left` LEDGER at the top of the list, which is a door into
 //     the page that owns what happened rather than a mark on a row.
 //
-// The card's caption over the fresh rows ([homeFreshWord]) is unchanged, and it
-// is the last per-row NEWS claim on this screen.
+// THE CARD'S CAPTION IS NOT WHAT SAYS IT HERE ANY MORE. [homeFreshWord] is the
+// registered `work` band's line — the phone sheet still draws it — and the ≥160
+// conversation card composes its own work rows now, in the design's five bands
+// and its wording (FIDELITY.md item 8, place_home.go's [app.homeCardWork]).
+// SCREEN 1d has no caption over the work, so the caption is not there. What IS
+// there is the mark's own ink: [app.homeTaskGlyph] draws a fresh landing's tick
+// in the accent and every other one muted, which is the same claim said in the
+// register the design left room for. So the card's half of this law is asserted
+// as a COLOUR, and the two halves that were always words — the row's note and
+// the ledger — are asserted unchanged.
 func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -305,9 +354,13 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 	if !strings.Contains(text, "since you left") || !strings.Contains(text, "landed") {
 		t.Fatalf("the ledger does not say anything landed:\n%s", text)
 	}
-	card := homeCardFor(t, a, other)
-	if cardLine(card, homeFreshWord) < 0 {
-		t.Fatalf("the card does not caption the news:\n%s", strings.Join(card, "\n"))
+	card := homeCardPainted(t, a, other)
+	at := cardLine(card, "Model the tiers")
+	if at < 0 {
+		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
+	}
+	if !strings.HasPrefix(card[at], a.pal.accent(glyphDone)) {
+		t.Fatalf("the card does not mark the news: %q", card[at])
 	}
 
 	// Closing is the look: the stamp advances, and the next open marks nothing.
@@ -322,8 +375,15 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 			t.Fatalf("news survived being looked at (%q):\n%s", stale, text)
 		}
 	}
-	if card := homeCardFor(t, a, other); cardLine(card, homeFreshWord) >= 0 {
-		t.Fatalf("the card still captions news that has been looked at:\n%s", strings.Join(card, "\n"))
+	// AND THE MARK GOES QUIET WITH THEM. The tick stays — a landed task is landed
+	// whether or not anybody watched it land — and it drops to the muted ink every
+	// other settled row wears.
+	card = homeCardPainted(t, a, other)
+	if at = cardLine(card, "Model the tiers"); at < 0 {
+		t.Fatalf("the card lost its work:\n%s", plain(strings.Join(card, "\n")))
+	}
+	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
+		t.Fatalf("the card still marks news that has been looked at: %q", card[at])
 	}
 }
 
@@ -333,19 +393,22 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 // THIS IS A LAW THE PRODUCTION CODE STATES IN AS MANY WORDS ([homeView.seen]:
 // "Zero means there is no origin to measure from — a first look — and nothing at
 // all is marked"), and every surface that measures from the stamp owes it. The
-// tick and the `landed` count went with the strips, so the surfaces it is owed
-// on are the three that replaced them: the row's own note, the `since you left`
-// ledger, and the card's caption over the fresh rows.
+// tick on the ROW and the `landed` count went with the strips, so the surfaces
+// it is owed on are the three that replaced them: the row's own note, the `since
+// you left` ledger, and the mark on the card's work rows.
 //
-// TWO OF THE THREE DO NOT PAY IT YET, AND THAT IS A BUG IN THE READING RATHER
-// THAN A LAW THAT DIED. [app.homeFresh] guards the caption with `seen.IsZero()`;
-// switcher.go's [switcherReading.addLedger] and [switcherConversationNote] both
-// compare against `seen` with no such guard, so a zero stamp makes every task
-// this machine ever ran land "since you left" and every quiet row claim files it
-// made "while you were away". The fix is one condition in each, and this test
-// stays red until it is there — it is the same claim
-// [TestTheSwitcherKeepsUnknownAndZeroFactsEmpty] already makes about `since you
-// left`, on a machine that has actually done some work.
+// ALL THREE PAY IT NOW. Two of them did not when this was written — switcher.go's
+// [switcherReading.addLedger] and [switcherConversationNote] compared against
+// `seen` with no guard, so a zero stamp made every task this machine ever ran
+// land "since you left" and every quiet row claim files it made "while you were
+// away" — and both carry the condition today ([switcherReading.addLedger] and the
+// note both return early on a zero stamp), which is why this test is green.
+//
+// THE CARD'S HALF IS AN INK RATHER THAN A CAPTION. [homeFreshWord] was the
+// registered `work` band's line and the ≥160 card composes its own work rows now
+// (FIDELITY.md item 8), so what the card owes the law is [app.homeTaskGlyph]'s
+// accent, which [app.homeEntryFresh] holds to the same two exemptions
+// [app.homeFresh] always did.
 func TestTheFirstLookMarksNothing(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -376,20 +439,29 @@ func TestTheFirstLookMarksNothing(t *testing.T) {
 	if strings.Contains(text, "files made") {
 		t.Fatalf("a first look counted everything a row ever did as news:\n%s", text)
 	}
-	if card := homeCardFor(t, a, other); cardLine(card, homeFreshWord) >= 0 {
-		t.Fatalf("a first look captioned a card:\n%s", strings.Join(card, "\n"))
+	card := homeCardPainted(t, a, other)
+	at := cardLine(card, "Model the tiers")
+	if at < 0 {
+		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
+	}
+	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
+		t.Fatalf("a first look marked a card's work as news: %q", card[at])
 	}
 }
 
 // And the conversation THIS window is in never carries the NEWS MARK: its
 // landings were watched happening, not missed.
 //
-// THE MARK THIS IS STILL ABOUT IS THE CARD'S CAPTION, and it is the only per-row
-// news claim left on the screen ([app.homeFresh] holds both of its exemptions —
-// no stamp, and this window's own conversation). The `since you left` ledger is
-// deliberately NOT held to it: it is a count about the MACHINE with a door into
-// the tasks page, not a mark on a row, and every task that landed while home was
-// closed belongs in it whichever conversation ran it.
+// THE MARK THIS IS STILL ABOUT IS THE ONE ON THE CARD'S WORK ROWS, and it is the
+// only per-row news claim left on the screen. It used to be [homeFreshWord], the
+// registered band's caption; the ≥160 card composes its own work rows now
+// (FIDELITY.md item 8) and the claim rides the tick's ink instead
+// ([app.homeTaskGlyph] reads [app.homeEntryFresh], which holds both of the
+// exemptions [app.homeFresh] always did — no stamp, and this window's own
+// conversation). The `since you left` ledger is deliberately NOT held to it: it
+// is a count about the MACHINE with a door into the tasks page, not a mark on a
+// row, and every task that landed while home was closed belongs in it whichever
+// conversation ran it.
 func TestYourOwnLandingsAreNotNews(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -404,8 +476,13 @@ func TestYourOwnLandingsAreNotNews(t *testing.T) {
 
 	a := lab.app(mine)
 	a.openHome()
-	if card := homeCardFor(t, a, mine); cardLine(card, homeFreshWord) >= 0 {
-		t.Fatalf("this window's own work was captioned as news:\n%s", strings.Join(card, "\n"))
+	card := homeCardPainted(t, a, mine)
+	at := cardLine(card, "Model the tiers")
+	if at < 0 {
+		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
+	}
+	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
+		t.Fatalf("this window's own work was marked as news: %q", card[at])
 	}
 }
 

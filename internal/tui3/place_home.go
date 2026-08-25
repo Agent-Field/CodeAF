@@ -618,7 +618,17 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 	if len(drawn) == 0 {
 		return nil
 	}
-	rows := []string{pal.dim(fit(homeCardWorkWord, ctx.width))}
+	// AND THE HEADING CARRIES THE ONE CAPTION THIS BAND HAS EVER HAD. Work that
+	// landed since home was last closed is NEWS — the delta the look stamp buys
+	// (home.go's [homeView.seen]) — and it is said once over the whole band rather
+	// than on each row, out at the right margin where every line of this surface
+	// says the thing that is true of what is under it. A first look, with no stamp
+	// to measure from, captions nothing.
+	head := pal.dim(fit(homeCardWorkWord, ctx.width))
+	if a.homeFresh(row) > 0 {
+		head = switcherSides(ctx.width, homeCardWorkWord, homeFreshWord, pal.dim, pal.dim)
+	}
+	rows := []string{head}
 	shown := drawn
 	if len(drawn) > homeCardTasks {
 		shown = drawn[:homeCardTasks]
