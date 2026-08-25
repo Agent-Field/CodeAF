@@ -118,27 +118,17 @@ const (
 
 // forkCommands is what a hand's bash may run: ORIENTATION, and nothing else.
 //
-// It is the auditor's allowlist ([auditCommands]) with the three `go` verbs
-// taken off, and the reason is the one stated at the head of this file. The
-// hands share one working directory, so a build or a test inside a hand reads a
-// tree its siblings are still writing: the green ones prove nothing, and the red
-// ones are somebody else's half-finished work that this hand would then stop and
-// repair — the exact redo the sibling-scope sentence exists to prevent. Builds
-// and tests are the caller's, after the join.
-//
-// Everything left reads: what the repository already says about itself, and the
-// four orientation commands the auditor's own allowlist gained after a refused
-// `pwd` cost a verdict.
-var forkCommands = []string{
-	"git diff",
-	"git log",
-	"git status",
-	"git show",
-	"pwd",
-	"wc",
-	"head",
-	"cat",
-}
+// IT IS THE AUDITOR'S OWN READING SET, AND THE TWO ARE ONE LIST BECAUSE THEY
+// ANSWER ONE QUESTION: which commands PRINT and cannot change the thing being
+// looked at (task_checks.go's [auditReadCommands]). The auditor gets checks on
+// top of these, read off the work it is judging; a hand gets nothing on top, and
+// the reason is the one stated at the head of this file. The hands share one
+// working directory, so a build or a test inside a hand reads a tree its
+// siblings are still writing: the green ones prove nothing, and the red ones are
+// somebody else's half-finished work that this hand would then stop and repair —
+// the exact redo the sibling-scope sentence exists to prevent. Builds and tests
+// are the caller's, after the join.
+var forkCommands = auditReadCommands
 
 // forkShell is the voice a hand's refused command is answered in, and the last
 // line of every one of those refusals says where to go instead — the auditor's

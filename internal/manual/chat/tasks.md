@@ -2488,6 +2488,14 @@ failed until somebody answers, its branch is kept, and anything waiting on it wa
 
 To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
 
+**A run with nobody watching reads as `auto` whatever the row says.** `aforge --once` and
+the other headless doors have no card to press, no `/settings` to open and nobody to read a
+landing that says it is waiting on somebody, so a task that needs a look there would stop
+the run until the wall clock ran out — which was measured happening on a ten-hour run. In
+those sessions aforge takes the decision itself, by the same road `[d]` takes, with the same
+escape to say it cannot tell. This never applies to a session you are sitting in front of:
+there your row stands, and a blank row still means aforge asks you.
+
 ## How do I approve a task — accept a finished task from the room, the card, or by saying so
 
 A task that landed `needs your look` (`finished — look it over` on the roster) is approved

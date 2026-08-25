@@ -164,7 +164,7 @@ func TestRefutedWorkIsRepairedInPlaceAndLandsWhenItHolds(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it"),
+			proposeCall("Add the greeting", "write greet.go and a test for it, checked with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairing, wrote bool) *ai.Response {
@@ -641,13 +641,13 @@ func TestAuditBeltAllowsOrientationAndSaysWhereToLook(t *testing.T) {
 	for _, allowed := range []string{
 		"pwd", "wc -l greet.go", "head -n 40 greet.go", "cat go.mod",
 	} {
-		if refusal, ok := auditRefusal(allowed, auditCommands); !ok {
+		if refusal, ok := auditRefusal(allowed, auditReadCommands); !ok {
 			t.Fatalf("the checker may not run %q, which only reads: %s", allowed, refusal)
 		}
 	}
 	// And the belt has not opened: orientation is reading, not writing.
 	for _, refused := range []string{"tee out.txt", "sed -i s/a/b/ greet.go", "curl example.com", "cp a b"} {
-		if _, ok := auditRefusal(refused, auditCommands); ok {
+		if _, ok := auditRefusal(refused, auditReadCommands); ok {
 			t.Fatalf("the checker was allowed to run %q", refused)
 		}
 	}
@@ -655,7 +655,7 @@ func TestAuditBeltAllowsOrientationAndSaysWhereToLook(t *testing.T) {
 	// costs another step, and the wrong reach happens because bash is what a
 	// shell is for everywhere else.
 	for _, refused := range []string{"", "ls /home", "go test ./... && rm -rf ."} {
-		refusal, ok := auditRefusal(refused, auditCommands)
+		refusal, ok := auditRefusal(refused, auditReadCommands)
 		if ok {
 			t.Fatalf("%q was allowed", refused)
 		}
@@ -682,7 +682,7 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	}
 
 	byName := map[string]func(context.Context, json.RawMessage) (string, bool, error){}
-	for _, tool := range auditBelt(dir, auditCommands) {
+	for _, tool := range auditBelt(dir, auditReadCommands) {
 		byName[tool.Name] = tool.Execute
 	}
 	arguments := json.RawMessage(`{"command":` + strconv.Quote("cat huge.txt") + `}`)

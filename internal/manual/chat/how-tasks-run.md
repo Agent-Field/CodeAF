@@ -420,12 +420,11 @@ not the part that was easiest to reach". Before that it was a generic line point
 task's name, and on a long piece of work that meant a request being accepted as met the moment
 the small piece the reply happened to be holding was finished.
 
-What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist —
-`go test`, `go build`, `go vet`, `git diff`, `git log`, `git status`, `git show`, `pwd`,
-`wc`, `head`, `cat`. It cannot edit, write, install, fetch or paint. Shell composition is
-refused outright: any of `; | & < > $ ( ) { }`, a backtick or a newline in the command is
-turned away before the allowlist is even consulted. Every result it reads is capped at
-8000 bytes.
+What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist
+built for **that one task** — see the next section. It cannot edit, write, install, fetch or
+paint. Shell composition is refused outright: any of `; | & < > $ ( ) { }`, a backtick or a
+newline in the command is turned away before the allowlist is even consulted. Every result
+it reads is capped at 8000 bytes.
 
 Before the check, new files are staged so the diff shows everything including brand-new
 files. Staging happens once, so every look judges the same tree. In a workspace that is
@@ -436,6 +435,41 @@ This is controlled by `task.audit`, **on by default**, and settable in your prof
 With it off, the gate stands open, the task's own account merges, the task lands done, and
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
+
+## Which commands the checker is allowed — the task's own check, not a fixed list
+
+**The checker is allowed the checks the work itself names.** There is no list of build tools
+in aforge, and no setting that holds one. The commands its `bash` will accept come from three
+places, and nothing else gets through:
+
+- **the check your task declares** — every command named in the brief or the acceptance,
+  read out of the text: a span in backticks (`` `bash verify.sh` ``, `` `make check` ``) or a
+  line that opens with a shell prompt (`$ ./verify --quiet`). A wildcard you wrote is
+  honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
+- **the check the task itself used** — any command its worker issued **as one command**,
+  taken from the same tool results the checker is shown. A composed line
+  (`cd x && cargo build 2>&1 | tail -5`) contributes nothing: a check is repeated exactly as
+  it was issued or not at all, and this gate never composes one. A command that even a
+  permit-everything policy would still stop and ask about — `rm -rf /`, `shutdown`, `mkfs` —
+  never becomes one either;
+- **the always-safe reading commands** — `git diff`, `git log`, `git status`, `git show`,
+  `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
+  not verification, so a checker holding only these can read your work but cannot exercise
+  it.
+
+A prefix is matched field by field, so a check named `make check` admits `make check ./...`
+and does not admit `make checkout`. **Every refusal names what this particular check is
+allowed**, listing the task's own check first and the reading commands after it, so the model
+reads the door in the same breath as the no.
+
+**When the work names no check and issued nothing that looks like one**, the checker is told
+so in as many words, told to judge from reading and answer, and given a much shorter window —
+one minute rather than five. There is no slow command for it to wait on, and the failure this
+replaced was a checker spending the full five minutes reaching for a door that was never
+going to open. That was measured on a Rust deliverable: the allowlist used to be a fixed set
+of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
+all, exhausted its five minutes on all six attempts, and every one of them landed the task
+needing your look.
 
 ## Where the check runs — a clean restore, not the task's messy checkout
 
@@ -563,7 +597,9 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. When two
+`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. The time
+in that third one is the window the check actually had — `5m0s` when it had a command to
+run, `1m0s` when the work named no check and there was nothing for it to run. When two
 tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
@@ -574,6 +610,15 @@ the choice with you; the four choices on the landed card are the door. With it o
 same note tells aforge to read the report and the work and settle the task itself, and to
 come back to you only when it genuinely cannot tell. Everything else in the landing is
 identical either way.
+
+**A session with nobody watching reads as `auto` whatever the row says.** `aforge --once`
+and every other headless door run with no surface to raise a card on, no settings panel and
+nobody to read a landing that says it is waiting on somebody — so a task that needs a look
+there would stop the run for good, and that was measured stopping a ten-hour run. Such a
+session takes the same road your own `[d] decide these for me` takes: aforge reads the
+report and the work and settles the task itself, with the same standing escape to say it
+cannot tell. It never goes the other way — a session you are sitting in front of keeps the
+row you set, and a blank row still means aforge asks you.
 
 ## Why my task needs my look when it finished fine — another window changed the same file
 
