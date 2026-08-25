@@ -93,6 +93,8 @@ type switcherRow struct {
 	moving   bool
 	paused   bool
 	here     bool
+	held     bool
+	gone     bool
 	fold     bool
 	foldWord string
 	options  []session.AnswerOption
@@ -132,11 +134,20 @@ type switcherHere struct {
 	project string
 }
 
+// switcherGone is which project folders were NOT on the disk when the world was
+// last read, keyed by the path a row answers for ([homeWhere]).
+//
+// IT IS A READING AND NOT A SYSCALL. One os.Stat per project per reading, taken
+// where the world is taken (home.go's [homeView.readGone]), handed in here whole
+// — because this file may not touch a disk and because the door itself stats
+// again on the keystroke anyway. A path this map has never heard of is not gone.
+type switcherGone map[string]bool
+
 // readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, here switcherHere, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
+func readSwitcher(world session.World, items map[string][]StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
 	r := switcherReading{view: view, now: now}
 	projectByDir := make(map[string]session.Project, len(world.Projects))
 	var all []switcherRow
@@ -162,6 +173,13 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
 				at: switcherSortAt(row), needs: needs, moving: moving, here: atHere,
+				// AND THE TWO FACTS THAT DECIDE WHETHER ENTER CAN WORK AT ALL. A row
+				// another window is holding and a row whose folder is not there any
+				// more both refuse when they are pressed, and a list that said so only
+				// on a card would be saying it only past a hundred and sixty columns —
+				// which is exactly the trap the short spellings were written for.
+				held:    !atHere && (row.Open || row.Live) && strings.TrimSpace(row.Transcript) != "",
+				gone:    gone[switcherWhere(row, project)],
 				options: options,
 			})
 		}
@@ -203,6 +221,17 @@ func (r switcherReading) cap(n int) int {
 		return n
 	}
 	return min(switcherShown, n)
+}
+
+// switcherWhere is the project a row belongs to, in the words [homeView.gone] is
+// keyed by: the project's own path, and its name when nothing recorded one. It
+// is [homeWhere] read off a row rather than off a drawn line, so the two can
+// never disagree about which folder a row is about.
+func switcherWhere(row session.SessionRow, project session.Project) string {
+	if path := strings.TrimSpace(row.ProjectDir); path != "" {
+		return path
+	}
+	return project.Name
 }
 
 func switcherSortAt(row session.SessionRow) time.Time {
@@ -658,7 +687,16 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 	if grouped {
 		project = ""
 	}
-	if row.here {
+	// THE RIGHT MARGIN SAYS THE ONE THING THAT DECIDES WHAT ENTER WILL DO, and an
+	// age is what it says when nothing does. A folder that is gone outranks a
+	// window holding the row, which outranks this window's own — worst news
+	// first, because that is the order a person needs them in.
+	switch {
+	case row.gone:
+		age = homeGoneShort
+	case row.held:
+		age = homeHeldShort
+	case row.here:
 		age = homeHereWord
 	}
 	if width < 80 {

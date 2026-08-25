@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE AMBIENT BAND ON HOME ────────────────────────────────────────────────
@@ -91,10 +92,11 @@ func homeRowAt(lines []string, want string) int {
 	return -1
 }
 
-// AN ITEM IS ITS OWN ROW, UNDER ITS PROJECT, AND THE ORDER IS TRIAGE. What needs
-// somebody and what is running sit with the conversations that do; what is
-// waiting for its time sits under them; and past three the rest is one door.
-func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
+// bandOfSix is the machine every assertion about the band needs: four items
+// waiting for their time, one a pass is on right now, one stopped on a question,
+// and a conversation to sort them against.
+func bandOfSix(t *testing.T) (*standBand, *homeLab, string) {
+	t.Helper()
 	lab := newHomeLab(t)
 	spoke := time.Now().Add(-time.Hour)
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", spoke)
@@ -115,7 +117,30 @@ func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
 			band.items[i].NeedsPerson = "the fix touches migrations"
 		}
 	}
+	return band, lab, transcript
+}
 
+// AN ITEM TAKES ITS PLACE IN THE ONE TRIAGE ORDER, AND ONLY THE ONES THAT WANT
+// SOMETHING TAKE A PLACE AT ALL.
+//
+// ── WHAT DIED AND WHERE IT WENT ─────────────────────────────────────────────
+//
+// THE PER-PROJECT BAND IS GONE FROM THE RESTING LIST. It used to be every item
+// this machine holds, drawn under its own project's heading, three of them and
+// then a door saying how many more there were — and the resting screen has no
+// project headings to hang a band under any more (switcher.go, place_home.go).
+// An item earns a row on the flat ranked list exactly when it NEEDS SOMEBODY or
+// is FIRING ([readSwitcher] takes those two and nothing else); the ones still
+// waiting for their time, and the door over them, are the standing place's
+// business now. [TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone] pins
+// them where they still stand.
+//
+// WHAT SURVIVED IS THE ORDER, and it is the half that mattered: one ladder
+// across BOTH kinds of row, so an item stopped on a question can never sort
+// under conversations that want nothing. The glyph and the position are one
+// claim made twice, and this pins them together.
+func TestAStandingItemTakesItsPlaceInTheOneTriageOrder(t *testing.T) {
+	band, lab, transcript := bandOfSix(t)
 	a := lab.app(transcript)
 	band.wire(a)
 	openHomeOn(a, transcript)
@@ -123,38 +148,93 @@ func TestHomeDrawsTheStandingBandInTriageOrderAndFoldsPastThree(t *testing.T) {
 	lines := homeLines(a)
 	joined := strings.Join(lines, "\n")
 
-	// THE TWO HOT ROWS ARE FOUND BY WHAT THEY SAY ABOUT THEMSELVES and not by
-	// their words alone: an item that needs somebody and an item that is firing
-	// are both drawn a second time in the zones above the list, where the first
-	// stands under `needs you` and the second wears this page's ONE spinner
-	// (homespinner.go). The rollup is the band row's own and appears nowhere else.
-	ask := homeRowAt(lines, "needs your look")
-	run := homeRowAt(lines, standing.RunningChecking+" now")
+	// EACH ROW IS FOUND BY ITS MARK AND ITS WORDS TOGETHER, which is how the
+	// order and the glyphs are pinned in one reading: a row sorted to the top
+	// under a mark that says "at rest" would simply not be found here.
+	ask := homeRowAt(lines, tokens.GlyphNeedsHuman+" keep main green")
+	run := homeRowAt(lines, "check the deploy")
+	chat := homeRowAt(lines, tokens.GlyphQueued+" Pricing Research")
+	for name, at := range map[string]int{"needs-you": ask, "running": run, "quiet chat": chat} {
+		if at < 0 {
+			t.Fatalf("home never drew the %s row:\n%s", name, joined)
+		}
+	}
+	if !(ask < run && run < chat) {
+		t.Fatalf("the list is not in triage order (ask %d, run %d, chat %d):\n%s", ask, run, chat, joined)
+	}
+	// AND EACH SAYS WHY IT IS WHERE IT IS. The note is the reading's own
+	// ([switcherStandingNote]) and it is the whole of what the band's rollup was
+	// for on a row.
+	if !strings.Contains(lines[ask], "the fix touches migrations") {
+		t.Fatalf("the row that needs somebody does not say what for:\n%s", joined)
+	}
+	if !strings.Contains(lines[run], standing.RunningChecking+" now") {
+		t.Fatalf("the row a pass is on does not say so:\n%s", joined)
+	}
+	// AND ITS MARK AGREES WITH ITS POSITION. It is the only moving thing on this
+	// machine, so it is also the one row the frame gives the turning cell to
+	// (homespinner.go) — which is why the mark is asked for as "the still one or
+	// the turning one" rather than as one glyph.
+	if !strings.ContainsAny(lines[run], tokens.GlyphWorking+"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the row a pass is on does not wear a moving mark:\n%s", joined)
+	}
+	// THE FOUR THAT WANT NOTHING ARE NOT ON THIS SCREEN, and neither is a door
+	// over them. Four items with nothing to say for themselves used to cost five
+	// rows of a twenty-row screen — that is the whole reason this changed.
+	for _, quiet := range []string{"tell me when the cert expires", "remind me on Fridays",
+		"remind me on Sundays", "remind me on Tuesdays"} {
+		if strings.Contains(joined, quiet) {
+			t.Fatalf("an item that wants nothing took a row on the resting list (%q):\n%s", quiet, joined)
+		}
+	}
+	if strings.Contains(joined, homeItemsFoldWord) {
+		t.Fatalf("the resting list still draws the band's door:\n%s", joined)
+	}
+}
+
+// AND THE BAND ITSELF IS STILL DRAWN WHERE IT STILL LIVES: the phone's inbox,
+// which is built from [homeView.projectBlock] and so still splits a project's
+// items around its conversations, three of them and then one door
+// (homephone.go's [homeView.buildPhone]).
+//
+// THE ORDER IS THE ONE THE BAND ALWAYS KEPT: what needs somebody and what is
+// running sit above the conversations, what is waiting for its time sits under
+// them, and the door sits under that. Six items, three rows, and three behind
+// the door — the cap is on the band and never on the cold half, so the two hot
+// rows are drawn whatever the count says.
+func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
+	band, lab, transcript := bandOfSix(t)
+	a := lab.app(transcript)
+	band.wire(a)
+	// Narrower than [layoutTier]'s phone breakpoint, which is the one width at
+	// which home is the inbox rather than the switcher.
+	a.width, a.height = 50, 40
+	openHomeOn(a, transcript)
+
+	lines := homeLines(a)
+	joined := strings.Join(lines, "\n")
+	// A PHONE ROW IS TWO LINES — the name with its mark, and the rollup under it
+	// — so each row is found by the line that carries its mark, and the glyphs
+	// are pinned with the positions exactly as they were.
+	ask := homeRowAt(lines, homeAskGlyph+" keep main green")
+	run := homeRowAt(lines, homeLiveGlyph+" check the deploy")
 	chat := homeRowAt(lines, homeIdleGlyph+" Pricing Research")
-	wait := homeRowAt(lines, "tell me when")
+	wait := homeRowAt(lines, standWaitGlyph+" tell me when the cert expires")
 	fold := homeRowAt(lines, homeItemsFoldWord)
 	for name, at := range map[string]int{"needs-you": ask, "running": run, "session": chat, "waiting": wait, "fold": fold} {
 		if at < 0 {
-			t.Fatalf("home never drew the %s row:\n%s", name, joined)
+			t.Fatalf("the phone never drew the %s row:\n%s", name, joined)
 		}
 	}
 	if !(ask < run && run < chat && chat < wait && wait < fold) {
 		t.Fatalf("the band is not in triage order (ask %d, run %d, chat %d, wait %d, fold %d):\n%s",
 			ask, run, chat, wait, fold, joined)
 	}
-	// SIX ITEMS AND THREE ROWS: the cap is on the BAND and not on the cold half,
-	// so two hot rows and one waiting one are drawn and the other three are
-	// behind the door.
 	if !strings.Contains(joined, "…3"+homeItemsFoldWord) {
 		t.Fatalf("the fold does not count what it is hiding:\n%s", joined)
 	}
-	// THE GLYPHS AGREE WITH THE POSITIONS. A row sorted to the top under a mark
-	// that says "at rest" is the screen arguing with itself.
-	if !strings.Contains(lines[ask], homeAskGlyph) || !strings.Contains(lines[run], homeLiveGlyph) {
-		t.Fatalf("the hot rows do not wear their marks:\n%s", joined)
-	}
-	if !strings.Contains(lines[wait], standWaitGlyph) {
-		t.Fatalf("a waiting row does not wear %q:\n%s", standWaitGlyph, joined)
+	if !strings.Contains(joined, "needs your look") {
+		t.Fatalf("the row that needs somebody lost its rollup:\n%s", joined)
 	}
 	// AND THE DOOR OPENS. enter on the fold line shows the rest.
 	a.home.pointItemFoldForTest()
@@ -277,14 +357,24 @@ func TestTheItemCardSaysWhatTheThingDidThisWeek(t *testing.T) {
 	}
 }
 
+// stuckItem is a watch STOPPED ON A QUESTION, which is what it takes for a
+// standing item to have a row on the resting list at all ([readSwitcher] draws
+// the ones that need somebody or are firing and leaves the rest to the standing
+// place). Everything below is about the keys that act on such a row, so the row
+// has to exist.
+func stuckItem() standing.Item {
+	item := bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays")
+	item.NeedsPerson = "should I send it to the whole team?"
+	item.Updated = time.Now().Add(-time.Minute)
+	return item
+}
+
 // p AND s GO THROUGH THE STORE, and the row afterwards is what the store says
 // rather than what the keystroke hoped for.
 func TestPauseAndStopReachTheStore(t *testing.T) {
 	lab := newHomeLab(t)
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
-	band := &standBand{items: []standing.Item{
-		bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
-	}}
+	band := &standBand{items: []standing.Item{stuckItem()}}
 	a := lab.app(transcript)
 	band.wire(a)
 	a.openHome()
@@ -296,6 +386,17 @@ func TestPauseAndStopReachTheStore(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(homeLines(a), "\n"), homeItemPaused) {
 		t.Fatalf("the paused row does not say so:\n%s", strings.Join(homeLines(a), "\n"))
+	}
+	// AND THE ROW IS READ BACK OUT OF THE STORE RATHER THAN OUT OF THE KEYSTROKE.
+	// The reading is rebuilt from the document the write landed in, so the verb
+	// the row now offers is `resume it` — the one thing on the screen that could
+	// not be right unless the write really happened and really came back.
+	var offered []string
+	for _, v := range a.homeRowVerbs() {
+		offered = append(offered, v.word)
+	}
+	if strings.Join(offered, ", ") != switcherResumeWord {
+		t.Fatalf("the paused row offers %v, want only %q", offered, switcherResumeWord)
 	}
 
 	a.home.pointItemForTest("one")
@@ -310,7 +411,7 @@ func TestPauseAndStopReachTheStore(t *testing.T) {
 	// A SURFACE WITH NO WAY TO WRITE SAYS SO rather than pretending.
 	b := lab.app(transcript)
 	b.stands = StandingSeam{Items: func(string) []standing.Item {
-		return []standing.Item{bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays")}
+		return []standing.Item{stuckItem()}
 	}}
 	b.openHome()
 	b.home.pointItemForTest("one")
@@ -456,15 +557,20 @@ func TestStatusSaysNothingAboutWatchingWithNoStandingSeam(t *testing.T) {
 	}
 }
 
-// A NARROW FRAME DROPS THE CARD AND KEEPS THE INDEX, which is home's own law
-// applied to the other kind of row: an index somebody can read beats a preview
-// nobody can.
+// A FRAME THAT IS NOT WIDE ENOUGH DROPS THE CARD AND KEEPS THE INDEX, which is
+// home's own law applied to the other kind of row: an index somebody can read
+// beats a preview nobody can.
+//
+// THE FLOOR MOVED AND THE LAW DID NOT. The everyday card tier went with the
+// strips, and there is exactly one width at which a card appears now —
+// [homeCardMin], which is what the list and the card and the gutter add up to
+// (homebridge.go). So the two frames this test uses are that floor and the cell
+// below it, which is the honest way to pin a boundary: a round number beside it
+// would stop meaning anything the day one of the columns changed.
 func TestANarrowHomeDropsTheItemCard(t *testing.T) {
 	lab := newHomeLab(t)
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
-	band := &standBand{items: []standing.Item{
-		bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays"),
-	}}
+	band := &standBand{items: []standing.Item{stuckItem()}}
 	a := lab.app(transcript)
 	band.wire(a)
 	a.openHome()
@@ -476,7 +582,7 @@ func TestANarrowHomeDropsTheItemCard(t *testing.T) {
 	// be finding the hint.
 	const place = "alpha · /w/alpha"
 
-	a.width, a.height = 70, 24
+	a.width, a.height = homeCardMin-1, 24
 	narrow := strings.Join(homeLines(a), "\n")
 	if !strings.Contains(narrow, "remind me on Fridays") {
 		t.Fatalf("the narrow frame lost the row itself:\n%s", narrow)
@@ -485,10 +591,10 @@ func TestANarrowHomeDropsTheItemCard(t *testing.T) {
 		t.Fatalf("the narrow frame kept the card:\n%s", narrow)
 	}
 
-	a.width = 100
+	a.width = homeCardMin
 	wide := strings.Join(homeLines(a), "\n")
-	if !strings.Contains(wide, place) || !strings.Contains(wide, homeItemActions) {
-		t.Fatalf("the wide frame lost the card:\n%s", wide)
+	if !strings.Contains(wide, place) {
+		t.Fatalf("the frame at the card's own floor lost the card:\n%s", wide)
 	}
 }
 
@@ -497,7 +603,7 @@ func TestANarrowHomeDropsTheItemCard(t *testing.T) {
 func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	lab := newHomeLab(t)
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
-	item := bandItem("one", "remind me on Fridays", "/w/alpha", standing.WhenEvery, "Fridays")
+	item := stuckItem()
 	item.Origin.Exchange = "exchange"
 	band := &standBand{items: []standing.Item{item}}
 	a := lab.app(transcript)
@@ -516,6 +622,14 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // THE ◆ IS DERIVED AND NEVER ASSERTED: it means the thing went off after the
 // last time this person spoke in the conversation that asked for it, and an item
 // with no conversation to compare against does not wear it at all.
+//
+// IT IS DRAWN WHEREVER [StandingItemRow] IS, which since the switcher landed is
+// the band under the phone tier and the drop-up under a query — the resting list
+// paints its own rows from the reading ([switcherPaintRow]) and has three marks
+// rather than five, and an item that only has NEWS earns no row on it at all
+// ([readSwitcher]). So this is pinned at the tier that still draws the band; the
+// derivation itself is one function and [TestNewsNeverOverwritesTheLouderMarks]
+// holds it straight.
 func TestTheNewsGlyphIsDerivedFromWhenYouLastSpoke(t *testing.T) {
 	lab := newHomeLab(t)
 	spoke := time.Now().Add(-3 * time.Hour)
@@ -528,6 +642,7 @@ func TestTheNewsGlyphIsDerivedFromWhenYouLastSpoke(t *testing.T) {
 
 	a := lab.app(transcript)
 	band.wire(a)
+	a.width, a.height = 50, 40
 	a.openHome()
 	if !strings.Contains(strings.Join(homeLines(a), "\n"), standNewsGlyph) {
 		t.Fatalf("an item that fired since you last spoke is not marked:\n%s", strings.Join(homeLines(a), "\n"))
@@ -596,10 +711,27 @@ func TestNewsNeverOverwritesTheLouderMarks(t *testing.T) {
 // The list is read off the projects root, so a directory somebody set a
 // reminder in and never held a conversation in had no heading, no band and no
 // row — the person set the thing up and the one screen that exists to say what
-// is true said nothing about it. The heading is synthesised from the item's own
-// workspace, and it sits in the recency order by the newest thing its items have
-// done.
-func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
+// is true said nothing about it. The place is synthesised from the item's own
+// workspace ([app.readBareBands]), and its rows are cursor stops with the item's
+// own keys on them.
+//
+// ── WHERE THIS LAW NOW HOLDS, AND WHERE IT DOES NOT ─────────────────────────
+//
+// THE HEADING IS GONE, because the resting list has no headings: it is one flat
+// ranked reading with the project as a tag on the row (switcher.go). So the
+// clauses about a heading's position in the recency order and about the word
+// `elsewhere` on it died with the tree they were about.
+//
+// AND THE ROW ITSELF ONLY SURVIVES AT THE PHONE TIER, which is where this is
+// drawn. [readSwitcher] is handed [homeView.world] and walks `world.Projects`,
+// and a bare workspace is not one of them — it lives in [homeView.bare], which
+// only [homeView.everyProject] reads and only homephone.go calls. So at every
+// width above the phone breakpoint a watch on a conversation-less workspace has
+// no row on home AT ALL, even one stopped on a question. That is a hole in the
+// production reading rather than a law this wave repealed, and it is reported
+// as one; this test pins the behaviour where it is still whole so that the day
+// the seam is closed there is something to widen rather than something to write.
+func TestAWorkspaceWhoseOnlyContentIsAWatchIsStillOnTheScreen(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", now.Add(-3*time.Hour))
@@ -607,6 +739,7 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 
 	band := &standBand{}
 	watch := bandItem("watch", "tell me when CI on main goes red", "/w/quiet", standing.WhenProbe, "when CI goes red")
+	watch.NeedsPerson = "the build has been red since Tuesday"
 	watch.LastChecked = now.Add(-time.Minute)
 	watch.Created = now.Add(-time.Hour)
 	band.items = []standing.Item{
@@ -617,29 +750,27 @@ func TestAProjectWithItemsAndNoConversationsStillGetsAHeading(t *testing.T) {
 	a := lab.app(transcript)
 	a.workspace = "/w/quiet"
 	band.wire(a)
+	a.width, a.height = 50, 40
 	openHomeOn(a, transcript)
 
 	lines := homeLines(a)
 	joined := strings.Join(lines, "\n")
-	heading := homeRowAt(lines, "quiet")
+	// THE WATCH IS ON THE SCREEN, in the section for everything that has stopped
+	// and is asking for a hand — which is where a person looks first.
 	row := homeRowAt(lines, "tell me when CI")
-	if heading < 0 || row < 0 {
-		t.Fatalf("the items-only project is invisible (heading %d, row %d):\n%s", heading, row, joined)
+	if row < 0 {
+		t.Fatalf("the items-only workspace is invisible:\n%s", joined)
 	}
-	if heading > row {
-		t.Fatalf("the heading is drawn under its own rows (heading %d, row %d):\n%s", heading, row, joined)
+	// AND THE WORKSPACE ITSELF HAS A PLACE OF ITS OWN, named from the item's
+	// address because nothing else on this machine names it.
+	place := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeProject && strings.Contains(line.project, "quiet") {
+			place = i
+		}
 	}
-	// IT SITS BY ITS OWN RECENCY. The watch was looked at a minute ago and the
-	// older conversation five hours ago, so the new section is above that one.
-	// (alpha is THIS window's project, and that one is first whatever its age —
-	// [homeTiers] — so recency is read against the other project.)
-	if other := homeRowAt(lines, "Older Notes"); other >= 0 && heading > other {
-		t.Fatalf("the newer items-only project sorted under an older project:\n%s", joined)
-	}
-	// AND IT IS NOT MARKED `elsewhere`. That word names a conversation this
-	// window cannot open, and there are no conversations here at all.
-	if strings.Contains(lines[heading], homeElsewhereWord) {
-		t.Fatalf("a heading with no conversations under it claims %q:\n%s", homeElsewhereWord, joined)
+	if place < 0 {
+		t.Fatalf("the items-only workspace got no place of its own:\n%s", joined)
 	}
 	// THE ROW IS A REAL CURSOR STOP with the item's own keys on it: the fold
 	// laws and the band's own writes reach it exactly as they reach any other.

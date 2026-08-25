@@ -323,3 +323,78 @@ func TestAWatchKeepsItsOwnRowKindInsideTheFlatList(t *testing.T) {
 		t.Fatalf("the watch's words are not on the row:\n%s", switchFrame(a))
 	}
 }
+
+// THE RIGHT MARGIN SAYS WHAT ENTER WILL DO, AT EVERY WIDTH.
+//
+// A conversation another window is holding and one whose folder is not there any
+// more both refuse when they are pressed. Those two facts used to be on the card
+// as well as on the row; the card only exists past a hundred and sixty columns
+// now, so a list that left them to it would be silent about a door it has
+// already decided against — which is exactly the trap [homeHeldShort] and
+// [homeGoneShort] were written for.
+func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000001", "here", lab.workspace("alpha"), now)
+	lab.session("-beta", "bbbb000000000001", "somewhere else", filepath.Join(t.TempDir(), "deleted-since"), now.Add(-time.Hour))
+	a := lab.app(mine)
+	a.width, a.height = 120, 30
+	a.openHome()
+	if _, right := homeColumns(a.width); right != 0 {
+		t.Fatal("this test is about the width where there is no card")
+	}
+	if text := switchFrame(a); !strings.Contains(text, homeGoneShort) {
+		t.Fatalf("a row whose folder is gone does not say so:\n%s", text)
+	}
+	// AND THE TWO DOORS THAT NEED THAT FOLDER ARE NOT OFFERED. A strip that named
+	// them would be advertising two keystrokes the door has already refused —
+	// the same law the card's old legend kept.
+	for i, line := range a.home.lines {
+		if line.kind != homeSession || line.row.Project == "" || !strings.Contains(line.row.Title, "somewhere") {
+			continue
+		}
+		a.home.cursor = i
+		words := ""
+		for _, v := range a.homeRowVerbs() {
+			words += string(v.key) + " " + v.word + " · "
+		}
+		if strings.Contains(words, "new chat here") || strings.Contains(words, "open folder") {
+			t.Fatalf("a gone row offered a door that cannot open: %s", words)
+		}
+		if !strings.Contains(words, "copy path") {
+			t.Fatalf("a gone row lost the door that asks nothing of the disk: %s", words)
+		}
+		return
+	}
+	t.Fatalf("the row with the missing folder is not on the list:\n%s", switchFrame(a))
+}
+
+// THE ONE FOLD LEAVES THE CURSOR ON ITSELF, so the gesture that opened the list
+// is the gesture that folds it back without walking anywhere. It is the law
+// every other fold on this column keeps ([homeView.fold]).
+func TestTheFoldLeavesTheCursorOnTheLineThatOpenedIt(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 40)
+	at := -1
+	for i, line := range a.home.lines {
+		if line.kind == homeSwitchFold {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("no fold to open:\n%s", switchFrame(a))
+	}
+	a.home.cursor = at
+	a.homeEnter()
+	line, ok := a.home.focusedLine()
+	if !ok || line.kind != homeSwitchFold {
+		t.Fatalf("opening the fold walked off it, onto %v", line.kind)
+	}
+	a.homeEnter()
+	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSwitchFold {
+		t.Fatalf("folding it back walked off it, onto %v", line.kind)
+	}
+	if strings.Contains(switchFrame(a), "Quiet Chat I") {
+		t.Fatalf("the second press did not fold the list back:\n%s", switchFrame(a))
+	}
+}
