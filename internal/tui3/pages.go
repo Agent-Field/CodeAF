@@ -200,22 +200,42 @@ func (a *app) placeCount(id page) int {
 // jumps to it, in the cells the words were already in, and nothing moves that a
 // person has to re-find when the map goes away.
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
-	full, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
+	full, spans, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
 	if ok {
+		a.tabs = spans
 		return full
 	}
 	worth := func(id page) bool { return id == a.page || a.placeCount(id) > 0 }
-	if some, ok := a.tabBarAt(width, numbered, pal, worth); ok {
+	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
+		a.tabs = spans
 		return some
 	}
-	alone, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return id == a.page })
+	alone, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return id == a.page })
+	a.tabs = spans
 	return alone
 }
 
-// tabBarAt draws the bar over the places `keep` admits, and says whether it fit.
-func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool) (string, bool) {
+// placeTabSpan is where one place's CHIP sits on the bar, so the draw and the
+// press agree about it. It is the settings panel's [tabSpan] with the place it
+// belongs to carried on it — the bar gives up words as the frame narrows
+// (the ladder above), so a span computed from the list of places rather than
+// from the bar that was actually painted would open whichever room happened to
+// sit at that position on a wider terminal.
+//
+// It covers the chip's padding as well as its word, for the reason [tabSpan]
+// gives: the cell beside `tasks` is part of tasks, because a one-cell miss
+// between two words is a miss people make.
+type placeTabSpan struct {
+	id       page
+	from, to int
+}
+
+// tabBarAt draws the bar over the places `keep` admits, says where each chip
+// landed, and says whether it fit.
+func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool) (string, []placeTabSpan, bool) {
 	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
-	first := true
+	spans := make([]placeTabSpan, 0, len(pages()))
+	at, first := tabLead, true
 	for i, id := range pages() {
 		if !keep(id) {
 			continue
@@ -223,6 +243,7 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		if !first {
 			line += strings.Repeat(" ", tabGap)
 			plain += strings.Repeat(" ", tabGap)
+			at += tabGap
 		}
 		first = false
 		word := id.word()
@@ -247,8 +268,10 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			line += pal.dim(chip)
 		}
 		plain += chip
+		spans = append(spans, placeTabSpan{id: id, from: at, to: at + ansi.StringWidth(chip)})
+		at += ansi.StringWidth(chip)
 	}
-	return line, ansi.StringWidth(plain) <= width
+	return line, spans, ansi.StringWidth(plain) <= width
 }
 
 // ── the frame every place is drawn in ───────────────────────────────────────
@@ -319,6 +342,12 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 	}
 
 	add(a.pulseLine(width, pal), blank)
+	// THE BAR IS ROW ONE AND THE POINTER IS TOLD SO HERE. A press arrives as a
+	// row of the terminal, and the only honest way to know which row the bar
+	// ended up on is to record it where it was drawn — the clamp below can cut
+	// it off a frame too short for its own contents, and a press resolved
+	// against a constant would then open a place for a click on a body row.
+	a.tabRow = placeTabRow
 	add(a.placeTabBar(width, a.mapShowing, pal), blank)
 	add(pal.dim(rule(width)), blank)
 	add("", blank)
@@ -401,6 +430,11 @@ func placeFrameWithBar[H any](a *app, width, height int, blank H,
 
 	if len(lines) > height {
 		removed := len(lines) - height
+		// A FRAME TOO SHORT FOR ITS OWN CONTENTS LOSES THE BAR, and the pointer
+		// is told that too: -1 is "there is no tab bar on this frame", which is
+		// the only answer that cannot turn a press on a body row into a place
+		// change.
+		a.tabRow = -1
 		keep, keepHits := lines[:1], hits[:1]
 		lines = append(keep, lines[len(lines)-(height-1):]...)
 		hits = append(keepHits, hits[len(hits)-(height-1):]...)
@@ -574,8 +608,13 @@ func placeTailed(hint string) string {
 // the width was measured, and a directory that is not there stays plain
 // (pathlink.go).
 func (a *app) placeMsgLine(width int) (string, bool) {
+	// THE ROUTER'S OWN LINE OUTRANKS HOME'S. Home says its refusals on a field
+	// of its own ([homeView.say]) and the router says a place's on [app.pageMsg]
+	// — and the one moment both can be set is a refusal that PUT YOU BACK on
+	// home, where the sentence a person needs is the one about the door they
+	// just tried. Home's own is read when the router has nothing to say.
 	msg, path := a.pageMsg, ""
-	if a.page == pageHome {
+	if msg == "" && a.page == pageHome {
 		msg, path = a.home.msg, a.home.msgPath
 	}
 	if msg == "" {
@@ -620,7 +659,14 @@ func (a *app) showPage(id page) tea.Cmd {
 	a.mapShowing = false
 	a.pageMsg = ""
 	a.page = id
+	// A REFUSAL ON THIS ROAD IS THE ROUTER'S LINE AND NOT A NOTE IN THE
+	// TRANSCRIPT ([app.refusePage] holds both halves). The flag is what tells
+	// the two roads apart: `/standing` typed into a conversation is answered in
+	// that conversation, and `alt+3` pressed on a place is answered on the place
+	// a person is looking at — the same sentence, put where it can be read.
+	a.pageRouting = true
 	cmd, opened := a.openPage(id)
+	a.pageRouting = false
 	if opened {
 		return cmd
 	}
@@ -632,10 +678,35 @@ func (a *app) showPage(id page) tea.Cmd {
 	// are left on.
 	a.page = was
 	if !standing {
+		// NOTHING IS DRAWN OVER THE CONVERSATION, so there is no place line for
+		// the refusal to be read on and the transcript is where it belongs.
+		if a.pageMsg != "" {
+			a.note(a.pageMsg)
+			a.pageMsg = ""
+		}
 		return cmd
 	}
 	back, _ := a.openPage(was)
 	return tea.Batch(cmd, back)
+}
+
+// refusePage is what a place says when it will not open, put where the person
+// who asked is actually looking.
+//
+// IT USED TO BE [app.note] EVERYWHERE, AND THAT IS WHY `alt+2` READ AS BROKEN.
+// A note is a line of the CONVERSATION, and a person pressing `alt+2` is
+// standing on home — which is drawn over the conversation, whole — so the
+// sentence explaining why the tasks place would not open was written somewhere
+// nobody could see, and the key answered with silence. On the router's road the
+// sentence is the router's one line ([app.placeMsgLine]); typed into a
+// conversation it is still a note, because that is the surface being looked at.
+func (a *app) refusePage(word string) {
+	if a.pageRouting {
+		a.pageMsg = word
+		a.touch()
+		return
+	}
+	a.note(word)
 }
 
 // pageShowing is whether the place the router is pointing at is actually up. It
@@ -682,6 +753,187 @@ func (a *app) openPage(id page) (tea.Cmd, bool) {
 		return nil, a.sheet.open
 	}
 	return nil, false
+}
+
+// pageReady is whether this place has anything to open onto, asked WITHOUT
+// opening it.
+//
+// IT IS THE WALK'S QUESTION AND NOT THE DOOR'S. `tab` has to know which room it
+// can get into before it turns any handle, because [app.showPage] pays for a
+// refusal twice — the place that was standing is closed, refused, and reopened
+// — and home's reopening is a walk of every project on the machine. A direct
+// jump (`alt+2`, a press on the word) still goes through the door and still
+// gets the sentence saying why it would not open; only the walk asks first.
+//
+// A place not named here is always ready: spend, search and settings have
+// something to draw on any machine, and home is where a refusal puts you back.
+func (a *app) pageReady(id page) bool {
+	switch id {
+	case pageTasks:
+		return a.taskSheetHasAnything()
+	case pageStanding:
+		return len(a.standingRows()) > 0
+	case pageMemory:
+		return a.memoryReady()
+	case pageHome:
+		return !a.hosted() && a.canOpen()
+	}
+	return true
+}
+
+// ── the pointer, one place at a time ────────────────────────────────────────
+//
+// THE THREE GESTURES LIVE HERE FOR [app.openPage]'S REASON: this file is the
+// one that may know every place by name, and a mouse router that grew its own
+// switch would be a second list of the places to fall out of step with the
+// first. What each function is given is a row of the terminal; what it hands
+// back is whether this place took the gesture. The shared arithmetic — a
+// terminal row becoming a line of a body, a window that follows a cursor — is
+// placemouse.go's, because it is the same on every place.
+
+// placeBodyPress is a press on one place's own rows: it moves that place's
+// cursor and never acts, which is the law the standing place already stated for
+// all of them — every verb on these lists is a key, and `enter` leaves the
+// conversation a person is sitting in, so a click that did either would be a
+// gesture nobody can aim.
+func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
+	switch a.page {
+	case pageStanding:
+		if !a.standPage.open {
+			return nil, false
+		}
+		if at, ok := a.standPage.rowAt(y - placeHeadRows); ok {
+			a.standPage.cursor = at
+			a.touch()
+		}
+		return nil, true
+	case pageMemory:
+		if !a.memPanel.open {
+			return nil, false
+		}
+		if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
+			if _, stop := a.memPanel.reading.at(at); stop {
+				a.memPanel.cursor = at
+				a.touch()
+			}
+		}
+		return nil, true
+	case pageSpend:
+		if !a.spend.open {
+			return nil, false
+		}
+		if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
+			a.spend.cursor = at
+			a.touch()
+		}
+		return nil, true
+	case pageSearch:
+		if !a.search.open {
+			return nil, false
+		}
+		if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+			if _, stop := a.search.reading.at(at); stop {
+				a.search.cursor = at
+				a.touch()
+			}
+		}
+		return nil, true
+	}
+	return nil, false
+}
+
+// placeBodyHover is the pointer resting over one place's rows: THE POINTER
+// PREVIEWS AND THE CURSOR SELECTS, which is home's own law owed to every place
+// the router promoted. It repaints only when the row under the pointer actually
+// changed, exactly as [app.setHover] does, because motion is the commonest
+// message this surface gets.
+func (a *app) placeBodyHover(y int) bool {
+	switch a.page {
+	case pageStanding:
+		if !a.standPage.open {
+			return false
+		}
+		// THE STANDING PLACE'S HOVER IS A SCREEN LINE OF ITS BLOCK and not a row
+		// index, because that is what the fill it is drawn with compares against
+		// ([overlayFill.addTinted]) — a two-line row is hovered by either of its
+		// lines.
+		next := -1
+		if at := y - placeHeadRows; at >= 0 && at < len(a.standPage.owner) && a.standPage.owner[at] >= 0 {
+			next = at
+		}
+		return placeHoverMoved(&a.standPage.hover, next, a)
+	case pageMemory:
+		if !a.memPanel.open {
+			return false
+		}
+		next := -1
+		if at, ok := placeBodyLine(y, a.memPanel.top, a.memPanel.shown); ok {
+			if _, stop := a.memPanel.reading.at(at); stop {
+				next = at
+			}
+		}
+		return placeHoverMoved(&a.memPanel.hover, next, a)
+	case pageSpend:
+		if !a.spend.open {
+			return false
+		}
+		next := -1
+		if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
+			next = at
+		}
+		return placeHoverMoved(&a.spend.hover, next, a)
+	case pageSearch:
+		if !a.search.open {
+			return false
+		}
+		next := -1
+		if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+			if _, stop := a.search.reading.at(at); stop {
+				next = at
+			}
+		}
+		return placeHoverMoved(&a.search.hover, next, a)
+	}
+	return false
+}
+
+// placeBodyWheel is the wheel over one place: it walks that place's cursor, by
+// [placeWheelRows] rows a tick, which is what every other list on this surface
+// does with it (app.go's wheel ladder). A place whose window follows its cursor
+// has no offset of its own to move, so a scroll and a selection are one gesture
+// here — the bargain the task page and home both already struck.
+func (a *app) placeBodyWheel(delta int) bool {
+	switch a.page {
+	case pageStanding:
+		if !a.standPage.open {
+			return false
+		}
+		a.standPage.move(delta)
+		a.touch()
+		return true
+	case pageMemory:
+		if !a.memPanel.open {
+			return false
+		}
+		a.memPanel.move(delta)
+		a.touch()
+		return true
+	case pageSpend:
+		if !a.spend.open {
+			return false
+		}
+		a.moveSpend(delta)
+		a.touch()
+		return true
+	case pageSearch:
+		if !a.search.open {
+			return false
+		}
+		a.moveSearch(delta)
+		a.touch()
+		return true
+	}
+	return false
 }
 
 // nextPage is `tab`: the place after this one, and round again from the last.

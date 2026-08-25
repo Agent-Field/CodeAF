@@ -702,7 +702,7 @@ func (a *app) openHome() tea.Cmd {
 		// state root under this process belongs to the wrong machine, and a
 		// screen full of the laptop's projects while the session runs on the
 		// server would be a lie drawn confidently.
-		a.note(homeRemoteWord)
+		a.refusePage(homeRemoteWord)
 		return nil
 	}
 	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and the task
@@ -716,30 +716,7 @@ func (a *app) openHome() tea.Cmd {
 	a.page = pageHome
 	a.closeLists()
 	a.dismissWelcome()
-	a.home = homeView{
-		open:         true,
-		world:        a.readWorld(),
-		seen:         session.LastLook(a.placesRoot()),
-		bucket:       homeBucketOf(a.file),
-		here:         homeSessionDirOf(a.file),
-		tier:         a.homeTierNow(),
-		hover:        -1,
-		last:         map[string]session.Summary{},
-		news:         map[string]homeNewsCache{},
-		deliverables: map[string]homeDeliverablesCache{},
-		expanded:     map[string]bool{},
-		itemsOpen:    map[string]bool{},
-		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
-		// this screen and nothing else does, which is why they are seeded from
-		// the app rather than kept here (place_home.go).
-		grouped:   a.switchGrouped,
-		hideQuiet: a.switchQuiet,
-		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
-		// screen, so opening home again finds every one that was still going —
-		// with its row, its tail and its pane exactly as they were left
-		// (homeexchange.go).
-		exchanges: a.exchanges,
-	}
+	a.home = a.newHomeView(a.readWorld())
 	a.readStandBands()
 	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
 	// beat (place_home.go's [app.readSwitchLedger]).
@@ -829,18 +806,11 @@ func (a *app) landHome() {
 	if !worldHasElsewhere(world, a.file) {
 		return
 	}
-	a.home = homeView{
-		open:      true,
-		world:     world,
-		seen:      session.LastLook(a.placesRoot()),
-		bucket:    homeBucketOf(a.file),
-		tier:      a.homeTierNow(),
-		hover:     -1,
-		last:      map[string]session.Summary{},
-		expanded:  map[string]bool{},
-		itemsOpen: map[string]bool{},
-		exchanges: a.exchanges,
-	}
+	// THE SAME HOME THE DOOR OPENS, built by the same constructor. What is
+	// different about this road is only WHEN it runs — inside [newApp], before
+	// bubbletea exists — and the world it hands in, which was already read above
+	// to answer whether there is anywhere else to go.
+	a.home = a.newHomeView(world)
 	a.readStandBands()
 	a.home.readGone()
 	a.home.build()
@@ -934,6 +904,48 @@ func (a *app) closeHome() {
 	// (homeexchange.go's header).
 	a.home = homeView{}
 	a.touch()
+}
+
+// newHomeView is THE home view, and it is one function because there are two
+// ways in.
+//
+// A SECOND STRUCT LITERAL IS A SECOND SET OF FIELDS TO FORGET, and this one
+// forgot. The greeting builds home before bubbletea exists ([app.landHome]) and
+// had a literal of its own; when home learned which conversation THIS WINDOW is
+// holding ([homeView.here]), only the other literal gained the field — so the
+// very first home a person sees marked their own conversation `another window`,
+// the flock this process holds read as somebody else's, and offered them a door
+// that refuses. Three caches and the two remembered views had drifted the same
+// way. So there is one constructor, and a field added to the view is a field
+// both roads get.
+func (a *app) newHomeView(world session.World) homeView {
+	return homeView{
+		open:  true,
+		world: world,
+		seen:  session.LastLook(a.placesRoot()),
+		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
+		// whether a row's door can open at all; the session is the one row that
+		// wears `here` instead of an age (place_home.go).
+		bucket:       homeBucketOf(a.file),
+		here:         homeSessionDirOf(a.file),
+		tier:         a.homeTierNow(),
+		hover:        -1,
+		last:         map[string]session.Summary{},
+		news:         map[string]homeNewsCache{},
+		deliverables: map[string]homeDeliverablesCache{},
+		expanded:     map[string]bool{},
+		itemsOpen:    map[string]bool{},
+		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
+		// this screen and nothing else does, which is why they are seeded from
+		// the app rather than kept here (place_home.go).
+		grouped:   a.switchGrouped,
+		hideQuiet: a.switchQuiet,
+		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
+		// screen, so opening home again finds every one that was still going —
+		// with its row, its tail and its pane exactly as they were left
+		// (homeexchange.go).
+		exchanges: a.exchanges,
+	}
 }
 
 // placesRoot is where the projects live. The field is the test's door and
@@ -1899,6 +1911,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
+	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
+	// person back here is about the key they just pressed; the next key is a new
+	// question, and a sentence that outlived it would be an answer to nothing
+	// (pages.go's [app.placeMsgLine] reads the two in that order).
+	a.pageMsg = ""
 	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
 	// (placekeys.go). It claims the chords that mean the same thing wherever you
 	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`

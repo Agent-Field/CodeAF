@@ -81,13 +81,16 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "tab":
-		return a.showPage(nextPage(a.page, false)), true
+		// THE NEXT PLACE A PERSON CAN ACTUALLY GET INTO. A place that refuses to
+		// open is walked past rather than walked into ([app.walkPage] tells the
+		// whole story of what pressing `tab` on a fresh machine used to do).
+		return a.walkPage(false), true
 	case "shift+tab":
 		// THE CIRCLE WALKED THE OTHER WAY. It is not one of the six classes and
 		// it does not need to be: it is `tab`'s own inverse, which every tab bar
 		// in every program has meant since tab bars existed, and a person who
 		// overshoots must not have to go round six more places to get back.
-		return a.showPage(nextPage(a.page, true)), true
+		return a.walkPage(true), true
 
 	case "alt+enter":
 		return a.placeSend(), true

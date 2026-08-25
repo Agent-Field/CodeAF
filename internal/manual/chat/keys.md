@@ -1085,7 +1085,9 @@ dim legend names the verbs, and the strip names the letters. The other printable
 is the digits on a waiting row's answer chips, which are drawn on the line above the box.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
-a click on a `…13 more` line toggles it in one press.
+a click on a `…13 more` line toggles it in one press. The wheel walks the list three rows a
+turn, and the **tab bar above the list is a control** — clicking a place's word goes there,
+and clicking a gap between two words does nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's

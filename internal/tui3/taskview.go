@@ -527,7 +527,7 @@ func (a *app) openTaskPage() tea.Cmd {
 		// It REFUSES rather than raising a page with a title and nothing under it —
 		// the emptiness law reaches modals — and it says so, because a command typed
 		// on purpose that answers with silence reads as a command that broke.
-		a.note(taskSheetEmpty)
+		a.refusePage(taskSheetEmpty)
 		return nil
 	}
 	return a.loadTasks()
