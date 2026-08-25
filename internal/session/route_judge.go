@@ -1,6 +1,7 @@
 package session
 
-// THE ROUTE JUDGE: one cheap question asked AFTER a turn that answered in words.
+// THE ROUTE JUDGE: one cheap question, asked at the TWO MOMENTS a turn can
+// still be handed over.
 //
 // The system prompt has a work-or-words law (prompts/system.md): a question, a
 // discussion, a fact and a few tool calls are answered here; research across
@@ -10,9 +11,32 @@ package session
 // it is forgotten is invisible: the person gets a good paragraph about work
 // nobody started.
 //
-// So this file asks a SECOND model, once, after the fact. It sees what the
-// person said and two lines of what came back, and it answers one thing: should
-// that have been work? A yes STARTS the work and tells them it started.
+// So this file asks a SECOND model, and it asks it in two places.
+//
+//   - BEFORE the turn ([Agent.routeAhead]), reading the REQUEST and nothing
+//     else. A yes starts the task AND ENDS THE TURN: the message has been handed
+//     to the graph — it rides the spec as the person's own words — so answering
+//     it a second time in the conversation would be doing the same work twice
+//     and saying it twice.
+//   - AFTER a turn that answered in words alone ([Agent.routeJudge]), reading
+//     the request and two lines of what came back. A yes starts the work the
+//     answer only talked about.
+//
+// THE PRE-TURN READ EXISTS BECAUSE THE POST-TURN ONE CANNOT SEE THE FAILURE THAT
+// COSTS THE MOST. A chat message carrying four independent pieces of work was
+// answered, twice in measurement, by ninety-odd rounds of inline tool calls: the
+// model had propose_task on its belt and a prompt that taught it to hand work
+// over mid-turn, and a model deep in tool momentum does not stop to re-consult a
+// verb it rarely reaches for. That turn never reaches the post-turn judge at all
+// — it called tools, so the second law below excuses it — and by the time it
+// ends, the grinding the hand-off would have prevented has already happened. A
+// decision the model will not make mid-grind has to be made at a HARNESS SEAM
+// before the grinding starts, which is what the pre-turn read is.
+//
+// NEITHER READ REPLACES THE OTHER. The pre-turn one judges a sentence nobody has
+// worked on yet and is wrong in the cautious direction by design; the post-turn
+// one still runs on every wordy turn and catches what reading the request alone
+// could not have known.
 //
 // THERE IS ONE ROAD OUT OF HERE and it is a task ([Agent.launchRouteTask]).
 // The judge used to name a shape, because there were two roads and the second
@@ -22,7 +46,7 @@ package session
 // is said in `wide`, which arms the one worker to hand the parts out once it has
 // opened the material (task_divide.go) — the same road, wider.
 //
-// FIVE LAWS HOLD IT TO SOMETHING NOBODY WILL WANT TURNED OFF.
+// SIX LAWS HOLD IT TO SOMETHING NOBODY WILL WANT TURNED OFF.
 //
 //   - A YES STARTS THE WORK, AND THE PERSON IS TOLD IT STARTED. There is no card
 //     and no keypress. An offer is a modal row on a turn nobody said was unusual,
@@ -30,14 +54,19 @@ package session
 //     task itself is the better version of that question, because it is on the
 //     rail, it says what it is doing, and it can be stopped from there. Being
 //     told after is the honest shape; every law below is what makes it safe.
-//   - IT ONLY WATCHES A TOOL-LESS TURN. A turn that called tools was already
-//     work of some size, and asking whether work should have been work is a
-//     question with no useful answer.
+//   - IT NEVER SECOND-GUESSES A TURN THAT USED TOOLS. A turn that called tools
+//     was already work of some size, and asking afterwards whether work should
+//     have been work is a question with no useful answer — so the post-turn read
+//     watches a TOOL-LESS turn only. The pre-turn read is made before any tool
+//     has run, which is the whole reason it is made there.
 //   - IT IS RATE-LIMITED, and auto-start makes the limit MORE load-bearing rather
 //     than less: at most one task every [routeJudgeGap] turns, which is also what
 //     makes two in a row impossible. Somebody who has just stopped one is having
 //     a conversation, and the second task started over the top of it is the one
-//     that makes the feature a nuisance.
+//     that makes the feature a nuisance. ONE LIMIT COVERS BOTH READS — one
+//     counter, one gap, one memory of when work last began — because the person
+//     is being interrupted by TASKS and does not care which of the two moments
+//     noticed. Two limits would be two tasks in one conversation's breath.
 //   - IT IS SILENT WHEN IT CANNOT WORK. No router model, nobody watching this
 //     session, a reply that is not JSON, a judge that would not answer at all:
 //     each of those is one turn that behaves exactly as it did before this file
@@ -54,12 +83,21 @@ package session
 //     anything. The confirm is asked on nothing else, so what it costs over a
 //     conversation is nearly nothing and what it stands in front of is a whole
 //     task's spend.
+//   - IT IS BOUNDED WHERE SOMEBODY IS WAITING. The post-turn read happens after
+//     the answer is on the screen, so it can take the time it takes. The pre-turn
+//     one stands in front of the first request of the turn, where every
+//     millisecond is a person watching a cursor — so it is asked with a hard
+//     [routeAheadWindow] on it and a judge that cannot answer inside the window
+//     is a no: no retry, no note, and a turn that proceeds exactly as it would
+//     have. A feature that made ordinary conversation feel slower in order to
+//     catch a rare grind would be paid for by every turn it never fires on.
 
 import (
 	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -114,6 +152,25 @@ const (
 	// routeWhyBytes is the one line the person is shown about why this started:
 	// it rides the note on the transcript and stays under the task's row.
 	routeWhyBytes = 120
+	// routeAheadWindow is the whole of what the PRE-TURN read may cost a person
+	// in time. It stands between somebody pressing enter and the first request of
+	// the turn going out, so it is a HARD bound and not a patience: three seconds
+	// is the outside of what a low-tier model needs for one small object, and a
+	// judge that has not answered by then is a no ([Agent.askRouteAhead]) — no
+	// retry, no note, and a turn that runs exactly as it would have.
+	//
+	// It is the same three seconds the sizing judge is held to at the typed door
+	// (task_person.go's taskJudgeTimeout), and for the same reason: both stand in
+	// front of somebody who has just typed and is waiting.
+	routeAheadWindow = 3 * time.Second
+	// routeAheadConfirmWindow is the mastermind's, and it is longer because of
+	// WHAT HAS ALREADY HAPPENED by the time it is asked. The cheap model has read
+	// this message and called it work, so the turn ahead is minutes of tool calls
+	// either way and a few seconds spent deciding who does them is not a cost a
+	// person can feel. It is still a hard bound: a confirm that times out is a no
+	// (the fourth law), so the worst case is the turn the model would have
+	// answered anyway, a few seconds later.
+	routeAheadConfirmWindow = 8 * time.Second
 )
 
 // routeVerdict is the judge's whole vocabulary. An empty one — the shape of
@@ -195,7 +252,17 @@ THE TEST IS THE CRITICAL PATH AND NOT THE SIZE. If the fastest correct answer ru
 
 A YES STARTS THE WORK IMMEDIATELY. One worker takes the goal you write and the person is told it started. Nobody is asked first, so answer yes only for work you would want begun on your behalf.
 
-Answer with ONE JSON object and nothing else — no prose, no code fence:
+` + routeVerdictContract + `
+
+When you are unsure, answer {"work": false}. A wrong yes starts work over the top of somebody who was having a conversation.`
+
+// routeVerdictContract is the WIRE, and it is one const because both readings
+// land in the same [routeVerdict] and start the same task. The two briefs ask
+// their question of different evidence — a finished turn, an unanswered request
+// — and that difference is theirs to spell; the fields, their bounds and what
+// each is FOR are the same sentence twice, and a second spelling of them is the
+// drift that ends with one door writing an acceptance nobody can check.
+const routeVerdictContract = `Answer with ONE JSON object and nothing else — no prose, no code fence:
 
   {"work": false}
 
@@ -222,9 +289,7 @@ or
          checker nothing to look at.
   why    ONE line, in a person's own words, saying what this looks like. It is
          shown to them beside the work, so write it as you would say it:
-         "research across every package", "a sweep over forty files".
-
-When you are unsure, answer {"work": false}. A wrong yes starts work over the top of somebody who was having a conversation.`
+         "research across every package", "a sweep over forty files".`
 
 // routeJudge is this file's whole place in a turn, called once from
 // [Agent.runTurn] when the model has answered without a tool call.
@@ -234,12 +299,12 @@ When you are unsure, answer {"work": false}. A wrong yes starts work over the to
 // either way — which is what lets the hook in the loop be one line with no
 // result to read.
 func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage, usedTools bool, answer string) {
-	// THE TURN COUNTER MOVES ON EVERY TURN, gates or no gates: the limit below is
-	// "one start every three turns of conversation", and a counter that only
-	// advanced on the turns this file examined would make it "every three turns
-	// this file happened to like".
+	// THE COUNTER IS READ HERE AND MOVED NOWHERE. It is stepped once per turn, at
+	// the front, by [Agent.routeAhead] — which every turn passes through before
+	// its first request — so what this reads is THIS turn's number and the two
+	// reads share one limit rather than two. Stepping it a second time here would
+	// halve the gap and make "every three turns" mean every one and a half.
 	a.mu.Lock()
-	a.routeTurns++
 	turn, offered := a.routeTurns, a.routeOffered
 	model, closed := a.model, a.closed
 	a.mu.Unlock()
@@ -316,7 +381,7 @@ func routeSubstantial(text string) bool {
 // conversation's own model rather than refusing — and an install with nothing
 // anywhere gets no judge at all, which is this feature absent rather than broken.
 func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, asked, answered)
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
 	if !ok {
 		return routeVerdict{}, false
 	}
@@ -355,20 +420,22 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 // this call decides one bit and nothing else, and refusing a confirm that
 // answered `{"work": true}` would be refusing the answer the brief asks for.
 func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) bool {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, asked, answered)
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
 	return ok && verdict.Work
 }
 
-// putRouteQuestion is the one call both readings are made of: ask the role, bill
-// the person, salvage the object. It is shared rather than spelled twice
-// because the brief, the wire contract and the budget are the SAME question —
-// two spellings of it would be two questions, and the confirm would slowly stop
-// confirming what the screen answered.
-func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, asked, answered string) (routeVerdict, bool) {
+// putRouteQuestion is the one call EVERY reading in this file is made of: ask
+// the role, bill the person, salvage the object. The brief and the question ride
+// in as arguments because there are two moments and they read different
+// evidence; everything after that — the budget, the temperature, the auxiliary
+// billing, the salvage ladder and the bounds each written field is held to — is
+// the same for all four calls, and a second spelling of it is how a confirm
+// slowly stops confirming what its screen answered.
+func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, brief, question string) (routeVerdict, bool) {
 	response, judge, err := a.callRole(ctx, role, model,
 		[]ai.Message{
-			textMessage("system", routeJudgeBrief),
-			textMessage("user", routeJudgeQuestion(asked, answered)),
+			textMessage("system", brief),
+			textMessage("user", question),
 		},
 		ai.WithMaxTokens(routeJudgeTokens),
 		ai.WithTemperature(routeJudgeTemp))
@@ -417,6 +484,222 @@ func routeJudgeQuestion(asked, answered string) string {
 	return out.String()
 }
 
+// ── the pre-turn ask ────────────────────────────────────────────────────────
+//
+// The same cascade, one moment earlier, on the one piece of evidence that exists
+// before a turn has run: the request itself.
+
+// routeAheadBrief is the pre-turn question, and it is NOT the post-turn one with
+// a word changed. What the judge is reading is honestly different — an
+// unanswered request rather than a finished turn — so the shape of the mistake
+// it can make is different too: there is no answer in front of it to be
+// impressed by, and a yes here takes the message OUT of the conversation rather
+// than adding work beside an answer that was already given.
+//
+// THE CRITICAL-PATH LAW IS THE SAME LAW, word for word, because it is the thing
+// that keeps both readings honest: small work is not work, and the fastest
+// correct answer through a few tool calls is a conversation however grand the
+// subject sounds.
+//
+// WHAT IS NEW IS THE THREE SHAPES A REQUEST WEARS. They are the pre-turn read's
+// whole edge over the post-turn one: several independent deliverables named in
+// one message, a sweep across many files or sources, and an answer somebody
+// would otherwise sit and watch a spinner for. THEY ARE TAUGHT AS PRINCIPLES AND
+// NEVER AS PATTERNS — there is no list of words, no count of numerals, nothing a
+// person could defeat by phrasing a request differently — because a judge tuned
+// to surface features is a keyword rule with a bill attached.
+const routeAheadBrief = `You judge ONE message a person has just typed to a coding assistant, BEFORE it is answered. Nothing has been done yet: you are reading the REQUEST, not a reply. You decide one thing: is this WORK?
+
+WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
+
+WORK is research across several sources, changes across several files, a goal with several independent parts, or anything the person would otherwise watch a spinner for. Three shapes of request are almost always work: one message that asks for SEVERAL INDEPENDENT DELIVERABLES, a SWEEP across many files or many sources, and anything whose answer is MINUTES OF TOOL CALLS the person can only sit and watch.
+
+THE TEST IS THE CRITICAL PATH AND NOT THE SIZE. If the fastest correct answer runs through the assistant's own tools in a few calls, it is not work, however large the subject sounds. If it runs through minutes of them, or through parts somebody would otherwise serialize by hand, it is work.
+
+A YES STARTS THE WORK IMMEDIATELY AND THE CONVERSATION DOES NOT ANSWER THE MESSAGE. One worker is given this message and the goal you write, and the person is told it started rather than being replied to here. So answer yes only for a request you would rather have DONE than ANSWERED.
+
+` + routeVerdictContract + `
+
+When you are unsure, answer {"work": false}. A wrong yes takes somebody's question away from the conversation that was about to answer it.`
+
+// routeAheadQuestion is the turn as the pre-turn judge reads it: the request,
+// and NOTHING ELSE. There is no answer to show it and no shape of one to
+// summarise — that is the whole difference between the two readings, and it is
+// why this file spells the question twice instead of passing an empty string
+// into [routeJudgeQuestion] under a heading that would then be a lie.
+func routeAheadQuestion(asked string) string {
+	var out strings.Builder
+	out.WriteString("WHAT THE PERSON JUST ASKED FOR:\n")
+	out.WriteString(clip(strings.TrimSpace(asked), routeAskBytes))
+	out.WriteString("\n\nIs this work? Answer with one JSON object.")
+	return out.String()
+}
+
+// routeAhead is the ask at the FRONT of a turn, called once from [Agent.runTurn]
+// before the model has been sent anything.
+//
+// IT REPORTS ON [Agent.routeHarness]'S TERMS — was this turn ANSWERED here, and
+// did it COMPLETE — because it is the same kind of seam and the loop reads it
+// with the same two lines. Everything except a both-yes is `false, false`, which
+// is the turn below running exactly as it did before this existed.
+//
+// WHAT A YES DOES IS START THE TASK AND STOP THE TURN. The person's message is
+// already the spec's request ([Agent.taskRequest], written into the transcript
+// and into a.personAsk by [Agent.startTurnLocked] before the loop begins), so
+// the work is genuinely handed over rather than copied — and a turn that then
+// went on to answer the same message would do the work twice, once in the
+// conversation and once on the rail, which is the exact grind this seam exists
+// to prevent. The told-after line is the answer.
+//
+// WHAT IT COSTS: one low-tier call on a substantial message the gap allows,
+// which is a few hundred tokens of request and one small object back. The
+// mastermind is asked only on the screen's yes, which is rare, and only ever
+// once. That is the same economy the post-turn read keeps (the fifth law) with
+// the same counter in front of it, so a conversation cannot be charged twice for
+// one turn's worth of judgement.
+func (a *Agent) routeAhead(ctx context.Context, hub *eventHub, user userMessage, started time.Time) (bool, bool) {
+	// THE TURN COUNTER MOVES HERE, AND HERE ONLY. It counts turns of
+	// conversation, so it belongs at the FRONT of one — where every turn passes,
+	// including the ones that end interrupted or in an error and never reach the
+	// post-turn read at all. Both reads then see the same number for the same
+	// turn, which is what makes [routeJudgeGap] one limit across the two rather
+	// than two limits that happen to share a name.
+	a.mu.Lock()
+	a.routeTurns++
+	turn, offered := a.routeTurns, a.routeOffered
+	closed := a.closed
+	a.mu.Unlock()
+	if closed {
+		return false, false
+	}
+	// THE GATES ARE THE POST-TURN READ'S GATES, unchanged and in the same order,
+	// because they are gates on STARTING WORK and not on when the question was
+	// asked: nobody watching, a node with no surface, a line the session wrote
+	// itself, a message too short to be worth a model call, and a start too
+	// recent to follow with another.
+	if !a.config.AskConsent || a.config.InTask {
+		return false, false
+	}
+	if user.empty() || user.wake || user.authored {
+		// ONLY WHAT A PERSON TYPED. A woken turn's note is the session talking to
+		// itself, and work started against one would be the session spending money
+		// on its own sentence (harness.go keeps the same law).
+		return false, false
+	}
+	if len(user.refs) > 0 {
+		// AND ONLY WHAT A TASK COULD BE HANDED. A message with pictures attached
+		// (image.go) carries evidence that lives in this conversation and nowhere
+		// else: a spec is words, so a node started from one would open on the
+		// caption alone and the pictures would be answered by nobody. This turn is
+		// the only place that message can be looked at, so it is left to it.
+		return false, false
+	}
+	asked := user.text()
+	if said := strings.TrimSpace(user.said); said != "" {
+		// AND ONLY THEIR HALF OF IT. What the model reads is sometimes the
+		// person's sentence with an instruction the SESSION wrote in front of it
+		// — a draft they marked as standing is the one door that does this
+		// (standing_mark.go) — and [userMessage.said] is the half they typed. A
+		// judge shown the instruction would be judging the session's own words,
+		// which is the same law the wake check above keeps.
+		asked = said
+	}
+	if !routeSubstantial(asked) {
+		return false, false
+	}
+	if offered > 0 && turn-offered < routeJudgeGap {
+		return false, false
+	}
+	verdict, ok := a.askRouteAhead(ctx, asked)
+	if !ok || !verdict.Work {
+		return false, false
+	}
+	if !a.confirmRouteAhead(ctx, asked) {
+		return false, false
+	}
+	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE — the same line, below the
+	// confirm for the same reason it stands below the confirm in the post-turn
+	// read: a confirmed no interrupted nobody, so there is nothing for the next
+	// three turns to protect.
+	a.mu.Lock()
+	a.routeOffered = turn
+	a.mu.Unlock()
+
+	said := a.launchRouteTask(hub, verdict)
+	// THE NOTICE IS THE TURN'S ANSWER, and it is RECORDED as one. Nothing is
+	// streamed a second time — the person has already read the line as the dim
+	// note the task started under, and the same sentence arriving twice would
+	// read as the session saying it twice — but the transcript must not be left
+	// with a request nobody replied to: the next turn would open on it, and a
+	// model that reads an unanswered question at the top of its context answers
+	// it, which is this whole seam undone one turn later.
+	a.record(textMessage("assistant", said))
+	// AND THE TURN IS SEALED THE WAY EVERY OTHER TURN SHAPE SEALS ITSELF
+	// (loop.go's [Agent.sealTurn]). It is ZERO-TOKEN and that is not an
+	// oversight: what the two judges spent went through the auxiliary door where
+	// every errand's spend goes, and this conversation never sent a request of
+	// its own.
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+	// And the name, on the same terms the harness turn takes it (title.go): a
+	// session whose first turn handed its work to a task is still a session with
+	// a subject, and the exchange the namer reads is the request and the line
+	// above.
+	a.maybeTitle(ctx, hub)
+	return true, true
+}
+
+// askRouteAhead is the screen, BOUNDED and ASKED OF THE CREW ALONE. It is
+// [Agent.askRouteJudge]'s call with the pre-turn brief, a deadline over it, and
+// NO SESSION-MODEL FLOOR under it — the empty `sessionDefault` — and those two
+// differences are the same difference: a person is waiting on this one.
+//
+// THE LADDER'S FLOOR IS THE CONVERSATION'S OWN MODEL (auxiliary.go), which is
+// the right last resort for an errand nobody is waiting on and the wrong one
+// here. That model is the biggest and slowest thing in the build; asked to
+// screen a message it would spend a person's money and blow [routeAheadWindow]
+// on nearly every turn, so the feature would cost full price to answer nothing.
+// So an install whose crew has no cheap rung for this role — no pin, no low
+// tier — gets NO PRE-TURN READ AT ALL, which is the codebase's own law about a
+// capability that cannot work being absent rather than broken. The post-turn
+// read still stands there, on the floor it can afford, and catches the same
+// turn a moment later.
+//
+// A judge that misses the window is a judge that did not answer, which this file
+// has always read as a no and said nothing about — so the timeout needs no
+// branch of its own. There is no retry, for the reason there is no repair turn:
+// asking a slow model a second time is spending the person's wait twice on a
+// judgement nobody requested.
+func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
+	ctx, done := context.WithTimeout(ctx, routeAheadWindow)
+	defer done()
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, "", routeAheadBrief, routeAheadQuestion(asked))
+	if !ok || verdict.Goal == "" {
+		// A yes with nothing to run is not a yes: whoever is handed this cannot see
+		// the conversation, so an empty goal would start work nobody could describe.
+		return routeVerdict{}, false
+	}
+	return verdict, true
+}
+
+// confirmRouteAhead puts the pre-turn yes once more on the tier that thinks,
+// under a window of its own.
+//
+// SAME BRIEF, SAME CONTRACT, FRESH CONTEXT, and the same fail-closed posture
+// [Agent.confirmRouteWork] keeps: it is not shown the screen's verdict, it is
+// asked once, and anything that is not a yes — prose, a fault, a window that ran
+// out — is a no that starts nothing and says nothing.
+//
+// IT IS THE CREW'S CALL TOO, with no session-model floor for the reason the
+// screen has none: this decision is the mastermind's or it is not made, and a
+// question that quietly fell through to the model the person is talking to would
+// be the conversation confirming its own hand-off.
+func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) bool {
+	ctx, done := context.WithTimeout(ctx, routeAheadConfirmWindow)
+	defer done()
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked))
+	return ok && verdict.Work
+}
+
 // ── what a yes starts ───────────────────────────────────────────────────────
 
 // launchRouteTask admits one node from the judge's goal. IT IS THE ONLY LANDING
@@ -435,7 +718,13 @@ func routeJudgeQuestion(asked, answered string) string {
 // THE ACCEPTANCE IS THE JUDGE'S OWN DONE-CONDITION, written in the same call
 // that wrote the goal ([routeVerdict.Acceptance]), and [routeAcceptance] stands
 // in for it when the judge did not write one.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
+//
+// IT HANDS BACK THE LINE IT SAID. The post-turn caller has no use for it — the
+// person already has an answer on the screen and this note goes under it — but
+// the pre-turn one ends the turn on this sentence and records it as the turn's
+// answer ([Agent.routeAhead]), and a second copy of the wording assembled there
+// would be the one that drifts.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) string {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
@@ -463,16 +752,16 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 	if state == TaskQueued {
 		word = "queued"
 	}
-	if hub != nil {
-		// THE TOLD-AFTER LINE, and it opens by saying why work began that nobody
-		// asked for. It is [EventNotice] — the dim one-liner a surface already
-		// draws for machinery it did not choose to run — rather than a kind of its
-		// own, because what a person needs here is the same thing that note always
-		// gives them: what happened, once, without stopping anything. The task
-		// itself says the rest, on the rail.
-		hub.send(Event{Kind: EventNotice, Text: "this looked like work, so task " +
-			strconv.FormatUint(id, 10) + " " + word + ": " + spec.title})
-	}
+	// THE TOLD-AFTER LINE, and it opens by saying why work began that nobody
+	// asked for. It is [EventNotice] — the dim one-liner a surface already draws
+	// for machinery it did not choose to run — rather than a kind of its own,
+	// because what a person needs here is the same thing that note always gives
+	// them: what happened, once, without stopping anything. The task itself says
+	// the rest, on the rail.
+	said := "this looked like work, so task " +
+		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
+	hub.send(Event{Kind: EventNotice, Text: said})
+	return said
 }
 
 // routeFallbackAcceptance is what an auto-started task is finished against when

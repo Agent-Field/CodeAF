@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
@@ -43,11 +44,26 @@ type routeCompleter struct {
 	// IT AGREES: most of these tests are about the first judge, and one that
 	// says nothing about the second gets a cascade that behaves as the screen
 	// alone used to.
-	confirm   string
-	judged    int
-	confirmed int
-	question  string
-	confirmQ  string
+	confirm string
+	// ahead is what the PRE-TURN screen answers about the request, and
+	// aheadConfirm is the mastermind's word on its yes. EMPTY IS A NO for the
+	// screen — which is what leaves every test about the post-turn read on this
+	// page reading exactly as it did before the front of the turn had a question
+	// in it — and empty is AGREEMENT for the confirm, as above.
+	ahead        string
+	aheadConfirm string
+	// callFirst makes the CONVERSATION's first request answer with a tool call,
+	// so a turn that touches the belt can be scripted without a second completer
+	// whose calls are counted by position.
+	callFirst    bool
+	judged       int
+	confirmed    int
+	preJudged    int
+	preConfirmed int
+	answers      int
+	question     string
+	confirmQ     string
+	preQuestion  string
 }
 
 func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -61,6 +77,23 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 	}
 	if len(messages) > 1 {
 		asked = messageText(messages[1])
+	}
+	if system == routeAheadBrief {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if request.Model == routeConfirmModel {
+			c.preConfirmed++
+			if c.aheadConfirm == "" {
+				return textResponse(c.ahead), nil
+			}
+			return textResponse(c.aheadConfirm), nil
+		}
+		c.preJudged++
+		c.preQuestion = asked
+		if c.ahead == "" {
+			return textResponse(routeConfirmNo), nil
+		}
+		return textResponse(c.ahead), nil
 	}
 	if system == routeJudgeBrief {
 		c.mu.Lock()
@@ -77,9 +110,21 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 		c.question = asked
 		return textResponse(c.verdict), nil
 	}
+	// WHAT COUNTS AS THE CONVERSATION BEING ASKED is the request that carries the
+	// BELT. Every errand this session runs on its own behalf — the namer a new
+	// task sends after itself, a title, a memory pass — rides the same client with
+	// no tools on it, and counting those as answers would make "the model was
+	// never asked" an assertion about whichever errand happened to fire.
+	if len(request.Tools) == 0 {
+		return textResponse("(errand)"), nil
+	}
 	c.mu.Lock()
-	answer := c.answer
+	c.answers++
+	answer, call := c.answer, c.callFirst && c.answers == 1
 	c.mu.Unlock()
+	if call {
+		return toolResponse("call-1", "read", "{}"), nil
+	}
 	return textResponse(answer), nil
 }
 
@@ -117,6 +162,42 @@ func (c *routeCompleter) sawQuestion() string {
 	return c.question
 }
 
+// preAsked and preConfirms are the same two counts for the PRE-TURN read, and
+// answered is how many times the CONVERSATION itself was asked for an answer —
+// which is the assertion the whole front-of-turn wave turns on: a request that
+// was handed over is a request the model was never asked to grind out.
+func (c *routeCompleter) preAsked() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.preJudged
+}
+
+func (c *routeCompleter) preConfirms() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.preConfirmed
+}
+
+func (c *routeCompleter) answered() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.answers
+}
+
+// sawAheadQuestion is what the pre-turn judge was shown.
+func (c *routeCompleter) sawAheadQuestion() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.preQuestion
+}
+
+// answerAheadWith changes what the pre-turn screen says from the next turn on.
+func (c *routeCompleter) answerAheadWith(verdict string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ahead = verdict
+}
+
 // ordinaryRequests is how many of a scripted completer's calls were the
 // CONVERSATION'S. The route judge rides the same client (route_judge.go), so a
 // watched session that answers a substantial message in words alone makes one
@@ -126,7 +207,12 @@ func ordinaryRequests(completer *scriptedCompleter) int {
 	ordinary := 0
 	for index := 0; index < completer.requests(); index++ {
 		messages := completer.request(index)
-		if len(messages) > 0 && messageText(messages[0]) == routeJudgeBrief {
+		if len(messages) == 0 {
+			ordinary++
+			continue
+		}
+		switch messageText(messages[0]) {
+		case routeJudgeBrief, routeAheadBrief:
 			continue
 		}
 		ordinary++
@@ -332,11 +418,16 @@ func TestTheJudgeIgnoresATrivialTurn(t *testing.T) {
 	}
 }
 
-// A TURN THAT TOUCHED THE BELT IS NOT JUDGED. It was already work of some size,
-// and asking whether work should have been work is a question with no useful
-// answer.
-func TestATurnWithToolCallsIsNeverJudged(t *testing.T) {
-	completer := &scriptedCompleter{steps: oneCallThenAnswer("call-1", "read")}
+// A TURN THAT TOUCHED THE BELT IS NOT JUDGED AFTERWARDS. It was already work of
+// some size, and asking whether work should have been work is a question with no
+// useful answer.
+//
+// THE PRE-TURN READ IS A DIFFERENT MOMENT and it happens anyway, which is the
+// whole point of it: it is made before the first request, when no tool has run
+// and nothing about this turn is known except what the person typed. Here it
+// says no, the turn calls its tool, and the post-turn judge stays out of it.
+func TestATurnWithToolCallsIsNeverJudgedAfterwards(t *testing.T) {
+	completer := &routeCompleter{answer: "done", callFirst: true}
 	agent, _, nodes := routeAgent(t, completer)
 
 	events, err := agent.Submit(context.Background(), routeAsk)
@@ -344,10 +435,11 @@ func TestATurnWithToolCallsIsNeverJudged(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	collected := collect(t, events)
-	for index := 0; index < completer.requests(); index++ {
-		if messages := completer.request(index); len(messages) > 0 && messageText(messages[0]) == routeJudgeBrief {
-			t.Fatalf("the judge was asked about a turn that called tools")
-		}
+	if completer.asked() != 0 {
+		t.Fatalf("the post-turn judge was asked %d times about a turn that called tools", completer.asked())
+	}
+	if completer.preAsked() != 1 {
+		t.Fatalf("the pre-turn judge was asked %d times, want once before the tool ran", completer.preAsked())
 	}
 	noCard(t, collected)
 	if nodes.count() != 0 || agent.graph().node(1) != nil {
@@ -741,4 +833,342 @@ func TestAConfirmedNoDoesNotSpendTheGap(t *testing.T) {
 		t.Fatalf("the turn after a refused yes said %q, want the work it agreed to", notice)
 	}
 	waitFor(t, "the task the second turn started", func() bool { return nodes.count() == 1 })
+}
+
+// ── THE PRE-TURN ASK: the decision made before the grinding starts ───────────
+//
+// The measured failure this half of the file is written against: a chat message
+// carrying four independent pieces of work was answered by ninety-odd rounds of
+// inline tool calls, twice, with propose_task on the belt the whole time. That
+// turn never reaches the post-turn judge — it called tools — so the question has
+// to be put at the front of the turn, where the harness asks it rather than the
+// model.
+
+// routeEnumerated is that message: four deliverables, none of which needs any of
+// the others. Nothing in the code reads its shape — the judge does — which is
+// why it is a fixture here and not a pattern anywhere.
+const routeEnumerated = "fix the flaky auth test, upgrade the http client to v3, write the release notes for 2.4, and delete the dead billing code"
+
+const routeAheadYes = `{"work": true, "wide": true, "goal": "fix the flaky auth test, upgrade the http client to v3, write the 2.4 release notes and delete the dead billing code", ` +
+	`"acceptance": "the auth test passes ten runs in a row, the client is on v3 with the build green, RELEASE-2.4.md exists, and no file mentions the billing code", ` +
+	`"why": "four separate pieces of work"}`
+
+// A REQUEST WITH SEVERAL INDEPENDENT DELIVERABLES IN IT IS HANDED OVER BEFORE
+// THE MODEL IS ASKED ANYTHING. The task starts, the person is told, and the
+// conversation never receives the message at all — which is the difference
+// between this and the post-turn read: there is no answer, because an answer
+// would be the same work done a second time.
+func TestAnEnumeratedRequestStartsWorkBeforeTheModelIsAsked(t *testing.T) {
+	completer := &routeCompleter{
+		answer:       "I will start with the auth test.",
+		ahead:        routeAheadYes,
+		aheadConfirm: routeAheadYes,
+	}
+	agent, runs, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	if completer.preAsked() != 1 || completer.preConfirms() != 1 {
+		t.Fatalf("the pre-turn screen was asked %d times and the confirm %d, want one each",
+			completer.preAsked(), completer.preConfirms())
+	}
+	// THE MODEL WAS NEVER ASKED FOR THE ANSWER. This is the whole wave in one
+	// assertion: ninety rounds of inline grinding cannot happen on a turn that
+	// made no request at all.
+	if completer.answered() != 0 {
+		t.Fatalf("the conversation was asked %d times for an answer it had already handed over", completer.answered())
+	}
+	// And the post-turn read is not asked either — there is no turn to read.
+	if completer.asked() != 0 {
+		t.Fatalf("the post-turn judge was asked %d times about a turn that never ran", completer.asked())
+	}
+	// The judge reads the REQUEST and nothing about an answer, because there is
+	// not one yet.
+	if question := completer.sawAheadQuestion(); !strings.Contains(question, routeEnumerated) ||
+		strings.Contains(question, "HOW THE ASSISTANT ANSWERED") {
+		t.Fatalf("the pre-turn judge was shown %q", question)
+	}
+	noCard(t, collected)
+	waitFor(t, "the task the pre-turn read started", func() bool { return nodes.count() == 1 })
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	// THE PERSON'S MESSAGE RIDES THE SPEC AS THEIR OWN WORDS, which is what makes
+	// this a hand-off rather than a paraphrase: the worker opens on the sentence
+	// they typed ([Agent.taskRequest], task_brief.go).
+	if node.request() != routeEnumerated {
+		t.Fatalf("the task carries %q as the person's request", node.request())
+	}
+	if !strings.Contains(node.spec.brief, "release notes") {
+		t.Fatalf("the node's brief is %q, want the judge's goal", node.spec.brief)
+	}
+	if strings.TrimSpace(node.acceptance()) == "" {
+		t.Fatal("a node was admitted with no acceptance at all")
+	}
+	// AND THEY ARE TOLD, in the one line that is also the turn's answer: the same
+	// sentence is on the transcript, so the next turn does not open on a message
+	// nobody replied to and answer it all over again.
+	notice := routeNotice(collected)
+	if !strings.Contains(notice, "this looked like work") || !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the turn said %q about the work it started", notice)
+	}
+	if last := lastMessage(agent); last.Role != "assistant" || messageText(last) != notice {
+		t.Fatalf("the transcript ends on %q by %q, want the line the person read", messageText(last), last.Role)
+	}
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
+	}
+	if started := runs.started(); len(started) != 0 {
+		t.Fatalf("the pre-turn read reached a planner: %v", started)
+	}
+}
+
+// A SMALL QUESTION IS ANSWERED, and nothing is asked about it. The floor under
+// "worth a model call" is the same one the post-turn read uses, so a
+// conversation of short questions pays for this feature exactly nothing.
+func TestASmallQuestionIsAnsweredWithNoPreTurnAsk(t *testing.T) {
+	completer := &routeCompleter{answer: "Any time.", ahead: routeAheadYes, aheadConfirm: routeAheadYes}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, "thanks, that helps"))
+
+	if completer.preAsked() != 0 {
+		t.Fatalf("a three-word turn paid for %d pre-turn judge calls", completer.preAsked())
+	}
+	if completer.answered() != 1 {
+		t.Fatalf("the conversation was asked %d times, want the one ordinary answer", completer.answered())
+	}
+	noCard(t, collected)
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a small question started work")
+	}
+}
+
+// ONE RATE LIMIT SPANS BOTH MOMENTS. The person is being interrupted by TASKS
+// and does not care which of the two reads noticed, so a start from either one
+// buys the same three turns of quiet from the other — one counter, one gap.
+func TestTheRateLimitIsSharedByBothAsks(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeYes}
+	agent, _, nodes := routeAgent(t, completer)
+
+	// TURN ONE starts work the POST-turn way: the pre-turn screen says no (its
+	// default), the answer comes back in words, and the judge behind it starts a
+	// task.
+	first := collect(t, mustSubmit(t, agent, routeAsk))
+	if notice := routeNotice(first); !strings.Contains(notice, "task 1 started") {
+		t.Fatalf("the first turn said %q, want the work the post-turn read started", notice)
+	}
+	waitFor(t, "the task the post-turn read started", func() bool { return nodes.count() == 1 })
+
+	// TURN TWO would be a yes at the FRONT of the turn — and it is never asked,
+	// because the gap the first start opened is the same gap.
+	completer.answerAheadWith(routeAheadYes)
+	before := completer.preAsked()
+	second := collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	if completer.preAsked() != before {
+		t.Fatalf("the pre-turn screen was asked again inside the gap (%d then %d)", before, completer.preAsked())
+	}
+	if notice := routeNotice(second); notice != "" {
+		t.Fatalf("a second task started inside the gap: %q", notice)
+	}
+	if agent.graph().node(2) != nil {
+		t.Fatal("two tasks started within three turns of each other")
+	}
+	// And the turn ran as an ordinary one: the message the front of the turn did
+	// not take was answered by the model.
+	if completer.answered() != 2 {
+		t.Fatalf("the conversation answered %d turns, want both of them", completer.answered())
+	}
+}
+
+// A PRE-TURN YES THE MASTERMIND REFUSES IS SILENCE, AND THE TURN PROCEEDS. The
+// cheap model screens and cannot start anything on its own, and a refused yes
+// leaves no trace at all: no task, no line, and a turn the model answers exactly
+// as it would have. The post-turn read still gets its own look afterwards.
+func TestAPreTurnYesTheConfirmRefusesLetsTheTurnProceed(t *testing.T) {
+	completer := &routeCompleter{
+		answer:       "Here is what I would look at.",
+		ahead:        routeAheadYes,
+		aheadConfirm: routeConfirmNo,
+		verdict:      `{"work": false}`,
+	}
+	agent, _, nodes := routeAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	if completer.preAsked() != 1 || completer.preConfirms() != 1 {
+		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
+			completer.preAsked(), completer.preConfirms())
+	}
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a refused pre-turn yes started work anyway")
+	}
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a refused pre-turn yes said %q out loud", notice)
+	}
+	for _, event := range collected {
+		if event.Kind == EventError {
+			t.Fatalf("a refused pre-turn yes said %q out loud", event.Text)
+		}
+	}
+	// THE TURN RAN. The model was asked, it answered, and the post-turn read had
+	// its own look at what came back — which is the fall-through this whole seam
+	// promises when it decides not to act.
+	if completer.answered() != 1 {
+		t.Fatalf("the conversation was asked %d times, want the ordinary turn", completer.answered())
+	}
+	if completer.asked() != 1 {
+		t.Fatalf("the post-turn judge was asked %d times, want its usual one look", completer.asked())
+	}
+	noCard(t, collected)
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
+	}
+}
+
+// ONLY WHAT A PERSON TYPED, AND ONLY WHAT A TASK COULD BE HANDED, IS READ AT
+// THE FRONT OF A TURN. A woken turn's note is the session talking to itself, a
+// task's own worker has no surface to put a question on, the woken turn's empty
+// opening has nothing in it at all — and a message with pictures attached can
+// only be looked at here, because a spec is words.
+func TestOnlyATypedMessageIsPreJudged(t *testing.T) {
+	completer := &routeCompleter{answer: "done", ahead: routeAheadYes, aheadConfirm: routeAheadYes}
+	agent, _, nodes := routeAgent(t, completer)
+
+	cases := []struct {
+		name string
+		user userMessage
+	}{
+		{"a wake note", wakeNote(routeEnumerated)},
+		{"a note the session wrote", userMessage{
+			message: textMessage("user", routeEnumerated), authored: true,
+		}},
+		{"the woken turn's empty opening", userMessage{}},
+		{"a message with pictures in it", userMessage{
+			message: textMessage("user", routeEnumerated), refs: []journalPart{{}},
+		}},
+	}
+	for _, c := range cases {
+		if answered, _ := agent.routeAhead(context.Background(), nil, c.user, time.Now()); answered {
+			t.Errorf("%s was taken away from the turn", c.name)
+		}
+	}
+
+	// AND A TASK'S OWN WORKER IS NEVER ASKED EITHER. It is a node with no person
+	// in front of it: work started there would appear on nobody's screen.
+	inTask, _, _ := routeAgent(t, completer)
+	inTask.config.InTask = true
+	if answered, _ := inTask.routeAhead(context.Background(), nil, userText(routeEnumerated), time.Now()); answered {
+		t.Error("a node's own turn was handed to another task")
+	}
+
+	if completer.preAsked() != 0 {
+		t.Fatalf("%d judge calls were paid for on turns nobody typed", completer.preAsked())
+	}
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a turn nobody typed started work")
+	}
+}
+
+// routeSlowCompleter is a judge that cannot keep up: it takes the pre-turn
+// question and never answers it. It also records whether the call it was handed
+// carried a deadline at all, because a bound nobody set is the failure this test
+// is really about.
+type routeSlowCompleter struct {
+	mu      sync.Mutex
+	asked   int
+	answers int
+	bounded bool
+}
+
+func (c *routeSlowCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	system := ""
+	if len(messages) > 0 {
+		system = messageText(messages[0])
+	}
+	switch system {
+	case routeAheadBrief:
+		c.mu.Lock()
+		c.asked++
+		deadline, ok := ctx.Deadline()
+		c.bounded = ok && time.Until(deadline) <= routeAheadWindow
+		c.mu.Unlock()
+		// The turn is waiting on this call and this call is never coming back.
+		<-ctx.Done()
+		return nil, ctx.Err()
+	case routeJudgeBrief:
+		return textResponse(routeConfirmNo), nil
+	}
+	c.mu.Lock()
+	c.answers++
+	c.mu.Unlock()
+	return textResponse("here is what I would look at."), nil
+}
+
+// A JUDGE THAT CANNOT ANSWER IN TIME IS A NO, AND THE TURN GOES ON WITHOUT IT.
+// The pre-turn read stands between somebody pressing enter and the first request
+// of their turn, so it is bounded hard: the window runs out, nothing is said,
+// nothing is started, and the model answers the message it would have answered.
+func TestAPreTurnJudgeThatCannotAnswerInTimeLetsTheTurnProceed(t *testing.T) {
+	completer := &routeSlowCompleter{}
+	agent, _, nodes := routeAgent(t, completer)
+
+	started := time.Now()
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+	waited := time.Since(started)
+
+	completer.mu.Lock()
+	asked, answers, bounded := completer.asked, completer.answers, completer.bounded
+	completer.mu.Unlock()
+
+	if asked != 1 {
+		t.Fatalf("the pre-turn screen was asked %d times, want once and never repaired", asked)
+	}
+	if !bounded {
+		t.Fatal("the pre-turn call carried no deadline of its own, so a wedged judge would hang the turn")
+	}
+	// The whole turn is held to the window plus the time it takes to answer,
+	// which is what "no perceptible latency, and never a hang" has to mean.
+	if waited > routeAheadWindow+routeAheadConfirmWindow {
+		t.Fatalf("the turn waited %s on a judge that never answered", waited)
+	}
+	if answers != 1 {
+		t.Fatalf("the conversation was asked %d times, want the ordinary turn", answers)
+	}
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a judge that never answered said %q", notice)
+	}
+	for _, event := range collected {
+		if event.Kind == EventError {
+			t.Fatalf("a judge that never answered put %q on the screen", event.Text)
+		}
+	}
+	noCard(t, collected)
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a judge that never answered started work")
+	}
+}
+
+// THE TWO BRIEFS ASK THEIR OWN QUESTION AND WRITE THE SAME OBJECT. The evidence
+// differs — an unanswered request, a finished turn — and the wire does not,
+// because both land in one [routeVerdict] and start one kind of task.
+func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T) {
+	if !strings.Contains(routeAheadBrief, routeVerdictContract) ||
+		!strings.Contains(routeJudgeBrief, routeVerdictContract) {
+		t.Fatal("the two briefs spell the wire twice, so they will drift")
+	}
+	if strings.Contains(routeAheadBrief, "answered the person in WORDS ALONE") {
+		t.Fatal("the pre-turn brief judges an answer that has not been written yet")
+	}
+	if !strings.Contains(routeAheadBrief, "CRITICAL PATH") {
+		t.Fatal("the pre-turn brief drops the law that keeps small work out of the task graph")
+	}
+	if !strings.Contains(routeAheadBrief, "SEVERAL INDEPENDENT DELIVERABLES") ||
+		!strings.Contains(routeAheadBrief, "SWEEP") ||
+		!strings.Contains(routeAheadBrief, "MINUTES OF TOOL CALLS") {
+		t.Fatal("the pre-turn brief does not teach the three shapes only a request can show")
+	}
 }
