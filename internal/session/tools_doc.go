@@ -210,9 +210,21 @@ var documentMediaTypes = map[string]struct {
 	".gif":  {"image/gif", documentImage},
 }
 
-const readDocumentDescription = "Read a document the plain read tool cannot turn into text: a scanned PDF with no text layer, an image of a page or a receipt, or an office document (docx, xlsx, pptx). It sends the file to the document rungs — the chat model's own file handling first, then the parsers that cost money — and returns the extracted text, truncated to 2000 lines or 50KB with an offset to continue like read's. Use read instead for plain text, source code, and PDFs that already have a text layer: those are local, instant and free, and read tells you when it cannot read a file. Ask a question to point the extraction at what you need."
+// readDocumentDescription is prompt text billed on EVERY request of every turn —
+// the whole tool-schema block rides in front of each one — so it is written for
+// density: one imperative clause per rule, and each rule said once. What it must
+// still teach is unchanged, and it is the same four things: which files this
+// hand is for, that it COSTS MONEY where read does not, that read is the rung
+// below it for anything with a text layer, and pi's truncation law.
+//
+// THE TRUNCATION FIGURES ARE INTERPOLATED, not typed. They are [pdfMaxLines] and
+// [pdfMaxBytes], the same constants piReadLaw actually applies below, because a
+// description promising one budget while the body enforces another is the exact
+// drift one-source-of-truth exists to stop (they were bare digits here until
+// this pass). That is what makes this a var rather than a const.
+var readDocumentDescription = fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page); use read for plain text, source and PDFs that have a text layer. Truncates to %d lines or %dKB; offset continues.", pdfMaxLines, pdfMaxBytes/1024)
 
-const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file to read, relative to the workspace or absolute"},"question":{"type":"string","description":"What you need from the document, asked of the page itself (default: read the whole thing). It shapes the extraction only on the native rung; the parser rungs return the full text either way."},"offset":{"type":"number","description":"The line of the extracted text to start from (1-based). The extraction is reused, so paging costs nothing."},"limit":{"type":"number","description":"How many lines of the extracted text to return"}},"required":["path"],"additionalProperties":false}`
+const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file, workspace-relative or absolute"},"question":{"type":"string","description":"What you need from it; default all of it. Shapes the native rung only"},"offset":{"type":"number","description":"Line to start from (1-based). Paging is free"},"limit":{"type":"number","description":"How many lines to return"}},"required":["path"],"additionalProperties":false}`
 
 // documentTool is the OCR rung on the belt. See this file's opening for why it
 // is unconditional where tools_search.go and tools_image.go are not.
