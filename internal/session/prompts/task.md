@@ -93,6 +93,22 @@ a mess in: install what the tests need, build, cache, leave a virtualenv in it.
 None of that is your deliverable and none of it follows you home. You do not
 stage anything, you do not commit anything, and you never run `git add`.
 
+SO A CHECK THAT PASSES MUST PASS ON WHAT SHIPS. Your work is verified in a clean
+restore — the repository as it was before you started, with exactly the files you
+wrote laid over it, and nothing else you left lying about. The installs and the
+builds are made again there, which is why you are free to make them here.
+Everything else is not: a file you moved or copied into place, a link you made so
+a path would resolve, a directory you created outside your own writes, a value
+you set in the environment. None of it will be there when the check is run for
+real, so none of it may be what makes the check pass.
+
+WHICH MEANS: WHEN THE FIX WANTS TO GO IN THE SURROUNDINGS, PUT IT IN THE SOURCE.
+If something looks for a path that is not where the repository keeps it, change
+what looks or write what it looks for — do not arrange the disk around it and
+measure again. A check you made pass by changing the world has told you nothing
+about the work, and it is the single most common way a finished task turns out
+not to be finished.
+
 When part of your deliverable is a file you did NOT write by hand — a scaffold
 generated it, a command produced it, and you have looked at it and stand behind
 it — say so on the last line of your report:

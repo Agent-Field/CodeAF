@@ -693,7 +693,7 @@ func TestTheJudgesDoneConditionIsWhatTheWorkIsFinishedAgainst(t *testing.T) {
 	// is judged against and the whole of what it is shown about the goal
 	// (task_audit.go), so the question it is actually asked is where this is
 	// worth asserting.
-	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, done) {
+	if question := auditQuestion(node, taskTree{}, auditGround{}, nil, ""); !strings.Contains(question, done) {
 		t.Fatalf("the checker was asked %q, want the judge's done-condition in it", question)
 	}
 }
@@ -728,7 +728,7 @@ func TestAnAutoStartedTaskWithNoDoneConditionStillHasOneToCheck(t *testing.T) {
 			t.Fatalf("the stand-in says %q, which is not on the checker's page", absent)
 		}
 	}
-	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, routeFallbackAcceptance) {
+	if question := auditQuestion(node, taskTree{}, auditGround{}, nil, ""); !strings.Contains(question, routeFallbackAcceptance) {
 		t.Fatalf("the checker was asked %q, want the stand-in in it", question)
 	}
 }

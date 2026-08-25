@@ -445,6 +445,176 @@ func TestAHandIsRefusedOutsideItsScopeAndIsToldWhatItOwns(t *testing.T) {
 	}
 }
 
+// A SCOPE DECLARED IN ABSOLUTE PATHS IS THE SAME SCOPE, AND ITS WRITES LAND.
+//
+// This is the measured defect. A task worker forked three hands with scopes like
+// "/workspace/rust-java-lsp/src/parser.rs"; the door only trimmed them, the guard
+// compared them against a workspace-RELATIVE target, nothing matched, and every
+// write in every hand was refused. The worker reported that the tool was refusing
+// files that were plainly in its scope and never divided again.
+func TestAnAbsoluteScopeUnderTheWorkspaceIsTheSameScope(t *testing.T) {
+	completer := newForkCompleter(0)
+	workspace := t.TempDir()
+
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				// Spelled the way the worker in the wild spelled them: in full.
+				forkPartJSON("the adapters", jsonPath(filepath.Join(workspace, "adapters"))),
+				forkPartJSON("the docs", jsonPath(filepath.Join(workspace, "docs"))),
+			)), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+	}
+	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
+		if index != 1 || turn != 1 {
+			return textResponse("nothing to do"), nil
+		}
+		// And the hand writes the way a hand writes: relative to the workspace.
+		return toolResponse("in", "write", `{"path":"adapters/mine.md","content":"x"}`), nil
+	}
+
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	collect(t, mustSubmit(t, agent, "split it"))
+
+	if _, err := os.Stat(filepath.Join(workspace, "adapters", "mine.md")); err != nil {
+		t.Fatalf("a hand whose scope was declared in full could not write inside it: %v", err)
+	}
+	result := theForkResult(t, completer)
+	if !strings.Contains(result, "wrote adapters/mine.md") {
+		t.Errorf("the join does not name the write that landed:\n%s", result)
+	}
+	// AND THE CHARGE SAYS THE SCOPE IN THE FORM THE GUARD READS IT. A hand told
+	// it owns "/workspace/adapters" while the guard is matching "adapters" has
+	// been handed the wrong half of the disagreement to reason about.
+	charge := theHandCharge(t, completer, 1)
+	if !strings.Contains(charge, "YOU MAY WRITE: adapters —") {
+		t.Errorf("the hand was not told its scope in the enforced form:\n%s", charge)
+	}
+}
+
+// theHandCharge is the one message a hand was handed that its caller never saw.
+func theHandCharge(t *testing.T, completer *forkCompleter, hand int) string {
+	t.Helper()
+	request := completer.handRequest(hand)
+	for index := len(request) - 1; index >= 0; index-- {
+		text := messageContentText(request[index])
+		if strings.HasPrefix(text, "You are hand ") {
+			return text
+		}
+	}
+	t.Fatalf("hand %d was never charged", hand)
+	return ""
+}
+
+// jsonPath escapes a filesystem path for the scope literals above. Windows is
+// not a target, but a temp directory with a backslash in it would otherwise
+// produce a JSON document that does not parse and a test that fails for a reason
+// that is not the one it is about.
+func jsonPath(path string) string {
+	return strings.ReplaceAll(path, `\`, `\\`)
+}
+
+// A SCOPE THAT IS NOT A SLICE OF THE WORKING COPY IS REFUSED AT THE DOOR, and
+// the refusal names the offending scope and the form that would have worked.
+//
+// The door is where this belongs, not the guard: a scope outside the workspace
+// matches no write at all, so a hand given one would spend its whole errand
+// being refused one file at a time with no way to tell that the fault was in the
+// declaration rather than in the file.
+func TestAScopeOutsideTheWorkingCopyIsRefusedAtTheDoor(t *testing.T) {
+	workspace := t.TempDir()
+	for _, c := range []struct {
+		name  string
+		scope string
+	}{
+		{"somewhere else on the machine", "/etc"},
+		{"an escape through the parent", "../secrets"},
+		{"the whole working copy", "."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, problem := parseForkArguments(workspace, json.RawMessage(forkCall(
+				forkPartJSON("one", c.scope),
+				forkPartJSON("two", "docs"),
+			)))
+			if problem == "" {
+				t.Fatal("the scope was accepted")
+			}
+			if !strings.HasPrefix(problem, "not forked:") {
+				t.Errorf("the refusal is not the plain answer the model reads: %q", problem)
+			}
+			if !strings.Contains(problem, `"`+c.scope+`"`) {
+				t.Errorf("the refusal does not name the offending scope: %q", problem)
+			}
+			if !strings.Contains(problem, "relative to its root") || !strings.Contains(problem, workspace) {
+				t.Errorf("the refusal does not say what form would have worked: %q", problem)
+			}
+		})
+	}
+}
+
+// AND THE REFUSAL NEVER REACHES THE GUARD, because no hand is ever opened. The
+// caller reads one result and redraws its scopes; nothing was spawned, nothing
+// was written, and no pre-action citizen was asked about anything.
+func TestARefusedScopeOpensNoHands(t *testing.T) {
+	completer := newForkCompleter(0)
+	workspace := t.TempDir()
+
+	completer.caller = []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "fork", forkCall(
+				forkPartJSON("one", "/etc"),
+				forkPartJSON("two", "docs"),
+			)), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+	}
+	completer.hand = func(int, int, []ai.Message) (*ai.Response, error) {
+		return textResponse("a hand ran"), nil
+	}
+
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	collect(t, mustSubmit(t, agent, "split it"))
+
+	for hand := 1; hand <= forkFanLimit; hand++ {
+		if turns := completer.handTurns(hand); turns != 0 {
+			t.Fatalf("hand %d ran %d turns on a scope the door refused", hand, turns)
+		}
+	}
+	completer.mu.Lock()
+	defer completer.mu.Unlock()
+	var refusal string
+	for _, request := range completer.callerRequests {
+		for _, message := range request {
+			if strings.EqualFold(message.Role, "tool") && strings.Contains(messageContentText(message), "not forked:") {
+				refusal = messageContentText(message)
+			}
+		}
+	}
+	if refusal == "" {
+		t.Fatal("the caller was never told why nothing was forked")
+	}
+	if strings.Contains(refusal, "outside your write scope") {
+		t.Fatalf("the refusal came from the guard rather than the door:\n%s", refusal)
+	}
+}
+
+// AND THE OVERLAP CHECK READS THE NORMALIZED SCOPES. Two hands that spelled one
+// path two ways are two hands claiming one path, whatever they typed.
+func TestOverlapIsJudgedAfterTheScopesAreNormalized(t *testing.T) {
+	workspace := t.TempDir()
+	_, problem := parseForkArguments(workspace, json.RawMessage(forkCall(
+		forkPartJSON("one", "src/parser.rs"),
+		forkPartJSON("two", jsonPath(filepath.Join(workspace, "src", "parser.rs"))),
+	)))
+	if problem == "" {
+		t.Fatal("two hands claiming one path in two spellings were allowed")
+	}
+	if !strings.Contains(problem, "both claim src/parser.rs") {
+		t.Errorf("the refusal does not name the shared path in one form: %q", problem)
+	}
+}
+
 // AND THE ONE SHAPE THE GUARD CANNOT SAVE IS REFUSED BEFORE ANYTHING STARTS.
 // Two hands sharing a path is not a wandering hand; it is two hands, both inside
 // their scopes, writing one file in one working copy.
@@ -467,7 +637,7 @@ func TestOverlappingScopesAreRefusedAtTheCall(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, problem := parseForkArguments(json.RawMessage(forkCall(c.parts...)))
+			_, problem := parseForkArguments("", json.RawMessage(forkCall(c.parts...)))
 			if problem == "" {
 				t.Fatal("the overlap was allowed")
 			}
@@ -479,7 +649,7 @@ func TestOverlappingScopesAreRefusedAtTheCall(t *testing.T) {
 
 	// And genuinely separate slices are not refused, including two files that
 	// merely start alike — a prefix is matched at a path boundary.
-	if _, problem := parseForkArguments(json.RawMessage(forkCall(
+	if _, problem := parseForkArguments("", json.RawMessage(forkCall(
 		forkPartJSON("one", "internal/session"),
 		forkPartJSON("two", "internal/session2", "docs"),
 	))); problem != "" {
@@ -503,13 +673,13 @@ func TestForkRefusesAFanItCannotBe(t *testing.T) {
 		{"a hand with no role", `{"parts":[{"role":" ","scope":["a"]},{"role":"b","scope":["b"]}]}`, "Invalid arguments:"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, problem := parseForkArguments(json.RawMessage(c.args))
+			_, problem := parseForkArguments("", json.RawMessage(c.args))
 			if !strings.HasPrefix(problem, c.wants) {
 				t.Fatalf("got %q, want a refusal opening %q", problem, c.wants)
 			}
 		})
 	}
-	if _, problem := parseForkArguments(json.RawMessage(forkCall(
+	if _, problem := parseForkArguments("", json.RawMessage(forkCall(
 		forkPartJSON("a", "a"), forkPartJSON("b", "b"), forkPartJSON("c", "c"), forkPartJSON("d", "d"),
 	))); problem != "" {
 		t.Fatalf("a full fan of %d was refused: %s", forkFanLimit, problem)

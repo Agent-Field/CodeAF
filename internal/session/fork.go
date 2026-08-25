@@ -61,7 +61,10 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -227,7 +230,10 @@ type forkArguments struct {
 // with every hand's report already in front of it, which is what makes the
 // caller the integrator — the same law divide_work keeps for the same reason.
 func (a *Agent) forkHands(ctx context.Context, args json.RawMessage) (string, bool, error) {
-	parsed, problem := parseForkArguments(args)
+	// THE WORKSPACE IS PASSED IN BECAUSE THE SCOPE IS READ AGAINST IT. A scope is
+	// a slice of this directory, and the door cannot say whether a path is inside
+	// it without knowing which directory it is (see [normalizeScopePath]).
+	parsed, problem := parseForkArguments(a.config.Workspace, args)
 	if problem != "" {
 		return problem, true, nil
 	}
@@ -313,7 +319,7 @@ func (a *Agent) forkSeed() ([]ai.Message, string) {
 // error, exactly as the auditor's refused command is (task_audit.go): the caller
 // re-declares its parts and carries on, where an error would cost it the turn
 // over a scope it could have redrawn in one sentence.
-func parseForkArguments(args json.RawMessage) (forkArguments, string) {
+func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, string) {
 	var parsed forkArguments
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		return parsed, "Invalid arguments: " + err.Error()
@@ -333,11 +339,14 @@ func parseForkArguments(args json.RawMessage) (forkArguments, string) {
 			return parsed, fmt.Sprintf("Invalid arguments: hand %d has no role, and a hand that is not told what "+
 				"makes it different from its siblings will do what they are doing.", index+1)
 		}
-		clean := make([]string, 0, len(part.Scope))
-		for _, path := range part.Scope {
-			if path = strings.TrimSpace(path); path != "" {
-				clean = append(clean, path)
-			}
+		// THE SCOPE IS NORMALIZED BEFORE IT IS JUDGED, and everything below reads
+		// the normalized form: the overlap check, the charge the hand is handed,
+		// and — through [Config.writeScope] — the guard that enforces it. A scope
+		// that cannot be normalized never reaches a hand at all
+		// ([normalizeWriteScope] carries the whole argument).
+		clean, problem := normalizeWriteScope(workspace, part.Scope)
+		if problem != "" {
+			return parsed, fmt.Sprintf("not forked: hand %d's scope cannot be used — %s", index+1, problem)
 		}
 		if len(clean) == 0 {
 			return parsed, fmt.Sprintf("Invalid arguments: hand %d declares no write scope, and a hand with no "+
@@ -346,7 +355,11 @@ func parseForkArguments(args json.RawMessage) (forkArguments, string) {
 		parsed.Parts[index].Scope = clean
 	}
 	// THE OVERLAP CHECK IS THE OTHER HALF OF THE SAFETY ARGUMENT and it runs
-	// here, before anything is spawned: the guard can keep a hand inside its own
+	// here, AFTER normalization and before anything is spawned: two hands that
+	// spelled one path two ways — "src/parser.rs" and "/workspace/src/parser.rs"
+	// — are two hands claiming one path, and a collision test run over the raw
+	// declarations would have called them disjoint. The guard can keep a hand
+	// inside its own
 	// scope, and no guard can keep two hands out of each other's when the scopes
 	// were drawn on top of one another. The reading is [orchestrate.Covers],
 	// which is the SAME reading the guard makes and the adaptive run's scheduler
@@ -364,6 +377,130 @@ func parseForkArguments(args json.RawMessage) (forkArguments, string) {
 		}
 	}
 	return parsed, ""
+}
+
+// ── ONE READING OF A DECLARED WRITE SCOPE ───────────────────────────────────
+
+// normalizeScopePath is THE ONE READING OF A DECLARED WRITE SCOPE, and both
+// ends of the scope machinery go through it: the DOOR that accepts a model's
+// declaration ([parseForkArguments]) and the GUARD that enforces it
+// (orchestrate.go's [writeGuard] through [scopeAsGuarded]).
+//
+// IT EXISTS BECAUSE THE TWO ENDS ONCE READ ONE STRING DIFFERENTLY, and a whole
+// division was voided at the seam. A task worker forked three hands two minutes
+// into its life and declared their scopes as ABSOLUTE paths —
+// "/workspace/rust-java-lsp/src/parser.rs" — which the door only trimmed and
+// checked for overlap, because the schema SAID "workspace-relative" and nothing
+// made it so. The guard then turned each attempted write into a
+// workspace-relative path ("src/parser.rs") before asking [orchestrate.Covers],
+// and a relative path is never covered by an absolute one: every write in every
+// hand was refused, the model reported that the tool was refusing files that
+// were plainly in its scope, and it never divided again. Nothing had gone wrong
+// except that two readings of one string disagreed.
+//
+// So the scope is converted to the form the guard reads — workspace-relative,
+// slash-separated, cleaned — at the door, and the guard converts again with this
+// same function for the scopes that never came through a door (an adaptive run's
+// node scopes are drawn by a planner, orchestrate.go). NORMALIZING TWICE IS
+// FREE; NORMALIZING IN ONE PLACE ONLY WAS THE DEFECT.
+//
+// The error is a FRAGMENT rather than a sentence: it names what is wrong with
+// this one path, and the caller writes the sentence its own reader can act on.
+func normalizeScopePath(workspace, raw string) (string, error) {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return "", errors.New("it is empty")
+	}
+	local := filepath.FromSlash(clean)
+	if filepath.IsAbs(local) {
+		// AN ABSOLUTE PATH UNDER THE WORKSPACE IS ACCEPTED AND CONVERTED, never
+		// refused. It names exactly the same file, it is the form a model reaches
+		// for after a turn spent reading absolute paths, and a refusal would spend
+		// a round teaching it a spelling. What is refused is an absolute path that
+		// is NOT under the workspace, because that is a different claim entirely.
+		root := strings.TrimSpace(workspace)
+		if root == "" {
+			return "", errors.New("it is an absolute path and there is no workspace to read it against")
+		}
+		relative, err := filepath.Rel(root, local)
+		if err != nil {
+			return "", errors.New("it is outside the workspace")
+		}
+		local = relative
+	}
+	slash := path.Clean(filepath.ToSlash(local))
+	switch {
+	case slash == ".." || strings.HasPrefix(slash, "../"):
+		return "", errors.New("it is outside the workspace")
+	case slash == "." || slash == "/":
+		// THE WHOLE WORKSPACE IS NOT A SLICE OF IT. "." reaches every path and so
+		// collides with every sibling, and [orchestrate.Covers] reads it as
+		// covering NOTHING — so a scope of "." would be a declaration that
+		// silently permitted no write at all, which is the exact shape of the
+		// failure this function exists to end.
+		return "", errors.New("it is the whole workspace rather than a slice of it")
+	}
+	return slash, nil
+}
+
+// normalizeWriteScope reads a WHOLE declared scope and answers either the paths
+// in the guard's own form or the one sentence the model is given back.
+//
+// THE REFUSAL NAMES THE OFFENDING SCOPE AND THE EXPECTED FORM, because a model
+// that is told only "no" re-sends the same declaration. It is a RESULT and not
+// an error for the reason every refusal in this file is one: the caller redraws
+// its scopes and carries on.
+//
+// A BLANK ENTRY IS DROPPED RATHER THAN REFUSED — a stray "" in a list of real
+// paths is a formatting slip, not a claim — and a scope that is nothing BUT
+// blanks comes back empty, which its caller answers in its own words.
+func normalizeWriteScope(workspace string, scope []string) ([]string, string) {
+	out := make([]string, 0, len(scope))
+	for _, raw := range scope {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		clean, err := normalizeScopePath(workspace, raw)
+		if err != nil {
+			return nil, fmt.Sprintf("%q %s. Write scopes are paths INSIDE the working copy, relative to its "+
+				"root — like src/parser.rs or docs — and the working copy is %s, so a path under it may also be "+
+				"given in full. Redraw the scope and call again.",
+				strings.TrimSpace(raw), err.Error(), workspaceShown(workspace))
+		}
+		out = append(out, clean)
+	}
+	return out, ""
+}
+
+// workspaceShown is the working copy as the refusal names it. An agent with no
+// workspace configured is a real case in tests and in a door that never set one,
+// and a sentence ending in "the working copy is ." would be worse than one that
+// says there is not one.
+func workspaceShown(workspace string) string {
+	if workspace = strings.TrimSpace(workspace); workspace == "" {
+		return "not set for this agent"
+	}
+	return workspace
+}
+
+// scopeAsGuarded is the scope as the ENFORCEMENT must read it: every declaration
+// put through [normalizeScopePath], and the ones that cannot be normalized
+// DROPPED rather than passed through.
+//
+// Dropping is the safe direction and it is the only one available here. A scope
+// entry that names something outside the working copy cannot be satisfied by any
+// path inside it, so keeping it would admit nothing; passing it through raw is
+// what let an absolute declaration sit in a scope silently matching no write at
+// all. The door refuses these with a sentence the model can act on — this is for
+// the scopes that reach the guard without passing a door.
+func scopeAsGuarded(workspace string, scope []string) []string {
+	out := make([]string, 0, len(scope))
+	for _, raw := range scope {
+		if clean, err := normalizeScopePath(workspace, raw); err == nil {
+			out = append(out, clean)
+		}
+	}
+	return out
 }
 
 // forkScopesCollide reports the first path two scopes share, if any.
