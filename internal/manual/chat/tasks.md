@@ -499,8 +499,9 @@ stop — "I've finished the parser, next I'll wire the handlers" ends a reply ex
 as a finished job does. Until this, nothing checked which of the two it was, and a measured
 ten-hour request ended with hours of it never touched.
 
-**So at the end of a reply that touched any tools, the same second reader is asked one
-question**: is what you asked for finished? It is shown the same short account of the work —
+**So at the end of a reply that has already run long enough to be looked at once — the first
+of the three points above — the same second reader is asked one question**: is what you asked
+for finished? It is shown the same short account of the work —
 your message, the steps, what came back — and it answers either the single line
 `NOTHING LEFT TO DO`, or one line saying what of your request is still not done.
 
@@ -520,9 +521,12 @@ finishes with a question mark, it is waiting on you, and carrying it on would be
 answering a question that was addressed to you. That is the whole of the test — the mark
 itself, so it works whatever language you are talking in.
 
-**A reply that called no tools at all is not read either.** There was no work in it to leave
-half done, and reading every conversational reply would cost a thinking-tier call on every
-message you send.
+**A short reply is not read at all.** If the reply ended before it reached the first of those
+three points — a couple of tool calls and an answer, or no tools at all — it is never read
+for what remains. There was not enough work in it to leave half done, and reading every small
+reply cost a thinking-tier call on every message you sent: measured, that was a third to a
+half of a small question's whole bill, and it almost never found anything left to do. The
+same count decides both things, so nothing about what you asked for is read to decide it.
 
 **What bounds it is the same meter as everything else on this page.** Carrying on counts as a
 round, so it climbs the same three points, and a carried-on reply that reaches the third one
