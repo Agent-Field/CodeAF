@@ -40,6 +40,28 @@ package session
 // therefore handed that one step on joining and nothing else — see
 // [taskCatchup], which states exactly where the line is drawn.
 //
+// ── AND THIS STEER IS NOT THE CONVERSATION'S OWN ──
+//
+// There are two things in this package called steering and they are two acts,
+// so read the one you meant. THIS file's steer is aimed at A NODE: another
+// agent, in another worktree, with a transcript of its own, and the person's
+// line arrives on that agent's steering queue and is drained at ITS next step
+// boundary. What it promises is delivery — "it arrived", or "it arrived and the
+// node is parked on its own pieces" — and there is no third outcome, because a
+// node that has finished is a refusal ([Agent.enqueueSteeredLine] answers false)
+// and never a queue.
+//
+// [Agent.Steer] (steer.go) is the other one: a sentence SPLICED INTO THIS
+// CONVERSATION'S RUNNING TURN, part of the question already being worked on. It
+// carries an identity, three events, and a record that says whether the model
+// actually read it or whether the turn ended first.
+//
+// They share the mechanism deliberately — one steering lane, drained at a step
+// boundary, because that is the only legal place for a user message mid-turn —
+// and they keep separate marks on [userMessage] (`steered` here, `steer` there)
+// so that neither has to promise the other's outcome. steer.go states the split
+// in full; nothing in this file reads that mark and nothing there reads this one.
+//
 // ── AND STEERING IS NOT A REDIRECT ──
 //
 // [TaskNode]'s goal contract is untouched by this file. `spec.brief` and

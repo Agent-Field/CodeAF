@@ -447,6 +447,27 @@ const (
 	// EventTaskReplyTags names the finished tasks whose notes the next words
 	// answer. TaskReplyTags carries them in note order.
 	EventTaskReplyTags
+	// EventSteerAccepted says one sentence the person typed INTO the running
+	// turn is on the queue and will reach the model at the next step boundary
+	// (steer.go). Steer carries its identity, its words and the instant it was
+	// sent; nothing is in the transcript yet.
+	//
+	// It is a PROMISE AND NOT AN OUTCOME, which is why exactly one of the two
+	// kinds below always follows it on the same stream: the boundary it is
+	// waiting for may never come.
+	EventSteerAccepted
+	// EventSteerConsumed says the model HAS BEEN GIVEN that sentence: it is in
+	// the transcript as user content of the turn it was typed into, and the
+	// request carrying it is the next thing that goes out. Steer names which
+	// steer landed.
+	EventSteerConsumed
+	// EventSteerFellThrough says the turn ENDED FIRST — it answered, it faulted,
+	// or somebody stopped it — with that sentence still waiting, so no request of
+	// that turn ever carried it. The words are not lost and they did not steer
+	// anything: they move to the queue that holds a message waiting for a turn of
+	// its own, and the stream the steer was sent on carries that turn when it
+	// starts (steer.go states the whole law).
+	EventSteerFellThrough
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -459,6 +480,14 @@ type TaskReplyTag struct {
 
 // Event is one observable thing in a turn. A Submit returns a channel of
 // them, closed after EventTurnDone or EventError.
+//
+// A STEER'S CHANNEL IS THE ONE EXCEPTION, and it is exact: [Agent.Steer] hands
+// back a stream that outlives the turn it was sent into when the steer falls
+// through, so EventSteerFellThrough arrives AFTER that turn's EventTurnDone or
+// EventError, and the turn the words then start speaks on the same channel
+// (steer.go says why). A caller that reads to close — which is every caller
+// today — sees all of it in order and needs no second rule; a caller that stops
+// at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
 	Kind          EventKind
 	Text          string
@@ -592,6 +621,13 @@ type Event struct {
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
+
+	// Steer carries one sentence spliced into a running turn, on
+	// EventSteerAccepted, EventSteerConsumed and EventSteerFellThrough alone; it
+	// is nil on every other kind (steer.go). The same [SteerNote] value rides
+	// all three, so a surface pairs the outcome with the row it drew on the
+	// acceptance by [SteerNote.ID] and never by matching the words.
+	Steer *SteerNote
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
@@ -1710,6 +1746,12 @@ type Agent struct {
 	cancel    context.CancelFunc
 	steering  []userMessage
 	closed    bool
+	// steerSeq names the sentences the person has spliced into a running turn
+	// (steer.go). It is an atomic rather than a field under mu because minting an
+	// identity is not a fact about the transcript, and an id that could only be
+	// taken while holding this lock would be an id nothing outside a locked
+	// section could ask for.
+	steerSeq atomic.Uint64
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding
