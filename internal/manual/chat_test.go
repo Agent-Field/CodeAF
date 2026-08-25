@@ -444,6 +444,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop it starting tasks by itself", "tasks"},
 		{"what happened to the card asking whether to run it", "tasks"},
 
+		// And the shape that reads strangest of all, because the reply had
+		// already started: the read at the front of a turn now runs BESIDE the
+		// answer instead of in front of it, so a turn can open with a sentence or
+		// two of an ordinary reply and then hand itself over. Somebody watching
+		// that happen asks about the half-answer, not about a judge.
+		{"this reads like work moving it to a task", "tasks"},
+		{"it started answering and then handed the work over", "tasks"},
+		{"why did my reply stop halfway and become a task", "tasks"},
+
 		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
 		// writes four class models and the session picks them up on its next
 		// call — and the model on the status line does not move, because that one

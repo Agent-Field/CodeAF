@@ -7,12 +7,16 @@ package session
 // teaches the model to hand work over the moment it can name the scale in front
 // of it, and a model deep in tool momentum does not stop to re-consult a verb it
 // rarely reaches for. route_judge.go asks a second model about the REQUEST,
-// before the first request goes out, and its cheap screen declines the very
-// message this exists for: four independent pieces of work in one paragraph,
-// answered twice in measurement by ninety-odd rounds of inline tool calls.
+// racing the turn rather than standing in front of it, and its cheap screen
+// declines the very message this exists for: four independent pieces of work in
+// one paragraph, answered twice in measurement by ninety-odd rounds of inline
+// tool calls.
 //
 // What neither has is a reading taken WHILE THE WORK IS HAPPENING, when the cost
-// is a fact rather than a guess. That is what this file is.
+// is a fact rather than a guess. That is what this file is. The race lands at
+// the same boundary this does and through the same door
+// ([Agent.handOverRunningTurn]) — it is the same event on a different clock, and
+// what differs is only which of them noticed first.
 //
 // ── THE FRAME IS SKI RENTAL ──
 //
@@ -334,41 +338,65 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 // road. It always reports true: past the last mark there is no branch back into
 // the conversation, and a ceiling that could decline would be the guarantee this
 // file exists to make, made conditionally.
+//
+// EVERYTHING IT DOES IS [Agent.handOverRunningTurn]'S, because the ceiling is
+// not the only clock that can decide mid-turn that this belongs on the rail. It
+// contributes the two things that are its own: the line, and a verdict ARMED TO
+// SPLIT. This turn outran one pair of hands by measurement rather than by
+// anybody's opinion, which is the strongest evidence of breadth any door into
+// the graph has; arming costs nothing if it is wrong, because it only means the
+// worker MAY discover the work is wide and the evidence gate still refuses a
+// division the material does not support (task_divide.go).
 func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string) bool {
-	// THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
-	// ride the spec's request, verbatim, exactly as they do on every other door
-	// into the graph, and [composeBrief] prints them above the work under the rule
-	// that says where the two read differently theirs are what was asked for
-	// (task_brief.go). That is what makes the choice of brief-writer below a
-	// question about the DOWRY alone: no writer on this path can lose the ask,
-	// because the ask does not travel through any of them.
-	asked := a.taskRequest()
+	return a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, routeVerdict{Wide: true})
+}
 
-	verdict := routeVerdict{
-		Work: true,
-		Goal: a.checkpointBrief(ctx, turn, model, asked),
-		// ARMED TO SPLIT, and the line the person reads says so. This turn outran
-		// one pair of hands by measurement rather than by anybody's opinion, which
-		// is the strongest evidence of breadth any door into the graph has. Arming
-		// costs nothing if it is wrong — it only means the worker MAY discover the
-		// work is wide, and the evidence gate still refuses a division the material
-		// does not support (task_divide.go) — and the acceptance falls back to
-		// [routeFallbackAcceptance], the stand-in every door uses when nobody wrote
-		// a done-condition.
-		Wide: true,
-	}
+// handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
+// of it onto the one road. It is one function because two clocks reach it and
+// there must not be two versions of what happens next:
+//
+//   - the CEILING above, when an answer has cost more than handing it over
+//     would have ([Agent.checkpointRound]);
+//   - the RACE, when the second model reading the request said it was work and
+//     the answer is only seconds old ([Agent.routeConvert], route_judge.go).
+//
+// The caller brings the line the person reads and a verdict carrying whatever
+// its own reading knew — breadth, a done-condition, the one line about why. What
+// this adds is the four things that are the same however the decision arrived:
+// the dowry, the task, the gap, and a turn sealed with the transcript left in a
+// state the next turn can open on.
+//
+// THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
+// ride the spec's request, verbatim, exactly as they do on every other door into
+// the graph, and [composeBrief] prints them above the work under the rule that
+// says where the two read differently theirs are what was asked for
+// (task_brief.go). That is what makes the choice of brief-writer below a
+// question about the DOWRY alone: no writer on this path can lose the ask,
+// because the ask does not travel through any of them.
+//
+// AND THE GOAL IS THE DOWRY, WHICHEVER CLOCK CALLED. The model that has just
+// spent the turn is the only reader in the building holding what the turn found
+// out, and on the race's path that is the whole point of converting rather than
+// starting over: the seconds of inline work already done are not thrown away,
+// they are written down for whoever takes it. A goal written before the turn
+// began — the race's own, from the request alone — would be the one thing on the
+// table that knows least.
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict) bool {
+	asked := a.taskRequest()
+	verdict.Work = true
+	verdict.Goal = a.checkpointBrief(ctx, turn, model, asked)
 
 	// THE LINE GOES ABOVE THE TASK'S OWN, which is where taskEscalationNote stands
 	// over the card it explains (task.go). It is [EventNotice] for that line's
 	// reason: the dim one-liner a surface already draws for something the harness
 	// did without stopping to ask.
-	hub.send(Event{Kind: EventNotice, Text: checkpointCeilingNote})
+	hub.send(Event{Kind: EventNotice, Text: line})
 	said := a.launchRouteTask(hub, verdict)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
-	// does not care which of the three moments noticed. routeJudgeGap exists so
-	// that work appearing over the top of a conversation cannot be followed
-	// immediately by more of it (route_judge.go), and a ceiling is exactly that
+	// does not care which of the moments noticed. routeJudgeGap exists so that work
+	// appearing over the top of a conversation cannot be followed immediately by
+	// more of it (route_judge.go), and both roads into here are exactly that
 	// interruption. The counter itself is not moved — it belongs to the front of a
 	// turn and this is the middle of one.
 	a.mu.Lock()
@@ -376,11 +404,11 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 	a.mu.Unlock()
 
 	// AND THE TRANSCRIPT MUST NOT BE LEFT WITH A REQUEST NOBODY REPLIED TO. The
-	// same law [Agent.routeAhead] keeps: the next turn would open on it, and a
-	// model that reads an unanswered question at the top of its context answers it
-	// — which is this whole mechanism undone one turn later. Nothing is streamed a
-	// second time; the person has already read both lines as dim notes.
-	a.record(textMessage("assistant", checkpointCeilingNote+"\n"+said))
+	// next turn would open on it, and a model that reads an unanswered question at
+	// the top of its context answers it — which is this whole mechanism undone one
+	// turn later. Nothing is streamed a second time; the person has already read
+	// both lines as dim notes.
+	a.record(textMessage("assistant", line+"\n"+said))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
