@@ -334,14 +334,36 @@ func readDraft(path string) string {
 	// Drafts written before the paste fix may carry CR line endings; the
 	// editor's rows break on LF, so restore through the same door as paste.
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
-	return strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	// AND A FILE HOLDING NOTHING BUT WHITESPACE IS NOTHING, on the reading side
+	// as well as the writing one ([writeDraft] says why). It is stated twice
+	// because the two answer different questions: the write stops MAKING these,
+	// and this stops the ones already on disk being restored into a box that
+	// would then show nothing and behave as though it held a sentence. Every
+	// caller treats the empty string as no draft, so [adoptDraft] deletes such a
+	// file on its way past and [app.restoreDraft] leaves the box alone.
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	return text
 }
 
 // writeDraft replaces the file, or removes it when the box is empty — an empty
 // draft is not a draft, and leaving a zero-byte file behind would mean every
 // directory aforge was ever opened in keeps one forever.
+//
+// EMPTY IS WHAT THE BOX ITSELF CALLS EMPTY, which is whitespace and not only the
+// zero-length string ([editor.empty]). A draft of "\n\n" is a draft nobody can
+// see: the frame draws the placeholder over it, `enter` trims it away rather
+// than sending it, and the door at the foot goes on advertising itself. Keeping
+// one on disk meant an invisible draft outliving the window that made it and
+// being ADOPTED into the next window on that directory ([adoptDraft]) — a box
+// that looked empty in a conversation nobody had typed in yet, with a home door
+// drawn over it. It is easy to land in: `ctrl+enter` and `shift+enter` arrive as
+// a bare `ctrl+j` on a terminal that cannot spell them, and `ctrl+j` opens a
+// line.
 func writeDraft(path, text string) {
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		_ = os.Remove(path)
 		return
 	}

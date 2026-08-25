@@ -248,3 +248,50 @@ func TestAnAdoptionWithNoWorkspaceMatchesNothing(t *testing.T) {
 		t.Fatalf("a hunt with no workspace adopted %q", got)
 	}
 }
+
+// A DRAFT NOBODY CAN SEE IS NOT A DRAFT. `ctrl+enter` and `shift+enter` arrive
+// as a bare `ctrl+j` on a terminal that cannot spell them, and `ctrl+j` opens a
+// line — so an empty box collects newlines that nothing on the frame draws. Kept
+// on disk, one of those outlived its window and was ADOPTED into the next window
+// on the directory, which then had a box that looked empty, was not, and refused
+// the home gesture drawn at its own foot (home.go's [app.homeGesture]).
+func TestAWhitespaceOnlyDraftIsNotKeptOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	path := DraftFile(dir, "/tmp/lab")
+
+	writeDraft(path, "a real sentence")
+	if got := readDraft(path); got != "a real sentence" {
+		t.Fatalf("the draft reads %q", got)
+	}
+	for _, blank := range []string{"\n", "\n\n", "  ", " \n ", "\t"} {
+		writeDraft(path, blank)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("a draft of %q was kept on disk (%v)", blank, err)
+		}
+	}
+	// And the file is not resurrected by a window that opens on the same
+	// directory: an orphan that was never written is an orphan nobody adopts.
+	if got := readDraft(path); got != "" {
+		t.Fatalf("a removed draft still reads %q", got)
+	}
+}
+
+// AND THE ONES ALREADY ON DISK ARE NOT RESTORED EITHER. The owner's machine had
+// three of these written before the write side learned to refuse them, and a
+// window that adopted one opened with a box that drew nothing and was not empty.
+func TestAWhitespaceOnlyDraftAlreadyOnDiskIsNeverAdopted(t *testing.T) {
+	dir := t.TempDir()
+	own := DraftFile(dir, "/tmp/lab")
+	orphan := asWindow(t, deadPid(t), func() string { return DraftFile(dir, "/tmp/lab") })
+	// Written past writeDraft, the way the older binary left it.
+	if err := os.WriteFile(orphan, []byte("\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := adoptDraft(own, "/tmp/lab"); got != "" {
+		t.Fatalf("a blank orphan was adopted as %q", got)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("the blank orphan was left on disk for the next window (%v)", err)
+	}
+}
