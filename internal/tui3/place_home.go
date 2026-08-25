@@ -3,7 +3,6 @@ package tui3
 import (
 	"sort"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -106,10 +105,18 @@ const (
 // EVERY FACT IN IT WAS ALREADY READ. The world, the standing bands and the look
 // stamp are the same three readings this screen has always been built from, on
 // the same three-second beat ([homeEvery]); the two memory figures come in
-// through [app.memoryChangedSince] on that same beat and never on a draw. This
+// through [app.readSwitchLedger] on that same beat and never on a draw. This
 // function opens nothing and stats nothing.
 func (h *homeView) buildSwitch() {
-	h.reading = readSwitcher(h.world, h.items, switcherHere{session: h.here, project: h.bucket}, h.gone, h.seen, h.world.Read,
+	// EVERY PROJECT, INCLUDING THE ONES HOME KNOWS ONLY THROUGH A WATCH. A
+	// workspace nobody has spoken in is exactly as able to need somebody as a busy
+	// one ([homeView.everyProject], homestanding.go's [app.readBareBands]), and a
+	// reading that walked the world alone would show a person nothing on the one
+	// screen that exists to say what is true — which is the defect that reader was
+	// written to close.
+	world := h.world
+	world.Projects = h.everyProject()
+	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket}, h.gone, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in
@@ -199,24 +206,25 @@ func (h *homeView) switchExchanges() []homeLine {
 
 // ── what the memory place has to say for itself ─────────────────────────────
 
-// memoryChangedSince is the two figures the `since you left` ledger's memory
-// line is made of: how many things this machine learned since the look stamp,
-// and how many it let go of.
+// readSwitchLedger takes the two figures the ledger's memory line is made of —
+// how many things this machine learned since the look stamp, and how many it let
+// go of — once per reading of the world, where every other disk-backed fact on
+// this screen is taken.
 //
-// IT ANSWERS ZERO AND ZERO, AND THAT IS THE CORRECT EMPTY STATE RATHER THAN A
-// GAP. The records exist — `store.MemoryChangedSince` is exactly this pair — but
-// the seam that hands v3's surface a memory store is another lane's to wire, and
-// under the emptiness law a figure this surface cannot honestly compute is a
-// line it does not draw ([readSwitcher] omits the memory row entirely for a zero
-// pair). The lane that wires it calls it HERE and on home's own three-second
-// beat, never on a draw: this is SQLite behind the seam, and the law every home
-// reader is held to is that a draw never touches a disk (tui3.go).
-func (a *app) memoryChangedSince(time.Time) (learned, letGo int) { return 0, 0 }
-
-// readSwitchLedger takes those two figures once per reading of the world, where
-// every other disk-backed fact on this screen is taken.
+// ON HOME'S OWN BEAT AND NEVER ON A DRAW. There is SQLite behind that seam
+// (place_memory.go's [memoryStore]), and the law every home reader is held to is
+// that a draw never touches a disk (tui3.go). A window with no store, or a store
+// that could not be read, answers nothing — and the ledger then draws no memory
+// line at all, which is the emptiness law rather than a gap.
 func (a *app) readSwitchLedger() {
-	learned, letGo := a.memoryChangedSince(a.home.seen)
+	a.home.ledger = switcherLedgerInput{}
+	if a.memory == nil || a.home.seen.IsZero() {
+		return
+	}
+	learned, letGo, err := a.memory.ChangedSince(a.home.seen)
+	if err != nil {
+		return
+	}
 	a.home.ledger = switcherLedgerInput{learned: learned, letGo: letGo}
 }
 
