@@ -406,6 +406,42 @@ func wrapText(text string, width int) []string {
 	return lines
 }
 
+// ── the frame ───────────────────────────────────────────────────────────────
+
+// memoryFrame draws the memory place: the shelves, or the one line whose card
+// is open.
+//
+// THE BODY IS A READING AND THE READING IS PURE (memoryplace.go's [readMemory]).
+// Nothing here opens the store, and the reading itself was built when the
+// snapshot, the filter or a fold last changed — so a resize is a re-measure of
+// words already decided rather than five hundred rows re-ranked.
+func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
+	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
+		p := &a.memPanel
+		var body []string
+		switch {
+		case p.expanded != "":
+			body = p.card(width, a.pal)
+		default:
+			body = p.reading.rows(width, a.pal)
+		}
+		rows := make([]placeRow[int], 0, room)
+		for i, text := range body {
+			if len(rows) >= room {
+				break
+			}
+			if _, stop := p.reading.at(i); stop && p.expanded == "" && i == p.cursor {
+				text = a.pal.selected(text, width)
+			}
+			rows = append(rows, placeRow[int]{text: text, hit: i})
+		}
+		for len(rows) < room {
+			rows = append(rows, placeRow[int]{text: "", hit: -1})
+		}
+		return rows
+	})
+}
+
 // memoryReady is whether the memory place has a store to open onto. It is the
 // guard [app.openMemory] refuses on, asked out loud so a door can choose a
 // different answer instead of walking into the refusal.

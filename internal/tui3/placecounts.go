@@ -60,6 +60,12 @@ func (a *app) refreshPlaceCounts(now time.Time) {
 		if seen.IsZero() {
 			continue
 		}
+		// TODO(the refactor lane): this switch is the one place that knows all the
+		// places, and it becomes `place.changed(a, since)` on the interface
+		// ARCHITECTURE.md states — the registry walking itself, with each arm
+		// living beside the place it counts. It is written as a switch here only
+		// because the interface does not exist yet, and it is a switch in ONE
+		// function rather than one per place, which is the shape that lifts.
 		switch id {
 		case pageTasks:
 			tally[id.word()] = a.tasksChangedSince(seen)
