@@ -49,6 +49,24 @@ sha256. It is not the same thing as the repository's HEAD: several lanes share
 this checkout and HEAD moves under a ten-hour cell, so the record keeps both
 (`build_commit` and `repo_commit_at_record`).
 
+**s2, aforge-crew only, to be launched when the new binary lands** — fill in the
+commit the binary was built from and check the sha it prints:
+
+```bash
+cd ~/af-oneroad/bench/oneroad/marathon
+sha256sum ~/af-oneroad/bin/aforge            # confirm it is the new build
+SEED=s2 AFORGE_BUILD_COMMIT=<new build commit> NEW_BIN=~/af-oneroad/bin/aforge \
+  nohup bash cell.sh aforge-crew rust-java-lsp \
+  > ~/af-bench/marathon/.aforge-s2.out 2>&1 &
+# watch:  tmux attach -t oneroad-mar-aforge-crew-rust-java-lsp-s2
+# tail:   tail -f ~/af-bench/marathon/aforge-crew-rust-java-lsp-s2/cell.log
+```
+
+Everything else is the s1 configuration unchanged: same task, same
+`deepseek/deepseek-v4-flash`, same 36000 s wall, same 4 CPUs / 16 GB, same
+crew (registry tiers) config, hourly curve. `SNAPSHOT_OFFSET` is not needed for a
+single cell.
+
 Knobs, all with the task's own value as the default: `SEED`, `CELL_SECONDS`
 (default `[agent] timeout_sec` = 36000), `SILENCE_SECONDS` (900), `SNAPSHOT_EVERY`
 (3600, `0` disables the curve), `SNAPSHOT_TIMEOUT` (1800), `MODEL`, `NEW_BIN`,
@@ -98,7 +116,11 @@ LLM judges we have no key for — marathon's is entirely deterministic: rebuild,
 `anti_cheat.py`, `verify_integrity.py`, the cached-golden scan, decrypt the
 pristine golden with the key embedded in `test.sh`, score the visible corpus, score
 the holdout, merge. Nothing is skipped and the verdict is the benchmark's own.
-Timeout `[verifier] timeout_sec` = 3600 s.
+Timeout `[verifier] timeout_sec` = 3600 s, and the whole hour can genuinely be
+needed: `score_golden.py` gives each of the 68,186 requests its own 30-second
+deadline, so a server that **answers** is scored in seconds (the s1 aforge cell:
+6 s) while one that **hangs** can burn the full budget. Both outcomes are real
+readings, not runner faults.
 
 **The per-method table is kept before it is overwritten.** `score_golden.py`
 writes `partial_score, pass_rate, passed, total, per_method` to
@@ -121,6 +143,42 @@ from the host would settle blind no matter what the agent was doing.
 `SILENCE_SECONDS` is **900 here, not 180**. The SWE track's three minutes suits a
 forty-five minute wall; this wall is ten hours and one `cargo build --release` of
 a tree-sitter grammar runs for minutes with nothing written to the store.
+
+**The fingerprint must not see the heartbeats.** aforge's standing-work ticker
+appends one line to `/prof/v3/standing/wake.log` every **300 s** for as long as
+the profile is open — and the line it writes when there is nothing to do says so
+itself: `examined=0 checked=0 fired=0 said=0`. A fingerprint over the whole store
+was therefore reset every five minutes by a record of *nothing happening*, so
+`stable` could never reach 900 and `quiet` could never reach the 2700-second
+escape hatch either. **The s1 aforge cell's settle rule was arithmetically
+unreachable**: it went idle at 12:14 with its only task landed and would have run
+to the ten-hour wall. `presence.json` and everything under `standing/` are now
+excluded — both are the harness reporting that it is *alive*, which is the
+opposite of the question being asked. Everything a turn or a worker writes
+(`transcript.jsonl`, `tasks.json`, `tasks/*.jsonl`, `logs/jobs/*`) still counts,
+so a wake that starts real work still registers, in the files that work writes.
+
+`lib/tasklive.py` was **not** at fault: it counts `unverified` as landed, as its
+`LANDED` set says, and reported `live 0` correctly throughout.
+
+**A signal ends a cell.** `trap cleanup EXIT INT TERM` runs `cleanup` on TERM and
+then *resumes the script* — the container is gone but the settle loop keeps
+polling a name that no longer resolves, reads an empty fingerprint as a stable
+one, settles on it, and writes a record over the record already there. It is now
+`trap cleanup EXIT` plus `trap 'cleanup; exit 130' INT TERM`.
+
+### finish.sh — ending a cell that is already up
+
+`bash finish.sh <arm> <task> <seed> "<reason>"` performs cell.sh's own ending
+from outside: reap the harness, stage `tests/`, run the verifier, hand the files
+back, write the record, then release `cell.sh` so its `cleanup` tears the cell
+down. It exists because the two obvious rescues are both wrong — **editing
+cell.sh in place** corrupts a running bash, which reads a script incrementally
+from a byte offset (the verify-and-record tail is exactly what would be
+misparsed), and **killing cell.sh** takes the container, and the workspace the
+verifier has to score, with it. It never touches `/workspace`: a worker's own
+arrangement in there is part of the container state the benchmark scores, and a
+runner that tidies before judging is scoring something the agent did not leave.
 
 Outcomes: `OK` (settled, every task landed) · `OK(wall)` (wall reached but work
 landed — the clock ran out, the attempt did not) · `DNF` (wall reached with
@@ -151,10 +209,41 @@ reward, note`. A snapshot that fails to copy, fails to start, or runs out of its
 half hour writes a row with `partial_score` 0 **and the reason**, and goes back to
 sleep. Nothing in that loop can take the cell down.
 
-The curve is **indicative, not the verdict**: it scores a fresh container's
-pristine `/workspace/java` and `/workspace/golden.jsonl`, so it cannot show the
-integrity or cached-golden failures only the real verifier — looking at the
-agent's own container — can see.
+**The whole of `/workspace` travels, not the crate — and the first three s1 curve
+points are what that mistake looks like.** The snapshot copied only the crate
+leaf, on the reasoning that the crate is the work. It is not what the benchmark
+scores: `score_golden.py` addresses every test point as
+`file:///workspace/test-files/<rel>`, and the s1 worker met that by creating
+`/workspace/test-files -> /workspace/java` — one symlink, one level **above** the
+crate, therefore outside the copy. Three hourly points came back `0/68186` from a
+server that was answering correctly for 132 of them.
+
+Replayed both ways against the s1 crate, in the scoring container, with the
+verifier's own `test.sh`:
+
+| snapshot path | main | holdout | partial |
+| --- | --- | --- | --- |
+| old (crate leaf only) | 0/68186 | 0/276 | 0.0 |
+| **new (whole `/workspace`, symlinks preserved)** | **132/68186** | **29/276** | **0.0535** |
+
+The new path reproduces the real verifier's verdict on the live container
+exactly. The tar carries no `-h`, so a symlink stays a symlink — following it
+would replace a one-byte link with a second copy of the corpus and, worse, hide
+whether the agent's arrangement actually works. The image's `/workspace` is
+removed before the agent's is unpacked over it, so the scorer never judges a
+blend of two workspaces that never existed. Excluded: `target/` (the verifier
+rebuilds it), `.git`, `node_modules`, `__pycache__`, `.venv`.
+
+Because the corpus now travels too, the snapshot **can** show the integrity and
+cached-golden failures the real verifier would find — it hashes the agent's own
+`java/` and `golden.jsonl`, exactly as the benchmark does (checked: `Integrity:
+PASSED (1008 files match manifest)` on the replay). The corpus is left out of the
+*unpacked* host-side copy only, since ten identical copies per cell of the
+dataset's own thirty megabytes is the one thing on this disk that would grow for
+no reason.
+
+The curve is still **indicative, not the verdict** — it is a point in time, and
+only the end-of-cell verifier runs against the container the agent actually left.
 
 ## The record
 

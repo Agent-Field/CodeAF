@@ -85,10 +85,37 @@ while :; do
   ELAPSED=$(( $(date +%s) - STARTED ))
   log "$TAG at ${ELAPSED}s — copying workspace"
 
-  # docker cp cannot exclude, and target/ is the one directory that must not
-  # travel, so the copy is a tar stream the container builds for us.
-  if ! docker exec "$CONTAINER" tar czf - -C "$PARENT" \
-        --exclude="$LEAF/target" --exclude="$LEAF/.git" "$LEAF" > "$DIR/workspace.tgz" 2>"$DIR/copy.err"; then
+  # THE WHOLE OF /workspace TRAVELS, NOT THE CRATE, AND THE FIRST THREE s1 CURVE
+  # POINTS ARE WHAT THAT MISTAKE LOOKS LIKE.
+  #
+  # This copied only the crate leaf, on the reasoning that the crate is the work.
+  # It is not what the benchmark scores. The scorer addresses every test point as
+  # `file:///workspace/test-files/<rel>`, and the s1 worker met that by creating
+  # `/workspace/test-files -> /workspace/java` — one symlink, one level ABOVE the
+  # crate, therefore outside the copy. Three hourly points came back 0/68186 from
+  # a server that was answering correctly for 132 of them, because in the scoring
+  # container the URIs resolved to nothing. A curve that under-reads is worse than
+  # no curve: it reads as an agent making no progress.
+  #
+  # So the copy is now the whole of /workspace, minus only what the verifier
+  # rebuilds for itself (target/) and what is not part of the state being judged
+  # (.git and the usual vendored trees). The corpus travels with it — java/ and
+  # golden.jsonl — which is also the more faithful mirror: the benchmark hashes
+  # the AGENT's copy of those against its manifest, so a snapshot that scored the
+  # image's pristine ones could never show an integrity failure the real verifier
+  # would find.
+  #
+  # NO `-h`. tar stores a symlink as a symlink unless told to follow it, and
+  # following it here would replace the one-byte link with a second copy of the
+  # 1,007-file corpus — and, worse, would hide from the scorer whether the agent's
+  # arrangement actually works.
+  if ! docker exec "$CONTAINER" tar czf - -C "$(dirname "$PARENT")" \
+        --exclude="$(basename "$PARENT")/*/target" \
+        --exclude="$(basename "$PARENT")/*/.git" \
+        --exclude="$(basename "$PARENT")/*/node_modules" \
+        --exclude="$(basename "$PARENT")/*/__pycache__" \
+        --exclude="$(basename "$PARENT")/*/.venv" \
+        "$(basename "$PARENT")" > "$DIR/workspace.tgz" 2>"$DIR/copy.err"; then
     log "$TAG copy failed"; row "$ELAPSED" 0 0 0 0 "workspace copy failed"; continue
   fi
 
@@ -105,7 +132,13 @@ while :; do
   # a way for this loop to invent a cheat that never happened.
   docker cp "$DIR/workspace.tgz" "$SC:/opt/snap.tgz" >/dev/null 2>&1
   docker cp "$TASKDIR/tests" "$SC:/tests" >/dev/null 2>&1
-  docker exec "$SC" sh -c "rm -rf '$WORKDIR' && tar xzf /opt/snap.tgz -C '$PARENT' && rm -f /opt/snap.tgz" >/dev/null 2>&1
+  # The image's own /workspace is REMOVED before the agent's is unpacked over the
+  # same place. Extracting on top would leave the image's files wherever the
+  # agent had deleted or replaced one, so the scorer would be judging a blend of
+  # two workspaces that never existed. `tar x` restores symlinks as symlinks, so
+  # the agent's arrangement arrives intact and is tested rather than assumed.
+  docker exec "$SC" sh -c \
+    "rm -rf '$PARENT' && tar xzf /opt/snap.tgz -C '$(dirname "$PARENT")' && rm -f /opt/snap.tgz" >/dev/null 2>&1
 
   timeout "$CAP" docker exec "$SC" bash /tests/test.sh > "$DIR/verify.log" 2>&1
   VC=$?
@@ -148,7 +181,17 @@ PY
   fi
   row "$ELAPSED" "$P" "$PA" "$TO" "$RW" "$NOTE"
   log "$TAG partial=$P passed=$PA/$TO reward=$RW ${NOTE:+($NOTE)}"
-  # The tarball is the bulky part and the extracted sources are what a reader
-  # wants, so it is unpacked beside its own score and dropped.
-  mkdir -p "$DIR/workspace" && tar xzf "$DIR/workspace.tgz" -C "$DIR/workspace" 2>/dev/null && rm -f "$DIR/workspace.tgz"
+  # The tarball is the bulky part and the agent's own files are what a reader
+  # wants, so it is unpacked beside its own score and dropped. The corpus is left
+  # out of the unpacked copy — java/ and golden.jsonl are thirty megabytes of the
+  # dataset's own bytes, identical in every snapshot of every arm, and keeping ten
+  # copies per cell of files that live in the image would be the only thing on
+  # this disk that grows for no reason. They were in the tar that was SCORED,
+  # which is where they mattered.
+  # --strip-components=1 drops the archive's own leading `workspace/`, so the
+  # kept copy reads as the workspace itself rather than as workspace/workspace.
+  mkdir -p "$DIR/workspace" \
+    && tar xzf "$DIR/workspace.tgz" -C "$DIR/workspace" --strip-components=1 \
+         --exclude="*/java" --exclude="*/java/*" --exclude="*/golden.jsonl" 2>/dev/null \
+    && rm -f "$DIR/workspace.tgz"
 done
