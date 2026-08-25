@@ -35,9 +35,34 @@ Four ways, and they all reach the same seven rooms:
   right margin.
 - **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
   place it names.
+- **click the word** — the tab bar itself is the control. A press on a place's word goes
+  there; a press in the gap between two words does nothing, and a press on the word you are
+  already standing on does nothing (going there would throw away what you have typed and
+  the row you are on).
 
 `alt+<digit>` arrives in every terminal aforge runs in. `ctrl+<digit>` does not exist as a
 thing a terminal can send, which is why the numbers are on `alt`.
+
+**`tab` goes past a place that has nothing to open.** The tasks place refuses on a machine
+that has run no work, and the standing place refuses when nothing stands over you — `tab`
+and `shift+tab` walk on to the next room a person can actually get into, rather than
+stopping dead. A place asked for **by name** — `alt+2`, a click on its word, `/history` —
+still says why it will not open, on the hint line of the place you are left on.
+
+## The mouse on a place — clicking a row, hovering, and the wheel
+
+Three gestures, the same on all seven places:
+
+- **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
+  what the card beside the list is about, and on home it is what the right-hand card shows.
+  Moving the pointer moves nothing else — the cursor stays where you put it.
+- **a click puts the cursor on that row.** On the places it never acts: the verbs are keys
+  and `enter` leaves the conversation you are sitting in, so a click that opened something
+  would be a gesture nobody can aim. Home is the exception it always was — the first click
+  chooses the row, a second click on the same row opens it.
+- **the wheel walks the list**, three rows a turn, on every place. There is no separate
+  scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
+  Walking off the bottom with `↓` scrolls the same way.
 
 ## The composer — typing on any place, and how to start a task from any page
 

@@ -56,7 +56,14 @@ type searchPage struct {
 	// reading is the derived answer the body is drawn from.
 	reading searchReading
 	cursor  int
-	read    time.Time
+	// top and shown are the WINDOW the last draw put over the reading, and hover
+	// the line the pointer is over (-1 for none). They are the same three fields
+	// every promoted place keeps and they mean the same thing on each: the
+	// window follows the cursor ([placeTop]), and the pointer previews where the
+	// cursor selects.
+	top, shown int
+	hover      int
+	read       time.Time
 	// waiting says a read is out. It is held so that the place can tell "nothing
 	// on this machine says that" from "nobody has answered yet" — two very
 	// different sentences to be looking at.
@@ -66,7 +73,7 @@ type searchPage struct {
 // openSearch walks into the search place.
 func (a *app) openSearch() tea.Cmd {
 	now := a.now()
-	a.search = searchPage{open: true, world: a.readWorld(), read: now}
+	a.search = searchPage{open: true, world: a.readWorld(), read: now, hover: -1}
 	a.rebuildSearch()
 	return tea.Batch(a.armPlaceClock(), a.searchAsked())
 }
@@ -152,16 +159,21 @@ func (a *app) searchDone(msg searchDoneMsg) {
 func (a *app) searchFrame(width, height int) ([]string, []int, int, int) {
 	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
 		body := a.search.reading.rows(width, a.pal)
+		// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
+		// visible result scroll rather than walking the selection off the screen.
+		a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
 		rows := make([]placeRow[int], 0, room)
-		for i, text := range body {
+		for i := a.search.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
 			}
-			if _, ok := a.search.reading.at(i); ok && i == a.search.cursor {
+			text := body[i]
+			if _, ok := a.search.reading.at(i); ok && (i == a.search.cursor || i == a.search.hover) {
 				text = a.pal.selected(text, width)
 			}
 			rows = append(rows, placeRow[int]{text: text, hit: i})
 		}
+		a.search.shown = len(rows)
 		for len(rows) < room {
 			rows = append(rows, placeRow[int]{text: "", hit: -1})
 		}

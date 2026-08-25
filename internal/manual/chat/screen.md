@@ -2237,6 +2237,11 @@ two answers on the stop card, a chip or a link on an adaptive run's page: the on
 the pointer lights and its neighbours stay dark. The gap between two chips lights nothing
 — it is a place to miss, not a door.
 
+**The tab bar of the places is one of them.** Each place's word is its own chip, clicking
+it goes there, and the gap between two words is a place to miss. Under the bar, every
+place answers the pointer the same way: the row you are hovering takes the band, and the
+wheel walks the list three rows a turn.
+
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
 accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
 table's foot, the jump-to-latest chip, the `✕` on a room's header and the model's name at

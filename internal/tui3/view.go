@@ -213,6 +213,13 @@ func (a *app) frame() (string, int, int) {
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.
 	a.caret = true
+	// AND THERE IS NO TAB BAR UNTIL A FRAME DRAWS ONE. Every place goes through
+	// [placeFrame], which records the row it put the bar on; the frames that do
+	// not — home's phone inbox and sheet, the task record card — draw something
+	// else in those cells entirely, and a press resolved against the last bar
+	// this window happened to paint would open a place for a click on a rule
+	// (placemouse.go's [app.placeTabPress]).
+	a.tabRow = -1
 	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
 	// because it is the one that may be open before any of them exists and it
 	// goes away to reveal whichever of them was decided underneath (firstrun.go).

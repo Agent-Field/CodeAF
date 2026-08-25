@@ -288,13 +288,29 @@ type standPage struct {
 	// layout for the pointer — the same bargain the other panels make
 	// (permissions.go, connectpanel.go). A heading answers to no row.
 	owner []int
+	// hover is the SCREEN LINE OF THE BLOCK the pointer is resting on, and -1
+	// for none. It is a line and not a row index because that is what the fill
+	// this list is drawn with compares against ([overlayFill.addTinted]): an
+	// order draws two lines at most widths, and either of them is the pointer
+	// being on it.
+	hover int
 }
 
 func (p *standPage) close() { *p = standPage{} }
 
 func (p *standPage) start(rows []standRow) {
-	*p = standPage{open: true, rows: rows}
+	*p = standPage{open: true, rows: rows, hover: -1}
 	p.cursor = p.settle(0)
+}
+
+// rowAt is which ORDER one screen line of the block belongs to. A heading, a
+// "not here" line and the blank under the last row belong to none, and are
+// swallowed rather than resolved to whichever row they happened to be nearest.
+func (p *standPage) rowAt(line int) (int, bool) {
+	if line < 0 || line >= len(p.owner) || p.owner[line] < 0 {
+		return 0, false
+	}
+	return p.owner[line], true
 }
 
 // land puts the cursor on one order by id, and leaves it where it was when
@@ -517,7 +533,7 @@ func (a *app) openStandingAt(id string) {
 	a.noticeEvent(eventStandingOpened)
 	rows := a.standingRows()
 	if len(rows) == 0 {
-		a.note(standNothingWord)
+		a.refusePage(standNothingWord)
 		return
 	}
 	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
@@ -570,34 +586,17 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// standPagePress resolves a click on one of the page's rows.
+// A CLICK ON THIS PAGE IS THE ROUTER'S NOW (pages.go's [app.placeBodyPress]).
+// It used to be `standPagePress` here, resolving a row of the terminal against
+// this page's own `owner` map — which is exactly what every promoted place has
+// to do, so the arithmetic moved to the one function that does it for all of
+// them and this page kept only [standPage.rowAt], the map's own reading.
 //
 // THE POINTER MOVES THE CURSOR AND NEVER ACTS, which is where this page parts
 // company with the panel it borrows its shape from. /permissions asks before it
 // drops, so a mis-aimed click there costs a second press; every verb here is a
 // key, and enter takes a person out of the conversation they are sitting in — a
 // click that did that would be a gesture nobody could aim.
-func (a *app) standPagePress(y int) tea.Cmd {
-	p := &a.standPage
-	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
-	// and the head is one number for every place ([placeHeadRows]). It used to
-	// resolve against the chrome's overlay marks, which is what an overlay had
-	// and a place does not — a place is the whole frame, so there is no chrome
-	// under it to ask.
-	at := -1
-	if line := y - placeHeadRows; line >= 0 && line < len(p.owner) {
-		at = p.owner[line]
-	}
-	if at < 0 {
-		// A heading, a "not here" line, or a blank under the last row: a line
-		// belonging to no order. It is swallowed rather than resolved to
-		// whichever row it happened to be nearest.
-		return nil
-	}
-	p.cursor = at
-	a.touch()
-	return nil
-}
 
 // standPageEnter is the provenance door, and it is home's road walked from the
 // other end ([app.homeItemEnter]): "why is this true here?" must open the

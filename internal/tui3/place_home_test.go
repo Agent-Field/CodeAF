@@ -216,8 +216,12 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// no agent with anything standing over it, so the standing place refuses
 		// in its own words and the router puts home back (pages.go's [app.showPage])
 		// — and that refusal is the proof the key reached the place at all.
-		if !strings.Contains(homeNotes(a), standNothingWord) {
-			t.Fatalf("the standing ledger line opened nothing: %q", homeNotes(a))
+		//
+		// IT IS SAID ON THE ROUTER'S OWN LINE, where the person who pressed the
+		// key is looking. A note in the transcript under a fullscreen place was
+		// a sentence nobody could read (pages.go's [app.refusePage]).
+		if a.pageMsg != standNothingWord {
+			t.Fatalf("the standing ledger line opened nothing: %q", a.pageMsg)
 		}
 	}
 	if !doors["standing"] || !doors["tasks"] {

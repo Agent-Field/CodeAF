@@ -56,6 +56,16 @@ type spendPage struct {
 	// stops is the door map the last draw wrote, so `enter` opens the thing the
 	// row the person is looking at named.
 	stops []spendStop
+	// top and shown are the WINDOW the last draw put over the body: the first
+	// line of the reading that was drawn, and how many of them fit. The window
+	// follows the cursor ([placeTop]) rather than being scrolled on its own, and
+	// the pair is what turns a row of the terminal back into a line of the body
+	// for the pointer (pages.go's [app.placeBodyPress]).
+	top, shown int
+	// hover is the line of the reading the pointer is over, and -1 for none. THE
+	// POINTER PREVIEWS AND THE CURSOR SELECTS: it is drawn at the same rung as
+	// the cursor's own row and moves nothing.
+	hover int
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
@@ -70,7 +80,8 @@ const spendWindowDays = 14
 // that keeps it current.
 func (a *app) openSpend() tea.Cmd {
 	now := a.now()
-	a.spend = spendPage{open: true, cache: session.UsageCache{Path: a.usageLedger}, win: session.LastDays(now, spendWindowDays)}
+	a.spend = spendPage{open: true, cache: session.UsageCache{Path: a.usageLedger},
+		win: session.LastDays(now, spendWindowDays), hover: -1}
 	a.readSpendLines(now)
 	return a.armPlaceClock()
 }
@@ -157,16 +168,22 @@ func (a *app) spendFrame(width, height int) ([]string, []int, int, int) {
 	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
 		body, stops := a.spend.reading.body(width, a.pal)
 		a.spend.stops = stops
+		// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
+		// loses the cursor off the bottom of the screen the moment the ledger is
+		// longer than the terminal, which is the one thing a list may never do.
+		a.spend.top = placeTop(a.spend.top, a.spend.cursor, len(body), room)
 		rows := make([]placeRow[int], 0, room)
-		for i, text := range body {
+		for i := a.spend.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
 			}
-			if i == a.spend.cursor && a.spendStopAt(i).ok {
+			text := body[i]
+			if (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok {
 				text = a.pal.selected(text, width)
 			}
 			rows = append(rows, placeRow[int]{text: text, hit: i})
 		}
+		a.spend.shown = len(rows)
 		for len(rows) < room {
 			rows = append(rows, placeRow[int]{text: "", hit: -1})
 		}

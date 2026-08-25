@@ -104,6 +104,12 @@ type memoryPanel struct {
 	// body is shelves, lines and folds together, and the pointer stops only where
 	// the reading says there is something to stand on ([memoryReading.at]).
 	cursor int
+	// top and shown are the WINDOW the last draw put over the reading, and hover
+	// the line the pointer is over (-1 for none) — the same three fields every
+	// promoted place keeps, meaning the same thing on each: the window follows
+	// the cursor ([placeTop]), and the pointer previews where the cursor selects.
+	top, shown int
+	hover      int
 	// expanded is the one line whose card is up, and origins is where each such
 	// line was learned. The provenance is read for THAT ONE ID on the keystroke
 	// that opens it, which is one query for one door rather than one per row.
@@ -124,7 +130,7 @@ func (p *memoryPanel) close() { *p = memoryPanel{} }
 // start takes one snapshot and makes it the page.
 func (p *memoryPanel) start(shelves store.MemoryShelves, now time.Time) {
 	*p = memoryPanel{
-		open: true, shelves: shelves, read: now,
+		open: true, shelves: shelves, read: now, hover: -1,
 		shelfOpen: map[string]bool{}, origins: map[string]memoryOrigin{},
 	}
 	// THE BIGGEST SHELF OPENS ITSELF AND THE REST STAY ROLLED UP (SCREEN 2d).
@@ -432,16 +438,26 @@ func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
 		default:
 			body = p.reading.rows(width, a.pal)
 		}
+		// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
+		// it is one line's provenance, drawn from its top, so it has no cursor to
+		// follow and starts where it starts.
+		if p.expanded != "" {
+			p.top = 0
+		} else {
+			p.top = placeTop(p.top, p.cursor, len(body), room)
+		}
 		rows := make([]placeRow[int], 0, room)
-		for i, text := range body {
+		for i := p.top; i < len(body); i++ {
 			if len(rows) >= room {
 				break
 			}
-			if _, stop := p.reading.at(i); stop && p.expanded == "" && i == p.cursor {
+			text := body[i]
+			if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
 				text = a.pal.selected(text, width)
 			}
 			rows = append(rows, placeRow[int]{text: text, hit: i})
 		}
+		p.shown = len(rows)
 		for len(rows) < room {
 			rows = append(rows, placeRow[int]{text: "", hit: -1})
 		}
@@ -472,12 +488,12 @@ const memorySnapshotRows = 500
 // writing to.
 func (a *app) openMemory() tea.Cmd {
 	if !a.memoryReady() {
-		a.note("memory is off · turn it on under /settings")
+		a.refusePage("memory is off · turn it on under /settings")
 		return nil
 	}
 	shelves, err := a.memory.Snapshot(memorySnapshotRows)
 	if err != nil {
-		a.note("could not read what is remembered · " + err.Error())
+		a.refusePage("could not read what is remembered · " + err.Error())
 		return nil
 	}
 	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
