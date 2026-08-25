@@ -1315,15 +1315,19 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 
 // THE BOUND ON THE ROW IS THE BOUND THE COMMAND DIES ON. A weak model that
 // spells its optional arguments out — `"timeout": null` — is asking for nothing,
-// and the session writes its 120-second default over it (internal/session's
-// withTimeoutLaw). The row has to count down against that same figure: a bound
-// drawn here that nothing was going to enforce is the one number on this line a
-// person cannot check for themselves.
+// and the session writes its ceiling over it (internal/session's withTimeoutLaw
+// and [session.BashCeilingSeconds]). The row has to count down against that
+// same figure: a bound drawn here that nothing was going to enforce is the one
+// number on this line a person cannot check for themselves. The figure is READ
+// from the constant rather than typed here, because a test that spelled it out
+// was the second place the number lived, and it drifted the day the ceiling
+// moved.
 func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.state = stateWorking
 	base := time.Now()
 	a.clock = func() time.Time { return base.Add(20 * time.Second) }
+	ceiling := "20s / " + countUpWord(session.BashCeilingSeconds*time.Second)
 	for _, args := range []string{
 		`{"command":"cd work"}`,
 		`{"command":"cd work","timeout":null}`,
@@ -1334,18 +1338,18 @@ func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 			kind: entryTool, tool: "bash", status: toolRunning, began: base,
 			detail: toolDetail{Args: args},
 		}
-		if got, _ := a.countClock(&row); got != "20s / 2m 0s" {
-			t.Fatalf("%s draws %q, want the default bound stated beside the age", args, got)
+		if got, _ := a.countClock(&row); got != ceiling {
+			t.Fatalf("%s draws %q, want the session's ceiling %q beside the age", args, got, ceiling)
 		}
 	}
 	// And a figure the model really did ask for is still its own, clamped at the
 	// session's cap.
 	clamped := entry{
 		kind: entryTool, tool: "bash", status: toolRunning, began: base,
-		detail: toolDetail{Args: `{"command":"go test ./...","timeout":900}`},
+		detail: toolDetail{Args: `{"command":"go test ./...","timeout":` + itoa(session.BashCeilingSeconds+300) + `}`},
 	}
-	if got, _ := a.countClock(&clamped); got != "20s / 10m 0s" {
-		t.Fatalf("a 900-second ask draws %q, want the 600-second cap", got)
+	if got, _ := a.countClock(&clamped); got != ceiling {
+		t.Fatalf("an ask above the ceiling draws %q, want the ceiling %q", got, ceiling)
 	}
 }
 
@@ -1386,8 +1390,9 @@ func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
 		t.Fatalf("the finished call says %q, want its own tenth of a second", got)
 	}
 	// Its sibling is genuinely still going, and says so.
-	if got, _ := a.countClock(running); got != "51s / 2m 0s" {
-		t.Fatalf("the call still running says %q", got)
+	want := "51s / " + countUpWord(session.BashCeilingSeconds*time.Second)
+	if got, _ := a.countClock(running); got != want {
+		t.Fatalf("the call still running says %q, want %q", got, want)
 	}
 }
 
