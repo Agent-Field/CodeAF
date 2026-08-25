@@ -1,11 +1,7 @@
 package tui3
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // TASKS, REACHED BY A THUMB.
@@ -33,10 +29,10 @@ import (
 //   - THE ROSTER PAGE IS A LIST OF CARDS WITH A WAY BACK. Its rows already open
 //     on one press ([app.taskSheetPress]); at this tier each is a two-line CARD
 //     a thumb goes into (the name and its state on top, what it did and how long
-//     ago under it), the list SCROLLS to keep the cursor's card whole
-//     ([app.taskSheetTop] walks it in lines rather than in rows), and its foot
-//     is a `‹ back` bar ([phoneBar]) instead of a key legend — so a person
-//     leaves by tapping, no keyboard anywhere in the flow.
+//     ago under it — the reading draws it, tasksplace.go), the list SCROLLS to
+//     keep the cursor's card whole ([tasksTop] walks it in lines rather than in
+//     rows), and its foot is a `‹ back` bar ([phoneBar]) instead of a key legend
+//     — so a person leaves by tapping, no keyboard anywhere in the flow.
 //
 //   - THE CARD'S VERBS BECOME BANDS. `esc back · ↑↓ scroll · m puts it in your
 //     message` is a sentence about keys; at this tier the two things it names
@@ -169,70 +165,12 @@ func (a *app) stripPhonePress(width int) (tea.Cmd, bool) {
 
 // taskSheetPhoneIndent is where a card's second line hangs: two cells in from
 // the label, so the tail reads as belonging under the name rather than as a row
-// of its own. It is measured from the row's content, which the page's own
-// two-cell lead ([app.taskSheetItemRows]) already sits in front of.
+// of its own. It is measured from the row's content, which the place's own
+// two-cell lead ([tasksBareLead]) already sits in front of.
 const taskSheetPhoneIndent = 2
 
-// taskSheetPhonePast is one row of the project's record as a CARD at [tierPhone]:
-// the state glyph, the mention mark and the name on top, and under them what the
-// work came to and how long ago it landed. It is the two-line shape home's inbox
-// rows already wear, brought to the roster so a finger has a card to press
-// rather than a keyboard's one-line row.
-func (a *app) taskSheetPhonePast(entry *session.TaskIndexEntry, width int) []string {
-	runs := a.recordRuns(entry)
-	head := fit(taskRecordLabel(*entry, a.pal.ascii, runs), width)
-	// THE HUE IS THE CLAIM, as it is on the wide row ([app.taskSheetPastRow]):
-	// dulled is the record, and work another window is still holding is not the
-	// record, so it wears the ink a running row wears.
-	painted := a.pal.muted(head)
-	if runs {
-		painted = a.pal.ink(head)
-	}
-	return a.taskSheetPhoneCard(painted, taskPhonePastTail(*entry, runs), width)
-}
-
-// taskPhonePastTail is the card's second line: the outcome sentence the person
-// came for and how long ago the work landed, each dropped when it has nothing
-// behind it (the emptiness law reaches the tail). It is one line — the card
-// scrolls into is the record itself, which has the whole report.
-func taskPhonePastTail(entry session.TaskIndexEntry, runs bool) string {
-	var segs []string
-	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
-		segs = append(segs, outcome)
-	}
-	if note := taskRecordNote(entry, runs); note != "" {
-		segs = append(segs, note)
-	}
-	return strings.Join(segs, railSep)
-}
-
-// taskSheetPhoneAway is one piece of another window's work as a card: its state
-// and the words it was given on top, where it is happening under them. It wears
-// no mention mark, for the reason the wide row states ([app.taskSheetAwayRow]) —
-// there is no row in the project index for a mention to reach.
-func (a *app) taskSheetPhoneAway(away session.ElsewhereTask, width int) []string {
-	glyph := taskStatusGlyph(session.TaskIndexEntry{Status: away.Task.State}, a.pal.ascii)
-	head := fit(glyph+" "+away.Task.Title, width)
-	return a.taskSheetPhoneCard(a.pal.muted(head), taskAwayNote(away.Session), width)
-}
-
-// taskSheetPhoneCard assembles a card from a painted head and a plain tail: the
-// head as it is, and the tail dim on a line of its own, indented under the label
-// and dropped when it is empty so a card with nothing to add stays one line.
-func (a *app) taskSheetPhoneCard(head, tail string, width int) []string {
-	rows := []string{head}
-	if tail = strings.TrimSpace(tail); tail != "" {
-		room := width - taskSheetPhoneIndent
-		if room < 1 {
-			room = 1
-		}
-		rows = append(rows, strings.Repeat(" ", taskSheetPhoneIndent)+a.pal.dim(fit(tail, room)))
-	}
-	return rows
-}
-
 // taskSheetBar is the roster page's foot at [tierPhone]: a `‹ back` band a thumb
-// leaves by, in place of the key legend a keyboard reads ([app.taskSheetKeysLine]).
+// leaves by, in place of the key legend a keyboard reads ([tasksPlace.hint]).
 // It is the record card's own bar shape ([phoneBar]) — one target here, because
 // filtering the page is done by typing and there is no toggle to give a band to.
 func (a *app) taskSheetBar(width int) (string, []hudSpan) {

@@ -195,7 +195,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
-| `/history` | — | — | opens the full-screen task page — every task this project has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/cache` | — | — | how big the shared build cache is, and where |

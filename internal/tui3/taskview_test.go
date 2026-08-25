@@ -12,15 +12,15 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// ── THE TASK PAGE ───────────────────────────────────────────────────────────
+// ── THE TASKS PLACE ─────────────────────────────────────────────────────────
 //
-// The roster's column is THIS SESSION'S record and the project's record is on
-// disk, and until this page the only door onto the second one was a completion
-// somebody had to already be typing a message to reach. These are the whole of
-// that claim: the page opens and closes, it draws the tree at the top and the
-// flat record under it, the two fullscreen pages never disagree about which one
-// owns the frame, and the column offers the door exactly when there is something
-// behind it.
+// The roster's column is THIS SESSION'S record and the machine's is on disk, and
+// until this place the only door onto the second one was a completion somebody
+// had to already be typing a message to reach. These are the whole of that
+// claim: the place opens and closes, it draws this window's own work beside every
+// other conversation's and groups it by what you do next, the fullscreen pages
+// never disagree about which one owns the frame, and the column offers the door
+// exactly when there is something behind it.
 
 // ctrlDot is the page's own key (taskview.go's [taskSheetKey]).
 func ctrlDot() tea.KeyPressMsg { return tea.KeyPressMsg{Code: '.', Mod: tea.ModCtrl} }
@@ -29,13 +29,16 @@ func ctrlDot() tea.KeyPressMsg { return tea.KeyPressMsg{Code: '.', Mod: tea.ModC
 // work that landed, in a conversation that is not this one.
 func pastTask(id, name, title string, ago time.Duration) session.TaskIndexEntry {
 	return session.TaskIndexEntry{
-		ID:        id,
-		Name:      name,
-		Label:     title,
-		Title:     title,
-		Status:    string(session.TaskDone),
-		Outcome:   "it came home clean",
-		EndedAt:   time.Now().Add(-ago),
+		ID:      id,
+		Name:    name,
+		Label:   title,
+		Title:   title,
+		Status:  string(session.TaskDone),
+		Outcome: "it came home clean",
+		// The age is measured from the SURFACE'S clock and not from the wall's
+		// ([taskFixtureNow] says why): a row dated from time.Now() beside a pinned
+		// clock is a row that landed in the future.
+		EndedAt:   taskFixtureNow.Add(-ago),
 		SessionID: "an-earlier-conversation",
 	}
 }
@@ -119,6 +122,57 @@ func TestTheTaskPageRefusesToOpenWithNoTasksAtAll(t *testing.T) {
 	}
 }
 
+// THE NOTE AND THE BODY NEVER DISAGREE ABOUT WHETHER THE PLACE IS EMPTY.
+//
+// This is the emptiness law with two halves, and the wave that broke it broke
+// exactly this: the body drew three sentences teaching what tasks are while the
+// line above the composer read `5 running · 1 earlier`. One reading answers both,
+// so there are only ever three honest frames — prose and no count, rows and a
+// count, or a query that found nothing saying so.
+func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
+	a, _, _ := taskApp(t)
+
+	// Nothing anywhere: the tab bar still walks in, the body teaches, and the
+	// note says NOTHING — a count beside that prose is the pair the law forbids.
+	a.showPage(pageTasks)
+	if !a.taskSheet.open {
+		t.Fatal("the tab bar did not walk into an empty tasks place")
+	}
+	if note := a.placeNote(a.width); len(note) != 0 {
+		t.Fatalf("an empty place counted what it does not have: %q", note)
+	}
+	text := taskSheetText(a)
+	if !strings.Contains(text, "tasks is the history of work this machine has run.") {
+		t.Fatalf("the empty place does not say what it is for:\n%s", text)
+	}
+	a.closeTaskSheet()
+
+	// Work behind it: the body draws rows and the note counts exactly them, and
+	// the teaching prose is gone.
+	railRun(a)
+	if !a.openTaskSheet() {
+		t.Fatal("the place refused to open over this window's own work")
+	}
+	if note := plain(strings.Join(a.placeNote(a.width), "\n")); !strings.Contains(note, "4 "+taskSheetNowHead) {
+		t.Fatalf("the note does not count the rows the body drew: %q", note)
+	}
+	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
+		t.Fatalf("a place with rows on it taught what a task is:\n%s", text)
+	}
+
+	// AND A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There is work here;
+	// the words hid it. The note says so and the body stays blank rather than
+	// teaching somebody who did not ask.
+	drive(t, a, key("z"), key("z"))
+	note := plain(strings.Join(a.placeNote(a.width), "\n"))
+	if !strings.Contains(note, taskSheetFilterNone) {
+		t.Fatalf("a query that matched nothing said nothing: %q", note)
+	}
+	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
+		t.Fatalf("a filtered-empty place taught what a task is:\n%s", text)
+	}
+}
+
 // THE PAGE'S COMMAND IS /history AND IT IS NOT SPELLED WITH "task". /task means
 // give aforge work — three rows of the list say so — and a plural beside them was
 // a command that answered the muscle memory for starting one.
@@ -153,10 +207,17 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 	}
 }
 
-// THE TWO SECTIONS ANSWER DIFFERENT QUESTIONS: the tree at the top is what is
-// happening, whole and never folded, and the flat list under it is what the
-// project has done — including the work of conversations this one never saw.
-func TestTheTaskPageDrawsTheRunningTreeAndTheFlatRecord(t *testing.T) {
+// THE PLACE DRAWS THIS WINDOW'S OWN WORK BESIDE EVERY OTHER CONVERSATION'S, AND
+// THE COLUMN CANNOT DO EITHER.
+//
+// This used to pin a `running` TREE over a flat `earlier` list, with the column's
+// own connectors above and nothing but the project's record below. The tree is
+// gone — the place is the machine's whole record and groups by what you do next
+// — but the laws underneath it are not: this session's live work reaches the
+// page (it is in no file until it lands, which is the bug that started this),
+// work another conversation ran reaches it too, and the two are grouped by what
+// you do about them rather than by whose they are.
+func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	a.comp.tasks = []session.TaskIndexEntry{
@@ -169,50 +230,65 @@ func TestTheTaskPageDrawsTheRunningTreeAndTheFlatRecord(t *testing.T) {
 	}
 	text := taskSheetText(a)
 
-	// The tree: both section words, the family's root and its children, and the
-	// connectors that say which hangs off which.
+	// THIS WINDOW'S OWN LIVE WORK IS ON THE PAGE. An ordinary task writes no row
+	// into the project's file until it lands, so the graph is the only authority
+	// for it and a page that read the file alone showed none of it.
 	for _, want := range []string{
-		taskSheetNowHead, taskSheetPastHead,
-		"Ship the port", "Write the tree", "Cut the goldens",
-		treeBranch, treeLast,
+		taskSheetNowHead, "Ship the port", "Write the tree", "Cut the goldens", "Wire the seam",
 	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("this window's own work is missing %q:\n%s", want, text)
+		}
+	}
+	// A SETTLED MEMBER OF A LIVE FAMILY IS STILL ON THE PAGE. It is filed by what
+	// it IS rather than by what it hangs off, which is the whole of the regrouping.
+	if !strings.Contains(text, "Read the law") {
+		t.Fatalf("a settled node of this session dropped off the page:\n%s", text)
+	}
+	// AND SO IS WORK ANOTHER CONVERSATION RAN, which the column cannot show at all.
+	for _, want := range []string{"Sweep the call sites", "Port the parser", taskSheetPastHead} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the page is missing %q:\n%s", want, text)
 		}
 	}
-	// AND THE FAMILY IS DRAWN WHOLE. The column folds a settled child away; this
-	// page never does, because a tree with its finished branches taken out is a
-	// tree whose connectors point at nothing.
-	if !strings.Contains(text, "Read the law") {
-		t.Fatalf("the settled member of the running family was folded away:\n%s", text)
+	// THE GROUPING IS BY WHAT YOU DO NEXT AND NEVER BY WHOSE WORK IT IS: what is
+	// running leads, what landed today follows, and everything older is last.
+	running := strings.Index(text, taskSheetNowHead)
+	today := strings.Index(text, "done today")
+	earlier := strings.Index(text, taskSheetPastHead)
+	if running < 0 || today < running || earlier < today {
+		t.Fatalf("the sections are absent or out of order (%d/%d/%d):\n%s", running, today, earlier, text)
 	}
-
-	// The record: work another conversation ran, which the column cannot show at
-	// all, under the flat heading rather than in the tree.
-	now := strings.Index(text, taskSheetNowHead)
-	past := strings.Index(text, taskSheetPastHead)
-	port := strings.Index(text, "Port the parser")
-	if port < past {
-		t.Fatalf("an earlier conversation's task is drawn above the %q rule:\n%s", taskSheetPastHead, text)
+	if at := strings.Index(text, "Port the parser"); at < earlier {
+		t.Fatalf("work from forty hours ago is drawn above %q:\n%s", taskSheetPastHead, text)
 	}
-	if now > past {
-		t.Fatalf("the sections are in the wrong order:\n%s", text)
+	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
+		t.Fatalf("work that landed today is not under `done today`:\n%s", text)
 	}
-	// A flat list and not a tree: nothing under the record wears a connector.
-	for _, line := range strings.Split(text[past:], "\n") {
-		if strings.Contains(line, treeBranch) || strings.Contains(line, treeLast) {
-			t.Fatalf("the record is drawn as a tree:\n%s", line)
+	// NO SHAPE IS CLAIMED. The connectors said which node hangs off which; a list
+	// grouped by state has no parentage to draw, and drawing one would be a claim
+	// about kinship the grouping has just thrown away.
+	for _, gone := range []string{treeBranch, treeLast} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("the place drew a tree connector %q:\n%s", gone, text)
 		}
 	}
-	// And the tally counts both sections, in the same two words they are headed
-	// with, with neither of them written as a zero.
-	if !strings.Contains(text, "5 "+taskSheetNowHead) || !strings.Contains(text, "2 "+taskSheetPastHead) {
-		t.Fatalf("the foot does not count what is on the page:\n%s", text)
+	// And the note counts every section it drew, in the same words they are
+	// headed with, with none of them written as a zero.
+	for _, want := range []string{"4 " + taskSheetNowHead, "2 done today", "1 " + taskSheetPastHead} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "0 "+taskSheetNowHead) || strings.Contains(text, "0 "+taskSheetPastHead) {
+		t.Fatalf("the note wrote a section as a zero:\n%s", text)
 	}
 }
 
-// A ROW OF THIS SESSION'S IS NOT SAID TWICE. The index's live rows come off the
-// very graph the tree is drawn from, so a node in both is one node.
+// ONE PIECE OF WORK IS DRAWN ONCE, however many authorities know about it. The
+// project's index carries this session's live rows and so does the graph they
+// came off, so a node in both is one node: the pair (conversation, id) is what
+// identifies a row of work, and the freshest authority wins it.
 func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
@@ -267,26 +343,29 @@ func TestTheTaskPageCursorNeverLandsOnASectionWord(t *testing.T) {
 		t.Fatal("the page refused to open")
 	}
 
-	items := a.taskSheetItems()
-	for step := 0; step < len(items)+4; step++ {
-		item, ok := a.taskSheetCurrent()
-		if !ok {
+	lines := a.tasksFiltered().lay(a.width)
+	for step := 0; step < len(lines)+4; step++ {
+		if _, ok := a.taskSheetCurrent(); !ok {
 			t.Fatalf("the cursor fell off the page after %d steps down", step)
 		}
-		if item.heading() {
-			t.Fatalf("the cursor landed on the %q rule", item.head)
+		if kind := lines[a.taskSheet.cursor].kind; kind != tasksLineTask {
+			t.Fatalf("the cursor landed on a line of kind %v, which answers to nothing", kind)
 		}
 		drive(t, a, key("down"))
 	}
 	// It clamps at the end rather than wrapping, the way every other list here
 	// walks, and end takes it there in one press.
+	stops := a.taskSheet.stops(a)
+	if len(stops) < 2 {
+		t.Fatalf("the fixture left %d rows to walk", len(stops))
+	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnd})
-	if item, ok := a.taskSheetCurrent(); !ok || item.node != nil {
-		t.Fatal("end did not land on the last row of the record")
+	if a.taskSheet.cursor != stops[len(stops)-1] {
+		t.Fatalf("end left the cursor on line %d, want the last row at %d", a.taskSheet.cursor, stops[len(stops)-1])
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyHome})
-	if item, ok := a.taskSheetCurrent(); !ok || item.node == nil {
-		t.Fatal("home did not land on the first row of the tree")
+	if a.taskSheet.cursor != stops[0] {
+		t.Fatalf("home left the cursor on line %d, want the first row at %d", a.taskSheet.cursor, stops[0])
 	}
 }
 
@@ -678,13 +757,13 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 		t.Fatal("the page refused to open")
 	}
 
-	// "port" is in one live title and one record row, so both sections survive
-	// it and everything else goes.
+	// "port" is in one live title and one row of another conversation's work, so
+	// both sections survive it and everything else goes.
 	drive(t, a, key("p"), key("o"), key("r"), key("t"))
 	text := taskSheetText(a)
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
-		taskSheetPastHead, "Port the parser",
+		"done today", "Port the parser",
 		taskSheetFilterWord + "port",
 	} {
 		if !strings.Contains(text, want) {
@@ -694,13 +773,6 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	for _, gone := range []string{"Write the tree", "Mix the audio"} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("%q survived the filter:\n%s", gone, text)
-		}
-	}
-	// A FILTERED TREE IS FLAT. The connectors are a claim about what hangs off
-	// what, and a query that takes the middle out leaves them pointing at nothing.
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, treeBranch) || strings.Contains(line, treeLast) {
-			t.Fatalf("the filtered tree still draws connectors:\n%s", line)
 		}
 	}
 

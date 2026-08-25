@@ -138,7 +138,12 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	// settings.go) — and it is stated here rather than left to [app.openTaskSheet]
 	// because this one does not go through it.
 	a.standDownFullscreen()
-	a.taskSheet = taskSheet{open: true, detail: *entry, detailOn: true}
+	// THE LIST UNDERNEATH IS A REAL LIST. This door does not go through
+	// [app.openTaskSheet], so it takes the same snapshot that one does — a card
+	// opened from home used to leave an EMPTY place behind it, and esc dropped
+	// the person onto a page with nothing on it.
+	a.taskSheet = a.takeTaskReading()
+	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
 	// The list underneath is parked on the row that was pressed, so esc comes
 	// back to it rather than to the top of a list somebody scrolled a long way
 	// down. It is done on the way IN because the list is rebuilt every frame and
@@ -156,8 +161,11 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 // unique across the record (session's task_index.go says so on
 // [session.TaskIndexEntry.ID]).
 func (a *app) taskSheetPointAt(want session.TaskIndexEntry) {
-	for at, item := range a.taskSheetItems() {
-		if item.entry != nil && taskSameRecord(*item.entry, want) {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	for at := range lines {
+		if item, ok := r.at(lines, at); ok && taskSameRecord(item.entry, want) {
 			a.taskSheet.cursor = at
 			return
 		}

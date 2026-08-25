@@ -559,10 +559,9 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // booleans already carry, and the two page-stack laws in chrome_test.go hold
 // without an edit to what they assert.
 //
-// A place that refuses to open leaves `a.page` where it was. The task page
-// refuses when there is nothing to show, the memory place refuses when memory is
-// off, and a router that moved the tab bar's band onto a place that did not open
-// would be a bar pointing at an empty room.
+// A place that refuses to open leaves `a.page` where it was. The memory place
+// refuses when memory is off, and a router that moved the tab bar's band onto a
+// place that did not open would be a bar pointing at an empty room.
 func (a *app) showPage(id page) tea.Cmd {
 	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the answer is
 	// what a refusal below has to put back.
@@ -620,7 +619,10 @@ func (a *app) openPage(id page) (tea.Cmd, bool) {
 	case pageHome:
 		return a.openHome(), a.home.open
 	case pageTasks:
-		return a.openTaskPage(), a.taskSheet.open
+		// THE TAB BAR OPENS THIS PLACE EMPTY, which is where it parts company with
+		// the command and the chord (place_tasks.go's [app.showTaskPlace] says
+		// why): walking into a room is not asking it a question.
+		return a.showTaskPlace(), a.taskSheet.open
 	case pageStanding:
 		a.openStanding()
 		return nil, a.standPage.open

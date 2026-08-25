@@ -42,7 +42,10 @@ func awayApp(t *testing.T) (*app, *awayFake, func(time.Duration)) {
 	}}
 	a := newTestApp(agent)
 	a.width, a.height = 200, 24
-	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
+	// The places root is pinned for [taskApp]'s reason: the tasks place reads the
+	// MACHINE, so an unpinned root reads the developer's own history.
+	a.homeRoot = t.TempDir()
+	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
@@ -144,13 +147,16 @@ func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 	}
 	// And it stays off the column when nobody is holding it either: a row that
 	// claims to be running with nothing behind it is still not this conversation's
-	// work, and the page is where that judgement is drawn.
+	// work, and the place is where that judgement is drawn.
 	agent.away, a.away = session.Elsewhere{}, elsewhereCache{}
 	if row, ok := railRowFor(a, 20, "Port it"); ok {
 		t.Fatalf("a row nobody is running turned up on the column: %q", row)
 	}
+	if !a.openTaskSheet() {
+		t.Fatal("the place refused to open over a row nobody is running")
+	}
 	if row := awayRowWith(t, taskSheetText(a), "Port it"); !strings.Contains(row, taskRecordStoppedWord) {
-		t.Fatalf("the page does not say the row is %q:\n%s", taskRecordStoppedWord, row)
+		t.Fatalf("the place does not say the row is %q:\n%s", taskRecordStoppedWord, row)
 	}
 }
 
@@ -158,17 +164,9 @@ func TestTheColumnDrawsNoRowOfAnotherWindowsWork(t *testing.T) {
 // is the only way to tell "running" from "earlier" apart on a flat frame.
 func awaySectionOf(t *testing.T, a *app, title string) string {
 	t.Helper()
-	section := ""
-	for _, item := range a.taskSheetItems() {
-		switch {
-		case item.heading():
-			section = item.head
-		case item.away != nil && item.away.Task.Title == title:
-			return section
-		case item.entry != nil && item.entry.Title == title:
-			return section
-		case item.node != nil && item.node.title == title:
-			return section
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.Title == title {
+			return tasksSectionWord(item.section)
 		}
 	}
 	t.Fatalf("no row on the page is %q", title)

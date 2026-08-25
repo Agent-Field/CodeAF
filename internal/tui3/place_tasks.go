@@ -1,0 +1,1030 @@
+package tui3
+
+import (
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// THE TASKS PLACE, app side: one thin state struct and the handful of things a
+// place has to be able to do.
+//
+// The READING is next door in tasksplace.go and is pure — data, a window, a
+// width and a palette in, rows out. This file is everything that needs the
+// surface: taking the snapshot, holding the cursor and the scroll, answering the
+// keyboard and the pointer, and handing the frame its rows. taskview.go keeps
+// what is NOT the place — the record card's mode, the other-windows reading, and
+// the one door the roster's column has onto here.
+//
+// The methods on [tasksPlace] are shaped for the `place` contract the switcher is
+// settling into (docs/design/home-rethink/ARCHITECTURE.md): close, body, stops,
+// enter, window, note, hint, changed. Where the rest of the surface already
+// spells one of them under an older name, that name survives beside it as a
+// one-line call — the seam the refactor lane deletes when the interface lands,
+// and never a second copy of the logic.
+
+// tasksPlace is the whole of the place's state. The zero value is closed.
+//
+// THE CURSOR AND THE OFFSET ARE BOTH LINE INDEXES into the layout the reading
+// lays out ([tasksReading.lay]), which is what makes the paint and the pointer
+// agree: one walk decides which screen line carries which piece of work, and the
+// cursor is a line of that walk rather than a count of items the frame would
+// have to re-derive.
+type tasksPlace struct {
+	open   bool
+	cursor int
+	top    int
+	// query is the type-to-filter box, and it is the [editor] every other box on
+	// this surface is rather than a string of its own: backspace, ctrl+u and
+	// ctrl+w are edits a person's hands already know, and a second implementation
+	// of them would be a second set of bugs in them.
+	query editor
+
+	// detail is the row of the record this place is standing INSIDE, and
+	// detailOn is what says it is (taskrecord.go). Together they are the place's
+	// second MODE rather than a second page: the list is still underneath, esc
+	// backs out to it, and the chord still closes the lot.
+	//
+	// IT IS A COPY AND NOT A POINTER. A card is a reading of one finished piece
+	// of work rather than a live view of a row, and it outlives the reload that
+	// replaces the snapshot whole whenever a node lands.
+	detail   session.TaskIndexEntry
+	detailOn bool
+	// detailTop is the card's own scroll. The report under it is as long as the
+	// node made it, and the card is read rather than walked, so an offset is the
+	// only thing that moves ([clampTop], expand.go).
+	detailTop int
+	// tail is the last thing the node said, read off its journal once when the
+	// card opened, and tailRead says the read has happened — an empty tail with
+	// tailRead false is a read still in flight, and one with tailRead true is a
+	// journal that had nothing in it.
+	tail     string
+	tailRead bool
+
+	// reading is the whole page: every authority's answer to "what has this
+	// machine run", grouped once (tasksplace.go). EVERYTHING ON THE FRAME IS
+	// DRAWN FROM IT — the body, the note line, the tally, the cursor, the
+	// pointer and every key — so the place can never disagree with itself about
+	// what it is holding.
+	reading tasksReading
+	// world and mine are the two halves the reading was taken from, held so a
+	// time-window key can re-group WITHOUT a second walk of the disk.
+	world session.World
+	mine  tasksMine
+	// awayAt stamps the reading of the OTHER WINDOWS that this grouping was
+	// built from ([session.Elsewhere.Read]). It is one comparison, and it is what
+	// [tasksPlace.regroup] hangs on.
+	awayAt time.Time
+}
+
+// taskSheetRows is the place's own page size: what pgup and pgdown move by, and
+// nothing else. It is not a cap on anything — the list is as long as the machine
+// has run, and the window scrolls it.
+const taskSheetRows = 12
+
+// ── opening and closing ─────────────────────────────────────────────────────
+
+// openTaskSheet raises the place, and reports whether it went up. It is the
+// place's `open`: the snapshot is taken ONCE on the way in, never per frame.
+//
+// It keeps its old name because the `open bool` beside it is still what every
+// other file on this surface asks whether this place is up — the six of those
+// are the refactor lane's to retire together, and one renamed here would be one
+// place answering a question the other five answer differently.
+//
+// IT REFUSES WITH NOTHING TO SHOW rather than drawing a page with a title and
+// nothing under it. The reading is the whole page, so "is there anything here"
+// is one question asked of one snapshot. The refusal is the caller's to say —
+// /history writes a line and the key falls through in silence — because a
+// command typed on purpose that answers with nothing reads as a command that
+// broke, and a chord that was never bound in the person's mind reads as a chord
+// that was never bound.
+//
+// The teaching prose is NOT drawn here. It belongs to the one door that reaches
+// an empty place — the tab bar's ([app.showTaskPlace]) — so a person who asked
+// for their history is never answered with a lesson about what history is.
+func (a *app) openTaskSheet() bool {
+	// THE OTHER WINDOWS ARE RE-READ ON THE WAY IN, before the place decides
+	// whether it has anything to show — a directory whose only live work is in
+	// the window next door is a directory this page has something to say about,
+	// and answering out of a reading taken while the column was stowed would
+	// refuse to open over work that is happening right now.
+	a.refreshElsewhere()
+	sheet := a.takeTaskReading()
+	if len(sheet.reading.items) == 0 {
+		return false
+	}
+	a.raiseTaskPlace(sheet)
+	return true
+}
+
+// showTaskPlace is THE TAB BAR'S door, and it is the one door that opens this
+// place EMPTY.
+//
+// A PLACE YOU WALK INTO IS NOT A COMMAND YOU TYPED. `ctrl+.` and /history are
+// asked FOR the history and answer nothing when there is none. `tab` and `alt+2`
+// are somebody walking round the seven rooms, and a room that bounced them back
+// would be the bar pointing at a place they are not allowed to stand in — so
+// this one opens whatever the reading holds, and an empty one spends the frame
+// saying what the place is FOR ([tasksTeach]), which is the same bargain spend
+// and search make ([page.explain]).
+func (a *app) showTaskPlace() tea.Cmd {
+	a.refreshElsewhere()
+	a.raiseTaskPlace(a.takeTaskReading())
+	return a.loadTasks()
+}
+
+// raiseTaskPlace puts one taken reading on the frame.
+func (a *app) raiseTaskPlace(sheet tasksPlace) {
+	// THE OTHER FULLSCREEN PAGES STAND DOWN — the settings panel and home both
+	// ([app.standDownFullscreen] states the law). Only one of the three may
+	// believe it owns the frame: view.go draws them in a fixed order, so a page
+	// opened under another would take the keyboard and never be seen.
+	a.standDownFullscreen()
+	a.page = pageTasks
+	a.taskSheet = sheet
+	a.taskSheet.cursor = a.tasksSettle(0)
+	a.noticeEvent(eventTaskPageOpened)
+	a.touch()
+}
+
+// takeTaskReading is THE ONE PLACE THE SNAPSHOT IS TAKEN. It walks the disk
+// once, asks this window what it knows that no file does, and hands back a place
+// that is open but not yet raised.
+//
+// It is a function rather than four lines inside [app.openTaskSheet] because
+// three doors reach this page — the key, the command, and a card opened from
+// home ([app.openTaskRecord]) — and a door that built the reading differently
+// would be a second answer to what this machine has run.
+func (a *app) takeTaskReading() tasksPlace {
+	now := a.now()
+	world := a.readWorld()
+	mine := a.taskSheetMine()
+	return tasksPlace{
+		open:   true,
+		world:  world,
+		mine:   mine,
+		awayAt: a.elsewhere().Read,
+		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays),
+			session.LastLookAt(a.placesRoot(), pageTasks.word()), now),
+	}
+}
+
+// regroup re-files the reading when the OTHER WINDOWS have been read again.
+//
+// THE DISK IS WALKED ONCE AND THE WINDOWS ARE A CACHE, and the difference is the
+// whole reason this exists. What every project's file says is a snapshot: it is
+// taken on the way in and a frame may never go back for it. What the windows
+// next door have out is read on the paint clock every [elsewhereEvery] whether
+// this place is up or not ([app.refreshElsewhere]), and it is the ONLY authority
+// for work that has not landed — so a place that ignored a fresher one would go
+// on drawing a task as `running` minutes after the window holding it closed, and
+// would go on withholding the word [taskRecordStoppedWord] from the row that
+// deserves it.
+//
+// It is ONE COMPARISON on the common frame: the reading's own stamp against the
+// held one. Nothing is re-walked and no clock is read unless the answer changed.
+func (p *tasksPlace) regroup(a *app) {
+	if !p.open {
+		return
+	}
+	at := a.elsewhere().Read
+	if at.Equal(p.awayAt) {
+		return
+	}
+	p.awayAt = at
+	p.mine = a.taskSheetMine()
+	p.reading = readTasks(p.world, p.mine, p.reading.win, p.reading.seen, p.reading.now)
+}
+
+// taskSheetDays is how far back the place opens on, and the four time keys walk
+// from there ([tasksReading.step]).
+const taskSheetDays = 14
+
+// taskSheetMine is everything THIS WINDOW knows that the world scan cannot: the
+// conversation it is sitting in, this project's index with the live graph merged
+// over it, and what the other windows have out.
+//
+// EVERY ROW ARRIVES WITH ITS LIVENESS ALREADY SETTLED, by [app.recordRuns] —
+// the one ladder this surface has. The reading is handed facts and never a
+// callback, because a reading that could ask the surface a question is a reading
+// that could ask it at paint time.
+func (a *app) taskSheetMine() tasksMine {
+	rows := a.taskSheetOwnRows()
+	mine := tasksMine{row: a.taskSheetSelfRow(), rows: make([]tasksMineRow, 0, len(rows))}
+	for _, entry := range rows {
+		mine.rows = append(mine.rows, tasksMineRow{entry: entry, runs: a.recordRuns(&entry)})
+	}
+	mine.away = a.taskSheetAwayRows()
+	return mine
+}
+
+// taskSheetSelfRow is THIS conversation as a row of the world: what a piece of
+// work this window ran is labelled with. It is the surface's own knowledge of
+// itself rather than a lookup, because the scan cannot have read a journal this
+// session has not finished writing.
+func (a *app) taskSheetSelfRow() session.SessionRow {
+	row := session.SessionRow{
+		Title:      strings.TrimSpace(a.title),
+		Transcript: strings.TrimSpace(a.file),
+		Model:      a.model,
+		Workspace:  a.workspace,
+	}
+	if file := row.Transcript; file != "" {
+		row.ID = filepath.Base(filepath.Dir(file))
+	}
+	return row
+}
+
+// taskSheetOwnRows is this project's record as THIS window holds it: the index
+// snapshot the "@" list reads, with this session's live graph merged over the
+// top.
+//
+// THE GRAPH IS CONVERTED HERE AND NOT LEFT TO THE INDEX. [session.Agent.TaskIndex]
+// does merge the live rows in, but [app.comp].tasks is loaded asynchronously
+// ([app.loadTasks]) and is EMPTY until that read lands — and an ordinary task
+// writes NO row into the project's file until it finishes. So a page that read
+// the index alone would show none of this window's own running work, which is
+// the bug this whole reading exists to stop telling.
+//
+// A NODE THE INDEX ALREADY CARRIES IS LEFT TO THE INDEX. The file's row is the
+// richer of the two — it has the outcome, the branch, the transcript and the
+// files, none of which the graph keeps — and [session.Agent.TaskIndex] has
+// already merged this session's live state over it, so it is no staler either.
+// What the graph contributes is the work no row anywhere names yet.
+func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
+	self := a.taskSheetSelfRow().ID
+	rows := make([]session.TaskIndexEntry, 0, len(a.comp.tasks)+len(a.taskOrder))
+	rows = append(rows, a.comp.tasks...)
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil || a.taskIndexHolds(node) {
+			continue
+		}
+		label := strings.TrimSpace(node.label)
+		if label == "" {
+			label = node.title
+		}
+		rows = append(rows, session.TaskIndexEntry{
+			ID:        strconv.FormatUint(node.id, 10),
+			Label:     label,
+			Title:     node.title,
+			Status:    string(node.state),
+			Kind:      taskNodeKind(node),
+			Cost:      node.cost,
+			Model:     node.model,
+			SessionID: self,
+			EndedAt:   taskNodeEnded(node),
+		})
+	}
+	return rows
+}
+
+// taskIndexHolds reports whether the project's index already carries this node.
+//
+// IT ASKS THE PAGE'S OWN MEMBERSHIP RULE ([app.taskSheetNodeFor]) rather than
+// the (SessionID, ID) pair the reading deduplicates on, and it has to: a session
+// that has not written its journal yet has no folder to be named after, so its
+// graph rows carry no conversation id for that pair to match on.
+func (a *app) taskIndexHolds(node *taskNode) bool {
+	for i := range a.comp.tasks {
+		if a.taskSheetNodeFor(&a.comp.tasks[i]) == node {
+			return true
+		}
+	}
+	return false
+}
+
+// taskNodeEnded is when a node of this session's graph LANDED, and the zero time
+// while it is still going — which is what the index writes for a live row, and
+// what the emptiness law asks for over a node whose clock nobody started.
+func taskNodeEnded(node *taskNode) time.Time {
+	if node.state == session.TaskRunning || node.state == session.TaskQueued {
+		return time.Time{}
+	}
+	at := node.began
+	if at.IsZero() {
+		at = node.met
+	}
+	if at.IsZero() {
+		return time.Time{}
+	}
+	return at.Add(node.elapsed)
+}
+
+// taskNodeKind is the shape of work a node is, in the index's own vocabulary. A
+// node with an adaptive run behind it is one; everything else is left unsaid
+// rather than named with a word the row would only repeat.
+func taskNodeKind(node *taskNode) session.TaskKind {
+	if strings.TrimSpace(node.run) != "" {
+		return session.TaskKindAdaptive
+	}
+	return ""
+}
+
+// openTaskPage is the whole of what a COMMAND does with this place: open it, or
+// say why there was nothing to open.
+//
+// IT IS ONE FUNCTION BECAUSE THERE ARE TWO DOORS. /history is the page's own
+// name, and a bare /task reaches it as well (taskcommand.go says why), and two
+// copies of these lines are two ways for the same command to differ from itself
+// — the refusal in particular, which is a sentence a person reads.
+//
+// THE COMMAND ASKS A QUESTION AND THE TAB BAR WALKS INTO A ROOM, and that is the
+// whole difference between this and [app.showTaskPlace]. A command typed on
+// purpose over a machine that has run nothing must answer: a page with a title
+// and nothing under it reads as a command that broke, and the emptiness law
+// reaches modals.
+//
+// It reads the machine TWICE on the way in — once to find out whether there is
+// anything, and once through the router that raises the place. That is one extra
+// directory walk for one keystroke a person typed, and the alternative is this
+// file keeping its own copy of [app.showPage]'s bookkeeping, which is a fact
+// spelled twice and drifts.
+func (a *app) openTaskPage() tea.Cmd {
+	a.refreshElsewhere()
+	if len(a.takeTaskReading().reading.items) == 0 {
+		a.note(taskSheetEmpty)
+		return nil
+	}
+	return a.showPage(pageTasks)
+}
+
+// close writes the look stamp and drops the state. What a person saw is a fact
+// about the moment they left, so it is written on the way out.
+func (p *tasksPlace) close(a *app) {
+	if p.open {
+		session.NoteLookAt(a.placesRoot(), pageTasks.word(), a.now())
+	}
+	*p = tasksPlace{}
+}
+
+func (a *app) closeTaskSheet() {
+	a.taskSheet.close(a)
+	a.touch()
+}
+
+// ── the reading, as the place walks it ──────────────────────────────────────
+
+// taskSheetFilter is what has been typed, trimmed. Empty is no filter, which is
+// the same bargain [session.SearchTaskIndex] makes with an empty query.
+func (a *app) taskSheetFilter() string {
+	return strings.TrimSpace(a.taskSheet.query.String())
+}
+
+// taskSheetFiltering reports whether the place is being typed at.
+func (a *app) taskSheetFiltering() bool { return a.taskSheetFilter() != "" }
+
+// tasksFiltered is the reading with the query applied, and it never touches the
+// snapshot the next keystroke starts from.
+//
+// EVERY SECTION IS FILTERED AT ONCE, because a person typing a word they half
+// remember is asking about the whole of the machine's work — and a section a
+// query empties is not drawn at all ([tasksReading.lay] states that half).
+func (a *app) tasksFiltered() tasksReading {
+	// IT IS THE ONE DOOR ONTO THE READING, so the freshness check hangs here:
+	// every path that draws, counts, moves the cursor or answers a key comes
+	// through this function, and a check on one of them would be the page fresh
+	// in its body and stale in its foot.
+	a.taskSheet.regroup(a)
+	r := a.taskSheet.reading
+	needle := a.taskSheetFilter()
+	if needle == "" {
+		return r
+	}
+	kept := make([]tasksItem, 0, len(r.items))
+	for _, item := range r.items {
+		if tasksMatches(item, needle) {
+			kept = append(kept, item)
+		}
+	}
+	r.items = kept
+	return r
+}
+
+// tasksMatches asks the query of one row.
+//
+// ANOTHER WINDOW'S ROW IS ASKED ITS TITLE AND NOTHING ELSE. Its id is
+// deliberately not matched: ids restart with every conversation (session's
+// task_index.go says so on TaskIndexEntry.ID), so "7" typed here is somebody
+// quoting a number they read in THIS window, and answering it with another
+// window's seventh node would hand them the wrong task under the right number.
+func tasksMatches(item tasksItem, needle string) bool {
+	if item.away {
+		return session.TaskWordsMatch(item.entry.Title, needle)
+	}
+	if session.TaskMatches(item.entry, needle) {
+		return true
+	}
+	// The conversation and the project a row came out of are drawn ON the row,
+	// so they are part of what a person can see and therefore part of what they
+	// can search for.
+	return session.TaskWordsMatch(item.row.Title+" "+item.row.Project, needle)
+}
+
+// stops is every line of the layout the cursor may stand on, in order. It is
+// what ↑↓, pgup/pgdown, home and end all walk, so there is exactly one answer to
+// "which rows answer to the keyboard" and the four keys cannot disagree.
+func (p *tasksPlace) stops(a *app) []int {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	out := make([]int, 0, len(lines))
+	for i := range lines {
+		if _, ok := r.at(lines, i); ok {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// tasksSettle parks the cursor on the first stop at or after a line, and on the
+// last stop of the place when there is none. A page whose every row is another
+// window's has no stops at all and leaves the cursor at the top, where
+// [app.taskSheetCurrent] answers false for it.
+func (a *app) tasksSettle(from int) int {
+	stops := a.taskSheet.stops(a)
+	if len(stops) == 0 {
+		return 0
+	}
+	for _, at := range stops {
+		if at >= from {
+			return at
+		}
+	}
+	return stops[len(stops)-1]
+}
+
+// taskSheetCurrent is the work under the cursor, or false on a page with nothing
+// the cursor may stand on.
+func (a *app) taskSheetCurrent() (tasksItem, bool) {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	return r.at(r.lay(width), a.taskSheet.cursor)
+}
+
+// taskSheetTyped is what every edit of the filter ends with: the list has
+// changed under the cursor, so the cursor goes back to the first row of it and
+// the window with it. A cursor left at row forty of a list that now has three is
+// a page a person types one letter into and finds empty.
+func (a *app) taskSheetTyped() {
+	a.taskSheet.top = 0
+	a.taskSheet.cursor = a.tasksSettle(0)
+}
+
+// ── the keyboard ────────────────────────────────────────────────────────────
+
+// taskSheetKeyPress is this place's whole claim on the keyboard: the one chord
+// that OPENS it while it is closed, and every key while it is up.
+//
+// The guard while it is closed is the precedence law input.go states, restated
+// rather than relied on because those keys are that file's: the door, the
+// question the SESSION is blocked on, the modal overlays and the typed lists all
+// outrank a page of work. ctrl+c is read above this and stays the door.
+func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	key := msg.String()
+	if !a.taskSheet.open {
+		if key != taskSheetKey {
+			return nil, false
+		}
+		switch {
+		case a.asking(), a.awaitingTask(), a.copy.on, a.rew.on, a.rewSheet.open, a.welcome.open,
+			a.menu.open, a.comp.open, a.guarding(), a.stopping():
+			return nil, false
+		}
+		// THE KEY FALLS THROUGH WHEN THERE IS NOTHING TO SHOW rather than raising
+		// an empty page, which is ctrl+t's own rule for the same reason
+		// ([app.railKey]): a chord that answers with nothing is a chord a person
+		// cannot tell they pressed.
+		if !a.openTaskSheet() {
+			return nil, false
+		}
+		// The record is re-read on the way in, so a page opened an hour into a
+		// session is not showing an hour-old file (taskmention.go's
+		// [app.refreshTasks] keeps it fresh from there on).
+		return a.loadTasks(), true
+	}
+
+	defer a.touch()
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing and hands everything else straight back, so what follows keeps
+	// its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd, true
+	}
+	// THE CARD IS A MODE OF THIS PLACE AND IT TAKES THE KEYS FIRST. It is drawn
+	// over the list, so every key while it is up belongs to it — including esc,
+	// which backs out one layer to the list rather than closing the page
+	// (taskrecord.go).
+	if a.taskSheet.detailOn {
+		return a.taskCardKey(key), true
+	}
+	switch key {
+	case "esc":
+		// esc BACKS OUT ONE LAYER AT A TIME, which is the settings panel's own
+		// layering ([app.sheetKey]): the filter first, the page second. A key that
+		// closed the whole page from inside a filter would throw away the only
+		// thing on screen the person typed, and leave them looking for the row they
+		// had just narrowed to.
+		if a.taskSheetFiltering() {
+			a.taskSheet.query.reset()
+			a.taskSheetTyped()
+			return nil, true
+		}
+		a.closeTaskSheet()
+		return nil, true
+	case taskSheetKey:
+		// The chord that opened this is the chord that closes it — the roster's own
+		// bargain with ctrl+t — and it closes it from inside a filter as well,
+		// because a chord is not a layer a person is standing in.
+		a.closeTaskSheet()
+		return nil, true
+	case "up", "ctrl+p":
+		a.taskSheetMove(-1)
+	case "down", "ctrl+n":
+		a.taskSheetMove(1)
+	case "pgup":
+		a.taskSheetMove(-taskSheetRows)
+	case "pgdown":
+		a.taskSheetMove(taskSheetRows)
+	case "home":
+		a.taskSheetMove(-len(a.taskSheet.stops(a)))
+	case "end":
+		a.taskSheetMove(len(a.taskSheet.stops(a)))
+	case "enter":
+		return a.taskSheetEnter(), true
+
+	// ── the filter's own edits, in the settings panel's spelling ──────────────
+	case "backspace":
+		a.taskSheet.query.deleteBackward()
+		a.taskSheetTyped()
+	case "ctrl+u":
+		a.taskSheet.query.reset()
+		a.taskSheetTyped()
+	case "ctrl+w":
+		a.taskSheet.query.deleteWord()
+		a.taskSheetTyped()
+
+	default:
+		// EVERY PRINTABLE KEY IS THE FILTER, which is the one thing this page can
+		// do with a letter: the frame is the page, so there is no draft underneath
+		// for a keystroke to reach, and a record of four hundred tasks is found by
+		// remembering a word of a title and by nothing else.
+		//
+		// THE SPACE IS TYPED HERE AND NOT ON THE SETTINGS PANEL, and the difference
+		// is what the key already means: space ACTIVATES a row over there, and
+		// nothing on this page answers it. "port the parser" is a thing a person
+		// half-remembers as three words.
+		if text := msg.Key().Text; text != "" {
+			a.taskSheet.query.insert(text)
+			a.taskSheetTyped()
+		}
+	}
+	// EVERY OTHER KEY IS SWALLOWED. The page is the whole frame, so there is
+	// nothing underneath for a key to mean anything to, and a chord that fell
+	// through would act on a surface that is not on screen.
+	return nil, true
+}
+
+// taskSheetMove walks the stops, which is what steps the cursor over the head
+// sentence, the blank air, the section words and another window's work in one
+// rule rather than four. It clamps at both ends rather than wrapping, the way
+// every other list on this surface walks ([moveCursor]).
+func (a *app) taskSheetMove(delta int) {
+	stops := a.taskSheet.stops(a)
+	if len(stops) == 0 || delta == 0 {
+		return
+	}
+	at := 0
+	for i, stop := range stops {
+		if stop <= a.taskSheet.cursor {
+			at = i
+		}
+	}
+	a.taskSheet.cursor = stops[min(max(at+delta, 0), len(stops)-1)]
+}
+
+// enter is the one activating key, and it opens the door that EXISTS for the row
+// under it.
+//
+// A NODE THIS SESSION HOLDS HAS A ROOM, and the room is what every other list of
+// work on this surface opens: the roster's enter, a strip chip, a spawn card and
+// a `task 7` link all land in the same place ([app.railEnter]), and a second way
+// to look at one task would be a second thing to learn.
+//
+// WORK ANOTHER CONVERSATION RAN HAS NO ROOM, and it never will: a room is a live
+// lane onto a node this session's graph is holding, and that conversation closed.
+// What it has instead is the CARD (taskrecord.go) — everything the record wrote
+// down about that piece of work and the last thing the node itself said, drawn
+// over this place with the list still underneath.
+//
+// WORK ANOTHER WINDOW IS RUNNING ANSWERS NOTHING AT ALL, because the cursor
+// never stands on it ([tasksItem.pick] says why).
+func (p *tasksPlace) enter(a *app) tea.Cmd {
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		return nil
+	}
+	entry := item.entry
+	node := a.taskSheetNodeFor(&entry)
+	if node == nil {
+		return a.taskSheetInside(&entry)
+	}
+	a.closeTaskSheet()
+	if node.run != "" {
+		a.openOrchRoom(node.run, node.node)
+	} else {
+		a.openRoomFor(node.id, node.title)
+	}
+	return a.takeRoomPump()
+}
+
+func (a *app) taskSheetEnter() tea.Cmd { return a.taskSheet.enter(a) }
+
+// taskSheetInside opens the card over one row of the record: the place stays up
+// and the list stays underneath, which is the whole of what makes this a MODE
+// rather than a fourth fullscreen surface (taskrecord.go says why).
+//
+// It reads the journal off the loop, which is the command it hands back.
+func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
+	if entry == nil {
+		return nil
+	}
+	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
+	a.taskSheet.detailTop, a.taskSheet.tail, a.taskSheet.tailRead = 0, "", false
+	return a.readTaskTail(*entry)
+}
+
+// window is the four time keys, and it re-groups the CACHED world rather than
+// starting a second walk of the disk — which is the law this place is built on
+// (tasksplace.go's header) restated where it would be easiest to break.
+func (p *tasksPlace) window(a *app, key string) bool {
+	if !p.open {
+		return false
+	}
+	before := p.reading.win
+	next := p.reading.step(before, key)
+	if next == before {
+		return false
+	}
+	p.reading = readTasks(p.world, p.mine, next, p.reading.seen, a.now())
+	p.top = 0
+	p.cursor = a.tasksSettle(0)
+	return true
+}
+
+func (a *app) tasksPlaceWindow(key string) bool { return a.taskSheet.window(a, key) }
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// taskSheetPress is a click inside the place: a row opens, and anything else
+// does nothing.
+//
+// ONE PRESS AND NOT TWO, which is where this parts company with the settings
+// panel ([app.sheetPress] selects first and answers second). That panel's rows
+// CHANGE something, so a pointer passing over one must not be able to flip it;
+// these rows open a page onto work, which is the gesture the roster's column has
+// always answered on the first press.
+func (a *app) taskSheetPress(x, y int) tea.Cmd {
+	if a.taskSheet.detailOn {
+		a.taskCardPress(x, y)
+		return nil
+	}
+	width, height := a.size()
+	_, hits, _, _ := a.taskSheetFrame(width, height)
+	if y < 0 || y >= len(hits) {
+		return nil
+	}
+	// phone lane: the foot is a `‹ back` band rather than a key legend, so a press
+	// on it is the way out (taskphone.go).
+	if hits[y].kind == taskSheetHitBar {
+		a.taskSheetBarPress(x)
+		return nil
+	}
+	if hits[y].kind != taskSheetHitRow {
+		return nil
+	}
+	a.taskSheet.cursor = hits[y].index
+	return a.taskSheetEnter()
+}
+
+// taskSheetHover records which row the pointer is over, repainting only when the
+// answer changed (hover.go's rule, applied to this place).
+func (a *app) taskSheetHover(y int) {
+	if a.taskSheet.detailOn {
+		// THE CARD LIGHTS ITS EDGES AND NOTHING ELSE. They are the way back and its
+		// body is read, so a hover step over a paragraph would be the surface
+		// offering a door that is not there — and an edge that stayed dark under the
+		// hand was the other half of the same lie (hover.go's own law, and
+		// taskrecord.go's [app.taskCardHitAt]).
+		next := hoverAt{}
+		if hit, ok := a.taskCardHitAt(y); ok {
+			next = hoverAt{kind: hoverTaskCard, index: int(hit)}
+		}
+		if next != a.hot {
+			a.hot = next
+			a.touch()
+		}
+		return
+	}
+	width, height := a.size()
+	// phone lane: no hover on glass, the rule home keeps at this tier
+	// (homephone.go). A finger has no pointer to light a card with, and a tap
+	// opens it in one gesture — a lit row would promise a hover a thumb cannot do.
+	if layoutTier(width) == tierPhone {
+		if a.hot != (hoverAt{}) {
+			a.hot = hoverAt{}
+			a.touch()
+		}
+		return
+	}
+	_, hits, _, _ := a.taskSheetFrame(width, height)
+	next := hoverAt{}
+	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
+		next = hoverAt{kind: hoverTaskSheet, index: hits[y].index}
+	}
+	if next == a.hot {
+		return
+	}
+	a.hot = next
+	a.touch()
+}
+
+// taskSheetScroll is the wheel: it walks the cursor rather than an offset of its
+// own, which is the status sheet's bargain ([app.deckMove]) and the roster's
+// ([app.railView] follows the focus). One place decides where the window is.
+func (a *app) taskSheetScroll(delta int) {
+	// INSIDE THE CARD THE WHEEL IS THE CARD'S. There is no cursor in there to
+	// walk — the report is read down — so it moves the offset, which is the tool
+	// detail's own bargain ([app.expandScroll]).
+	if a.taskSheet.detailOn {
+		a.taskCardScroll(delta)
+		return
+	}
+	a.taskSheetMove(delta)
+}
+
+// ── the frame ───────────────────────────────────────────────────────────────
+
+// taskSheetFrame is the whole screen while the place is open: exactly height
+// rows, what each of them answers to the pointer, and where the caret sits.
+//
+// It is ONE function for [app.sheetFrame]'s reason: the frame draws these rows
+// and the pointer resolves against them, and two answers to "where is the
+// running section" is how a click opens the wrong task.
+//
+// The caret is reported as (0, 0) and never moves, because nothing on this list
+// is typed into. It is returned all the same so the place plugs into view.go's
+// [app.frame] beside the two sheets that do.
+func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, int) {
+	// THE CARD IS DRAWN INSTEAD OF THE LIST, not over the top of it. It is a mode
+	// of this place and it takes the whole of the frame, so the rows below are not
+	// built at all while it is up — and the hits it returns are its own, mapped
+	// through here so that view.go plugs into one function either way
+	// (taskrecord.go).
+	//
+	// It answers NO HITS OF ITS OWN. The card's rows are resolved against the
+	// card's own frame ([app.taskCardPress]), and a list hit reported for a row
+	// the list did not draw is exactly how a click opens the wrong task.
+	if a.taskSheet.detailOn {
+		lines, _, caretX, caretY := a.taskCardFrame(width, height)
+		return lines, nil, caretX, caretY
+	}
+	return placeFrameWithBar(a, width, height, taskSheetHit{},
+		func(width, room int) []placeRow[taskSheetHit] { return a.taskSheet.body(a, width, room) },
+		// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
+		// (taskphone.go). The count above it stays — a bar is the way out, and the
+		// tally is what the place is holding.
+		func(width int) (string, taskSheetHit, bool) {
+			if layoutTier(width) != tierPhone {
+				return "", taskSheetHit{}, false
+			}
+			line, _ := a.taskSheetBar(width)
+			return line, taskSheetHit{kind: taskSheetHitBar}, true
+		})
+}
+
+// body is the place's own rows and the hit map the frame stores beside them.
+//
+// THE TAIL OF A CUT-OFF LIST FADES WITH DEPTH — NEVER STRIPES (depthfade.go).
+// The fade is applied to the drawn rows and not to the blank padding under them:
+// a list that stopped short of the window has nothing below it to point at. And
+// it is never applied to the row the cursor or the pointer is on, which is why
+// each row reports whether it came back BARE rather than being asked afterwards.
+func (p *tasksPlace) body(a *app, width, room int) []placeRow[taskSheetHit] {
+	r := a.tasksFiltered()
+	lines := r.lay(width)
+	if len(lines) == 0 {
+		// THE TEACHING PROSE IS THE ONLY THING AN EMPTY PLACE DRAWS, and it is
+		// drawn INSTEAD of a count rather than beside one — the emptiness law
+		// forbids the pair on one frame ([tasksPlace.note] keeps the other half).
+		//
+		// A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There IS work here;
+		// the words a person typed are hiding it, and teaching them what tasks are
+		// would be answering a question nobody asked. What that frame says is on
+		// the note line — `filter · zzz · nothing matches` — and the body stays
+		// blank under it.
+		rows := make([]placeRow[taskSheetHit], 0, room)
+		if len(p.reading.items) == 0 {
+			for _, line := range tasksTeach(a.pal) {
+				if len(rows) >= room {
+					break
+				}
+				rows = append(rows, placeRow[taskSheetHit]{text: " " + line})
+			}
+		}
+		for len(rows) < room {
+			rows = append(rows, placeRow[taskSheetHit]{})
+		}
+		return rows
+	}
+	p.cursor = a.tasksSettle(p.cursor)
+	p.top = tasksTop(lines, p.cursor, p.top, room)
+
+	rows := make([]placeRow[taskSheetHit], 0, room)
+	// bare records, per drawn line, whether that line is wearing neither the
+	// cursor's band nor the pointer's — which is the one thing the depth fade
+	// needs to know and the one thing it cannot ask a finished string. It is
+	// reported by the row builder rather than recomputed here, because a second
+	// answer to "is this row the cursor's" is how a list ends up fading the row a
+	// person is standing on.
+	var bare []bool
+	more := false
+	for at := p.top; at < len(lines); at++ {
+		if len(rows) >= room {
+			more = true
+			break
+		}
+		hit, lead, lit := taskSheetHit{}, tasksBareLead, false
+		if owner := lines[at].owner; owner >= 0 {
+			if _, ok := r.at(lines, owner); ok {
+				hit = taskSheetHit{kind: taskSheetHitRow, index: owner}
+				oncursor := owner == p.cursor
+				hovered := a.hot.kind == hoverTaskSheet && a.hot.index == owner
+				lit = oncursor || hovered
+				// THE TWO CELLS IN FRONT OF EVERY ROW ARE THE LEAD, and on the row a
+				// person is on they carry the mark in the accent — `›` where the
+				// keyboard is and `·` where the pointer is, the same two marks every
+				// other list on this surface leads with ([overlayLead]). Only the
+				// FIRST line of a card takes it: the line under it is the same row
+				// continued, and a second mark would read as a second row.
+				if lines[at].kind == tasksLineTask {
+					switch {
+					case oncursor:
+						lead = a.pal.accent("› ")
+					case hovered:
+						lead = a.pal.accent("· ")
+					}
+				}
+			}
+		}
+		text := r.paint(lines, at, width, a.pal, lead)
+		// NOTHING ON THIS PAGE IS OPEN, so nothing on it wears the selected step.
+		// The keyboard cursor and the pointer are the same fact arrived at by two
+		// hands and THE GROUND LADDER gives them ONE rung.
+		if lit {
+			text = a.pal.cursor(text, width)
+		}
+		rows = append(rows, placeRow[taskSheetHit]{text: text, hit: hit})
+		bare = append(bare, !lit)
+	}
+	for i := range bare {
+		if !bare[i] {
+			continue
+		}
+		if stop := tailStop(i, len(bare), more); stop >= 0 {
+			rows[i].text = a.pal.fadeRow(rows[i].text, stop)
+		}
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow[taskSheetHit]{})
+	}
+	return rows
+}
+
+// tasksTop follows the cursor with the window.
+//
+// IT SCROLLS BY LINES AND NOT BY ROWS, which is what keeps a phone card whole: a
+// card is two lines, so a window that counted rows would believe six cards fit
+// in six lines and leave the cursor's own card clipped at the fold. The whole of
+// the cursor's block — its line and any continuation under it — is what has to
+// be on screen.
+//
+// AND A SECTION'S WORD SCROLLS IN WITH THE FIRST ROW OF ITS SECTION. A cursor
+// that has just stepped onto that row would otherwise sit under nothing, which
+// is a row a person cannot tell the section of.
+func tasksTop(lines []tasksLine, cursor, top, room int) int {
+	if room < 1 || len(lines) == 0 {
+		return 0
+	}
+	end := cursor
+	for end+1 < len(lines) && lines[end+1].kind == tasksLineTail {
+		end++
+	}
+	if top > cursor {
+		top = cursor
+	}
+	if end-top+1 > room {
+		top = end - room + 1
+	}
+	if top > cursor {
+		top = cursor
+	}
+	if cursor > 0 && top == cursor && lines[cursor-1].kind == tasksLineWord {
+		top = cursor - 1
+	}
+	if top < 0 {
+		top = 0
+	}
+	return top
+}
+
+// note is the one line the place says about what it is HOLDING, drawn under the
+// rule and above the composer (pages.go's [placeFrame] states the law).
+//
+// THE EMPTINESS LAW DECIDES WHETHER IT IS THERE AT ALL. A place with nothing in
+// it says NOTHING — the body is spending the frame teaching what this place is,
+// and a count beside that prose would be the surface saying both "there is
+// nothing here" and "here is how much of it there is" on one screen.
+func (p *tasksPlace) note(a *app, width int) []string {
+	if !p.open || p.detailOn || len(p.reading.items) == 0 {
+		return nil
+	}
+	r := a.tasksFiltered()
+	var note []string
+	if tally := r.tally(); tally != "" {
+		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
+	}
+	if a.taskSheetFiltering() {
+		// WHAT WAS TYPED HAS TO BE ON SCREEN. A list that has lost rows for a
+		// reason a reader cannot see is a list that has lost them for no reason
+		// at all.
+		note = append(note, " "+a.pal.dim(fit(taskSheetFilterLine(a.taskSheetFilter(), len(r.items)), width-2)))
+	}
+	return note
+}
+
+// taskSheetFilterLine is what was typed, said back where a person is already
+// reading the tally — and, when the query has emptied the place, the one clause
+// that stops a blank list reading as a page that broke.
+func taskSheetFilterLine(needle string, kept int) string {
+	line := taskSheetFilterWord + needle
+	if kept == 0 {
+		line += taskSheetFilterNone
+	}
+	return line
+}
+
+// hint names the keys, and it names the one enter actually has on the row under
+// the cursor. A foot that promised a room over work that has none would be the
+// place lying about its own door.
+//
+// WHILE A FILTER IS ON IT NAMES WHAT esc DOES, because that is the key whose
+// meaning just moved: it clears the filter first and closes the page second
+// ([app.taskSheetKeyPress]), and a foot still reading "esc close" would be the
+// page lying about the next keystroke instead of about enter.
+func (p *tasksPlace) hint(a *app) string {
+	if a.taskSheetFiltering() {
+		return taskSheetFilterKeys
+	}
+	item, ok := a.taskSheetCurrent()
+	switch {
+	case !ok:
+		return taskSheetReadKeys
+	case a.taskSheetNodeFor(&item.entry) != nil:
+		return taskSheetRoomKeys
+	}
+	return taskSheetInsideKeys
+}
+
+func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
+
+// changed is the tab's count: how much work has landed since the last look.
+//
+// IT ANSWERS FROM THE LATEST CACHED WORLD READING, because the tab bar is a
+// paint path and must never turn into a directory walk.
+func (p *tasksPlace) changed(a *app, since time.Time) int {
+	world := a.home.world
+	if p.open {
+		world = p.world
+	}
+	count := 0
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			for _, entry := range row.Tasks.Rows {
+				if !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
+func (a *app) tasksChangedSince(seen time.Time) int { return a.taskSheet.changed(a, seen) }

@@ -139,7 +139,7 @@ type rewindSheetRow struct {
 	point int
 	// head marks the one row of each point's run that the cursor may stand on.
 	// The rest are read rather than chosen, exactly as a section's word is on the
-	// task page ([taskSheetItem.pick]).
+	// tasks place ([tasksItem.pick]).
 	head bool
 	// text is the row's words, unpainted, and note is the dim annotation a turn
 	// row carries after them.
