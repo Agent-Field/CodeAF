@@ -113,6 +113,14 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.backgroundBash(tool)
 		case "read":
 			tools[index] = a.pdfRead(tool)
+		case "write":
+			// write is WRAPPED so a file can be continued rather than only
+			// replaced (tools_write.go): append:true is the one argument the
+			// salvage of a cut-off write (salvage.go) asks the model to reach
+			// for, and a belt that cannot append is a belt whose only answer
+			// to "the output limit cut your file in half" is to pay for the
+			// whole file again.
+			tools[index] = a.appendableWrite(tool)
 		}
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())

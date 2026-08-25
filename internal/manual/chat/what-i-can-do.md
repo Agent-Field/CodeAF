@@ -10,7 +10,7 @@ Yes. Three tools do this, and they work on the workspace you started aforge in.
 | Tool | What it does |
 | --- | --- |
 | `read` | Reads one file's contents, optionally from a start line (`offset`) for a number of lines (`limit`) |
-| `write` | Creates or overwrites one file, making parent directories as needed |
+| `write` | Creates or overwrites one file, making parent directories as needed; with `append:true` it adds to the end instead |
 | `edit` | Replaces exact strings inside one file |
 
 `read` output is cut at **2000 lines or 50KB**, whichever comes first, and the
@@ -34,7 +34,35 @@ and all of them are matched against the original file rather than one after the
 other. Success reads `Successfully replaced N block(s) in <path>.`; a missing
 file reads `Could not edit file: <path>. Error code: ENOENT.`
 
-`write` reports `Successfully wrote N bytes to <path>`.
+`write` reports `Successfully wrote N bytes to <path>`. With `append:true` it
+adds the content to the end of the file instead of replacing it and reports
+`Appended N lines to <path>; the file now has M lines.` — appending to a file
+that does not exist yet simply creates it.
+
+## Can you append to a file, or add to the end without rewriting it?
+
+Yes. `write` takes an optional `append:true`, which adds the new content after
+whatever the file already holds instead of replacing it. It is how a very large
+file is written in parts, and how a write that was cut off mid-stream is
+finished without paying for the whole file again (next section).
+
+## What happens when a big write gets cut off — half-written, truncated, interrupted files
+
+A model reply has an output limit, and a very large `write` can hit it partway
+through the file's content. When that happens the complete lines that did
+arrive are **saved to the file** — never a half line, so the file is not left
+corrupted mid-word — and the tool result says so: it starts
+`Saved what arrived:`, names the file, shows the last lines on disk, and asks
+for one `write` with `append:true` carrying only the rest. The transcript row
+for that call reads `wrote <path> (cut short; saved what arrived)`. The
+continuation then costs the missing tail, not the whole file again.
+
+If the cut fell too early for anything worth saving — inside the path, before
+any complete line — nothing is written and the result says so:
+`This write was cut off at the output limit before enough of it arrived to
+save; nothing was written.` A cut that severs any **other** tool call — a
+`bash` command, an `edit` — never runs on a guessed tail: the call is refused
+with `nothing was run` and a suggestion to retry in smaller pieces.
 
 `read` never asks your permission. `edit` and `write` follow whatever approval
 mode you are in, which asks by default.
