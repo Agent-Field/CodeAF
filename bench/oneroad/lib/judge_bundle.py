@@ -83,6 +83,12 @@ def main():
     meta = json.load(open(os.path.join(cell, "meta.json")))
     fixed, broken = changed_tests(cell)
     patch = read(os.path.join(cell, "diff.patch"), PATCH_CAP).strip() or "no changes"
+    # STRANDED WORK IS SHOWN, AND IT IS SHOWN APART. A part that worked in its own
+    # worktree and never merged has delivered nothing, so it must not sit inside
+    # PATCH where it reads as the attempt's output — wave 1h put raw conflict
+    # markers in front of a judge that way. It is still worth showing: "the work
+    # exists and did not land" is a different verdict from "nothing was done".
+    stranded = read(os.path.join(cell, "stranded.patch"), PATCH_CAP).strip()
     report = report_of(cell, meta).strip() or "(the attempt said nothing)"
 
     out = [
@@ -91,6 +97,11 @@ def main():
         "",
         "# ISSUE", "", read(os.path.join(cell, "prompt.txt")).strip(), "",
         "# PATCH", "", "```diff", patch, "```", "",
+        *(["# NOT LANDED — stranded in a task worktree", "",
+           "This work was written by a part that never merged home. It is NOT part of",
+           "the delivered change and must not be graded as though it were; it is shown",
+           "only so that 'nothing landed' can be told apart from 'nothing was done'.",
+           "", "```diff", stranded, "```", ""] if stranded else []),
         "# TESTS", "",
         f"- before the attempt: {meta.get('passed_before')} passed, {meta.get('failed_before')} failed",
         f"- after the attempt:  {meta.get('passed_after')} passed, {meta.get('failed_after')} failed",

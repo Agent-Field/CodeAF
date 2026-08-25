@@ -8,7 +8,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK="${1:?usage: wave.sh <task> [arms...]}"; shift
-ARMS="${*:-aforge-swe-flash aforge-swe-crew pi opencode}"
+ARMS="${*:-aforge-swe-crew pi opencode}"
 SWE_OUT="${SWE_OUT:-/home/santosh/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 printf 'wave %s fired %s loadavg %s\n' "$TASK" "$(date -Is)" "$(cut -d' ' -f1-3 /proc/loadavg)" \

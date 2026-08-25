@@ -97,7 +97,7 @@ def main() -> int:
 
     exists = os.path.exists(args.csv)
     with open(args.csv, "a", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(row))
+        writer = csv.DictWriter(fh, fieldnames=list(row), quoting=csv.QUOTE_MINIMAL)
         if not exists:
             writer.writeheader()
         writer.writerow(row)

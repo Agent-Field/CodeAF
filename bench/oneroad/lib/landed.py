@@ -106,11 +106,30 @@ def worktree_patch(cell):
 
 
 def patch(repo, base):
-    """The diff a judge should read: landed commits first, then the working tree."""
+    """THE PATCH A JUDGE GRADES: everything that landed on the person's branch.
+
+    THE RULE, and it is the one wave 1h got wrong. A judge is grading what the
+    attempt DELIVERED, and delivery means the clone's branch:
+
+        base..HEAD          what a task committed and merged home, plus
+        working tree        what the conversation edited and left uncommitted
+                            (the words road never commits — that IS its delivery)
+
+    NOTHING FROM A TASK WORKTREE APPEARS HERE. A part working in
+    `<session>/trees/N` that never merged has produced nothing the person can
+    use, and wave 1h's batch bundle proved how badly that reads when mixed in:
+    the judge was shown raw `<<<<<<< Updated upstream` conflict markers as if
+    they were the diff. Stranded work is real and worth recording, so it is
+    written separately by [worktree_patch] under its own heading — never here.
+
+    The failure this replaces was quieter and worse: `git diff` alone is EMPTY
+    after a task commits and merges, so six landed files read as "no changes"
+    and the judges scored the cell zero for work that was on the branch.
+    """
     parts = []
-    landed = git(repo, "diff", f"{base}..HEAD")
-    if landed.strip():
-        parts.append("# ---- committed and merged by the task ----\n" + landed)
+    landed_diff = git(repo, "diff", f"{base}..HEAD")
+    if landed_diff.strip():
+        parts.append("# ---- landed on the branch (base..HEAD) ----\n" + landed_diff)
     tree = git(repo, "diff")
     if tree.strip():
         parts.append("# ---- uncommitted in the working tree ----\n" + tree)

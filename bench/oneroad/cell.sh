@@ -48,7 +48,11 @@ OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 
 # The wall. bench/run.sh's forty minutes, in seconds, because a cell past it is
 # recorded as DNF rather than left to spend.
-CELL_SECONDS="${CELL_SECONDS:-2400}"
+# Raised from 2400 after wave 1g: its task-road cells ran 2126-2315s, close
+# enough to the old wall that the number being measured was starting to be the
+# wall rather than the work. A wall has to sit far enough above the work that a
+# row hitting it means something went wrong, not that the task was ordinary.
+CELL_SECONDS="${CELL_SECONDS:-3600}"
 # How long the surface must be completely silent before the turn is called
 # settled. A task thinking between tool calls is silent for tens of seconds, so
 # the window has to be longer than a model call and shorter than the wall.
@@ -228,12 +232,20 @@ PY
     # this rule fails is by waiting — bounded by the hard wall above — rather
     # than by killing, which is bounded by nothing and loses the work.
     sess="$(find "$CELL/profile/v3/projects" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | head -1)"
-    live=0
+    live=0; stranded_ids=""
     if [ -n "$sess" ]; then
-      live="$(python3 "$ONEROAD/lib/tasklive.py" "$sess" 2>/dev/null \
-              | python3 -c 'import json,sys
+      tl="$(python3 "$ONEROAD/lib/tasklive.py" "$sess" 2>/dev/null)"
+      live="$(printf '%s' "$tl" | python3 -c 'import json,sys
 try:  print(json.load(sys.stdin)["live"])
 except Exception: print(0)' 2>/dev/null)"
+      # STRANDED IS NOT LIVE. A task in a live state whose own journal has not
+      # seen a request for the stranded window has stopped working without
+      # landing; counting it live pinned wave 1h's batch cells to the hard wall
+      # for 3100 dead seconds apiece. It is named here so the row can say WHICH
+      # task stranded rather than just that the cell ended badly.
+      stranded_ids="$(printf '%s' "$tl" | python3 -c 'import json,sys
+try:  print(",".join(str(i) for i in json.load(sys.stdin).get("stranded_ids") or []))
+except Exception: print("")' 2>/dev/null)"
       live="${live:-0}"
     fi
 
@@ -242,8 +254,14 @@ except Exception: print(0)' 2>/dev/null)"
          || [ "$quiet" -ge $((SILENCE_SECONDS * 3)) ]; }; then
       stable=$((stable + POLL))
       if [ "$stable" -ge "$SILENCE_SECONDS" ]; then
-        say "$ARM/$TASK: settled at ${elapsed}s (idle, and every task landed)"
-        echo idle-and-landed > "$CELL/settle_reason"
+        if [ -n "$stranded_ids" ]; then
+          say "$ARM/$TASK: settled at ${elapsed}s — task(s) $stranded_ids STRANDED"
+          echo "stranded:$stranded_ids" > "$CELL/settle_reason"
+          echo STRANDED > "$CELL/outcome_override"
+        else
+          say "$ARM/$TASK: settled at ${elapsed}s (idle, and every task landed)"
+          echo idle-and-landed > "$CELL/settle_reason"
+        fi
         break
       fi
     else
@@ -265,7 +283,7 @@ except Exception: print(0)' 2>/dev/null)"
   # supposed to be measuring. Capture first, then reap: the panes above are the
   # only thing in the session worth keeping, and the store is on disk already.
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null
-  echo OK > "$CELL/outcome"
+  if [ -f "$CELL/outcome_override" ]; then cp "$CELL/outcome_override" "$CELL/outcome"; else echo OK > "$CELL/outcome"; fi
   return 0
 }
 
@@ -320,6 +338,10 @@ case "$ARM" in
   # never written that key; this comment is here so nobody adds it.
   aforge-final-crew)  run_aforge "$FINAL_BIN" 0; CODE=$? ;;
   aforge-1f-crew)     run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 0; CODE=$? ;;
+  aforge-1g-crew)     run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 0; CODE=$? ;;
+  aforge-1h-crew)     run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 0; CODE=$? ;;
+  aforge-1h-flash)    run_aforge "$ONEROAD/bin/aforge-1h-f831c2e6" 1; CODE=$? ;;
+  aforge-1g-flash)    run_aforge "$ONEROAD/bin/aforge-1g-ec52e7ae" 1; CODE=$? ;;
   aforge-1f-flash)    run_aforge "$ONEROAD/bin/aforge-1f-0fabf058" 1; CODE=$? ;;
   aforge-final-flash) run_aforge "$FINAL_BIN" 1; CODE=$? ;;
   pi|opencode)      run_peer >"$CELL/harness.log" 2>&1; CODE=$?
@@ -331,23 +353,39 @@ cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-after"
 say "$ARM/$TASK: harness finished, exit $CODE, ${WALL}s"
 
 # ── what it actually did ────────────────────────────────────────────────────
+#
+# THE PATCH IS THE LANDED DIFF, AND IT IS BUILT HERE RATHER THAN BY A LATER PASS.
+# lib/landed.py existed since wave 1d but was only ever run as a one-off script
+# afterwards, so wave 1h's cells were recorded with `git diff` alone — which is
+# EMPTY once a task has committed and merged. Six landed files read as "no
+# changes", the judges were handed that, and they scored the cells zero. Any
+# measurement a row depends on has to be taken by the runner that writes the row.
 CHANGED="$(changed_files "$DIR")"
-(cd "$DIR" && git diff) > "$CELL/diff.patch" 2>/dev/null
+python3 - "$DIR" "$BASE_COMMIT" "$CELL" <<'LANDED'
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath("__file__")), "lib"))
+sys.path.insert(0, "/home/santosh/af-oneroad/bench/oneroad/lib")
+import landed
+repo, base, cell = sys.argv[1], sys.argv[2], sys.argv[3]
+open(os.path.join(cell, "diff.patch"), "w").write(landed.patch(repo, base))
+stranded = landed.worktree_patch(cell)
+if stranded.strip():
+    open(os.path.join(cell, "stranded.patch"), "w").write(stranded)
+unc, land, up, _ = landed.measure(repo, base)
+with open(os.path.join(cell, "landed.env"), "w") as fh:
+    fh.write("UNCOMMITTED=%d\nLANDED=%d\nUPSTREAM=%d\n" % (unc, land, up))
+LANDED
+[ -f "$CELL/landed.env" ] && . "$CELL/landed.env"
+(cd "$DIR" && git diff) > /dev/null 2>&1
 (cd "$DIR" && git status --porcelain | grep -vE '\.venv|__pycache__') > "$CELL/status.txt" 2>/dev/null
-# An untracked file is part of the work and `git diff` never shows one, so the
-# patch is completed by hand rather than left silently short.
-(cd "$DIR" && git status --porcelain | grep -E '^\?\?' | grep -vE '\.venv|__pycache__' | \
-  sed 's/^?? //' | while read -r new; do
-    printf '\n--- /dev/null\n+++ b/%s\n' "$new"
-    sed 's/^/+/' "$new" 2>/dev/null
-  done) >> "$CELL/diff.patch" 2>/dev/null
+
 AFTER="$(run_suite "$DIR" "$CELL/pytest-after.log")"
 say "$ARM/$TASK: suite after = $AFTER, $CHANGED changed file(s)"
 
 # ── the road columns, and the parallelism timeline ──────────────────────────
 ROAD=""; ARMED=""; PARTS=0; PEAK=""; REFUSED=""; COST=""; COST_SRC=""
 ESCALATED=""; ESC_SEEN=""; ROUTE=""; GRIND=""; PRE_LINE=""; MARKS=""
-CALLS=""; COST_CALLS=""; ENDPOINTS=""; MARKS_J=""; FORKS=""; COSTROLE=""; CEIL=""
+CALLS=""; COST_CALLS=""; ENDPOINTS=""; MARKS_J=""; FORKS=""; COSTROLE=""; CEIL=""; DIVISION=""; DIVWHY=""
 case "$ARM" in
   aforge-*)
     # THE ESCALATION NOTE, WHICH IS ITS OWN COLUMN AND NOT A READING OF THE ROAD.
@@ -393,7 +431,7 @@ for name, key in (("ROAD","road"),("ARMED","armed"),("PARTS","parts"),
                   ("MARKS","checkpoint_marks"),("CALLS","calls"),
                   ("COST_CALLS","cost_usd_calls"),("ENDPOINTS","endpoint_mix"),
                   ("MARKS_J","marks"),("FORKS","forks"),("COSTROLE","cost_by_role"),
-                  ("CEIL","ceiling_decision"),
+                  ("CEIL","ceiling_decision"),("DIVISION","division"),("DIVWHY","division_why"),
                   ("COST","cost_usd"),("COST_SRC","cost_source")):
     print("%s=%s" % (name, shlex.quote(str(c.get(key, "")))))')"
       fi
@@ -408,21 +446,35 @@ for name, key in (("ROAD","road"),("ARMED","armed"),("PARTS","parts"),
     # like a free run.
     ROAD="n/a"; ARMED="n/a"; PARTS=0; PEAK="n/a"; REFUSED="n/a"
     ESCALATED="n/a"; ESC_SEEN="n/a"; ROUTE="n/a"; GRIND="n/a"; PRE_LINE=""; MARKS="n/a"
-    CALLS="n/a"; COST_CALLS=""; ENDPOINTS="n/a"; MARKS_J="n/a"; FORKS="n/a"; COSTROLE="n/a"; CEIL="n/a"
+    CALLS="n/a"; COST_CALLS=""; ENDPOINTS="n/a"; MARKS_J="n/a"; FORKS="n/a"; COSTROLE="n/a"; CEIL="n/a"; DIVISION="n/a"; DIVWHY="n/a"
     COST=""; COST_SRC="not-self-reported"
     ;;
 esac
 
 # ── the record ──────────────────────────────────────────────────────────────
 OUTCOME="$(cat "$CELL/outcome" 2>/dev/null || echo UNKNOWN)"
+# THE WALL IS A FACT ABOUT THE CLOCK, NOT A VERDICT ON THE ATTEMPT. A cell that
+# reached the wall having landed work is recorded OK(wall); DNF is kept for a
+# wall reached with nothing landed, where there genuinely was nothing to finish.
+# On the SWE track this distinction was hiding a PASS behind the word "DNF".
+if [ "$OUTCOME" = "DNF" ]; then
+  if [ "${LANDED:-0}" -gt 0 ] || [ "${CHANGED:-0}" -gt 0 ]; then
+    OUTCOME="OK(wall)"
+    SETTLE_NOTE="wall reached, but work landed — the clock ran out, the attempt did not"
+  else
+    SETTLE_NOTE="wall reached with nothing landed"
+  fi
+fi
 SETTLE_REASON="$(cat "$CELL/settle_reason" 2>/dev/null || echo n/a)"
+[ -n "${SETTLE_NOTE:-}" ] && SETTLE_REASON="$SETTLE_NOTE"
 ARM="$ARM" TASK="$TASK" SEED="$SEED" WALL="$WALL" CODE="$CODE" CHANGED="$CHANGED" \
 BEFORE="$BEFORE" AFTER="$AFTER" ROAD="$ROAD" ARMED="$ARMED" PARTS="$PARTS" \
 PEAK="$PEAK" REFUSED="$REFUSED" ESCALATED="$ESCALATED" ESC_SEEN="$ESC_SEEN" ROUTE="$ROUTE" GRIND="$GRIND" \
 PRE_LINE="$PRE_LINE" MARKS="$MARKS" CALLS="$CALLS" COST_CALLS="$COST_CALLS" \
 ENDPOINTS="$ENDPOINTS" MARKS_J="$MARKS_J" FORKS="$FORKS" COSTROLE="$COSTROLE" \
-CEIL="$CEIL" COST="$COST" COST_SRC="$COST_SRC" MODEL="$MODEL" \
-OUTCOME="$OUTCOME" SETTLE_REASON="$SETTLE_REASON" COMMIT="$COMMIT" CELL="$CELL" python3 - <<'PY'
+CEIL="$CEIL" DIVISION="$DIVISION" DIVWHY="$DIVWHY" COST="$COST" COST_SRC="$COST_SRC" MODEL="$MODEL" \
+OUTCOME="$OUTCOME" SETTLE_REASON="$SETTLE_REASON" COMMIT="$COMMIT" CELL="$CELL" \
+UNCOMMITTED="${UNCOMMITTED:-0}" LANDED="${LANDED:-0}" UPSTREAM="${UPSTREAM:-0}" python3 - <<'PY'
 import json, os
 env = os.environ
 def load(name):
@@ -443,6 +495,10 @@ meta = {
     "passed_before": pb, "failed_before": fb,
     "passed_after": pa, "failed_after": fa,
     "changed_files": int(env["CHANGED"] or 0),
+    "changed_files_uncommitted": int(env.get("UNCOMMITTED") or 0),
+    "changed_files_landed": int(env.get("LANDED") or 0),
+    "changed_files_total": int(env.get("UNCOMMITTED") or 0) + int(env.get("LANDED") or 0),
+    "upstream_commits_in_head": int(env.get("UPSTREAM") or 0),
     "road": env["ROAD"], "armed": env["ARMED"],
     "parts": int(env["PARTS"] or 0), "peak_workers": env["PEAK"],
     "refused": env["REFUSED"], "escalated": env["ESCALATED"],
@@ -452,7 +508,7 @@ meta = {
     "calls": env["CALLS"], "cost_usd_calls": env["COST_CALLS"],
     "endpoint_mix": env["ENDPOINTS"], "marks": env["MARKS_J"],
     "forks": env["FORKS"], "cost_by_role": env["COSTROLE"],
-    "ceiling_decision": env["CEIL"],
+    "ceiling_decision": env["CEIL"], "division": env["DIVISION"], "division_why": env["DIVWHY"],
     "loadavg_before": open(os.path.join(env["CELL"], "loadavg-before")).read().strip(),
     "loadavg_after": open(os.path.join(env["CELL"], "loadavg-after")).read().strip(),
 }

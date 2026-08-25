@@ -134,7 +134,8 @@ def main():
                         "escalated", "route", "chat_tool_calls", "pre_turn_line",
                         "checkpoint_marks", "calls", "cost_usd_calls", "endpoint_mix",
                         "mark_reader_calls", "mark_reader_model",
-                        "marks", "ceiling_decision", "forks", "cost_by_role", "cost_usd_usage",
+                        "marks", "ceiling_decision", "division", "division_why", "division_admitted",
+                        "division_refused", "forks", "cost_by_role", "cost_usd_usage",
                         "cost_usd", "cost_source"):
                 if key in columns:
                     meta[key] = columns[key]
