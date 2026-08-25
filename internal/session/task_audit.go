@@ -1997,6 +1997,11 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 		return nil, err
 	}
 	auditor, err := newAgent(Config{
+		// The auditor reads rather than writes, but reading is what makes a
+		// dropping: a long file it looks at is stubbed on its way out of the live
+		// context (stub.go), and with nothing here those bytes landed in the
+		// worktree it was judging (landing.go).
+		droppings:     parent.droppingsPlace(),
 		Workspace:     dir,
 		Model:         judge,
 		APIKey:        parent.APIKey,
