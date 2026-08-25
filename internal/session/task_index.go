@@ -130,6 +130,30 @@ type TaskIndexEntry struct {
 	// the title as it was groomed, uncut, for the pointer block and the search.
 	Label string `json:"label"`
 	Title string `json:"title"`
+	// Kind is what SORT of work this row was: an adaptive run, a saved shape
+	// running, a saved shape being made — or empty for ordinary work, which is
+	// most of the file ([TaskKind], and [TaskKindWord] for the word a person
+	// reads).
+	//
+	// IT IS ADDITIVE AND ABSENCE IS ORDINARY. Rows written before this field
+	// existed decode with none, which is exactly what almost all of them were;
+	// unlike [TaskIndexEntry.Files], where absence is unknown, there is nothing
+	// here for a reader to be careful about — a blank kind and a plain task are
+	// drawn the same way on purpose.
+	//
+	// IT IS HERE BECAUSE THE KNOWLEDGE WAS BEING THROWN AWAY ON THE WAY TO THE
+	// FILE. A node has carried its kind since it was admitted ([TaskNode.kind],
+	// from [taskSpec.kind]) and an adaptive run has always known it was one, and
+	// a surface that wanted to say "adaptive" on a row could only string-match
+	// the title or sniff the shape of the transcript's path — both of which are
+	// guesses about a fact the engine held.
+	//
+	// A BACKGROUND JOB NEVER REACHES THIS FILE, and the constant existing does
+	// not change that: jobrow.go's own law is that a job publishes a roster row
+	// and no project index row, no landing note and no card. [TaskKindJob] is
+	// spelled in [TaskKindWord] so that a live row merged in from a graph reads
+	// the same way as a landed one, not because the file holds any.
+	Kind TaskKind `json:"kind,omitempty"`
 	// Status is the node's final state — "done", "failed", "unverified" — or its
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
@@ -604,11 +628,16 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	// ([Agent.presenceTasks]), not this file's.
 	files, wrote := taskFileCitations(n.changed)
 	entry := TaskIndexEntry{
-		ID:           strconv.FormatUint(n.id, 10),
-		Parent:       taskIndexParent(n.parent),
-		Name:         TaskSlug(n.spec.title),
-		Label:        taskLabel(n.spec.title),
-		Title:        strings.TrimSpace(n.spec.title),
+		ID:     strconv.FormatUint(n.id, 10),
+		Parent: taskIndexParent(n.parent),
+		Name:   TaskSlug(n.spec.title),
+		Label:  taskLabel(n.spec.title),
+		Title:  strings.TrimSpace(n.spec.title),
+		// The node's OWN kind, which was settled at admission and never moves
+		// (task_contract.go says so out loud): reading n.kind rather than
+		// re-deriving it from the spec is what keeps the row and the roster from
+		// ever disagreeing about one piece of work.
+		Kind:         n.kind,
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,
