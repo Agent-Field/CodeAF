@@ -212,6 +212,7 @@ under the class answering it, saying which model comes out. As shipped:
 | `vision` | careful work | reads images for a model that cannot see them |
 | `shaper` | careful work | the brief a task you started yourself is given |
 | `careful` | careful work | a part of a task that needs judgement |
+| `repair` | careful work | the second go at work a check found gaps in |
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
 | `routerconfirm` | mastermind | a second look before work starts itself |
