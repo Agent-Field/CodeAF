@@ -350,7 +350,8 @@ an ordinary `enter` and the message waits instead.
 | `ctrl+f` | Move the caret right, always. Never navigation |
 | `alt+left` / `alt+b` / `ctrl+left` | Jump a word left. `alt+left` is what `option+←` arrives as on most Mac terminals. Does nothing over an empty box — the plain arrows keep their navigation meaning |
 | `alt+right` / `alt+f` / `ctrl+right` | Jump a word right, under the same three names |
-| `super+left` / `super+right` | Start / end of the line — Mac `cmd+←` and `cmd+→`, on terminals that forward `cmd` at all (see the terminal table below) |
+| `super+left` / `meta+left` | Start of the line — Mac `cmd+←`, on terminals that forward `cmd` at all (see the terminal table below). Both names are bound because a modified arrow and a modified letter arrive under different ones |
+| `super+right` / `meta+right` | End of the line — Mac `cmd+→`, under the same two names |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
@@ -391,6 +392,12 @@ everywhere.
 terminals that speak the keyboard protocol carrying the `cmd` modifier
 (Ghostty, Kitty, WezTerm). Everywhere else use `ctrl+a` / `ctrl+e` or
 `home` / `end`, which are the same jumps on every terminal.
+
+On those terminals a modified **arrow** and a modified **letter** arrive under
+different names: `cmd+delete` comes in as `super+backspace`, while `cmd+←` comes
+in as `meta+left`. Both spellings are bound, so the jump works — it did not
+until this wave, when only the `super` spelling was, and `cmd+←` did nothing on
+every terminal there is.
 
 ## Keys in the message box: deleting words and lines
 

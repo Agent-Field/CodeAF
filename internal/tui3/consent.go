@@ -672,6 +672,25 @@ const (
 // no, and it is the same answer the clock gives when nobody says anything at
 // all.
 func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// BUT NOT BEHIND HOME. A QUESTION NOBODY CAN SEE IS A QUESTION NOBODY CAN
+	// ANSWER, and home is the whole frame — the card, its command, its rule and
+	// its three letters are all off screen while it is up. Answering it blind
+	// from there would be this surface approving a call on the strength of a
+	// keystroke aimed at something else, which is the one thing an approval
+	// question exists to prevent.
+	//
+	// It costs nothing, because a question that ARRIVES takes home down on its
+	// way in (app.go's EventConsentRequest) — so this is only ever reached by a
+	// home somebody opened over a question already up, and there the letters are
+	// theirs to type. Home has its own way to answer from where it stands, by
+	// number, on the row of the window that is asking (homeband_answer.go), and
+	// this rung is what lets those digits through.
+	//
+	// The three questions below all live under it: the proposal and the standing
+	// card are read from this hook, and both take bare letters too.
+	if a.home.open {
+		return nil, false
+	}
 	// A TASK PROPOSAL IS THE OTHER QUESTION on this surface, and it is read from
 	// the same hook because it is the same rung: a question the session is
 	// blocked on outranks every overlay below it (input.go's key order). It is

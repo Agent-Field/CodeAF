@@ -1415,6 +1415,14 @@ The digits are keys **only while nothing is typed and the cursor is on a row tha
 waiting**. Every other moment a `1` is a `1` going into the box, which is a search and a
 new conversation at the same time.
 
+**A question raised by _this_ window closes home on its way in.** An approval question, a
+connect offer, a subharness offer, a task proposal and a standing card all take home down
+the moment they arrive, so the card is on the screen you are looking at rather than behind
+it. And while home is up, every letter belongs to home's box — `y`, `n`, `e` and the rest
+type there, and never answer a card that is off screen. This window's own question, found
+behind a home you opened over it, is answered the way any other window's is: put the cursor
+on its row and press the digit.
+
 Home then says `answered · deny` at the foot, and the card reads `answered · waiting for
 it to pick that up`. That wait is real and short: the other session looks for your answer
 on the same heartbeat it uses to say what it is doing, every few seconds. When it picks it

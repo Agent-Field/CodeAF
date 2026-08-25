@@ -284,6 +284,15 @@ func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.asksConnect() {
 		return nil, false
 	}
+	// AND NOT BEHIND HOME, on the terms the approval question states in full
+	// (consent.go): home is the whole frame, so the offer and both its answers
+	// are off screen, and every printable key up there belongs to the box a
+	// conversation starts in. The offer keeps until home is closed — and an
+	// offer that ARRIVES closes it (app.go's EventConnectAsk), so this is only
+	// reached by a home opened over one already up.
+	if a.home.open {
+		return nil, false
+	}
 	if msg.String() == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
 		// releases the blocked call the honest way.

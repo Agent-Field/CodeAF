@@ -91,7 +91,7 @@ func draftClickIndex(value []rune, cursor, row, col, room, maxRows int) int {
 	// here exactly as they do there.
 	index, walked := seg.from, 0
 	for index < seg.to {
-		w := ansi.StringWidth(string(value[index]))
+		w := cells(value[index])
 		if walked+w > col {
 			break
 		}

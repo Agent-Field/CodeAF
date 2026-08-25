@@ -3100,6 +3100,11 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// trip, or a box that opens in place and takes a key.
 		a.closeSettings()
 		a.closeExpand()
+		// AND HOME, for the reason the question above closes it: it is the whole
+		// screen, and an offer nobody can see is an offer nobody can answer —
+		// which is exactly what it was, because the keys are refused up there
+		// now rather than swallowed (connect.go).
+		a.closeHome()
 		a.askConnect(ev)
 
 	case session.EventHarnessOffer:
@@ -3108,6 +3113,8 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// sheet is a turn waiting on a keyboard nobody can reach.
 		a.closeSettings()
 		a.closeExpand()
+		// AND HOME, in the same words (harness.go).
+		a.closeHome()
 		a.askHarness(ev)
 
 	case session.EventHarnessRun:
@@ -3138,6 +3145,10 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// the proposal takes the keyboard's answer lane, and a lane behind a
 		// fullscreen sheet is a turn blocked on keys nobody can reach.
 		a.closeSettings()
+		// AND HOME WITH IT: the answer lane is y, r, n and the digits, and home
+		// owns every letter while it is up (task.go), so a proposal left behind
+		// it would be a decision with no key that reaches it.
+		a.closeHome()
 		a.proposeTask(ev)
 
 	case session.EventStandingProposal:
@@ -3145,6 +3156,8 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// states: the card takes the keyboard's answer lane, and a lane behind a
 		// fullscreen sheet is a turn blocked on keys nobody can reach.
 		a.closeSettings()
+		// AND HOME, in the words the task proposal above states.
+		a.closeHome()
 		a.proposeStanding(ev)
 
 	case session.EventStandingUpdate:

@@ -291,17 +291,32 @@ func framePerPaste(t *testing.T, paste string) float64 {
 // — the whole draft wrapped, the caret found by scanning it — kept here as the
 // ORACLE for the windowed version. A faster answer to a question about what a
 // person sees is worth nothing unless it is the same answer.
+//
+// It fits by CELLS, as the box does: the oracle's claim is that windowing the
+// wrap changes nothing about it, and an oracle measuring a different unit would
+// be asserting the opposite.
 func refWrap(value []rune, room int) []segment {
 	var out []segment
 	line := 0
 	flush := func(end int) {
 		for line < end {
-			if end-line <= room {
+			cut, width := line, 0
+			for cut < end {
+				w := ansi.StringWidth(string(value[cut]))
+				if width+w > room {
+					break
+				}
+				width += w
+				cut++
+			}
+			if cut >= end {
 				out = append(out, segment{from: line, to: end})
 				line = end
 				return
 			}
-			cut := line + room
+			if cut == line {
+				cut = line + 1
+			}
 			for at := cut; at > line; at-- {
 				if value[at-1] == ' ' {
 					cut = at
@@ -331,7 +346,8 @@ func refCaret(e *editor, segments []segment, room int) int {
 	for i, s := range segments {
 		if e.cursor >= s.from && e.cursor <= s.to {
 			row = i
-			if e.cursor == s.to && e.cursor-s.from >= room && i+1 < len(segments) {
+			full := ansi.StringWidth(string(e.value[s.from:e.cursor])) >= room
+			if e.cursor == s.to && full && i+1 < len(segments) {
 				continue
 			}
 			break
