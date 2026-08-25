@@ -742,10 +742,16 @@ only way to see money in this build.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
 whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
-keeps. One line per request to a provider, carrying: when it happened and which local
-calendar day that was, which model answered, how many requests and how many tokens in and
-out, what it cost, the conversation it was made in, the piece of work or the standing promise
-it was made for, and the project directory it ran against.
+keeps. **One line per turn — the turn as a whole, however many requests it took — and one per
+call made beside a turn**, such as naming a session or judging a route. Each line carries a
+`calls` figure saying how many provider requests it covers, so a turn that used three tools is
+one line reading `calls: 4` rather than four lines. A turn that failed or that you interrupted
+writes its line too, for whatever it spent before it stopped.
+
+Every line records: when it happened and which local calendar day that was, which model answered,
+how many requests and how many tokens in and out, what it cost, the conversation it was made
+in, the piece of work or the standing promise it was made for, and the project directory it
+ran against.
 
 Three things are worth knowing about it:
 
@@ -753,8 +759,8 @@ Three things are worth knowing about it:
   me this month" could only be answered by opening every transcript on the machine, and "what
   did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
   in it.
-- **A request that cost nothing writes no line.** So a day with no lines is a day nothing was
-  spent, rather than a day of zeroes.
+- **A turn or a call that cost nothing writes no line.** So a day with no lines is a day
+  nothing was spent, rather than a day of zeroes.
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice.
