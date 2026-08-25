@@ -13,6 +13,13 @@ package store
 // one carries the newest rows. Neither grows a round trip when the store does,
 // which is the property the "one query, not N" rule is actually about.
 //
+// THE TWO STATEMENTS DESCRIBE ONE MOMENT. They run inside a single deferred read
+// transaction ([Store.beginRead]), because a memory written between them would
+// otherwise leave the counts describing one store and the rows describing
+// another — a page saying "41 held" above a shelf of 42, which is the kind of
+// wrongness nobody reports and everybody stops trusting. In WAL that snapshot
+// costs nothing anybody else waits on: writers carry on beside the reader.
+//
 // IT IS THE FIRST READER IN THIS PACKAGE THAT SEES PAST `active`. Every other
 // one — GetMemories, SearchMemories, ListMemories, MemoryIndex,
 // MemoryCandidates — filters `status = active` in its own WHERE, which is right
@@ -120,12 +127,20 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 	if limit <= 0 {
 		limit = memorySnapshotRows
 	}
+	// ONE SNAPSHOT FOR BOTH STATEMENTS (the file header says why). The rollback
+	// is the close: a read transaction has nothing to commit, and holding one
+	// open past the read would pin a WAL snapshot the checkpointer cannot pass.
+	tx, err := s.beginRead()
+	if err != nil {
+		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 	// STATEMENT ONE: the census. Grouping in SQLite rather than in Go is what
 	// makes the counts exact at any size — counting in Go would mean carrying
 	// every body across the wire to add up three integers, which is the defect
 	// internal/command's notebook read already wrote down ("there is no count
 	// read behind the facts table, so a full window reports itself as one").
-	rows, err := s.db.Query(`
+	rows, err := tx.Query(`
 		SELECT scope, type, status, COUNT(*)
 		FROM memories
 		GROUP BY scope, type, status`)
@@ -166,19 +181,20 @@ func (s *Store) MemorySnapshot(limit int) (MemoryShelves, error) {
 
 	// STATEMENT TWO: the newest rows, every status, through the one reader every
 	// memory read in this package goes through — so a snapshot's rows and a
-	// panel's rows can never come to decode differently.
-	memories, err := s.queryMemories("", nil, `updated_seq DESC, id`, limit)
+	// panel's rows can never come to decode differently. It runs on the same
+	// transaction as the census, which is what makes the two one reading.
+	memories, err := queryMemoriesOn(tx, "", nil, `updated_seq DESC, id`, limit)
 	if err != nil {
 		return MemoryShelves{}, fmt.Errorf("memory snapshot: %w", err)
 	}
 	for _, memory := range memories {
 		shelf := shelves[memory.Scope]
 		if shelf == nil {
-			// A row whose scope the census did not see cannot happen inside one
-			// transaction-free read of a quiet store, and can between two of them
-			// — a memory written between the statements. It gets a shelf rather
-			// than being dropped: a row on screen with no count behind it is a
-			// smaller lie than a row that vanished.
+			// A row whose scope the census did not see CANNOT HAPPEN any more —
+			// both statements read one snapshot — and the branch stays because a
+			// row on screen with no count behind it is a smaller lie than a row
+			// that vanished, and because this is the one place that would show
+			// it if the two reads ever came apart again.
 			shelf = &MemoryShelf{Scope: memory.Scope, Label: MemoryShelfWord(memory.Scope), ByType: map[string]int{}}
 			shelves[memory.Scope] = shelf
 		}

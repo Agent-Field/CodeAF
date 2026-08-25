@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -56,6 +57,76 @@ func TestAMemorySnapshotShelvesEverythingAndCountsIt(t *testing.T) {
 	project := snapshot.Shelves[1]
 	if project.Held != 2 || project.Superseded != 1 {
 		t.Fatalf("the project shelf is %+v", project)
+	}
+}
+
+// THE COUNTS AND THE ROWS DESCRIBE ONE MOMENT. The census and the sample are
+// two statements, and a memory written between them used to leave the totals
+// describing the store before it and the rows describing the store after — a
+// page saying "41 held" above a shelf of 42. The two now read one snapshot, so
+// no amount of writing underneath a snapshot can make it contradict itself.
+func TestASnapshotDoesNotContradictItselfUnderAWriter(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "consistent.db"))
+	for i := 0; i < 20; i++ {
+		mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+			Title: fmt.Sprintf("Standing %d", i), Text: "Something already remembered."})
+	}
+
+	// A writer running for the whole of the read, which is the ordinary case
+	// this page draws in: memory is written by the turn a person is taking.
+	stop := make(chan struct{})
+	written := make(chan struct{})
+	go func() {
+		defer close(written)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if _, err := graph.AddMemory(Memory{Type: MemoryFact, Scope: MemoryScopeProject,
+				Title: fmt.Sprintf("While reading %d", i), Text: "Learned while the page was drawing."}); err != nil {
+				// A write that lost the lock is not this test's subject.
+				return
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-written
+	}()
+
+	for look := 0; look < 60; look++ {
+		snapshot, err := graph.MemorySnapshot(0)
+		if err != nil {
+			t.Fatalf("MemorySnapshot: %v", err)
+		}
+		carried := 0
+		for _, shelf := range snapshot.Shelves {
+			population := shelf.Held + shelf.LetGo + shelf.Superseded
+			if len(shelf.Memories) > population {
+				t.Fatalf("the %q shelf carries %d rows and counts %d memories",
+					shelf.Scope, len(shelf.Memories), population)
+			}
+			kinds := 0
+			for _, count := range shelf.ByType {
+				kinds += count
+			}
+			if kinds != population {
+				t.Fatalf("the %q shelf counts %d by kind and %d by status", shelf.Scope, kinds, population)
+			}
+			carried += len(shelf.Memories)
+		}
+		if carried != snapshot.Shown {
+			t.Fatalf("the shelves carry %d rows and the snapshot says %d", carried, snapshot.Shown)
+		}
+		if snapshot.Shown > snapshot.Total {
+			t.Fatalf("the snapshot shows %d rows out of a total of %d", snapshot.Shown, snapshot.Total)
+		}
+		if snapshot.Held+snapshot.LetGo+snapshot.Superseded != snapshot.Total {
+			t.Fatalf("the statuses come to %d and the total is %d",
+				snapshot.Held+snapshot.LetGo+snapshot.Superseded, snapshot.Total)
+		}
 	}
 }
 
