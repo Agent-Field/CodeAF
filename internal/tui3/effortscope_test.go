@@ -376,15 +376,27 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	if a.home.msg != "" {
 		t.Fatalf("a key with no door under it explained itself: %q", a.home.msg)
 	}
-	// AND THE CARD STATES NO RUNG EITHER, which is the same law read rather than
-	// pressed. `spend` and `thinking` are one facts line on the switcher's card
-	// now ([app.homeCardFacts]), and the only rungs home can honestly read are
-	// the install's default and a standing item's own — a conversation's is its
-	// own sticky setting, belongs to the window that session is open in, and
-	// printing the machine's default here would be advertising a fact about the
-	// install as a fact about the chat.
-	if card := strings.Join(homeCardFor(t, a, a.file), "\n"); strings.Contains(card, "thinking") {
-		t.Fatalf("a conversation's card stated a rung it does not own:\n%s", card)
+	// AND THE CARD NAMES NO KEY FOR IT, which is the same law read rather than
+	// pressed: a chord with a visible door beside it is a promise, and this
+	// surface cannot keep that one.
+	//
+	// THE LAW THAT DIED IS "THE CARD STATES NO RUNG". It used to be asserted here
+	// that `thinking` appeared nowhere on a conversation's card, on the argument
+	// that printing the machine's default beside a chat would be advertising a
+	// fact about the install as a fact about the chat. SCREEN 1d overrules it: it
+	// spells the facts line of a CONVERSATION'S card `spent $1.63 · 3.6M tokens ·
+	// thinking high`, and the owner ordered the design followed exactly
+	// (FIDELITY.md item 8). So the clause is there, it is the INSTALL'S rung —
+	// what work started from this card would think at — and place_home.go's
+	// [app.homeCardFacts] says so in as many words. What survives untouched is the
+	// half this test is really about: no key is offered, because there is nothing
+	// here the key could honestly write.
+	card := strings.Join(homeCardFor(t, a, a.file), "\n")
+	if !strings.Contains(card, "thinking "+effort.Ship.String()) {
+		t.Fatalf("the card does not state the rung work started here would think at:\n%s", card)
+	}
+	if strings.Contains(card, effortKeyClause) || strings.Contains(card, "ctrl+v") {
+		t.Fatalf("a conversation's card named a key for a rung it cannot move:\n%s", card)
 	}
 }
 

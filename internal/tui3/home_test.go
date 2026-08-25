@@ -925,19 +925,102 @@ func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
 		t.Fatalf("the preview pane is empty at rest, with the cursor on %q", homeName(a.home.focused()))
 	}
 	// And it is really on the frame, across the gutter from the list: the card's
-	// second line is WHERE this conversation is, with `open here` after it
+	// second line is WHERE this conversation is, with the door word after it
 	// (place_home.go's [app.homeCardPlace]).
+	//
+	// THE DOOR WORD IS `here` AND NO LONGER `open here`. The place line used to
+	// ask [app.homeHolding] first, which spells this window's own conversation
+	// `open here`; SCREEN 1d spells the whole line `~/aforge-v2 · master, 1 file
+	// dirty · here`, so the card asks [app.homeMark] first and the design's word
+	// wins (FIDELITY.md item 8). `open here` did not die — it is still what a
+	// card assembled from the registry says ([drawKeysBand] reads it through the
+	// same function) — it is simply not what the switcher's card says. The clause
+	// is demanded as a SUFFIX rather than as a substring because `here` also
+	// rides the box row's scope chip, and a bare Contains would pass on a frame
+	// with no card on it at all.
 	row := a.home.focused()
 	if row.Transcript != mine {
 		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
 	}
 	card := homeCardNow(t, a)
 	if len(card) < 3 || !strings.Contains(card[2], filepath.Base(row.Workspace)) ||
-		!strings.Contains(card[2], "open here") {
+		!strings.HasSuffix(strings.TrimSpace(card[2]), " · "+homeHereWord) {
 		t.Fatalf("the card's place line is not the conversation's own folder:\n%s", strings.Join(card, "\n"))
 	}
-	if !strings.Contains(homeText(a), "open here") {
+	if !strings.Contains(homeText(a), strings.TrimSpace(card[2])) {
 		t.Fatalf("the card is not on the resting frame:\n%s", homeText(a))
+	}
+}
+
+// HOME'S RESTING FOOT, WORD FOR WORD — the two rows the design spells and the
+// clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
+//
+// It is pinned as a literal rather than against the constants alone because the
+// constants are what a careless edit changes: the owner's order was "follow the
+// exact design", and the only assertion that can catch a sentence drifting is
+// one that carries the sentence.
+//
+// THE LAW THAT DIED IS `esc close` ON THE RESTING ROW. Home used to end every
+// hint it drew with the way out, and the box row used to say [homeFootWord]
+// instead of the shared prompt. The design's foot names four keys and no more,
+// so the fifth clause left the resting row — and only the resting row: `esc`
+// still closes home, and every other row's hint still ends with it, which is the
+// second half of this test.
+func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
+	const design = "type to search or start something new · ↑↓ pick · enter open · tab next place"
+	if homeRestHint != design {
+		t.Fatalf("home's resting foot reads %q, want the design's own sentence %q", homeRestHint, design)
+	}
+
+	a, _ := homeRestLab(t, 120)
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	if len(lines) < 2 {
+		t.Fatalf("home drew %d rows", len(lines))
+	}
+	// The last row is the hint and the row above it is the box, which is the
+	// order pages.go assembles every place's foot in.
+	if got := strings.TrimSpace(ansi.Strip(lines[len(lines)-1])); got != design {
+		t.Fatalf("the resting hint reads %q, want %q", got, design)
+	}
+	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
+	// home's box ALSO does — filter the list — is said on the hint above, which is
+	// where the design puts it; the box says only what enter will do with what is
+	// typed into it. The scope chip rides the right edge of the same row, so the
+	// prompt is demanded as a prefix.
+	box := strings.TrimSpace(ansi.Strip(lines[len(lines)-2]))
+	if !strings.HasPrefix(box, "› "+placeRestWord) {
+		t.Fatalf("the box row reads %q, want the design's prompt", box)
+	}
+	// AND THE CLAUSE THAT LEFT IS REALLY GONE from the foot — not merely absent
+	// from the constant this test already compared.
+	for _, row := range []string{box, design} {
+		if strings.Contains(row, "esc") {
+			t.Fatalf("the resting foot names esc: %q", row)
+		}
+	}
+
+	// ESC STILL WORKS, which is why losing the clause is a wording change and
+	// not a capability going quiet.
+	a.homeKey(key("esc"))
+	if a.home.open {
+		t.Fatal("esc did not close home")
+	}
+
+	// AND EVERY ROW THAT IS NOT THE RESTING ONE STILL ENDS WITH IT. The old law
+	// held for the whole screen; it holds now for the rows the design does not
+	// spell itself, which is every state home enters once a person acts.
+	a.openHome()
+	for _, r := range "pricing" {
+		a.homeKey(key(string(r)))
+	}
+	// The clause names what esc will do on THAT row — `esc clear` on a typed box,
+	// `esc close` on a card — so what is demanded is the key in the last slot
+	// rather than one spelling of it.
+	hint := a.placeHint()
+	clauses := strings.Split(hint, " · ")
+	if last := clauses[len(clauses)-1]; !strings.HasPrefix(last, "esc ") {
+		t.Fatalf("a typed home's hint reads %q, want a way out on the end", hint)
 	}
 }
 
@@ -2027,8 +2110,17 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	if !a.home.open {
 		t.Fatal("a bare launch did not open on home")
 	}
+	// THE FRAME IS RECOGNISED BY HOME'S OWN FOOT, WHICH IS NOW THE DESIGN'S
+	// SENTENCE. It used to be recognised by `esc close`, and that clause is not
+	// on the resting foot any more: SCREEN 1a spells the whole line as four keys
+	// — `type to search or start something new · ↑↓ pick · enter open · tab next
+	// place` — and the owner ordered the design followed exactly (FIDELITY.md
+	// item 3). The old law ("every hint this screen draws ends with `esc`,
+	// because the way out is the first thing a person looks for") died on the
+	// RESTING row only; [TestHomesRestingFootIsTheDesignsSentence] pins both
+	// halves of what replaced it.
 	frame, _, _ := a.frame()
-	if !strings.Contains(ansi.Strip(frame), "esc close") {
+	if !strings.Contains(ansi.Strip(frame), homeRestHint) {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
@@ -2474,7 +2566,14 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		text := homeText(a)
 		// The sentence is there whole at every tier, a clause to a row, and
 		// never cut to an ellipsis ([homeEmptyLines]).
-		want := append(append(tc.want, homeEmptyLines()...), homeFootWord, "esc close")
+		//
+		// AND THE FOOT IS THE FOOT A FULL HOME DRAWS, both of its rows: the box
+		// row every place shares (SCREEN 2b) and home's own resting hint (SCREEN
+		// 1a). `esc close` was asked for here and is gone from the resting foot —
+		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
+		// demanded instead is the pair of sentences the design does spell, which
+		// is a stricter claim than the two fragments this asked for before.
+		want := append(append(tc.want, homeEmptyLines()...), "› "+placeRestWord, homeRestHint)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
