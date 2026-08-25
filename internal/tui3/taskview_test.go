@@ -324,7 +324,12 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 	}
 	// THE FOOT SAYS WHICH DOOR enter IS. A page that promised a room over work
 	// that has none would be lying about its own key.
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetInsideKeys) {
+	// THE FOOT'S OWN FIRST CLAUSE IS ASKED. The router appends `tab next place`
+	// INSIDE the sentence, before the way out ([placeTailed]), so the whole
+	// constant is no longer one run of characters on the screen — the clause that
+	// says which door enter is still is, and that is what this test is about.
+	verb, _, _ := strings.Cut(taskSheetInsideKeys, " · ")
+	if text := taskSheetText(a); !strings.Contains(text, verb) {
 		t.Fatalf("the foot promises a room over a task that has none:\n%s", text)
 	}
 

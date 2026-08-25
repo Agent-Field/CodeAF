@@ -43,7 +43,15 @@ func TestSettledTasksStayNeutralWhileMoneyKeepsItsMeaning(t *testing.T) {
 	if ink(tokens.GlyphSettled) != pal.muted(tokens.GlyphSettled) {
 		t.Fatal("a settled task did not match the neutral done-row ink")
 	}
-	if placeMoneyInk(pal)("$1") != pal.add("$1") {
+	// MONEY IS ITS OWN INK AND IT IS NO LONGER THE TICK'S. This assertion used to
+	// pin [placeMoneyInk] to [palette.add] — the green a finished tick wears —
+	// which said that landing and paying are one event. The design spends green on
+	// money and nothing else (FIDELITY.md item 1, styles.go's [hueMoneyPlace]), so
+	// the seam is [palette.money] now and the two greens are two facts again.
+	if placeMoneyInk(pal)("$1") != pal.money("$1") {
 		t.Fatal("money moved away from its shared ink seam")
+	}
+	if placeMoneyInk(pal)("$1") == pal.add("$1") {
+		t.Fatal("money and the landed tick are one colour again")
 	}
 }

@@ -13,7 +13,14 @@ import (
 const memoryPanelRows = 12
 
 const (
-	memoryFilterHint = "type to filter · ↑↓ · enter open a shelf · → verbs · alt+s walk the shelves · esc close"
+	// SCREEN 2d's register: the verb first, the way out last. Its own sentence is
+	// `enter open a shelf · → verbs: fix the wording, forget it, settle it · alt+t
+	// only what was tidied · tab next place`, and the two clauses missing here are
+	// missing because the keys are: the verbs' own names live on the row's `→` strip
+	// (verbstrip.go) and `alt+t` has nothing behind it yet. A foot may not name a
+	// key that does nothing — SCREEN 3a's whole law is that nothing is drawn that is
+	// not real — so this line says what is bound and no more.
+	memoryFilterHint = "enter open a shelf · → verbs · ↑↓ move · type to filter · alt+s walk the shelves · esc close"
 	memoryEditHint   = "edit memory · enter save · esc cancel"
 )
 

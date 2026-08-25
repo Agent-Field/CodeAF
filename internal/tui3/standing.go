@@ -246,8 +246,22 @@ const (
 // a person looking at `▲` is looking at the one row that costs a keystroke to
 // unblock, and turning it into `◆` because something also fired would be this
 // surface losing a fact to say something weaker.
+// ── AND THE STORE'S TWO MARKS ARE RE-SPELLED FOR THIS SURFACE ───────────────
+//
+// [standing.Item.Glyph] answers WHICH STATE a row is in, and that answer is the
+// store's to give: every surface has to agree about it, including the resident,
+// which is a different product in the same repository and draws the same rows.
+// WHICH CHARACTER stands for that state is a question about a SCREEN, and this
+// screen's answer is the design's ([homeAskGlyph] and [homeLiveGlyph] carry the
+// reasoning and the owner's signature).
+//
+// So the two are translated here rather than changed there. Reaching into
+// internal/standing to spell `?` would have moved the resident's glyphs too —
+// CLAUDE.md forbids exactly that kind of travel between the two products — and
+// the ASCII tier was already applied at this seam for the same reason: what a
+// terminal can draw is not the store's business either.
 func standGlyph(item standing.Item, running, news bool, ascii bool) string {
-	glyph := item.Glyph(running)
+	glyph := standSurfaceGlyph(item.Glyph(running))
 	if news && glyph == standWaitGlyph {
 		glyph = standNewsGlyph
 	}
@@ -266,6 +280,31 @@ func standGlyph(item standing.Item, running, news bool, ascii bool) string {
 	}
 	return standWaitASCII
 }
+
+// standSurfaceGlyph is that translation, and it is the ONE table where the
+// store's alphabet and this surface's meet. The store's own comment names its
+// four ([standing.Item.Glyph]); the two that have a different character here are
+// listed, and everything else passes through untouched because the two alphabets
+// agree about it.
+func standSurfaceGlyph(stored string) string {
+	switch stored {
+	case standStoreAskGlyph:
+		return homeAskGlyph
+	case standStoreLiveGlyph:
+		return homeLiveGlyph
+	}
+	return stored
+}
+
+// The two characters internal/standing writes for the two states this surface
+// re-spells. They are quoted here rather than reached for because the store does
+// not hand its alphabet out as constants, and a literal that drifted from it
+// would leave the translation silently doing nothing —
+// TestThePlaceMarksAreTheDesignsOwn is what would catch that.
+const (
+	standStoreAskGlyph  = "▲"
+	standStoreLiveGlyph = "●"
+)
 
 // standChecked is the "checked every …" clause, and it is drawn only on the
 // three kinds that are actually LOOKED at on a clock.
