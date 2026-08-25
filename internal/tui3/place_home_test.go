@@ -279,19 +279,24 @@ func TestTheStripAnswersAQuestionInItsOwnWords(t *testing.T) {
 	}
 }
 
-// EVERY FACT THIS SCREEN DRAWS WAS READ ON ITS OWN CLOCK, and the memory pair
-// is a seam that answers nothing until somebody wires it.
+// EVERY FACT THIS SCREEN DRAWS WAS READ ON ITS OWN CLOCK, and a window with no
+// memory store draws no memory line at all.
+//
+// THAT IS THE EMPTINESS LAW AND NOT A GAP. The ledger's memory figures come
+// through one seam, taken where every other disk-backed fact on this screen is
+// taken ([app.readSwitchLedger]) — never on a draw, because there is SQLite
+// behind it — and a window that cannot ask says nothing rather than saying zero.
 func TestTheLedgersMemoryFiguresComeThroughOneSeam(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 30)
-	if learned, letGo := a.memoryChangedSince(a.home.seen); learned != 0 || letGo != 0 {
-		t.Fatalf("the unwired seam invented %d and %d", learned, letGo)
+	if a.memory != nil {
+		t.Fatal("this test is about a window with no memory store")
 	}
 	if a.home.ledger != (switcherLedgerInput{}) {
 		t.Fatalf("the ledger input was not read from the seam: %+v", a.home.ledger)
 	}
 	if strings.Contains(switchFrame(a), "learned") {
-		t.Fatalf("a figure nobody can compute was drawn:\n%s", switchFrame(a))
+		t.Fatalf("a figure nobody can ask for was drawn:\n%s", switchFrame(a))
 	}
 }
 
