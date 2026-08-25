@@ -33,6 +33,12 @@ ARMS = {  # name -> (label, color, marker, is_ours)
     "aforge-ckpt-crew":  ("aforge ckpt (crew)",  "#4a3aa7", "P", True),
     "aforge-final-crew":  ("aforge final (crew)",  "#1f5fa8", "*", True),
     "aforge-final-flash": ("aforge final (flash)", "#5b8fd6", "*", True),
+    "aforge-1g-crew":  ("aforge 1g (crew)",  "#123f7a", "X", True),
+    "aforge-1g-flash": ("aforge 1g (flash)", "#3b7ac9", "X", True),
+    "aforge-1f-crew":  ("aforge 1f (crew)",  "#2b5f9e", "v", True),
+    "aforge-1f-flash": ("aforge 1f (flash)", "#6c9edb", "v", True),
+    "aforge-1h-crew":  ("aforge 1h (crew)",  "#0b2f5e", "*", True),
+    "aforge-1h-flash": ("aforge 1h (flash)", "#2f6fbf", "*", True),
     "pi":               ("pi",                 "#8a8985", "s", False),
     "opencode":         ("opencode",           "#b5b4b0", "^", False),
 }

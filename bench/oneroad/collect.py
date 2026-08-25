@@ -3,8 +3,8 @@
 import csv, glob, json, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "wall_s", "wall_s_active",
-          "cost_usd", "cost_usd_calls", "cost_list_usd", "cost_source", "calls", "endpoint_mix", "marks", "ceiling_decision", "forks", "cost_by_role", "cost_usd_usage", "mark_reader_calls", "mark_reader_model",
+FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "stranded_ids", "wall_s", "wall_s_active",
+          "cost_usd", "cost_usd_calls", "cost_list_usd", "cost_source", "calls", "endpoint_mix", "marks", "ceiling_decision", "division", "division_why", "division_admitted", "division_refused", "forks", "cost_by_role", "cost_usd_usage", "mark_reader_calls", "mark_reader_model",
           "tests_before", "tests_after", "changed_files",
           "changed_files_landed", "stranded_worktree_files", "changed_files_total", "upstream_commits_in_head", "contaminated",
           "road", "route", "armed", "parts", "peak_workers", "refused", "chat_tool_calls",
@@ -55,13 +55,18 @@ def main():
     for path in sorted(glob.glob(os.path.join(ROOT, "results", "*", "meta.json"))):
         with open(path) as fh:
             row = json.load(fh)
+        st = row.get("stranded_tasks") or []
+        row["stranded_ids"] = ";".join(
+            "%s(%s,idle %ss)" % (d.get("id"), d.get("last_state"), d.get("journal_idle_s"))
+            for d in st)
         row["_cell"] = os.path.dirname(path)
         rows.append(row)
     for row in rows:
         row["wall_s_active"] = active_wall(row.pop("_cell"), row)
     rows.sort(key=lambda r: (str(r.get("task")), str(r.get("harness"))))
     with open(out, "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore",
+                                quoting=csv.QUOTE_MINIMAL)
         writer.writeheader()
         for row in rows:
             writer.writerow(row)

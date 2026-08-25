@@ -109,7 +109,15 @@ def journals(session):
             continue
         stamp, node_id, suffix = match.groups()
         try:
+            # THE FILENAME STAMP IS LOCAL TIME AND EVERY OTHER STAMP IS UTC.
+            # taskJournalPath mints the name with time.Now().Format(...), which
+            # has no zone in it, while the entries inside carry RFC3339 with an
+            # offset. Read naively these differ by the machine's UTC offset —
+            # four hours here — which would put a node's "opened" long after its
+            # own first request. It is localised and converted so every timestamp
+            # in this file is directly comparable.
             opened = datetime.datetime.strptime(stamp, "%Y%m%d-%H%M%S")
+            opened = opened.astimezone()
         except ValueError:
             opened = None
         found.setdefault(int(node_id), []).append((opened, path, suffix))
@@ -303,6 +311,42 @@ def mark_lines(session):
             ceiling = {"rounds": c.get("rounds"), "decision": c.get("decision"),
                        "task_id": c.get("taskId")}
     return marks, ceiling
+
+
+def divisions_journaled(session):
+    """Every division PUT TO THE ROAD, from wave 1g's own `division` lines.
+
+    Until 1g a division could only be seen indirectly — a divide_work call in a
+    worker's journal, or children appearing under a parent — and a division that
+    was REFUSED left almost nothing to read. The line now states all of it:
+    who asked (`sketch` when the harness submitted it on the worker's behalf
+    before its first request, `worker` when the worker reached for the verb
+    itself), how many parts were requested, how many were admitted, and the
+    decision, which is `admitted` or `refused:<gate>`.
+
+    Both sources matter and they are different claims. A `sketch` division is the
+    harness acting on the mark reader's drawing; a `worker` division is the model
+    doing what four earlier waves could not make it do. A row that merged them
+    would lose exactly the distinction wave 1g exists to test.
+    """
+    out = []
+    for entry in transcripts(session):
+        if entry.get("type") != "division" or not entry.get("division"):
+            continue
+        d = entry["division"]
+        out.append({"task_id": d.get("taskId"), "source": d.get("source"),
+                    "requested": d.get("requested"), "admitted": d.get("admitted"),
+                    "decision": d.get("decision"),
+                    # WHY, and WHAT IT WAS ABOUT. Wave 1h carries the reviewer's
+                    # own reason and the titles it was asked to approve, which is
+                    # the difference between "refused" and a refusal a person can
+                    # argue with. `refused:review-unreached` is its own decision:
+                    # the adjudicating reviewer was never called at all, which is
+                    # what 1g turned out to be doing and what no counter could
+                    # have told us.
+                    "error": d.get("error") or "",
+                    "parts": d.get("parts") or []})
+    return out
 
 
 def forks(session):
@@ -499,6 +543,12 @@ def worker_timeline(session):
             "journal_opened": opened.isoformat() if opened else "",
             "first_entry": first.isoformat() if first else "",
             "last_entry": last.isoformat() if last else "",
+            # The three moments an autopsy actually asks for, named as it asks
+            # for them: when the node's journal was minted (admitted), when it
+            # first spoke to a provider (started), when it last did (settled).
+            "created_at": opened.isoformat() if opened else "",
+            "started_at": first.isoformat() if first else "",
+            "settled_at": last.isoformat() if last else "",
             "journals": paths,
         })
     # A node admitted and never started has no journal at all, and leaving it out
@@ -588,6 +638,7 @@ def main():
     calls = call_lines(session)
     marks_journal, ceiling_journal = mark_lines(session)
     fork = forks(session)
+    divs = divisions_journaled(session)
     marks_read = mark_reader(session)
     conc = concurrency(rows)
     spend, source = cost(session)
@@ -679,6 +730,17 @@ def main():
         "marks": ",".join(f"{m['rounds']}:{m['decision']}" for m in marks_journal),
         "mark_decisions": len(marks_journal),
         "ceiling_decision": (ceiling_journal or {}).get("decision", ""),
+        "division": ";".join(
+            "%s:%s/%s:%s" % (d["source"], d["requested"], d["admitted"], d["decision"])
+            for d in divs),
+        "division_admitted": sum(1 for d in divs
+                                 if (d["decision"] or "").startswith("admitted")),
+        "division_why": " | ".join(
+            filter(None, [d.get("error", "") for d in divs] +
+                   ["parts: " + "; ".join(d["parts"]) for d in divs if d.get("parts")])),
+        "division_refused": ";".join(
+            (d["decision"] or "").split("refused:", 1)[-1]
+            for d in divs if (d["decision"] or "").startswith("refused")),
         "forks": fork["fork_notices"],
         "fork_calls": fork["fork_calls"],
         "cost_by_role": calls["cost_by_role"],
@@ -703,6 +765,7 @@ def main():
                 "mark_lines": marks_journal,
                 "ceiling_line": ceiling_journal,
                 "forks": fork,
+                "divisions_journaled": divs,
                 "concurrency": conc,
                 "idle_gaps": idle_gaps(rows, conc["series"]),
                 "note": "every field is derived from the session folder: tasks.json, "

@@ -42,7 +42,18 @@ TASKDIR="$DATASET/tasks/$TASK"
 
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
 NEW_BIN="${NEW_BIN:-/home/santosh/af-oneroad/bin/aforge}"
-PI_BIN="${PI_BIN:-$(command -v pi)}"
+# PI IS A NODE BUNDLE, NOT A BINARY, and mounting just the entry point is how
+# all seven pi cells died in 0 seconds with ERR_MODULE_NOT_FOUND. ~/.local/bin/pi
+# is a symlink into a node_modules package whose cli.js imports sibling files
+# from dist/bundle/chunks/. The whole package has to travel, and it has to be
+# invoked through node.
+PI_PKG="${PI_PKG:-$(readlink -f "$(command -v pi)" 2>/dev/null | sed 's#/dist/bundle/cli.js##')}"
+# AND NODE HAS TO EXIST IN THERE. Three of the seven task images (prefect and
+# both gitea) carry no node at all — they are Go and Python environments — so the
+# host's node is mounted alongside for those. Same architecture, same libc
+# family; where that ever stops being true the cell fails loudly at launch
+# rather than silently producing a zero-second row.
+HOST_NODE="${HOST_NODE:-$(readlink -f "$(command -v node)" 2>/dev/null)}"
 OPENCODE_BIN="${OPENCODE_BIN:-$HOME/.opencode/bin/opencode}"
 
 # Forty-five minutes: these repositories are large and a build alone can take
@@ -63,7 +74,18 @@ POLL="${POLL:-10}"
 SWE_OUT="${SWE_OUT:-/home/santosh/af-bench/swe}"
 mkdir -p "$SWE_OUT"
 CELL="$SWE_OUT/$ARM-$TASK-$SEED"
-rm -rf "$CELL"; mkdir -p "$CELL"/{profile,home,logs,peer}
+# A PREVIOUS CELL'S LEAVINGS MAY NOT BELONG TO US. The container writes its
+# mounts as root, and a cell that was killed before its cleanup could hand them
+# back leaves root-owned files behind. `rm -rf` then fails with permission
+# denied, mkdir -p succeeds anyway, and the run proceeds on a HALF-WIPED
+# directory carrying the previous attempt's store — which is the one way a cell
+# can be contaminated by its own predecessor. So ownership is reclaimed first,
+# from a throwaway container, and only then is the directory removed.
+if [ -d "$CELL" ] && ! rm -rf "$CELL" 2>/dev/null; then
+  docker run --rm -v "$CELL:/c" ubuntu:24.04     chown -R "$(id -u):$(id -g)" /c >/dev/null 2>&1
+  rm -rf "$CELL"
+fi
+mkdir -p "$CELL"/{profile,home,logs,peer}
 CONTAINER="oneroad-swe-$ARM-$TASK-$SEED"
 SESSION_NAME="$CONTAINER"
 
@@ -116,8 +138,10 @@ docker run -d --name "$CONTAINER" --cpus "$CPUS" --memory "$MEM" \
   -v "$CELL/home:/chome" \
   -v "$CELL/peer:/peer" \
   -v "$SWE/verify.sh:/oneroad-verify.sh:ro" \
+  -v "$ONEROAD/lib:/oneroad-lib:ro" \
   -v "$NEW_BIN:/usr/local/bin/aforge:ro" \
-  ${PI_BIN:+-v "$PI_BIN:/usr/local/bin/pi:ro"} \
+  ${PI_PKG:+-v "$PI_PKG:/opt/pi:ro"} \
+  ${HOST_NODE:+-v "$HOST_NODE:/opt/node:ro"} \
   ${OPENCODE_BIN:+-v "$OPENCODE_BIN:/usr/local/bin/opencode:ro"} \
   -e "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
   -e "REPO_NAME=$REPO_NAME" \
@@ -188,41 +212,84 @@ PY
   tmux send-keys -t "$SESSION_NAME" Enter
   say "$ARM/$TASK: sent ($(wc -c < "$CELL/prompt.txt") bytes), wall ${CELL_SECONDS}s"
 
-  # Settlement, wave 1's rules exactly: the store is the signal (presence.json is
-  # a heartbeat and is excluded), the screen may delay a settle but past 3x the
-  # window it may not prevent one. The store is a bind mount, so this is a
-  # host-side read of the same bytes the container is writing.
-  local started elapsed stable=0 quiet=0 last="" now screen
+  # Settlement, and BOTH READINGS ARE TAKEN INSIDE THE CONTAINER.
+  #
+  # The obvious thing — read the bind mount from the host — is silently wrong
+  # here, and it would have made every SWE row meaningless. The harness runs as
+  # root in the container and creates its session folder mode 700, so from the
+  # host `$CELL/profile/v3` is unreadable: `find` returns nothing, with no error,
+  # and a fingerprint of nothing is perfectly stable from the very first poll.
+  # The cell would settle blind after one window no matter what the agent was
+  # doing. The container is the only vantage point that can see its own store.
+  #
+  # The rest is wave 1's rule, including the correction that cost six 1f cells:
+  # a live task VETOES the settle, because a worker running a build or a test
+  # suite writes nothing for minutes and silence is not a task finishing.
+  local started elapsed stable=0 quiet=0 last="" now screen sess live
   started=$(date +%s)
   while :; do
     sleep "$POLL"
     elapsed=$(( $(date +%s) - started ))
     if [ "$elapsed" -ge "$CELL_SECONDS" ]; then
-      say "$ARM/$TASK: DNF at ${elapsed}s"
+      say "$ARM/$TASK: DNF at ${elapsed}s (wall)"
       tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt"
       tmux kill-session -t "$SESSION_NAME" 2>/dev/null
-      echo DNF > "$CELL/outcome"; return 124
+      echo DNF > "$CELL/outcome"; echo wall > "$CELL/settle_reason"; return 124
     fi
-    now="$(find "$CELL/profile/v3" -type f ! -name presence.json -printf '%s %T@ %p\n' 2>/dev/null | sort | md5sum)"
+    now="$(docker exec "$CONTAINER" sh -c \
+      'find /prof/v3 -type f ! -name presence.json -printf "%s %T@ %p\n" 2>/dev/null | sort | md5sum' 2>/dev/null)"
     screen="$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null)"
     printf '%s\n' "$screen" > "$CELL/tmux-live.txt"
     if [ "$now" = "$last" ]; then quiet=$((quiet + POLL)); else quiet=0; fi
-    if [ "$now" = "$last" ] && { ! printf '%s' "$screen" | grep -qE 'working' || [ "$quiet" -ge $((SILENCE_SECONDS * 3)) ]; }; then
+
+    sess="$(docker exec "$CONTAINER" sh -c \
+      'find /prof/v3/projects -mindepth 2 -maxdepth 2 -type d 2>/dev/null | head -1' 2>/dev/null | tr -d '\r')"
+    live=0; stranded_ids=""
+    if [ -n "$sess" ]; then
+      tl="$(docker exec "$CONTAINER" python3 /oneroad-lib/tasklive.py "$sess" 2>/dev/null)"
+      live="$(printf '%s' "$tl" | python3 -c 'import json,sys
+try:  print(json.load(sys.stdin)["live"])
+except Exception: print(0)' 2>/dev/null)"
+      # See the wave-1 runner: a live STATE is not a live task.
+      stranded_ids="$(printf '%s' "$tl" | python3 -c 'import json,sys
+try:  print(",".join(str(i) for i in json.load(sys.stdin).get("stranded_ids") or []))
+except Exception: print("")' 2>/dev/null)"
+      live="${live:-0}"
+    fi
+
+    if [ "$now" = "$last" ] && [ "$live" = "0" ] \
+       && { ! printf '%s' "$screen" | grep -qE 'working' || [ "$quiet" -ge $((SILENCE_SECONDS * 3)) ]; }; then
       stable=$((stable + POLL))
-      [ "$stable" -ge "$SILENCE_SECONDS" ] && { say "$ARM/$TASK: settled at ${elapsed}s"; break; }
-    else stable=0; fi
+      if [ "$stable" -ge "$SILENCE_SECONDS" ]; then
+        if [ -n "$stranded_ids" ]; then
+          say "$ARM/$TASK: settled at ${elapsed}s — task(s) $stranded_ids STRANDED"
+          echo "stranded:$stranded_ids" > "$CELL/settle_reason"
+          echo STRANDED > "$CELL/outcome_override"
+        else
+          say "$ARM/$TASK: settled at ${elapsed}s (idle, and every task landed)"
+          echo idle-and-landed > "$CELL/settle_reason"
+        fi
+        break
+      fi
+    else
+      stable=0
+      if [ "$live" != "0" ] && [ $((elapsed % 300)) -lt "$POLL" ]; then
+        say "$ARM/$TASK: ${elapsed}s — $live task(s) still running; not settling"
+      fi
+    fi
     last="$now"
   done
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt"
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null
-  echo OK > "$CELL/outcome"; return 0
+  if [ -f "$CELL/outcome_override" ]; then cp "$CELL/outcome_override" "$CELL/outcome"; else echo OK > "$CELL/outcome"; fi
+  return 0
 }
 
 # ── the peer arms: their own front door, in the same container ─────────────
 run_peer() {
   local inner
   case "$ARM" in
-    pi)       inner="pi -p --provider openrouter --model '$MODEL' \"\$(cat /oneroad-prompt.txt)\"" ;;
+    pi)       inner="NODE=\$(command -v node || echo /opt/node); \$NODE /opt/pi/dist/bundle/cli.js -p --provider openrouter --model '$MODEL' \"\$(cat /oneroad-prompt.txt)\"" ;;
     opencode) inner="opencode run --auto -m 'openrouter/$MODEL' \"\$(cat /oneroad-prompt.txt)\"" ;;
   esac
   docker cp "$CELL/prompt.txt" "$CONTAINER:/oneroad-prompt.txt" >/dev/null
@@ -256,7 +323,17 @@ VWALL=$(( $(date +%s) - VSTART ))
 say "$ARM/$TASK: verifier exit $VCODE in ${VWALL}s"
 
 # ── the record ──────────────────────────────────────────────────────────────
-python3 "$SWE/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" "$CODE" "$VWALL" "$MODEL" "$TASKDIR"
+# OWNERSHIP IS HANDED BACK BEFORE ANYTHING READS, not only in cleanup. The
+# harness creates its session folder as root mode 700, so every host-side reader
+# — record.py's road columns, road.py's timeline, the judge bundle — sees an
+# unreadable directory and reports `road=unreadable(no session folder)` about a
+# store that is sitting right there. cleanup() chowns too, but it runs on EXIT,
+# which is after all of these. So the reclaim happens here, while the container
+# is still alive to perform it.
+docker exec "$CONTAINER" chown -R "$HOST_UID:$HOST_GID" /prof /chome /logs /peer 2>/dev/null
+
+python3 "$SWE/record.py" "$CELL" "$ARM" "$TASK" "$SEED" "$WALL" "$CODE" "$VWALL" "$MODEL" "$TASKDIR" \
+  "$(cat "$CELL/settle_reason" 2>/dev/null || echo n/a)"
 # The SWE bundle, not lib/judge_bundle.py: this track's ISSUE is issue.txt (the
 # Task section alone) and its PATCH is the dataset's agent.patch, neither of
 # which the wave-1 builder knows about.
