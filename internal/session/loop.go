@@ -2280,7 +2280,12 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 	folded := make(map[int]bool, 16)
 	first, last := -1, -1
 	for index := 1; index < limit && total > target; {
-		if a.messages[index].Role == "user" {
+		// Every message the person typed survives a fold. The session's own
+		// volatile note does not: each one is superseded by the next landing,
+		// and a note kept forever would put every old state of the card back
+		// on the meter, uncompactable — the exact bill moving the card to the
+		// tail was meant to end (agent.go's [isVolatileNote]).
+		if a.messages[index].Role == "user" && !isVolatileNote(messageContentText(a.messages[index])) {
 			index++
 			continue
 		}
