@@ -1341,6 +1341,45 @@ type app struct {
 	// [app.openHome]), because two pages that both believe they own the frame is
 	// a frame that draws one and takes keys for the other.
 	home homeView
+	// ── THE ROUTER ──────────────────────────────────────────────────────────
+	//
+	// page is WHICH PLACE the person is standing in (pages.go). It is a LABEL on
+	// the `open bool`s above and not a replacement for them: [app.showPage] still
+	// goes through [app.standDownFullscreen], every page still carries its own
+	// flag, and view.go's frame still asks those flags in the same order — so the
+	// two page-stack laws in chrome_test.go hold on exactly the state they always
+	// held on, and this field is what the tab bar's band and `alt+1`…`alt+7`
+	// read.
+	page page
+	// teach is the body of a place that has nothing of its own to draw yet —
+	// spend and search, in this wave — which spends the screen saying what the
+	// place is for instead (teachplace.go). Closed, it costs the frame nothing.
+	teach teachPlace
+	// places is the seam the tab bar's counts come through, and nil is the
+	// correct and expected state: the per-place look stamps that answer it are
+	// another lane's to build, and until they exist every tab is bare, which is
+	// the emptiness law rather than a gap (pages.go's [placeCounts]).
+	places placeCounts
+	// compose is the composer on the places that have no box of their own — the
+	// standing place, spend and search. It is app-level rather than per-place on
+	// purpose: a sentence half typed on one place is still there after `tab`,
+	// which is what makes a permanent bottom line a composer rather than seven
+	// boxes that each forget.
+	compose editor
+	// pageMsg is the one refusal a place that is not home has to say, drawn where
+	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
+	// door twice says the same thing once.
+	pageMsg string
+	// strip is the row's verbs, opened with `→`, and it is the ONE state on this
+	// surface in which a bare letter is a verb rather than a character
+	// (verbstrip.go). Closed — which is nearly always — every printable key
+	// belongs to the composer.
+	strip verbStrip
+	// mapShowing is `alt+.`: the whole key map drawn in the cells a person was
+	// already reading, until the next key (SCREEN 3b). A terminal cannot see a
+	// held modifier, so what the mockup drew as "hold alt" is a chord that lasts
+	// exactly one keystroke.
+	mapShowing bool
 	// caret says whether the terminal caret should be shown on this frame. It
 	// is set by [app.frame] on every render and read by [app.View]: home at rest
 	// is a dashboard somebody reads, not a thing they type at, so its empty box
@@ -4999,15 +5038,18 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "settings":
-		a.openSettings()
-		return nil
+		// EVERY DOOR ONTO A PLACE GOES THROUGH THE ROUTER (pages.go). It is one
+		// line's difference and it buys the whole of the tab bar being true: the
+		// band lands on the place that actually opened, whatever refused, and the
+		// verb strip and the map are put away on the way in.
+		return a.showPage(pageSettings)
 
 	case "home":
 		// The one command on this surface that is not about this conversation.
 		// It has no argument form: the screen IS the way of naming what you
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
-		return a.openHome()
+		return a.showPage(pageHome)
 
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
@@ -5043,8 +5085,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// — because a person who typed the word for the thing has said what they
 		// meant at least as plainly as a chord does.
 		if rest == "" {
-			a.openStanding()
-			return nil
+			return a.showPage(pageStanding)
 		}
 		return a.standingSay(rest)
 
@@ -5074,11 +5115,23 @@ func (a *app) slash(line string) tea.Cmd {
 		// Bare is the inspect-and-change panel; a query is the transcript form,
 		// for somebody who wants matching rows to remain scrollable. The plural
 		// alias keeps its older print posture even when it has no query.
-		if rest == "" && name != "memories" {
-			a.openMemory()
-		} else {
-			a.runMemories(rest)
+		// AND /memories NOW OPENS THE PLACE TOO. The plural used to keep an older
+		// print posture — a bare /memories wrote the whole list into the
+		// transcript — which was the right answer while memory was a twelve-row
+		// overlay and the wrong one the moment it became a place a person can
+		// walk into, filter and act on. With a query BOTH spellings still print,
+		// because a query is a question rather than a door.
+		//
+		// AND THE PRINT POSTURE IS STILL THE ANSWER WHERE THE PLACE CANNOT OPEN.
+		// The place needs a memory store on this surface; the printed list needs
+		// only an agent that keeps memories, and there are surfaces with the
+		// second and not the first. A person who typed the plural on one of those
+		// gets the list rather than a refusal, which is what the plural has
+		// always been for.
+		if rest == "" && (name != "memories" || a.memoryReady()) {
+			return a.showPage(pageMemory)
 		}
+		a.runMemories(rest)
 		return nil
 
 	case "remember":
@@ -5114,7 +5167,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// session whose "@" list has never been opened has never paid for it
 		// (taskmention.go's [app.loadTasks]). Both doors onto the page go through
 		// one function, because a bare /task opens it too (taskcommand.go).
-		return a.openTaskPage()
+		return a.showPage(pageTasks)
 
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER

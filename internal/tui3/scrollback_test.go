@@ -47,7 +47,7 @@ func scrollToTop(t *testing.T, a *app) {
 	for i := 0; i < 400; i++ {
 		before := len(a.visible(a.bodyWidth()))
 		beforeOffset := a.offsetFor(before, a.viewHeight())
-		a.scroll(-a.page())
+		a.scroll(-a.scrollPage())
 		after := len(a.visible(a.bodyWidth()))
 		if after == before && a.offsetFor(after, a.viewHeight()) == beforeOffset {
 			return

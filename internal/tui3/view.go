@@ -254,6 +254,23 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.rewindSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// AND THE THREE THE ROUTER ADDED, on exactly the same terms (pages.go). The
+	// standing list and the memory list were overlays drawn under the draft until
+	// they became places; a place that has no body of its own yet draws what it
+	// is FOR (teachplace.go). All three go through [placeFrame], so what differs
+	// between them is a body and nothing else.
+	if a.standPage.open {
+		lines, _, caretX, caretY := a.standPageFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	if a.memPanel.open {
+		lines, _, caretX, caretY := a.memoryFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	if a.teach.open {
+		lines, _, caretX, caretY := a.teachFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	// THE ORDER OF THOSE FOUR IS SETTINGS, THEN THE TASK PAGE, THEN HOME, THEN
 	// THE REWIND TIMELINE — oldest surface first, which is also the order
 	// settings.go tells the story in. No two of them can actually be open at once:
@@ -951,7 +968,12 @@ func (a *app) headHeight() int {
 	return 1 + len(a.roomKinRows(width))
 }
 
-func (a *app) page() int {
+// scrollPage is how many rows one pgup or pgdown moves: a screenful less a line
+// of overlap, so a person reading a long thing keeps one row of context across
+// the jump. It was called `page` until the router took that word for a PLACE
+// (pages.go); the two meanings had nothing to do with each other and one of them
+// had to move.
+func (a *app) scrollPage() int {
 	if p := a.viewHeight() - 1; p > 1 {
 		return p
 	}

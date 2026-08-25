@@ -212,9 +212,9 @@ func (a *app) copyKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "down", "j":
 		a.copyScroll(1)
 	case "pgup":
-		a.copyScroll(-a.page())
+		a.copyScroll(-a.scrollPage())
 	case "pgdown":
-		a.copyScroll(a.page())
+		a.copyScroll(a.scrollPage())
 	case "home":
 		a.copyScroll(-len(a.copy.rows))
 	case "end":

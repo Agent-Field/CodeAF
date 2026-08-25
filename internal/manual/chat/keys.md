@@ -978,8 +978,8 @@ seconds quits aforge.
 
 ## Go back to the last conversation — tab
 
-**`tab`, pressed with an empty message box, goes to the conversation you were in before
-this one.** Press it again and you are back. It is `cd -`.
+**`tab`, pressed in a conversation with an empty message box, goes to the conversation you
+were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
 terminal has been in before. A key that cannot act says so by not being advertised — and
@@ -989,12 +989,22 @@ It works while a turn is running in either conversation. Nothing is interrupted:
 you leave keeps streaming into its own transcript, and it is redrawn from its first token
 when you come back.
 
+**On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
+search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
+the same key doing the same kind of thing — going to the next thing of the kind you are
+looking at — and it is the only meaning `tab` has while a place is up. See **Places**.
+
 **Everything else that wants `tab` gets it first**, and that is the whole rule rather than a
 claim that `tab` is free. In order: a paste bracket makes it a literal tab; the task roster
-eats it while it holds the keyboard (`esc` gives the keyboard back first); the settings
-panel changes page with it; the memory panel changes scope; the rewind timeline and the
-inline rewind lift with it; and path completion takes it over `/image ` or `/export `. Only
-when none of those is claiming it, and the box is empty, is it the way back.
+eats it while it holds the keyboard (`esc` gives the keyboard back first); a box that has
+taken the whole keyboard on a place keeps it — the errand pane on home, the value being
+edited in settings; the rewind timeline and the inline rewind lift with it; and path
+completion takes it over `/image ` or `/export `. Then, on a place, it is the next place.
+Only in a conversation, with none of those claiming it and the box empty, is it the way back.
+
+Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
+points the way they go: **the settings panel** changed its own section with `tab`, and now
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and now uses `alt+s`.
 
 The welcome box is the one exception worth naming: **`tab` does not dismiss it**. Every
 other key does — that is the box's contract — but switching away is the opposite of
@@ -1005,9 +1015,13 @@ starting work here, so the box is still standing when you come back.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
+**There is also a number: `alt+1`.** Home is the first of seven places, and every one of
+them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold `alt` and press
+the digit. It arrives in every terminal aforge runs in, which is why the numbers are on
+`alt` rather than on `ctrl` (`ctrl+<digit>` is not something a terminal can send at all).
+
 There is no `ctrl+` chord for home: every `ctrl+<letter>` this surface could use is already
-taken, `ctrl+.` is the task page (`/history`), and the chords that were left — the `alt+`
-letters — arrive in some terminals and do nothing at all in others. `esc` was not available either: on an idle conversation it
+taken, and `ctrl+.` is the tasks place (`/history`). `esc` was not available either: on an idle conversation it
 already arms rewind and already sends a message you parked with `ctrl+q`, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
@@ -1036,10 +1050,10 @@ home opens with the cursor on **no row**, and **the first `down` lands at the to
 projects list** on a frame 110 columns or wider — the middle column, always, whatever the
 zones beside it hold; on a narrower frame, where the zones are strips over the list, it
 walks into `needs you` instead · `pgup`/`pgdown` jump four · `enter` acts on the row under
-the cursor · **`tab` moves to the
-next zone** on a frame 110 columns or wider, where home draws three columns — `needs you`,
-`moving`, the list, then round again, and from rest it enters `needs you`; the foot names
-it `tab next zone` · `backspace`,
+the cursor · **`←` from rest enters `needs you`** on a frame 110 columns or wider, where home
+draws three columns, and `←`/`→` cross the gutter between the zones and the list from any
+row; the foot names it `← what needs you` · **`tab` is the next place**, not the next zone
+· `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
@@ -1594,6 +1608,9 @@ answer:
 | `ctrl+v` | **Bound**, on four surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, the machine's own default on home at rest, or a standing item. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+<digit>` | Not bound, and it cannot be: terminals have no encoding for it and most drop it entirely. The place keys are `alt+1` … `alt+7` for exactly this reason |
+| `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
+| `shift+←` `shift+→` `shift+↑` `shift+↓` | **Reserved and not yet bound.** They are the time window of a place that has one, and no place has one yet, so today they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries

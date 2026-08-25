@@ -406,22 +406,32 @@ func TestNothingTurnsWhenNothingIsMoving(t *testing.T) {
 	}
 }
 
-// TAB CYCLES THE ZONES, in the order they are drawn and round again from the
-// last — and every zone it stops on is a row, never a label.
-func TestTabCyclesTheZonesAndComesBackRound(t *testing.T) {
+// ← FROM REST IS THE NAMED WAY INTO WHAT NEEDS YOU, and it lands on a row and
+// never on a label.
+//
+// This test used to be about `tab`, which cycled the zones in the order they are
+// drawn and came back round from the last. `tab` is the way to the NEXT PLACE
+// now, on every place (placekeys.go), so what it did here had to go somewhere —
+// and both halves of it were already on the arrows: `←` and `→` cross the gutter
+// ([homeView.crossColumns], which this file's own comment called "tab's circle,
+// unrolled onto the two keys that already point the way"), and the one thing
+// only the named key did — ENTERING the flank from rest, where there is no row
+// to cross from — is what `←` picks up here ([app.homeZoneEntry]).
+func TestTheNamedKeyEntersWhatNeedsYouFromRest(t *testing.T) {
 	a, _ := bridgeLab(t)
 	if len(zoneNames(a, attentionNeedsWord)) == 0 || len(zoneNames(a, attentionMovingWord)) == 0 {
-		t.Fatal("this machine does not have both zones, so tab has nothing to prove")
+		t.Fatal("this machine does not have both zones, so the key has nothing to prove")
 	}
-	want := []string{attentionNeedsWord, attentionMovingWord, "", attentionNeedsWord}
-	for i, zone := range want {
-		a.homeKey(key("tab"))
-		if got := a.home.cursorZone(); got != zone {
-			t.Fatalf("tab %d landed in %q, want %q:\n%s", i+1, got, zone, homeText(a))
-		}
-		if _, ok := a.home.focusedLine(); !ok {
-			t.Fatalf("tab %d landed on no row at all", i+1)
-		}
+	// Home opens on this window's own conversation ([homeView.openAt]), so the
+	// cursor is walked back up to rest first — which is the state the named entry
+	// is for.
+	a.home.cursor = homeRest
+	a.homeKey(key("left"))
+	if got := a.home.cursorZone(); got != attentionNeedsWord {
+		t.Fatalf("← from rest landed in %q, want %q:\n%s", got, attentionNeedsWord, homeText(a))
+	}
+	if _, ok := a.home.focusedLine(); !ok {
+		t.Fatal("← from rest landed on no row at all")
 	}
 	// AND ESC STILL MEANS WHAT IT MEANT: one layer at a time, and home closes.
 	a.homeKey(key("esc"))
@@ -436,11 +446,12 @@ func TestTabCyclesTheZonesAndComesBackRound(t *testing.T) {
 // so stepping across the gutter never loses the thing being read.
 func TestTheArrowsCrossBetweenTheZonesAndTheList(t *testing.T) {
 	a, _ := bridgeLab(t)
-	// tab lands in `needs you`, on the conversation stopped on a question.
-	a.homeKey(key("tab"))
+	// ← from rest lands in `needs you`, on the conversation stopped on a
+	// question ([app.homeZoneEntry]).
+	a.homeKey(key("left"))
 	line, ok := a.home.focusedLine()
 	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("tab did not reach the needs-you row:\n%s", homeText(a))
+		t.Fatalf("← did not reach the needs-you row:\n%s", homeText(a))
 	}
 	held := line.row.Transcript
 
@@ -483,10 +494,11 @@ func TestADigitAnswersTheQuestionFromTheZonesColumn(t *testing.T) {
 		sent++
 		return nil
 	}
-	a.homeKey(key("tab"))
+	a.home.cursor = homeRest
+	a.homeKey(key("left"))
 	line, ok := a.home.focusedLine()
 	if !ok || attentionWordOf(line) != attentionNeedsWord {
-		t.Fatalf("tab did not reach the needs-you row:\n%s", homeText(a))
+		t.Fatalf("← did not reach the needs-you row:\n%s", homeText(a))
 	}
 	a.homeKey(key("3"))
 	if sent != 1 {

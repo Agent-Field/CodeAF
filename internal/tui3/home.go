@@ -709,6 +709,10 @@ func (a *app) openHome() tea.Cmd {
 	// screen below is built, because standing down closes home too and a call the
 	// other way round would sweep away the view this line is about to make.
 	a.standDownFullscreen()
+	// AND THE ROUTER IS TOLD WHERE IT IS STANDING (pages.go). The field is a
+	// label on the `open` flag below and never a second source of truth for it,
+	// which is why it is written beside the flag rather than instead of it.
+	a.page = pageHome
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
@@ -1267,6 +1271,11 @@ func (h *homeView) buildWorld() {
 		// pressing enter means today what it meant yesterday — and this row is the
 		// one ↑ that asks the sentence instead of opening a conversation for it
 		// (homeexchange.go).
+		// AND THE PLACES THE WORDS MATCH SIT DIRECTLY OVER THAT CLUSTER, which
+		// in a drop-up is the top of the results: a place ranks first when the
+		// words match it, so it is the row nearest what somebody is reading
+		// upward from (homeplaces.go).
+		h.lines = append(h.lines, h.placeLines(query)...)
 		h.lines = append(h.lines, homeLine{kind: homeAskHere})
 		h.lines = append(h.lines, homeLine{kind: homeAction})
 		return
@@ -1884,6 +1893,10 @@ func (l homeLine) stop() bool {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
 		homeProject, homeMoreProjects, homeExchangeRow, homeArchiveFold:
 		return true
+	// the router's lane: an offered place is a door like every other door on this
+	// column (homeplaces.go).
+	case homePlace:
+		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
 		return true
@@ -2007,6 +2020,14 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
+	// when the row has verbs — and hands everything else straight back, so this
+	// handler keeps its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
 	// A BARE LETTER ALWAYS TYPES. The foot promises "type to search or start
 	// something new", and a promise like that has no asterisk: whatever the
 	// cursor or the pointer are resting on, an m is an m and "make me a site"
@@ -2029,24 +2050,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	switch msg.String() {
-	case "tab":
-		// bridge lane: AT THE COLUMNS TIER TAB IS THE KEY BETWEEN THE ZONES —
-		// `needs you`, `moving`, the places, and the errand in the pane when there
-		// is one to talk to (homebridge.go's [homeView.tab]). It is named on the
-		// line under the foot at that tier and at no other.
-		if a.homeTab() {
-			return nil
-		}
-		// THE OTHER HALF OF THE TOGGLE, and it is about the row under the
-		// cursor: tab takes the keyboard into the exchange the pane is drawing.
-		// With the cursor anywhere else there is one zone and nothing to toggle,
-		// so tab does what it has always done on this screen — nothing. It never
-		// was a character the box could take.
-		if ex := a.paneExchange(); ex != nil {
-			ex.focused = true
-		}
-		return nil
-
+	// `tab` IS GONE FROM THIS SWITCH, and it is the one key this wave took away
+	// from home. It cycled the zones at the columns tier and focused the pane's
+	// errand everywhere else; it is THE WAY TO THE NEXT PLACE now, on every
+	// place, because a key meaning "next section" here and "next place" on the
+	// other six is exactly the per-place grammar the router exists to end
+	// (placekeys.go). Both of the things it did are still reachable and neither
+	// lost a gesture: the zones are crossed into with `←` and back out with `→`
+	// ([homeView.crossColumns], which the file already described as "tab's
+	// circle, unrolled onto the two keys that already point the way"), and the
+	// errand in the pane is taken into with `→` from its own row.
 	case "esc":
 		// ONE LAYER AT A TIME, the settings panel's rule: a box with something
 		// in it is cleared first, and the second esc leaves. A person who typed
@@ -2212,6 +2225,18 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.build()
 		return nil
 	case "right":
+		// AN ERRAND IN THE PANE IS TAKEN INTO WITH `→`, AND IT USED TO BE `tab`.
+		// `tab` is the way to the next place now (pages.go), so the toggle moved
+		// onto the arrow that already points at the column the errand is drawn in
+		// — the same law [homeView.crossColumns] follows two clauses down, where →
+		// walks from the zones into the list. `esc` still hands the keyboard back,
+		// which is the half of the toggle that never moved.
+		if h.box.empty() {
+			if ex := a.paneExchange(); ex != nil && !ex.focused {
+				ex.focused = true
+				return nil
+			}
+		}
 		// THE ARROWS ARE THE FOLD'S, the same way they are in the task column:
 		// → opens what is closed, ← closes what is open. On the tail line that
 		// is the project; on a conversation inside an opened project, ← folds
@@ -2271,6 +2296,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 				a.setAllBandFolds(subject, false)
 				return nil
 			}
+		}
+		// AND FROM REST IT IS THE NAMED WAY INTO WHAT NEEDS YOU
+		// ([app.homeZoneEntry]), which is the one thing `tab` used to do here that
+		// no arrow did.
+		if a.homeZoneEntry() {
+			a.refreshHomeRepo(time.Now())
+			return nil
 		}
 		// ← CROSSES BACK ACROSS THE GUTTER: off a plain row in the list at the
 		// columns tier, the arrow lands in the zones' column, on the same
@@ -2495,6 +2527,15 @@ func (a *app) homeEnter() tea.Cmd {
 		// The row the cursor rests on while something is typed, which is what
 		// makes type-and-enter mean today what it meant yesterday.
 		return a.homeStart(strings.TrimSpace(h.box.String()))
+	case homePlace:
+		// ENTER GOES THERE, AND GOING TO A PLACE LEAVES YOU THERE (SCREEN 1g).
+		// The box is not cleared on the way — the sentence is the person's, and
+		// the place it lands on has a composer of its own to carry it into
+		// (homeplaces.go).
+		if id, ok := placeOf(line); ok {
+			return a.showPage(id)
+		}
+		return nil
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
@@ -3292,171 +3333,51 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	if a.home.phone {
 		return a.homePhoneFrame(width, height)
 	}
-	pal := a.pal
-	var lines []string
-	var hits []int
-	// panes is the pane's own hit map, one entry per screen row: which row of
-	// the right column was drawn there, and -1 everywhere else. Only the body
-	// ever fills it in.
-	var panes []int
-	// zones is the same map for the ZONES' column, which at [homeTierColumns]
-	// shares its screen rows with the list beside it: one row of the frame now
-	// answers for two lines, and the x is what tells them apart
-	// (homebridge.go's [app.homeZoneHit]).
-	var zones []int
-	add := func(text string, hit int) {
-		lines = append(lines, text)
-		hits = append(hits, hit)
-		panes = append(panes, -1)
-		zones = append(zones, -1)
-	}
-
-	// THE TOP LINE IS THE PULSE (pulse.go): this program on the left, and on the
-	// right the machine's own vital signs — what is on watch, what the day has
-	// cost, and the time. The way out is named on the hint line at the foot,
-	// where every other key on this screen is named ([app.homeHint]).
-	add(a.pulseLine(width, pal), -1)
-	add("", -1)
-	add(pal.dim(rule(width)), -1)
-	add("", -1)
-
-	// THE FOOT IS MEASURED BEFORE THE BODY IS GIVEN ITS ROOM. The draft block
-	// is built here, ahead of the list, because its height is part of the foot:
-	// a draft that wraps to a second or third row takes those rows FROM the
-	// list, never from the frame. The old budget was a constant that assumed
-	// one row, so the moment a long question wrapped, the frame ran past the
-	// window, the tail-clamp below slid every row up — and the caret, whose
-	// coordinates were computed before the slide, was left standing on the hint
-	// line under the box. [draftBlock] is pure over the editor and the width,
-	// so building it early costs nothing and the rows are appended verbatim at
-	// the foot.
-	var draftRows []string
-	var draftCX, draftCY int
-	draftEmpty := false
-	if ex := a.paneExchange(); ex != nil && ex.focused {
-		// THE FOOT BELONGS TO WHOEVER HOLDS THE KEYBOARD. A follow-up typed
-		// into home's own box would re-filter the list behind the pane, so the
-		// exchange brings its own line and the caret sits in it
-		// (homeexchange.go).
-		draftRows, draftCX, draftCY = draftBlock(&ex.box, pal, width-2, homeDraftRows, "", "")
-	} else if a.home.box.empty() {
-		draftEmpty = true
-	} else {
-		draftRows, draftCX, draftCY = draftBlock(&a.home.box, pal, width-2, homeDraftRows, "", "")
-	}
-	draftHeight := len(draftRows)
-	if draftHeight < 1 {
-		draftHeight = 1
-	}
-
-	// THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX. One blank row always sits
-	// between the last line of the body and the foot, and the region gives it up
-	// rather than the foot: a column of rows butted straight against a rule reads
-	// as one block with a lid on it, and the last conversation on the screen —
-	// which in a drop-up is the row somebody is about to press enter on — is the
-	// one that suffers for it.
-	// The foot: the rule, the box as tall as it actually stands, the answer
-	// strip, and the hint.
-	strip := a.answerStrip(width, time.Now())
-	foot := 2 + draftHeight + len(strip)
-	const pad = spacingRuleClearance
-	room := height - len(lines) - foot - pad
-	if room < 1 {
-		room = 1
-	}
-
-	left, right := homeColumns(width)
-	a.homeWindow(room)
-	body := a.homeBody(left, right, room, pal)
-	for _, drawn := range body {
-		add(drawn.text, drawn.hit)
-		panes[len(panes)-1] = drawn.pane
-		zones[len(zones)-1] = drawn.zone
-	}
-	add("", -1)
-
-	add(pal.dim(rule(width)), -1)
-	caretX, caretY := 0, 0
-	// THE FOOT WRAPS INSTEAD OF TRUNCATING. This box used to be one `fit` row:
-	// type past the frame's edge and the head of the sentence was kept, the tail
-	// was an ellipsis, and the caret pinned to the last column — a person asking
-	// a long question from home was typing into cells they could not see. It is
-	// drawn by the same [draftBlock] the main chat's box is now — built above,
-	// where its height set the foot's budget — wrapped over a few rows with the
-	// window following the caret, because there is exactly one law for what
-	// typing into this program looks like.
-	if draftEmpty {
-		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
-		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
-		// than left at the frame's origin blinking over the "home" heading. The
-		// moment a character lands the box stops being empty and the caret
-		// returns, in the box, on the next frame.
-		a.caret = false
-	} else {
-		for _, row := range draftRows {
-			add(" "+row, -1)
-		}
-		caretX, caretY = 1+draftCX, len(lines)-len(draftRows)+draftCY
-	}
-	if caretX > width-1 {
-		caretX = width - 1
-	}
-	for _, row := range strip {
-		add(row, -1)
-	}
-	if a.home.msg != "" {
-		// DIM, AND NOT THE FAULT COLOUR. Every refusal this screen has is a fact
-		// about a door — that conversation is open somewhere, that project is
-		// not this one — and none of them is anybody's mistake. It also replaces
-		// rather than stacks, being one field: pressing enter twice on a locked
-		// row says the same thing once, where a note in the conversation would
-		// have said it twice.
-		// AND THE PLACE IT SENDS YOU IS A DOOR. The refusal's whole job is to
-		// name where that conversation lives, so the sentence that names it opens
-		// it — the link is applied to the FITTED text, after the width was
-		// measured, and a directory that is not there stays plain (pathlink.go).
-		add(" "+pal.dim(a.pathLink(a.home.msgPath, fit(a.home.msg, width-2))), -1)
-	} else {
-		// The foot's hint is written in the hint grammar, so its keys wear the
-		// data hue and its verbs stay dim — the payload rule holding on home
-		// exactly as it holds on the chat's own legend (payload.go).
-		add(" "+paintHint(fit(a.homeHint(), width-2), pal, pal.dim), -1)
-	}
-
-	// A frame too short for the whole thing keeps its head and its last rows:
-	// the same clamp the settings panel takes, so a tiny terminal shows a
-	// truncated screen rather than a screen scrolled off the top.
-	if len(lines) > height {
-		removed := len(lines) - height
-		keep := lines[:1]
-		keepHits := hits[:1]
-		keepPanes := panes[:1]
-		keepZones := zones[:1]
-		lines = append(keep, lines[len(lines)-(height-1):]...)
-		hits = append(keepHits, hits[len(hits)-(height-1):]...)
-		panes = append(keepPanes, panes[len(panes)-(height-1):]...)
-		zones = append(keepZones, zones[len(zones)-(height-1):]...)
-		// THE CARET RIDES THE CLAMP. Every removed row above it shifts the box
-		// up by one, and coordinates computed before the cut would leave the
-		// terminal's cursor standing under the box, on the hint line — which is
-		// exactly where a wrapped draft once put it. A caret whose row was cut
-		// away entirely is hidden rather than guessed at.
-		switch {
-		case caretY >= 1+removed:
-			caretY -= removed
-		case caretY > 0:
-			a.caret = false
-		}
-	}
-	for len(lines) < height {
-		add("", -1)
-	}
-	// THE HIT MAP IS KEPT WHERE THE POINTER CAN FIND IT, and it is written by
-	// the draw for the reason [standingCard.choiceRow] is: the press and the
+	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
+	// The pulse, the tab bar, the rule, the composer with its scope chip, the
+	// strip and the hint are one frame drawn for every place — and every law this
+	// screen taught the surface travelled with them: the foot is measured before
+	// the body, the frame is exactly the whole terminal, the tail-clamp keeps row
+	// 0 and the last rows, and the caret rides the clamp. What is left here is
+	// home's own body and the three hit maps it answers the pointer with.
+	lines, hits, caretX, caretY := placeFrame(a, width, height, homeMark{-1, -1, -1},
+		func(width, room int) []placeRow[homeMark] {
+			left, right := homeColumns(width)
+			a.homeWindow(room)
+			body := a.homeBody(left, right, room, a.pal)
+			rows := make([]placeRow[homeMark], 0, len(body))
+			for _, drawn := range body {
+				rows = append(rows, placeRow[homeMark]{
+					text: drawn.text,
+					hit:  homeMark{line: drawn.hit, pane: drawn.pane, zone: drawn.zone},
+				})
+			}
+			return rows
+		})
+	// THE HIT MAPS ARE KEPT WHERE THE POINTER CAN FIND THEM, and they are written
+	// by the draw for the reason [standingCard.choiceRow] is: the press and the
 	// hover resolve against what this frame actually drew, so a stale map is a
-	// click answering for a row that has moved.
+	// click answering for a row that has moved. They are unpacked AFTER the frame
+	// so the clamp that cuts rows cuts all three of them the same way.
+	rows, panes, zones := make([]int, len(hits)), make([]int, len(hits)), make([]int, len(hits))
+	for i, mark := range hits {
+		rows[i], panes[i], zones[i] = mark.line, mark.pane, mark.zone
+	}
 	a.home.pane, a.home.zoneRows = panes, zones
-	return lines, hits, caretX, caretY
+	return lines, rows, caretX, caretY
+}
+
+// homeMark is what one row of home answers the pointer with: which line of the
+// LIST it drew, which row of the right pane landed on it, and which line of the
+// ZONES' column did — three maps that share a screen row at the columns tier,
+// told apart by the x the press arrived at (homebridge.go's [app.homeZoneHit]).
+//
+// It is named apart from [homeHit], which is a PROJECT that survived the box and
+// has nothing to do with the pointer.
+type homeMark struct {
+	line int
+	pane int
+	zone int
 }
 
 // homeDrawn is one screen line, the column line it belongs to, and — while an
@@ -3767,6 +3688,9 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// ONE ERRAND, ONE ROW, wearing what it is doing (homeexchange.go's
 		// [app.exchangeRowLine]).
 		return a.exchangeRowLine(line, at, width, pal)
+	case homePlace:
+		// A PLACE, OFFERED BECAUSE THE WORDS MATCH ITS NAME (homeplaces.go).
+		return a.homePlaceRow(line, at, width, pal)
 	case homeAskHere:
 		// The same shape as the action row under it and the same words quoted
 		// back, because they are the two readings of one sentence

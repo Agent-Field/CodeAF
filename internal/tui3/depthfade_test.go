@@ -130,15 +130,19 @@ func historyApp(t *testing.T, count int) *app {
 // fadeWord keeps the titles distinguishable without dragging in a word list.
 func fadeWord(i int) string { return strings.Repeat("i", i%7+1) + itoa(i) }
 
-// historyRows is the page's list region: the lines between the head and the foot.
+// historyRows is the place's list region: the lines between the head the router
+// draws ([placeHeadRows]) and the foot it draws under the body — a blank, a
+// rule, the place's own note, the composer and the hint.
 func historyRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
-	foot := 3
+	// The foot the router draws is five rows: a blank, a rule, the place's own
+	// note, the composer and the hint. A filter adds a second note row.
+	foot := 5
 	if a.taskSheetFiltering() {
 		foot++
 	}
-	return lines[3 : len(lines)-foot]
+	return lines[placeHeadRows : len(lines)-foot]
 }
 
 // THE TAIL OF THE RECORD FADES AND ITS HEAD DOES NOT. A page holding two hundred

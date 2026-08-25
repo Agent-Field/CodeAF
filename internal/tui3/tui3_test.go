@@ -276,6 +276,29 @@ func key(s string) tea.KeyPressMsg {
 	if chord, ok := strings.CutPrefix(s, "ctrl+"); ok && len([]rune(chord)) == 1 {
 		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModCtrl}
 	}
+	// AND EVERY alt CHORD, WITH NO TEXT ON IT. That is not a shortcut: a modified
+	// key carries no text through ultraviolet's decoder, which clears it on the
+	// esc-prefix path explicitly — and it is exactly what makes the router's
+	// alt+digit and alt+letter classes safe to add under a page whose rule is
+	// "every printable key is the filter" (placekeys.go). A helper that invented
+	// text here would hide the one property the design depends on.
+	if chord, ok := strings.CutPrefix(s, "alt+"); ok && len([]rune(chord)) == 1 {
+		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModAlt}
+	}
+	switch s {
+	case "alt+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "shift+left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
+	case "shift+right":
+		return tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
+	case "shift+up":
+		return tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModShift}
+	case "shift+down":
+		return tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift}
+	}
 	return tea.KeyPressMsg{}
 }
 
