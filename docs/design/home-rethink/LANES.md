@@ -5,6 +5,10 @@ Branch `home/rethink-v0` (worktree `~/af-home`), cut from `origin/chat-v3-task`;
 (the home we are replacing), `DATA-AUDIT.md` (what data exists), `PAGES.md` (the pages and the
 router). This file is the plan those four feed.
 
+> **OVERRULED 2026-08-25 evening:** the owner ordered "follow the exact design". Decision 3's
+> softened palette and decision 5's two-word rope are superseded by `FIDELITY.md`, which is now
+> the authority on every visual and behavioural detail. `ARCHITECTURE.md` governs structure.
+
 ## Decisions (settled 2026-08-25; the owner may overrule any of them)
 
 1. **Target surface is `internal/tui3`.** `github.md`'s tui2 paths are only where the palette and

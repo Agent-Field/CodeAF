@@ -963,6 +963,11 @@ func (a *app) standDownFullscreen() {
 	}
 	if a.teach.open {
 		a.teach.close()
+		// AND THE TWO PLACES BEHIND THAT FLAG GO WITH IT. Spend holds a parsed
+		// ledger and search holds a world scan and a query in flight; a place left
+		// `open` behind a closed frame would go on being re-read on the clock while
+		// somebody stands somewhere else entirely (spendpage.go, searchpage.go).
+		a.spend, a.search = spendPage{}, searchPage{}
 	}
 }
 

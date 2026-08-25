@@ -1002,11 +1002,18 @@ type app struct {
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
 	wait preflight
-	// memPanel is /memory's filterable view of the durable memory store.
+	// memPanel is the memory place: the snapshot it is drawing, the shelves that
+	// are unrolled, and the filter (memorypanel.go).
 	memPanel memoryPanel
-	// memory is the store the panel reads and changes. It is optional because
-	// memory-off sessions must have no capability behind the panel.
+	// memory is the store the place reads and changes. It is optional because
+	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
+	// searchStore is the conversation index the search place reads, and
+	// usageLedger is the file the spend place reads. Both are optional and both
+	// are absent rather than broken when they are: search says what it is for,
+	// and an empty ledger draws the spend place's own teaching.
+	searchStore SearchStore
+	usageLedger string
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1351,15 +1358,27 @@ type app struct {
 	// held on, and this field is what the tab bar's band and `alt+1`…`alt+7`
 	// read.
 	page page
-	// teach is the body of a place that has nothing of its own to draw yet —
-	// spend and search, in this wave — which spends the screen saying what the
-	// place is for instead (teachplace.go). Closed, it costs the frame nothing.
+	// teach says WHICH of spend and search is standing, and draws what that place
+	// is for on the days it has nothing of its own to draw (teachplace.go). It
+	// stayed the open flag for both after they grew bodies, because it is what
+	// [app.pageShowing] and the exclusion law already ask: one field, one answer
+	// to "is a place up", rather than three that can disagree.
 	teach teachPlace
-	// places is the seam the tab bar's counts come through, and nil is the
-	// correct and expected state: the per-place look stamps that answer it are
-	// another lane's to build, and until they exist every tab is bare, which is
-	// the emptiness law rather than a gap (pages.go's [placeCounts]).
+	// spend and search are those two places' own state: the ledger window and
+	// the lines it is over (spendpage.go), and the query in flight with the
+	// results it is answering for (searchpage.go). Closed, both cost the frame
+	// nothing and neither has read anything.
+	spend  spendPage
+	search searchPage
+	// places is the seam the tab bar's counts come through: the cached answer
+	// per place, recomputed on the clock ([app.refreshPlaceCounts]). It is nil
+	// until the first beat, and a nil seam draws no number anywhere, which is the
+	// emptiness law rather than a gap (pages.go's [placeCounts]).
 	places placeCounts
+	// placeGen is the generation of the clock the places that are NOT home run
+	// on (placecounts.go's [placeTickMsg]). Home has its own for the same reason
+	// and by the same device.
+	placeGen int
 	// compose is the composer on the places that have no box of their own — the
 	// standing place, spend and search. It is app-level rather than per-place on
 	// purpose: a sentence half typed on one place is still there after `tab`,
@@ -1674,6 +1693,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
 		memory:           opts.Memory,
+		searchStore:      opts.Search,
+		usageLedger:      opts.UsageLedger,
 		live:             -1,
 		sel:              -1,
 		think:            -1,
@@ -2663,7 +2684,29 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
 		// then ask for one more beat. It rides its own clock rather than the
 		// paint clock for the reason home.go's [homeEvery] gives (home.go).
+		//
+		// AND THE TAB BAR'S NUMBERS RIDE THE SAME BEAT. They are a reading of the
+		// per-place look stamps and of the records behind each place, so they
+		// belong on the clock that already reads the disk rather than on a second
+		// one (placecounts.go).
+		if a.home.open {
+			a.refreshPlaceCounts(a.now())
+		}
 		return a, a.homeBeat(msg.gen)
+
+	case placeTickMsg:
+		// AND THE PLACES THAT ARE NOT HOME HAVE THE SAME CLOCK, at the same
+		// period, re-armed only while one of them is standing (placecounts.go).
+		return a, a.placeBeat(msg.gen)
+
+	case searchTickMsg:
+		// The quiet interval after a keystroke, arriving. It becomes a store read
+		// only when the words have not moved on since (searchpage.go).
+		return a, a.searchTick(msg)
+
+	case searchDoneMsg:
+		a.searchDone(msg)
+		return a, nil
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)

@@ -36,6 +36,23 @@ func (t *teachPlace) close() { *t = teachPlace{} }
 // ladder's DIM tier — it is the surface talking about itself, which is the whole
 // of what dim means here.
 func (a *app) teachFrame(width, height int) ([]string, []int, int, int) {
+	// THE PLACES THAT HAVE GROWN BODIES DRAW THEM, AND FALL BACK HERE WHEN THEY
+	// HAVE NOTHING TO SAY. Search always has something — its own three sentences
+	// while the box is empty (searchplace.go) — and spend has a body exactly when
+	// the ledger has a priced line inside the window it is showing. A machine
+	// that has spent nothing therefore still meets the teaching, which is the one
+	// arrival this whole file was written for.
+	switch a.teach.at {
+	case pageSearch:
+		return a.searchFrame(width, height)
+	case pageSpend:
+		// It asks the TOTAL rather than drawing the body to see whether it is
+		// empty, because drawing it twice a frame to answer one question is the
+		// kind of waste a still page does not notice until it is on a clock.
+		if a.spend.reading.totals.USD > 0 {
+			return a.spendFrame(width, height)
+		}
+	}
 	lines, hits, caretX, caretY := placeFrame(a, width, height, -1,
 		func(width, room int) []placeRow[int] {
 			rows := make([]placeRow[int], 0, room)
@@ -76,6 +93,15 @@ const teachMeasure = 76
 // composer — so a person can arrive at spend, read what it is for, and send off
 // the task they came to ask about without leaving.
 func (a *app) teachKey(msg tea.KeyPressMsg) tea.Cmd {
+	// EACH PLACE'S OWN HANDLER IS READ FIRST, and each of them opens with the
+	// router exactly as this one does — so the grammar is one grammar however
+	// many of these places grow bodies.
+	switch a.teach.at {
+	case pageSpend:
+		return a.spendKey(msg)
+	case pageSearch:
+		return a.searchKey(msg)
+	}
 	if cmd, took := a.placeKey(msg); took {
 		return cmd
 	}

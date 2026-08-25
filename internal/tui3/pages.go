@@ -5,8 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PLACES ──────────────────────────────────────────────────────────────
@@ -104,11 +102,12 @@ func (p page) explain() string {
 		return "What this machine has cost, by the day, by the model, and by what it was for. " +
 			"Every model call writes a line, so the figures here are the bill and not an estimate. " +
 			"There is nothing to set here — the allowance is edited on the status line that shows it."
-	case pageSearch:
-		return "Everything that has been said on this machine, and everything that has been run. " +
-			"You type what you remember of it and the matches come back with the place they live in. " +
-			"Nothing is indexed behind your back: this reads the record that was already kept."
 	}
+	// SEARCH IS NOT HERE ANY MORE, because it has a body: its own three
+	// sentences while the box is empty, and results the moment anything is typed
+	// into it (searchplace.go's [searchTeach]). A place that HAS a body returns
+	// nothing here — a teaching paragraph over a list is a page talking over
+	// itself, which is this function's own rule applied to itself.
 	return ""
 }
 
@@ -566,8 +565,16 @@ func (a *app) showPage(id page) tea.Cmd {
 	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the answer is
 	// what a refusal below has to put back.
 	was, standing := a.page, a.pageShowing()
-	if standing && (was == pageTasks || was == pageStanding) {
-		session.NoteLookAt(a.placesRoot(), was.word(), a.now())
+	// LEAVING A PLACE IS THE LOOK. The stamp the next count is measured from is
+	// written HERE and where a place is closed by `esc`, and never on the way in:
+	// a stamp taken on arrival would declare everything seen the instant it
+	// appeared (placecounts.go's [app.leavePage] and session's look.go both hold
+	// the argument). It is written before the stand-down so that it is the place
+	// that was actually being looked at which gets stamped, and it is one call for
+	// EVERY counted place rather than a list of them here — a list would be a
+	// second answer to which places can wear a number.
+	if standing && was != id {
+		a.leavePage(was)
 	}
 	a.standDownFullscreen()
 	a.closeStrip()
@@ -627,14 +634,13 @@ func (a *app) openPage(id page) (tea.Cmd, bool) {
 		a.openStanding()
 		return nil, a.standPage.up
 	case pageMemory:
-		a.openMemory()
-		return nil, a.memPanel.open
+		return a.openMemory(), a.memPanel.open
 	case pageSpend:
 		a.teach.open, a.teach.at = true, pageSpend
-		return nil, true
+		return a.openSpend(), true
 	case pageSearch:
 		a.teach.open, a.teach.at = true, pageSearch
-		return nil, true
+		return a.openSearch(), true
 	case pageSettings:
 		a.openSettings()
 		return nil, a.sheet.open

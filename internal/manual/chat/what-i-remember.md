@@ -35,37 +35,66 @@ memory is off · turn it on under /settings
 ## How do I see what aforge remembers about me?
 
 Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
-place now**, one of seven, taking the whole screen with the tab bar above it and a composer
-at the foot, rather than a twelve-row list drawn over the conversation.
+place**, one of seven, taking the whole screen with the tab bar above it and a composer at
+the foot.
 
-The list starts with the most recently updated memories. Type to filter title, text and
-tags — **every letter, `u` included** — with the same prefix, substring and fuzzy
-subsequence ranking the model picker uses. A `*` marks a memory that has helped at least
-five times.
+The page is **shelves**, not a flat list. There are exactly three of them, because a memory's
+scope is a closed three: **you** (true everywhere), **this project**, and **this machine**.
+They are drawn biggest first, under a section line that says what the shelves are made of —
+`fact 12 · preference 8 · correction 3`. The biggest shelf opens itself; the rest stay rolled
+up with `▸` in front of them, and a fold at the bottom says exactly how many lines or shelves
+are not shown.
 
-**`alt+s` walks the shelves**: all, user, project, env, then all again. That was `tab` until
-the places arrived; `tab` is the way to the next place now, and a view of a place belongs to
-the `alt+<letter>` class.
+The top line is the count: `41 held · 3 shelves · 2 let go`, with `type to filter` out at the
+right. A half that is zero is left out entirely.
 
-Enter expands the selected memory to show its full text, tags, how many times it has helped
-(`used · 7`), age, and where it came from. Esc returns to the list; esc from the list leaves
-the place. `/memory <query>` and `/memories <query>` print matching lines into the
-conversation instead of opening anything — a query is a question rather than a door.
+Each line says what it is and **how it has done**, in plain words rather than a percentage:
+
+```
+· tests live beside the file they test      lesson    helped 19 · bore on 3      2w ago
+· tui2 is the live tree; tui is dead code   quirk     new, learned 3h ago        3h
+· the rail owns the cursor                  let go                               6d ago
+```
+
+`helped` is how many times a line actually changed an answer; `bore on` is how many times it
+was put in front of a model and had nothing to do with the reply. A line that was **let go**
+stays on the shelf, dimmed, rather than vanishing.
+
+**Typing filters what is already on the page.** The store is read once, when you walk in, and
+again on the same three-second beat every place runs on — never on a keystroke. Every letter
+narrows the shelves and lines already in memory, matched against title, text, kind, status
+and tags, with the same prefix, substring and fuzzy ranking the model picker uses — **every
+letter, `u` included**. A filter that matches nothing says so in one line and draws nothing
+else.
+
+**`enter` on a shelf opens it, and `enter` again rolls it up.** `enter` on a line opens that
+line's own card. **`alt+s` walks the shelves** — the next one open, the others rolled up, and
+one more press leaves them all closed. That key was `tab` until the places arrived; `tab` is
+the way to the next place now, and a view of a place belongs to the `alt+<letter>` class.
+
+`esc` clears the filter if there is one in it, and leaves the place on the second press.
+
+`/memory <query>` and `/memories <query>` print matching lines into the conversation instead
+of opening anything — a query is a question rather than a door.
 
 ## How do I edit a memory?
 
-Two ways. Press **`→`** on the row and the verb strip offers `e fix the wording`; or press
-enter to expand the row and then enter again (or `e`) to edit. The edit line is preloaded
-with the complete memory text. Enter saves it; esc cancels without changing anything. The
-title and tags stay as they were.
+Two ways. Press **`→`** on the line and the verb strip offers `e fix the wording`; or press
+enter to open the line's card and then enter again. The edit line is preloaded with the
+complete memory text. Enter saves it; esc cancels without changing anything. The title, the
+tags and the shelf stay as they were, and the corrected wording is on the page immediately.
 
 While the strip is drawn its letters are the verbs and the filter box is asleep; `esc` or
 `←` closes it and every letter is a character again.
 
+The strip is offered **only on a line**. A shelf heading, the section line and the teaching
+prose at the top of a nearly-empty page all have nothing to fix and nothing to forget, so
+`→` on any of them opens nothing.
+
 ## How do I forget a memory and undo forgetting one?
 
-In the memory place, **delete** (or ctrl+d) forgets the selected row immediately, and so
-does `f` on the row's `→` strip. The line above the composer says
+In the memory place, **delete** (or ctrl+d) forgets the line under the cursor immediately,
+and so does `f` on its `→` strip. The line above the composer says
 `forgot '<title>' · → put it back`; press **`→` then `u`** to restore it. Undo is one-deep:
 only the most recent forget in this visit can be restored.
 
@@ -76,10 +105,19 @@ while the strip is drawn, and it is offered only while there is something to put
 
 ## Where did a memory come from, and who says so?
 
-Expand it with enter. The provenance line reads `learned <age> in '<session
-title>'` when the source conversation is known. Older rows without provenance
-say `learned <age> ago`. Provenance answers “says who?”: memory is inspectable,
-forgetting is one key, and an accidental forget has one undo.
+Press enter on the line. Its card carries the full text, what kind of thing it is, which
+shelf it is on, its tags, how it has done, and where it was learned — `learned 3h ago in
+'Editor setup'` when the source conversation is known. A line whose origin nobody recorded
+carries no origin at all rather than a made-up one. Esc returns to the shelves.
+
+**That is one lookup, for one line, on the keypress that asked for it.** The page itself
+never asks: the older twelve-row panel read every memory and then asked for one line's
+provenance *per memory* — up to five hundred and one round trips before a frame could be
+drawn — which is exactly what a place on a three-second clock cannot afford. The whole page
+is now two statements, and the origin of one line is fetched when you open it.
+
+Provenance answers "says who?": memory is inspectable, forgetting is one key, and an
+accidental forget has one undo.
 
 ## How does it decide what to put in front of the model?
 
@@ -169,7 +207,7 @@ same cheap pass that reads the exchange afterwards is also shown those lines and
 asked which of them **bore on the answer** — as in, would the reply have been
 different without it. It costs no extra call and about ten words of answer.
 
-That number is what `used · 7` counts in `/memory`, and it is one of the three
+That number is what `helped 7` counts in `/memory`, and it is one of the three
 things the shortlist is ranked by. It counts **help, not retrieval**: a line put
 in front of a model that then had nothing to do with the reply is counted
 *against* itself, so something that keeps sounding relevant and never once
@@ -297,7 +335,7 @@ retire it. Only a plain `fact` and a `project_state` can be retired that way,
 because those are the two that go stale on their own.
 
 If you do want something gone, that is yours to do: `/forget <query>`, or delete
-(or ctrl+d) on a row in `/memory`, with one undo behind it.
+(or ctrl+d) on a line in `/memory`, with one undo behind it.
 
 ## Can you remember this for me?
 
