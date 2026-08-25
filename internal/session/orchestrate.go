@@ -1541,10 +1541,15 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	// went away instead. A row left saying "running" is a project's record of a
 	// present that ended hours ago.
 	a.recordTaskIndexEntry(TaskIndexEntry{
-		ID:            strconv.FormatUint(family.root, 10),
-		Name:          TaskSlug(family.goal),
-		Label:         taskLabel(family.goal),
-		Title:         family.goal,
+		ID:    strconv.FormatUint(family.root, 10),
+		Name:  TaskSlug(family.goal),
+		Label: taskLabel(family.goal),
+		Title: family.goal,
+		// A RUN THAT PLANS ITSELF SAYS SO ON ITS ROW, from the first breath and
+		// on the row that closes it: this is the one seam that knows, because an
+		// adaptive run has no TaskNode to carry a kind for it
+		// (session's TaskKindAdaptive).
+		Kind:          TaskKindAdaptive,
 		Status:        string(TaskRunning),
 		EndedAt:       family.started,
 		SessionID:     session,
@@ -1732,11 +1737,14 @@ func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, s
 		title = orchestrate.NodeTitle(node.Node)
 	}
 	f.agent.recordTaskIndexEntry(TaskIndexEntry{
-		ID:            strconv.FormatUint(id, 10),
-		Parent:        strconv.FormatUint(f.root, 10),
-		Name:          TaskSlug(title),
-		Label:         taskLabel(title),
-		Title:         title,
+		ID:     strconv.FormatUint(id, 10),
+		Parent: strconv.FormatUint(f.root, 10),
+		Name:   TaskSlug(title),
+		Label:  taskLabel(title),
+		Title:  title,
+		// A worker of an adaptive run is part of one, and its row says so for
+		// the same reason its root's does (session's TaskKindAdaptive).
+		Kind:          TaskKindAdaptive,
 		Status:        string(state),
 		Outcome:       taskOutcome(orchestrateNodeReport(node)),
 		Cost:          node.Cost,
@@ -1923,6 +1931,7 @@ func (f *orchestrateFamily) recordRoot(notice TaskNotice, snap orchestrate.Snaps
 		Name:          TaskSlug(f.goal),
 		Label:         taskLabel(f.goal),
 		Title:         f.goal,
+		Kind:          TaskKindAdaptive,
 		Status:        string(notice.State),
 		Outcome:       taskOutcome(notice.Report),
 		Cost:          snap.Fuel.Spent,
