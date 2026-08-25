@@ -269,8 +269,9 @@ func (a *app) homeLedgerEnter(line homeLine) tea.Cmd {
 	return a.showPage(id)
 }
 
-// homeSwitchFoldEnter is enter on the fold at the foot: show every row, or fold
-// them back away.
+// foldSwitch is enter or an arrow on the fold at the foot: show every row, or
+// fold them back away. It is a DOOR and not a setting, which is why it dies with
+// the screen where `alt+g` and `alt+q` do not.
 func (h *homeView) foldSwitch(open bool) {
 	h.moreOpen = open
 	h.build()

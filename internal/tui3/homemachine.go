@@ -188,11 +188,17 @@ func (a *app) machineHands() int {
 			hands++
 		}
 	}
+	// ONE ITEM IS ONE HAND HOWEVER MANY PROJECTS HOLD IT. A machine-wide watch is
+	// in every project's band ([app.readStandBands] keys them by directory), and a
+	// walk that did not remember what it had counted would multiply it.
+	counted := make(map[string]bool)
 	for _, views := range a.home.items {
 		for _, view := range views {
-			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
-				hands++
+			if !view.Running || strings.TrimSpace(view.Item.NeedsPerson) != "" || counted[view.Item.ID] {
+				continue
 			}
+			counted[view.Item.ID] = true
+			hands++
 		}
 	}
 	for _, ex := range a.home.exchanges {
