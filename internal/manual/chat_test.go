@@ -59,6 +59,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop it and tell it something different at the same time", "keys"},
 		{"what does shift+enter do", "keys"},
 		{"shift enter does nothing for me", "keys"},
+		// THE SCOPED THINKING CHORD, asked the five ways people meet it: reaching
+		// for paste and finding it bound, wanting one task to think harder,
+		// wanting the machine's own default moved, wanting one reminder raised
+		// off the standing floor, and asking what the word on a card means.
+		{"what does ctrl+v do", "keys"},
+		{"is ctrl+v paste", "keys"},
+		{"make this one task think harder", "keys"},
+		{"change how hard everything on this machine thinks", "keys"},
+		{"why does the card say thinking high", "keys"},
+		{"how hard does a reminder think", "home"},
+		{"make one reminder think harder", "home"},
 		{"why did it ask permission before running that", "permissions"},
 		{"what does always mean when I press a", "permissions"},
 		{"how do I connect my google account", "accounts"},

@@ -2844,7 +2844,7 @@ func (a *app) hintWord() string {
 		// every overlay and both questions, because that is exactly where
 		// [app.railKey]'s guard stands down; and above the running turn, because
 		// while it is held esc gives the keyboard back rather than interrupting.
-		return railHoldHint
+		return a.railHoldHintWord()
 	case a.roomOpen():
 		// A ROOM IS READ HERE because that is where [app.roomKey] stands in the
 		// program loop (app.go): under the stop card and the roster, over

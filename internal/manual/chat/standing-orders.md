@@ -387,6 +387,11 @@ says `made from home — no conversation to open`; on an order this very convers
 asked for it says `you are already in it`. Clicking a row moves the cursor and never
 acts — every verb here is a key.
 
+**This page does not change how hard an order thinks.** `ctrl+v` does nothing here. The
+rung lives on the item's own card on **home** — put the cursor on its `◦` row and press
+`ctrl+v` there — because that card is where the rung is drawn and a key belongs beside the
+fact it moves. The home page has the whole of it.
+
 ## Not in this project — the "not here" exception
 
 *Not in this project.* An order that reaches wide is usually right and occasionally wrong
@@ -483,6 +488,10 @@ Honest limits, so you do not rely on something that is not built:
   delivered in.
 - **A firing cannot set up another order.** Nothing that runs on its own may arm
   something else that runs on its own.
+- **A firing thinks at `low` unless you raised that one thing.** Standing work is held to
+  the cheapest rung however deep this machine is dialled, because it is unattended and it
+  repeats. `ctrl+v` on the item's card on home raises the one that needs it, and nothing
+  else does — there is no way to raise them all at once, on purpose.
 - **A firing gets no sizing call.** Work you type is read once for width before it starts;
   an order that fires is not, and is armed to split itself only off the items its own
   brief already names. Asking a model every night whether a sentence that has not changed

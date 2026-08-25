@@ -558,7 +558,7 @@ side is **the machine's own card** — the morning glance. `↓` walks
 straight back into the first row. The card stays put while you read it — the three-second
 rescan leaves the cursor off the list.
 
-It is four bands, each drawn only if it has anything to say:
+It is five bands and a legend, each drawn only if it has anything to say:
 
 ```
 keeping an eye on
@@ -572,8 +572,12 @@ since you left
 ◆ 2 tasks landed             aforge
 ◆ the cert expires in 9 days hax-sdk
 
+thinking high
+
 today
   3 chats · 5 tasks · $1.10 of $5.00
+
+ctrl+v think harder
 ```
 
 - **`keeping an eye on`** — every active standing order on **every** project, soonest
@@ -594,6 +598,12 @@ today
   the same words. **Every row is a door**: click one and the conversation it names opens,
   exactly as clicking that conversation on the left would. Past four rows, `▸ …N more
   things`.
+- **`thinking`** — how hard this machine thinks about anything nobody has said anything
+  more specific about: `thinking high`. It is the same `thinking` row that is in
+  `/settings` among the model rows, said where you are already looking, and **`ctrl+v`
+  moves it** one rung each press — `low`, `medium`, `high`, `xhigh`, `max`, and back round
+  to `low`. A machine whose row says `off` draws no band, because nothing extra is being
+  asked for. The card's last line, `ctrl+v think harder`, is the only key this card takes.
 - **`today`** — the local day: `3 chats · 5 tasks · $1.10 of $5.00`. Chats are the
   conversations you spoke in today, tasks the work that ran today, and the money is what
   that work cost. `of $5.00` is your **daily allowance** — the same budget everything
@@ -1566,7 +1576,8 @@ would be rows drawn as though it had.
 ## How do I pause a reminder from home — ctrl+e and ctrl+x on an item row
 
 Put the cursor on the row (or point at it) and press **`ctrl+e` to pause it** or
-**`ctrl+x` to stop it for good**. Home says `paused · <your words>` or
+**`ctrl+x` to stop it for good**. A third chord, **`ctrl+v`**, raises how hard
+that item thinks — see "How hard does a reminder think" below. Home says `paused · <your words>` or
 `stopped · <your words>` at the foot and redraws the row from the store, so what
 you see is what is on disk rather than what the keypress hoped for.
 
@@ -1598,7 +1609,9 @@ the other kind of thing, read downward:
 5. a dim line of **how much, ever**: `4 runs · spent $0.08`;
 6. a dim line of **how much lately**: `ran 3 times this week · $0.04`, counted
    over the last seven days of the standing ledger;
-7. the keys, dim: `enter open where it was asked · ctrl+e pause · ctrl+x stop`.
+7. **how hard it thinks**, if you have said: `thinking high`;
+8. the keys, dim: `enter open where it was asked · ctrl+e pause · ctrl+x stop ·
+   ctrl+v think harder`.
 
 Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
 place and a cadence, and nothing else — no `0 runs`, no `$0.00`, no weekly line.
@@ -1607,6 +1620,27 @@ A window with no ambient side wired to it draws no weekly line at all.
 The project card's `keeping an eye` band ends with the same count over all of
 that project's items: `4 runs this week · $0.06`, below the fold line, because it
 counts the items the fold hides too.
+
+## How hard does a reminder think — ctrl+v on a standing item's card
+
+**Standing things think at `low`, however deep you have dialled this machine.**
+A reminder, a watch and the sentinel check behind it are unattended and repeat
+forever, so they are held to the cheapest rung on purpose — an install set to
+`max` does not turn every check on the machine into a deep pass.
+
+**`ctrl+v` on an item's card is how you raise the one that deserves it.** Put the
+cursor on the `◦` row (or open its card) and press it: the rung climbs one step
+each press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and
+home says `thinking high · <your words>` at the foot. The card then carries a
+dim `thinking high` clause, read straight back from the item's own document.
+
+An item nobody has dialled says **nothing** at all on that line, which is not the
+same as `low`: it means nobody chose, and the standing floor is what applies. The
+rung is kept with the item, so it survives closing aforge, and it is what that
+item's firings **and** its checks ask for from then on.
+
+A window that cannot write to the store says `this window cannot change it`, and
+its card does not offer the key at all.
 
 ## Keeping an eye on — the status line, and /status
 
