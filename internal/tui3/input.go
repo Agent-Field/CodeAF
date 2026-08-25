@@ -589,6 +589,26 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// through to them would open a line where somebody meant to send.
 		return a.enterStanding()
 
+	case steerKeySuper, steerKeyMeta:
+		// AND ALSO THIS, WITHOUT STOPPING ANYTHING (steer.go). It is read directly
+		// beside the mark above and the stop below because all three are the same
+		// hand shape — a modifier on the send — and each is a narrower claim than
+		// plain enter: keep this true, put this into the answer, stop the answer
+		// and say this instead.
+		//
+		// TWO NAMES, ONE KEYSTROKE. cmd+enter arrives as `super+enter` off a
+		// kitty-protocol terminal and as `meta+enter` off one speaking
+		// modifyOtherKeys, because the two roads through ultraviolet read the ninth
+		// modifier against different tables — the split that left cmd+←/→ dead on
+		// every terminal there is until both of their names were bound (see the
+		// caret jumps below, and steer.go).
+		//
+		// It is above the newline pair below for standmark.go's reason exactly:
+		// those two are the other spellings of a different gesture, and a chord
+		// that fell through to them would open a line where somebody meant to
+		// correct an answer.
+		return a.steerIn()
+
 	case bargeKey:
 		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside
 		// the two chords above because it is the third reading of one hand shape —
@@ -877,6 +897,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "right":
 		// → is the other half of it: forward, into the work (room.go).
 		if a.input.empty() {
+			// AND A MESSAGE WAITING FOR THIS ANSWER GOES INTO IT FIRST (steer.go).
+			// It outranks the step into the work for the reason this whole switch is
+			// ordered the way it is: the strip directly above the box is printing
+			// `→ steers it in` while this is true, and a key a line on screen has
+			// just named has to be the key that acts. The state is narrow — a turn
+			// running, a message parked, an empty box — and outside it → is the
+			// navigation it has always been.
+			if cmd, took := a.steerWaiting(); took {
+				return cmd
+			}
 			return a.navForward()
 		}
 		a.input.right()

@@ -770,6 +770,11 @@ func helpText(file string) string {
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: waits above the box · esc stops and sends · ↑ edits",
+		// AND THE THIRD THING TO DO WITH A SENTENCE TYPED OVER A RUNNING ANSWER
+		// (steer.go). It sits directly under the line about the other two because
+		// the three are one decision — wait, go in, or stop the answer — and the
+		// one that stops nothing is the one nobody guesses.
+		steerKey + "      into the running answer · nothing stopped · → sends a waiting one",
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",

@@ -897,6 +897,14 @@ type app struct {
 	// columns only once the frame has chosen a width (jumpchip.go's
 	// [app.jumpChip] and [app.jumpPress]).
 	jumpSpan hudSpan
+	// steerDoor is where the waiting message's `→ steers it in` clause was last
+	// drawn, in columns, or the zero span on a frame that did not draw it — the
+	// same bargain jumpSpan makes, for the same reason: the line that lays the
+	// clause out is the only thing that knows where it landed, because what sits
+	// in front of it on that line depends on how many messages are waiting and how
+	// wide the frame is (park.go's [app.parkedRows], steer.go's
+	// [app.steerDoorPress]).
+	steerDoor hudSpan
 
 	// hud is the cached answer to the two questions the telemetry asks of the
 	// whole conversation — how much background work is alive, and what the
@@ -2449,6 +2457,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.parkPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE DIM LINE UNDER THAT BLOCK CARRIES ONE DOOR OF ITS OWN:
+			// `→ steers it in` puts the waiting message into the answer that is
+			// still running (steer.go). It is read directly after the block for the
+			// reason it is a separate call at all — the block answers by row and
+			// this answers by row AND column, because the rest of that line is
+			// statements rather than gestures.
+			if cmd, took := a.steerDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE GREETING'S ROWS ACT ON PRESS, with the rest of the chrome
 			// they are built with. They are lifted into the body's region and
 			// centred in its slack (view.go's [welcomeLift]), which can put them
@@ -2552,6 +2569,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case submittedMsg:
 		return a, a.adopt(msg)
+
+	case steeredMsg:
+		// What the session did with a sentence sent INTO the running turn
+		// (steer.go). It is beside the submit above because it is the same shape of
+		// answer to the same shape of question — a door that took the agent's lock
+		// off the Update loop and is reporting back.
+		return a, a.tookSteer(msg)
 
 	case streamEventMsg:
 		if msg.gen != a.gen {

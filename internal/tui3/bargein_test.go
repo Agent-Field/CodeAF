@@ -221,9 +221,20 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	if !strings.Contains(got, "enter") || !strings.Contains(got, bargeKey) {
 		t.Fatalf("hint = %q, want both meanings named", got)
 	}
-	if got != bargeHint {
-		t.Fatalf("hint = %q, want %q", got, bargeHint)
+	// AND THE LINE IS THE WHOLE OF THAT STATE'S KEYS, which since the splice
+	// landed is three of them rather than two: the chord that stops shares the
+	// slot with the chord that steers, on a session and a terminal that have both
+	// (steer.go's [app.typingHint]). What this asserts is that the slot is
+	// composed rather than authored — a second copy of the sentence here would be
+	// the test agreeing with itself.
+	if got != a.typingHint() {
+		t.Fatalf("hint = %q, want %q", got, a.typingHint())
 	}
+	if !strings.HasSuffix(got, bargeKey+" "+bargeSendWord) {
+		t.Fatalf("hint = %q, want it to end with the chord this file is about", got)
+	}
+	// A session with no splice behind it reads exactly as this line always did,
+	// and steer_test.go's own case asserts that.
 
 	// And at rest there is nothing to stop, so the line is gone again.
 	drive(t, a, key(bargeKey))
