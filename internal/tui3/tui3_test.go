@@ -248,6 +248,13 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "pgup":
+		return tea.KeyPressMsg{Code: tea.KeyPgUp}
+	case "pgdown":
+		// THE TWO PAGE KEYS, spelled out for this switch's own stated reason: they
+		// are not single runes, so without a case here they fell through to the
+		// zero key and every test that "pressed pgdown" pressed nothing at all.
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
 	case standMarkKey:
 		// The marked send (standmark.go). It is spelled out here because the
 		// fall-through below only builds single-rune chords, and a chord that

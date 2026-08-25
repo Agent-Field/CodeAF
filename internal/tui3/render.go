@@ -2821,11 +2821,13 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
-	case a.standPage.open:
+	case a.standPage.up:
 		// The standing page names its verbs here because they are the half of it
-		// nobody can guess: three of the four are bare letters, and one of them
-		// stops a thing for good (standingpage.go).
-		return standPageVerbs
+		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
+		// actually has: one of them stops a thing for good, and an order in
+		// another project cannot be excepted from a place it never reached
+		// ([standPage.hint]).
+		return a.standPage.hint(a)
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and

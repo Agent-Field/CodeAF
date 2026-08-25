@@ -955,8 +955,8 @@ func (a *app) standDownFullscreen() {
 	// to be overlays and were therefore not in this law at all; they take the
 	// frame now, so they join it, and a place that draws only its own explanation
 	// joins it for the same reason (pages.go).
-	if a.standPage.open {
-		a.standPage.close()
+	if a.standPage.up {
+		a.standPage.close(a)
 	}
 	if a.memPanel.open {
 		a.memPanel.close()

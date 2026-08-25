@@ -1,0 +1,701 @@
+package tui3
+
+// THE STANDING PLACE: /standing, AND WHAT IT KEEPS BETWEEN FRAMES.
+//
+// The ratification card (standing.go) is where a person says yes to one order.
+// It is a good place to agree to something and a terrible place to remember
+// having agreed to it: the card scrolls away, and what it left behind goes on
+// working for a year in three different sizes — this conversation's, this
+// project's, and every project's. This place is the other half of that sentence
+// — WHAT IS ALREADY TRUE, and let me take one back — which is a LIST, the shape
+// this surface already knows how to draw.
+//
+// This file is the PLACE and only the place: one thin state struct, and the
+// methods the frame asks of it. What is on the screen is standingplace.go's, a
+// pure reading of data assembled here; what a person reads is spelled in
+// placeprose.go; which of the three reaches each voice uses is standingpage.go's.
+//
+// TWO SEAMS ANSWER ONE PAGE, and both are asked once, on the open:
+//
+//   - the CONVERSATION's engine ([standingHereAgent]) knows what stands over
+//     the chat a person is sitting in, and can pause one, stop one, or except
+//     this place from one;
+//   - the MACHINE's store ([StandingSeam], through home's bands) knows every
+//     order on the computer, including the ones in workspaces nobody has ever
+//     held a conversation in ([app.readBareBands]).
+//
+// A page that opened on one and gated on the other refused to open over a
+// machine plainly holding orders, which is the fault this file was rebuilt to
+// end.
+
+import (
+	"sort"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+)
+
+// standRowsMax is how far `pgup` and `pgdown` step on a page that has not been
+// painted yet, and that is now its whole job.
+//
+// IT WAS THE PAGE'S CEILING and it is not one any more: the list was an overlay
+// under the draft, twelve rows at most, and a place takes the whole terminal —
+// so the window a cursor is followed within is what the last paint had room for
+// ([standPage.window]) and never a constant. What a constant is still honest for
+// is the one moment there is no paint to ask: a page key pressed before the
+// first frame, which cannot happen on the surface and can in a test. Twelve is
+// the number the overlay used, kept so that gesture moves by the same amount it
+// always did.
+const standRowsMax = 12
+
+// standPage is the standing place's whole state, and the ONLY state it keeps.
+// The zero value is closed.
+type standPage struct {
+	// up is whether this place is showing. It is the field the registry retires
+	// when `a.page` becomes the one answer to which place is up; until then it
+	// is what every reader of "is the standing page open" asks.
+	up bool
+	// rows is the last reading, held between frames because NOTHING READS THE
+	// DISK ON A DRAW: the walk of every project's documents happens on the open
+	// and after a write, and a keystroke rebuilds lines from this slice.
+	rows []standRow
+	// cursor is the row a verb acts on, and -1 when there is no such row. It
+	// only ever rests on a [standRowItem]: a heading and a "not here" line are
+	// things to read.
+	cursor int
+	top    int
+	// shown is how many rows the LAST PAINT had room for, and it is the window
+	// the cursor is followed within.
+	//
+	// IT IS WRITTEN BY THE PAINT because this is a place: the body is however
+	// many rows the frame had left after the pulse, the tab bar, the composer
+	// and the hint, which is a fact about this terminal at this instant. A page
+	// that scrolled by a constant would step a forty-row screen twelve rows at a
+	// time and leave the rest of the frame blank under the cursor.
+	shown int
+	// owner maps each screen line back to the row that drew it, written at
+	// layout for the pointer — the same bargain the other panels make
+	// (permissions.go, connectpanel.go). A heading answers to no row.
+	owner []int
+}
+
+// ── the interface the frame asks of a place ─────────────────────────────────
+
+// open primes the place's caches and lays it out, once, on entry.
+//
+// A PLACE WITH NOTHING TO SHOW DOES NOT OPEN, AND NOTHING IS LOWERED ON THE WAY
+// TO FINDING THAT OUT. The reading is taken first and the frame is only taken
+// once there is something to put in it, because a command that closed the screen
+// a person was on in order to tell them it had nothing would cost them their
+// place to say nothing at all. The refusal is a sentence they read
+// ([standNothingWord]) and never a silent return.
+func (p *standPage) open(a *app) tea.Cmd {
+	a.readStandingElsewhere()
+	rows := a.standingPageRows()
+	if len(rows) == 0 {
+		a.note(standNothingWord)
+		return nil
+	}
+	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
+	// stood under the draft and could sit beneath any page; as a place it owns
+	// the whole screen, so a page left open under it would take keys nobody can
+	// see ([app.standDownFullscreen] holds the law and the reason).
+	a.standDownFullscreen()
+	*p = standPage{up: true, rows: rows}
+	p.cursor = p.settle(0)
+	a.page = pageStanding
+	a.closeLists()
+	a.dismissWelcome()
+	return nil
+}
+
+// close writes the look stamp and forgets the reading. The stamp is what the
+// tab bar's count is measured against, so it is written HERE and nowhere else.
+func (p *standPage) close(a *app) {
+	if p.up {
+		session.NoteLookAt(a.placesRoot(), pageStanding.word(), a.now())
+	}
+	*p = standPage{}
+}
+
+// body is the rows and the hit map, painted into exactly the room the frame
+// reserved. It reads the cached rows and never a seam — that is the whole of
+// "nothing reads the disk on a draw".
+func (p *standPage) body(a *app, width, room int) []placeRow[int] {
+	lines, owner, top, shown := standingLines(
+		p.rows, p.cursor, p.top, width, room, p.hover(), a.pal, a.now())
+	p.top, p.shown, p.owner = top, shown, owner
+	rows := make([]placeRow[int], 0, room)
+	for i, text := range lines {
+		at := -1
+		if i < len(owner) {
+			at = owner[i]
+		}
+		rows = append(rows, placeRow[int]{text: text, hit: at})
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow[int]{text: "", hit: -1})
+	}
+	return rows
+}
+
+// hover is the row under the pointer, and it is -1 until the place grows a
+// hover map of its own. The overlay read it off the chrome's marks, and the
+// chrome does not draw this list any more; a hover resolved against a map
+// nobody writes would be a highlight on whatever row it used to be.
+func (p *standPage) hover() int { return -1 }
+
+// stops is the cursor-legal rows of the last reading.
+func (p *standPage) stops() []int { return standRowStops(p.rows) }
+
+// enter is the provenance door, and it is home's road walked from the other end
+// ([app.homeItemEnter]): "why is this true here?" must open the conversation
+// that made it, an order made at home that never became a conversation SAYS SO
+// rather than offering a door onto nothing, and an order this very conversation
+// asked for says that too.
+func (p *standPage) enter(a *app) tea.Cmd {
+	item, ok := p.current()
+	if !ok {
+		return nil
+	}
+	transcript := strings.TrimSpace(item.Origin.Transcript)
+	switch {
+	case transcript == "":
+		a.note(homeItemNoDoor)
+		return nil
+	case transcript == a.file:
+		p.close(a)
+		a.note(standHereWord)
+		return nil
+	}
+	// The picker's own road, with the picker's own sentence for a refusal
+	// (welcome.go): a conversation another window is holding, or a surface with
+	// no way to open one, answers in words a person can act on.
+	cmd, refusal := a.openSession(Session{File: transcript})
+	if refusal != "" {
+		a.note(refusal)
+		return nil
+	}
+	p.close(a)
+	return cmd
+}
+
+// verbs is the `→` strip for the row under the cursor.
+//
+// WHICH SHELF THE ROW IS ON DECIDES WHAT IT CAN BE ASKED TO DO. The three that
+// reach this conversation go through the engine sitting under it, which knows
+// what stands here and can except this place from one; an order in another
+// project has none of that behind it and gets the two writes the store can make.
+//
+// AND A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. `not here` names a
+// place an order in another project was never over, so it is not offered there
+// at all; a window whose door wired no way to write ([StandingSeam.Save] is nil)
+// offers nothing on that shelf rather than keys that would fail.
+//
+// THE LETTERS ARE THE ONES A PERSON ALREADY LEARNED. `p` pauses and `s` stops on
+// home, on the three shelves and here; a shelf that spelled the same two verbs
+// `r` and `x` would be one page teaching two keyboards.
+func (p *standPage) verbs(a *app) []verb {
+	row, ok := p.choice()
+	if !ok {
+		return nil
+	}
+	if row.elsewhere {
+		if a.stands.Save == nil {
+			return nil
+		}
+		item := row.view.Item
+		word, status := homeItemPauseWord, standing.StatusPaused
+		if item.Status == standing.StatusPaused {
+			word, status = standResumeWord, standing.StatusActive
+		}
+		return []verb{
+			{key: 'p', word: word, do: func() tea.Cmd { return p.write(a, item, status) }},
+			{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return p.write(a, item, standing.StatusRetired) }},
+		}
+	}
+	return []verb{
+		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return p.ask(a, standPause) }},
+		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return p.ask(a, standDown) }},
+		{key: 'n', word: standNotHereWord, do: func() tea.Cmd { return p.ask(a, standExcept) }},
+	}
+}
+
+// note is the line a place may say about what it is HOLDING, under the rule and
+// above the composer. This place says nothing there: every fact it has is about
+// one order, which is what the row and the strip are for, and a count of what a
+// person can already see is the emptiness law broken from the other end.
+func (p *standPage) note(a *app, width int) []string { return nil }
+
+// hint is the line under the box: what enter does, what `→` reaches, and the way
+// out.
+//
+// NOTHING IS NAMED THAT IS NOT BOUND, which is why it is derived from the row
+// under the cursor rather than written once as a constant. The three verbs of
+// the conversation's own shelves are not the two an order in another project
+// has, and a line promising `not here` over a row that cannot make an exception
+// would be this surface advertising a key that does nothing — the exact fault
+// the verb strip was built to end (verbstrip.go's header).
+func (p *standPage) hint(a *app) string {
+	verbs := p.verbs(a)
+	words := make([]string, 0, len(verbs))
+	for _, v := range verbs {
+		words = append(words, v.word)
+	}
+	line := homeItemEnterWord
+	if len(words) > 0 {
+		line += " · → " + strings.Join(words, " · ")
+	}
+	return line + " · esc"
+}
+
+// changed is the tab's count: how many orders on this machine have fired since
+// the person last looked at this place.
+func (p *standPage) changed(a *app, since time.Time) int {
+	n := 0
+	for _, view := range a.standingPlaceViews() {
+		if !view.Item.LastFired.IsZero() && view.Item.LastFired.After(since) {
+			n++
+		}
+	}
+	return n
+}
+
+// ── the cursor ──────────────────────────────────────────────────────────────
+
+// land puts the cursor on one order by id, and leaves it where it was when
+// nothing on the page is that order — the page opened from the margin on a row
+// another window has since stood down is still the page a person asked for.
+func (p *standPage) land(id string) {
+	if id == "" {
+		return
+	}
+	for at, row := range p.rows {
+		if row.kind == standRowItem && row.view.Item.ID == id {
+			p.cursor = at
+			p.follow()
+			return
+		}
+	}
+}
+
+// adopt takes a re-read of the same page under the cursor, after a verb changed
+// what stands. The cursor holds its PLACE rather than its row ([permPanel.adopt]
+// states the law): the row it was on is usually the one that just went away, and
+// the next thing a person wants to look at is whatever moved up into its
+// position.
+//
+// AN EMPTIED PAGE STAYS OPEN, with its heading and nothing under it. That is
+// [permPanel]'s own answer to the same moment, and it is the honest one here:
+// the receipt for what was just stopped is in the conversation behind this list,
+// and a page that closed itself out from under a person would look like the
+// keystroke had done something else.
+func (p *standPage) adopt(rows []standRow) {
+	p.rows = rows
+	p.cursor = p.settle(p.cursor)
+	p.follow()
+}
+
+// settle is the nearest row a cursor may rest on, searching forward first
+// because a row that went away is followed by whatever took its place.
+func (p *standPage) settle(from int) int {
+	if from < 0 {
+		from = 0
+	}
+	for at := from; at < len(p.rows); at++ {
+		if p.rows[at].kind == standRowItem {
+			return at
+		}
+	}
+	for at := min(from, len(p.rows)) - 1; at >= 0; at-- {
+		if p.rows[at].kind == standRowItem {
+			return at
+		}
+	}
+	return -1
+}
+
+// move walks the orders and STEPS OVER everything else, which is what makes the
+// headings furniture: a cursor that could rest on `for this project` would be a
+// selection no verb on this page has anything to do with.
+//
+// It stops at the ends rather than wrapping, which is [moveCursor]'s own law and
+// its reason: a cursor that reappeared at the far end would put a stop key under
+// a hand that was walking away from one.
+func (p *standPage) move(delta int) {
+	step := 1
+	if delta < 0 {
+		step, delta = -1, -delta
+	}
+	at := p.cursor
+	for n := 0; n < delta; n++ {
+		next := -1
+		for i := at + step; i >= 0 && i < len(p.rows); i += step {
+			if p.rows[i].kind == standRowItem {
+				next = i
+				break
+			}
+		}
+		if next < 0 {
+			break
+		}
+		at = next
+	}
+	p.cursor = at
+	p.follow()
+}
+
+// follow scrolls the window by the least that keeps the cursor inside it, which
+// is what makes every order reachable however many there are. The list used to
+// stop at four rows behind a `▸ N more` line no key answered; a place takes the
+// whole terminal, so there is nothing for a fold to save and nothing behind it a
+// person could get to.
+func (p *standPage) follow() {
+	p.top = listTop(p.cursor, p.top, len(p.rows), p.window())
+}
+
+// window is how many rows the cursor is followed within, and how far a page key
+// steps: what the last paint had room for, and [standRowsMax] before there has
+// been a paint to ask.
+func (p *standPage) window() int {
+	if p.shown > 0 {
+		return p.shown
+	}
+	return standRowsMax - 1
+}
+
+// at resolves one line.
+func (p *standPage) at(index int) (standRow, bool) {
+	if index < 0 || index >= len(p.rows) {
+		return standRow{}, false
+	}
+	return p.rows[index], true
+}
+
+// choice is the ROW under the cursor, and false when the cursor is on nothing a
+// verb can act on. It answers the row and not merely the order on it because
+// which SHELF a row is filed under decides what may be done to it
+// ([standRow.elsewhere]).
+func (p *standPage) choice() (standRow, bool) {
+	row, ok := p.at(p.cursor)
+	if !ok || row.kind != standRowItem {
+		return standRow{}, false
+	}
+	return row, true
+}
+
+// current is the order under the cursor, and false when there is none — a verb
+// pressed on a page with nothing to act on must do nothing at all.
+func (p *standPage) current() (standing.Item, bool) {
+	row, ok := p.choice()
+	return row.view.Item, ok
+}
+
+// press resolves a click on one of the page's rows.
+//
+// THE POINTER MOVES THE CURSOR AND NEVER ACTS, which is where this page parts
+// company with the panel it borrows its shape from. /permissions asks before it
+// drops, so a mis-aimed click there costs a second press; every verb here is a
+// key, and enter takes a person out of the conversation they are sitting in — a
+// click that did that would be a gesture nobody could aim.
+func (p *standPage) press(a *app, y int) tea.Cmd {
+	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
+	// and the head is one number for every place ([placeHeadRows]). It used to
+	// resolve against the chrome's overlay marks, which is what an overlay had
+	// and a place does not — a place is the whole frame, so there is no chrome
+	// under it to ask.
+	at := -1
+	if line := y - placeHeadRows; line >= 0 && line < len(p.owner) {
+		at = p.owner[line]
+	}
+	if at < 0 {
+		// A heading, a "not here" line, a "last look" paragraph, or a blank under
+		// the last row: a line belonging to no order. It is swallowed rather than
+		// resolved to whichever row it happened to be nearest.
+		return nil
+	}
+	p.cursor = at
+	a.touch()
+	return nil
+}
+
+// ── the writes ──────────────────────────────────────────────────────────────
+
+// standVerb is which of the three engine writes a key asked for.
+type standVerb uint8
+
+const (
+	standPause standVerb = iota
+	standDown
+	standExcept
+)
+
+// ask is `p`, `s` and `n` on an order that stands over this conversation.
+//
+// IT GOES THROUGH THE ENGINE AND THEN REDRAWS FROM THE ENGINE, which is
+// [app.homeItemWrite]'s law: the row is not repainted from what this function
+// wishes were true — the write is attempted, the page is read again, and what
+// the person sees is what the store says. A row that showed `paused` over an
+// engine that refused the write would be the screen lying about the machine.
+//
+// A REFUSAL IS SAID OUT LOUD, AND IN ITS OWN WORDS. What comes back from the
+// seam is a sentence written for a person ("standing orders are not built yet"),
+// so it is said as it stands rather than being wrapped in a second sentence
+// about a key that did not work.
+func (p *standPage) ask(a *app, which standVerb) tea.Cmd {
+	row, ok := p.choice()
+	if !ok {
+		return nil
+	}
+	if row.elsewhere {
+		// The strip does not offer these three there; this is the second lock on
+		// the same door, and it SAYS SO rather than returning in silence.
+		a.note(standNotOursWord)
+		return nil
+	}
+	item := row.view.Item
+	agent, seam := a.standingSeam()
+	if !seam {
+		a.note(homeItemNoStore)
+		return nil
+	}
+	var (
+		err     error
+		receipt string
+	)
+	switch which {
+	case standPause:
+		var status standing.Status
+		status, err = agent.StandingPause(item.ID)
+		receipt = homeItemPaused
+		if status == standing.StatusActive {
+			receipt = standResumedWord
+		}
+	case standDown:
+		err = agent.StandingStandDown(item.ID)
+		receipt = homeItemStopped
+	default:
+		err = agent.StandingExcept(item.ID)
+		receipt = standNotHereWord
+	}
+	if err != nil {
+		a.note(err.Error())
+		return nil
+	}
+	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
+	// AND THE COLUMN BEHIND THE PAGE IS TOLD, because it reads the same engine on
+	// a three-second beat (margin.go's [app.marginStanding]) and a row still
+	// standing there after it was stopped here would be one surface arguing with
+	// the other in front of the person who stopped it.
+	a.standRailAt = time.Time{}
+	// THE PAGE IS REBUILT AND THE DISK IS NOT READ AGAIN. None of these three
+	// writes can change what stands in another project, so the fourth shelf is
+	// rebuilt from the bands the open already collected — and an order excepted
+	// from here, which stops being a row and becomes a `not here` line, is still
+	// accounted for and so still deduplicated out of that shelf.
+	p.adopt(a.standingPageRows())
+	return nil
+}
+
+// write is `p` or `s` on an order in another project, and it goes through the
+// STORE because that is the only seam that has heard of it.
+//
+// IT REDRAWS FROM THE STORE, which is [app.homeItemWrite]'s law said again on
+// this side: the write is attempted, the bands are read again, and what the
+// person sees is what the disk says. A refusal is said in the store's own words,
+// because that sentence was written for a person and wrapping it in a second one
+// about a key that did not work would be the surface talking over the machine.
+func (p *standPage) write(a *app, item standing.Item, status standing.Status) tea.Cmd {
+	if a.stands.Save == nil {
+		a.note(homeItemNoStore)
+		return nil
+	}
+	item.Status = status
+	if status == standing.StatusRetired {
+		// THE DOCUMENT RECORDS WHY IN THE PERSON'S OWN TERMS, in the one spelling
+		// every surface that stops an order uses ([homeStoppedWhy]).
+		item.RetiredWhy = homeStoppedWhy
+	}
+	if err := a.stands.Save(item); err != nil {
+		a.note(err.Error())
+		return nil
+	}
+	receipt := homeItemPaused
+	switch status {
+	case standing.StatusActive:
+		receipt = standResumedWord
+	case standing.StatusRetired:
+		receipt = homeItemStopped
+	}
+	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
+	a.readStandingElsewhere()
+	p.adopt(a.standingPageRows())
+	return nil
+}
+
+// ── the app's side: the doors, and the two seams ────────────────────────────
+
+// openStanding is /standing.
+func (a *app) openStanding() { a.openStandingAt("") }
+
+// openStandingAt is /standing opened ON one order: the same place, with the
+// cursor already standing where the person pressed.
+//
+// IT IS THE MARGIN'S DOOR (margin.go). A row in that column is a whole order's
+// worth of thing to do — pause it, stop it, keep it out of here — and every one
+// of those is a key on this page, so the row's press has to land on the row and
+// not merely open a list for the person to find it again in. An id nothing on
+// the page answers to leaves the cursor where the open put it, which is the
+// honest answer to an order that has just been stood down in another window.
+func (a *app) openStandingAt(id string) {
+	a.noticeEvent(eventStandingOpened)
+	a.standPage.open(a)
+	// A CLOSED PAGE LANDS NOWHERE, which is what makes this two lines rather than
+	// a condition: [standPage.land] walks the rows it has, and a page that did
+	// not open has none.
+	a.standPage.land(id)
+	a.touch()
+}
+
+// standPageKey routes one keypress while this place owns the keyboard.
+func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
+	// when the row has verbs — and hands everything else straight back, so this
+	// handler keeps its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
+	p := &a.standPage
+	var cmd tea.Cmd
+	switch msg.String() {
+	case "esc":
+		p.close(a)
+	// THE CURSOR WALKS THE ROWS THE BODY WAS PAINTED FROM, and there is one such
+	// list ([app.standingPageRows]). Three arithmetics over three lists — one
+	// clamping into the orders, one resolving against a shorter fold, one
+	// drawing headings none of them counted — is three answers to "which row is
+	// the cursor on", and the page will be wrong about at least two of them.
+	case "up", "ctrl+p":
+		p.move(-1)
+	case "down", "ctrl+n":
+		p.move(1)
+	case "pgup":
+		p.move(-p.window())
+	case "pgdown":
+		p.move(p.window())
+	case "enter":
+		cmd = p.enter(a)
+		// `p`, `s` AND `n` USED TO BE BARE LETTERS HERE, and the comment above this
+		// function said exactly why they could be: "no draft is under this list for a
+		// letter to fall through into". There is one now — this is a place, and a
+		// place has a composer — so the three verbs moved onto the row's `→` strip,
+		// where a letter is a verb only while the line naming it is on screen
+		// (verbstrip.go). Every printable key belongs to the composer again, which
+		// is the trade the promotion makes.
+	}
+	a.touch()
+	return cmd
+}
+
+// standingPageRows is the WHOLE page: what the conversation's engine says stands
+// here, and what the machine's store says stands anywhere else.
+//
+// IT IS ONE FUNCTION AND EVERY OPENING AND EVERY REDRAW GOES THROUGH IT. The
+// page is built on the open and rebuilt after each of the five writes, and the
+// cursor's arithmetic is done against the list it produced; three callers each
+// assembling the shelves in their own order is three answers to "which row is
+// row four".
+func (a *app) standingPageRows() []standRow {
+	var stand, excepted []StandingItemView
+	if agent, ok := a.standingSeam(); ok {
+		here, out := agent.StandingHere()
+		stand, excepted = a.standViews(here), a.standViews(out)
+	}
+	return standingShelves(stand, excepted, a.standingPlaceViews())
+}
+
+// standViews resolves the one fact a standing document does not hold — whether a
+// pass has it in its hands at this instant — so that the reading downstream is
+// plain data and the mark on a row and the clause beside it are one answer read
+// once ([StandingItemView] states the law).
+func (a *app) standViews(items []standing.Item) []StandingItemView {
+	if len(items) == 0 {
+		return nil
+	}
+	views := make([]StandingItemView, 0, len(items))
+	for _, item := range items {
+		mark, running := a.standRunning(item.ID)
+		views = append(views, StandingItemView{Item: item, Running: running, Mark: mark})
+	}
+	return views
+}
+
+// readStandingElsewhere takes the machine-wide half of this place's reading, and
+// it is taken on the OPEN and after a write, never on a draw.
+//
+// NOTHING READS THE DISK ON A DRAW. Walking every project's documents is what
+// answers "what else stands on this machine", and it happens at the one moment a
+// person asked for this screen; a cursor move, a resize and a repaint all read
+// the slice it left behind.
+//
+// IT PRIMES HOME'S CACHE ON PURPOSE, AND IN HOME'S OWN ORDER.
+// [app.readStandBands] reads each project's band out of [homeView.world], so a
+// place that called it over whatever world some earlier screen happened to leave
+// there would be listing the machine home last looked at rather than the one in
+// front of the person. The world is read first and the bands second, which is
+// the same pair in the same order [app.refreshHome] takes them in.
+//
+// AND A SURFACE WITH NO STORE ASKS NOTHING AT ALL. There is nothing to
+// enumerate, so the disk is not touched, and the three shelves the conversation
+// seam answers are the whole of the page.
+func (a *app) readStandingElsewhere() {
+	if a.stands.Items == nil {
+		return
+	}
+	a.home.world = a.readWorld()
+	a.readStandBands()
+}
+
+// standingPlaceViews is every standing order this machine holds, in one list.
+//
+// IT IS BOTH KINDS OF BAND. [app.readStandBands] keys a band by the bucket of
+// each project that has conversations in it, and [app.readBareBands] adds the
+// OTHER kind — a workspace this machine holds orders for and no conversation at
+// all — whose own comment says why leaving it out is a fault: "the person set a
+// thing up and the screen that exists to show them what is true showed them
+// nothing". So the keys of both are walked here, and a list that had only the
+// first would be that same fault a second time.
+//
+// THE ORDER IS THE KEYS' OWN, SORTED. A map is walked in a different order every
+// time Go feels like it, and a list of orders that reshuffled itself between two
+// keystrokes would be a cursor moving on its own. Inside one band the order is
+// home's triage ([standTriage]), which is the order the same rows have on the
+// other screen.
+func (a *app) standingPlaceViews() []StandingItemView {
+	keys := make([]string, 0, len(a.home.items)+len(a.home.bare))
+	for key := range a.home.items {
+		keys = append(keys, key)
+	}
+	for _, bare := range a.home.bare {
+		if _, ok := a.home.items[bare.project.Dir]; !ok {
+			keys = append(keys, bare.project.Dir)
+		}
+	}
+	sort.Strings(keys)
+	var views []StandingItemView
+	for _, key := range keys {
+		views = append(views, a.home.items[key]...)
+	}
+	return views
+}
+
+// standingChangedSince is the tab bar's count, asked of the place that owns it.
+func (a *app) standingChangedSince(seen time.Time) int {
+	return a.standPage.changed(a, seen)
+}
