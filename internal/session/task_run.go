@@ -3380,7 +3380,10 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// requests to that model, and folding it in as a single call on the model the
 	// person is chatting to would put a number in the session's books that never
 	// happened.
-	a.spendLedger(node).addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+	// THE FOLD DOOR, not the ordinary auxiliary one: the node journaled these
+	// same tokens into the machine's usage ledger as it spent them, and folding
+	// the total in again would count them twice ([Agent.addFoldedUsage]).
+	a.spendLedger(node).addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
