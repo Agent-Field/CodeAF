@@ -470,6 +470,27 @@ Three different things, and they are not the same:
 Anything you say in words needs no page at all; the page is there for when you want to
 see what is true before you decide.
 
+## The standing place — rope, cadence, last look and row verbs
+
+The **standing** place is a full place on the tab bar, not the old short overlay. It lists
+the things aforge does without being asked, with needs-you and moving items before quiet
+ones. A row says its authored words, its rope (`asks first` or `on its own`), cadence,
+measured cost per firing, and — for a daily order that has fired — the firing time. Unknown
+cost is `not measured`; a genuinely tiny measured cost is `under 1¢`.
+
+Four items are shown before `▸ N more`; when every hidden item was quiet during the week,
+the fold says `all quiet this week`. Moving the cursor changes the selected item's
+`last look` paragraph when a last-look line exists. `enter` opens the conversation where
+the order was asked for. On `→`, an active row offers `p pause` and `x retire`; a paused
+row offers `r resume` and `x retire`. These writes use the standing store and redraw from
+what it accepted.
+
+`trust it alone` is not offered because the stored grant must be a specific sentence and
+this place has no safe way to invent one. The `y` and `n` answer verbs are likewise absent
+from this machine-wide list; answer the visible question in its originating conversation.
+Typing remains composer text, `tab` moves to the next place, and no shift-arrow window is
+drawn or bound here. An empty standing place explains how to make the first order.
+
 ## What standing orders cannot do yet
 
 Honest limits, so you do not rely on something that is not built:
