@@ -141,6 +141,14 @@ func (a *Agent) belt() []bare.Tool {
 	// narrow task's belt byte-identical to what it was before that road
 	// existed.
 	tools = append(tools, a.divideTools()...)
+	// fork is the third weight of parallelism and the lightest (fork.go): not
+	// work handed away, but this mind copied two to four times INSIDE the turn,
+	// each copy opening on the whole transcript and told one line about what
+	// makes it different. It is absent from a hand's own belt and present on
+	// everything else, because a chat turn and a task worker are both minds
+	// mid-work with a context worth copying — and a hand is not, since the fork
+	// is one deep.
+	tools = append(tools, a.forkTools()...)
 	// stand (tools_standing.go) is the ambient side's one verb, and it is
 	// CONDITIONAL for the sharpest version of the absence law on this belt: a
 	// model told it can set up a reminder will plan a whole reply around one,

@@ -2500,6 +2500,13 @@ const (
 	// wrongly is unattributable without the name of the model that filled it
 	// (subharness_intake.go).
 	auxRoleIntake = "intake"
+	// auxRoleHand is the fourth, and it names a whole child agent rather than one
+	// call: a fork's hand (fork.go). It is here for a reason the first three do
+	// not have — a hand's spend rides INSIDE the turn that opened it, folded into
+	// the same books, so without the tag there is no way to read a session's
+	// journal and say which of a turn's tokens the hands spent and which the
+	// caller did.
+	auxRoleHand = "hand"
 )
 
 // addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a
