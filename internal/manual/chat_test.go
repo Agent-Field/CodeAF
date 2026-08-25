@@ -24,6 +24,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
+		// A finished task's room after aforge was closed and opened again: the
+		// blank page people met, asked the three ways they meet it.
+		{"task page is empty", "task-rooms-after-restart"},
+		{"task finished but no chat shown", "task-rooms-after-restart"},
+		{"see what a task did after restarting", "task-rooms-after-restart"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
@@ -40,6 +45,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"how do I stop it mid answer", "keys"},
+		// BARGE-IN, asked the four ways people meet it: wanting to correct a
+		// running answer, seeing the chord in the hint slot and not knowing what
+		// it is, pressing it and finding nothing happened, and asking whether the
+		// key that used to do nothing does something now.
+		{"how do I interrupt it and say something else", "keys"},
+		{"stop it and tell it something different at the same time", "keys"},
+		{"what does shift+enter do", "keys"},
+		{"shift enter does nothing for me", "keys"},
 		{"why did it ask permission before running that", "permissions"},
 		{"what does always mean when I press a", "permissions"},
 		{"how do I connect my google account", "accounts"},
@@ -61,6 +74,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},
+		// Written from a live task that compacted fifteen times in six minutes.
+		{"why does it keep compacting", "compacting-over-and-over"},
+		{"it compacts after every step", "compacting-over-and-over"},
+		{"compacting over and over", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
@@ -73,6 +90,32 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// The first-run setup, asked the four ways somebody meets it: arriving,
+		// wanting the key in, seeing the screen, and wanting to undo an answer.
+		{"first time setup", "getting-started"},
+		{"set up my api key", "getting-started"},
+		{"openrouter key", "getting-started"},
+		{"change what I picked during setup", "getting-started"},
+
+		// The empty screen, asked the ways somebody meets it: an opening frame
+		// with nothing on it, a column they expected and cannot see, a box that
+		// is not where boxes usually are, and a status row with no numbers.
+		{"why is the screen empty when I open aforge", "empty-screen"},
+		{"where is the task column on a new conversation", "empty-screen"},
+		{"what happened to the sidebar", "empty-screen"},
+		{"why is the message box in the middle of the screen", "empty-screen"},
+		{"why does the status line not show the cost before I type", "empty-screen"},
+		{"what does try what is in this folder mean", "empty-screen"},
+		{"where did the recent sessions list go", "empty-screen"},
+
+		// A task's page with heavy tool use, asked the ways the screenshot
+		// provoked: the wheel doing nothing, the calls that are not there, and
+		// a frame that is mostly blank.
+		{"can't scroll in a task", "reading-a-task-page"},
+		{"how do I see earlier tool calls in a task", "reading-a-task-page"},
+		{"task page is empty", "reading-a-task-page"},
+		{"the task page is stuck at the top", "reading-a-task-page"},
+		{"what does scroll up or ctrl+o mean", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
@@ -138,6 +181,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
+		// The onboarding wave: home is always reachable, and an empty home is a
+		// designed screen. Each of these is asked on a fresh machine, by
+		// somebody who tried the gesture on day one.
+		{"space space does nothing", "home"},
+		{"home is empty", "home"},
+		{"how do I get back to home with one chat", "home"},
+		{"why is home empty", "home"},
+		{"can I open home with only one conversation", "home"},
 		{"does closing one conversation quit aforge", "commands"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
@@ -315,6 +366,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I accept a task", "tasks"},
 		{"can the chat decide on its own", "tasks"},
 		{"stop asking me about tasks", "tasks"},
+		// And the same state met from inside the task's room, where the owner sat
+		// with `look it over` on the roster and nothing to press on the page.
+		{"how do I approve a task", "tasks"},
+		{"task needs my look but there is no button", "tasks"},
+		{"accept a finished task", "tasks"},
+		{"can I accept the task from inside the room", "tasks"},
 		{"why am I not being asked about the sub tasks", "how-tasks-run"},
 
 		// The twelfth wave, from the key that stopped doing what the habit
@@ -369,6 +426,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
+		// The onboarding wave: the five seats. /crew and /model became two dials
+		// a person can see as two — the confirm line names the model it left
+		// alone, bare /crew opens with seat one, and the status line carries
+		// `crew max` beside the model — and these are the questions the framing
+		// invites.
+		{"what are the five models", "models-and-cost"},
+		{"does /crew change my chat model", "models-and-cost"},
+		{"why did my model not change", "models-and-cost"},
+		{"what does crew max on the status line mean", "models-and-cost"},
+		{"what is the you talk to line in /crew", "commands"},
 
 		{"how do I quit", "keys"},
 		{"how do I exit aforge", "keys"},
@@ -390,6 +457,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the answer that was on screen go", "screen"},
 		{"the text it was writing disappeared", "screen"},
 		{"stuck on waiting for the model", "screen"},
+		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
+		// now recedes into the work column at a quieter shade and only the block
+		// the turn ended on is drawn as the answer, so somebody looking at a reply
+		// half in one tier and half in another asks the first three of these — and
+		// somebody who pressed esc and watched nothing turn into an answer asks the
+		// last two. They are the screen's, because every word of the question is
+		// about what is on it.
+		{"why is part of the reply grey", "screen"},
+		{"why is some of the answer dimmer than the rest", "screen"},
+		{"where is the actual answer in all this", "screen"},
+		{"I stopped it and the text stayed grey", "screen"},
+		{"nothing became the answer after I pressed esc", "screen"},
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
@@ -585,6 +664,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can it use my terminal's light background", "screen"},
 		{"why are the colors the same on every terminal", "screen"},
 		{"the text is too bright on my black terminal", "screen"},
+
+		// The earned hints. Asked the four ways somebody meets them: seeing a
+		// sentence in the border and not knowing what it is, noticing it has
+		// gone, wanting it gone, and wondering what a line about a new build was.
+		{"what was that tip above the message box", "hints-and-tips"},
+		{"why did the hint disappear", "hints-and-tips"},
+		{"how do I turn off hints", "hints-and-tips"},
+		{"stop showing tips", "hints-and-tips"},
+		{"what is a news line", "hints-and-tips"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

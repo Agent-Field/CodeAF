@@ -93,6 +93,89 @@ func TestAttachReplaysTheTurnThenItsLiveTail(t *testing.T) {
 	}
 }
 
+// TestAttachReplayHandsTheTurnToTheStreamNotTheEntries pins the atomic door's
+// whole reason to exist: a turn's completed steps are journaled the moment they
+// complete, so a surface that replayed the transcript and then attached drew
+// those steps twice — once in their journal form, once again out of the
+// backlog. AttachReplay splits the conversation at the turn's floor instead:
+// the entries stop where the running turn's work begins, the stream carries the
+// turn whole, and the person's own words are in the entries because no event
+// ever re-carries them.
+func TestAttachReplayHandsTheTurnToTheStreamNotTheEntries(t *testing.T) {
+	midTurn := make(chan struct{})
+	carryOn := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			// One whole step — prose and a tool call — recorded in the
+			// transcript before the turn's second request goes out.
+			return toolResponseWithText("call-1", "read", `{"path":"go.mod"}`, "let me look first"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(midTurn)
+			<-carryOn
+			return textResponse("the answer"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	first, err := agent.Submit(context.Background(), "go look")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	<-midTurn
+
+	entries, events, stop := agent.AttachReplay()
+	if events == nil {
+		t.Fatal("AttachReplay during a turn answered with no stream")
+	}
+	defer stop()
+	// THE ENTRIES HOLD THE QUESTION AND NONE OF THE TURN'S WORK. The completed
+	// first step is already in the transcript — that is the defect's whole
+	// setup — and it must be the stream's to draw, not the replay's.
+	saidGoLook := false
+	for _, entry := range entries {
+		if entry.Role == "user" && strings.Contains(entry.Text, "go look") {
+			saidGoLook = true
+		}
+		if entry.Tool == "read" || strings.Contains(entry.Text, "let me look first") {
+			t.Fatalf("the running turn's work leaked into the replay entries: %+v", entry)
+		}
+	}
+	if !saidGoLook {
+		t.Fatal("the person's own message is missing from the replay entries")
+	}
+
+	close(carryOn)
+	streamed := collect(t, events)
+	sawRead := false
+	for _, event := range streamed {
+		if event.Tool == "read" {
+			sawRead = true
+		}
+	}
+	if !sawRead {
+		t.Fatal("the backlog did not replay the completed step's tool call")
+	}
+	collect(t, first)
+
+	// AND ONCE THE TURN IS OVER THE SAME DOOR IS THE WHOLE RECORD: no stream,
+	// and the work that was the stream's to draw is the entries' again.
+	entries, events, stop = agent.AttachReplay()
+	if events != nil {
+		t.Fatal("AttachReplay on an idle session handed back a stream")
+	}
+	stop()
+	sawRead = false
+	for _, entry := range entries {
+		if entry.Tool == "read" {
+			sawRead = true
+		}
+	}
+	if !sawRead {
+		t.Fatal("the settled turn's work is missing from the idle replay entries")
+	}
+}
+
 // TestAttachWithNoTurnRunningSaysSo is the other half of the contract: nothing
 // to watch is an answer, not an empty stream a caller has to wait on.
 func TestAttachWithNoTurnRunningSaysSo(t *testing.T) {

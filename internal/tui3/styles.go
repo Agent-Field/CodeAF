@@ -313,7 +313,26 @@ var (
 	hueLive   = mustHue("#D8DEE9", flat)
 	hueAccent = mustHue("#9DC3E6", heavy)
 	hueMuted  = mustHue("#7FA6C9", flat)
-	hueDim    = mustHue("#6B7280", quiet)
+	// hueNarr is DEMOTED PROSE — the model's own words one rung back
+	// (hierarchy.go's narration) — and it exists because those words used to wear
+	// [hueMuted], which is the ACCENT one step back: a blue. Muted is right for
+	// what it paints elsewhere — a tool's name, a heading, a band label, each a
+	// word or two of LABEL — but narration is paragraphs, and paragraphs of blue
+	// prose over an accent-blue question read as one blue field with the answer
+	// somewhere inside it. Prose is a READING role, and the reading ladder's law
+	// is that lightness is the whole of its meaning — so narration takes the
+	// BODY'S own hue family (H 221 against the ink's 219) at a saturation a
+	// person cannot name (S 16 against muted's 41), one lightness step under the
+	// second voice: 5.2:1 against the middle of the assumed dark range, between
+	// muted's 6.67 and dim's 3.54, so the ladder still reads as a ladder.
+	//
+	// The 256 neighbour is 103, which is claimed by nothing on the dark ladder
+	// (TestNoTwoRolesShareA256Index now walks this line too). The tier is `flat`
+	// for [hueMuted]'s reason: below the 256 rung the demotion is simply absent,
+	// because WEIGHT BELONGS TO MARKDOWN and faint would say "surface's own
+	// murmur", which narration is not.
+	hueNarr = mustHue("#848FA6", flat)
+	hueDim  = mustHue("#6B7280", quiet)
 	hueAdd    = mustHue("#A3BE8C", heavy)
 	hueDel    = mustHue("#C67173", quiet)
 	hueBad    = mustHue("#D08770", heavy)
@@ -603,7 +622,15 @@ var (
 	lightLive   = mustHue("#2E3440", flat)
 	lightAccent = mustHue("#5E81AC", heavy)
 	lightMuted  = mustHue("#8098B8", flat)
-	lightDim    = mustHue("#9AA3B2", quiet)
+	// lightNarr is [hueNarr] on a page, and it makes the reading ladder's move:
+	// receding on white is going LIGHTER, so it sits between the light muted
+	// (2.96:1 on white) and the light dim (2.55:1) at 2.7:1 — the same rung of
+	// the same ladder, read from the other end. The near-neutral grey is
+	// deliberate: this zone of the cube is crowded (103 and 109 are already the
+	// light muted's and the light dim's), and a slate with any more blue in it
+	// rounds onto one of them; the grey ramp's 247 is claimed by nothing.
+	lightNarr = mustHue("#9E9EA4", flat)
+	lightDim  = mustHue("#9AA3B2", quiet)
 	lightAdd    = mustHue("#7BA23F", heavy)
 	lightDel    = mustHue("#B55B64", quiet)
 	lightBad    = mustHue("#C57A3C", heavy)
@@ -636,6 +663,10 @@ var (
 // the second ladder cost the call sites nothing.
 type ramp struct {
 	ink, accent, muted, dim hue
+	// narr is the reading ladder's rung for DEMOTED PROSE — the model's own
+	// narration, one step under the second voice ([hueNarr]). It is a reading
+	// tier, not a signal: the isoluminant band does not govern it.
+	narr hue
 	// live is the reading ladder's one step ABOVE the body: the prose of a reply
 	// that is still arriving ([hueLive]). It sits beside ink rather than in a
 	// table of its own because it is the same ladder — the body, said louder for
@@ -659,7 +690,7 @@ type ramp struct {
 }
 
 var darkRamp = ramp{
-	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, dim: hueDim,
+	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, narr: hueNarr, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
 	data: hueData, violet: hueViolet, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
@@ -667,7 +698,7 @@ var darkRamp = ramp{
 }
 
 var lightRamp = ramp{
-	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, dim: lightDim,
+	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, narr: lightNarr, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
 	data: lightData, violet: hueViolet, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
@@ -990,7 +1021,13 @@ func (p palette) live(s string) string { return p.paint(s, p.ramp.live) }
 
 func (p palette) accent(s string) string { return p.paint(s, p.ramp.accent) }
 func (p palette) muted(s string) string  { return p.paint(s, p.ramp.muted) }
-func (p palette) dim(s string) string    { return p.paint(s, p.ramp.dim) }
+
+// narr is demoted prose — the model's own narration, one reading rung under the
+// second voice and in the body's own hue family rather than the accent's
+// ([hueNarr]). hierarchy.go's working tier is the only thing that wears it.
+func (p palette) narr(s string) string { return p.paint(s, p.ramp.narr) }
+
+func (p palette) dim(s string) string { return p.paint(s, p.ramp.dim) }
 func (p palette) add(s string) string    { return p.paint(s, p.ramp.add) }
 func (p palette) del(s string) string    { return p.paint(s, p.ramp.del) }
 func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }

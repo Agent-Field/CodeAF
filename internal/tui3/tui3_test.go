@@ -253,6 +253,14 @@ func key(s string) tea.KeyPressMsg {
 		// fall-through below only builds single-rune chords, and a chord that
 		// silently became the zero key would be a test pressing nothing.
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}
+	case bargeKey:
+		// The barge-in (bargein.go), spelled out for the same reason as the chord
+		// directly above it — and carrying NO Text, which is how a real terminal
+		// sends it: ultraviolet gives KeyEnter the CR rune, which is not
+		// printable, so its decoder leaves the text empty however the shift
+		// modifier is set. A helper that invented text here would hide the one
+		// thing that makes falling through this chord safe.
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "alt+backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
 	case "ctrl+backspace":
@@ -482,22 +490,25 @@ func TestSpacingLaw(t *testing.T) {
 		}
 	}
 	got := strings.Join(collapse(shape), "")
-	// u w t _ x _ t _ x _ u x — the chip that heads the turn's work, then a blank
-	// before each user message, one on each side of a cluster that sits between
-	// two blocks of text, and nowhere else. The reply that FOLLOWS a user message
-	// takes none: the person's message already brought the boundary blank with
-	// it, and the chip rides at the top of the work rather than apart from it.
-	if want := "uwt_x_t_x_ux"; got != want {
+	// _ u _ w t _ x _ t _ x _ u _ x — one row of air where the conversation
+	// begins, a blank before each user message, the CHANGE-OF-SPEAKER blank
+	// after each one (render.go's wasUser: the reply is a different voice and
+	// does not open wedged under the question), one on each side of a cluster
+	// that sits between two blocks of text, and nowhere else. The chip still
+	// rides at the top of the work it stands for.
+	if want := "_u_wt_x_t_x_u_x"; got != want {
 		t.Fatalf("layout shape is %q, want %q:\n%s", got, want, strings.Join(list, "\n"))
 	}
 	for i, r := range list {
 		if strings.TrimSpace(r) != "" {
 			continue
 		}
-		if i == 0 || i+1 >= len(list) {
-			t.Fatalf("a blank row opens or closes the transcript:\n%s", strings.Join(list, "\n"))
+		// Row zero is the conversation's one deliberate opening breath
+		// (render.go's [app.layout]); a blank may still not CLOSE the page.
+		if i+1 >= len(list) {
+			t.Fatalf("a blank row closes the transcript:\n%s", strings.Join(list, "\n"))
 		}
-		if strings.TrimSpace(list[i-1]) == "" {
+		if i > 0 && strings.TrimSpace(list[i-1]) == "" {
 			t.Fatalf("two blank rows in a row at %d:\n%s", i, strings.Join(list, "\n"))
 		}
 	}
@@ -516,11 +527,12 @@ func collapse(shape []string) []string {
 	return out
 }
 
-// The one-blank rule holds around a cluster that is the WHOLE turn: a person
-// who asks for a build gets the call and then their own next message, with one
-// blank between them and no gap above. A turn with no trailing answer never
-// folds (workfold.go), so the call is on the page to be measured.
-func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
+// A cluster that is the WHOLE turn still opens under the change-of-speaker
+// blank: the person said "build it", and the surface answering with a call is
+// a different voice, so exactly one row of silence sits between the message
+// and the first tool line (render.go's wasUser). A turn with no trailing
+// answer never folds (workfold.go), so the call is on the page to be measured.
+func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
 		toolEnd("bash", "ok"),
@@ -534,8 +546,8 @@ func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
 		if !strings.HasPrefix(unindented(r), "╰─▶") {
 			continue
 		}
-		if i == 0 || strings.TrimSpace(list[i-1]) == "" {
-			t.Fatalf("a blank landed between the person's message and the call:\n%s",
+		if i < 2 || strings.TrimSpace(list[i-1]) != "" || strings.TrimSpace(list[i-2]) == "" {
+			t.Fatalf("the call does not sit one blank under the person's message:\n%s",
 				strings.Join(list, "\n"))
 		}
 		return
@@ -788,12 +800,21 @@ func TestUserAndAssistantReadDifferently(t *testing.T) {
 	}
 	accent := a.pal.accent("x")
 	accent = accent[:strings.Index(accent, "x")]
-	for i, r := range user {
-		if !strings.Contains(r.text, accent) {
-			t.Fatalf("user row %d is not in the accent hue: %q", i, r.text)
+	// THE ACCENT IS SPENT ON THE GLYPH AND NOWHERE IN THE WORDS. The `›` is the
+	// identity mark; the sentence behind it is ordinary ink, so a long question
+	// no longer outshines the answer it is a question about (render.go's user
+	// entry states the law).
+	if !strings.Contains(user[0].text, accent) {
+		t.Fatalf("the user's glyph row carries no accent: %q", user[0].text)
+	}
+	for i, r := range user[1:] {
+		if strings.Contains(r.text, accent) {
+			t.Fatalf("user continuation row %d wears the accent — the glyph is the mark, the words are ink: %q", i+1, r.text)
 		}
+	}
+	for i, r := range user {
 		if strings.Contains(r.text, "\x1b[1m") {
-			t.Fatalf("user row %d is bold: hue is the marker, not weight: %q", i, r.text)
+			t.Fatalf("user row %d is bold: weight belongs to markdown: %q", i, r.text)
 		}
 	}
 	for i, r := range assistant {
@@ -1028,8 +1049,12 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 	if agent.stops != 1 {
 		t.Fatalf("esc did not interrupt (%d)", agent.stops)
 	}
-	if !strings.Contains(plain(frame(a)), "interrupted") {
-		t.Fatalf("the status line has to say interrupted:\n%s", plain(frame(a)))
+	// The stream has not closed, so the word is the wind-down's own
+	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
+	// Asked of the status line rather than of the frame, because the note the
+	// stop writes into the transcript is on the same frame.
+	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
 	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes

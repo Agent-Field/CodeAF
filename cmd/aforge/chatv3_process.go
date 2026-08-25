@@ -28,6 +28,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,18 +106,33 @@ type v3Process struct {
 // therefore the first thing that can fail for the want of a key. Empty is
 // "chat", which is what both terminal doors say — `aforge resume` has always
 // said it and says it still, because what it could not open is a chat.
-func openV3Process(door string) (*v3Process, error) {
+func openV3Process(door string) (*v3Process, error) { return openV3ProcessWith(door, false) }
+
+// openV3ProcessWith is [openV3Process] with the one thing a door knows that
+// the process does not: whether somebody is sitting at this terminal who can
+// be ASKED for a key.
+//
+// `askKey` true is the interactive chat — a person, a TTY, no --once and no
+// --host — and it opens the process with no key at all when none is found, so
+// the surface can collect one on its first screen (internal/tui3's
+// firstrun.go). Every other door keeps the old refusal: nobody is there to
+// paste anything, and a process that opened keyless would fail on its first
+// request instead of at the door where the sentence can be read.
+func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// Housekeeping, in the background, once per process (chatv3_sweep.go). It
 	// was already a sync.Once and needs nothing from this move; it is here
 	// because this is now the one function every v3 door passes through.
 	startPlaceSweep()
 	settings, err := config.Load()
+	if err != nil && askKey && errors.Is(err, config.ErrNoAPIKey) {
+		settings, err = config.LoadKeyless()
+	}
 	if err != nil {
 		if strings.TrimSpace(door) == "" {
 			door = "chat"
 		}
 		fmt.Fprintln(os.Stderr, "aforge "+door+" needs a model to talk with.")
-		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
 	// AND THE BACKGROUND CHECKS ARE PUT BACK IF THEY DRIFTED, once per process,
@@ -194,6 +210,32 @@ func (p *v3Process) track(agent *session.Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.agents = append(p.agents, agent)
+}
+
+// setAPIKey is the key arriving after the door: the first-run screen or the
+// settings row handed one over, and every conversation this process holds —
+// the one on screen and any kept behind it — starts talking with it on its
+// next request. The process's own settings take it too, so a conversation
+// opened later (/new, the picker, home) is built with the key rather than with
+// the empty one the boot found ([v3Seam.launch] reads it back from here).
+func (p *v3Process) setAPIKey(key string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Settings.APIKey = strings.TrimSpace(key)
+	for _, agent := range p.agents {
+		if err := agent.SetAPIKey(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// apiKey is the key the process holds now, which may be newer than the one any
+// launch was assembled with.
+func (p *v3Process) apiKey() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings.APIKey
 }
 
 // closeAll closes every conversation this process opened and then the stores
@@ -313,12 +355,28 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 	if err != nil {
 		return nil, err
 	}
-	if target == "" {
-		return s.boot, nil
+	launch := s.boot
+	if target != "" {
+		opts := s.seed
+		opts.Workspace = target
+		if launch, err = openV3Launch(s.proc, opts); err != nil {
+			return nil, err
+		}
 	}
-	opts := s.seed
-	opts.Workspace = target
-	return openV3Launch(s.proc, opts)
+	// THE KEY IS THE ONE FIELD READ BACK FROM THE PROCESS rather than from the
+	// launch. A boot that opened keyless and was handed a key on the first
+	// screen ([v3Process.setAPIKey]) still carries the empty key it was assembled
+	// with, and a /new built from it would open a conversation that refuses
+	// every request. A copy is patched rather than the boot itself, because the
+	// boot is shared and this is a reading, not a change to it.
+	if strings.TrimSpace(launch.Config.APIKey) == "" {
+		if key := s.proc.apiKey(); key != "" {
+			keyed := *launch
+			keyed.Config.APIKey = key
+			launch = &keyed
+		}
+	}
+	return launch, nil
 }
 
 // start mints a fresh conversation: a new session folder in the workspace's own

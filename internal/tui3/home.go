@@ -237,7 +237,10 @@ const (
 	// key for everything this screen can do would be the cockpit this is
 	// deliberately not (docs/home-design.md).
 	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
-	// homeEmptyWord is a machine that has not held a conversation yet.
+	// homeEmptyWord is a machine that has not held a conversation yet. It is
+	// drawn where the first project's rows will be, under the zones and beside
+	// the machine's card ([homeEmptyRow]), so an empty home keeps the shape of
+	// a full one.
 	homeEmptyWord = "nothing here yet — say something and this fills up"
 	// homeNoMatchWord is a filter that matched nothing.
 	homeNoMatchWord = "no conversation matches"
@@ -321,6 +324,16 @@ const (
 
 // homeRowKind is what one line of the left column is.
 type homeRowKind uint8
+
+// homeEmptyRow is THE DIM SENTENCE UNDER THE ZONES ON A MACHINE THAT HOLDS
+// NOTHING YET — [homeEmptyWord], a clause to a row ([homeEmptyLines]), standing
+// where the first project's rows will be. It is not a cursor stop, for [homeHeading]'s reason: it names an absence
+// rather than a thing to open, and the cursor rests on the machine's card
+// above a list with nothing to walk into. It is numbered outside the iota
+// block for [homeAttentionZone]'s reason — that block is edited by other lanes
+// in the same wave, and a constant appended to it would be a conflict over a
+// line that says nothing.
+const homeEmptyRow homeRowKind = 230
 
 const (
 	// homeHeading is a project's name. It is not a cursor stop: there is
@@ -695,7 +708,7 @@ func (a *app) openHome() tea.Cmd {
 	a.dismissWelcome()
 	a.home = homeView{
 		open:         true,
-		world:        session.ReadWorld(a.placesRoot()),
+		world:        a.readWorld(),
 		seen:         session.LastLook(a.placesRoot()),
 		bucket:       homeBucketOf(a.file),
 		tier:         a.homeTierNow(),
@@ -750,15 +763,24 @@ func (a *app) openHome() tea.Cmd {
 //     them can be greeted by accident. And a launch that NAMED a conversation
 //     (`--session <path>`, `aforge resume`) does not set it either: somebody who
 //     said which one means that one.
+//
 //  2. NOTHING ELSE IS ALREADY GREETING THEM. `aforge resume` opens on its
 //     picker; a surface that put a second full-screen greeting behind the first
 //     would be two answers to one keystroke.
-//  3. THERE IS SOMEWHERE ELSE TO GO. This is the emptiness law applied to a
-//     whole surface rather than to a number: a machine whose only conversation
-//     is the one this launch just opened has NOTHING home could tell anybody —
-//     it would be a dashboard of one row, and the row is the screen behind it.
-//     A first run therefore goes straight to the chat, and gets the welcome box
-//     it always got. Home arrives the day it has an answer.
+//
+//  3. THERE IS SOMEWHERE ELSE TO GO. A machine whose only conversation is the
+//     one this launch just opened has nothing to GREET anybody with — it would
+//     be a dashboard of one row, and the row is the screen behind it — so a
+//     first run goes straight to the chat and gets the welcome box it always
+//     got. Home arrives as a greeting the day it has an answer.
+//
+//     BEING GREETED BY HOME AND BEING ABLE TO GO THERE ARE TWO QUESTIONS, and
+//     this condition answers only the first. The door from inside the
+//     conversation — `space space`, `/home`, the advertisement at the foot — is
+//     open on every machine home can read at all ([app.homeDoorOpen]), and an
+//     empty home is a designed screen rather than a refusal ([homeEmptyRow]).
+//     What this condition decides is whether that screen is put in front of a
+//     person who did not ask for it.
 //
 // It is not a setting. Whether a person is greeted is a property of what the
 // machine holds and of how they launched, and both of those change by
@@ -768,14 +790,15 @@ func (a *app) landHome() {
 	if a.hosted() || !a.canOpen() {
 		return
 	}
-	// ONE READ ANSWERS BOTH QUESTIONS. Whether to greet somebody now, and
-	// whether the door is worth advertising at the foot of the conversation
-	// afterwards ([app.homeWorth]), are the same fact about the same machine —
-	// and the second is asked on every frame, which is exactly as many times as
-	// a directory walk must not happen.
-	world := session.ReadWorld(a.placesRoot())
-	a.homeWorth = worldHasElsewhere(world, a.file)
-	if !a.landing || a.pickSession || !a.homeWorth {
+	// THE WALK HAPPENS ONCE, HERE, AND ONLY WHEN IT CAN MATTER. Nothing about
+	// the door at the foot of the conversation depends on what the disk holds
+	// any more, so a launch that is not being greeted does not read the world at
+	// all — and a launch that is reads it exactly once.
+	if !a.landing || a.pickSession {
+		return
+	}
+	world := a.readWorld()
+	if !worldHasElsewhere(world, a.file) {
 		return
 	}
 	a.home = homeView{
@@ -809,17 +832,22 @@ func (a *app) landHome() {
 	// home lands on the ordinary prompt rather than on a box popping up behind
 	// the screen that just closed. A machine where home does not land is
 	// untouched by this: the box greets a first run exactly as it always has.
-	a.welcome = welcome{spent: true}
+	//
+	// It goes through [app.dismissWelcome] so the opening line about esc and
+	// ctrl+c is written under home, where it always was, rather than never.
+	a.dismissWelcome()
 }
 
 // worldHasElsewhere reports whether this machine holds a conversation OTHER than
 // the one a launch just opened.
 //
-// It is the third condition of [app.landHome] and it is deliberately a fact
-// rather than a count. "More than one session" and "more than one project" are
-// both thresholds somebody would have to defend; this is the question home
-// actually answers on a launch — is there anywhere else to go — and a machine
-// that answers no has no use for the screen.
+// It is the third condition of [app.landHome], and ONLY that: it decides whether
+// home is the first thing a launch shows, never whether home can be opened.
+// It is deliberately a fact rather than a count. "More than one session" and
+// "more than one project" are both thresholds somebody would have to defend;
+// this is the question a greeting actually turns on — is there anywhere else
+// to go — and a machine that answers no is not greeted, though it is one
+// gesture away from the same screen ([app.homeDoorOpen]).
 //
 // A launch with no session file at all (memory-only, a surface with no door
 // onto the disk) compares against nothing, so any conversation on the machine
@@ -835,16 +863,32 @@ func worldHasElsewhere(world session.World, here string) bool {
 	return false
 }
 
+// readWorld is the one reading of the machine every home is built from: the
+// walk under the places root, with the conversation THIS WINDOW IS SITTING IN
+// put back if the walk was too early to see it.
+//
+// A fresh launch's folder has a meta.json nobody has spoken into, and the walk
+// skips that shape on purpose ([session.World.Adopt] carries the whole of why).
+// Home opened from that conversation must still list it: a screen that showed
+// every conversation on the machine except the one on the terminal behind it
+// would be emptier than the machine actually is, and on a fresh machine it
+// would be `nothing here yet` drawn over a conversation that is right there.
+// The surface hands over what it knows about itself — the title the session
+// gave itself, the workspace, the model — and the folder adds the rest.
+func (a *app) readWorld() session.World {
+	world := session.ReadWorld(a.placesRoot())
+	if file := strings.TrimSpace(a.file); file != "" {
+		world.Adopt(a.placesRoot(), session.SessionRow{
+			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
+		}, time.Now())
+	}
+	return world
+}
+
 // THE CLOCK'S GENERATION IS BUMPED HERE, which is what stops a tick armed by
 // this home from re-arming itself into the next one ([homeTickMsg]).
 func (a *app) closeHome() {
 	a.homeGen++
-	// The world in hand on the way out is the freshest reading there will be
-	// until home opens again, so the door's advertisement is trued up here
-	// rather than left as it was at boot.
-	if len(a.home.world.Projects) > 0 {
-		a.homeWorth = worldHasElsewhere(a.home.world, a.file)
-	}
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
@@ -885,8 +929,7 @@ func (a *app) refreshHome() {
 	if !a.home.open {
 		return
 	}
-	a.home.world = session.ReadWorld(a.placesRoot())
-	a.homeWorth = worldHasElsewhere(a.home.world, a.file)
+	a.home.world = a.readWorld()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
@@ -1249,7 +1292,31 @@ func (h *homeView) buildWorld() {
 	}
 	h.buildElsewhere(folded)
 	h.buildArchive()
+	// A MACHINE WITH NOTHING ON IT STILL HAS A PLACES COLUMN, and the column
+	// says so where its first row would be. The sentence is a line of the list
+	// rather than a substitute for it ([homeList] used to draw it INSTEAD of a
+	// list) so that the zones above it, the card beside it and the foot under it
+	// all stand exactly where a full home puts them: an empty home is the same
+	// screen with fewer rows, never a different screen ([homeEmptyRow]).
+	if len(open) == 0 && len(folded) == 0 && len(h.archived) == 0 {
+		h.blank()
+		for _, part := range homeEmptyLines() {
+			h.lines = append(h.lines, homeLine{kind: homeEmptyRow, project: part})
+		}
+	}
 }
+
+// homeEmptyLines is [homeEmptyWord] as the rows of the places column: the
+// sentence split at its dash, one clause to a row.
+//
+// THE COLUMN IS NARROWER THAN THE SENTENCE. At the columns tier the places
+// column is [homePlacesCol] cells wide and the sentence is fifty, and at the
+// card tier the list is capped at [homeListCap]; a sentence fitted to either
+// would end in `this f…`, and a screen whose only words are cut off is the
+// broken page this row exists to not be. Two short dim rows read as one
+// sentence, and the constant stays the one place the words are spelled — the
+// manual quotes it whole, and so does the phone tier ([app.homePhoneList]).
+func homeEmptyLines() []string { return strings.SplitN(homeEmptyWord, " — ", 2) }
 
 // buildArchive is the put-away rows' one line at the very foot of the resting
 // list, and the rows themselves while it stands open — newest first, each one
@@ -2853,12 +2920,28 @@ func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
 	return len(a.input.value) == 1 && a.input.value[0] == ' '
 }
 
-// homeDoorOpen reports whether home is reachable AND worth going to from this
-// conversation. It is the gesture's guard and the advertisement's condition,
-// which is deliberate: a door that is drawn is a door that works, and one that
-// would open on nothing is neither drawn nor bound.
+// homeDoorOpen reports whether home is reachable from this conversation. It is
+// the gesture's guard and the advertisement's condition, which is deliberate: a
+// door that is drawn is a door that works.
+//
+// HOME IS ALWAYS REACHABLE, AND AN EMPTY HOME IS A SCREEN. This used to ask one
+// more thing — that the machine held a conversation other than this one — on
+// the argument that a door which opened on nothing should be neither drawn nor
+// bound. That argument confused two questions. Whether home should GREET a
+// launch that has nowhere else to go is [app.landHome]'s, and it still says no.
+// Whether a person who asks for home should get it is this one's, and the
+// answer is yes on any machine home can read: a fresh machine gets the same
+// head, columns and foot as a full one, with this conversation's row under its
+// project and `nothing here yet` where the rest will be ([homeEmptyRow]).
+// A gesture that silently typed two spaces on the one day a person first tried
+// it was the surface teaching them the door does not exist.
+//
+// The two conditions left are about the machine, not its contents: the surface
+// has a disk to read ([app.canOpen]), and it is this machine's disk — over
+// --host the projects under this process belong to the wrong computer, and
+// [app.openHome] refuses with [homeRemoteWord] rather than drawing a lie.
 func (a *app) homeDoorOpen() bool {
-	return a.homeWorth && a.canOpen() && !a.hosted() && !a.home.open
+	return a.canOpen() && !a.hosted() && !a.home.open
 }
 
 // homeDoorShowing reports whether the foot of the conversation should advertise
@@ -3395,10 +3478,12 @@ func homeColumns(width int) (left, right int) {
 
 // homeBody draws the two columns side by side, room rows tall.
 func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
-	// A COLUMN WITH NOTHING IN IT HAS NOTHING TO SIT BESIDE. An empty machine and
-	// a filter that matched nothing both draw one sentence, and a sentence
-	// clipped to half the frame so that an empty second column could keep its
-	// share is the layout winning an argument with the only words on screen.
+	// A COLUMN WITH NOTHING IN IT HAS NOTHING TO SIT BESIDE. A filter that
+	// matched nothing draws one sentence, and a sentence clipped to half the
+	// frame so that an empty second column could keep its share is the layout
+	// winning an argument with the only words on screen. An empty MACHINE is
+	// not this case any more: its sentence is a line of the list ([homeEmptyRow])
+	// and the columns around it keep their places.
 	if len(a.home.lines) == 0 {
 		left, right = left+right+2, 0
 	}
@@ -3427,10 +3512,9 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// above [homeView.buildWorld]).
 	//
 	// THE LIFT IS MEASURED FROM WHAT WAS DRAWN and not from how many lines the
-	// column holds, which is what keeps a machine with no conversations on it
-	// honest: that case draws ONE line out of a list of NONE, and a lift counted
-	// off the list would push the only sentence on the screen off the bottom of
-	// it.
+	// column holds, which is what keeps a filter that matched nothing honest:
+	// that case draws ONE line out of a list of NONE, and a lift counted off the
+	// list would push the only sentence on the screen off the bottom of it.
 	//
 	// THE DETAIL COLUMN IS NOT LIFTED WITH IT, and that is deliberate rather than
 	// an oversight. It is a CARD about the row under the cursor, assembled to fill
@@ -3498,6 +3582,10 @@ func (a *app) homeLift(drawn, room int) int {
 }
 
 // homeList is the left column: the window of lines the cursor is inside.
+//
+// A LIST WITH NO LINES AT ALL is a filter that matched nothing; at rest the
+// empty machine is a line of the list in its own right ([homeEmptyRow]), so
+// that the zones, the card and the foot keep their places around it.
 func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 	h := &a.home
 	if len(h.lines) == 0 {
@@ -3567,6 +3655,13 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	switch line.kind {
 	case homeBlank:
 		return ""
+	case homeEmptyRow:
+		// THE SAME DIM AS A HEADING AND IN ITS INDENT, with no mark, no chip and
+		// no ground: it is the places column saying what is not there yet, and
+		// a second weight would make the emptiest thing on the screen the
+		// loudest ([homeAttentionTeach] keeps the same rule one column over).
+		// The row carries its clause of the sentence ([homeEmptyLines]).
+		return "  " + pal.dim(fit(line.project, width-2))
 	case homeHeading:
 		// THE HEADING IS THE PROJECT'S NAME AND NOTHING ELSE. It used to carry a
 		// dim `elsewhere` on every project but this window's own, which was the

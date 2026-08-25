@@ -159,6 +159,8 @@ func run() error {
 		return runTick(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
+	case "cache":
+		return runCache(os.Args[2:])
 	case "rebuild":
 		return runRebuild(os.Args[2:])
 	case "why":
@@ -216,6 +218,10 @@ const usageText = `aforge — build and revise task graphs
   aforge services stop <name> [--db path]
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
+  aforge cache                  what the shared build cache holds, and how big it is
+  aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
+                                path, then asks you to type "clean" — --yes skips the
+                                question for scripts. Conversations are never touched.
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
   aforge version                print the build this binary was cut from

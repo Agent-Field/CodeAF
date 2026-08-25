@@ -194,8 +194,8 @@ var commands = []command{
 	// know" and this is "what does it think WITH", and because position in this
 	// table is a claim about frequency: a person sets their crew once and then
 	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
-	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
+	{name: "crew", desc: "the four models aforge uses on its own behalf, beside the one you talk to"},
+	{name: "crew", args: "<preset>", desc: "…set the four to frugal, balanced or max · /model stays"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner", door: sendDoorTask},
 	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts", door: sendDoorTask},
@@ -235,6 +235,18 @@ var commands = []command{
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
 	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
+	// this is what the machine is holding for it — the shared build cache task
+	// workers fill (internal/cachedir). Two rows for one command, /export's
+	// reason exactly: the reading form is the one nearly everybody wants, and
+	// [app.runMenu] writes a row that TAKES something into the draft instead of
+	// running it, so the destructive form rides second wearing the "…". It is
+	// NOT an alias of anything and shares no word with /new's fresh-start set —
+	// /clean already means "start another conversation" there, and a word that
+	// sometimes cleared the screen and sometimes deleted half a gigabyte would
+	// be the most expensive pun on the surface.
+	{name: "cache", desc: "the shared build cache — how big, and where"},
+	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// the first two are the least discoverable on the surface — nothing on the
@@ -739,7 +751,7 @@ func helpText(file string) string {
 		// nothing else names it until a draft happens to look like something to
 		// build.
 		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
-		"ctrl+o         expand this turn's tool calls · click one to open it",
+		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
 		"enter          mid-answer: waits above the box · esc stops and sends · ↑ edits",

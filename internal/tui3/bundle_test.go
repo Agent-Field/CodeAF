@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -548,11 +549,16 @@ func yank(t *testing.T, a *app) string {
 func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.pal = newPalette(tokens.TrueColor, false)
+	// THE CALL COMES BEFORE THE ANSWER, which is the order a turn actually runs
+	// in and the order THE ANSWER HIERARCHY reads (hierarchy.go): prose with more
+	// work under it in the same turn is narration and is drawn at the working
+	// tier, so an answer written above its own tool call would be demoted here —
+	// and this test is about copying the ANSWER's fence.
 	a.entries = append(a.entries,
 		entry{kind: entryUser, text: "how do I print?"},
-		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 		entry{kind: entryTool, tool: "read", text: "main.go", status: toolOK, open: true,
 			detail: toolDetail{Output: "line one\nline two"}},
+		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 	)
 	a.touch()
 	drive(t, a, ctrlKey('b'))
@@ -571,7 +577,9 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	drive(t, a, key("a"))
 	drive(t, a, key("a"))
 	got := yank(t, a)
-	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "  That is all.") {
+	// Flush at both ends: this is the turn's ANSWER, so it carries no work
+	// gutter for the yank to have to strip (hierarchy.go).
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
 		t.Fatalf("the second press did not widen to the answer: %q", got)
 	}
 	if strings.Contains(got, tokens.GlyphCodeGutter) {
@@ -2299,6 +2307,11 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	a.ctxTokens = 100_000
 	a.ctxRing = []int{20_000, 60_000, 100_000}
 	a.inputTokens, a.cacheRead = 10_000, 6_200
+	// A dollar spent and a half-full window arm two earned hints (notice.go),
+	// and either would take the rest slot this ladder measures. The ladder is
+	// about the slot's rest state, so the tips are silenced here as the Display
+	// row would silence them.
+	a.notices.enabled = false
 
 	spark := a.ctxSpark()
 	for _, tc := range []struct {
@@ -2526,8 +2539,16 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 		}
 	}
 	// IT IS A QUESTION, SO IT TAKES THE QUESTION HUE — the same violet the
-	// consent block spends and nothing else on this surface does.
-	painted := a.visible(a.bodyWidth())[0].text
+	// consent block spends and nothing else on this surface does. The card is
+	// found rather than assumed to lead the frame: the conversation's opening
+	// breath (render.go's [app.layout]) is a blank row above everything.
+	painted := ""
+	for _, r := range a.visible(a.bodyWidth()) {
+		if strings.TrimSpace(r.text) != "" {
+			painted = r.text
+			break
+		}
+	}
 	if !strings.Contains(painted, sgr256(hueAsk)) {
 		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
 	}
@@ -4108,18 +4129,26 @@ func TestARoomDrawsAndCollapsesTheNodesThinking(t *testing.T) {
 
 // A PAGE FOLDS ITS OWN CLUSTERS, from its own map and its own turns: ctrl+o in a
 // room is about the rows in the room.
+//
+// A room keeps a screenful of calls rather than the conversation's three
+// (roomscroll_test.go), so the page is fed one call more than its view is tall:
+// exactly the first one folds.
 func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	for _, path := range []string{"a.go", "b.go", "c.go", "d.go"} {
+	paths := []string{"a.go"}
+	for i := 0; i < a.viewHeight(); i++ {
+		paths = append(paths, "more"+strconv.Itoa(i)+".go")
+	}
+	for _, path := range paths {
 		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
 			Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"` + path + `"}`,
 		}})
 	}
 	page := roomText(a)
 	if !strings.Contains(page, "earlier tool call") {
-		t.Fatalf("four calls on a page did not fold:\n%s", page)
+		t.Fatalf("a screenful and one more of calls on a page did not fold:\n%s", page)
 	}
 	if strings.Contains(page, "read a.go") {
 		t.Fatalf("the folded call is still drawn:\n%s", page)

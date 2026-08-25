@@ -171,6 +171,7 @@ func (a *app) enterCopy() {
 	top := a.offsetFor(len(rows), height)
 	at := min(top+height-1, len(rows)-1)
 	a.copy = copyMode{on: true, rows: snapshot, text: plain, owner: owner, at: at, top: top, mark: -1}
+	a.noticeEvent(eventCopyEntered)
 	a.touch()
 }
 

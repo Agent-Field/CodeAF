@@ -120,6 +120,17 @@ type attachable interface {
 	Attach() (<-chan session.Event, bool, func())
 }
 
+// attachReplayer is the same door taken TOGETHER WITH THE REPLAY, in one atomic
+// reading (session's [Agent.AttachReplay]). It exists because the two taken
+// separately drew the running turn twice: the journal already holds a turn's
+// completed steps mid-turn, and the attach backlog replays those same steps in
+// their live form — so a surface that replayed and then attached showed the
+// turn's first half in both renderings, stacked. events is nil when no turn is
+// in flight, and the entries are then the whole record.
+type attachReplayer interface {
+	AttachReplay() ([]session.DisplayEntry, <-chan session.Event, func())
+}
+
 // convKey is a transcript's IDENTITY, and it is computed here and nowhere else.
 //
 // THE SYMLINKS ARE RESOLVED BECAUSE `/tmp` AND `/private/tmp` ARE ONE FILE ON
@@ -352,7 +363,25 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
 	// a person can tell that this is not several terminals, and it is paid on
 	// the switch rather than on the frame.
-	a.replay()
+	//
+	// THE RECORD AND THE IN-FLIGHT TURN ARE TAKEN AS ONE READING when the agent
+	// offers it: mid-turn the journal already holds the turn's completed steps,
+	// and the attach backlog replays those same steps — two calls made
+	// separately drew them both, and a person resuming into a running turn read
+	// its first half twice. The atomic door hands back entries that stop where
+	// the turn's work begins and a stream that carries the turn whole, so the
+	// split cannot race the turn ending between the two.
+	var joined tea.Cmd
+	if door, ok := agent.(attachReplayer); ok {
+		entries, events, stop := door.AttachReplay()
+		a.replayList(entries)
+		if events != nil {
+			joined = a.adoptTurn(events, stop)
+		}
+	} else {
+		a.replay()
+		joined = a.joinTurn()
+	}
 	a.noteStandingHere()
 	a.measureContext()
 	// The rail is rebuilt from the engine's own record rather than carried: the
@@ -369,11 +398,13 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}
-	// THE IN-FLIGHT TURN IS JOINED LAST, so the replay above has already put the
-	// person's own message on the screen: the journal holds it from the moment
-	// it was submitted, and the events this stream carries belong to that same
-	// turn number rather than to a new one.
-	cmds = append(cmds, a.joinTurn())
+	// THE IN-FLIGHT TURN'S STREAM IS PUMPED LAST, so the replay above has
+	// already put the person's own message on the screen: the journal holds it
+	// from the moment it was submitted, and the events this stream carries
+	// belong to that same turn number rather than to a new one.
+	if joined != nil {
+		cmds = append(cmds, joined)
+	}
 	a.touch()
 	return tea.Batch(cmds...)
 }
@@ -397,6 +428,12 @@ func (a *app) joinTurn() tea.Cmd {
 		stop()
 		return nil
 	}
+	return a.adoptTurn(events, stop)
+}
+
+// adoptTurn wires an in-flight turn's stream onto the surface — the working
+// state, the clock, and the pump — whichever door handed it over.
+func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
 	a.stream = events
 	a.streamStop = stop
 	a.state = stateWorking

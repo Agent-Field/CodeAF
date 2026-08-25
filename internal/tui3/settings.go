@@ -364,6 +364,14 @@ var settingUI = map[string]settingMeta{
 		about: "where a web search goes. auto uses the best back end your keys " +
 			"reach and falls back to one that needs none.",
 	},
+	// THE KEY EVERY CALL RIDES sits on the Providers tab above the two search
+	// keys: it is the credential a person comes looking for when the first
+	// turn refused, and it is the one the first-run screen writes (firstrun.go).
+	config.KeyAPIKey: {
+		tab: tabProviders, label: "openrouter key", widget: widgetText,
+		about: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+			"A change lands on this conversation at once.",
+	},
 	config.KeyExaKey: {
 		tab: tabContext, label: "exa key", widget: widgetText,
 		about: "an exa.ai key, which buys better results and page fetches than " +
@@ -463,6 +471,11 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "task column", widget: widgetToggle,
 		about: "stands the task roster beside the chat. ctrl+g closes it and " +
 			"brings it back; this is where the answer is remembered.",
+	},
+	config.KeyHints: {
+		tab: tabDisplay, label: "hints", widget: widgetToggle,
+		about: "one-line tips above the box until you have used what each one " +
+			"teaches. Off silences them, and what's-new lines with them.",
 	},
 	config.KeyRailState: {
 		tab: tabDisplay, label: "sidebar", widget: widgetCycle,
@@ -815,7 +828,16 @@ func (a *app) registry() *config.Settings {
 		// have one, and the row is then absent rather than present and refusing
 		// (internal/config's backgroundRow).
 		BackgroundChecks: a.stands.Background,
-		Applied:          func(string) { a.touch() },
+		// A key written through the row — from the first-run screen or from the
+		// sheet — reaches the running session here, in the same breath as the
+		// file (firstrun.go's [app.handAPIKey]). It is the one row whose write
+		// has a live half on this surface.
+		Applied: func(key string) {
+			a.touch()
+			if key == config.KeyAPIKey {
+				a.handAPIKey()
+			}
+		},
 	})
 	return a.settings
 }

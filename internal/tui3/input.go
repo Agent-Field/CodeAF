@@ -131,6 +131,28 @@ func (e *editor) right() {
 	}
 }
 
+// wordLeft and wordRight move the caret a word at a time, over the SAME
+// boundaries ctrl+w deletes by — spaces first, then the run of non-spaces — so
+// the distance a jump covers and the distance a kill covers are one distance,
+// learned once.
+func (e *editor) wordLeft() {
+	for e.cursor > 0 && unicode.IsSpace(e.value[e.cursor-1]) {
+		e.cursor--
+	}
+	for e.cursor > 0 && !unicode.IsSpace(e.value[e.cursor-1]) {
+		e.cursor--
+	}
+}
+
+func (e *editor) wordRight() {
+	for e.cursor < len(e.value) && unicode.IsSpace(e.value[e.cursor]) {
+		e.cursor++
+	}
+	for e.cursor < len(e.value) && !unicode.IsSpace(e.value[e.cursor]) {
+		e.cursor++
+	}
+}
+
 func (e *editor) home() { e.cursor = e.lineStart() }
 
 func (e *editor) end() { e.cursor = e.lineEnd() }
@@ -218,6 +240,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// it twice must undo it, not re-arm it.
 	if msg.String() != selectKey {
 		a.takeMouseBack()
+	}
+
+	// THE FIRST-RUN SETUP OUTRANKS EVERYTHING BUT ctrl+c, and it can afford to:
+	// it is up only on a launch where no turn has run, no question has been
+	// raised and nothing has been typed, so there is nothing under it a key
+	// could be aimed at (firstrun.go). ctrl+c is excepted as it is for every
+	// modal here — leaving is never modal.
+	if a.setup.open && msg.String() != "ctrl+c" {
+		cmd, _ := a.setupKeyPress(msg)
+		return cmd
 	}
 
 	// An approval question outranks even the model overlay: it is the one state
@@ -549,6 +581,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// through to them would open a line where somebody meant to send.
 		return a.enterStanding()
 
+	case bargeKey:
+		// STOP THIS AND SAY THIS INSTEAD (bargein.go). It is read directly beside
+		// the two chords above because it is the third reading of one hand shape —
+		// a modifier on the send — and it sits UNDER the standing mark for the
+		// same reason that one sits under enter: each of the three is a narrower
+		// claim than the one before it, and the narrowest is read last.
+		//
+		// It is above the newline pair below for standmark.go's reason exactly:
+		// those two are the other spellings of a different gesture, and a chord
+		// that fell through to them would open a line where somebody meant to
+		// stop an answer.
+		return a.bargeIn()
+
 	case "alt+enter", "ctrl+j":
 		// Open a line. Two spellings because terminals disagree about which one
 		// they can even send: alt+enter is the one people reach for, ctrl+j is
@@ -738,6 +783,42 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.input.deleteWord()
 		a.editTags(from, to, 0)
 		return a.edited()
+	case "alt+left", "alt+b", "ctrl+left":
+		// JUMP A WORD BACK, under every name a terminal spells it with.
+		// alt+left is what option+← arrives as on macOS terminals that keep the
+		// option key a modifier (Ghostty, kitty, WezTerm, iTerm's default);
+		// alt+b is the same gesture from a profile that sends esc-b instead, and
+		// it is readline's own word-back; ctrl+left is Windows' and Linux's, and
+		// the kitty-protocol terminals send it faithfully. Over an empty box the
+		// chord does nothing at all — the plain arrows own the empty-box
+		// navigation, and a modifier held by accident must not move a person to
+		// another page.
+		if !a.input.empty() {
+			a.input.wordLeft()
+			a.touch()
+		}
+		return nil
+	case "alt+right", "alt+f", "ctrl+right":
+		// And a word forward, under the same three names.
+		if !a.input.empty() {
+			a.input.wordRight()
+			a.touch()
+		}
+		return nil
+	case "super+left", "super+right":
+		// cmd+←/→ ARE THE LINE'S ENDS, which is what a Mac hand means by them in
+		// every text field it has ever used. They reach this switch only on a
+		// terminal that reports the super modifier at all (kitty's protocol,
+		// win32-input) — everywhere else the chord never arrives, which costs
+		// nothing and is why they are bound rather than detected. The
+		// super+backspace kill above made the same bargain first.
+		if msg.String() == "super+left" {
+			a.input.home()
+		} else {
+			a.input.end()
+		}
+		a.touch()
+		return nil
 	case "left":
 		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
 		// draft, which is the same argument the proposal's row makes for taking

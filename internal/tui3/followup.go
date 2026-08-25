@@ -14,15 +14,33 @@ import (
 // There are two ways to say something to a working session and they mean
 // different things, so they are two keys:
 //
-//	enter    STEERING. The message lands inside the running turn at its next
-//	         step boundary — one more thing the person said mid-work.
-//	ctrl+q   FOLLOW-UP. The message waits for the work to finish and then starts
-//	         a turn of its own.
+//	enter    PARK. The message is held HERE, on the surface, between the answer
+//	         and the box, and it starts a turn of its own when the answer it was
+//	         typed over is finished (park.go).
+//	ctrl+q   FOLLOW-UP. The message is handed to the SESSION the moment it is
+//	         typed, and it starts a turn of its own when the work is done.
 //
-// Steering an "and then write the tests" is an interruption of the thing it is
-// meant to follow; queueing a "no, the OTHER file" arrives too late to help.
-// The session holds both queues (agent.go) and this file is the surface's half
-// of the second one.
+// THIS HEADER ONCE SAID SOMETHING ELSE, AND IT WAS WRONG BY THE TIME ANYBODY
+// READ IT. `enter` used to STEER: the message went straight to the session and
+// reached the model at the running turn's next step boundary. park.go ended
+// that — a steer typed at a turn whose last request had already gone out landed
+// with nothing left to answer it, and the sentence was drawn into the middle of
+// the reply besides — and nothing in this file had to change when it did, which
+// is exactly why the description of the pair went on describing the old one.
+//
+// So the two keys no longer differ in WHEN the message is heard. Both wait for
+// the turn to end. They differ in WHO IS HOLDING IT WHILE IT WAITS, and
+// everything a person can do about it follows from that: a parked message is
+// still theirs — it can be edited, taken back with ↑, or sent at once by
+// stopping the turn it was typed over (`esc`, or `shift+enter` as one gesture,
+// bargein.go) — while a follow-up is in the session with no take-backs, and is
+// DROPPED when the turn it was queued behind is interrupted, because a drain
+// never restarts a turn the person stopped ([app.dropFollows]).
+//
+// Both queues drain at the stream's close and the SESSION'S goes first (app.go's
+// streamClosedMsg): a follow-up was handed over before the parked message was
+// typed in the ordinary case, and a surface that let the newer sentence jump it
+// would be reordering the person's own words.
 //
 // The message is NOT drawn when it is queued. It is drawn when its turn starts,
 // where it actually lands in the conversation — a user line painted above the
