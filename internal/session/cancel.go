@@ -206,6 +206,20 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		g.runFrontier()
 		return line, nil
 	}
+	// THE ROW HEARS THE STOP WHEN THE STOP HAPPENS, and not whenever the
+	// accounting next says something. This node stays RUNNING for as long as its
+	// child takes to wind up — which is the whole reason the line above promises
+	// "stopping" rather than "stopped" — so no state change is coming to carry
+	// the news, and without this the only notice that ever mentioned it was
+	// whichever later publish happened to be pushed through by a bigger figure.
+	// A surface drawing "working" over work a person has just ended is the one
+	// answer a stop must not give, and it is the same law the conversation keeps
+	// on its own interrupt (internal/tui3's app.go).
+	//
+	// It goes BEFORE the cut, outside the lock, on this function's own terms: the
+	// announcement is what the person is waiting to see, and the teardown it is
+	// about is measured in seconds.
+	g.announce(node)
 	cut()
 	return line, nil
 }

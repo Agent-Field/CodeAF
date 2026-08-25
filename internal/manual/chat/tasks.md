@@ -517,9 +517,11 @@ standing, with the door onto the project's record still at its foot. One thing c
 `ctrl+g`, which takes the column off the frame and leaves the work exactly where it was.
 The bottom line of the column says so.
 
-The column is permanent: it stands from the session's first frame, before any task exists,
-at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24 columns
-from 100 to 119. Work fills it rather than raising it. A conversation that has run nothing
+The column is permanent: it stands from the session's first keystroke, before any task
+exists, at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24
+columns from 100 to 119. Work fills it rather than raising it. The one frame without it is
+the untouched empty conversation, which opens on a centred greeting and no column at all
+until you type, a task lands, or a standing order reaches it (*The empty screen* page). A conversation that has run nothing
 draws no empty label or absence sentence, **whatever the project has behind it** — the
 typeable `+ /task` door remains, and in a directory whose earlier sessions ran tasks the door
 `ctrl+. earlier` sits at the foot of the column. Under 100 columns there is no
@@ -788,7 +790,9 @@ With the column closed, work is still visible:
 
 `ctrl+g` works whether or not the session has tasks — the column stands empty, so an
 empty column is still a column to close. It does nothing, and is not swallowed, only when there is no roster on the frame at
-all: a frame under 100 columns where nothing has raised the roster over the body.
+all: a frame under 100 columns where nothing has raised the roster over the body. On
+the untouched empty screen, where no column has stood yet, the key is a first keystroke
+first — the greeting goes — and then closes the column as usual.
 
 ## The task bar disappeared — how do I get the task column back
 
@@ -1397,7 +1401,10 @@ Inside a task's room the page is built from the same blocks the conversation is 
 a tool call expands to its diff or output, a reply renders as markdown, and anything you
 steered wears your own hue. History comes off the task's journal, capped at the last 120
 blocks; a missing or unreadable journal is not an error — the room opens on the live edge
-instead. When the task has landed, a foot line reads `task finished — esc to return`.
+instead. When the task has landed, a foot line reads `task finished — esc to return`, and
+a landed room with no journal to read says `this task's transcript is not here any more`
+above it. A finished task's room replays its whole transcript after a restart as well —
+see *A task's room after a restart*.
 
 `pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
 to the live edge. `↑`/`↓` walk your history first and only scroll a line when there is no
@@ -1429,8 +1436,11 @@ Two bounded things do still hold something back, and both name themselves and op
 
 - a **thinking block** shows three lines until you press `ctrl+e` or click it —
   `⠿ thought for 6s · 148 tok · ctrl+e`;
-- a run of **more than three tool calls in a row** shows the last three above a line reading
-  `9 earlier tool calls · ctrl+o`; `ctrl+o`, or a click on that line, unfolds the run.
+- a run of **more tool calls in a row than fit your window** shows a screenful of the
+  newest ones above a line reading `9 earlier tool calls · scroll up or ctrl+o`; scrolling
+  up at the top of the page, `ctrl+o`, or a click on that line unfolds the run. (The
+  conversation keeps three and its line reads `· ctrl+o`; a task's page keeps as many as
+  the window is tall — see "Reading a task's page".)
 
 Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
 there is no work chip for it to mean instead.
@@ -1883,7 +1893,18 @@ told its prerequisite will never finish. Either way:
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
   looking for a fault that is not there.
 
-Pressing `x` twice, or on work that has already landed, does nothing but say so.
+**Between the card and the landing the header reads `stopping`.** A running task is not
+stopped the instant you answer the card: its context is cut and its worker takes a moment
+to wind up, so for those seconds the task is genuinely still running, and both the line
+you are shown — `stopping task 7 (Fix the parser) — its branch is kept` — and the header
+say the same present-tense thing. The word becomes `stopped` when the task actually lands.
+The spinner beside it deliberately keeps turning, and that is not a contradiction: a task
+is work happening somewhere else that really is still happening, unlike a turn in the
+conversation, which is work you are sitting in front of and which stills the moment you
+press `esc`.
+
+Pressing `x` twice, or on work that has already landed, does nothing but say so — the
+second press answers `task 7 (Fix the parser) is already stopping`.
 
 **You can still ask in words instead** — "stop task 7" — and the model has the door
 through its `tasks` tool. The key is faster and does not spend a turn.
@@ -1949,6 +1970,10 @@ to it with `↑`/`↓` — and only over an **empty** message box, exactly like 
 into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
 
+**The task's room asks the same question** at the foot of its page, and in there the four
+keys need no selection — see *How do I approve a task* below. Room and card are one
+question: answer in either and both show the receipt.
+
 ## What accept, look again and not right each do
 
 - **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
@@ -2013,6 +2038,40 @@ asked first**, and nothing else about the landing: either way the task is neithe
 failed until somebody answers, its branch is kept, and anything waiting on it waits.
 
 To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
+
+## How do I approve a task — accept a finished task from the room, the card, or by saying so
+
+A task that landed `needs your look` (`finished — look it over` on the roster) is approved
+by **accepting** it, and there are three doors onto the same decision. Use whichever is in
+front of you:
+
+| Where you are | What to do |
+| --- | --- |
+| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `l` looks again, `n` says it is not right, `d` hands these to aforge from now on. The same four are chips at the foot of the page |
+| **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
+| **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
+
+Accepting merges the task's branch into yours and unblocks everything queued behind it.
+Whichever door is used first wins; the other two find the question already gone and show
+`already answered` rather than raising an error.
+
+## Task needs my look but there is no button — where the answers are
+
+If a landed task is asking and you cannot see anything to press, you are on a row that
+only reports the state: the roster's `finished — look it over`, home's `needs you` strip,
+or the card's own head. The answers are in exactly two places on screen:
+
+- **the foot of the task's room** — `finished, but nobody has checked it — your call` and
+  `[a] accept · [l] look again · [n] not right · [d] decide these for me`. Enter on the
+  roster row opens the room; the answers are at the bottom of the page and the hint slot
+  under the message box names the three keys;
+- **the landing card in the conversation**, under the outcome line, once the card is
+  selected.
+
+Both need an **empty** message box: the letters are held to the same rule `x` is, so a
+letter typed into a sentence stays a letter. If neither place shows the rows, the task is
+under `task.settle = auto` and aforge is deciding it — say "you decide" or "ask me about
+these again" to change who is asked.
 
 ## Stopping an adaptive run
 

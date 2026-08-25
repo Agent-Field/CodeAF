@@ -309,6 +309,97 @@ func ReadWorld(root string) World {
 // ReadHome is every project under this machine's state root.
 func ReadHome() World { return ReadWorld(PlacesRoot()) }
 
+// Adopt puts the conversation a window is sitting in into the world when the
+// walk did not find it, and reports whether it had to.
+//
+// THE WALK CAN BE TOO EARLY FOR THE CONVERSATION IT WAS ASKED FROM. A fresh
+// launch mints a folder and a meta.json with no `lastUserAt`, and [readSessionRow]
+// skips exactly that shape on purpose — an empty shell is not a conversation
+// somebody has had. But a person who opens home FROM that shell is sitting in
+// it, and a screen that listed every conversation on the machine except the one
+// on the terminal behind it would be emptier than the machine actually is. So
+// the surface hands over what it knows — the journal it holds, the title, the
+// workspace, the model — and this fills in whatever the folder can add, under
+// the project the folder belongs to, named by the one rule every other project
+// is named by ([projectName]).
+//
+// IT INVENTS NOTHING OUTSIDE THE ROOT. A journal that is not a session folder's
+// `transcript.jsonl` two levels under `root` is a memory-only surface or a test
+// fixture standing somewhere else, and the world answers for the root alone.
+// A conversation the walk already found is left exactly as the walk read it.
+func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
+	transcript := filepath.Clean(strings.TrimSpace(seed.Transcript))
+	if transcript == "." || filepath.Base(transcript) != placeTranscript {
+		return false
+	}
+	dir := filepath.Dir(transcript)
+	bucketDir := filepath.Dir(dir)
+	if filepath.Dir(bucketDir) != filepath.Clean(strings.TrimSpace(root)) {
+		return false
+	}
+	for _, project := range w.Projects {
+		for _, row := range project.Sessions {
+			if row.Transcript == transcript {
+				return false
+			}
+		}
+	}
+	meta, _ := LoadMeta(dir)
+	row := SessionRow{
+		ID:         filepath.Base(dir),
+		Dir:        dir,
+		Transcript: transcript,
+		Title:      firstWord(seed.Title, meta.Title),
+		Workspace:  firstWord(seed.Workspace, meta.Workspace),
+		Owned:      meta.Owned,
+		Model:      firstWord(seed.Model, meta.Model),
+		At:         meta.LastUserAt,
+		Created:    meta.Created,
+		Spend:      meta.SpentUSD,
+		Tokens:     meta.Tokens,
+		Open:       InUse(transcript),
+		Archived:   meta.Archived,
+	}
+	row.Presence, row.Live = ReadSessionPresence(dir, now)
+	var mine []TaskIndexEntry
+	for _, entry := range ReadTaskIndex(filepath.Join(bucketDir, taskIndexName)) {
+		if strings.TrimSpace(entry.SessionID) == row.ID {
+			mine = append(mine, entry)
+		}
+	}
+	row.Tasks = rollUp(mine, row)
+	at := -1
+	for i := range w.Projects {
+		if w.Projects[i].Dir == bucketDir {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		bucket := filepath.Base(bucketDir)
+		project := Project{Bucket: bucket, Dir: bucketDir, Path: projectPath(row)}
+		project.Name = projectName(project.Path, bucket)
+		w.Projects = append(w.Projects, project)
+		at = len(w.Projects) - 1
+	}
+	project := &w.Projects[at]
+	row.Project, row.ProjectDir = project.Name, project.Path
+	project.Sessions = append(project.Sessions, row)
+	sortSessions(project.Sessions)
+	sort.SliceStable(w.Projects, func(i, j int) bool {
+		return w.Projects[i].At().After(w.Projects[j].At())
+	})
+	return true
+}
+
+// firstWord is the first of two strings that says anything, trimmed.
+func firstWord(a, b string) string {
+	if a = strings.TrimSpace(a); a != "" {
+		return a
+	}
+	return strings.TrimSpace(b)
+}
+
 // readWorld is the testable one, with the clock handed in so that ages are
 // measured from one instant.
 func readWorld(root string, now time.Time) World {

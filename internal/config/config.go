@@ -279,12 +279,28 @@ type Config struct {
 	Models *catalog.Catalog
 }
 
+// ErrNoAPIKey is what [Load] returns when nothing — the two variables, the
+// profile file — holds a key. It is a value rather than a sentence so that a
+// door can tell "no key" from "config broken": the first is a person who has
+// not set up yet, and the interactive chat opens anyway and asks them
+// ([LoadKeyless]); the second stops the launch, whoever is watching.
+var ErrNoAPIKey = errors.New(APIKeyEnv + " (or OPENAI_API_KEY) is required")
+
 // Load resolves configuration from the environment, falling back to the
 // defaults above. Only the API key has no default; everything else runs
 // unconfigured.
-func Load() (Config, error) {
+func Load() (Config, error) { return load(true) }
+
+// LoadKeyless is [Load] for a launch that can collect the key itself: the
+// interactive chat, whose first-run setup asks for one (internal/tui3's
+// firstrun.go). Everything else resolves exactly as Load resolves it, and APIKey
+// is simply empty until the person hands one over. A door that has nobody to
+// ask — --once, an engine, a pipe — has no business calling this.
+func LoadKeyless() (Config, error) { return load(false) }
+
+func load(requireKey bool) (Config, error) {
 	config := Config{
-		APIKey:            firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY"), PersistedAPIKey(os.Getenv("AFORGE_PROFILE_DIR"))),
+		APIKey:            APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")),
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
 		PlanModel:         strings.TrimSpace(os.Getenv("AFORGE_PLAN_MODEL")),
@@ -303,8 +319,8 @@ func Load() (Config, error) {
 		Swarm:             DefaultSwarm,
 		ProfileDir:        os.Getenv("AFORGE_PROFILE_DIR"),
 	}
-	if config.APIKey == "" {
-		return Config{}, errors.New("OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
+	if config.APIKey == "" && requireKey {
+		return Config{}, ErrNoAPIKey
 	}
 	// Every user-tunable knob below resolves through the settings registry's
 	// one order — environment, then the profile's config.json, then the

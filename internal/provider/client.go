@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -67,11 +68,21 @@ type Client struct {
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
+	// keyMu guards the two fields under it, which are the only part of the
+	// adapter that changes after construction: a key can arrive mid-session
+	// ([Client.SetAPIKey]) while a request on another goroutine is being
+	// encoded.
+	keyMu sync.RWMutex
+	// apiKey is the bearer every request carries, read per request rather than
+	// out of config so that a key handed over after construction reaches the
+	// very next call. Empty is a client that cannot send yet ([ErrNoAPIKey]).
+	apiKey string
 	// base is the pinned AgentField client, retained for the one surface this
 	// adapter does not implement for itself: the tool-call loop against a plain
 	// OpenAI-compatible endpoint. It never sees an OpenRouter request and never
 	// sees a request the adapter has shaped — see ExecuteToolCallLoop for where
-	// that boundary is drawn and why it is where it is.
+	// that boundary is drawn and why it is where it is. Nil while there is no
+	// key, because the SDK refuses to be built without one.
 	base *ai.Client
 	// wait is the retry backoff, seamed exactly like the media client's video
 	// poll: production sleeps, tests record what would have been slept and
@@ -86,11 +97,21 @@ type Client struct {
 	now func() time.Time
 }
 
+// ErrNoAPIKey is what a request meets on a client built without a key and not
+// yet handed one ([Client.SetAPIKey]). It is a value so the session can name the
+// state to a person in its own words rather than matching a sentence.
+var ErrNoAPIKey = errors.New("no API key: this session has not been given one yet")
+
 // NewClient builds the adapter. It performs no network request.
+//
+// A CLIENT MAY BE BUILT WITHOUT A KEY. The chat surface opens on a profile with
+// nothing in it and asks for the key on its first screen (internal/tui3's
+// firstrun.go), so the session — and this adapter under it — has to exist
+// before the key does. Every request refuses with [ErrNoAPIKey] until
+// [Client.SetAPIKey] lands one; nothing is sent with an empty bearer. The other
+// three fields are still required: they have defaults and a caller with none
+// is a caller with a bug.
 func NewClient(config Config) (*Client, error) {
-	if strings.TrimSpace(config.APIKey) == "" {
-		return nil, errors.New("provider API key is required")
-	}
 	if strings.TrimSpace(config.BaseURL) == "" {
 		return nil, errors.New("provider base URL is required")
 	}
@@ -100,33 +121,75 @@ func NewClient(config Config) (*Client, error) {
 	if config.Timeout < 0 {
 		return nil, errors.New("provider timeout must not be negative")
 	}
-	base, err := ai.NewClient(&ai.Config{
-		APIKey:      config.APIKey,
-		BaseURL:     config.BaseURL,
-		Model:       config.Model,
-		Temperature: config.Temperature,
-		MaxTokens:   config.MaxTokens,
-		Timeout:     config.Timeout,
-		SiteURL:     AppURL,
-		SiteName:    AppName,
-	})
-	if err != nil {
-		return nil, err
-	}
 	httpClient, streamClient := config.HTTPClient, config.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
 		streamClient = &http.Client{Transport: streamTransport()}
 	}
-	return &Client{
+	client := &Client{
 		config:   config,
 		http:     httpClient,
 		stream:   streamClient,
-		base:     base,
 		wait:     waitContext,
 		velocity: sharedVelocity,
 		now:      time.Now,
-	}, nil
+	}
+	if err := client.SetAPIKey(config.APIKey); err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+// SetAPIKey hands the adapter the key its requests ride from now on: the one a
+// person pasted on the first-run screen or into the settings row, arriving
+// while this client is already the conversation's.
+//
+// The SDK client under the plain-OpenAI loop is rebuilt here rather than
+// patched, because it validates its key at construction and holds it
+// privately; while there is no key it is simply absent, and the one path that
+// needs it says so (ExecuteToolCallLoop). The adapter's own transport reads the
+// key per request under the lock, so a request already in flight keeps the
+// bearer it was encoded with and the next one carries the new key.
+func (c *Client) SetAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	var base *ai.Client
+	if key != "" {
+		built, err := ai.NewClient(&ai.Config{
+			APIKey:      key,
+			BaseURL:     c.config.BaseURL,
+			Model:       c.config.Model,
+			Temperature: c.config.Temperature,
+			MaxTokens:   c.config.MaxTokens,
+			Timeout:     c.config.Timeout,
+			SiteURL:     AppURL,
+			SiteName:    AppName,
+		})
+		if err != nil {
+			return err
+		}
+		base = built
+	}
+	c.keyMu.Lock()
+	defer c.keyMu.Unlock()
+	c.apiKey, c.base = key, base
+	return nil
+}
+
+// apiKeyNow is the key the next request carries, or "" with [ErrNoAPIKey].
+func (c *Client) apiKeyNow() (string, error) {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	if c.apiKey == "" {
+		return "", ErrNoAPIKey
+	}
+	return c.apiKey, nil
+}
+
+// sdkClient is the pinned SDK client, or nil while there is no key.
+func (c *Client) sdkClient() *ai.Client {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.base
 }
 
 // Model reports the adapter's default model slug.
@@ -166,7 +229,11 @@ func (c *Client) ExecuteToolCallLoop(
 	if c.isOpenRouter() {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
-	return c.base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
+	base := c.sdkClient()
+	if base == nil {
+		return nil, nil, ErrNoAPIKey
+	}
+	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
 }
 
 // maxResponseBytes bounds what one completion may be believed to be. A
@@ -759,9 +826,12 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	apiKey := c.config.APIKey
+	apiKey, err := c.apiKeyNow()
 	if override := strings.TrimSpace(request.APIKeyOverride); override != "" {
-		apiKey = override
+		apiKey, err = override, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Authorization", "Bearer "+apiKey)

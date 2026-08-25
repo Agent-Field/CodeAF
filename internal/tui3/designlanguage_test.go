@@ -226,7 +226,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
 				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
 			},
-			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "dim": hueDim},
+			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "narr": hueNarr, "dim": hueDim},
 		},
 		{
 			name: "light",
@@ -234,7 +234,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
 				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
 			},
-			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "dim": lightDim},
+			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
 		},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {
@@ -308,12 +308,12 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 	}{
 		{"dark", map[string]hue{
 			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
-			"dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
+			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
 			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
 		}},
 		{"light", map[string]hue{
 			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
-			"dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
+			"narr": lightNarr, "dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
 			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
 		}},
 	} {

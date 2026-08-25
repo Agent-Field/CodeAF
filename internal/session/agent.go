@@ -377,6 +377,32 @@ func (a *Agent) SetModel(model string) {
 	a.mu.Unlock()
 }
 
+// SetAPIKey hands the conversation the key it talks with, after the fact.
+//
+// It exists for one moment: the surface opened on a profile with no key, asked
+// for one on its first screen (internal/tui3's firstrun.go), and the person
+// pasted it — into a session that already exists, holding a client built
+// without one (internal/provider's NewClient states that a keyless client
+// refuses every request until this lands). The config copy is updated too,
+// because every worker this agent spawns — a task node, an audit, a standing
+// firing — is built from `a.config` and would otherwise inherit the empty key
+// the boot had.
+//
+// A client that cannot take a key — a test double — is left alone rather than
+// refused: the config still records the key, which is what the doubles read.
+func (a *Agent) SetAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if keyed, ok := a.client.(interface{ SetAPIKey(string) error }); ok {
+		if err := keyed.SetAPIKey(key); err != nil {
+			return err
+		}
+	}
+	a.config.APIKey = key
+	return nil
+}
+
 // ── reasoning strength ──────────────────────────────────────────────────────
 //
 // How hard the model is asked to think is a CHOICE ABOUT A MODEL, not about a
@@ -637,6 +663,61 @@ func (a *Agent) Attach() (events <-chan Event, running bool, stop func()) {
 	return stream.out, true, func() { hub.drop(stream) }
 }
 
+// AttachReplay is [Agent.Attach] and [Agent.Transcript] AS ONE READING, for the
+// surface that is about to draw both: the entries to replay, and — when a turn
+// is in flight — that turn's live stream, whose backlog replays the turn's work
+// from its first event.
+//
+// IT EXISTS BECAUSE THE TWO CALLS MADE SEPARATELY DREW THE RUNNING TURN TWICE.
+// Every completed step of a turn is journaled the moment it completes
+// ([Agent.recordLocked]), so mid-turn the transcript already holds the turn's
+// first half — and the backlog replays that same half again, in its live form,
+// under the copy the replay just drew. Taken under one hold of the lock, the
+// split is exact instead of raced: the entries stop at the turn's floor
+// ([Agent.turnFloor]) and the stream carries the turn whole, so the
+// conversation reads once, with no gap and no repeat.
+//
+// WHAT STAYS BELOW THE FLOOR IS EVERY WORD A PERSON TYPED. The backlog carries
+// the model's work and nothing else — no event kind re-delivers a user message
+// — so the turn's opening message, and any steer typed into it since, come from
+// the entries or from nowhere. The turn's own asides (a task's landing note
+// drained mid-turn) ride the stream's task events instead and are left out with
+// the rest of the work.
+//
+// events is nil when no turn is in flight — the entries are the whole record
+// and there is nothing to watch — and stop is never nil, on [Agent.Attach]'s
+// terms: calling it without checking events, or twice, is fine.
+func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, stop func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || !a.running || a.hub == nil {
+		return shapeEntries(a.messages, a.file), nil, func() {}
+	}
+	// The hub cannot already be closed here: the turn's goroutine clears
+	// running under a.mu before it closes the hub, and we hold a.mu. The
+	// defensive arm keeps the honest answer anyway — a dead stream would hang
+	// the caller where the full record answers them.
+	stream, live := a.hub.attach()
+	if !live {
+		return shapeEntries(a.messages, a.file), nil, func() {}
+	}
+	floor := a.turnFloor
+	if floor > len(a.messages) {
+		floor = len(a.messages)
+	}
+	kept := append([]ai.Message(nil), a.messages[:floor]...)
+	for _, msg := range a.messages[floor:] {
+		// A steer is the person's own sentence and no event will ever redraw
+		// it; a note the session authored rides the user role too and is the
+		// one user-role line left out — its own event lane is its live record.
+		if msg.Role == "user" && !a.file.isNote(msg) {
+			kept = append(kept, msg)
+		}
+	}
+	hub := a.hub
+	return shapeEntries(kept, a.file), stream.out, func() { hub.drop(stream) }
+}
+
 // userMessage is a person's message on its way into the transcript: the message
 // the model reads, and the durable references the JOURNAL writes in place of
 // the parts it must not hold.
@@ -790,6 +871,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// THE TURN'S WORK BEGINS HERE, and the floor says so for [Agent.AttachReplay]:
+	// everything recorded at or past this index while the turn runs is work the
+	// hub's backlog can replay, so a replay-then-attach surface must not be
+	// handed it twice. It sits after the user record on purpose — the person's
+	// message is below the floor, because no event ever re-carries their words.
+	a.turnFloor = len(a.messages)
 	// AND THE PERSON'S OWN WORDS ARE KEPT, so that work this turn hands off can
 	// carry the sentence that asked for it rather than a paraphrase of it
 	// (task_brief.go). A woken turn opens with nothing and changes nothing here.

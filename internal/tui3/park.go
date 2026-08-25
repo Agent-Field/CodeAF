@@ -30,6 +30,11 @@ import (
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
+// AND THE FIRST TWO OF THOSE AS ONE ACT: `shift+enter` parks the draft and
+// stops the answer in one gesture, which is the way somebody actually
+// interrupts — by speaking (bargein.go). It is built ON this queue rather than
+// beside it, so everything below is what happens to the message afterwards.
+//
 // ONE AT A TIME, in the order they were typed — the session's own law for its
 // follow-up queue (internal/session's agent.go), said about this queue: each
 // finished turn sends exactly one parked message, and the rest wait for the end
@@ -196,7 +201,21 @@ func (a *app) recallParkedAt(i int) bool {
 // parkedHint is the dim line under the block, in the three pieces it is trimmed
 // down through on a narrow frame. Each piece is dropped from the right, because
 // what the message is DOING outranks what you can do about it.
-var parkedHint = []string{"waits for this answer", "esc stops and sends", "↑ or click to edit"}
+// The middle piece is interpolated from [bargeSendWord] rather than spelled
+// here, because the same three words are now what the hint slot says about the
+// CHORD that does this in one gesture (bargein.go). One phrase, one act, and no
+// second copy to drift: `esc stops and sends` and `shift+enter stops and sends`
+// have to stay the same sentence about the same thing.
+//
+// AND THE MIDDLE PIECE IS CONDITIONAL, which is what the `stops` argument below
+// buys. There is a window — the seconds between a person's esc and the engine
+// letting go of the turn (render.go's [app.windingDown]) — in which a message is
+// still parked and esc does NOTHING: [app.interrupt] returns at its first line
+// outside [stateWorking], and [app.sendParked] stands down while the stream is
+// open. A line offering a key that is inert for three seconds is the surface
+// lying at the exact moment a person is pressing keys because they think it is
+// not listening.
+var parkedHint = []string{"waits for this answer", "esc " + bargeSendWord, "↑ or click to edit"}
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim
 // line. Zero when nothing is parked, which is every frame of an ordinary
@@ -231,14 +250,27 @@ func (a *app) parkedRows(width int) []string {
 			out = append(out, text)
 		}
 	}
-	return append(out, a.pal.dim(fit("  "+parkedWord(len(a.parks), width-2), width)))
+	// THE BLOCK AND THE HINT SLOT ASK THE SAME QUESTION (render.go's
+	// [app.hintWord] gates its own parked case on the same predicate), so the two
+	// lines about this queue that share one screen cannot say different things
+	// about the same key.
+	return append(out, a.pal.dim(fit("  "+parkedWord(len(a.parks), width-2, a.parking()), width)))
 }
 
 // parkedWord is the dim line's sentence, trimmed to what fits. The count is
 // only spelled when there is more than one message waiting — one message
 // counted is a number that says nothing the block above it does not.
-func parkedWord(n, width int) string {
+//
+// stops says esc still has a turn to stop. When it does not — the turn was
+// stopped a moment ago and is winding down — the middle piece is dropped rather
+// than reworded: what is left is still exactly true (the message waits for this
+// answer, and it can still be edited), and there is no key to name, which is the
+// same silence [stoppingWord] keeps in the status line for the same seconds.
+func parkedWord(n, width int, stops bool) string {
 	pieces := append([]string(nil), parkedHint...)
+	if !stops {
+		pieces = append(pieces[:1], pieces[2:]...)
+	}
 	if n > 1 {
 		pieces[0] = itoa(n) + " wait for this answer"
 	}

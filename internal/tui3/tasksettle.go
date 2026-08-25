@@ -347,7 +347,7 @@ func settleAnswerOf(part string) settleAnswer {
 // the person for, and a press that missed a chip and fell through would expand
 // the card under somebody who was reaching for an answer.
 func (a *app) settlePress(entry, x int) bool {
-	card := a.doneCardAt(entry)
+	card := a.settleCardOf(entry)
 	if card == nil {
 		return false
 	}
@@ -391,21 +391,178 @@ func (a *app) settleCardKey(msg tea.KeyPressMsg) bool {
 	if !a.settleAsking(card) {
 		return false
 	}
-	var answer settleAnswer
-	switch msg.String() {
-	case "a":
-		answer = settleTake
-	case "l":
-		answer = settleAgain
-	case "n":
-		answer = settleNotRight
-	case "d":
-		answer = settleAlways
-	default:
+	answer, ok := settleAnswerFor(msg.String())
+	if !ok {
 		return false
 	}
 	a.settleCard(card, answer)
 	return true
+}
+
+// settleAnswerFor is the four letters, spelled once, so the conversation's
+// selected card and a node's room ([app.roomSettleKey]) cannot answer to
+// different keys.
+func settleAnswerFor(key string) (settleAnswer, bool) {
+	switch key {
+	case "a":
+		return settleTake, true
+	case "l":
+		return settleAgain, true
+	case "n":
+		return settleNotRight, true
+	case "d":
+		return settleAlways, true
+	}
+	return 0, false
+}
+
+// ── the same question, asked inside the room ────────────────────────────────
+//
+// THE PERSON IS INVITED INTO THE ROOM TO DO THE LOOKING. The roster's row reads
+// `finished — look it over`, enter opens the node's page, and the page is where
+// the work actually is — the transcript, the calls, the files. So the page is
+// where the question has to be asked as well: for a while it was not, and the
+// room of a node that needed a look drew `task finished — esc to return` at its
+// foot while the only answers were on a card back in the conversation, buried
+// under the chat's own commentary about the landing, and answerable only once
+// that card was walked to and selected. A person sat in the room of the very
+// thing they were asked to decide about with no way to decide.
+//
+// THE STATE IS ONE STATE. The room does not get a question of its own: it draws
+// the conversation's own card — found by the node's id, [app.doneCardFor] — with
+// the same two rows, the same four chips and the same receipt, through the same
+// renderer, so the two surfaces cannot disagree about whether the question is
+// still standing. Answering in the room marks the card in the conversation
+// decided; answering the card marks the room's foot; and a decision made
+// anywhere else — the model's own `tasks … resolve`, another window — reaches
+// both through the same `already answered` refresh. Nothing is cached: the foot
+// is derived from the card on every draw, so a node settled while somebody was
+// reading its room shows the receipt or the plain foot on the next frame and
+// never a dead answers row.
+
+// roomSettleHint is the room's share of the hint slot while its node is still
+// asking (room.go's [app.roomHint]). It names the three answers and not the
+// preference, and never esc — the legend's left end already carries that key
+// for as long as a room is open.
+const roomSettleHint = "a accept · l look again · n not right"
+
+// doneEntryFor is the index of the LATEST landed card for one node, or -1. The
+// latest, because the engine lands a node more than once — once needing a look,
+// and again as done or failed once somebody decided — and the newest card is
+// the one that says where the work stands now.
+func (a *app) doneEntryFor(id uint64) int {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if e := a.entries[i]; e.kind == entryDone && e.done != nil && e.done.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// doneCardFor is the latest landed card for one node, or nil.
+func (a *app) doneCardFor(id uint64) *taskDone {
+	if i := a.doneEntryFor(id); i >= 0 {
+		return a.entries[i].done
+	}
+	return nil
+}
+
+// roomSettleCard is the card the open room's foot is drawn from, or nil when
+// the foot is the plain finished line: the room is on a landed node whose
+// latest card either still asks or wears a receipt. A run's page has no node to
+// decide about, an ordinary landing has nothing to ask, and a card under `auto`
+// is being decided by somebody else — all three are nil here.
+func (a *app) roomSettleCard() *taskDone {
+	if a.room == nil || !a.room.done || a.room.orch != nil {
+		return nil
+	}
+	card := a.doneCardFor(a.room.id)
+	if card == nil || !card.unverified || !card.asks {
+		return nil
+	}
+	if a.settleAsking(card) || card.decided != "" {
+		return card
+	}
+	return nil
+}
+
+// roomSettleAsking reports whether the open room's node is still a question.
+func (a *app) roomSettleAsking() bool {
+	return a.settleAsking(a.roomSettleCard())
+}
+
+// settleCardOf is the card one drawn row belongs to, and it is the seam the
+// pointer reads through (hover.go, [app.settlePress]): a conversation row
+// carries its entry's index, and a room's foot carries none — the room IS the
+// selection, so its rows resolve to the room's own node.
+func (a *app) settleCardOf(entry int) *taskDone {
+	if entry >= 0 {
+		return a.doneCardAt(entry)
+	}
+	return a.roomSettleCard()
+}
+
+// roomSettleRows is the foot of a room whose node needs a look: the ask line
+// and the answers row while the question stands, the receipt once it is
+// answered. It reports false when the room's foot is not this file's to draw.
+//
+// THE ROWS CARRY NO ENTRY, which is the room's own convention for a foot
+// (room.go's [roomFinishedWord]) and what makes the pointer resolve them to the
+// room's node rather than to an index into a list that is not on screen.
+func (a *app) roomSettleRows(out []row, width int) ([]row, bool) {
+	card := a.roomSettleCard()
+	if card == nil {
+		return out, false
+	}
+	out = a.settleRows(out, card, -1, width, 0)
+	// The chips were just measured against THIS layout. The conversation's own
+	// copy of the row may sit at a different indent (a rollup's), so its cache is
+	// dropped and it re-measures on its next frame rather than pressing against
+	// columns the room recorded.
+	if i := a.doneEntryFor(card.id); i >= 0 {
+		a.entries[i].stale = true
+	}
+	return out, true
+}
+
+// roomSettleKey routes the four letters inside the room of a node that is still
+// asking, and reports whether it took one.
+//
+// THE ROOM'S BOX STEERS THE WORKER, so the letters fire ONLY over an EMPTY box —
+// the law every bare letter on this surface is held to (stop.go's `x`,
+// [app.settleCardKey]) — and never during a history walk, whose keys are the
+// walk's. The overlays, the stop card and the steer guard are all refused
+// before this is reached (room.go's [app.roomKey] and app.go's key order), and
+// they stay refused: this route sits beside the room's other keys rather than
+// loosening the conversation path's selection rule.
+func (a *app) roomSettleKey(msg tea.KeyPressMsg) bool {
+	if a.room == nil || !a.input.empty() || a.recalling() || a.rew.on {
+		return false
+	}
+	card := a.roomSettleCard()
+	if !a.settleAsking(card) {
+		return false
+	}
+	answer, ok := settleAnswerFor(msg.String())
+	if !ok {
+		return false
+	}
+	a.settleCard(card, answer)
+	return true
+}
+
+// settleTouched is the redraw after a card changed, wherever it was answered
+// from: the conversation's copy of the row is dropped, and so is the room's
+// page, which caches its rows as one list (room.go) and would otherwise keep
+// drawing an answers row over a question that is gone.
+func (a *app) settleTouched(card *taskDone) {
+	if i := a.doneEntryFor(card.id); i >= 0 {
+		a.entries[i].stale = true
+	}
+	if a.room != nil && a.room.id == card.id {
+		a.room.dirty = true
+	}
+	a.touch()
 }
 
 // ── the answer, spent ───────────────────────────────────────────────────────
@@ -429,7 +586,7 @@ func (a *app) settleCard(card *taskDone, answer settleAnswer) {
 	}
 	if answer == settleAlways {
 		a.settleAlways(doors, card)
-		a.touch()
+		a.settleTouched(card)
 		return
 	}
 	if err := doors.ResolveUnverified(card.id, answer.resolution(), ""); err != nil {
@@ -445,7 +602,7 @@ func (a *app) settleCard(card *taskDone, answer settleAnswer) {
 	case settleNotRight:
 		card.decided = settleNotRightLine
 	}
-	a.touch()
+	a.settleTouched(card)
 }
 
 // settleRefused is what the card does with an answer the engine would not take,
@@ -463,7 +620,7 @@ func (a *app) settleRefused(card *taskDone, err error) {
 	} else {
 		card.trouble = settleTroubleLine
 	}
-	a.touch()
+	a.settleTouched(card)
 }
 
 // settleAlways is the fourth choice: the preference and this one card, in that

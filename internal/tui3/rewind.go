@@ -480,6 +480,7 @@ func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, c
 	leave()
 	a.dropHover()
 	a.rebuildTranscript()
+	a.noticeEvent(eventRewound)
 	// The note is the compaction mark's voice: one dim line, said once, about
 	// something the surface did to the conversation rather than about anything
 	// anybody said. A conversation that silently lost its tail is a conversation

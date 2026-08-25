@@ -785,7 +785,10 @@ the closing write-up cost on their own.
 
 Beside each one sit `…_<id>-audit-<6 hex>.jsonl` per check and `…_<id>-repair1.jsonl` per
 correction round. A task's own pointer stays on the **first** file — the run that is the
-task itself.
+task itself. A conversation that has a session folder keeps them inside it instead, under
+`<session folder>/tasks/`, and that pointer is written on the conversation's task
+checkpoint, which is what lets a finished task's room replay its transcript after a
+restart.
 
 ## What happens when a task fails
 

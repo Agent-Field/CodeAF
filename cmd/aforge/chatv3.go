@@ -155,7 +155,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// profile, the catalog, the harness registry, the memory database, the
 	// deliverables index and the accounts manager are things this PROCESS owns,
 	// and a launch borrows them rather than opening a second of each.
-	proc, err := openV3Process("chat")
+	// WHETHER THIS LAUNCH MAY SET ITSELF UP. It is a person at a terminal with
+	// no particular conversation in mind — a TTY on stdin, no --once (which
+	// returned above, but the flag is the honest test), no --session and no
+	// picker — and it is the one launch that may open with no key and ask for
+	// one on its first screen (internal/tui3's firstrun.go). Everything else
+	// meets the old refusal at the door. --host forked above and never reaches
+	// here; the far machine's key is the far machine's business.
+	setup := stdinIsTerminal(os.Stdin) && strings.TrimSpace(*once) == "" &&
+		strings.TrimSpace(*file) == "" && !pickSession
+	proc, err := openV3ProcessWith("chat", setup)
 	if err != nil {
 		return err
 	}
@@ -395,6 +404,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// process belong to the wrong machine, and home refuses over --host for
 		// exactly that reason.
 		Landing: strings.TrimSpace(*file) == "" && !pickSession,
+		// THE FIRST-RUN SETUP, on the same launch that may open keyless (see
+		// `setup` above). The surface applies the rest of its law — a profile
+		// with every fact answered, a marker saying it was shown, a resumed
+		// conversation — and this door only says whether anybody is here to
+		// answer.
+		Setup: setup,
+		// And the key arriving after the door: every conversation this process
+		// holds starts talking with it on its next request, and every one opened
+		// later is built with it (chatv3_process.go's [v3Process.setAPIKey]).
+		ApplyAPIKey: proc.setAPIKey,
 		// The accounts panel, and the sign-in a pressed row starts. It is the
 		// SAME manager the belt reaches through (cfg.Connect), so an account
 		// connected on the panel is connected for the model in the same breath
