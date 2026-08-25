@@ -1040,3 +1040,81 @@ func TestTickRetiresAHoldThatRanOutOfTime(t *testing.T) {
 		t.Fatalf("the rule is %q because %q", back.Status, back.RetiredWhy)
 	}
 }
+
+// THE TRUST COUNTER IS KEPT WHERE A FIRING IS RECORDED, AND A QUESTION BREAKS
+// IT. This is the arithmetic the rope column's middle rung is drawn from
+// ([RopeWord]), and it is asserted against real firings through the real
+// recorder because a streak is not recoverable from the record afterwards —
+// nothing else on the item remembers what the firing before last came to.
+func TestFiringKeepsTheCountOfCleanRunsInARow(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	runner := &fakeRunner{outcome: Outcome{Kind: "said", Text: "CI is red", USD: 0.01}}
+
+	watch := reminder("every hour, tell me if CI went red", time.Time{})
+	watch.When = When{Kind: WhenEvery, Every: "1h"}
+	watch.Grant = "tell me without asking"
+	// The rail is raised because this test needs eight firings and the default
+	// fixture allows three a day. The rail is not what is under test here.
+	watch.Rails = Rails{PerRunUSD: 0.05, MaxPerDay: 50}
+	made, err := store.Create(watch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// fireOnce walks the clock past the next due moment and takes one pass, so
+	// each call is one real firing through the one recorder.
+	at := now
+	fireOnce := func() Item {
+		t.Helper()
+		at = at.Add(61 * time.Minute)
+		store.clock = held(at)
+		if pass := mustTick(t, newTicker(store, runner, at)); pass.Fired != 1 {
+			t.Fatalf("the pass fired %d times: %+v", pass.Fired, pass)
+		}
+		item, err := store.Get(made.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return item
+	}
+
+	for want := 1; want <= TrustAfter; want++ {
+		item := fireOnce()
+		if item.CleanRuns != want {
+			t.Fatalf("after %d clean firings the count is %d", want, item.CleanRuns)
+		}
+		rope := RopeWord(item)
+		if want < TrustAfter && rope == RopeTrusted {
+			t.Fatalf("%d clean firings already read as %q", want, rope)
+		}
+		if want == TrustAfter && rope != RopeTrusted {
+			t.Fatalf("%d clean firings read as %q, want %q", want, rope, RopeTrusted)
+		}
+	}
+
+	// AND ONE FIRING THAT STOPS ON A QUESTION PUTS IT BACK TO NOTHING, so the
+	// column starts counting again from where somebody has to start watching
+	// again — five clean mornings do not buy an item past the one that asked.
+	runner.outcome = Outcome{Kind: OutcomeNeedsYou, Text: "it wants to drop a column",
+		NeedsPerson: "should it drop the column?", USD: 0.02}
+	item := fireOnce()
+	if item.CleanRuns != 0 {
+		t.Fatalf("a firing that needed somebody left the count at %d", item.CleanRuns)
+	}
+	if got := RopeWord(item); got != "earning trust 0/5" {
+		t.Fatalf("after a question the rope reads as %q", got)
+	}
+
+	// A FAILURE BREAKS IT THE SAME WAY, and it is a separate arm because a
+	// runner may report a failure with nothing waiting for the person at all —
+	// so the outcome kind has to be read as well as [Item.NeedsPerson].
+	runner.outcome = Outcome{Kind: "said", Text: "CI is red", USD: 0.01}
+	if item = fireOnce(); item.CleanRuns != 1 {
+		t.Fatalf("the count did not start again: %d", item.CleanRuns)
+	}
+	runner.outcome = Outcome{Kind: OutcomeFailed, Text: "the probe could not reach the host"}
+	if item = fireOnce(); item.CleanRuns != 0 {
+		t.Fatalf("a failed firing left the count at %d", item.CleanRuns)
+	}
+}

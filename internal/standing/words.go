@@ -86,9 +86,9 @@ func outcomeClause(outcome string) string {
 		return "it told you"
 	case "landed":
 		return "it did the work"
-	case "needs-you":
+	case OutcomeNeedsYou:
 		return "it needs your look"
-	case "failed":
+	case OutcomeFailed:
 		return "it could not finish"
 	case OutcomeNothing:
 		return "it came to nothing"
@@ -122,16 +122,26 @@ func agoWord(at, now time.Time) string {
 	return "on " + strings.ToLower(at.Format("Jan 2"))
 }
 
-// The two words the rope column is allowed to say, and no third.
+// The words the rope column is allowed to say, and no others.
 const (
 	// RopeAsksFirst is an item that has been given no licence to act unasked.
 	RopeAsksFirst = "asks first"
-	// RopeOnItsOwn is an item whose grant records what it may do without asking.
-	RopeOnItsOwn = "on its own"
+	// RopeTrusted is an item with a grant that has since fired [TrustAfter]
+	// times in a row without needing anybody.
+	RopeTrusted = "trusted alone"
+	// ropeEarning leads the middle rung, which finishes with the count.
+	ropeEarning = "earning trust "
 )
 
-// RopeWord is HOW MUCH ROPE this item has: exactly [RopeAsksFirst] or
-// [RopeOnItsOwn], and nothing else ever.
+// TrustAfter is how many clean firings in a row earn an item the top rung. It
+// is exported because it is the denominator a person reads — `earning trust
+// 3/5` — and a page that spelled the 5 itself would be a second answer to a
+// number this package owns.
+const TrustAfter = 5
+
+// RopeWord is HOW MUCH ROPE this item has, in three rungs: [RopeAsksFirst],
+// `earning trust 3/5`, or [RopeTrusted]. It is the only derivation of that
+// answer in the program, and every surface that draws the column reads it.
 //
 // ── THE RULE, AND WHY IT IS THIS ONE ──
 //
@@ -140,45 +150,74 @@ const (
 // acting on this may do without asking* — "open a pull request but never merge
 // it" — written only when they actually said something like it, and its own
 // documentation finishes the thought: **with none, it may only tell them
-// things**. So a grant is the whole of the question, and the rule is one line:
-// a grant recorded means the person said yes to something in advance, and no
-// grant means nothing has been agreed and anything past telling them is theirs
-// to allow.
+// things**. So a grant is the FLOOR: with none, nothing has been agreed and
+// anything past telling somebody things is theirs to allow.
 //
 // THIS IS THE OPPOSITE POLARITY TO THE ONE THE PLAN'S PARENTHETICAL ASSUMED.
 // docs/design/home-rethink/LANES.md decision 5 glosses "asks first" as *the
 // item's grant names something it must ask for*, which reads the field
 // backwards: a grant names what it may do WITHOUT asking, so a grant is more
-// rope and not less. The two words are exactly the plan's; which one a grant
-// selects is corrected here, against the field's own contract.
+// rope and not less.
+//
+// AND ABOVE THE FLOOR THERE ARE TWO RUNGS AND NOT ONE, WHICH IS A DECISION AND
+// NOT A DERIVATION. This function argued at length, and until 2026-08-25
+// correctly, that there was no third rung — quoting standing.go's own *there
+// are no probation counters: the rules are the tenure*. The owner has since
+// ordered the counter ("follow the exact design please", recorded in
+// docs/design/home-rethink/FIDELITY.md item 6), so the counter exists: an item
+// is trusted alone once [Item.CleanRuns] reaches [TrustAfter], and until then
+// the column says how far along it is. The old argument is gone rather than
+// left standing beside code that contradicts it — a comment arguing against the
+// function under it is worse than no comment at all.
+//
+// The design's own word is *tenured*. THE WORD SHIPPED IS *trust*, and the
+// reason is not the one FIDELITY gives. That doc says the resident-separation
+// test bans "tenure"; it does not — internal/tui3's manual_test.go bans five
+// phrases and that is not among them, and internal/manual/chat/commands.md
+// already ships the words "tenure after" for a settings row. The true reasons
+// are better ones. First, *tenure* is the RESIDENT's own name for this exact
+// mechanism — config.KeyTenureAfter, internal/resident/tenure.go, a charter
+// earning tenure after so many clean firings — and CLAUDE.md's rule about the
+// two products is that vocabulary does not travel between them, whether or not
+// a test happens to catch a given word. Second, it is an employment term for a
+// thing a person thinks of as trust. FIDELITY records this as a deviation in
+// WORDING ONLY, which is right; only its stated cause needs correcting.
+//
+// AND THE RESIDENT'S THRESHOLD IS NOT THIS ONE. config.TenureAfterAt is a
+// setting over CHARTERS in that other product; [TrustAfter] is a constant over
+// standing items in this one. They are the same idea about different objects,
+// so this package does not read that setting — a data package reaching into the
+// other product's configuration to answer a question about its own records
+// would be the assumption-carrying CLAUDE.md forbids.
 //
 // WHAT IS DELIBERATELY NOT IN THE RULE, because both would make the column say
 // something it does not mean:
 //
 //   - [Item.NeedsPerson] is a STATE and not rope. It is set while the latest
 //     run is stopped on a question and cleared by the next firing, so an item
-//     that walked into something this morning would flip to "asks first" and
-//     back tomorrow — and how much rope a thing has is not a thing that changes
-//     while you are asleep. What that state means is drawn where it belongs, as
-//     `needs your look`.
+//     that walked into something this morning would flip its RUNG twice in a
+//     day — and how much rope a thing has is not a thing that changes while you
+//     are asleep. It does reset [Item.CleanRuns], which is a different claim:
+//     the streak starts again, and the column says so by counting from nothing
+//     rather than by changing what it means.
 //   - [Item.Exceptions] narrow WHERE an item reaches — a workspace it skips, a
 //     conversation it stays out of — and not what it may do when it does reach.
 //     An item that runs everywhere but one repository has the same rope in the
 //     repositories it does run in.
-//
-// AND THERE IS NO THIRD RUNG. Screen 2f's `earning tenure 3/5` describes a
-// counter this package refuses to keep — standing.go says it in as many words:
-// *there are no probation counters: the rules are the tenure* — and the machinery
-// behind that phrase belongs to a different product entirely. Two words, and the
-// column is honest.
 func RopeWord(item Item) string {
-	if strings.TrimSpace(item.Grant) != "" {
-		return RopeOnItsOwn
+	if strings.TrimSpace(item.Grant) == "" {
+		// The commonest answer, and the most strongly true one: an item with no
+		// grant and a say action cannot act at all, so there is nothing it could
+		// do unasked even if it wanted to.
+		return RopeAsksFirst
 	}
-	// The commonest answer, and the most strongly true one: an item with no
-	// grant and a say action cannot act at all, so there is nothing it could do
-	// unasked even if it wanted to.
-	return RopeAsksFirst
+	if item.CleanRuns >= TrustAfter {
+		return RopeTrusted
+	}
+	// A COUNT PAST THE THRESHOLD CANNOT BE DRAWN, so it cannot be reached: the
+	// clamp above answers every value at or over it, and what is left is the
+	// range the fraction can honestly print.
+	return ropeEarning + strconv.Itoa(max(item.CleanRuns, 0)) + "/" + strconv.Itoa(TrustAfter)
 }
 
 // moneyFloor is where rounding to cents turns a real figure into "$0.00", which

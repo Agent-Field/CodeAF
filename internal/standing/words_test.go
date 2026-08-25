@@ -1,6 +1,7 @@
 package standing
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -111,18 +112,40 @@ func TestTheAgeLadderIsTheOneTheSurfaceDraws(t *testing.T) {
 	}
 }
 
-// TWO WORDS AND NO THIRD, and a grant is what chooses between them — a grant
-// records what an item may do WITHOUT asking, so a grant is more rope, not less.
-func TestTheRopeColumnIsExactlyTwoWords(t *testing.T) {
-	granted := Item{Does: Action{Kind: ActionTask}, Grant: "open a pull request but never merge it"}
-	if got := RopeWord(granted); got != RopeOnItsOwn {
-		t.Fatalf("an item with a grant reads as %q, want %q", got, RopeOnItsOwn)
+// THREE RUNGS, AND A GRANT IS THE FLOOR — a grant records what an item may do
+// WITHOUT asking, so a grant is more rope, not less. Above the floor the count
+// of clean firings in a row decides, and the boundaries are what a person
+// actually meets: nothing yet, one short, and exactly enough.
+func TestTheRopeColumnIsThreeRungsCountedAtItsBoundaries(t *testing.T) {
+	granted := func(clean int) Item {
+		return Item{Does: Action{Kind: ActionTask},
+			Grant: "open a pull request but never merge it", CleanRuns: clean}
 	}
+	for _, row := range []struct {
+		clean int
+		want  string
+	}{
+		{0, "earning trust 0/5"},
+		{1, "earning trust 1/5"},
+		{TrustAfter - 1, "earning trust 4/5"},
+		{TrustAfter, RopeTrusted},
+		// A COUNT PAST THE THRESHOLD IS STILL THE TOP RUNG and never "6/5". The
+		// fraction is only ever drawn over the range it can honestly print.
+		{TrustAfter + 40, RopeTrusted},
+	} {
+		if got := RopeWord(granted(row.clean)); got != row.want {
+			t.Fatalf("a granted item with %d clean firings reads as %q, want %q",
+				row.clean, got, row.want)
+		}
+	}
+	// AND NO GRANT IS THE FLOOR WHATEVER THE COUNT SAYS. An item nobody has let
+	// act unasked cannot earn its way past that by firing: there is nothing it
+	// could do unattended even if it wanted to.
 	for _, item := range []Item{
 		{},
 		{Does: Action{Kind: ActionSay, Say: "the build went red"}},
-		{Does: Action{Kind: ActionTask, Brief: "summarise what merged"}},
-		{Grant: "   "},
+		{Does: Action{Kind: ActionTask, Brief: "summarise what merged"}, CleanRuns: 99},
+		{Grant: "   ", CleanRuns: 99},
 	} {
 		if got := RopeWord(item); got != RopeAsksFirst {
 			t.Fatalf("an item with no grant reads as %q, want %q", got, RopeAsksFirst)
@@ -130,22 +153,68 @@ func TestTheRopeColumnIsExactlyTwoWords(t *testing.T) {
 	}
 }
 
-// A state is not rope. An item stopped on a question this morning has exactly
-// the rope it had yesterday, and a column that flipped overnight would be
+// THE COUNT IS KEPT WHERE A FIRING IS RECORDED, and a firing that stopped on a
+// question or could not finish puts it back to nothing. Trust is a RUN of clean
+// firings and not a tally: an item that needed somebody last night is one
+// somebody has to watch again, whatever it did the fortnight before.
+func TestAQuestionOrAFailureBreaksTheTrustCount(t *testing.T) {
+	item := Item{Grant: "file the invoice", CleanRuns: 4}
+	if got := RopeWord(item); got != "earning trust 4/5" {
+		t.Fatalf("four clean firings read as %q", got)
+	}
+	// One more clean firing is the rung; the recorder is what adds it, and this
+	// asserts the arithmetic the recorder does (tick.go's fire).
+	item.CleanRuns++
+	if got := RopeWord(item); got != RopeTrusted {
+		t.Fatalf("five clean firings read as %q, want %q", got, RopeTrusted)
+	}
+	// And a firing that stops on a question takes it to nothing, so the column
+	// starts counting again from where the person has to start watching again.
+	item.NeedsPerson, item.CleanRuns = "which account should this go against?", 0
+	if got := RopeWord(item); got != "earning trust 0/5" {
+		t.Fatalf("after a question the rope reads as %q", got)
+	}
+}
+
+// A STATE IS NOT A RUNG. An item stopped on a question this morning has exactly
+// the rope its record earned; the question resets the COUNT, and the column says
+// so by counting from nothing rather than by changing what it means. A column
+// that flipped between "asks first" and "trusted alone" overnight would be
 // answering a different question from the one it is headed with.
-func TestBeingStoppedOnAQuestionDoesNotChangeTheRope(t *testing.T) {
-	item := Item{Grant: "file the invoice", NeedsPerson: "which account should this go against?"}
-	if got := RopeWord(item); got != RopeOnItsOwn {
-		t.Fatalf("an item waiting on somebody reads as %q, want %q", got, RopeOnItsOwn)
+func TestBeingStoppedOnAQuestionDoesNotChangeWhichRungIsPossible(t *testing.T) {
+	item := Item{Grant: "file the invoice", NeedsPerson: "which account?", CleanRuns: TrustAfter}
+	if got := RopeWord(item); got != RopeTrusted {
+		t.Fatalf("an item waiting on somebody reads as %q, want %q", got, RopeTrusted)
+	}
+	if got := RopeWord(Item{NeedsPerson: "which account?"}); got != RopeAsksFirst {
+		t.Fatalf("an ungranted item waiting on somebody reads as %q", got)
 	}
 }
 
 // An exception narrows WHERE an item reaches and not what it may do when it
 // gets there.
 func TestAnExceptionDoesNotChangeTheRope(t *testing.T) {
-	item := Item{Grant: "push to any branch", Exceptions: []Exception{{Workspace: "/repo/secret"}}}
-	if got := RopeWord(item); got != RopeOnItsOwn {
-		t.Fatalf("an item with an exception reads as %q, want %q", got, RopeOnItsOwn)
+	item := Item{Grant: "push to any branch", CleanRuns: TrustAfter,
+		Exceptions: []Exception{{Workspace: "/repo/secret"}}}
+	if got := RopeWord(item); got != RopeTrusted {
+		t.Fatalf("an item with an exception reads as %q, want %q", got, RopeTrusted)
+	}
+}
+
+// AN ITEM WRITTEN BEFORE THE COUNTER EXISTED DECODES AS ZERO and starts earning
+// trust again, which is the conservative direction: nothing on disk says those
+// firings were clean, and a column that assumed they were would be granting rope
+// nobody measured.
+func TestAnOlderItemStartsEarningTrustAgain(t *testing.T) {
+	var item Item
+	if err := json.Unmarshal([]byte(`{"words":"x","grant":"do the thing","runs":40}`), &item); err != nil {
+		t.Fatal(err)
+	}
+	if item.CleanRuns != 0 {
+		t.Fatalf("an item with no cleanRuns key decoded as %d", item.CleanRuns)
+	}
+	if got := RopeWord(item); got != "earning trust 0/5" {
+		t.Fatalf("an item from before the counter reads as %q", got)
 	}
 }
 

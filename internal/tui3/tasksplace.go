@@ -662,18 +662,7 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 
 // step keeps the four time keys in one grammar shared with spend.
 func (r tasksReading) step(win session.UsageWindow, key string) session.UsageWindow {
-	switch key {
-	case "shift+left":
-		return win.Step(-1)
-	case "shift+right":
-		return win.Step(1)
-	case "shift+up":
-		return win.Coarser()
-	case "shift+down":
-		return win.Finer()
-	default:
-		return win
-	}
+	return placeWindowStep(win, key)
 }
 
 // tasksTeach spends an empty page on explaining the place rather than drawing

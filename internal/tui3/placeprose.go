@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
+
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -90,6 +92,69 @@ const (
 	// nothing and said nothing is indistinguishable from a key that is broken.
 	standNotOursWord = "that one does not stand over this conversation"
 )
+
+// placeWindowStep is SCREEN 3d'S FOUR KEYS, and it is one function because
+// there is one answer.
+//
+// Time is two dimensions — which window, and how coarse — so it gets two arrow
+// axes rather than three letters: `shift+←→` pages the window by its own length
+// and `shift+↑↓` zooms the grain. Every place that has a window answers exactly
+// these four and no others, and a place that wrote its own switch would be a
+// fourth chance for one of them to disagree about what `shift+↑` means. The
+// arithmetic itself is [session.UsageWindow]'s, which is the one window
+// vocabulary this surface has.
+//
+// A KEY THAT IS NOT ONE OF THE FOUR ANSWERS THE WINDOW IT WAS GIVEN, so a caller
+// can compare and learn whether anything actually moved — which is what lets a
+// place refuse to redraw for a keystroke that changed nothing.
+func placeWindowStep(win session.UsageWindow, key string) session.UsageWindow {
+	switch key {
+	case "shift+left":
+		return win.Step(-1)
+	case "shift+right":
+		return win.Step(1)
+	case "shift+up":
+		return win.Coarser()
+	case "shift+down":
+		return win.Finer()
+	}
+	return win
+}
+
+// The window control as screen 3d draws it: the label BETWEEN THE ARROWS, which
+// is the control and the reading at once. A person reads the span they are
+// looking at and the keys that move it in one glance, on the row that reports
+// it, rather than learning a chord from a foot note somewhere else.
+//
+// A WINDOW WITH NO SPAN DRAWS NOTHING — not the arrows, not an empty pair of
+// them. [session.UsageWindow.Label] answers "" for a window nobody has chosen
+// yet, and arrows around nothing would be a control over no reading.
+const (
+	placeWindowBack = "shift+← "
+	placeWindowOn   = " →"
+)
+
+// placeWindowWords is the control as PLAIN TEXT, which is what a caller measures
+// against the frame it has. It is separate from the painted form because a
+// string with escape sequences in it cannot be clipped or counted safely, and a
+// header deciding whether the control fits has to do both.
+func placeWindowWords(win session.UsageWindow) string {
+	label := win.Label()
+	if label == "" {
+		return ""
+	}
+	return placeWindowBack + label + placeWindowOn
+}
+
+// placeWindowRow is that same control, painted: the arrows dim because they are
+// the instruction, the label in the reading tier because it is the fact.
+func placeWindowRow(win session.UsageWindow, pal palette) string {
+	label := win.Label()
+	if label == "" {
+		return ""
+	}
+	return pal.dim(placeWindowBack) + pal.ink(label) + pal.dim(placeWindowOn)
+}
 
 // foldLine keeps every collapsed count in one sentence grammar. A clause is
 // already prose and therefore follows the count after one comma.
