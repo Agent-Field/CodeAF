@@ -799,6 +799,15 @@ func (a *app) landHome() {
 	// the door at the foot of the conversation depends on what the disk holds
 	// any more, so a launch that is not being greeted does not read the world at
 	// all — and a launch that is reads it exactly once.
+	//
+	// THAT IS THE LAUNCH-PATH LAW SAID THE SHORTEST WAY (PERF.md). This function
+	// runs inside [newApp], before bubbletea exists and therefore on the road to
+	// the FIRST PAINT, and the walk is four system calls per session across every
+	// project on the machine ([session.ReadWorld]). A launch that is not being
+	// greeted — `--session`, `aforge resume`, `--once`, every headless frame and
+	// every test — used to pay all of it to decide one word in the legend; the
+	// legend stopped asking, so the two conditions below cut the walk out
+	// entirely rather than moving it off the loop.
 	if !a.landing || a.pickSession {
 		return
 	}

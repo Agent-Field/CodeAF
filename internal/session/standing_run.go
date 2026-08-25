@@ -346,7 +346,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 			Arguments: standingProbeArgs(item.When.Probe.Args),
 		},
 	}
-	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call)
+	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call, argsText(call))
 	return standingTail(result.text, standing.ProbeClip), nil
 }
 

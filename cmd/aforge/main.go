@@ -32,16 +32,29 @@ func main() {
 	if sweproSentinel(os.Getenv) {
 		os.Exit(dispatchSwepro(os.Args[1:]))
 	}
-	// The default heap target collects several times before the surface is even
-	// drawn, and none of those collections free anything worth the pause: the
-	// launch path allocates a graph snapshot, a catalog, and a thread, and then
-	// keeps them. Trading a few megabytes of resident memory for those cycles
-	// is the right side of that bargain for an interactive tool. An explicit
-	// GOGC still decides — this is a default, not a policy.
+	os.Exit(execute())
+}
+
+// tuneForTheSurface raises the heap target for a command that is about to draw
+// one, and IT IS CALLED FROM THE DISPATCH BELOW rather than from main.
+//
+// The default heap target collects several times before the surface is even
+// drawn, and none of those collections free anything worth the pause: the launch
+// path allocates a graph snapshot, a catalog, and a thread, and then keeps them.
+// Trading a few megabytes of resident memory for those cycles is the right side
+// of that bargain for a tool somebody is sitting in front of.
+//
+// IT IS THE WRONG SIDE FOR EVERY OTHER COMMAND, which is why this is not in
+// main. `do`, `run`, `exec`, `engine` and a subharness run headless, often many
+// at once on one machine and often for a long time, and nobody is waiting on a
+// pause there — a resident set four times larger, multiplied by a fan-out, is a
+// cost paid to shorten a pause no one can see. Those commands keep the Go
+// default. An explicit GOGC still decides for both — this is a default, not a
+// policy.
+func tuneForTheSurface() {
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
 	}
-	os.Exit(execute())
 }
 
 // execute is the last line of defense. Everything below it absorbs its own
@@ -84,6 +97,7 @@ func run() error {
 		// No arguments opens the resident surface. On branch chat-v3 that
 		// surface IS v3 (docs/CHAT-V3.md, "Entry and cutover"); v2 stays
 		// reachable behind its flag until the V3-3 deletion.
+		tuneForTheSurface()
 		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
 			return runChatV2(rest)
 		}
@@ -91,6 +105,7 @@ func run() error {
 	}
 	switch os.Args[1] {
 	case "chat":
+		tuneForTheSurface()
 		// The v2 surface is chosen before the old one reads a flag, so the old
 		// path runs the same bytes it ran yesterday (11.1: disconnect, don't
 		// delete). Without --v2 or AFORGE_CHAT_V2 nothing here changes.
@@ -105,6 +120,7 @@ func run() error {
 		// The chat surface, opened on the list of conversations this directory
 		// has already had (internal/tui3's resume.go). It is a v3 door only:
 		// the older surfaces have no session files to pick from.
+		tuneForTheSurface()
 		return runResumeV3(os.Args[2:])
 	case "engine":
 		// The far half of `aforge chat --host <host>`: the process ssh starts

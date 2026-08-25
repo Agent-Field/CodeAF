@@ -269,13 +269,26 @@ func TestChangeGateSleepsWhileAServiceIsSupervised(t *testing.T) {
 			reconciler.gateDeadline, clock)
 	}
 
-	// And the gate still wakes for the probe rather than sleeping past it.
+	// And the probe still happens on time — but WITHOUT waking the pass. A
+	// health check is one question about one PID; naming it as a clock deadline
+	// meant the whole reconciliation ran to ask it, six times a minute for as
+	// long as the service lived. The supervisor runs on quiet passes instead, so
+	// the gate stays shut and the operating system is asked exactly as often.
 	clock = clock.Add(serviceHealthInterval)
 	quiet, err = reconciler.quietTickLocked()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quiet {
-		t.Fatal("the change gate slept through a service health check")
+	if !quiet {
+		t.Fatal("a due health check woke the whole pass")
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	supervisor.healthMu.Lock()
+	probedAt := supervisor.checkedAt["svc"]
+	supervisor.healthMu.Unlock()
+	if !probedAt.Equal(clock) {
+		t.Fatalf("the quiet pass skipped the health check: probed at %s, want %s", probedAt, clock)
 	}
 }

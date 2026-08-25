@@ -95,6 +95,10 @@ type Client struct {
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
+	// encodes is what this client already knows its transcript and its tool
+	// block serialize to (memo.go). It changes nothing about the bytes and is
+	// carried per client because a transcript belongs to a conversation.
+	encodes encodeMemo
 }
 
 // ErrNoAPIKey is what a request meets on a client built without a key and not
@@ -421,17 +425,21 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if httpResponse.StatusCode >= 400 {
 		return nil, apiError(httpResponse.StatusCode, payload)
 	}
-	var response ai.Response
-	if err := json.Unmarshal(payload, &response); err != nil {
+	// ONE PARSE. The answer and the router's annotation on it come out of the
+	// same decode, because the alternative was reading a megabyte of completion
+	// twice to recover one short string from the second pass.
+	var decoded servedResponse
+	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
+	response := decoded.Response
 	// A non-streamed answer has no first token to wait for — the whole thing
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
 	// than "instant" (velocity.go).
 	c.noteVelocity(
 		c.modelFor(request),
-		servedProvider(payload),
+		servedProvider(decoded.Provider),
 		0,
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
@@ -449,22 +457,31 @@ func (c *Client) clock() time.Time {
 	return c.now()
 }
 
-// servedProvider reads the endpoint the router says answered.
+// servedResponse is one completion plus the field the router adds beside it.
 //
-// It is decoded separately from ai.Response rather than added to it: the SDK's
-// response type is the OpenAI shape, `provider` is the router's own addition to
-// it, and a field this adapter reads for its own bookkeeping does not belong in
-// a type the whole harness passes around. A body without the field is not an
-// error — every non-router endpoint is one — it is simply a sighting with
-// nobody to attribute.
-func servedProvider(payload []byte) string {
-	var served struct {
-		Provider string `json:"provider"`
-	}
-	if err := json.Unmarshal(payload, &served); err != nil {
+// The wrapper exists rather than the field being added to ai.Response: the SDK's
+// response type is the OpenAI shape, `provider` is the router's own annotation
+// on it, and something this adapter reads for its own bookkeeping does not
+// belong in a type the whole harness passes around.
+type servedResponse struct {
+	ai.Response
+	// Provider is raw for the reason errorBody's `code` is raw: ONE FIELD OF AN
+	// UNEXPECTED TYPE MUST NOT FAIL THE DECODE OF THE WHOLE ANSWER. An endpoint
+	// that spelled the name as anything but a string leaves a completion that
+	// still parses and a sighting with nobody to attribute, which is what it was
+	// when the name was read by a second pass of its own.
+	Provider json.RawMessage `json:"provider"`
+}
+
+// servedProvider reads the endpoint the router says answered. An absent field is
+// not an error — every non-router endpoint sends none — it is simply nobody to
+// attribute the measurement to.
+func servedProvider(raw json.RawMessage) string {
+	var served string
+	if err := json.Unmarshal(raw, &served); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(served.Provider)
+	return strings.TrimSpace(served)
 }
 
 // outputTokens is what an answer was worth, by the provider's own count when it

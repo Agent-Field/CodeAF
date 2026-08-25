@@ -283,53 +283,6 @@ func (supervisor *ServiceSupervisor) forgetGone(services []store.Service) {
 	}
 }
 
-// NextHealthCheck is the earliest moment supervision has something to do, given
-// the services the caller has already read. A zero time means nothing is
-// supervised and the change gate may sleep on the journal alone.
-//
-// This exists because a supervised process can die without writing anything, so
-// its health check is a clock deadline the journal never announces. The gate
-// used to name that deadline as "now", which is true only in the sense that it
-// disarmed the gate entirely for as long as any service was adopted.
-func (supervisor *ServiceSupervisor) NextHealthCheck(services []store.Service, now time.Time) time.Time {
-	if supervisor == nil {
-		return time.Time{}
-	}
-	supervisor.healthMu.Lock()
-	defer supervisor.healthMu.Unlock()
-	due := time.Time{}
-	earlier := func(at time.Time) {
-		if at.Before(now) {
-			at = now
-		}
-		if due.IsZero() || at.Before(due) {
-			due = at
-		}
-	}
-	for i := range services {
-		switch services[i].Status {
-		case store.ServiceRunning:
-			if grace := services[i].StartedAt.Add(serviceHealthStartupGrace); grace.After(now) {
-				earlier(grace)
-				continue
-			}
-			last, checked := supervisor.checkedAt[services[i].ID]
-			if !checked {
-				earlier(now)
-				continue
-			}
-			earlier(last.Add(serviceHealthInterval))
-		case store.ServiceFailed:
-			// A failed service with auto-restart is not waiting on a probe; the
-			// next pass restarts it, so the next pass is the deadline.
-			if services[i].AutoRestart {
-				earlier(now)
-			}
-		}
-	}
-	return due
-}
-
 func (supervisor *ServiceSupervisor) restartFailed(ctx context.Context, service store.Service) error {
 	if service.RestartCount >= serviceRestartLimit {
 		return supervisor.rest(service)

@@ -350,7 +350,7 @@ func (e *subharnessEnv) Tool(ctx context.Context, name string, args map[string]a
 		defer e.working()
 		e.needsALook()
 	}
-	result := e.agent.executeTool(ctx, e.ep, e.hub, call)
+	result := e.agent.executeTool(ctx, e.ep, e.hub, call, argsText(call))
 	if result.isError {
 		return exec.ToolResult{}, e.failed(exec.CallTool, name, body, started, errors.New(result.text))
 	}

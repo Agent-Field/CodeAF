@@ -271,8 +271,12 @@ type Reconciler struct {
 	practiceIdle    time.Duration
 	services        *ServiceSupervisor
 	heartbeat       func(time.Time)
-	handover        HandoverFunc
-	residentSince   time.Time
+	// heartbeatAt is when the stamp was last written. Touched only by
+	// noteHeartbeat, which the Serve loop calls between passes with nothing else
+	// running, so it needs no lock of its own.
+	heartbeatAt   time.Time
+	handover      HandoverFunc
+	residentSince time.Time
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -328,6 +332,73 @@ type Reconciler struct {
 	gateEventSeq   int64
 	gateDeadline   time.Time
 	gateClockLimit time.Time
+
+	// The reads several lanes of one pass each take for themselves, shared only
+	// where sharing provably cannot change the answer (memo.go). Every one of
+	// them is guarded by mu, because every one of them is read from a pass.
+	questionMemo  journalMemo[[]store.AgentQuestion]
+	activeMemo    journalMemo[[]store.Node]
+	tasteMemo     journalMemo[[]store.TasteAnswer]
+	surpriseMemos map[int]*timedMemo[[]store.ScopeSurprise]
+	// The two skill passes derive from the fact shelf and write to disk, so
+	// they are gated on the journal rather than shared (skills.go).
+	skillPromotionGate journalGate
+	skillBinGate       journalGate
+}
+
+// unresolvedQuestionScan is how deep every read of the question shelf goes.
+// Seven lanes had each spelled the same 200 for themselves, which is seven
+// chances for one of them to drift and start answering a different question
+// from the lane beside it — and the memo below is only sound while they are all
+// asking for the same rows.
+const unresolvedQuestionScan = 200
+
+// unresolvedQuestionsLocked is the pass's reading of the unresolved question
+// shelf. Four lanes want it — expiry, the two rescues, and the clock deadline —
+// and on a pass where none of them resolves or resurfaces anything they are all
+// looking at the same rows.
+func (r *Reconciler) unresolvedQuestionsLocked() ([]store.AgentQuestion, error) {
+	return r.questionMemo.read(r.store, func() ([]store.AgentQuestion, error) {
+		return r.store.UnresolvedQuestions(unresolvedQuestionScan)
+	})
+}
+
+// activeNodesLocked is the pass's reading of the compact live view. It is a
+// decode of every live node, and both the fold/narrate pair at the top of the
+// pass and the fold-grace deadline at the bottom of it need one.
+func (r *Reconciler) activeNodesLocked() ([]store.Node, error) {
+	return r.activeMemo.read(r.store, r.store.ActiveNodes)
+}
+
+// tasteAnswersLocked is the pass's reading of every settled taste verdict. The
+// settle seam reads it once for the sentences in it and then once more per open
+// shelf, which on a store with a dozen shelves is thirteen decodes of the same
+// handful of answered questions.
+func (r *Reconciler) tasteAnswersLocked() ([]store.TasteAnswer, error) {
+	return r.tasteMemo.read(r.store, r.store.TasteAnswers)
+}
+
+// scopeSurpriseTTL is how long a surprise metric may be reused. See timedMemo:
+// this is the one derivation the journal watermark cannot help with, and the
+// span is far shorter than the coarsest clock any reader of it turns on.
+const scopeSurpriseTTL = time.Minute
+
+// scopeSurprisesLocked is the practice loop's reading of the residual metrics.
+// It is an unbounded recursive walk of every settled job with a GROUP_CONCAT
+// over their facts, taken twice on every non-quiet pass, and the sample floor
+// reshapes the aggregation — so the memo is per floor rather than shared.
+func (r *Reconciler) scopeSurprisesLocked(minSamples int) ([]store.ScopeSurprise, error) {
+	if r.surpriseMemos == nil {
+		r.surpriseMemos = make(map[int]*timedMemo[[]store.ScopeSurprise])
+	}
+	memo := r.surpriseMemos[minSamples]
+	if memo == nil {
+		memo = &timedMemo[[]store.ScopeSurprise]{}
+		r.surpriseMemos[minSamples] = memo
+	}
+	return memo.read(r.now(), scopeSurpriseTTL, func() ([]store.ScopeSurprise, error) {
+		return r.store.ScopeSurprises(minSamples)
+	})
 }
 
 // StandingWatch is the small consequence-facing seam the resident needs.
@@ -578,10 +649,30 @@ func (r *Reconciler) WithHeartbeat(beat func(time.Time)) *Reconciler {
 	return r
 }
 
+// heartbeatInterval is how often the liveness stamp is actually written.
+//
+// The stamp has exactly one reader — lease.StuckAfter, which is five minutes —
+// so writing it twice a second says nothing five-minute resolution does not
+// already say. What it does do is rewrite and fsync the lock file on every one
+// of those passes, quiet ones included: seven thousand durable writes an hour
+// for a resident that is doing nothing at all. Thirty seconds is two orders of
+// magnitude under the only deadline that reads it, which leaves the answer to
+// "is this holder still serving?" identical and the disk quiet.
+const heartbeatInterval = 30 * time.Second
+
 func (r *Reconciler) noteHeartbeat() {
-	if r.heartbeat != nil {
-		r.heartbeat(r.now())
+	if r.heartbeat == nil {
+		return
 	}
+	now := r.now()
+	// The first stamp of a process is never throttled: a resident that has just
+	// taken the role should say so at once, because until it does, a probe reads
+	// its silence as unknown.
+	if !r.heartbeatAt.IsZero() && now.Sub(r.heartbeatAt) < heartbeatInterval {
+		return
+	}
+	r.heartbeatAt = now
+	r.heartbeat(now)
 }
 
 // tickGuarded absorbs a panicking pass. The store is the truth and the lock is
@@ -627,7 +718,17 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("resident tick: change gate: %w", err)
 	}
 	if quiet {
-		return nil
+		// A supervised process can die without writing anything, so its health is
+		// the one question a quiet store still owes an answer to. It is asked here
+		// rather than through a clock deadline because a deadline is a demand for
+		// a WHOLE pass: naming the supervisor's ten-second interval disarmed the
+		// gate six times a minute, and the resident then re-derived every skill,
+		// every taste standing and every surprise metric three hundred and sixty
+		// times an hour to find out whether one PID was still there. The
+		// supervisor already paces its own probes (probeDue), so calling it on
+		// every pass costs one indexed read of the service table and asks the
+		// operating system exactly as often as it did before.
+		return r.tickServicesLocked(ctx)
 	}
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
@@ -656,10 +757,8 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			break
 		}
 	}
-	if r.services != nil {
-		if err := r.services.Tick(ctx); err != nil {
-			return fmt.Errorf("resident tick: services: %w", err)
-		}
+	if err := r.tickServicesLocked(ctx); err != nil {
+		return err
 	}
 
 	if r.overrunPlan != nil {
@@ -692,7 +791,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	// on every tick; nothing between them admits a node, and the only thing
 	// either changes is which settled jobs are folded — which is terminal work
 	// the narrator drops from its state either way.
-	active, err := r.store.ActiveNodes()
+	active, err := r.activeNodesLocked()
 	if err != nil {
 		return fmt.Errorf("resident tick: active nodes: %w", err)
 	}
@@ -715,6 +814,19 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	}
 	if err := r.primeQuietGateLocked(); err != nil {
 		return fmt.Errorf("resident tick: change gate: %w", err)
+	}
+	return nil
+}
+
+// tickServicesLocked runs the service supervisor. It is the one lane a quiet
+// pass still pays for, so it is stated once and called from both sides of the
+// change gate rather than written out twice.
+func (r *Reconciler) tickServicesLocked(ctx context.Context) error {
+	if r.services == nil {
+		return nil
+	}
+	if err := r.services.Tick(ctx); err != nil {
+		return fmt.Errorf("resident tick: services: %w", err)
 	}
 	return nil
 }
@@ -805,20 +917,16 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	}
 	earlier(charterDue)
 
-	// A supervised process can die without writing anything, so its health
-	// check is a clock deadline the journal never announces. It is the
-	// supervisor's own interval, not "now": naming now meant that adopting a
-	// single service disarmed the gate for as long as that service lived, and
-	// the resident then ran its full pass twice a second forever.
-	services, err := r.store.ActiveServices()
-	if err != nil {
-		return time.Time{}, err
-	}
-	earlier(r.services.NextHealthCheck(services, now))
+	// Service health is deliberately NOT a deadline here. It used to be, and it
+	// was the most expensive line in this function: the supervisor's interval is
+	// ten seconds, a deadline demands a whole pass, and adopting one service
+	// therefore bought three hundred and sixty full reconciliations an hour.
+	// The supervisor now runs on quiet passes too (see Tick), which answers the
+	// same question on the same cadence without waking anything else.
 
 	// The same window expireQuestionsLocked reads, so the gate cannot miss an
 	// expiry the tick itself would have applied.
-	questions, err := r.store.UnresolvedQuestions(200)
+	questions, err := r.unresolvedQuestionsLocked()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -836,7 +944,7 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	// alone gives the next tick. Without this the gate would sleep through the
 	// deadline and the job would stay unfolded until something else wrote to
 	// the journal — which on a quiet machine can be hours.
-	nodes, err := r.store.ActiveNodes()
+	nodes, err := r.activeNodesLocked()
 	if err != nil {
 		return time.Time{}, err
 	}

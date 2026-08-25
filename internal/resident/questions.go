@@ -148,7 +148,7 @@ func (r *Reconciler) resurfaceStrandedBlockingLocked() error {
 	if live == "" {
 		return nil
 	}
-	questions, err := r.store.UnresolvedQuestions(200)
+	questions, err := r.unresolvedQuestionsLocked()
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (r *Reconciler) rehomeOrphanedBlockingLocked() error {
 	if live == "" {
 		return nil
 	}
-	questions, err := r.store.UnresolvedQuestions(200)
+	questions, err := r.unresolvedQuestionsLocked()
 	if err != nil {
 		return err
 	}
@@ -298,7 +298,7 @@ func (r *Reconciler) pinnedQuestionRoom(question store.AgentQuestion) (string, b
 }
 
 func (r *Reconciler) expireQuestionsLocked() error {
-	questions, err := r.store.UnresolvedQuestions(200)
+	questions, err := r.unresolvedQuestionsLocked()
 	if err != nil {
 		return err
 	}
