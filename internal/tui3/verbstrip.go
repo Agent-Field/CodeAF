@@ -199,6 +199,9 @@ func (a *app) homeRowVerbs() []verb {
 // so they move here — which is the trade the promotion makes and the reason the
 // strip had to exist before the promotion could.
 func (a *app) standRowVerbs() []verb {
+	if !a.standPage.reading.now.IsZero() {
+		return a.standingPlaceVerbs()
+	}
 	if _, ok := a.standPage.current(); !ok {
 		return nil
 	}

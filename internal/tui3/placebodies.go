@@ -33,6 +33,9 @@ const placeHeadRows = 4
 // standPageFrame draws the standing place: the list it always drew, in the frame
 // every place is drawn in.
 func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
+	if !a.standPage.reading.now.IsZero() {
+		return a.standingReadingFrame(width, height)
+	}
 	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
 		body := a.standPage.draw(width, room, a.pal, a.standPageHover(), a.now())
 		rows := make([]placeRow[int], 0, room)

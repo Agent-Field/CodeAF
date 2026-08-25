@@ -362,3 +362,23 @@ func tasksTeach(pal palette) []string {
 		pal.dim("enter opens a task's room when there is one here."),
 	}
 }
+
+// tasksChangedSince answers from the latest cached world reading because the
+// tab bar is a paint path and must never turn into a directory walk.
+func (a *app) tasksChangedSince(seen time.Time) int {
+	world := a.home.world
+	if a.taskSheet.open {
+		world = a.taskSheet.world
+	}
+	count := 0
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			for _, entry := range row.Tasks.Rows {
+				if !entry.EndedAt.IsZero() && entry.EndedAt.After(seen) {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}

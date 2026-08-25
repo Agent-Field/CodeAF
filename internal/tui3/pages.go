@@ -5,6 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PLACES ──────────────────────────────────────────────────────────────
@@ -565,6 +567,9 @@ func (a *app) showPage(id page) tea.Cmd {
 	// WHAT IS STANDING IS ASKED BEFORE ANYTHING IS CLOSED, because the answer is
 	// what a refusal below has to put back.
 	was, standing := a.page, a.pageShowing()
+	if standing && (was == pageTasks || was == pageStanding) {
+		session.NoteLookAt(a.placesRoot(), was.word(), a.now())
+	}
 	a.standDownFullscreen()
 	a.closeStrip()
 	a.mapShowing = false

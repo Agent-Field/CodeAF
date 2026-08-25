@@ -194,7 +194,13 @@ func (a *app) placeAlt(letter rune) bool {
 
 // placeWindow is the time-window hook: which stretch of time a place is showing,
 // and how coarse. Nothing answers it yet — see [app.placeKey]'s note.
-func (a *app) placeWindow(string) bool { return false }
+func (a *app) placeWindow(key string) bool {
+	switch a.page {
+	case pageTasks:
+		return a.tasksPlaceWindow(key)
+	}
+	return false
+}
 
 // placeBox is the composer: the one box this place types into.
 //
