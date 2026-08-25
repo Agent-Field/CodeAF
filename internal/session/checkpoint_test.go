@@ -2165,7 +2165,7 @@ func TestTheSpecTheCeilingBuildsIsFinishedAgainstThePersonsAsk(t *testing.T) {
 	}
 	// AND THE CHECKER READS THE PERSON'S QUESTION, which is the only place any of
 	// this actually lands (task_audit.go).
-	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, asked) {
+	if question := auditQuestion(node, taskTree{}, auditGround{}, nil, ""); !strings.Contains(question, asked) {
 		t.Fatalf("the checker was asked %q, want the person's own words in it", question)
 	}
 }
