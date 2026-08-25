@@ -278,6 +278,33 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
 
+## Handing work over in the middle of an answer — this one wants more hands
+
+**Work can leave an answer that already started it.** A turn begins as an ordinary reply,
+a few tool calls go by, and the material turns out to be wider or longer than one answer.
+At that point the model can hand it over rather than grind through it in the conversation,
+and one dim line goes into the transcript above the proposal card:
+
+```
+this one wants more hands · handing it over with everything found so far
+```
+
+That line appears **only** when the handoff came out of work already done — a proposal
+made on the first step of a turn, before anything has been read or run, does not draw it,
+because nothing has been found yet to hand over.
+
+**What it hands over is the findings, not just the goal.** The brief of a mid-answer
+proposal is written to carry what the turn already learned: what was found, the shape of
+the material, what has been ruled out and why, what would have been done next. Nothing
+trims it — a long brief reaches the worker whole — so the work starts knowing what the
+conversation knew instead of reading it all again.
+
+**The card still appears, and the countdown still runs.** This is not the same road as a
+task that started on its own (above): this work was groomed by the model, so it is offered
+the way every other proposal is offered — `yes`, `redirect`, `no`, and a countdown whose
+silence starts it. You are told, and it opens; what the card gives you on top of that is
+the window to redirect it before it spends anything.
+
 ## Every key the proposal card takes
 
 | key | when | what it does |

@@ -113,10 +113,21 @@ var taskDescription = "Hand a piece of work to a task that runs on its own, outs
 // than work in general, and make done checkable by somebody else. Anything
 // longer belongs in shape.md, and this stays short so the two cannot drift into
 // two different accounts of one idea.
+//
+// AND THE BRIEF IS ALSO WHERE THE DOWRY RIDES. A proposal made from INSIDE an
+// answer that has already begun the work holds something no other proposal can:
+// what the model has just found out. prompts/system.md teaches the principle —
+// the moment you can name the scale in front of you is the moment to hand it
+// over, and what you have already learned goes with it — and the brief is where
+// it lands, because it is the only part of the contract a finding fits in.
+// NOTHING ON THE ROAD CLIPS IT: parseTaskArguments only trims it, [taskSpec]
+// carries it whole, and [composeBrief] bounds the person's verbatim ask and
+// nothing else — so a findings-rich handoff reaches the worker entire, and this
+// sentence is the only thing standing between the model and writing one.
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work, as a person would say it: \"Fix the nil-map crash in the reconciler\""},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it: what will be done, and to what"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation and cannot ask you anything, so decide here everything it would otherwise stop and ask about — which file, which format, how long, which of two readings, what to do when the obvious route is blocked. Constrain THIS kind of work rather than work in general: ask what a lazy but plausible-looking answer to this particular job would look like and write the condition that forbids it. For output a person will read, say what would make it read as machine-written and what to do instead; for code, what \"working\" means here and that saying so requires having run it; for research, what counts as a source. \"Be accurate\" and \"follow best practice\" constrain nothing — every line must be one the worker could disobey. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation and cannot ask you anything, so decide here everything it would otherwise stop and ask about — which file, which format, how long, which of two readings, what to do when the obvious route is blocked. Constrain THIS kind of work rather than work in general: ask what a lazy but plausible-looking answer to this particular job would look like and write the condition that forbids it. For output a person will read, say what would make it read as machine-written and what to do instead; for code, what \"working\" means here and that saying so requires having run it; for research, what counts as a source. \"Be accurate\" and \"follow best practice\" constrain nothing — every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK when you call this — several calls in, the material open in front of you — WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, the shape of the material as you now know it, what you have ruled out and why, what you would have done next. Whoever picks this up cannot see the calls you already made, so anything you learned and did not write down here is learned again from nothing. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST when this is over, and where: the file and its path, the branch, the answer and the shape it takes. Name the thing, not the activity — \"docs/pricing.md, one page, table of the four tiers\" rather than \"look into pricing\""},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking the task's word for it: the command that must pass, the behaviour that must hold, the output that must appear. \"It is finished\" and \"it is good\" are not checkable and are not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts — only ids propose_task itself returned in this session, never a job, adaptive-run or step number, which look alike but are different kinds of work. Its brief is given their reports when it begins. Naming an unknown or already-failed id refuses the proposal rather than queueing it"},` +
@@ -610,6 +621,19 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 	defer a.presenceAsking(QuestionTask, id, "wants to start a task: "+strings.TrimSpace(spec.title))()
 
 	if hub != nil {
+		// AND THE WARM LINE, WHERE THE HANDOFF CAME OUT OF THE WORK ITSELF. It
+		// goes ABOVE the card because it is the reason the card is there, and it
+		// is [EventNotice] — the dim one-liner a surface already draws for
+		// something it did not stop to ask about — rather than a kind of its own.
+		// THE CARD IS NOT REPLACED BY IT: this work was groomed by the model, and
+		// the countdown is the consent for exactly that (route_judge.go's
+		// [Agent.launchRouteTask] states the other half of the same law, for work
+		// nobody groomed). Silence still starts it, so the person is told and the
+		// work opens; what the card adds is a window to redirect, which is more
+		// than an auto-start could give them and not less.
+		if a.alreadyWorking() {
+			hub.send(Event{Kind: EventNotice, Text: taskEscalationNote})
+		}
 		hub.send(Event{
 			Kind: EventTaskProposal,
 			Tool: "propose_task",
@@ -651,6 +675,56 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 		a.forgetTask(id)
 		return TaskAnswer{}, ctx.Err()
 	}
+}
+
+// ── the handoff made from inside the work ───────────────────────────────────
+
+// taskEscalationNote is the ONE line a person reads when work leaves an answer
+// that had already begun it.
+//
+// IT IS WRITTEN ONCE AND IS NOT A ROTATION. A line somebody sees on their good
+// days is furniture, and furniture that changes its wording every time reads as
+// a machine trying to sound spontaneous. This is the register the surface
+// already speaks in for a fact it did not stop to ask about (internal/tui3's
+// taskWideNote: an observation, a middle dot, a promise), and it says the two
+// things that are true at the moment it is written — the work turned out to
+// want more than one pair of hands, and what has already been found goes with
+// it. Nothing about machinery, nothing about a graph, no capital letter.
+//
+// IT PROMISES ONLY THE DOWRY, never a shape. Whether the worker splits is the
+// worker's own discovery ([Agent.armDivision], task_divide.go) and the roster
+// says it when it happens, so a line written before the work starts must not
+// spend a promise the work has not made yet.
+const taskEscalationNote = "this one wants more hands · handing it over with everything found so far"
+
+// alreadyWorking reports whether THIS answer has already done work: a tool
+// result stands in the transcript below the last thing anybody said to this
+// agent.
+//
+// IT IS THE WHOLE OF WHAT MAKES A HANDOFF "MID-TURN", and it is read from the
+// transcript rather than kept as a flag because the transcript is the only
+// record that cannot fall out of step with itself. A counter reset at the top
+// of a turn is a second account of the same fact, and the turn loop has enough
+// exits (an interrupt, an overflow retry, a truncation continuation) that one
+// of them would eventually leave it saying the wrong thing.
+//
+// THE CALL'S OWN RESULT IS NOT RECORDED YET when this is asked: a tool runs
+// between its assistant message and the tool message that answers it, so
+// propose_task on the first step of a turn correctly sees nothing, and a batch
+// that pairs a read with a proposal sees nothing either — that batch has not
+// learned anything yet. Only a step that FOLLOWS a finished batch is mid-work.
+func (a *Agent) alreadyWorking() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for index := len(a.messages) - 1; index >= 0; index-- {
+		switch a.messages[index].Role {
+		case "tool":
+			return true
+		case "user":
+			return false
+		}
+	}
+	return false
 }
 
 // forgetTask drops a proposal nobody will answer, so a late resolve does not
