@@ -294,3 +294,78 @@ func TestAConversationLineSpellsNoEmptyIds(t *testing.T) {
 		}
 	}
 }
+
+// A WRITE CAUGHT MID-FLIGHT COSTS NOTHING. The tail read's offset must land on
+// the beginning of the half-written row, not past it, or every line appended
+// after it is lost forever without a word.
+func TestAHalfWrittenLineIsReadWholeOnTheNextLook(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
+
+	whole, err := json.Marshal(UsageLine{At: at.Add(time.Hour), Day: "2026-08-25", Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	half, rest := whole[:len(whole)/2], whole[len(whole)/2:]
+	if err := appendRaw(path, string(half)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	cache := &UsageCache{Path: path}
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Model != "a" {
+		t.Fatalf("a half-written row was read as a row: %+v", lines)
+	}
+
+	if err := appendRaw(path, string(rest)+"\n"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	lines, err = cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(lines) != 2 || lines[1].Model != "b" {
+		t.Fatalf("the completed row did not come back whole: %+v", lines)
+	}
+}
+
+// The offset counts BYTES and not tokens. A line carrying anything the reader
+// might be tempted to strip — a carriage return before the newline — must move
+// the offset by exactly what it occupies, or the next read starts mid-row.
+func TestTheTailOffsetCountsEveryByteOfALine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	first, err := json.Marshal(UsageLine{At: at, Day: "2026-08-25", Model: "a", Calls: 1, Input: 10, USD: 0.10})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := appendRaw(path, string(first)+"\r\n"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	cache := &UsageCache{Path: path}
+	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 1 {
+		t.Fatalf("first read gave %d lines, %v", len(lines), err)
+	}
+	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("second read: %v", err)
+	}
+	if len(lines) != 2 || lines[1].Model != "b" {
+		t.Fatalf("the tail read drifted off the line boundary: %+v", lines)
+	}
+}
+
+func appendRaw(path, text string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(text)
+	return err
+}

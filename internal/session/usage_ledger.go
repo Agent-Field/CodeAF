@@ -221,28 +221,45 @@ func ReadUsage(path string, since time.Time) ([]UsageLine, error) {
 	return lines, err
 }
 
-// usageLineBytes bounds one line the scanner will accept. A usage row is a
-// hundred-odd bytes of numbers and ids; anything past this is a file that has
+// usageLineBytes bounds one line the reader will hold in memory. A usage row is
+// a hundred-odd bytes of numbers and ids; anything past this is a file that has
 // been concatenated with something else, and reading it into memory is not a
-// service to anybody.
+// service to anybody. Such a line is SKIPPED but still counted as consumed, so
+// one absurd row costs its own record and never the offset.
 const usageLineBytes = 64 * 1024
 
 // scanUsage reads lines from r and answers them with the count of BYTES it
 // consumed in whole lines — which is what makes the tail read in
-// [UsageCache.Read] safe. A partial last line (a write caught mid-flight) is
-// not counted, so the next read starts at its beginning and reads it whole.
+// [UsageCache.Read] safe. A partial last line (a write caught mid-flight) is not
+// counted, so the next read starts at its beginning and reads it whole.
+//
+// IT COUNTS BYTES AND NOT TOKENS, which is why it reads to the newline itself
+// rather than through a bufio.Scanner. A scanner hands back the line with its
+// terminator — and a stray carriage return — already stripped, so the caller can
+// only GUESS at how much of the file it just consumed; guess wrong by one byte
+// and the next tail read starts mid-row and silently loses everything after it.
+// The one thing this offset must be is exact.
 func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 	var lines []UsageLine
 	var consumed int64
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 16*1024), usageLineBytes)
-	for scanner.Scan() {
-		raw := scanner.Bytes()
-		// The newline the scanner ate is part of what was consumed; without it
-		// the next read would re-deliver every line's terminator as an empty one.
-		consumed += int64(len(raw)) + 1
+	buffered := bufio.NewReaderSize(reader, 32*1024)
+	for {
+		raw, err := buffered.ReadString('\n')
+		if !strings.HasSuffix(raw, "\n") {
+			// The tail of the file with no terminator on it: either the file ends
+			// without one, or a writer is mid-append. Either way it is not a whole
+			// line, so it is neither parsed nor counted.
+			if err != nil && !errors.Is(err, io.EOF) {
+				return lines, consumed, err
+			}
+			return lines, consumed, nil
+		}
+		consumed += int64(len(raw))
+		if len(raw) > usageLineBytes {
+			continue
+		}
 		var line UsageLine
-		if json.Unmarshal(raw, &line) != nil {
+		if json.Unmarshal([]byte(raw), &line) != nil {
 			continue
 		}
 		if line.At.IsZero() {
@@ -253,14 +270,6 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 		}
 		lines = append(lines, line)
 	}
-	if err := scanner.Err(); err != nil {
-		// A line past the bound, or a read that failed halfway: what was parsed
-		// is still true, so it is answered beside the error rather than thrown
-		// away — a spend page showing eleven of twelve days is worth more than
-		// one showing nothing.
-		return lines, consumed, err
-	}
-	return lines, consumed, nil
 }
 
 // recordUsageLine is the engine's one door onto the ledger: the figures a
