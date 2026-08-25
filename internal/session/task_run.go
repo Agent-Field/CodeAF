@@ -296,7 +296,13 @@ type TaskNode struct {
 	// IT IS A FACT AND NOT AN INTENT. A path is added when a saving call has come
 	// back successful and never because the node said it meant to write
 	// something, which is the same bar changed is held to.
-	wrote    []string
+	wrote []string
+	// receipts is the tail of what the node's last worker actually RAN, kept for
+	// the one reader that never watched it happen: the auditor
+	// ([lastToolReceipts], task_audit.go). It is not in the checkpoint and it is
+	// not drawn anywhere — it is evidence for one question, refreshed by whichever
+	// worker spoke last, and a resumed node simply has none.
+	receipts []toolReceipt
 	branch   string
 	worktree string
 	merge    string
@@ -2576,6 +2582,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// still the node's leavings.
 		changed = mergePaths(changed, wrote)
 		report = taskReport(child)
+		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
+		// The check a worker runs last is usually the most expensive thing in the
+		// task, and an auditor made to rediscover and repeat it from nothing is an
+		// auditor that spends its whole deadline finding out what the worker already
+		// knew (task_audit.go's [lastToolReceipts]). It is read here, while the
+		// worker's transcript still exists — `retire` closes it.
+		node.keepReceipts(lastToolReceipts(child, auditReceiptCount))
 		// AND THE FILES THE NODE MADE WITH A COMMAND AND THEN NAMED. They are
 		// folded into the same list on the way past, so everything downstream —
 		// the card, the auditor's packet, the index it stages — reads ONE account

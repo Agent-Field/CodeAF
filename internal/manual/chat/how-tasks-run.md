@@ -390,8 +390,8 @@ stopped.
 ## How aforge knows a task really finished
 
 A task is never done on its own say-so. When the work finishes, a **separate, fresh,
-read-only checker** is put in the task's worktree, runs the repository's own checks, reads
-the diff, and answers. Only a pass merges.
+read-only checker** is put in a clean restore of what the task wrote, runs the repository's
+own checks, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
 acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
@@ -414,6 +414,60 @@ This is controlled by `task.audit`, **on by default**, and settable in your prof
 With it off, the gate stands open, the task's own account merges, the task lands done, and
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
+
+## Where the check runs — a clean restore, not the task's messy checkout
+
+**The check does not run where the work happened.** It runs in a **clean restore**: the
+repository as it stood before the task began, with exactly the files the task wrote laid
+over it, and nothing else the run left lying about. The checker installs and builds there
+itself — that is what its five minutes are for.
+
+The reason is one measured failure. A task was asked to make a scorer pass; the scorer
+looked for files at a path the repository did not keep them at, and instead of changing the
+source the task made the path exist with `ln -sf`. It re-ran the scorer against its own
+symlink, watched it pass, and reported the job finished — and the checker, standing in the
+same directory with the same symlink under it, saw the same pass. What would have landed on
+your branch was a change that stops working the moment it leaves that machine.
+
+So **a passing check may not depend on state your branch does not carry**. A fixture the
+task dropped somewhere by hand, a link it made so a path would resolve, a directory it
+created outside its own writes, a value it set in the environment: none of it is in the
+restore, so a check leaning on it fails there and the task comes back incomplete naming what
+is missing. Installs, builds and caches are exempt — the checker makes those again.
+
+How the restore is built depends on your workspace:
+
+- **In a repository**, it is a fresh detached checkout of the task's own branch with the
+  written files laid over it and staged, so `git diff --cached` still shows the whole change.
+  It sits beside the task's own checkout with `-check` on the end of the name and shows up in
+  `git worktree list` while the check runs, then is removed and pruned.
+- **In a workspace that is not a repository**, it is copied by the clock: everything that
+  predates the task's start is the original tree, and everything younger that the task did
+  not write is left out. A directory in which nothing predates the task — a `target/`, a
+  `node_modules/` — is skipped whole.
+- **When the restore cannot be made** — no repository and no record of when the work began,
+  or a working copy of more than 20000 files — the check runs where it always did, in the
+  task's own checkout, and the job log says why.
+
+The task's own checkout is untouched by any of this, and the restore is removed as soon as
+the answer is in.
+
+## What the checker is shown of what the task already ran
+
+The checker is also handed the **last few tool results of the task's own worker** — up to
+six, each cut at 1200 bytes: what was called, with what, and what came back. It is the real
+result the worker read, not a display copy.
+
+That exists because a check is often the most expensive thing in the whole task. A checker
+made to rediscover the command and run it twice from scratch spends its whole five minutes
+and the task lands needing your look, which is exactly what was measured. Seeing what
+already happened tells it which command the check even is.
+
+It is **not** a shortcut to a pass. The checker is told where those results came from: in a
+restore they came from the task's own copy — the one a verdict may not rest on — so they can
+settle a refusal outright (a check that failed, or a check nobody ever ran, needs no second
+run to be believed) while anything that could pass there and fail in the restore has to be
+settled in the restore. A task that never ran a tool leaves this out of the packet entirely.
 
 ## What happens when the work is not right yet
 
