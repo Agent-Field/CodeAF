@@ -16,8 +16,16 @@ aforge draws one screen in a fixed order every frame. From the top: the pinned r
 header (only while a task room is open), the task strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
-answer to finish, another gap, the draft box where you type, any open list (picker,
-menu, completion), and the status line last.
+answer to finish, another gap, the tray row above the box, the draft box where you type,
+any open list (picker, menu, completion), and the status line last.
+
+**The tray row** carries what the next message takes with it besides its words —
+a picked sub-harness, an attached picture, an attached file — and, at its right end, the
+**thinking chip** (`⠿ high`), which names how hard the model will think about your next
+turn. `ctrl+v` walks that rung and clicking the chip opens the five-rung ladder; see
+*The thinking chip above the message box* on the keys page. The tray is drawn only when
+it has something on it: with nothing attached and thinking set to `off`, the row is not
+there and the box sits straight under the gap.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
