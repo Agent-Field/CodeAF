@@ -286,6 +286,36 @@ func TestTheCacheNoticesAReplacementOfTheSameSizeAndTime(t *testing.T) {
 	}
 }
 
+// THE ROWS ARE NOT IN TIME ORDER AND THE FLOOR MUST NOT ASSUME THEY ARE. This
+// ledger is machine-wide: a second aforge can stamp a call at 09:00 and land it
+// after this one's 10:00 row, because its own turn ran in between. A floor read
+// as a prefix cut stops at the 10:00 row and hands back everything behind it,
+// which includes an hour nobody asked about.
+func TestTheCachesFloorAsksEveryRowAndNotJustTheFirst(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	early := usageAt(t, "2026-08-25 09:00")
+	floor := usageAt(t, "2026-08-25 09:30")
+	late := usageAt(t, "2026-08-25 10:00")
+	// The order on disk is the order the appends landed, not the order of the
+	// stamps: the late row first, then the early one behind it.
+	recordUsage(t, path, UsageLine{At: late, Model: "late", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: early, Model: "early", Calls: 1, Input: 10, USD: 0.10})
+
+	cache := &UsageCache{Path: path}
+	lines, err := cache.Read(floor)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Model != "late" {
+		t.Fatalf("the floor let %d rows through, want only the one above it: %+v", len(lines), lines)
+	}
+	// And the cache still holds both, so a later question about a wider window
+	// is answered without re-reading the file.
+	if all, err := cache.Read(time.Time{}); err != nil || len(all) != 2 {
+		t.Fatalf("the cache holds %d rows with no floor, want both: %v", len(all), err)
+	}
+}
+
 // THE LEDGER AND THE TRANSCRIPT HOLD THE SAME MONEY. A turn that seals writes
 // both, and the line the machine keeps has to be able to say whose the money was.
 func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {

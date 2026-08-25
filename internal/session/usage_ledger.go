@@ -589,19 +589,29 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 // all-time figure has to say so; a page drawing a fortnight never has to care.
 func (c *UsageCache) Full() bool { return c.full }
 
-// since is the held lines from a floor, sharing the backing array where the
-// whole slice is wanted — the ordinary case, since the file is already ordered.
+// since is the held lines at or after a floor. A zero floor shares the backing
+// array, which is the ordinary case and the whole slice.
+//
+// IT IS A FILTER AND NOT A PREFIX CUT, and the difference is the point. The file
+// is APPENDED in the order writes land, which is not the order the rows are
+// stamped: a second process can journal a call at 09:00 and reach the file after
+// this one's 10:00 row is already in it — its own turn ran in between — and two
+// processes writing one machine-wide ledger is the ordinary case here, not a
+// pathological one. A floor implemented as "cut at the first row that is not
+// below it" would meet that 10:00 row first and hand back the 09:00 row sitting
+// behind it as though it were inside the window. So every row is asked.
 func (c *UsageCache) since(floor time.Time) []UsageLine {
 	if floor.IsZero() {
 		return c.lines
 	}
-	// The file is written in time order, so the floor is a prefix cut rather
-	// than a filter — except for the pathological case of a clock that moved
-	// backwards, which costs one line's inclusion and nothing else.
-	for i, line := range c.lines {
+	kept := make([]UsageLine, 0, len(c.lines))
+	for _, line := range c.lines {
 		if !line.At.Before(floor) {
-			return c.lines[i:]
+			kept = append(kept, line)
 		}
 	}
-	return nil
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
