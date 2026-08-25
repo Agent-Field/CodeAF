@@ -339,17 +339,16 @@ func TestHomesListFadesItsTailOnlyWhenItRunsPastTheWindow(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 100, 24
 	openHomeOn(a, mine)
-	// A project folds its quiet tail behind one `…more` row, which is home
-	// refusing to be long in the first place. The subject here is what happens
-	// when it IS long, so the tail is opened and the cursor put back on the row
-	// the test arrived on.
-	for _, line := range a.home.lines {
-		if line.kind == homeQuiet {
-			a.home.fold(line.dir, true)
-			break
-		}
-	}
+	// THE RESTING LIST DRAWS EIGHT ROWS AND ONE DOOR, which is home refusing to
+	// be long in the first place ([switcherShown]). The subject here is what
+	// happens when it IS long, so the one fold is opened — every row on the
+	// column, no cap at all ([switcherReading.cap]) — and the cursor is put back
+	// on the row the test arrived on.
+	a.home.foldSwitch(true)
 	a.home.point(mine)
+	if len(a.home.lines) < 40 {
+		t.Fatalf("the opened fold left %d lines, which fits the frame:\n%s", len(a.home.lines), homeText(a))
+	}
 
 	width, height := a.size()
 	lines, _, _, _ := a.homeFrame(width, height)

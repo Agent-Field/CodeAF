@@ -109,7 +109,7 @@ const (
 // through [app.memoryChangedSince] on that same beat and never on a draw. This
 // function opens nothing and stats nothing.
 func (h *homeView) buildSwitch() {
-	h.reading = readSwitcher(h.world, h.items, switcherHere{session: h.here, project: h.bucket}, h.seen, h.world.Read,
+	h.reading = readSwitcher(h.world, h.items, switcherHere{session: h.here, project: h.bucket}, h.gone, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in
@@ -272,9 +272,22 @@ func (a *app) homeLedgerEnter(line homeLine) tea.Cmd {
 // foldSwitch is enter or an arrow on the fold at the foot: show every row, or
 // fold them back away. It is a DOOR and not a setting, which is why it dies with
 // the screen where `alt+g` and `alt+q` do not.
+//
+// AND IT LEAVES THE CURSOR ON THE LINE THAT DID IT, so the gesture can be
+// reversed without moving — the law every other fold on this column keeps
+// (home.go's [homeView.fold], [homeView.foldItems]). [homeView.build] follows a
+// conversation, an item, a project or an errand and knows nothing about a fold,
+// so without this the key that opened the list would throw the hand to the top
+// of it and `←` would have nothing under it to close.
 func (h *homeView) foldSwitch(open bool) {
 	h.moreOpen = open
 	h.build()
+	for at, line := range h.lines {
+		if line.kind == homeSwitchFold {
+			h.cursor, h.picked = at, true
+			return
+		}
+	}
 }
 
 // ── the strip ───────────────────────────────────────────────────────────────
@@ -314,6 +327,15 @@ func (a *app) homeRowVerbs() []verb {
 	row := *line.sw.row
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
+		// A VERB THAT CANNOT WORK IS ABSENT, NOT BROKEN. Two of the doors want a
+		// folder — a fresh conversation rooted in it, and handing it to the
+		// machine's file manager — and a row whose folder is not there any more
+		// would offer two keystrokes it has already decided against. It is the
+		// place that drops them and not the reading: the reading is pure and has
+		// no disk, and this is what the cached stat map is for.
+		if row.gone && (v.key == 't' || v.key == 'o') {
+			continue
+		}
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
 	return verbs

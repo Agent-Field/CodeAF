@@ -1422,7 +1422,7 @@ type app struct {
 	// second one would be a second place for it to be wrong.
 	homeRoot string
 	// switchGrouped is `alt+g` and switchQuiet is `alt+q`: the two views home's
-	// list can be shown in (homeswitch.go).
+	// list can be shown in (place_home.go).
 	//
 	// THEY ARE ON THE APP BECAUSE THEY OUTLIVE THE SCREEN AND NOTHING ELSE. A
 	// person who grouped the list expects it grouped the next time they open home
