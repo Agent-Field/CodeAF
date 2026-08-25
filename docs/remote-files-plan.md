@@ -71,3 +71,29 @@ all of it unchanged the day a relay is deployed, because frames are frames.
 Thumbnails computed engine-side; range/tail fetch past 16MB; content-defined
 chunking + Merkle diff for big trees (wave 2, when someone actually moves
 them); `--at` e2e (blocked on a deployed relay, same as PR #45).
+
+## What landed
+
+The wave is in, on `remote-files/v0`, in four commits. This file is the design record from
+here on; the manual is the account a person reads (`opening-files-from-that-machine.md`),
+and `docs/remote-access-testing.md` §3f is the hands-on recipe.
+
+| Commit | Lane | What it landed |
+| --- | --- | --- |
+| `d24a153b` | A — engine | `List.Dir` and `Stat.Paths` beside `handOver` under the same two-roots law; `listDirMax` 2000 with `Truncated`; `statPathsMax` 64 refused rather than trimmed; `FetchedFile` gained `Size` and `Hash` (sha256 of the bytes that actually crossed). Loopback proofs in `internal/remote/browse_test.go`. |
+| `ef54c75b` | B — the door | `internal/filedoor`: a `127.0.0.1` listener with a per-door token and minted per-path ids, `GET /f/<id>` with MIME and range, `/api/<token>/ls`, `/file`, `/put`, and the embedded browse page — dirs first, sizes and times, click-through, drag-drop upload, a row over the ceiling drawn plain with `too big to cross`. A wrong token and an unknown id answer the same 404. |
+| `899e42b7` | C — the surface | `internal/tui3/remotefiles.go` and `remoteopen.go`: the fact table and its batched, debounced `StatPaths`; the door opened on first need and closed with the surface; prefetch-on-write at `prefetchMax` (2MB); the CAS at `~/.aforge/v3/remote/cas` with the digest verified here rather than trusted; the hardlinked mirror at `~/.aforge/v3/remote/mirror/<host>/<engine path>`; `/files` and `/files <path>`; `pathlink.go`'s far-side branch. |
+| `3939852a` | F — the deposit | `Deposit.File` on the wire: bytes land in the far session's `attachments/` folder, under the same name law and naming as `/attach`, and **nothing else happens**. |
+
+**One decision was reversed on the way.** Lane C shipped the browse page's drag-drop lane
+refusing, because the only wire door that wrote into a session's attachments was
+`Submit.Files` — a MESSAGE, which would have opened a model turn nobody at this end asked
+for and streamed its answer into a channel nothing was reading. Decision 2 above said
+uploads land in `attachments/`, and lane F made that true properly by giving the wire a
+door that keeps a file without submitting it. The proof that it stays silent is
+`internal/remote/file_test.go`'s `TestADepositedFileLandsInAttachmentsAndOpensNoTurn`: the
+bytes are on disk in the right folder, and no turn, no event and no transcript entry
+followed them.
+
+Everything under "Deferred, on purpose" is still deferred, and `--at` is still blocked on a
+deployed relay.

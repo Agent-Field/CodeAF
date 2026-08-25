@@ -76,6 +76,13 @@ sentence aforge has always used for that:
 the connection to devbox is gone — run the same command to pick the conversation back up
 ```
 
+**A file does not come across while the link is down either.** Clicking a path, `/files
+<path>` and the browse page all fetch their bytes over this same connection, so during a
+redial a click answers `reconnecting to devbox — try that again in a moment` rather than
+opening. Nothing is broken by it: the addresses this window minted go on working once the
+link is back, and a file already fetched opens from the copy on this machine without
+asking that machine anything (*Opening files from that machine*).
+
 ## How do I know it is reconnecting — the segment on the status line
 
 The status line says so, in one segment at its right-hand end, beside what the session is
