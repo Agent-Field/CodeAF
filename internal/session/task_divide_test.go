@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -726,6 +728,282 @@ func TestEveryPartNeedsSomethingToBeFinishedAgainst(t *testing.T) {
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
 		t.Fatalf("%d parts were born from a malformed division", len(kids))
 	}
+}
+
+// ── the gate, on a part ─────────────────────────────────────────────────────
+
+// A PART CARRIES ITS OWN CONTRACT, AND THE PARENT'S DOES NOT MOVE.
+//
+// The schema makes `acceptance` required of every part for one reason: a session
+// worker is finished by a checker judging it against a done-condition, and a part
+// admitted without one would be judged against nothing (task_divide.go's
+// divideSchemaJSON). This is that wiring, asserted where it lands — on the node's
+// own FROZEN acceptance, which is the text the checker is handed and the only
+// text it is shown (task_audit.go's auditQuestion).
+//
+// AND THE PARENT KEEPS THE ORIGINAL. Handing the parts out is not a re-statement
+// of what the whole job has to be: the parent stays open, folds the reports into
+// one deliverable, and is checked against the condition it was admitted with.
+func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	const (
+		alphaDone = "alpha.go compiles and declares Alpha"
+		betaDone  = "beta.go compiles and declares Beta"
+	)
+	original := nest.parent.acceptance()
+
+	nest.divide(t, json.RawMessage(fmt.Sprintf(
+		`{"evidence":%q,"parts":[`+
+			`{"title":"alpha","summary":"s","brief":"b","acceptance":%q},`+
+			`{"title":"beta","summary":"s","brief":"b","acceptance":%q}]}`,
+		wideEvidence, alphaDone, betaDone)))
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	for i, want := range []string{alphaDone, betaDone} {
+		if got := kids[i].acceptance(); got != want {
+			t.Fatalf("part %d is finished against %q, want its own %q", kids[i].id, got, want)
+		}
+		// The checker sees the acceptance and nothing else about the goal, so the
+		// question it is actually asked is where this has to be true.
+		question := auditQuestion(kids[i], taskTree{}, nil, "")
+		if !strings.Contains(question, want) {
+			t.Fatalf("the checker for part %d was asked %q, want its own done-condition", kids[i].id, question)
+		}
+		// A PART IS ORDINARY WORK, which is what puts it through the same gate as
+		// every other node: an empty kind is the worker-in-a-worktree body, and
+		// that body is the one that holds the check (task_run.go's workTaskNode).
+		if kind := kids[i].spec.kind(); kind != "" {
+			t.Fatalf("part %d was admitted as %q, so it does not run the body the check lives in", kids[i].id, kind)
+		}
+	}
+	if got := nest.parent.acceptance(); got != original {
+		t.Fatalf("the whole job is now finished against %q, want the condition it was admitted with", got)
+	}
+	if strings.Contains(auditQuestion(nest.parent, taskTree{}, nil, ""), alphaDone) {
+		t.Fatal("the whole job is being checked against one of its parts' conditions")
+	}
+}
+
+// AND THE CHECK ACTUALLY FIRES ON A PART, ONE PART AT A TIME, AGAINST ITS OWN
+// CONDITION — end to end, over a real repository.
+//
+// Two parts are handed out from inside a worker. Each runs in its own copy of
+// the repository and writes its file; a checker is put in each copy and is asked
+// that part's own done-condition; the one whose work holds comes home to the
+// person's branch and the one that does not is kept on its branch with the gap
+// written down. It is the same gate a plain task passes through, on the road
+// wide work now takes by default, and nothing about a part is exempt from it.
+func TestAPartIsCheckedLikeAnyOtherWorkAndOnlyTheOneThatHoldsComesHome(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	const (
+		alphaDone = "alpha.go is there and declares Alpha"
+		betaDone  = "beta.go is there and declares Beta"
+	)
+	completer := &partCompleter{alpha: alphaDone, beta: betaDone}
+
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		// NO REPAIR ROUND, so the refuted part lands on the first finding: what
+		// is under test here is the gate, and the loop in front of it has its own
+		// tests (task_repair_test.go).
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	// THE PARENT IS THIS TEST'S OWN and stays where it is: it is the dividing
+	// worker, and the frontier starting a second one in a worktree would be a
+	// third node nobody asked about. Its PARTS run for real.
+	graph.run = func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		graph.runOwned(node)
+	}
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the whole job", request: personSentence,
+		brief: wideBrief, acceptance: "both adapters are on the new interface", depth: 1})
+	parent := graph.node(id)
+
+	worker, err := newAgent(Config{
+		Workspace: repo, Model: "test/model", System: "SYSTEM",
+		InTask: true, Divide: true, TaskRepairRounds: 0,
+		// THE CHECK TRAVELS WITH THE WORK, which is what [Agent.newTaskAgent]
+		// does for a worker the runner builds: a part is judged by whatever the
+		// person said should judge a task (task_run.go's child config).
+		TaskAudit: true,
+		tasker:    graph, taskID: id, taskDepth: 1,
+	}, completer)
+	if err != nil {
+		t.Fatalf("newAgent for the worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	parent.openRoom().speaking(worker)
+
+	answer, _, err := worker.divideWork(context.Background(), json.RawMessage(fmt.Sprintf(
+		`{"evidence":%q,"parts":[`+
+			`{"title":"alpha","summary":"s","brief":"write alpha.go","acceptance":%q},`+
+			`{"title":"beta","summary":"s","brief":"write beta.go","acceptance":%q}]}`,
+		wideEvidence, alphaDone, betaDone)))
+	if err != nil {
+		t.Fatalf("divide_work: %v", err)
+	}
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q", answer)
+	}
+
+	parts := partsByTitle(t, graph, parent)
+	alpha, beta := parts["alpha"], parts["beta"]
+	waitDoneNode(t, alpha)
+	waitDoneNode(t, beta)
+
+	// EACH CHECKER WAS ASKED ITS OWN PART'S CONDITION AND NOBODY ELSE'S.
+	if seen := completer.audits(alphaDone); seen != 1 {
+		t.Fatalf("the part alpha was checked against its own done-condition %d times, want once", seen)
+	}
+	if seen := completer.audits(betaDone); seen != 1 {
+		t.Fatalf("the part beta was checked against its own done-condition %d times, want once", seen)
+	}
+	if completer.crossed() {
+		t.Fatal("a checker was handed two parts' done-conditions at once")
+	}
+
+	// THE PART THAT HOLDS COMES HOME.
+	if got := beta.notice(); got.State != TaskDone || got.Merge != mergeMerged {
+		t.Fatalf("the part that holds landed %s / %s: %q", got.State, got.Merge, got.Report)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "beta.go")); err != nil {
+		t.Fatalf("the checked part is not on the person's branch: %v", err)
+	}
+
+	// AND THE ONE THAT DOES NOT IS KEPT, WITH THE GAP WRITTEN DOWN. Nothing
+	// merges on a finding, and the report says what is missing in the person's
+	// own words rather than in the machinery's (task_audit.go).
+	failed := alpha.notice()
+	if failed.State != TaskFailed {
+		t.Fatalf("the part that did not hold landed %s: %q", failed.State, failed.Report)
+	}
+	if !strings.HasPrefix(failed.Report, incompleteLead) {
+		t.Fatalf("the report reads %q, want it to open by saying the work is not finished", failed.Report)
+	}
+	if !strings.Contains(failed.Report, "nothing declares Alpha") {
+		t.Fatalf("the report reads %q, want the checker's own evidence in it", failed.Report)
+	}
+	assertPlainWords(t, "the part's report", failed.Report)
+	if failed.Merge == mergeMerged {
+		t.Fatal("a part that did not hold was merged onto the person's branch")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "alpha.go")); !os.IsNotExist(err) {
+		t.Fatal("the unchecked part reached the person's branch anyway")
+	}
+}
+
+// partsByTitle is the two parts of one division, keyed by name, so a test can
+// name them rather than depend on the order the frontier happened to start them
+// in.
+func partsByTitle(t *testing.T, graph *TaskGraph, parent *TaskNode) map[string]*TaskNode {
+	t.Helper()
+	kids := graph.children(parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	byTitle := make(map[string]*TaskNode, len(kids))
+	for _, kid := range kids {
+		byTitle[kid.title()] = kid
+	}
+	for _, want := range []string{"alpha", "beta"} {
+		if byTitle[want] == nil {
+			t.Fatalf("no part called %q among %v", want, byTitle)
+		}
+	}
+	return byTitle
+}
+
+// partCompleter answers every lane one division touches, dispatching on WHAT IT
+// WAS ASKED rather than on how many calls came before it: two parts and two
+// checkers run at once, and a positional script over concurrent lanes is a test
+// asserting about whichever goroutine got there first.
+type partCompleter struct {
+	mu sync.Mutex
+	// alpha and beta are the two parts' done-conditions, which are also how a
+	// checker's question is told from its sibling's.
+	alpha, beta string
+	asked       []string
+}
+
+func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	system, whole := "", strings.Builder{}
+	if len(messages) > 0 {
+		system = messageText(messages[0])
+	}
+	tooled := false
+	for _, message := range messages {
+		whole.WriteString(messageText(message) + "\n")
+		if message.Role == "tool" {
+			tooled = true
+		}
+	}
+	text := whole.String()
+
+	switch {
+	case system == titleSystem:
+		return textResponse("the adapters"), nil
+	case strings.HasPrefix(system, "You are an AUDITOR"):
+		c.mu.Lock()
+		c.asked = append(c.asked, text)
+		c.mu.Unlock()
+		// THE CHECKER ANSWERS ON THE CONDITION IT WAS HANDED. beta's work is
+		// there; alpha's file was never written, and the checker says so in the
+		// words the report will carry.
+		if strings.Contains(text, c.beta) {
+			return textResponse("VERIFIED — beta.go is there and declares Beta"), nil
+		}
+		return textResponse("REFUTED — nothing declares Alpha: the file was never written"), nil
+	case strings.Contains(text, "write beta.go") && !tooled:
+		return writeResponse("call-beta", "beta.go", "package taskaudit\n\nfunc Beta() string { return \"beta\" }\n"), nil
+	case strings.Contains(text, "write beta.go"):
+		return textResponse("Wrote beta.go."), nil
+	case strings.Contains(text, "write alpha.go"):
+		// THE PART THAT DOES NOT DO THE WORK still says it did, which is the whole
+		// reason a checker stands in front of the word "done".
+		return textResponse("Alpha is done."), nil
+	}
+	// Everything else — the division review among it — gets nothing it can read,
+	// which is the fail-open path and the division exactly as the worker wrote it.
+	return textResponse("(unscripted)"), nil
+}
+
+// audits is how many checkers were handed one particular done-condition.
+func (c *partCompleter) audits(acceptance string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	seen := 0
+	for _, question := range c.asked {
+		if strings.Contains(question, acceptance) {
+			seen++
+		}
+	}
+	return seen
+}
+
+// crossed reports whether any one checker was shown both parts' conditions,
+// which would mean a part is being judged against work that is not its own.
+func (c *partCompleter) crossed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, question := range c.asked {
+		if strings.Contains(question, c.alpha) && strings.Contains(question, c.beta) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── the free-hand count itself ──────────────────────────────────────────────

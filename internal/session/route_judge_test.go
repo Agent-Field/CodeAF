@@ -474,6 +474,92 @@ func TestARouteYesWithoutWidthArmsNothing(t *testing.T) {
 	}
 }
 
+// ── what the auto-started task is finished against ──────────────────────────
+
+// THE JUDGE WRITES THE DONE-CONDITION, AND IT IS THE ONE THE CHECKER IS HANDED.
+//
+// This is the only door into the graph nobody typed at, so it is the only one
+// where a weak done-condition is invisible: propose_task's schema demands one,
+// `/task` has the shaper write one, a divided part carries its own. The judge is
+// already reading the turn and already writing the goal, so the condition costs
+// nothing extra — and what it buys is a check with something to look at.
+func TestTheJudgesDoneConditionIsWhatTheWorkIsFinishedAgainst(t *testing.T) {
+	const done = "every package under internal/ has been read and the report names each pricing bug with its file and line"
+	verdict := `{"work": true, "goal": "audit every package's pricing code", "acceptance": "` + done + `", "why": "research across every package"}`
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: verdict}
+	agent, _, _ := routeAgent(t, completer)
+
+	events, err := agent.Submit(context.Background(), routeAsk)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collect(t, events)
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if node.acceptance() != done {
+		t.Fatalf("the work is finished against %q, want the judge's own done-condition", node.acceptance())
+	}
+	// AND IT REACHES THE CHECKER. The acceptance is the whole of what the checker
+	// is judged against and the whole of what it is shown about the goal
+	// (task_audit.go), so the question it is actually asked is where this is
+	// worth asserting.
+	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, done) {
+		t.Fatalf("the checker was asked %q, want the judge's done-condition in it", question)
+	}
+}
+
+// AND A JUDGE THAT WROTE NO CONDITION STILL LEAVES ONE THE CHECKER CAN READ.
+// The stand-in points at the TITLE, which is on the checker's page, rather than
+// at a goal it is never shown — which is what the sentence that stood here
+// before did, and it made the check against an auto-started task a check
+// against a blank.
+func TestAnAutoStartedTaskWithNoDoneConditionStillHasOneToCheck(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes}
+	agent, _, _ := routeAgent(t, completer)
+
+	events, err := agent.Submit(context.Background(), routeAsk)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collect(t, events)
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if node.acceptance() != routeFallbackAcceptance {
+		t.Fatalf("the work is finished against %q, want the stand-in", node.acceptance())
+	}
+	// The stand-in may not point at anything the checker is not shown. The brief
+	// and the goal are both withheld from it on purpose, so a condition naming
+	// either is a condition nobody can check.
+	for _, absent := range []string{"the goal above", "the brief above"} {
+		if strings.Contains(routeFallbackAcceptance, absent) {
+			t.Fatalf("the stand-in says %q, which is not on the checker's page", absent)
+		}
+	}
+	if question := auditQuestion(node, taskTree{}, nil, ""); !strings.Contains(question, routeFallbackAcceptance) {
+		t.Fatalf("the checker was asked %q, want the stand-in in it", question)
+	}
+}
+
+// THE BRIEF ASKS FOR THE FIELD THE CODE READS, and it says the one thing that
+// makes the answer worth having: the condition is read on its own.
+func TestTheJudgesBriefAsksForADoneConditionSomebodyElseCanCheck(t *testing.T) {
+	if !strings.Contains(routeJudgeBrief, `"acceptance"`) {
+		t.Fatal("the judge is never shown the field the task is finished against")
+	}
+	if !strings.Contains(routeJudgeBrief, "DONE WHEN") {
+		t.Fatal("the judge is not told what the field is")
+	}
+	if !strings.Contains(routeJudgeBrief, "ON ITS OWN") {
+		t.Fatal("the judge is not told the condition is read without the goal beside it")
+	}
+}
+
 // AND THE GATES: nobody watching is no judge at all, whatever the turn said. It
 // is the same posture the harness offer keeps — a headless run must never pay a
 // model to start work nobody will see appear.

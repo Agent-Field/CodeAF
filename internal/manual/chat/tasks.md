@@ -236,6 +236,15 @@ The number is the task's own, and the words after the colon are what it was star
 the machine was already full the line reads `queued` instead of `started`, and the task
 begins when a lane frees up.
 
+**The judge writes the done-condition too.** The same answer that carries the goal carries
+what finished looks like — "every package under internal/ has been read and the report names
+each pricing bug with its file and line" — and that sentence is what is checked against when
+the work says it is done. It is read **on its own**, without the goal beside it, which is why
+it has to name something somebody could go and look at. If the judge writes none, the task
+falls back to `the work named at the top is actually done, and the report says what was done
+and how it was checked`. Nothing else about the check differs from any other task on this
+page.
+
 **There is no card and no key to press.** There used to be a row above the message box
 offering to run it, and it is gone: the question "shall I?" was being asked about work
 nobody had seen yet, and the task itself answers it better by existing — it is on the
