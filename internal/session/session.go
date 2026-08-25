@@ -1403,6 +1403,25 @@ type Config struct {
 	// same file. It is private for memoryBrief's reason: no surface sets it, the
 	// executor does (task_run.go, orchestrate.go).
 	fixesDir string
+	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
+	// folder of its own: a task node's worker, a part's worker under that one, a
+	// fork's hand, an adaptive run's child, an auditor, a standing probe. It is
+	// read in exactly one place ([Config.droppingsPlace]) and answers exactly one
+	// question — where a job log or a stubbed tool result lands (landing.go
+	// states the law and the failure that wrote it).
+	//
+	// IT IS NOT Place UNDER A SECOND NAME, and the distinction is the whole point.
+	// Setting Place on a worker would make the worker a SESSION: it would stamp
+	// the conversation's meta.json with the worker's own spend and title
+	// (placemeta.go), file its journal under the conversation's id (agent.go's
+	// openSessionFile), and paint its pictures into the conversation's work/
+	// instead of the worktree it is about to merge back (landing.go's
+	// deliverablesDir). This row carries the ONE fact a worker needs — where the
+	// harness keeps its own litter — and nothing else.
+	//
+	// It is private for memoryBrief's reason: no surface sets it, the constructor
+	// that builds the worker does.
+	droppings Place
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).
