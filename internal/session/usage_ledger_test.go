@@ -11,6 +11,16 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// recordUsage writes one line AND WAITS for it to reach the disk, which is what
+// a test wants and what a turn must never do: [RecordUsage] hands the row to a
+// background writer, so a test that read the file straight afterwards — or wrote
+// its own next byte to it — would be racing that writer.
+func recordUsage(t *testing.T, path string, line UsageLine) {
+	t.Helper()
+	RecordUsage(path, line)
+	FlushUsage()
+}
+
 func usageAt(t *testing.T, day string) time.Time {
 	t.Helper()
 	at, err := time.ParseInLocation("2006-01-02 15:04", day, time.Local)
@@ -25,7 +35,7 @@ func usageAt(t *testing.T, day string) time.Time {
 func TestAUsageLineComesBackTheWayItWasWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spend", UsageLedgerName)
 	at := usageAt(t, "2026-08-25 13:11")
-	RecordUsage(path, UsageLine{
+	recordUsage(t, path, UsageLine{
 		At: at, Model: "opus-4.1", Role: "title", Calls: 3,
 		Input: 1200, Output: 340, USD: 0.42,
 		Session: "aaaa1111aaaa1111", Task: "7", Standing: "", Workspace: "/repo",
@@ -60,7 +70,7 @@ func TestAUsageLineComesBackTheWayItWasWritten(t *testing.T) {
 // nothing was spent, and a row of zeroes would make it look measured.
 func TestACallThatSpentNothingWritesNoLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
-	RecordUsage(path, UsageLine{At: time.Now(), Model: "opus-4.1", Calls: 1})
+	recordUsage(t, path, UsageLine{At: time.Now(), Model: "opus-4.1", Calls: 1})
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("a zero call created a ledger")
 	}
@@ -78,7 +88,7 @@ func TestACallThatSpentNothingWritesNoLine(t *testing.T) {
 func TestABadLineCostsOneRowAndNotTheLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-24 09:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.01})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.01})
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -87,7 +97,7 @@ func TestABadLineCostsOneRowAndNotTheLedger(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	file.Close()
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.02})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.02})
 
 	lines, err := ReadUsage(path, time.Time{})
 	if err != nil {
@@ -104,7 +114,7 @@ func TestReadUsageKeepsTheFloorAndDropsWhatIsBelowIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	floor := usageAt(t, "2026-08-20 12:00")
 	for _, at := range []time.Time{floor.Add(-time.Hour), floor, floor.Add(time.Hour)} {
-		RecordUsage(path, UsageLine{At: at, Model: "m", Calls: 1, Input: 5, USD: 0.01})
+		recordUsage(t, path, UsageLine{At: at, Model: "m", Calls: 1, Input: 5, USD: 0.01})
 	}
 	lines, err := ReadUsage(path, floor)
 	if err != nil {
@@ -124,7 +134,7 @@ func TestReadUsageKeepsTheFloorAndDropsWhatIsBelowIt(t *testing.T) {
 func TestTheCacheReadsOnlyWhatWasAppended(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
 
 	cache := &UsageCache{Path: path}
 	first, err := cache.Read(time.Time{})
@@ -146,7 +156,7 @@ func TestTheCacheReadsOnlyWhatWasAppended(t *testing.T) {
 
 	// Grown by one line: the cache must hold two and must have read only the
 	// second one's bytes.
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	// A modification time with a one-second resolution would otherwise make the
 	// second write invisible; the size changed too, and the cache tests both.
 	grown, err := cache.Read(time.Time{})
@@ -170,7 +180,7 @@ func TestTheCacheStartsOverWhenTheLedgerShrinks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
 	for i := 0; i < 4; i++ {
-		RecordUsage(path, UsageLine{At: at.Add(time.Duration(i) * time.Hour), Model: "a", Calls: 1, Input: 10, USD: 0.10})
+		recordUsage(t, path, UsageLine{At: at.Add(time.Duration(i) * time.Hour), Model: "a", Calls: 1, Input: 10, USD: 0.10})
 	}
 	cache := &UsageCache{Path: path}
 	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 4 {
@@ -179,13 +189,130 @@ func TestTheCacheStartsOverWhenTheLedgerShrinks(t *testing.T) {
 	if err := os.Truncate(path, 0); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
-	RecordUsage(path, UsageLine{At: at.Add(9 * time.Hour), Model: "z", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at.Add(9 * time.Hour), Model: "z", Calls: 1, Input: 10, USD: 0.10})
 	lines, err := cache.Read(time.Time{})
 	if err != nil {
 		t.Fatalf("read after truncate: %v", err)
 	}
 	if len(lines) != 1 || lines[0].Model != "z" {
 		t.Fatalf("the cache kept lines from a file that is gone: %+v", lines)
+	}
+}
+
+// A REPLACEMENT THAT GREW PAST THE OLD ONE IS STILL A REPLACEMENT. A ledger
+// rotated away and started again can be longer than what the cache had already
+// parsed by the time the next beat looks at it — so a cache that asked only
+// "did it shrink" would keep the rows of a file that is gone AND seek into the
+// new one past a prefix it never read, adding two ledgers together with the
+// middle missing. Identity is the question, not size.
+func TestTheCacheStartsOverWhenTheLedgerIsReplacedAndRegrows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	for i := 0; i < 3; i++ {
+		recordUsage(t, path, UsageLine{At: at.Add(time.Duration(i) * time.Hour),
+			Model: "old", Calls: 1, Input: 10, USD: 0.10})
+	}
+	cache := &UsageCache{Path: path}
+	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 3 {
+		t.Fatalf("first read gave %d lines, %v", len(lines), err)
+	}
+
+	// The rotation: the ledger is moved aside and a NEW file takes its name,
+	// then grows past the length of the one it replaced before anybody looks.
+	// The rows are appended directly, because the ledger's own writer is holding
+	// the descriptor that the rename carried away with it.
+	if err := os.Rename(path, path+".1"); err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		row, err := json.Marshal(UsageLine{At: at.Add(time.Duration(24+i) * time.Hour),
+			Day: "2026-08-26", Model: "new", Calls: 1, Input: 10, USD: 0.20})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := appendRaw(path, string(row)+"\n"); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read after the rotation: %v", err)
+	}
+	if len(lines) != 6 {
+		t.Fatalf("the cache holds %d lines, want the six of the ledger that is there: %+v", len(lines), lines)
+	}
+	for _, line := range lines {
+		if line.Model != "new" {
+			t.Fatalf("a row from the rotated-away ledger survived: %+v", lines)
+		}
+	}
+}
+
+// The same size and the same modification time are not the same file. A ledger
+// replaced by one that happens to match both would otherwise be answered out of
+// memory for as long as the window stayed open.
+func TestTheCacheNoticesAReplacementOfTheSameSizeAndTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	recordUsage(t, path, UsageLine{At: at, Model: "aaa", Calls: 1, Input: 10, USD: 0.10})
+	cache := &UsageCache{Path: path}
+	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 1 {
+		t.Fatalf("first read gave %d lines, %v", len(lines), err)
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	// A different file of the same length, wearing the same name and the same
+	// modification time: exactly what a rotation with a same-shaped replacement
+	// leaves behind.
+	replacement := filepath.Join(filepath.Dir(path), "replacement")
+	recordUsage(t, replacement, UsageLine{At: at, Model: "zzz", Calls: 1, Input: 10, USD: 0.10})
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	if err := os.Chtimes(path, stat.ModTime(), stat.ModTime()); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read after the replacement: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Model != "zzz" {
+		t.Fatalf("the cache answered from the file that is gone: %+v", lines)
+	}
+}
+
+// THE ROWS ARE NOT IN TIME ORDER AND THE FLOOR MUST NOT ASSUME THEY ARE. This
+// ledger is machine-wide: a second aforge can stamp a call at 09:00 and land it
+// after this one's 10:00 row, because its own turn ran in between. A floor read
+// as a prefix cut stops at the 10:00 row and hands back everything behind it,
+// which includes an hour nobody asked about.
+func TestTheCachesFloorAsksEveryRowAndNotJustTheFirst(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	early := usageAt(t, "2026-08-25 09:00")
+	floor := usageAt(t, "2026-08-25 09:30")
+	late := usageAt(t, "2026-08-25 10:00")
+	// The order on disk is the order the appends landed, not the order of the
+	// stamps: the late row first, then the early one behind it.
+	recordUsage(t, path, UsageLine{At: late, Model: "late", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: early, Model: "early", Calls: 1, Input: 10, USD: 0.10})
+
+	cache := &UsageCache{Path: path}
+	lines, err := cache.Read(floor)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Model != "late" {
+		t.Fatalf("the floor let %d rows through, want only the one above it: %+v", len(lines), lines)
+	}
+	// And the cache still holds both, so a later question about a wider window
+	// is answered without re-reading the file.
+	if all, err := cache.Read(time.Time{}); err != nil || len(all) != 2 {
+		t.Fatalf("the cache holds %d rows with no floor, want both: %v", len(all), err)
 	}
 }
 
@@ -198,6 +325,7 @@ func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {
 		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
 	})
 	agent.sealTurn(Usage{Input: 900, Output: 120, CostUSD: 0.31, Calls: 2}, time.Now().Add(-time.Second), "opus-4.1")
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil {
@@ -237,6 +365,7 @@ func TestFoldingAChildsTallyWritesNoSecondLedgerLine(t *testing.T) {
 	agent.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens: 800, CompletionTokens: 200, Cost: &cost,
 	}}, "sonnet-4.5", 12)
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil {
@@ -263,6 +392,7 @@ func TestAStandingFiringsLineNamesTheItem(t *testing.T) {
 		config.taskID = 4
 	})
 	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.004, Calls: 1}, time.Now(), "haiku-4.5")
+	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil || len(lines) != 1 {
@@ -301,7 +431,7 @@ func TestAConversationLineSpellsNoEmptyIds(t *testing.T) {
 func TestAHalfWrittenLineIsReadWholeOnTheNextLook(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	at := usageAt(t, "2026-08-25 08:00")
-	RecordUsage(path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
+	recordUsage(t, path, UsageLine{At: at, Model: "a", Calls: 1, Input: 10, USD: 0.10})
 
 	whole, err := json.Marshal(UsageLine{At: at.Add(time.Hour), Day: "2026-08-25", Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	if err != nil {
@@ -350,7 +480,7 @@ func TestTheTailOffsetCountsEveryByteOfALine(t *testing.T) {
 	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 1 {
 		t.Fatalf("first read gave %d lines, %v", len(lines), err)
 	}
-	RecordUsage(path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
+	recordUsage(t, path, UsageLine{At: at.Add(time.Hour), Model: "b", Calls: 1, Input: 10, USD: 0.20})
 	lines, err := cache.Read(time.Time{})
 	if err != nil {
 		t.Fatalf("second read: %v", err)

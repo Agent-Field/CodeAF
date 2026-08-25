@@ -306,6 +306,26 @@ type DaySpend struct {
 // Lines outside the window are ignored rather than clamped into its ends: a
 // window is a question about a stretch of time, and money from outside it piled
 // onto the first bar would be an answer to a different one.
+//
+// ── WHICH DAY A ROW BELONGS TO ──
+//
+// THE WRITER'S DAY, ALWAYS — [UsageLine.Day], the local calendar day the process
+// that made the call was standing in. It is written into the row for exactly
+// this reason ([usageDayLayout] says so): a machine in Toronto records a call at
+// 23:30 as August 25, and a reader that re-derived the day from the timestamp
+// would charge it to August 26 the moment anybody read the ledger under a
+// different TZ — over ssh, in a container, in a test. A day that moves depending
+// on who is asking is not a day.
+//
+// WEEKS AND MONTHS BUCKET BY THAT SAME DAY, parsed as a LOCAL date and taken to
+// the Monday or the first of the month around it. Said plainly, because it is a
+// real consequence rather than a detail: a viewer in another zone sees the
+// WRITER'S days, grouped by the READER'S calendar — which is right, since the
+// only thing a week or a month can be here is a set of whole days, and the days
+// were settled where the money was spent.
+//
+// A row with no Day on it — an older ledger, a hand-written line — falls back to
+// its timestamp read locally, which is the best that can be said about it.
 func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 	window = window.Normalized()
 	if window.From.IsZero() || window.To.IsZero() {
@@ -327,7 +347,10 @@ func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 	// bucket, which a test against To alone would cut off at its first moment.
 	end := at
 	for _, line := range lines {
-		when := line.At.Local()
+		// The row's own day, at its first local moment — so the window test and
+		// the bucket search are asking the same question, and both of them are
+		// asking it about the day the writer recorded.
+		when := usageLineDay(line)
 		if when.Before(window.From) || !when.Before(end) {
 			continue
 		}
@@ -345,6 +368,22 @@ func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 		}
 	}
 	return series
+}
+
+// usageLineDay is the first local moment of the day a row belongs to: the day
+// the WRITER wrote down, parsed as a local date, and the row's own timestamp
+// where it says nothing.
+//
+// It is one function rather than an expression at each site so that the window
+// test and the bucket search in [UsageByDay] cannot come to disagree about which
+// day a row is on — which would silently drop a row into no bucket at all.
+func usageLineDay(line UsageLine) time.Time {
+	if day := strings.TrimSpace(line.Day); day != "" {
+		if at, err := time.ParseInLocation(usageDayLayout, day, time.Local); err == nil {
+			return at
+		}
+	}
+	return usageBucketStart(line.At, GrainDay)
 }
 
 // UsageTotals is what a whole stretch came to: the header line's three figures.

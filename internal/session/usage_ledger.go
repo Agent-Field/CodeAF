@@ -27,10 +27,13 @@ package session
 //     is right for a session's own books and would be double counting here. The
 //     fold has its own door ([Agent.addFoldedUsage]) that writes no ledger line,
 //     and this file's totals are therefore each call once.
-//   - IT NEVER BLOCKS A TURN. One `O_APPEND` write of a ~200-byte line, no
-//     flush, no fsync, every error dropped — the same bargain [RecordArtifact]
-//     makes, and the same one the turn is already paying one line earlier when
-//     it appends the identical fact to its own transcript.
+//   - IT NEVER BLOCKS A TURN, AND THE TURN'S OWN GOROUTINE NEVER TOUCHES THE
+//     DISK. [RecordUsage] serializes the row and hands it to a bounded queue
+//     that one background writer per ledger drains ([usageWriter]); a full
+//     queue drops the row rather than waiting on it, and so does a write that
+//     fails. A home directory on a stalled mount therefore costs a spending
+//     record and never a person's turn — which the older shape, an
+//     open-write-close under a process-wide mutex, could not promise.
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
 //     file: an instantly-cancelled turn and a zero-token seal leave no row, so a
 //     day with no line in it is a day nothing was spent, rather than a day whose
@@ -142,12 +145,140 @@ type UsageLine struct {
 	Workspace string `json:"workspace,omitempty"`
 }
 
-// usageMu serializes this process's appends; two processes are serialized by
-// O_APPEND, which is what makes an append-only file the right shape here
-// ([RecordArtifact] says the same).
-var usageMu sync.Mutex
+// ── the writer ──────────────────────────────────────────────────────────────
+//
+// One goroutine per ledger path, holding one descriptor, draining one bounded
+// queue. It is internal/history's shape and it is here for internal/history's
+// reason — "capture must never block the input path" — with one difference that
+// matters: history batches on a ticker because a person can type faster than a
+// disk, and a ledger row is written at most once per model call, so this writer
+// wakes on the row itself and there is nothing to batch.
 
-// RecordUsage writes one line. Every failure is silence, for
+// usageQueueDepth is how many serialized rows one ledger's queue holds before a
+// row is DROPPED rather than waited on. Two hundred and fifty-six is far more
+// than the handful of calls that can be in flight at once in this process, so
+// the queue only fills when the disk behind it has stopped answering — which is
+// exactly the case the drop exists for.
+const usageQueueDepth = 256
+
+// usageWrite is one thing a writer is asked to do: append a row, or — where the
+// row is nil — close `done` once everything queued before it has been written.
+// The flush travels through the SAME queue as the rows, which is what makes it
+// an answer about them rather than a race with them.
+type usageWrite struct {
+	line []byte
+	done chan struct{}
+}
+
+// usageWriter is one ledger file's background writer.
+type usageWriter struct {
+	queue chan usageWrite
+}
+
+// usageWriters is the writer per path, and usageWritersMu guards the map ALONE.
+// It is never held across a file operation, so [RecordUsage] can never be made
+// to wait on a disk by another caller's write — the property the process-wide
+// append mutex this replaced could not offer.
+//
+// A writer, once started, lives as long as the process. There is one path in an
+// ordinary run and a handful in a test binary, so the map is bounded in practice
+// by how many ledgers a process is asked to write rather than by anything this
+// file has to enforce.
+var (
+	usageWritersMu sync.Mutex
+	usageWriters   = map[string]*usageWriter{}
+)
+
+// usageWriterFor answers the writer for a path, starting it on the first row.
+func usageWriterFor(path string) *usageWriter {
+	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
+	if writer := usageWriters[path]; writer != nil {
+		return writer
+	}
+	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth)}
+	usageWriters[path] = writer
+	go writer.run(path)
+	return writer
+}
+
+// run drains the queue forever, holding ONE descriptor open across rows.
+//
+// The descriptor is opened lazily and dropped on the first write that fails, so
+// the next row opens a fresh one: a ledger that was rotated or a mount that came
+// back is picked up by the row after the failure rather than by a restart. The
+// failing row itself is lost, which is this file's stated bargain — a spending
+// record is worth less than the turn that earned it.
+func (w *usageWriter) run(path string) {
+	var file *os.File
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+	}()
+	for work := range w.queue {
+		if work.done != nil {
+			close(work.done)
+			continue
+		}
+		if file == nil {
+			file = openUsageLedger(path)
+			if file == nil {
+				continue
+			}
+		}
+		// ONE write per complete line, so O_APPEND's atomic offset covers the
+		// whole row — which is also what lets [UsageCache] trust that the bytes
+		// before the last newline are whole lines, and what keeps two processes
+		// appending to one ledger from interleaving halves of two rows.
+		if _, err := file.Write(work.line); err != nil {
+			_ = file.Close()
+			file = nil
+		}
+	}
+}
+
+// openUsageLedger opens one ledger for appending, creating its directory, and
+// answers nil where it could not — the caller drops the row for [RecordUsage]'s
+// reason and tries again on the next one.
+func openUsageLedger(path string) *os.File {
+	if directory := filepath.Dir(path); directory != "" && directory != "." {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return nil
+		}
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil
+	}
+	return file
+}
+
+// FlushUsage waits until every row handed to [RecordUsage] before this call has
+// reached the disk. It is the seam a process on its way out uses
+// ([v3Process.closeAll] calls it after the conversations have closed, so the
+// last turn's spending is on disk before the terminal comes back), and the one
+// a test uses instead of sleeping — internal/history's Close is the same door
+// for the same reason.
+//
+// IT IS THE ONE PLACE IN THIS FILE THAT WAITS, deliberately: a caller asking for
+// a flush is asking to be told when the writing is done, and a flush that gave
+// up early would be an answer about nothing. Nothing on a turn path may call it.
+func FlushUsage() {
+	usageWritersMu.Lock()
+	writers := make([]*usageWriter, 0, len(usageWriters))
+	for _, writer := range usageWriters {
+		writers = append(writers, writer)
+	}
+	usageWritersMu.Unlock()
+	for _, writer := range writers {
+		done := make(chan struct{})
+		writer.queue <- usageWrite{done: done}
+		<-done
+	}
+}
+
+// RecordUsage queues one line. Every failure is silence, for
 // [RecordArtifact]'s reason: the caller has just finished a piece of a person's
 // turn, and there is nothing it could usefully do with the news that a spending
 // record could not be written — least of all tell them about it mid-sentence.
@@ -173,26 +304,23 @@ func RecordUsage(path string, line UsageLine) {
 	if err != nil {
 		return
 	}
-	usageMu.Lock()
-	defer usageMu.Unlock()
-	if directory := filepath.Dir(path); directory != "" && directory != "." {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return
-		}
+	// THE ENQUEUE IS NON-BLOCKING AND THE ROW IS THE THING THAT GIVES WAY. A
+	// full queue means the writer is stuck on a disk that is not answering, and
+	// a turn made to wait behind it would be this file's fourth rule broken to
+	// save a record of what the turn cost.
+	select {
+	case usageWriterFor(path).queue <- usageWrite{line: append(payload, '\n')}:
+	default:
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	// ONE write, so O_APPEND's atomic offset covers the whole row — which is
-	// also what lets [UsageCache] trust that the bytes before the last newline
-	// are whole lines.
-	_, _ = file.Write(append(payload, '\n'))
 }
 
 // ReadUsage reads the ledger, OLDEST FIRST, keeping only lines at or after
 // `since`. A zero `since` keeps everything.
+//
+// IT READS THE FILE AND NOT THIS PROCESS'S QUEUE, so a row recorded a moment ago
+// may not be here yet ([RecordUsage] hands it to a background writer).
+// [FlushUsage] is the door that waits for it, and it is for a process shutting
+// down and for a test — a reader on a beat simply sees the row on its next look.
 //
 // The order is the file's own and not reversed, because every caller of this is
 // an aggregation over a window rather than a list somebody scrolls: a series
@@ -281,9 +409,11 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // come to hold different money. A fold goes through a door of its own and does
 // not reach here ([Agent.addFoldedUsage] says why).
 //
-// The write is outside a.mu for [Agent.sealTurn]'s reason: it is a file append,
-// and holding the agent's lock across one would put every reader of the
-// session's totals behind a disk.
+// The record is made outside a.mu for [Agent.sealTurn]'s reason: nothing that
+// can touch a file belongs under the agent's lock, and although the write itself
+// now happens on a writer goroutine ([RecordUsage]), the lock is still released
+// before the hand-off so no reader of the session's totals ever queues behind
+// the ledger at all.
 func (a *Agent) recordUsageLine(used Usage, model, role string) {
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
@@ -334,8 +464,18 @@ func usageTaskID(id uint64) string {
 // after every single turn, and re-parse a year of spending to learn about one
 // new line. So the cache is keyed on how far it has already read: an unchanged
 // file answers from memory, a GROWN file is read from where the last read
-// stopped, and only a file that shrank — truncated, rotated, replaced — is read
-// again from the beginning.
+// stopped, and a file that is not the one it was reading is read again from the
+// beginning.
+//
+// "NOT THE ONE IT WAS READING" IS AN IDENTITY QUESTION AND NOT A SIZE ONE. A
+// ledger that is rotated away and replaced grows back, and a cache that asked
+// only "is it shorter than what I have parsed" would meet the replacement after
+// it had passed that mark, keep the rows of a file that is gone, and seek into
+// the new one past a prefix it never read — two ledgers added together, with
+// somebody else's morning missing out of the middle. So the cache remembers WHICH
+// file it read ([os.SameFile], which is the device and inode the filesystem
+// reports) and how long it was, and it starts over the moment either says this
+// is a different file or a shorter one.
 //
 // It holds every line it has ever parsed, which is the one thing that makes the
 // tail read possible. That is bounded by [usageCacheLines]: past it the oldest
@@ -355,6 +495,10 @@ type UsageCache struct {
 	read int64
 	size int64
 	mod  time.Time
+	// info is the file those figures are about — kept whole rather than as a
+	// device and an inode of this cache's own choosing, because [os.SameFile] is
+	// the one comparison that is right on every filesystem Go runs on.
+	info os.FileInfo
 	// loaded says a first read has happened, so that a genuinely empty ledger is
 	// distinguishable from one nobody has looked at yet.
 	loaded bool
@@ -384,24 +528,41 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	case errors.Is(err, fs.ErrNotExist):
 		// A machine that has spent nothing. The cache remembers that it looked,
 		// so a ledger that appears later is picked up on the next beat.
-		c.lines, c.read, c.size, c.mod, c.loaded = nil, 0, 0, time.Time{}, true
+		c.lines, c.read, c.size, c.mod, c.info, c.loaded = nil, 0, 0, time.Time{}, nil, true
 		return nil, nil
 	case err != nil:
 		return c.since(since), err
 	}
-	if c.loaded && info.Size() == c.size && info.ModTime().Equal(c.mod) {
+	// SAME FILE is asked FIRST, and it is asked here as well as below: a
+	// replacement that happens to have the size and the modification time of the
+	// file it replaced would otherwise be answered out of memory forever.
+	same := c.loaded && c.info != nil && os.SameFile(info, c.info)
+	if same && info.Size() == c.size && info.ModTime().Equal(c.mod) {
 		return c.since(since), nil
 	}
-	if !c.loaded || info.Size() < c.read {
-		// Shorter than what we have already parsed: this is a different file
-		// wearing the same name, and nothing we hold is about it.
-		c.lines, c.read = nil, 0
+	if !same || info.Size() < c.size || info.Size() < c.read {
+		// Either a different file wearing the same name, or the same one
+		// truncated back under what we have already read. Nothing held is about
+		// it, and the read starts at nothing — which is also what keeps the seek
+		// below from ever landing past a prefix this cache did not read.
+		c.lines, c.read, c.full = nil, 0, false
 	}
 	file, err := os.Open(path)
 	if err != nil {
 		return c.since(since), err
 	}
 	defer file.Close()
+	// THE FILE THAT WAS STAT'ED AND THE FILE THAT IS OPEN NEED NOT BE THE SAME
+	// ONE — a rotation can land between the two calls — so identity is asked
+	// again, of the descriptor actually about to be read. What this protects is
+	// the seek: reading from an offset into a file whose first bytes this cache
+	// never saw would lose that prefix silently and forever.
+	if opened, err := file.Stat(); err == nil {
+		if c.read > 0 && (c.info == nil || !os.SameFile(opened, c.info) || opened.Size() < c.read) {
+			c.lines, c.read, c.full = nil, 0, false
+		}
+		info = opened
+	}
 	if c.read > 0 {
 		if _, err := file.Seek(c.read, io.SeekStart); err != nil {
 			// A seek that fails leaves the cache exactly as it was rather than
@@ -415,7 +576,7 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	fresh, consumed, scanErr := scanUsage(file, time.Time{})
 	c.lines = append(c.lines, fresh...)
 	c.read += consumed
-	c.size, c.mod, c.loaded = info.Size(), info.ModTime(), true
+	c.size, c.mod, c.info, c.loaded = info.Size(), info.ModTime(), info, true
 	if len(c.lines) > usageCacheLines {
 		c.lines = c.lines[len(c.lines)-usageCacheLines:]
 		c.full = true
@@ -428,19 +589,29 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 // all-time figure has to say so; a page drawing a fortnight never has to care.
 func (c *UsageCache) Full() bool { return c.full }
 
-// since is the held lines from a floor, sharing the backing array where the
-// whole slice is wanted — the ordinary case, since the file is already ordered.
+// since is the held lines at or after a floor. A zero floor shares the backing
+// array, which is the ordinary case and the whole slice.
+//
+// IT IS A FILTER AND NOT A PREFIX CUT, and the difference is the point. The file
+// is APPENDED in the order writes land, which is not the order the rows are
+// stamped: a second process can journal a call at 09:00 and reach the file after
+// this one's 10:00 row is already in it — its own turn ran in between — and two
+// processes writing one machine-wide ledger is the ordinary case here, not a
+// pathological one. A floor implemented as "cut at the first row that is not
+// below it" would meet that 10:00 row first and hand back the 09:00 row sitting
+// behind it as though it were inside the window. So every row is asked.
 func (c *UsageCache) since(floor time.Time) []UsageLine {
 	if floor.IsZero() {
 		return c.lines
 	}
-	// The file is written in time order, so the floor is a prefix cut rather
-	// than a filter — except for the pathological case of a clock that moved
-	// backwards, which costs one line's inclusion and nothing else.
-	for i, line := range c.lines {
+	kept := make([]UsageLine, 0, len(c.lines))
+	for _, line := range c.lines {
 		if !line.At.Before(floor) {
-			return c.lines[i:]
+			kept = append(kept, line)
 		}
 	}
-	return nil
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
