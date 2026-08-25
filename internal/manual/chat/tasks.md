@@ -532,6 +532,14 @@ same count decides both things, so nothing about what you asked for is read to d
 round, so it climbs the same three points, and a carried-on reply that reaches the third one
 is handed to a task in the ordinary way. There is no separate limit and no number to raise.
 
+**A reply that BROKE is never carried on.** Carrying on is for a reply that stopped early,
+and a reply that ended on a **failed request** did not stop early — it broke. A provider
+that says it stopped on an error, and a reply that comes back completely empty, both count:
+neither is read for what remains, because the failure is what remains and the retry ladder
+already owns it. A measured run read a broken reply three times in fifteen seconds, paid a
+thinking-tier call each time, and re-opened a reply that could not move. See *Models,
+crews and what things cost* for what the error line says now.
+
 **And if nobody can be reached, the reply just ends.** No second model configured, a reader
 that faults, a reader that takes too long: each of those ends the reply as it would have
 ended before this existed.

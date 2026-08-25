@@ -167,6 +167,11 @@ type sessionEntry struct {
 	// written before it existed.
 	Call *journalCall `json:"call,omitempty"`
 
+	// Error is ONE CALL THAT FAILED (see [journalError]). It is the call line's
+	// opposite number and it exists for the same reason: a turn that died on a
+	// provider refusal left this file saying only that it had ended.
+	Error *journalError `json:"error,omitempty"`
+
 	// Mark is ONE reading taken at a checkpoint mark, and Ceiling is what the
 	// last mark then did with the turn (checkpoint.go). Absent from every line
 	// that is not one of those, and from every file written before they existed.
@@ -222,6 +227,41 @@ type journalCall struct {
 	CacheWrite int     `json:"cacheWrite,omitempty"`
 	Output     int     `json:"output,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
+}
+
+// journalError is ONE CALL THAT FAILED, written down where the calls that
+// succeeded already are.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// SWE-Marathon run s2, 22:45 UTC. A turn ended with `error: after 3 retries: API
+// error (400): Provider returned error`, the session went idle, and the
+// benchmark cell settled with five hours of budget unspent. NOTHING ABOUT THE
+// 400 REACHED THIS FILE — no row, no status, no endpoint, no provider name, no
+// upstream body — so the autopsy could say that a turn had died and nothing
+// whatever about why. A journal that records every call that worked and nothing
+// about the ones that did not is a journal that answers the easy question.
+//
+// So: EVERY FAILED CALL WRITES ONE, and it carries what an autopsy has to ask
+// for otherwise. Status, Provider and Raw come off the refusal itself
+// (internal/provider's APIError); Endpoint is who the router said was serving;
+// Attempt is which rung of the retry ladder this was, so three rows for one step
+// read as one ladder rather than three steps; and Input is THE ESTIMATE the
+// session made of the request it was about to send, which is the only token
+// figure a failed call has — the provider counted none.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason and one more: a
+// failed call was not billed, so there is nothing here to sum.
+type journalError struct {
+	Model    string `json:"model,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Status   int    `json:"status,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Raw      string `json:"raw,omitempty"`
+	Attempt  int    `json:"attempt,omitempty"`
+	Input    int    `json:"input,omitempty"`
 }
 
 // journalMark is ONE reading taken at a checkpoint mark: what the sidecar was
@@ -959,6 +999,12 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// warm — and every dollar on it is already counted in the seal that
 			// closed its turn. Folding it in here would bill the session twice
 			// for the same money.
+		case "error":
+			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
+			// own: a failed call cost nothing to bill and put nothing in the
+			// transcript. It is evidence for whoever reads the file afterwards,
+			// and replaying it would put a provider's refusal into somebody's
+			// conversation as though the model had said it.
 		case "mark", "ceiling", "division":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
@@ -1493,6 +1539,21 @@ func (s *sessionFile) appendCall(call journalCall) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "call", Call: &call, Timestamp: stamp()})
+}
+
+// appendError writes ONE FAILED CALL down (see [journalError]).
+//
+// A FAILURE ALWAYS WRITES, which is where this parts company with every other
+// append in this file. The emptiness law is about numbers nobody reported; a
+// call that failed with no status, no provider and no words is not an absence of
+// news — it is the news, and it is precisely the shape the measured run left
+// behind. The one thing that writes nothing is the nil receiver, as everywhere
+// here: a memory-only session has no journal and no caller should have to know.
+func (s *sessionFile) appendError(failure journalError) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "error", Error: &failure, Timestamp: stamp()})
 }
 
 // appendMark writes ONE mark's reading down (see [journalMark]).
