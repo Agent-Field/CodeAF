@@ -185,7 +185,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	a.home.seen = now.Add(-30 * time.Minute)
 	a.home.build()
 	text := switchFrame(a)
-	if !strings.Contains(text, "since you left") || !strings.Contains(text, "tasks landed") {
+	if !strings.Contains(text, "since you left") || !strings.Contains(text, "1 task landed") {
 		t.Fatalf("no ledger:\n%s", text)
 	}
 	doors := map[string]bool{}

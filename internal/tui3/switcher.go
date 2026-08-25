@@ -332,11 +332,18 @@ func switcherPlural(n int, one, many string) string {
 
 func (r *switcherReading) addLedger(items map[string][]StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
 	var events []switcherRow
+	// ONE LINE PER ITEM, HOWEVER MANY PROJECTS HOLD IT. The bands are keyed by
+	// project directory and a machine-wide watch is in every one of them, so a
+	// walk that did not remember what it had seen would say the same thing four
+	// times (homestanding.go's [app.readStandBands] keys them, and this is the
+	// reading's own half of that fact).
+	said := make(map[string]bool)
 	for _, views := range items {
 		for _, view := range views {
-			if !view.Item.LastFired.After(seen) {
+			if !view.Item.LastFired.After(seen) || said[view.Item.ID] {
 				continue
 			}
+			said[view.Item.ID] = true
 			line := standing.LastLookLine(view.Item, r.now)
 			if line == "" {
 				line = switcherFirstLine(view.Item.LastCheckLine)
@@ -365,7 +372,9 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 		events = append(events, switcherRow{kind: switcherLedger, title: strings.Join(parts, ", "), place: "memory", at: r.now})
 	}
 	if landed > 0 {
-		events = append(events, switcherRow{kind: switcherLedger, title: fmt.Sprintf("%d tasks landed", landed), place: "tasks", at: r.now})
+		events = append(events, switcherRow{kind: switcherLedger,
+			title: fmt.Sprintf("%d %s landed", landed, switcherPlural(landed, "task", "tasks")),
+			place: "tasks", at: r.now})
 	}
 	if len(events) == 0 {
 		return
