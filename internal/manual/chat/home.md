@@ -17,9 +17,12 @@ The left column is **two tiers**: three projects drawn open — the one this win
 first, then the two you spoke in most recently — and every other project folded to one line
 each under a dim `elsewhere` rule, `enter` away from opening in place.
 
-Home is a glance you take, not a place you live. It does nothing on its own: no
-notifications, no charts, no history graphs. You open it, you see where things stand, and
-you leave.
+Home is the **first of seven places** — home, tasks, standing, memory, spend, search,
+settings — drawn as a tab bar under the top line, with `tab` and `alt+1`…`alt+7` between
+them. See **Places**.
+
+It still does nothing on its own: no notifications, no charts, no history graphs. You open
+it, you see where things stand, and you either act on something or leave.
 
 ## Why did a dashboard open when I started aforge — home greets you
 
@@ -299,7 +302,7 @@ made of alignment and space:
                                                               3 chats · 5 tasks · $1.10
  ──────────────────────────────────────────────────────────────────────────────────────────
   type to search or start something new · ↑↓ pick · enter open
-  ↑↓ move · enter open · tab next zone · esc close
+  ↑↓ move · enter open · alt+. map · tab next place · esc close
 ```
 
 - **Left — what needs you, and what is moving.** The same two zones, the same rows, the
@@ -312,11 +315,15 @@ made of alignment and space:
 - **Right — the card.** Always a card, never a second list: the row the cursor is on, or
   the machine's own with the cursor on no row.
 
-**`tab` moves between the zones** — `needs you`, then `moving`, then the list, then round
-again — and lands on the first row of each. **From rest it enters `needs you`**, which is
-the key's whole job: it is named for the zones, so it is the one that takes you to them. A
-zone with nothing in it is skipped, because its label is not a row. The foot names the key
-at this width: `tab next zone`. `esc` still closes home from wherever the cursor is.
+**`←` from rest enters `needs you`**, and the foot names it at this width:
+`← what needs you`. A zone with nothing in it is skipped, because its label is not a row.
+`esc` still closes home from wherever the cursor is.
+
+**`tab` used to walk the zones and no longer does.** It is the way to the **next place** now
+— home, tasks, standing, memory, spend, search, settings — on every place, because a key
+that meant "next section" here and "next place" everywhere else is a key nobody can build a
+habit on. Nothing became unreachable: the arrows already crossed the same gutter, and they
+still do.
 
 **`→` and `←` cross the columns too, the way the geography reads**: `→` off a row in
 `needs you` or `moving` crosses the gutter into the list, and `←` off a conversation in
@@ -876,7 +883,9 @@ on — at rest, `↑↓ move · enter open · esc close`.
 a sentence longer than the frame wraps onto continuation rows — up to three — and past
 that the window scrolls with the caret, marked with `…` where the `›` was. Nothing you
 type is ever truncated out of view. There is no key to open a new line here (that is the
-chat box's `alt+enter` / `ctrl+j`); on home, `alt+enter` and `ctrl+enter` are `ask here`.
+chat box's `ctrl+j`); on home and on every other place, **`alt+enter` sends what you typed
+off as a task** — which on home is `ask here` — and `ctrl+enter` does the same thing on the
+terminals that can send it.
 
 **A paste lands in home's box.** Paste while home is open and the text goes into the foot
 box — filtering the list, exactly as typing does — or into the ask-here exchange's own
@@ -1327,11 +1336,17 @@ from the first minute on this machine, whatever it holds, and stay there through
 
 ## Is there a key for home?
 
-`/home` opens it, and **space twice on an empty box** goes there from inside a conversation
-— see the two sections above. There is no `ctrl+` chord for home: the plain ones are all
-taken (`ctrl+.` is the task page, `/history`), and the chords that were left — the `alt+`
-letters — arrive in some terminals and do nothing at all in others. The double space is
-the chord home has instead.
+Three of them. **`alt+1`** goes straight there from anywhere — home is the first of seven
+places, and each answers to its own position on the tab bar, `alt+1` through `alt+7`.
+**Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
+it from any other place. `/home` opens it too.
+
+`alt+<digit>` arrives in every terminal aforge runs in — it is sent as escape-then-digit and
+has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
+encoding a terminal can send at all.
+
+There is still no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
+tasks place, `/history`).
 
 ## What landed while I was away — the ✓ and "since you last looked"
 
@@ -1573,18 +1588,23 @@ store, not through a door.
 by project, by what their tasks came to — and rows the query never considered
 would be rows drawn as though it had.
 
-## How do I pause a reminder from home — ctrl+e and ctrl+x on an item row
+## How do I pause a reminder from home — the → strip, and ctrl+e / ctrl+x
 
-Put the cursor on the row (or point at it) and press **`ctrl+e` to pause it** or
-**`ctrl+x` to stop it for good**. A third chord, **`ctrl+v`**, raises how hard
-that item thinks — see "How hard does a reminder think" below. Home says `paused · <your words>` or
-`stopped · <your words>` at the foot and redraws the row from the store, so what
-you see is what is on disk rather than what the keypress hoped for.
+Put the cursor on the row (or point at it) and press **`→`**. A strip opens under the list
+offering `p pause` and `s stop`, and **while that strip is drawn those two letters are the
+verbs**. `esc` or `←` closes it. The chords **`ctrl+e` to pause** and **`ctrl+x` to stop for
+good** still work and need no strip.
 
-They are chords rather than bare letters on purpose: home's box takes every
-letter, always, so a `p` is a `p` in your sentence wherever the cursor rests.
-The chords need no such care — they can never begin a word — and they act
-whether or not something is typed.
+A third chord, **`ctrl+v`**, raises how hard that item thinks — see "How hard does a
+reminder think" below. Home says `paused · <your words>` or `stopped · <your words>` at the
+foot and redraws the row from the store, so what you see is what is on disk rather than what
+the keypress hoped for.
+
+Home's box takes every letter, always, so a `p` is a `p` in your sentence wherever the
+cursor rests — *unless the strip is on screen*. That visible strip is what buys the two bare
+letters, and it is the only state on this surface where a printable key is not a character.
+Before it existed home printed `p pause · s stop` on this card while binding neither, which
+is exactly the sort of promise the strip was built to stop.
 
 A window whose build cannot write to the store says `this window cannot change
 it` rather than pretending.
@@ -1610,7 +1630,7 @@ the other kind of thing, read downward:
 6. a dim line of **how much lately**: `ran 3 times this week · $0.04`, counted
    over the last seven days of the standing ledger;
 7. **how hard it thinks**, if you have said: `thinking high`;
-8. the keys, dim: `enter open where it was asked · ctrl+e pause · ctrl+x stop ·
+8. the keys, dim: `enter open where it was asked · → pause · stop ·
    ctrl+v think harder`.
 
 Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
@@ -1890,8 +1910,9 @@ failed folder open says `could not open <path>` on home's message line.
 ctrl+y copy path · → more` — because `enter`, `ctrl+t` and `ctrl+o` all need that
 directory. See *Enter does nothing on a row — the folder is gone*.
 
-An item's card carries the exact legend `enter open where it was asked · ctrl+e pause ·
-ctrl+x stop · → more`.
+An item's card carries the exact legend `enter open where it was asked · → pause · stop ·
+→ more`. The two verbs are on the row's own strip, opened with `→`; `ctrl+e` and `ctrl+x` do
+the same two things without it.
 
 ## What is next up on home — scheduled items coming soon
 
@@ -1992,7 +2013,7 @@ Keys on the sheet:
 | `↑` `↓` `PgUp` `PgDn` `g` `G` | scroll the card |
 | a digit | answer the question the card is showing |
 | `→` or `m` | open everything behind `▸ more` |
-| `ctrl+e` / `ctrl+x` (or `p` / `s`) | on a standing item: pause it, stop it |
+| `→` then `p` / `s`, or `ctrl+e` / `ctrl+x` | on a standing item: pause it, stop it |
 
 A frame too short for all the bands **drops them from the bottom** — never the title and
 never the answers.

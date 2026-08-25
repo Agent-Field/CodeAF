@@ -68,9 +68,17 @@ const (
 	homeItemsFoldWord = " more keeping an eye"
 	// homeItemsFewerWord is the same line holding the band open.
 	homeItemsFewerWord = " fewer"
+	// homeItemPauseWord and homeItemStopWord are the two verbs an item's strip
+	// offers, and they are named here so that the legend below and the strip that
+	// binds them are ONE source (verbstrip.go). They were two strings for three
+	// waves, and the copy that was not the binding said keys that did not exist.
+	homeItemPauseWord = "pause"
+	homeItemStopWord  = "stop"
 	// homeItemActions is the dim line at the foot of an item's card: the three
-	// things this screen can do to one.
-	homeItemActions = "enter open where it was asked · p pause · s stop"
+	// things this screen can do to one. The two letters are real now — they are
+	// the row's `→` strip (verbstrip.go), which is what "no key does anything
+	// that isn't drawn on screen right now" costs and buys.
+	homeItemActions = "enter open where it was asked · → " + homeItemPauseWord + " · " + homeItemStopWord
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is

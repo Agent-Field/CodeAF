@@ -45,11 +45,20 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
 
-Four things take the whole frame instead of sharing it, at every width: the settings
-panel (`ctrl+,`), the task page (`ctrl+.`, or `/history`), home (`/home`, or space
-twice on an empty box), and the rewind timeline (`/rewind`). While any of them is up
-nothing else is drawn — no conversation, no box, no status line — and `esc` gives the
-frame back. **Only one of the four is ever up:** opening any one closes the other three.
+**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
+standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
+jump straight to one, and each has commands of its own (`/home`, `/history`, `/standing`,
+`/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
+deliberately not one of the seven — it is something you do to this conversation rather than
+a room in the machine.
+
+While any of them is up nothing else is drawn — no conversation, no box, no status line —
+and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
+
+Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
+naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+**composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
+hint line last. See the **Places** page.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.

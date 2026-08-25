@@ -300,9 +300,15 @@ func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
 	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
 		t.Fatalf("alias said %q", got)
 	}
+	// AND BARE /memories OPENS THE PLACE NOW, on a surface that has one. It kept
+	// an older print posture while memory was a twelve-row overlay; the moment it
+	// became a place a person can walk into, filter and act on, sending them to
+	// the transcript instead was sending them to the worse half of the feature.
+	// With a query BOTH spellings still print, because a query is a question
+	// rather than a door.
 	a.slash("/memories")
-	if a.memPanel.open || !strings.Contains(lastNote(t, a), "uses neovim") {
-		t.Fatal("bare /memories stopped using the print posture")
+	if !a.memPanel.open {
+		t.Fatal("bare /memories did not open the memory place")
 	}
 }
 
@@ -370,6 +376,14 @@ func TestMemoryExpandProvenanceEditAndCancel(t *testing.T) {
 	}
 }
 
+// THE UNDO IS ONE DEEP, AND IT IS A VERB ON THE ROW'S STRIP RATHER THAN A BARE
+// LETTER.
+//
+// `u` used to be matched ahead of the filter's default arm, which meant the
+// letter could not be TYPED — a search for a word with a `u` in it lost it and
+// put something back instead. It is on the `→` strip now, offered only while
+// there is something to put back, and `tab` — which cycled the shelves — is the
+// way to the next place, so the shelf moved to `alt+s` (verbstrip.go).
 func TestMemoryForgetUndoIsOneDeepAndScopeCycles(t *testing.T) {
 	a, memory := memoryPanelApp(t, []store.Memory{
 		{ID: "m1", Title: "uses neovim", Text: "uses neovim", Scope: store.MemoryScopeUser},
@@ -377,28 +391,28 @@ func TestMemoryForgetUndoIsOneDeepAndScopeCycles(t *testing.T) {
 	})
 	a.slash("/memory")
 	drive(t, a, key("delete"))
-	if len(memory.forgotten) != 1 || !strings.Contains(a.memPanel.footer, "forgot 'uses neovim' — u to undo") {
+	if len(memory.forgotten) != 1 || !strings.Contains(a.memPanel.footer, "forgot 'uses neovim'") {
 		t.Fatalf("forget state: %v %q", memory.forgotten, a.memPanel.footer)
 	}
-	drive(t, a, key("u"))
+	drive(t, a, key("right"), key("u"))
 	if len(memory.restored) != 1 {
 		t.Fatalf("restore calls %v", memory.restored)
 	}
 	drive(t, a, key("delete"))
 	drive(t, a, key("delete"))
-	drive(t, a, key("u"))
+	drive(t, a, key("right"), key("u"))
 	if len(memory.restored) != 2 || memory.restored[1] != "m2" {
 		t.Fatalf("one-deep restore calls %v", memory.restored)
 	}
 
-	// Reload the two rows, then tab narrows all to user and project in order.
+	// Reload the two rows, then alt+s narrows all to user and project in order.
 	memory.rows[0].Status, memory.rows[1].Status = store.MemoryActive, store.MemoryActive
 	a.memPanel.start(memory.rows)
-	drive(t, a, key("tab"))
+	drive(t, a, key("alt+s"))
 	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeUser {
 		t.Fatalf("user scope chose %#v", got)
 	}
-	drive(t, a, key("tab"))
+	drive(t, a, key("alt+s"))
 	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeProject {
 		t.Fatalf("project scope chose %#v", got)
 	}

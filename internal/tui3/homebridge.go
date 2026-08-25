@@ -388,8 +388,14 @@ func (a *app) homeZoneHit(x, y int) (int, bool) {
 
 // homeTabWord is the key the wide tier adds to the line under the foot. It names
 // the ZONE and not the column, because that is the word the zones' own labels
-// and the manual both use for the thing tab moves between.
-const homeTabWord = "tab next zone"
+// and the manual both use for the thing this key moves between.
+//
+// IT WAS `tab next zone` UNTIL THE ROUTER TOOK `tab` FOR THE NEXT PLACE
+// (placekeys.go). The gesture did not go anywhere: `←` was already the pointed
+// half of the same circle ([homeView.crossColumns] says so in its own comment),
+// and from rest it now enters the first zone, which is the one thing only `tab`
+// used to do.
+const homeTabWord = "← what needs you"
 
 // tabStops is where tab can land, in the order it walks them: the first row of
 // each zone that has any, and then the top of the places column.
@@ -479,25 +485,20 @@ func (h *homeView) tab() {
 	h.cursor, h.picked = next, true
 }
 
-// homeTab is tab as the keyboard reads it, and it answers false when this frame
-// has no zones to cycle — where the key keeps the one meaning it already had
-// (homeexchange.go: it hands the keyboard to the errand in the pane).
+// homeZoneEntry is `←` from rest at the columns tier: INTO THE FIRST ZONE.
 //
-// THE PANE IS THE LAST STOP AND ONLY WHEN IT CAN HOLD THE KEYBOARD. An errand is
-// the one card on this screen with a box in it, and tab from its own row in the
-// LIST has meant "I am talking to this one now" since before there was a third
-// column; a card about a conversation has nothing to type into, so the cycle goes
-// straight back to the first zone rather than pausing on a column that cannot
-// answer. From a row in a zone tab stays the zone key and `enter` is the way in,
-// which is the one it already was on that row ([app.homeEnter]).
-func (a *app) homeTab() bool {
+// It is the one thing `tab` did that the arrows did not already do. `←` off a
+// row in the list crosses into the zones beside it ([homeView.crossColumns]),
+// but at rest there is no row to cross from — so the named entry survives on the
+// key that points at the column it enters. It answers false where there is
+// nothing to enter, and the arrow keeps its other meanings.
+func (a *app) homeZoneEntry() bool {
 	h := &a.home
-	if !h.columns() {
+	if !h.columns() || !h.resting() || !h.box.empty() {
 		return false
 	}
-	if ex := a.paneExchange(); ex != nil && !h.resting() && h.cursorZone() == "" {
-		ex.focused = true
-		return true
+	if len(h.tabStops()) == 0 {
+		return false
 	}
 	h.tab()
 	return true
@@ -571,3 +572,7 @@ func (a *app) homeTabbable() bool {
 	}
 	return a.home.columns() && len(a.home.tabStops()) > 1
 }
+
+// homeZoneWord is [homeTabWord] said the other way, for the row that is already
+// standing in a zone: → walks back out into the list.
+const homeZoneWord = "→ the list"

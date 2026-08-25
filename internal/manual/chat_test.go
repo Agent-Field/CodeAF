@@ -759,6 +759,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does 14 more lines mean at the top of a task", "tasks"},
 		{"how do I see the full task description", "tasks"},
 		{"how do I collapse the long brief in a task", "tasks"},
+
+		// THE PLACES, asked the way somebody meets them: seeing a row of words
+		// under the top line and not knowing what it is, wanting a key for one,
+		// finding a page that says what it is for and nothing else, and hitting
+		// the one state where a letter is not a letter.
+		{"what is the row of words at the top of the screen", "places"},
+		{"how do I get to the tasks page without a command", "places"},
+		{"is there a keyboard shortcut to jump between pages", "places"},
+		{"what does the number beside a tab mean", "places"},
+		{"why does the spend page only have three sentences on it", "places"},
+		{"how do I see all the keyboard shortcuts", "places"},
+		{"what does the right arrow do on a row", "places"},
+		{"where do I type on the standing page", "places"},
+		{"what is the here ~/ thing next to the box", "places"},
+		{"how do I start a task from any page", "places"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

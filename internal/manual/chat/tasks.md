@@ -716,7 +716,8 @@ and opens nothing, which is the same refusal `/history` gives there.
 <brief>` and `/task adaptive <brief>` still size, shape and start the work directly, with
 no proposal card in between and no extra question.
 
-**There is still no `/tasks` command.** The plural is not a word this surface answers to;
+**There is still no `/tasks` command**, though `tasks` is the name of the PLACE `/history`
+opens — `alt+2` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give aforge some.
 
@@ -888,7 +889,8 @@ cannot give: the column beside the conversation is built from *this session's* w
 nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
 screen until you open this.
 
-**There is no `/tasks` command.** `/task <brief>` starts work; `/history` shows what was
+**There is no `/tasks` command** — though `tasks` is what the PLACE this opens is called on
+the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` shows what was
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a

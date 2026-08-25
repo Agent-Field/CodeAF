@@ -1234,11 +1234,12 @@ func lastNote(t *testing.T, a *app) string {
 	return ""
 }
 
-// ── the three fullscreen pages ──────────────────────────────────────────────
+// ── the pages that take the frame ───────────────────────────────────────────
 
-// threePageApp is a surface where all three fullscreen pages can actually open:
-// a profile for the settings panel, a task in the record for the task page, and
-// a machine with a second conversation on it for home.
+// threePageApp is a surface where every fullscreen page can actually open: a
+// profile for the settings panel, a task in the record for the task page, and a
+// machine with a second conversation on it for home. The two places that draw
+// only their own explanation need nothing at all, which is the point of them.
 func threePageApp(t *testing.T) *app {
 	t.Helper()
 	a, _ := sheetApp(t)
@@ -1253,23 +1254,35 @@ func threePageApp(t *testing.T) *app {
 	return a
 }
 
-// ONLY ONE PAGE EVER OWNS THE FRAME. The settings panel, the task page and home
-// each take the frame WHOLE, and view.go can draw exactly one of them — so
-// opening any one has to close the other two ([app.standDownFullscreen]).
-// Without this the second page opened would take the keyboard from behind the
-// first, and esc would give the frame back to a screen nobody could see.
+// ONLY ONE PAGE EVER OWNS THE FRAME. The settings panel, the task page, home,
+// the two places the router promoted out of being overlays and the two that draw
+// only their own explanation each take the frame WHOLE, and view.go can draw
+// exactly one of them — so opening any one has to close every other
+// ([app.standDownFullscreen]). Without this the second page opened would take the
+// keyboard from behind the first, and esc would give the frame back to a screen
+// nobody could see.
+//
+// THE LAW IS UNCHANGED AND THE LIST IS LONGER. The router did not replace this
+// exclusion; [app.showPage] is a wrapper over it, every page still carries its
+// own `open bool`, and what the wave added is four more pages that have to obey
+// it — the standing list and the memory list, which were overlays drawn under
+// the draft until they took the frame, and spend and search.
 func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
-	// Every ordered pair of the three, so no open path is trusted on the say-so
-	// of another one.
+	// Every ordered pair, so no open path is trusted on the say-so of another
+	// one.
 	open := map[string]func(*app){
 		"the settings panel": func(a *app) { a.openSettings() },
 		"the task page":      func(a *app) { a.openTaskSheet() },
 		"home":               func(a *app) { a.openHome() },
+		"the spend place":    func(a *app) { a.showPage(pageSpend) },
+		"the search place":   func(a *app) { a.showPage(pageSearch) },
 	}
 	up := map[string]func(*app) bool{
 		"the settings panel": func(a *app) bool { return a.sheet.open },
 		"the task page":      func(a *app) bool { return a.taskSheet.open },
 		"home":               func(a *app) bool { return a.home.open },
+		"the spend place":    func(a *app) bool { return a.teach.open && a.teach.at == pageSpend },
+		"the search place":   func(a *app) bool { return a.teach.open && a.teach.at == pageSearch },
 	}
 	for first := range open {
 		for second := range open {
@@ -1328,5 +1341,25 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	}
 	if !strings.Contains(plain(page), "Port the parser") {
 		t.Fatalf("the task page is not what the frame draws:\n%s", page)
+	}
+	// AND A PLACE WITH NOTHING OF ITS OWN TO DRAW TAKES THE FRAME ON THE SAME
+	// TERMS, which is the whole reason it is a place and not a message
+	// (teachplace.go).
+	a.showPage(pageSpend)
+	spend, _, _ := a.frame()
+	if strings.Contains(plain(spend), "Port the parser") {
+		t.Fatalf("the task page is still being drawn under the spend place:\n%s", spend)
+	}
+	if !strings.Contains(plain(spend), "What this machine has cost") {
+		t.Fatalf("the spend place is not what the frame draws:\n%s", spend)
+	}
+	// AND THE TAB BAR IS ON EVERY ONE OF THEM, naming the seven places and never
+	// a settings section — the negative this test asserts above depends on those
+	// two vocabularies staying apart, so a place may never be renamed to a word
+	// the settings panel already spells (pages.go).
+	for _, id := range pages() {
+		if !strings.Contains(plain(spend), id.word()) {
+			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
+		}
 	}
 }
