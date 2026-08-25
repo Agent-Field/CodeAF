@@ -161,6 +161,35 @@ import (
 //	                  card, and a question raised moments ago gets none. A KIND
 //	                  THIS BUILD DOES NOT DRAW IS SKIPPED and left waiting for a
 //	                  build that does, which is the wire's own contract.
+//	a path in a reply
+//	                  A LINK, and it was not one for a wave. The word is
+//	                  confirmed by the ENGINE — internal/remote's StatPaths,
+//	                  asked in batches off the render path — and the anchor
+//	                  points at a loopback file door this surface owns rather
+//	                  than at `file://`, which was the whole of the old
+//	                  objection: a file URI names THIS machine's disk
+//	                  (pathlink.go's far-side section, remotefiles.go). A word
+//	                  the engine did not confirm is plain text, exactly as it is
+//	                  at home. A confirmed DIRECTORY is not linked in this wave.
+//	/files            THE FAR WORKSPACE, AS A PAGE. Bare, it opens the file
+//	                  door's browse page in this machine's browser and writes the
+//	                  address into the transcript; with a path, it brings that one
+//	                  file back and hands it to this machine's own viewer
+//	                  (remoteopen.go). The list of what THIS machine has made is
+//	                  what a hosted session used to get with an apology under it
+//	                  ([filesRemoteWord]), and that is still what a connection
+//	                  with no file seam gets.
+//	dropping a file ON the browse page
+//	                  IT LANDS IN THAT SESSION'S attachments/ FOLDER AND SAYS
+//	                  NOTHING. The wire's Deposit.File keeps a file without
+//	                  submitting it (internal/remote's file.go), so no turn
+//	                  opens, no event is sent and nothing reaches the transcript
+//	                  — a drag onto a web page is not a sentence anybody said,
+//	                  and a drop that started a model turn would be one nobody
+//	                  at this end asked for. The path it landed at is the
+//	                  ENGINE'S answer, shown as it came. /attach is the same
+//	                  landing place WITH a person's own sentence attached, which
+//	                  is what makes it a turn somebody meant.
 //	/export           writes HERE, and the note says so ([exportHereWord]). The
 //	                  transcript is assembled from what this surface is holding,
 //	                  so it can be written without asking anybody; the wire has no

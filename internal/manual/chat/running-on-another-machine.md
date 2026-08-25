@@ -147,6 +147,9 @@ The **near** machine — the one you are sitting at — owns the surface:
 - the model picker's cached list
 - the terminal itself
 - **the paths for `/image` and for `@` completion**, which are anchored here
+- **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
+  window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
+  that is on the other machine (*Opening files from that machine*)
 
 Because the launch forks before this machine reads any of its own settings, a missing
 local `OPENROUTER_API_KEY` is not an error on this path. The key that matters is the one
@@ -254,11 +257,17 @@ The second half of the list, with the exact sentence each one says.
     designer is not offered over `--host` and aforge says it cannot build one from here.
     Running a harness that already exists is unaffected.
 
-13. **File paths are not clickable.** In a local session every real path on screen is a
-    hyperlink you can cmd+click. Here the files are on the far machine and the only
-    thing your terminal could open is a path of the same name on this one — so no path
-    is a link over `--host`. They are drawn in full instead, and `/status` names them
-    the way you would have to name them to reach them: `devbox:/srv/app/session.jsonl`.
+13. **File paths are clickable again, and this is now a capability rather than a limit.**
+    They were not for a wave: the only thing your terminal could open was a path of the
+    same name on this machine. Now the far machine is asked whether the file is really
+    there, and a path it confirms is a link that opens the file itself — through a small
+    door this window owns on `127.0.0.1`, never through `file://`. A path it has not
+    confirmed stays plain text, exactly as at home, and a folder is not linked. `/files`
+    opens that machine's folder as a page in your browser, `/files <path>` brings one file
+    back and opens it in your own viewer, and a file dragged onto that page lands in the
+    conversation's `attachments/`. The whole of it — what turns into a link and what does
+    not, where the copies live, the 16MB ceiling, who else can reach those addresses — is
+    on *Opening files from that machine*.
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 
@@ -386,7 +395,9 @@ are sitting at, and its bytes travel with the message.
 
 So a relative path you type after `/image`, and the `@` completion walk, are both anchored
 **here** — to the directory you launched from — and not to the remote workspace. If you
-want a file that lives on the far machine, that path will not find it.
+want a file that lives on the far machine, that path will not find it. To reach one of
+those, click it where the reply names it, or use `/files` — that is the other direction,
+and *Opening files from that machine* is the page for it.
 
 The image size ceilings are applied on this side, with the same words a local session
 uses:

@@ -132,6 +132,52 @@ func (s *server) keep(files []WireFile) ([]string, error) {
 	return out, nil
 }
 
+// depositFile keeps ONE arriving file and says where it went, and the whole of
+// what makes it a different door from [server.submitFiles] is what it does NOT
+// do afterwards.
+//
+// A DEPOSIT IS A FACT ON DISK AND NOT A THING ANYBODY SAID. It is the browse
+// page's drag-drop lane (internal/filedoor, reached through tui3's hostSource),
+// and a file dropped on a web page is not a sentence: no turn opens, no event
+// is sent, nothing is written to the transcript. The conversation learns of the
+// file when a person mentions it, which is what /attach — the same landing
+// place with the person's own words on it — has always been for.
+//
+// THE BYTES GO WHERE AN ATTACHMENT GOES AND NOWHERE ELSE. [server.keep] is the
+// implementation entire, so the name law ([attachmentName]) and the naming
+// ([writeAttachment]) are the ones the message lane already obeys rather than a
+// second spelling of them that could drift — which matters more here than
+// anywhere, because this door is reached from a web page on a machine the
+// engine cannot see.
+func (s *server) depositFile(call Frame) (json.RawMessage, error) {
+	file, err := arg[WireFile](call)
+	if err != nil {
+		return nil, err
+	}
+	// The name is judged before the weight, though [server.keep] will judge it
+	// again, so that the sentence about the weight can NAME the file: a refusal
+	// is printed in a browser tab beside the row it is about, and the one thing
+	// that may not be echoed there is a string that was never a file name.
+	name, err := attachmentName(file.Name)
+	if err != nil {
+		return nil, err
+	}
+	// THE CEILING IS CHECKED HERE THOUGH THE DOOR ALSO CHECKS IT. The browse
+	// page refuses an oversized drop on the surface's side so the person hears
+	// it before the bytes are spent (filedoor's maxCrossBytes), and a boundary
+	// that trusts a check made on the other machine is not a boundary. The
+	// number and the sentence are [server.fetchFile]'s, because a file is the
+	// same weight in both directions.
+	if len(file.Bytes) > maxFetchBytes {
+		return nil, fmt.Errorf("engine: %s is %dMB and the most one file may cross this connection is %dMB", name, len(file.Bytes)>>20, maxFetchBytes>>20)
+	}
+	kept, err := s.keep([]WireFile{file})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(DepositedFile{Path: kept[0]})
+}
+
 // AttachmentsDir is where a file a person attached lands on the engine machine.
 //
 // IT IS BESIDE THE TRANSCRIPT AND NOT AMONG THE DELIVERABLES, and that is the
@@ -259,7 +305,173 @@ func (s *server) fetchFile(call Frame) (json.RawMessage, error) {
 	// THE NAME IS THE ENGINE'S ANSWER, for the reason [FetchedFile.Name] gives
 	// in the other direction: the surface is about to write this down and must
 	// not have to derive a name from a path that is not on its disk.
-	return json.Marshal(FetchedFile{Name: filepath.Base(path), MIME: fileMIME(path), Bytes: data})
+	//
+	// AND SO IS THE DIGEST, which is what turns a fetch into something a surface
+	// can decide not to do. It is the sha256 of the bytes that actually crossed
+	// — never of what the stat above said was there — because a file that grew
+	// between the two would otherwise be handed over under the name of a
+	// content it no longer has. It is the digest internal/cas keys on, so a
+	// surface holding the blob already can answer the next click without asking
+	// this machine anything.
+	sum := sha256.Sum256(data)
+	return json.Marshal(FetchedFile{
+		Name:  filepath.Base(path),
+		MIME:  fileMIME(path),
+		Size:  int64(len(data)),
+		Hash:  hex.EncodeToString(sum[:]),
+		Bytes: data,
+	})
+}
+
+// listDirMax is the most rows one listing carries, and the ceiling is on the
+// FRAME rather than on the person. A directory holding a hundred thousand
+// generated files is an ordinary thing on a machine that has been working, and
+// a listing of it would be megabytes of JSON crossing a call that has ten
+// seconds to answer (client.go's callDeadline) for a screen that draws a page
+// at a time. What is cut is the TAIL, and [DirListing.Truncated] says so —
+// a listing that quietly stopped early would be this engine lying about that
+// machine's disk, which is the one thing a browse view may never do.
+//
+// IT IS A VAR SO A TEST CAN LOWER IT. Proving the cut works by writing two
+// thousand files is seconds of somebody's disk for a fact three files can
+// establish just as well.
+var listDirMax = 2000
+
+// statPathsMax is the most paths one stat call may ask about.
+//
+// The batch exists so a screen full of new words is ONE round trip and not one
+// per word, and the ceiling exists because a batch that size is already every
+// word on a screen — past it, something is asking about a machine rather than
+// about a view. Over it the call is REFUSED and not trimmed: a surface told
+// about the first 64 of its 200 candidates would draw 136 doors that silently
+// did not exist, and a wrong answer arriving quietly is worse than no answer
+// arriving at all.
+const statPathsMax = 64
+
+// listDir is one directory of the engine's, as rows rather than as bytes: what
+// the browse view and a file picker over a connection read.
+//
+// IT IS [handOver]'S LAW WITH THE FILE CLAUSE TURNED AROUND — the same two
+// roots, the same symlinks resolved before anything is compared, and then the
+// target has to BE a directory rather than not be one. Nothing else about what
+// a surface may see changes, which is the whole point: the browse view is a
+// view of this conversation's places and not of somebody's machine.
+//
+// A SYMLINKED ENTRY IS DESCRIBED, NEVER FOLLOWED OUT OF THE ROOTS. A link whose
+// target stays inside them is described BY that target, because it names a
+// place this conversation can reach anyway and drawing a directory as a
+// zero-byte file would be the listing being unhelpful about its own workspace.
+// A link that leaves them is listed as a plain file of no size: the row admits
+// the name is there and says nothing that would invite a fetch [handOver] is
+// about to refuse. That is the simplest rule that stays honest in both
+// directions, and it is stated here because a surface cannot infer it.
+func (s *server) listDir(call Frame) (json.RawMessage, error) {
+	args, err := arg[ListDirArgs](call)
+	if err != nil {
+		return nil, err
+	}
+	workspace, place := s.session.folder()
+
+	path, info, err := reachable(place, workspace, args.Path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("engine: %s is not a directory", args.Path)
+	}
+	found, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("engine: could not read %s", filepath.Base(path))
+	}
+
+	// os.ReadDir answers sorted by name, so splitting it in two leaves each
+	// half sorted and the join is exactly the order [DirListing] promises.
+	dirs := make([]DirEntry, 0, len(found))
+	files := make([]DirEntry, 0, len(found))
+	for _, entry := range found {
+		row, ok := describe(place, workspace, filepath.Join(path, entry.Name()), entry.Name())
+		if !ok {
+			// Something that went away between the read and the stat, or that
+			// this engine may not stat at all, is LEFT OUT rather than drawn as
+			// a row with nothing in it — a name with no facts beside it is a
+			// row a person would click.
+			continue
+		}
+		if row.Dir {
+			dirs = append(dirs, row)
+		} else {
+			files = append(files, row)
+		}
+	}
+	// The cut happens after the ordering, so what is dropped is the tail of the
+	// listing the surface would have drawn rather than an arbitrary slice of
+	// the directory.
+	entries := append(dirs, files...)
+	listing := DirListing{Path: path, Entries: entries}
+	if len(entries) > listDirMax {
+		listing.Entries, listing.Truncated = entries[:listDirMax], true
+	}
+	return json.Marshal(listing)
+}
+
+// describe is one row of a listing, or false for an entry this engine cannot
+// see at all. The symlink rule it carries out is stated on [server.listDir].
+func describe(place session.Place, workspace, path, name string) (DirEntry, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return DirEntry{}, false
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil || (!within(workspace, target) && !within(place.Dir, target)) {
+			return DirEntry{Name: name, ModTime: info.ModTime().Unix()}, true
+		}
+		reached, err := os.Stat(target)
+		if err != nil {
+			return DirEntry{Name: name, ModTime: info.ModTime().Unix()}, true
+		}
+		info = reached
+	}
+	row := DirEntry{Name: name, Dir: info.IsDir(), ModTime: info.ModTime().Unix()}
+	if !row.Dir {
+		// A DIRECTORY'S OWN BYTE COUNT IS A FILESYSTEM ARTIFACT and not a fact
+		// about what is in it, so it is left empty and the surface draws
+		// nothing for it, by the emptiness law. The type is a hint and empty is
+		// an honest answer for an extension nobody can name.
+		row.Size, row.MIME = info.Size(), fileMIME(name)
+	}
+	return row, true
+}
+
+// statPaths is the engine's word on a batch of candidate paths, in the order
+// they were asked about — a surface pairs the answers with its own rows by
+// position, so the order is part of the contract and not a convenience.
+//
+// A PATH THIS SESSION WOULD REFUSE REPORTS THAT IT IS NOT THERE, which
+// wire.go's [PathFact] states as the law it is: to a surface deciding whether
+// to draw a door, a file that will refuse to open IS absent. So a path outside
+// the two roots, a link that leaves them, and a name with nothing behind it all
+// answer the same way — the alternative is a link that exists, invites a click,
+// and answers a refusal, which is worse than a word that was never a link.
+func (s *server) statPaths(call Frame) (json.RawMessage, error) {
+	args, err := arg[StatPathsArgs](call)
+	if err != nil {
+		return nil, err
+	}
+	if len(args.Paths) > statPathsMax {
+		return nil, fmt.Errorf("engine: stat asks for %d paths and the most one call may ask is %d", len(args.Paths), statPathsMax)
+	}
+	workspace, place := s.session.folder()
+
+	facts := make([]PathFact, 0, len(args.Paths))
+	for _, asked := range args.Paths {
+		fact := PathFact{Path: asked}
+		if _, info, err := reachable(place, workspace, asked); err == nil {
+			fact.Exists, fact.Dir = true, info.IsDir()
+		}
+		facts = append(facts, fact)
+	}
+	return json.Marshal(facts)
 }
 
 // handOver decides what this session will hand over, and it is the whole of the
@@ -283,9 +495,28 @@ func (s *server) fetchFile(call Frame) (json.RawMessage, error) {
 // fifo would block this engine's only reader forever, and a device would answer
 // until the frame cap stopped it.
 func handOver(place session.Place, workspace, asked string) (string, os.FileInfo, error) {
+	real, info, err := reachable(place, workspace, asked)
+	if err != nil {
+		return "", nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("engine: %s is not a file", asked)
+	}
+	return real, info, nil
+}
+
+// reachable is the part of that law that has nothing to do with bytes: a name
+// this session may look at at all, resolved, and what it turns out to be.
+//
+// IT IS ONE FUNCTION BECAUSE THE THREE DOORS MUST NOT BE ABLE TO DISAGREE. A
+// fetch, a listing and a stat each answer a different question about the same
+// boundary, and a boundary written out three times is a boundary that will
+// drift on the day one of them is changed — which is the day something outside
+// the roots becomes visible through the door nobody re-read.
+func reachable(place session.Place, workspace, asked string) (string, os.FileInfo, error) {
 	path := strings.TrimSpace(asked)
 	if path == "" {
-		return "", nil, errors.New("engine: no file was named")
+		return "", nil, errors.New("engine: nothing was named")
 	}
 	// A relative path is resolved against the workspace, which is the directory
 	// every relative path in this conversation already means.
@@ -302,9 +533,6 @@ func handOver(place session.Place, workspace, asked string) (string, os.FileInfo
 	info, err := os.Lstat(real)
 	if err != nil {
 		return "", nil, fmt.Errorf("engine: no such file: %s", asked)
-	}
-	if !info.Mode().IsRegular() {
-		return "", nil, fmt.Errorf("engine: %s is not a file", asked)
 	}
 	return real, info, nil
 }
