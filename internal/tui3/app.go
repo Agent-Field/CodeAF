@@ -1437,6 +1437,13 @@ type app struct {
 	focused   bool
 	seenFocus bool
 
+	// landedAway is a turn that finished while the window was blurred and has
+	// not been looked at since — the tab's ✓ (windowtitle.go). It is the
+	// notification's fact kept as state: the banner says it once at the moment
+	// it becomes true, and this keeps saying it on the tab until the person
+	// comes back, at which point the reply on screen says it better.
+	landedAway bool
+
 	// linear is the screen-reader tier (Options.Linear): one column, no
 	// animation, no hover, ASCII markers. It is read by the rendering branches
 	// that draw motion or shape, and by nothing else.
@@ -1854,6 +1861,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The terminal reports focus (View asks for it in view.go), so the
 		// notification has something honest to gate on — see notify.go.
 		a.focused, a.seenFocus = true, true
+		// The tab's ✓ has been seen by the act of coming back to it; from here
+		// the reply itself is on screen (windowtitle.go).
+		a.landedAway = false
 		// AND A QUESTION THAT WAS WAITING GETS ITS WHOLE COUNTDOWN BACK. The ten
 		// seconds are ten seconds of a person reading, and this is the first
 		// frame there has been anybody to read it (consent.go's [app.tickAsk]).
@@ -3128,6 +3138,15 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.changedNote()
 		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
+		// A turn that ends on a blurred window marks the tab as well as sending
+		// the banner (windowtitle.go): the banner is gone in seconds, and the
+		// tab is what the person scans when they come back to the terminal.
+		// Gated on focus alone, not on [app.seenFocus] — a terminal that never
+		// reports focus leaves focused true, so the flag never sets and the tab
+		// stays quiet, which is the same honest default the banner takes.
+		if !a.focused {
+			a.landedAway = true
+		}
 		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
