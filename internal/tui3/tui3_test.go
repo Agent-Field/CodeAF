@@ -53,6 +53,15 @@ type fakeAgent struct {
 	// rather than folded into it because which door a message took is the whole
 	// question those tests ask.
 	marked []string
+	// steered is every sentence sent INTO a running turn (steer.go), and it is
+	// kept apart from `sent` for `marked`'s reason exactly: which door a message
+	// took is the whole question those tests ask, and a steer that showed up in
+	// `sent` would look like a second turn. steerErr is what the session answers
+	// instead, and steerCh the stream ONE steer gets back — the fall-through's
+	// own case, where the channel outlives the turn it was made on.
+	steered  []string
+	steerErr error
+	steerCh  chan session.Event
 }
 
 func (f *fakeAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {

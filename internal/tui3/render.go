@@ -2442,9 +2442,22 @@ func (a *app) legend(width int) string {
 	// this narrow. A rung whose name did not survive is skipped rather than
 	// drawn, which is what puts the hints on the block before the name.
 	right := a.legendRight(width)
-	attempts := make([]struct{ left, right string }, 0, 2)
+	attempts := make([]struct{ left, right string }, 0, 3)
 	if left, named := a.legendLeft(width, legendRoom(width, right)); named {
 		attempts = append(attempts, struct{ left, right string }{left, right})
+	}
+	// AND A RUNG FOR THE SLOT'S OWN SHORTER FORM, where it has one. One state
+	// names three keys rather than two (steer.go's [app.typingHint]), and on a
+	// frame that cannot hold the longer sentence the choice is between the two
+	// keys that fit and NO hint at all — which is the whole slot lost to the
+	// clause that was added last. So the shorter form is offered here, measured
+	// by the same [app.legendLine] as everything else rather than against
+	// arithmetic copied out of it, and it is tried BEFORE the rung that spends
+	// the slot entirely. Every other state answers "" and skips it.
+	if short := a.hintShorter(right); short != "" {
+		if left, named := a.legendLeft(width, legendRoom(width, short)); named {
+			attempts = append(attempts, struct{ left, right string }{left, short})
+		}
 	}
 	bare, _ := a.legendLeft(width, legendRoom(width, ""))
 	attempts = append(attempts, struct{ left, right string }{bare, ""})
@@ -2897,7 +2910,14 @@ func (a *app) hintWord() string {
 		// `shift+enter` this case never fires and the plain interrupt below keeps
 		// the slot — the capability law reaching the advertisement and not only the
 		// key.
-		return bargeHint
+		//
+		// AND THE THIRD MEANING IS SPLICED IN WHERE IT CAN BE DELIVERED (steer.go's
+		// [app.typingHint]): `cmd+enter` puts the sentence INTO the running answer,
+		// stopping nothing. It makes the same conditional about the same terminal
+		// answer that the chord beside it does, so a terminal that can spell
+		// neither never reaches this case and one that can spell both is told
+		// about both.
+		return a.typingHint()
 	case a.state == stateWorking:
 		return "esc interrupt"
 	case a.spell.asking:
