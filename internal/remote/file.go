@@ -132,6 +132,52 @@ func (s *server) keep(files []WireFile) ([]string, error) {
 	return out, nil
 }
 
+// depositFile keeps ONE arriving file and says where it went, and the whole of
+// what makes it a different door from [server.submitFiles] is what it does NOT
+// do afterwards.
+//
+// A DEPOSIT IS A FACT ON DISK AND NOT A THING ANYBODY SAID. It is the browse
+// page's drag-drop lane (internal/filedoor, reached through tui3's hostSource),
+// and a file dropped on a web page is not a sentence: no turn opens, no event
+// is sent, nothing is written to the transcript. The conversation learns of the
+// file when a person mentions it, which is what /attach — the same landing
+// place with the person's own words on it — has always been for.
+//
+// THE BYTES GO WHERE AN ATTACHMENT GOES AND NOWHERE ELSE. [server.keep] is the
+// implementation entire, so the name law ([attachmentName]) and the naming
+// ([writeAttachment]) are the ones the message lane already obeys rather than a
+// second spelling of them that could drift — which matters more here than
+// anywhere, because this door is reached from a web page on a machine the
+// engine cannot see.
+func (s *server) depositFile(call Frame) (json.RawMessage, error) {
+	file, err := arg[WireFile](call)
+	if err != nil {
+		return nil, err
+	}
+	// The name is judged before the weight, though [server.keep] will judge it
+	// again, so that the sentence about the weight can NAME the file: a refusal
+	// is printed in a browser tab beside the row it is about, and the one thing
+	// that may not be echoed there is a string that was never a file name.
+	name, err := attachmentName(file.Name)
+	if err != nil {
+		return nil, err
+	}
+	// THE CEILING IS CHECKED HERE THOUGH THE DOOR ALSO CHECKS IT. The browse
+	// page refuses an oversized drop on the surface's side so the person hears
+	// it before the bytes are spent (filedoor's maxCrossBytes), and a boundary
+	// that trusts a check made on the other machine is not a boundary. The
+	// number and the sentence are [server.fetchFile]'s, because a file is the
+	// same weight in both directions.
+	if len(file.Bytes) > maxFetchBytes {
+		return nil, fmt.Errorf("engine: %s is %dMB and the most one file may cross this connection is %dMB", name, len(file.Bytes)>>20, maxFetchBytes>>20)
+	}
+	kept, err := s.keep([]WireFile{file})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(DepositedFile{Path: kept[0]})
+}
+
 // AttachmentsDir is where a file a person attached lands on the engine machine.
 //
 // IT IS BESIDE THE TRANSCRIPT AND NOT AMONG THE DELIVERABLES, and that is the

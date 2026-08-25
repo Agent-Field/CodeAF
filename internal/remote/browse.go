@@ -1,10 +1,13 @@
 package remote
 
-// browse.go is the client half of the two read-only questions a surface may
-// ask about the engine's disk: what is in this directory (MethodListDir), and
-// which of these words are real files (MethodStatPaths). The server half and
-// its law live in file.go beside handOver, because they are the same boundary:
-// nothing outside the workspace and the session's own folder crosses.
+// browse.go is the client half of what the browse page asks of the engine's
+// disk. Two of the three are read-only questions — what is in this directory
+// (MethodListDir), and which of these words are real files (MethodStatPaths) —
+// and the third is the page's one write (MethodDepositFile), which lands a file
+// in the session's attachments and nowhere else. The server halves and their
+// law live in file.go beside handOver, because they are the same boundary:
+// nothing outside the workspace and the session's own folder crosses, and
+// nothing this side sends chooses a directory on that machine.
 
 import "encoding/json"
 
@@ -39,4 +42,28 @@ func (c *Client) StatPaths(paths []string) ([]PathFact, error) {
 		return nil, err
 	}
 	return facts, nil
+}
+
+// DepositFile puts one file in the far session's attachments folder WITHOUT
+// saying anything: the browse page's drag-drop lane. It answers with the path
+// the bytes landed at, on the ENGINE's disk.
+//
+// THE NAME CROSSES AS THE PAGE GAVE IT AND IS JUDGED OVER THERE. That is the
+// one place this parts from [Agent.SubmitFiles], which reduces a path to a name
+// on this side because the person typed it here on a machine that knows what
+// its own separator is. This name came off a browser upload, so there is no
+// local knowledge to apply to it and nothing to gain by pre-empting the
+// boundary: the engine refuses a name that is a path ([attachmentName]), and
+// the refusal is the engine's sentence with nothing softening it, exactly as
+// [Client.FetchFile]'s is.
+func (c *Client) DepositFile(name, mime string, data []byte) (string, error) {
+	payload, err := c.call(nil, MethodDepositFile, WireFile{Name: name, MIME: mime, Bytes: data})
+	if err != nil {
+		return "", err
+	}
+	var landed DepositedFile
+	if err := json.Unmarshal(payload, &landed); err != nil {
+		return "", err
+	}
+	return landed.Path, nil
 }

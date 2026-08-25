@@ -180,15 +180,16 @@ import (
 //	                  ([filesRemoteWord]), and that is still what a connection
 //	                  with no file seam gets.
 //	dropping a file ON the browse page
-//	                  REFUSED, and refused with the lane that works named in the
-//	                  same sentence ([depositWord]). The wire has one door that
-//	                  writes into a session's attachments folder and it is
-//	                  SubmitFiles — a MESSAGE, which opens a model turn — so a
-//	                  drag onto a web page would start a turn nobody at this end
-//	                  asked for and stream its answer into a channel nothing is
-//	                  reading. /attach is the same landing place with a person's
-//	                  own sentence attached, which is what makes it a turn
-//	                  somebody meant.
+//	                  IT LANDS IN THAT SESSION'S attachments/ FOLDER AND SAYS
+//	                  NOTHING. The wire's Deposit.File keeps a file without
+//	                  submitting it (internal/remote's file.go), so no turn
+//	                  opens, no event is sent and nothing reaches the transcript
+//	                  — a drag onto a web page is not a sentence anybody said,
+//	                  and a drop that started a model turn would be one nobody
+//	                  at this end asked for. The path it landed at is the
+//	                  ENGINE'S answer, shown as it came. /attach is the same
+//	                  landing place WITH a person's own sentence attached, which
+//	                  is what makes it a turn somebody meant.
 //	/export           writes HERE, and the note says so ([exportHereWord]). The
 //	                  transcript is assembled from what this surface is holding,
 //	                  so it can be written without asking anybody; the wire has no
