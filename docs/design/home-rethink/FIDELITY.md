@@ -93,8 +93,15 @@ height; the small 11.5px runs are the canvas's own captions, not screen content.
 
 - **"Hold alt" (3b)** — a terminal cannot see a held modifier; the map is `alt+.` (dismissed by the
   next key). The designer's own note offers `esc esc` as the fallback; not built unless asked.
-- **"tenure" wording** — the mechanism of 2f is built exactly (three states, counted); the word is
-  `trust`, because `manual_test.go` enforces the resident/chat vocabulary wall.
+- **"tenure" wording** — the mechanism of 2f is built exactly (three states, counted by
+  `Item.CleanRuns`); the word is `trust`. The true reason (corrected 2026-08-25 — an earlier
+  revision blamed `manual_test.go`, which in fact bans five other phrases): `tenure` is the
+  RESIDENT'S own name for this exact mechanism (`config.KeyTenureAfter`,
+  `internal/resident/tenure.go`), and CLAUDE.md forbids vocabulary travelling between the two
+  products whether or not a test catches the word. Adjacent hazard for the owner: the resident's
+  `TenureAfterAt` is a user-settable threshold for the same idea over charters, while
+  `standing.TrustAfter = 5` is a v3 constant — two products now hold two thresholds for one idea,
+  deliberately unlinked; do not "unify" them across the product wall.
 - **Events with no mechanism** — "execution moved to sonnet when opus hit its rail" (no fall-through
   recorder) and "gmail moved itself to ask-first" (nothing self-demotes): the ledger lines exist
   only when the mechanism does; under the emptiness law they are absent, not faked.
