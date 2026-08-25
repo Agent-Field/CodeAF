@@ -694,6 +694,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I browse the folders on the other machine", "opening-files-from-that-machine"},
 		{"can anyone else open these 127.0.0.1 links", "opening-files-from-that-machine"},
 		{"how big a file can I bring back over a connection", "opening-files-from-that-machine"},
+
+		// The wave written from a screenshot of a crowded column: thirteen
+		// landed jobs three lines each, `standing` squeezed to one cut-off row,
+		// and a wheel over the whole thing scrolling the conversation. A person
+		// meets this with a mouse in their hand and says "sidebar", "scroll" and
+		// "where did the details go", so those are the words.
+		{"why won't the sidebar scroll with my mouse", "screen"},
+		{"how do I scroll the task column", "screen"},
+		{"where did my finished task's details go on the column", "screen"},
+		{"how do I see the log path of a job that already finished", "screen"},
+		{"why does the right column only show three standing orders", "screen"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

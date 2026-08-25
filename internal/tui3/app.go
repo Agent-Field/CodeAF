@@ -2090,6 +2090,22 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		// AND THE SIDE COLUMN ANSWERS THE WHEEL OVER ITS OWN CELLS. It is the
+		// oldest thing a pointer does — the list under it moves — and this column
+		// was the one list on the surface that did not do it: a wheel turned over
+		// thirty columns of roster scrolled the conversation beside it instead, so
+		// the rows a person was reaching for stood still while the paragraph they
+		// were not looking at moved. It is claimed here, above the room, because
+		// the room is the BODY region and the column is beside it, not under it.
+		if a.railWheelAt(msg.Mouse().X, msg.Mouse().Y) {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.railScroll(-3)
+			case tea.MouseWheelDown:
+				a.railScroll(3)
+			}
+			return a, nil
+		}
 		// The room is the body region while it is up, so the wheel is the room's:
 		// a wheel that moved the transcript under it would scroll a list that is
 		// not on screen (room.go).
