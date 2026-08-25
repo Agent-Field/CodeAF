@@ -65,17 +65,27 @@ Three things that look like the same picture and are not:
 - **A task that has finished** ends its page with `task finished — esc to return`. There
   is nothing more coming; scroll up to read what it did.
 - **A task that has not started** — one still queued behind the running ones — has a
-  page with only its instruction on it. The roster's row for it says `queued`; the page
-  fills when it starts.
+  page with only its instruction on it, or with no blocks at all when nothing has been
+  written for it yet. In that second case the page says
+  `nothing on this page yet — it fills in as the task works`. The roster's row for it
+  says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
   render — sits on the same column, and its page has no chat in it because a job has no
   agent and writes no transcript. It shows the job's log line and
   `a background job keeps a log, not a transcript`. Its row is the one whose dim
   under-line starts with `job` and a number.
 
-No task page ever draws an empty body under its header. If a finished task's transcript
-is gone from the disk, the page still carries the task's report and says
-`this task's transcript is not here any more`.
+No task page ever draws an empty body under its header. Whatever is true of the task,
+the page says it in one dim line:
+
+- a finished task whose transcript is gone from the disk keeps its report and says
+  `this task's transcript is not here any more`
+- a task that is queued, or one still working with nothing written for it yet, says
+  `nothing on this page yet — it fills in as the task works`
+- a background job says `a background job keeps a log, not a transcript`
+
+The line comes off the moment there is anything to draw, because it answers one question
+— why is there nothing here — and a page with something on it is not asking it.
 
 If the page is long but the frame is short, scroll: the wheel over the page, `pgup`, or
 `↑` over an empty box all move it. `ctrl+l` is not the key here — it returns the

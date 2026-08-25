@@ -336,6 +336,20 @@ const (
 	// transcript was gone would be the wrong half of the truth: there is no file
 	// missing, there is a different kind of work.
 	roomJobLogWord = "a background job keeps a log, not a transcript"
+	// roomYetWord stands in that line's place for a node that HAS NOT LANDED, and
+	// it is the honest half of the same sentence: nothing has arrived on this page
+	// is not the same fact as nothing is left of it. A node that is queued has
+	// journaled nothing because it has not started, and one that has just started
+	// has journaled nothing because its first message is still being written
+	// ([readRoomJournal] reads a file the node is filling in), so BOTH of the
+	// landed words above would be a lie — one saying a file was lost that was
+	// never written, the other saying work finished that has not begun.
+	//
+	// It comes off the moment the page has any block at all, which for a running
+	// node is the first thing that arrives on its lane: this line answers exactly
+	// one question — why is there nothing here — and a page with something on it
+	// is not asking it.
+	roomYetWord = "nothing on this page yet — it fills in as the task works"
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
@@ -2844,14 +2858,24 @@ func (a *app) roomRows(width int) []row {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
 		closed = false
 	}
+	// AN EMPTY ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above whatever
+	// foot it is owed. It is drawn only when the page has no blocks at all: a room
+	// with even one of them is a room with a transcript, and the foot alone is the
+	// whole of what it adds.
+	//
+	// IT IS ASKED OF EVERY ROOM AND NOT ONLY OF A LANDED ONE, which is the whole
+	// of [app.roomRecordRows]'s law rather than half of it. The branch used to sit
+	// inside the `done` block below, so a node that was QUEUED or STILL WORKING
+	// with nothing journaled yet drew a correct header — its name, its state, its
+	// elapsed, all of it true — over a body with NOTHING in it. That is the page
+	// that reads as the program having lost the work, and it is reachable on a
+	// perfectly healthy session: a task opened the moment it is started has
+	// journaled nothing yet, and one that is queued has not begun. The words
+	// differ by what is true (roomYetWord above), the rule does not.
+	if len(out) == 0 && room.harnessProgress == "" {
+		out = a.roomRecordRows(out, width)
+	}
 	if room.done {
-		// AN EMPTY LANDED ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above
-		// the foot. It is drawn only when the entry list is empty: a room with even
-		// one block is a room with a transcript, and the foot alone is the whole of
-		// what it adds.
-		if len(room.entries) == 0 && room.harnessProgress == "" {
-			out = a.roomRecordRows(out, width)
-		}
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
 		// is already looking when they wonder why nothing is. It takes the blank a
@@ -2903,12 +2927,29 @@ func (a *app) roomRows(width int) []row {
 // path is the entire record of what the work did. Saying the transcript is "not
 // here any more" about one would be a lie in the other direction — a job never
 // wrote a transcript to lose.
+//
+// AND A NODE THAT HAS NOT LANDED IS THE THIRD CASE, reached by opening a task
+// that is queued or that has only just started: the file it will fill in exists
+// and is empty, so there is nothing to replay and nothing has been lost either.
+// It takes [roomYetWord], which is the same shape of answer said about a page
+// that is not finished being written.
 func (a *app) roomRecordRows(out []row, width int) []row {
 	node := a.roomNode()
+	// WHY THERE IS NOTHING UNDER THE HEADER, in the vocabulary that is true of
+	// this kind of work in this state. The job's answer outranks the unlanded one
+	// because it is the more specific fact: a job never journals a transcript, so
+	// "not yet" would promise a page that is never coming.
+	word := roomGoneWord
+	switch {
+	case node != nil && node.kind == session.TaskKindJob:
+		word = roomJobLogWord
+	case a.room != nil && !a.room.done:
+		word = roomYetWord
+	}
 	if node == nil {
 		// A page this surface never had a row for. There is nothing to add to the
 		// blank except the reason it is blank.
-		return append(out, row{text: a.pal.dim(fit(roomGoneWord, width)), entry: -1})
+		return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
 	}
 	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
 	// a person came for. It CUTS rather than wrapping for a job, exactly as the
@@ -2924,12 +2965,7 @@ func (a *app) roomRecordRows(out []row, width int) []row {
 			}
 		}
 	}
-	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, in the vocabulary that is true of
-	// this kind of work.
-	word := roomGoneWord
-	if node.kind == session.TaskKindJob {
-		word = roomJobLogWord
-	}
+	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, chosen above.
 	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
 }
 
