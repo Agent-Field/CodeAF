@@ -805,14 +805,22 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 		}
 		return nil
-	case "super+left", "super+right":
+	case "super+left", "super+right", "meta+left", "meta+right":
 		// cmd+←/→ ARE THE LINE'S ENDS, which is what a Mac hand means by them in
 		// every text field it has ever used. They reach this switch only on a
-		// terminal that reports the super modifier at all (kitty's protocol,
-		// win32-input) — everywhere else the chord never arrives, which costs
-		// nothing and is why they are bound rather than detected. The
-		// super+backspace kill above made the same bargain first.
-		if msg.String() == "super+left" {
+		// terminal that reports the cmd modifier at all — everywhere else the
+		// chord never arrives, which costs nothing and is why they are bound
+		// rather than detected. The super+backspace kill above made the same
+		// bargain first.
+		//
+		// AND THE CHORD ARRIVES UNDER TWO NAMES, because a modified ARROW and a
+		// modified letter travel by different roads. cmd+delete comes in as
+		// `CSI 127;9u` and the CSI-u reader spells modifier 9 `super`; cmd+←
+		// comes in as `CSI 1;9D` and the CSI-arrow reader is the static xterm
+		// table, where the ninth column is `meta`. Same key, same hand, two
+		// names — so both are bound, and the wire test below is what keeps that
+		// claim honest rather than this comment.
+		if strings.HasSuffix(msg.String(), "left") {
 			a.input.home()
 		} else {
 			a.input.end()
@@ -1243,7 +1251,7 @@ func draftWindow(value []rune, cursor, room, maxRows int) ([]segment, int, int, 
 	// The caret's own line first: it is the only one that has to be wrapped to
 	// answer where the caret is.
 	segments := wrapLine(value, head, tail, room)
-	caretRow := caretIn(segments, cursor, room, tail < len(value))
+	caretRow := caretIn(value, segments, cursor, room, tail < len(value))
 	// THEN BACKWARD, a line at a time, until the rows above the caret could fill
 	// the box. A line is wrapped whole because that is the unit the wrap is
 	// defined on — one of them can be worth twenty rows, and taking twenty is
@@ -1292,13 +1300,38 @@ func lineTail(value []rune, at int) int {
 // breaks at the last space before the edge or mid-word when the line offers no
 // space to break at. An empty line still produces a row — the caret has to be
 // able to stand on it.
+//
+// ROOM IS A COUNT OF CELLS, NOT OF RUNES, and the fit is measured in the same
+// unit the terminal draws in ([cells]). It used to count runes, which is the
+// same number for the ascii nearly every draft is made of and half the number
+// for anything else: a Japanese sentence in a box ten cells wide was laid out
+// ten runes to the row and painted twenty cells wide, so the draft ran out of
+// the box and over whatever the frame had put beside it. The caret's own column
+// was already measured in cells ([caretColumnIn]) and so was the click that
+// places it (draftclick.go), so the wrap was the one half of the arithmetic
+// still counting the wrong thing — and the two halves disagreeing is what put
+// the caret on a neighbouring letter.
 func wrapLine(value []rune, from, to, room int) []segment {
 	var out []segment
 	for from < to {
-		if to-from <= room {
+		cut, width := from, 0
+		for cut < to {
+			w := cells(value[cut])
+			if width+w > room {
+				break
+			}
+			width += w
+			cut++
+		}
+		if cut >= to {
 			return append(out, segment{from: from, to: to})
 		}
-		cut := from + room
+		// A rune too wide for the whole box still takes a row of its own: a cut
+		// that advanced nothing would loop forever, and a box four cells wide is
+		// wide enough for every rune there is.
+		if cut == from {
+			cut = from + 1
+		}
 		for at := cut; at > from; at-- {
 			if value[at-1] == ' ' {
 				cut = at
@@ -1311,17 +1344,29 @@ func wrapLine(value []rune, from, to, room int) []segment {
 	return append(out, segment{from: to, to: to})
 }
 
+// cells is how many columns one rune of a draft occupies. It is asked rune by
+// rune rather than of the string, because that is how the wrap, the caret and
+// the click all walk a row — and an answer given in three different units is
+// three answers.
+func cells(r rune) int { return ansi.StringWidth(string(r)) }
+
 // caretIn resolves the caret's row within a laid-out run of rows. A caret
 // sitting exactly on a soft break belongs to the row that FOLLOWS it, which is
 // where the next character it types will appear — and "follows" is asked of the
 // draft rather than of the run, which is what more says: there are rows after
 // this window that were not laid out because nobody is going to see them.
-func caretIn(segments []segment, cursor, room int, more bool) int {
+//
+// A row is FULL when the caret's column has reached the box's width, and that is
+// asked in cells for the reason the wrap above is: on a wide-rune draft the rune
+// count reaches the edge at half the text, and a caret sent down a row early
+// sits under the wrong letter.
+func caretIn(value []rune, segments []segment, cursor, room int, more bool) int {
 	row := 0
 	for i, s := range segments {
 		if cursor >= s.from && cursor <= s.to {
 			row = i
-			if cursor == s.to && cursor-s.from >= room && (i+1 < len(segments) || more) {
+			full := ansi.StringWidth(string(value[s.from:cursor])) >= room
+			if cursor == s.to && full && (i+1 < len(segments) || more) {
 				continue
 			}
 			break

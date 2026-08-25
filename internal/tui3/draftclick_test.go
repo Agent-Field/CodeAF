@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // arrowChord builds a modified arrow press the way the terminal reports it.
@@ -67,6 +68,16 @@ func TestWordChordsMoveTheCaretAndSpareTheEmptyBox(t *testing.T) {
 	if a.input.cursor != len(a.input.value) {
 		t.Fatalf("super+right did not reach the line end: %d", a.input.cursor)
 	}
+	// And under the OTHER name the same chord arrives by, which is the one every
+	// terminal actually sends it under (inputguard_test.go says why).
+	a.key(arrowChord(tea.KeyLeft, tea.ModMeta))
+	if a.input.cursor != 0 {
+		t.Fatalf("meta+left did not reach the line start: %d", a.input.cursor)
+	}
+	a.key(arrowChord(tea.KeyRight, tea.ModMeta))
+	if a.input.cursor != len(a.input.value) {
+		t.Fatalf("meta+right did not reach the line end: %d", a.input.cursor)
+	}
 
 	a.input.reset()
 	a.key(arrowChord(tea.KeyLeft, tea.ModAlt))
@@ -100,5 +111,47 @@ func TestDraftClickIndexInvertsTheLayout(t *testing.T) {
 	}
 	if got := draftClickIndex(value, 0, 1, -3, room, rows); string(value[got:got+4]) != "beta" {
 		t.Fatalf("a click left of the text resolved to %d", got)
+	}
+}
+
+// AND THEY AGREE ON A WIDE-RUNE DRAFT, which is where they used to disagree.
+//
+// The wrap counted RUNES and the click counted CELLS. On a Japanese draft in a
+// box six cells wide that put six runes on a row and painted twelve — the draft
+// walked out of its own box — and every click below the first row landed on a
+// letter the person had not aimed at, because the two halves of the arithmetic
+// were measuring different things.
+func TestTheWrapAndTheClickAgreeOnAWideRuneDraft(t *testing.T) {
+	value := []rune("日本語のテキスト") // eight runes, sixteen cells
+	room, rows := 6, 6
+
+	// Three cells to the rune-pair, so the box holds three runes to the row and
+	// no row may paint wider than the box it is drawn in.
+	segments := wrapLine(value, 0, len(value), room)
+	for i, seg := range segments {
+		row := string(value[seg.from:seg.to])
+		if w := ansi.StringWidth(row); w > room {
+			t.Fatalf("row %d paints %d cells in a box %d wide: %q", i, w, room, row)
+		}
+	}
+	if len(segments) != 3 {
+		t.Fatalf("eight wide runes laid out %d rows in a box six cells wide, want 3: %v", len(segments), segments)
+	}
+
+	// And the click names the rune under the pointer on every one of them, in
+	// the same cells the row was painted in.
+	for _, tc := range []struct {
+		row, col int
+		want     string
+	}{
+		{0, 0, "日"}, {0, 4, "語"},
+		{1, 2, "テ"},
+		{2, 0, "ス"}, {2, 2, "ト"},
+	} {
+		got := draftClickIndex(value, 0, tc.row, tc.col, room, rows)
+		if got >= len(value) || string(value[got]) != tc.want {
+			t.Fatalf("row %d col %d resolved to %d (%q), want %q",
+				tc.row, tc.col, got, string(value[min(got, len(value)-1)]), tc.want)
+		}
 	}
 }

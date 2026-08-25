@@ -373,6 +373,15 @@ func (a *app) harnessAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.asksHarness() {
 		return nil, false
 	}
+	// AND NOT BEHIND HOME, for the third time in the same words (consent.go):
+	// the row is drawn over the input and home is drawn over all of it, so an
+	// enter or a y up there is aimed at home's own box and nothing else. An
+	// offer that ARRIVES closes home on its way in (app.go's
+	// EventHarnessOffer), which leaves this reached only by a home opened over
+	// an offer already standing.
+	if a.home.open {
+		return nil, false
+	}
 	if msg.String() == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
 		// releases the held turn the honest way.
