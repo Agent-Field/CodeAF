@@ -263,13 +263,26 @@ type taskSpec struct {
 	// answer another proposal had overwritten, and each would silently lose the
 	// road. A judgement made about one spec belongs on that spec.
 	wide bool
-	// divide says THIS piece of work may discover that it is wider than one
-	// worker and hand the parts out (task_divide.go). It is settled at
-	// admission by [Agent.armDivision] — the one door every task comes through
-	// — and never afterwards, for the reason every other field of this spec is
-	// frozen: a road that could be opened under a running node would be a node
-	// whose belt changed while it was working.
-	divide bool
+	// armed says THIS piece of work may discover that it is wider than one
+	// worker and hand the parts out (task_divide.go), AND WHICH READER SAID SO.
+	// It is settled at admission by [Agent.armDivision] — the one door every
+	// task comes through — and never afterwards, for the reason every other
+	// field of this spec is frozen: a road that could be opened under a running
+	// node would be a node whose belt changed while it was working.
+	//
+	// AN EMPTY STRING IS NOT ARMED, and the three words it can otherwise hold
+	// are [armedWide], [armedJudged] and [armedCounted]. It carries the reason
+	// and not a bare yes for two readers that both need to tell them apart:
+	//
+	//   - THE TIEBREAK. A division the free text gate refuses on the floor is
+	//     reconsidered ONLY where a model's own reading of breadth armed this
+	//     work, because that is the one case where two signals disagree — and a
+	//     refusal on work the text gate itself armed is that gate agreeing with
+	//     itself (task_divide.go's [TaskNode.armedByJudgement]).
+	//   - THE RECORD. A row saying a task ran with no parts cannot otherwise be
+	//     told from a task that was never allowed any (task_index.go's
+	//     [TaskIndexEntry.MaySplit]).
+	armed string
 }
 
 // taskTools is the belt's task family — one tool, in the conversation and in

@@ -1035,6 +1035,102 @@ func TestARacedYesConvertsTheRunningTurn(t *testing.T) {
 	}
 }
 
+// AND THE ARMED TASK ACTUALLY CARRIES THE VERB, WHICH IS THE ONLY THING ARMING
+// IS FOR.
+//
+// The measured failure this pins: a converted four-issue message ran as one
+// worker to the end — parts 0, one pair of hands — and its whole transcript
+// never mentions `divide_work`, which is the signature of a worker that was
+// never given it rather than one that decided not to use it. There are two
+// places that could have been true: the flag not surviving the road, or the
+// judge never writing it. So this drives the WHOLE road — screen, confirm,
+// conversion, admission — and then asks the production constructor for the agent
+// that IS the node, which is the one that builds every worker in the running
+// program (task_divide.go's constructor tests state why nothing here writes a
+// Config literal).
+func TestARacedWideYesPutsTheDivisionVerbOnTheWorkersBelt(t *testing.T) {
+	completer := &routeCompleter{answer: "I will start with the auth test."}
+	agent, _, nodes := racingAgent(t, completer)
+	agent.config.Divide = true
+
+	collect(t, mustSubmit(t, agent, routeEnumerated))
+	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	// THE READER IS NAMED, so a failure says which link of the road broke rather
+	// than that the end of it is wrong.
+	if got := node.armedBy(); got != armedWide {
+		t.Fatalf("the converted task was armed by %q, want the judge's own reading of breadth (%q)",
+			got, armedWide)
+	}
+	worker, err := agent.newTaskAgent(context.Background(), t.TempDir(), node, "")
+	if err != nil {
+		t.Fatalf("the production constructor refused to build the worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	if !beltHas(worker, "divide_work") {
+		t.Fatal("the judge said the work was wide and the worker it started has no divide_work on its belt")
+	}
+	if !strings.Contains(renderSystem(worker.config), "divide_work") {
+		t.Fatal("the worker was handed the verb and never told what it is for")
+	}
+}
+
+// THE MASTERMIND'S OWN READING OF BREADTH IS NOT THROWN AWAY.
+//
+// The confirm answers the same contract as the screen and is the better reader
+// of it; its `wide` was parsed and dropped, so the one field that decides whether
+// a converted task may ever split was settled by the cheapest model in the
+// cascade alone. Either yes now arms — see [routeWidth] for why breadth composes
+// that way when work does not.
+func TestTheConfirmsReadingOfBreadthArmsWhatTheScreenMissed(t *testing.T) {
+	completer := &routeCompleter{answer: "I will start with the auth test."}
+	agent, _, nodes := racingAgent(t, completer)
+	agent.config.Divide = true
+	// The screen says work and says nothing about breadth; the mastermind reads
+	// the same four deliverables and says it is broad.
+	completer.ahead = `{"work": true, "goal": "` + routeEnumerated + `", "why": "four separate pieces of work"}`
+
+	collect(t, mustSubmit(t, agent, routeEnumerated))
+	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if !node.spec.wide {
+		t.Fatal("the mastermind said the work was broad and the task it confirmed did not carry it")
+	}
+	if !node.dividing() {
+		t.Fatal("the mastermind's own reading of breadth armed nothing")
+	}
+}
+
+// AND NEITHER READER SAYING IT ARMS NOTHING. Breadth is still a judgement
+// somebody has to make: a confirmed yes on work that is one job however long it
+// takes starts the worker it always started, with the belt it always had.
+func TestAConfirmedYesWithoutBreadthArmsNothing(t *testing.T) {
+	const narrow = `{"work": true, "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
+	completer := &routeCompleter{answer: "I will start with the auth test."}
+	agent, _, nodes := racingAgent(t, completer)
+	agent.config.Divide = true
+	completer.ahead, completer.aheadConfirm = narrow, narrow
+
+	collect(t, mustSubmit(t, agent, routeEnumerated))
+	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
+
+	node := agent.graph().node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if node.spec.wide || node.dividing() {
+		t.Fatalf("a verdict that said nothing about breadth armed the task anyway (%q)", node.armedBy())
+	}
+}
+
 // A VERDICT THAT LANDS AFTER THE TURN IS OVER IS DROPPED.
 //
 // Both judges say yes here and the turn answers in words alone, so there is no

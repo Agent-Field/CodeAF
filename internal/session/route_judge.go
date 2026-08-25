@@ -351,9 +351,14 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	}
 	// THE CONFIRM, and it is asked HERE — after the yes and before anything is
 	// admitted — because that is the only place it costs anything at all.
-	if !a.confirmRouteWork(ctx, model, user.text(), answer) {
+	confirmed, ok := a.confirmRouteWork(ctx, model, user.text(), answer)
+	if !ok {
 		return
 	}
+	// AND ITS READING OF BREADTH JOINS THE SCREEN'S. Both models answered the
+	// same contract about the same request; [routeWidth] says why either yes is
+	// enough and why the mastermind's no is not.
+	verdict.Wide = routeWidth(verdict, confirmed)
 
 	// THE GAP IS SPENT BY A START AND BY NOTHING ELSE, which is why this line
 	// stands below the confirm rather than above it. The gap is a person's
@@ -435,9 +440,38 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 // THE GOAL IS NOT REQUIRED HERE. The work runs on the goal the screen wrote —
 // this call decides one bit and nothing else, and refusing a confirm that
 // answered `{"work": true}` would be refusing the answer the brief asks for.
-func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) bool {
+//
+// ITS WHOLE VERDICT COMES BACK, THOUGH, BECAUSE OF ONE FIELD. It answers the
+// same contract the screen does, so it has already written its own reading of
+// breadth — and this call used to parse that field and drop it, which is the
+// better reader's answer thrown away at no saving whatever ([routeWidth] is what
+// the two readings come to).
+func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
-	return ok && verdict.Work
+	return verdict, ok && verdict.Work
+}
+
+// routeWidth is what TWO READINGS OF ONE REQUEST come to on breadth: armed if
+// EITHER of them said the work was broad.
+//
+// THE CASCADE IS NOT A VOTE ON THIS FIELD, and it is worth saying why, because
+// the confirm decides everything else here. Whether this is WORK is a question
+// with a costly wrong answer in one direction — a yes takes somebody's message
+// out of the conversation that was about to answer it — so it is asked twice and
+// fails closed, and the mastermind's no is final. BREADTH IS NOT THAT SHAPE.
+// Arming only means the worker MAY discover the work is wide once it has opened
+// the material; the evidence gate and the reviewer both still stand in front of
+// every actual division (task_divide.go). A wrong yes costs a verb on a belt
+// nothing makes it use. A wrong no costs the whole road, silently, on exactly
+// the work it was built for.
+//
+// So the readers compose the way an asymmetric cost says they should: the
+// mastermind can ARM work the screen read as one job — which is the better
+// reader's answer being worth having — and it cannot DISARM work the screen
+// called broad, because that would spend the expensive reader's fallibility on
+// the side where being wrong is expensive.
+func routeWidth(screen, confirm routeVerdict) bool {
+	return screen.Wide || confirm.Wide
 }
 
 // putRouteQuestion is the one call EVERY reading in this file is made of: ask
@@ -720,9 +754,16 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 		if !ok || !verdict.Work {
 			return
 		}
-		if !a.confirmRouteAhead(raceCtx, asked) {
+		confirmed, ok := a.confirmRouteAhead(raceCtx, asked)
+		if !ok {
 			return
 		}
+		// THE VERDICT THAT LANDS IS THE SCREEN'S, WITH THE CONFIRM'S BREADTH
+		// FOLDED IN. The goal and the done-condition stay the screen's because
+		// the confirm is asked to decide one bit and is not required to write
+		// either ([Agent.confirmRouteWork]); breadth is the one field both of
+		// them answer, and [routeWidth] is what two answers to it come to.
+		verdict.Wide = routeWidth(verdict, confirmed)
 		race.verdict, race.work = verdict, true
 	}()
 	return race
@@ -860,11 +901,16 @@ func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, 
 // the screen because a second reader is only worth having on a yes; it costs the
 // turn nothing because the turn is already in the model by the time either of
 // them is asked.
-func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) bool {
+//
+// AND ITS OWN READING OF BREADTH RIDES BACK WITH IT, for [confirmRouteWork]'s
+// reason: this is the one door where a converted message becomes a task nobody
+// groomed, so the field that arms it is the field with the most riding on it and
+// the reader most likely to get it right was answering it into a bin.
+func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceConfirmWindow)
 	defer done()
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked))
-	return ok && verdict.Work
+	return verdict, ok && verdict.Work
 }
 
 // ── what a yes starts ───────────────────────────────────────────────────────

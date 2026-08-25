@@ -829,8 +829,14 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 			named: true,
 			// Armed, because the line above this function is the whole of the
 			// decision and re-asking it of a home that does not exist yet would
-			// answer no.
-			divide: true,
+			// answer no. The word is [armedCounted] and could not honestly be
+			// anything else: what armed it is [enumeratesWidth] over the firing's
+			// own text, which is the ONE signal unattended work has. So a firing
+			// whose parts are then refused on the floor is refused for free and
+			// finally, like any other work the counter armed — the tiebreak is
+			// for two readers disagreeing, and there is only one reader here
+			// (task_divide.go).
+			armed: armedCounted,
 		},
 		state:   TaskRunning,
 		started: time.Now(),
