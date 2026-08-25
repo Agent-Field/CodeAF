@@ -13,12 +13,37 @@ import (
 
 // ── THE HOME PLACE ──────────────────────────────────────────────────────────
 //
-// THIS FILE IS HOME AS A PLACE AND NOTHING ELSE (docs/design/home-rethink/
-// ARCHITECTURE.md): the state the place keeps, and the methods the `place`
-// interface asks of it — open, tick, body, enter, verbs, alt, hint. The reading
-// it draws is switcher.go's and is pure; the frame around it is the router's and
-// knows no place by name. Nothing here switches on a page id, and the shared
-// router files carry a call into this file rather than a home-shaped body.
+// THIS FILE IS HOME AS A PLACE (docs/design/home-rethink/ARCHITECTURE.md): the
+// switcher it draws, the two views it can be shown in, the verbs its rows offer,
+// and the card beside them. The reading is switcher.go's and is PURE; the frame
+// around it is the router's and knows no place by name; nothing here switches on
+// a page id, and the shared router files carry a call into this file rather than
+// a home-shaped body.
+//
+// ── WHERE HOME'S `place` METHODS ALREADY LIVE ───────────────────────────────
+//
+// The interface itself is the refactor lane's, and these are the functions it
+// binds to, written down here so that lane has one list rather than a search:
+//
+//	id       pageHome
+//	open     [app.openHome]        home.go — reads the world, the bands and the
+//	                               ledger once, then builds
+//	close    [app.closeHome]       home.go — writes the look stamp
+//	tick     [app.refreshHome]     home.go — the three-second beat
+//	body     [app.homeBody]        home.go, with [app.homeSwitchCard] here
+//	stops    [homeLine.stop]       home.go
+//	enter    [app.homeEnter]       home.go — the doors and their refusals
+//	verbs    [app.homeRowVerbs]    HERE
+//	alt      [app.homeAlt]         HERE
+//	window   —                     home has no time window
+//	box      [homeView.box]        the one foot box: filter and message at once
+//	note     —                     home says its count on the section line
+//	hint     [app.homeHint]        home.go
+//	changed  —                     the per-place look stamps are another lane's
+//
+// The state struct is [homeView] (home.go), which the refactor lane renames; it
+// is not moved here in this wave because four hundred lines of doors, clock and
+// typed surface still hold it.
 //
 // ── HOME IS A SWITCHER, NOT A DIRECTORY ─────────────────────────────────────
 //

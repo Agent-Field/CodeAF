@@ -1658,11 +1658,11 @@ Violet is spent on the moment aforge is waiting for you **inside this conversati
 on nothing else: the consent question, its glyph, its choices, the status word, and the
 legend while one is up. Its whole value is that seeing it anywhere means one thing.
 
-**On home and the other places, "waiting on you" is amber, not violet.** The `▲` mark and
-the `needs you` label at the head of that strip, the answer chips on a card, and the strip
-under the list where you answer without opening anything — all amber, the same amber the
-`?` on a finished-but-unchecked task already wore. Home used to say the one thing in two
-colours; it no longer does. This is a deliberate one-sided move: the conversation's own
+**On home and the other places, "waiting on you" is amber, not violet.** The `?` mark on a
+row that is asking you something, the answer chips, and the strip under the list where you
+answer without opening anything — all amber, the same amber the `?` on a
+finished-but-unchecked task already wore. Home used to say the one thing in two colours; it
+no longer does, and on home that amber is the only accent a quiet machine never spends. This is a deliberate one-sided move: the conversation's own
 consent block stays violet, so the two surfaces differ on purpose, and whether the chat
 should follow is the owner's call rather than a bug.
 

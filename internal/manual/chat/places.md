@@ -80,10 +80,11 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-Two of those are still thinly bound and say so. `alt+<letter>` today is `alt+s` on the memory
-place, which walks the shelves, and nothing else. `shift+<arrow>` is the spend place's time
-window — `shift+←→` moves it, `shift+↑↓` changes how coarse it is — and nothing anywhere else
-yet: a place with no window to move answers those keys with nothing rather than with
+Both of the last two are thinly bound and say so. `alt+<letter>` today is `alt+g` and
+`alt+q` on home, which group the list by project and hide the quiet rows, and `alt+s` on the
+memory place, which changes which shelf it is showing. `shift+<arrow>` is the spend place's
+time window — `shift+←→` moves it, `shift+↑↓` changes how coarse it is — and nothing anywhere
+else yet: a place with no window to move answers those keys with nothing rather than with
 something that is not drawn.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
@@ -93,6 +94,10 @@ Press `→` on a row that can be acted on and a strip of verbs opens under the l
 ```
 p pause   s stop   n not here
 ```
+
+On home the verbs are the row's own — a question's first two answers in its own words on
+`y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
+`p pause it` or `r resume it` on a standing item.
 
 While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
 strip pushes the body down by a row, and that visible displacement is exactly why the letters
@@ -121,12 +126,14 @@ being held down — it only reports what arrived.
 
 ## home — what wants you
 
-The first place, and the one aforge opens on. Every project on this machine and every
-conversation in them, with what needs you first.
+The first place, and the one aforge opens on. Every conversation on this machine, from
+every project, as **one flat ranked list** — what wants you first, then what is moving, then
+the rest — with the project as a tag on each row.
 
-Its own keys are in the **Home** page. Under the tab bar, two things changed: `tab` is the
-way to the next place rather than the way between home's columns, and the errand pane is
-taken into with `→` rather than `tab`. `←` from rest is the named way into `needs you`.
+Its own keys are in the **Home** page. Under the tab bar: `tab` is the way to the next place
+rather than the way between home's old columns, the errand pane is taken into with `→`
+rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by project** and
+**`alt+q` hide the quiet ones**.
 
 ## tasks — the tasks page, and how to get to it without a command
 
