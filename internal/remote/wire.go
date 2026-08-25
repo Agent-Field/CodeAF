@@ -453,13 +453,32 @@ type StatPathsArgs struct {
 }
 
 // PathFact is the engine's word on one candidate: it exists under the
-// two-roots law, and whether it is a directory. A path outside the roots
-// reports Exists false — to a surface deciding whether to draw a door, a file
-// that will refuse to open IS absent.
+// two-roots law, whether it is a directory, and HOW THE FILE STANDS RIGHT NOW.
+// A path outside the roots reports Exists false — to a surface deciding whether
+// to draw a door, a file that will refuse to open IS absent.
+//
+// SIZE AND MODTIME ARE HERE SO THAT A CACHE CAN BE WRONG AND FIND OUT. A
+// surface holding a copy of a far file has exactly one cheap way to learn that
+// the file was rewritten under it: ask this machine what the file is now and
+// compare. Without these two numbers the only honest answers are "fetch the
+// whole thing again every time" and "serve the old bytes forever", and the
+// second is the one a cache keyed by path quietly becomes. They cost nothing —
+// the stat that answers Exists already has them in hand — and they turn a
+// freshness question into one small frame instead of a transfer.
 type PathFact struct {
 	Path   string `json:"path"`
 	Exists bool   `json:"exists,omitempty"`
 	Dir    bool   `json:"dir,omitempty"`
+	// Size is the file's byte count as this machine sees it. A directory
+	// reports its own, which is a filesystem artifact rather than a fact about
+	// what is inside it — the surface reads it for files and nothing else.
+	Size int64 `json:"size,omitempty"`
+	// ModTime is the last modification in whole seconds since the epoch, which
+	// is the resolution every filesystem and every archive format agrees on.
+	// It is a NUMBER and not a time.Time because it is compared and never
+	// drawn: a surface asking "is this the file I already have" wants equality,
+	// not a moment in a person's timezone.
+	ModTime int64 `json:"mtime,omitempty"`
 }
 
 // HeldQuestion is a card this session raised while nobody was attached.

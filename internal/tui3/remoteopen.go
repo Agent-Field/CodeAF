@@ -27,7 +27,7 @@ import (
 // laptop opens a `.csv` with. The three steps between those two wishes are
 // content, a name, and a handoff.
 //
-// ── ONE: THE CACHE, KEYED BY CONTENT ────────────────────────────────────────
+// ── ONE: THE CACHE, KEYED BY CONTENT AND CHECKED AGAINST THE FAR DISK ───────
 //
 // [remote.FetchedFile] carries the sha256 of its own bytes, which is the digest
 // internal/cas keys on — so "have I already got this" is one map lookup and one
@@ -35,6 +35,32 @@ import (
 // against the bytes rather than trusted: it arrived from another machine, and a
 // content-addressed store whose keys are somebody else's arithmetic is not
 // content-addressed. A hash the surface computed itself is what goes in.
+//
+// THE CACHE IS KEYED BY PATH AND THE FILE IS ON SOMEBODY ELSE'S DISK, so the
+// cache cannot be believed without asking. A digest is a fact about bytes this
+// surface already holds and says nothing whatever about the file those bytes
+// came from; the far machine is a machine that is WORKING, and the model
+// rewriting `out/report.md` four times in a turn is the ordinary case rather
+// than the exotic one. A path→digest map with no freshness rule serves the
+// first fetch's bytes for the rest of the session, and the person sees a stale
+// document with no way to tell.
+//
+// SO EVERY FETCH ASKS FIRST, AND THE QUESTION IS ONE SMALL FRAME.
+// [remote.PathFact] carries the size and the modification time now, so
+// [farStat] is a single-path Stat.Paths — a few milliseconds — and the answer
+// is compared against the numbers the cached bytes were fetched at. Same size,
+// same mtime: the cache answers and NOTHING CROSSES. Different: the bytes are
+// fetched again and the new copy replaces the old under the same path. An
+// unchanged file therefore still costs one round trip and not a transfer, which
+// is the difference the cache exists for.
+//
+// TWO EDGES ARE STATED RATHER THAN SOLVED. A file rewritten to the SAME LENGTH
+// inside the SAME SECOND is indistinguishable to this rule — the only thing
+// that would catch it is a digest, and the engine cannot offer one without
+// reading the file it was trying to avoid sending. And when the question does
+// not get through at all, the cached bytes ARE served: a link that cannot
+// answer a stat cannot answer a fetch either, so refusing would trade a copy
+// that is probably right for nothing at all.
 //
 // ── TWO: THE MIRROR, BECAUSE A VIEWER SHOWS ITS TITLE BAR ───────────────────
 //
@@ -165,11 +191,24 @@ func (a *app) remoteOpenSlow(msg remoteOpenSlowMsg) tea.Cmd {
 
 // ── the bytes ───────────────────────────────────────────────────────────────
 
-// fetch answers with one remote file, from the cache when the cache has it.
+// fetch answers with one remote file, from the cache when the cache is still
+// TRUE — which is a question about the far disk and therefore a question this
+// surface has to ask before it can answer anything (this file's header).
 //
 // IT IS CALLED FROM THE DOOR'S GOROUTINES AS WELL AS FROM THE LOOP, so it
 // touches nothing but the wire and the mutex-guarded blob cache.
 func (r *remoteFiles) fetch(target string) (remoteBlob, filedoor.File, error) {
+	now, told := farStat(r.wire, target)
+	return r.fetchAsOf(target, now, told)
+}
+
+// fetchAsOf is [remoteFiles.fetch] with the freshness answer already in hand,
+// which is what a prefetch has: it asked for the size before it decided to
+// fetch anything at all, and the same answer carries the numbers this compares.
+// Threading it through is one round trip saved on every speculative fetch, and
+// the only alternative — asking twice about one file in one gesture — would
+// have made the cheap check the expensive one.
+func (r *remoteFiles) fetchAsOf(target string, now farFact, told bool) (remoteBlob, filedoor.File, error) {
 	store, err := r.blobStore()
 	if err != nil {
 		// The cache is this machine's own state directory failing, which is not a
@@ -179,8 +218,10 @@ func (r *remoteFiles) fetch(target string) (remoteBlob, filedoor.File, error) {
 	}
 	// THE CACHE IS CHECKED BEFORE THE WIRE and the blob is checked before it is
 	// believed: a ref this surface wrote down is only as good as the object
-	// still being there, which [cas.Store.Stat] answers without reading it.
-	if blob, known := r.ref(target); known {
+	// still being there, which [cas.Store.Stat] answers without reading it —
+	// and only as good as the FAR FILE still being the one it was copied from,
+	// which is what [remoteBlob.fresh] just asked the engine.
+	if blob, known := r.ref(target); known && blob.fresh(now, told) {
 		if _, there, err := store.Stat(blob.ref); err == nil && there {
 			if data, err := readBlob(store, blob.ref); err == nil {
 				return blob, filedoor.File{Name: blob.name, MIME: blob.mime, Bytes: data}, nil
@@ -206,8 +247,44 @@ func (r *remoteFiles) fetch(target string) (remoteBlob, filedoor.File, error) {
 	if blob.name == "" {
 		blob.name = path.Base(target)
 	}
+	// WHAT THE FAR FILE WAS IS WRITTEN DOWN WITH THE BYTES, because that pair is
+	// the whole of what the next fetch has to compare. It is the STAT's numbers
+	// and not the transfer's: [remote.FetchedFile] knows how many bytes it sent
+	// and nothing about when the file was last written, and a baseline missing
+	// half of itself is a baseline that would have to be believed on the size
+	// alone. When there was no answer to stamp with — the stat did not get
+	// through — the blob is stored with none, which reads as "not fresh" and
+	// costs exactly one refetch the next time the engine can be asked.
+	if told && now.exists && !now.dir {
+		blob.size, blob.mtime = now.size, now.mtime
+	}
 	r.setRef(target, blob)
 	return blob, filedoor.File{Name: blob.name, MIME: blob.mime, Bytes: fetched.Bytes}, nil
+}
+
+// fresh reports whether these cached bytes may still be handed over as that
+// path. The argument is the engine's answer about the file right now, and
+// whether the engine could be reached to give one.
+func (b remoteBlob) fresh(now farFact, told bool) bool {
+	if !told {
+		// NOBODY COULD BE ASKED, so what is held is the last true answer this
+		// surface got. A stat that did not get through means a fetch would not
+		// either, and refusing here would trade a copy that is probably right
+		// for nothing at all (this file's header).
+		return true
+	}
+	if !now.exists || now.dir {
+		// The file is gone, refused, or has become a directory. The cache is
+		// stale in the strongest sense there is, and the refetch that follows
+		// answers with the ENGINE'S OWN SENTENCE about why — which is the only
+		// honest thing to put in front of somebody who clicked a file that is
+		// no longer there.
+		return false
+	}
+	// A BASELINE OF ZERO IS NOT A BASELINE. It means these bytes were stored
+	// without an answer to stamp them with, so the pair cannot be compared and
+	// one refetch settles it.
+	return b.mtime != 0 && b.size == now.size && b.mtime == now.mtime
 }
 
 // readBlob reads one object out of the store whole. Everything that crosses this
@@ -245,8 +322,13 @@ func (r *remoteFiles) mirror(target string, blob remoteBlob) (string, error) {
 	// ALREADY THERE AND ALREADY THE SAME OBJECT is the common case on a second
 	// open, and it is answered without touching the disk twice: a hardlink to
 	// the blob IS the blob, so a mirror whose bytes are that object's is
-	// finished. A mirror carrying older bytes — the far file changed, the digest
-	// changed with it — is replaced rather than kept.
+	// finished. A mirror carrying older bytes is REPLACED, and it is worth
+	// saying what makes that happen, because the digest cannot notice anything
+	// by itself: [remoteFiles.fetch] asked the engine what the far file is now,
+	// found a different size or a different modification time, fetched it
+	// again, and handed this a blob under a new ref — so the mirror standing
+	// here is the previous content and the link below re-aims the name at the
+	// current one.
 	if same, err := sameFile(source, mirror); err == nil && same {
 		return mirror, nil
 	}

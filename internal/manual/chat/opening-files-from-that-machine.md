@@ -26,8 +26,16 @@ wraps across rows and every row of it opens the same file.
 
 A file the model **just wrote** is usually already on this machine before you click it,
 so it opens at once — aforge quietly fetches a small file as it watches the `write` tool
-make it. A larger one crosses when you click, and a fetch that takes more than about a
+make it, a few at a time so a turn that writes forty of them does not take over the
+connection. A larger one crosses when you click, and a fetch that takes more than about a
 third of a second draws one line naming the file. Nothing spins.
+
+**You always get the version that is on that machine now.** aforge keeps the copies it has
+already fetched so a second click is instant, but before it hands one back it asks the
+other machine how big the file is and when it last changed — a question far smaller than
+the file. If either has moved, the file crosses again and you open the new one. If the
+file has been deleted over there, you get that machine's own sentence about it rather than
+the copy aforge was holding.
 
 The browser is where a click lands because that is what a terminal hands a web address to.
 If you want the file in **your own** program — Preview, an editor, a spreadsheet — use
@@ -45,7 +53,10 @@ So a path is drawn plain when:
   it, so it asks that machine and the word becomes a link a moment later. A file a tool is
   still in the middle of writing is plain until it exists.
 - **The file is not there at all** — a name the model invented, a path with a typo, a file
-  deleted since. A link that opens nothing is worse than no link.
+  deleted since. A link that opens nothing is worse than no link. A name that was not
+  there when it was asked about is asked about **again** a little later, so a path the
+  model named before it built it — "I'll write it to `dist/app`" — becomes a link once it
+  exists, without you doing anything.
 - **It is a folder.** Folders are not links over a connection; use `/files` and click your
   way to it.
 - **It is outside what may cross** — see the last section of this page. Two places cross
@@ -73,7 +84,10 @@ were not clickable over `--host` for a while.
 
 The door starts the first time you need one — a first link, a first `/files` — and a
 conversation that never names a file never starts one. It closes when the window closes,
-and every address it minted stops working at that moment.
+and every address it minted stops working at that moment. It also holds a few thousand
+links at a time; in a very long session the oldest ones are let go first, and a let-go
+address behaves exactly like one that never existed. Ask again — a new reply naming the
+file, or `/files` — and you get one that works.
 
 If it cannot start at all, you get one line and no links:
 
@@ -123,8 +137,14 @@ that form of /files is for a session on another machine — this one is local, s
 ## Browse the other machine's files — /files
 
 `/files` with nothing after it opens a **page** in your browser showing that machine's
-workspace, and writes the address into the conversation as well, so you can paste it into
-a different browser or reach it when nothing opened by itself.
+workspace, and writes the address into the conversation as well, so you can reach it when
+nothing opened by itself.
+
+**That address is good once.** It carries no key of its own: the first browser to walk it
+is let in and handed one, and the address is spent at that moment. So if a browser did
+open by itself, the line in the conversation has already been used — run `/files` again
+for a fresh address and give that one to whichever browser you meant. The browser that was
+let in stays let in for as long as the window is open.
 
 What the page gives you:
 
@@ -132,7 +152,10 @@ What the page gives you:
   nobody knows is left blank rather than invented.
 - **Click a folder** to go into it; the trail along the top walks you back out.
 - **Click a file** to open it in a new tab — the same door a clicked path in a reply uses.
-  Your browser's own "save" is the download.
+  Your browser's own "save" is the download. A picture, a log, a PDF, a video opens in the
+  tab; **a page or a drawing — `.html`, `.svg` — is saved instead of shown**, because a
+  file written on the other machine is not allowed to run at the address this door answers
+  on.
 - **A file too big to cross is not a link.** Its row says `too big to cross` beside it
   rather than letting you click something that would fail.
 - **A very large folder is cut**, and the last row says how many entries you were given.
@@ -239,6 +262,14 @@ Only you, and only from this machine, and only while this window is open.
   a refusal helping somebody guess.
 - **They die with the window.** Quit aforge and every link it minted stops resolving, the
   browse page included. A tab you left open reloads to nothing.
+- **The address you are handed holds no key.** It is a one-time way in: walking it gives
+  your browser the key as a cookie nothing on a page can read, and sends you on to an
+  address with nothing secret in it. That is on purpose — an address handed to your
+  desktop's "open this" is, for that moment, readable by every other account on this
+  computer.
+- **What the door serves cannot use the door.** Anything it hands your browser is walled
+  off from the door itself, so a file from over there — even one written to try — cannot
+  read a listing, fetch another file, or send anything back the other way.
 
 Your ssh connection is still the only way in to that machine. This door adds no route to
 it: everything it serves came back over the connection you already had.

@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -274,6 +275,61 @@ func TestStatKeepsTheOrderAndCallsARefusedPathAbsent(t *testing.T) {
 	// worth having.
 	if facts, err := loop.Client.StatPaths(nil); err != nil || facts != nil {
 		t.Fatalf("nothing to ask about is nothing to ask: %v %v", facts, err)
+	}
+}
+
+// A STAT CARRIES THE NUMBERS A CACHE IS JUDGED AGAINST. This is the whole
+// reason [PathFact] has a size and a modification time on it: a surface holding
+// a copy of a far file has exactly one cheap way to learn that the file was
+// rewritten under it, and without these two it is choosing between fetching
+// everything twice and serving last week's bytes forever (internal/tui3's
+// remoteopen.go).
+func TestStatCarriesTheSizeAndTheMomentOfEachFile(t *testing.T) {
+	loop, workspace, _ := browseLoop(t)
+	made := filepath.Join(workspace, "report.md")
+	write(t, made, "# findings\n")
+	if err := os.Mkdir(filepath.Join(workspace, "src"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	info, err := os.Stat(made)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	facts, err := loop.Client.StatPaths([]string{made, filepath.Join(workspace, "src"), filepath.Join(workspace, "gone")})
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if facts[0].Size != int64(len("# findings\n")) {
+		t.Fatalf("the size is the file's own: %d", facts[0].Size)
+	}
+	if facts[0].ModTime != info.ModTime().Unix() {
+		t.Fatalf("the moment is %d and this machine says %d", facts[0].ModTime, info.ModTime().Unix())
+	}
+	// A directory answers with its own numbers rather than with nothing — they
+	// are a filesystem artifact, and the surface reads these for files.
+	if facts[1].ModTime == 0 {
+		t.Fatalf("a directory came back with no moment on it: %#v", facts[1])
+	}
+	// AND A PATH THAT IS NOT THERE CARRIES NOTHING, which is the emptiness law
+	// as a wire frame: a zero size beside a name that does not exist would be a
+	// number a surface could compare against.
+	if facts[2].Exists || facts[2].Size != 0 || facts[2].ModTime != 0 {
+		t.Fatalf("absence came back with numbers on it: %#v", facts[2])
+	}
+
+	// THE POINT OF THE PAIR: a rewrite moves them, which is what a cache on the
+	// other end has to be able to see.
+	write(t, made, "# findings, again\n")
+	if err := os.Chtimes(made, info.ModTime().Add(time.Minute), info.ModTime().Add(time.Minute)); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	after, err := loop.Client.StatPaths([]string{made})
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if after[0].Size == facts[0].Size || after[0].ModTime == facts[0].ModTime {
+		t.Fatalf("a rewritten file looks exactly like the one that was cached: %#v then %#v", facts[0], after[0])
 	}
 }
 
