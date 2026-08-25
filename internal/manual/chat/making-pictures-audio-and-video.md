@@ -157,8 +157,10 @@ answers with the path, the size and the model, e.g.
 a piece of its own choosing — half a minute to a minute in practice — and you
 cannot ask for eight seconds, or for three minutes. Nor is there a format
 argument; you get what the model sends. To put a piece under anything timed — a
-video, a slideshow — aforge measures the file it got and loops or trims it to
-fit, because the length is the model's choice, not the brief's.
+video, a slideshow — the file has to be measured and then looped or trimmed to
+fit, which is shell work with ffmpeg that aforge does on request; the tool
+itself neither measures nor trims, because the length is the model's choice,
+not the brief's.
 
 **Every call costs the same whatever comes back**, around **$0.08**, because the
 price is per call and not per second. That makes a short clip and a long one the
@@ -233,7 +235,8 @@ saved.
 ## Can you make a longer video — several clips, a whole story, 2 minutes of film?
 
 Not in one render, and yes by joining several — a single render is a short
-clip, around ten seconds in practice. A longer video is several
+clip, because the video providers top out around ten seconds; nothing in
+aforge extends one render. A longer video is several
 `generate_video` calls stitched together with ffmpeg in the shell, and whether
 the result hangs together is decided by three facts about the tool:
 
@@ -245,8 +248,10 @@ the result hangs together is decided by three facts about the tool:
 - **Pictures are the only thread between clips.** The same `reference_paths`
   handed to every call keep a face and a costume steady. For clips that should
   **connect** — one shot flowing into the next — the last frame of a finished
-  clip is passed as the next call's opening `frame_paths` entry. That chain
-  makes connected clips a sequence: they cannot all render in parallel.
+  clip is passed as the next call's opening `frame_paths` entry (in a saved
+  harness step, whose `generate_video` has no `frame_paths`, the same slot is
+  the first `reference_paths` entry). That chain makes connected clips a
+  sequence: they cannot all render in parallel.
 - **Each clip lands with its own sound**, and its note says so. A stitch keeps
   that sound only if the join carries the audio streams as well as the video,
   and a continuous score is `generate_music`, looped under the whole cut.
