@@ -1197,11 +1197,16 @@ func (g writeGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call a
 	if orchestrateInScope(g.agent.config.Workspace, scope, path) {
 		return call, toolResult{}, true
 	}
+	// THE SCOPE IS NAMED IN THE FORM IT IS ENFORCED IN, not in the form it was
+	// declared in. A model told its scope is "/workspace/src" while the guard is
+	// matching "src" has been handed the wrong half of the disagreement to reason
+	// about — which is how a worker spent its remaining rounds arguing with a
+	// refusal instead of redrawing a path (fork.go's [normalizeScopePath]).
 	return call, toolResult{
 		text: fmt.Sprintf("%s is outside your write scope (%s), so nothing was written. "+
 			"Work inside your scope, or say what needs changing elsewhere and leave it to whoever "+
 			"is putting this work together.",
-			shown, strings.Join(scope, ", ")),
+			shown, strings.Join(scopeAsGuarded(g.agent.config.Workspace, scope), ", ")),
 		isError: true,
 	}, false
 }
@@ -1209,12 +1214,20 @@ func (g writeGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call a
 // orchestrateInScope reads one absolute path against a node's scope. A path
 // outside the workspace entirely is outside every scope: the scope is a slice
 // of the work tree, and something above it is not a corner of it.
+//
+// BOTH SIDES OF THE COMPARISON ARE PUT IN ONE FORM FIRST, and that is the whole
+// repair. The target has always been made workspace-relative here; the SCOPE was
+// not, so a scope declared as an absolute path — which is what a model reaches
+// for after a turn spent reading absolute paths — matched nothing and refused
+// every write its owner made. [scopeAsGuarded] is the same reading the door
+// applies when it accepts the declaration (fork.go's [normalizeScopePath]), so
+// there is one answer to "what does this scope cover" rather than two.
 func orchestrateInScope(workspace string, scope []string, path string) bool {
 	relative, err := filepath.Rel(workspace, path)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false
 	}
-	return orchestrate.Covers(scope, filepath.ToSlash(relative))
+	return orchestrate.Covers(scopeAsGuarded(workspace, scope), filepath.ToSlash(relative))
 }
 
 // WorktreePath resolves where job id's isolated worktree would live. Empty

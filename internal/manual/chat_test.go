@@ -78,6 +78,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a task run git pull", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
+		// Written from a real run: a task made a symlink so a scorer would find
+		// its fixtures, measured against the symlink, and reported the work done.
+		// The check now runs somewhere the symlink is not, and these are the
+		// questions somebody asks when a task comes back incomplete over it.
+		{"where does the check run", "how-tasks-run"},
+		{"why did my task fail on a file it says it created", "how-tasks-run"},
+		{"does the checker see the files my task installed", "how-tasks-run"},
+		// And the other half: a fork whose hands declared their files in full and
+		// were refused every single write.
+		{"how do I say which files each hand may write", "tasks"},
+		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},

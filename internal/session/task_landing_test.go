@@ -1,12 +1,16 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // task_landing_test.go is written from two measured defects, both of them a
@@ -284,5 +288,271 @@ func TestAReportCanNameTheFilesACommandGenerated(t *testing.T) {
 	// And the bullet-and-bold spelling a model reaches for is the same sentence.
 	if got := declaredFiles("- **files:** site/index.html", dir); !containsString(got, "site/index.html") {
 		t.Fatalf("declared = %v off a bulleted declaration", got)
+	}
+}
+
+// ── WHERE A VERDICT IS REACHED ──────────────────────────────────────────────
+//
+// A PASSING CHECK MAY NOT DEPEND ON STATE THE DELIVERABLE DOES NOT CARRY, and
+// the measured failure is what these pin. A node was asked to make a scorer pass;
+// the scorer addressed files at a path the repository did not keep them at, and
+// the node made the path exist with `ln -sf` instead of changing the source. It
+// re-ran the scorer against its own symlink, watched it pass, and said the job
+// was done — and the auditor, standing in the same directory with the same
+// symlink under it, saw the same pass.
+//
+// So the audit is reached in a CLEAN RESTORE: the tree as it was, with exactly
+// the files the node wrote laid over it, and nothing else the run left behind.
+
+// THE RESTORE IS THE BRANCH PLUS WHAT THE NODE WROTE, and nothing the run made
+// on the side is in it — not an environment a check leans on, not build output.
+func TestTheAuditIsReachedInACleanRestoreOfWhatShips(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "src", "main.go"), "package main\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "the tree as it was")
+
+	tree, err := prepareTaskTree(Place{}, repo, "dddd4444dddd4444", 1, "make the scorer pass")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	// What the node's own hands wrote — the deliverable.
+	writeFile(t, filepath.Join(tree.dir, "src", "parser.go"), "package main // the parser\n")
+	// And what it did NOT write: the fixture it dropped where the scorer looks,
+	// the link it made so a path would resolve, and the output of a build.
+	writeFile(t, filepath.Join(tree.dir, "test-files", "case.json"), "{}\n")
+	if err := os.Symlink(filepath.Join(tree.dir, "src"), filepath.Join(tree.dir, "fixtures")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "target", "debug", "binary"), "elf\n")
+
+	node := loneTestNode(t, "make the scorer pass")
+	ground := auditGroundFor(node, tree, []string{"src/parser.go"}, io.Discard)
+	defer ground.drop()
+	if !ground.restored {
+		t.Fatalf("no restore was made: %s", ground.why)
+	}
+	if ground.dir == tree.dir {
+		t.Fatal("the verdict would be reached in the node's own working copy")
+	}
+	// What ships is there: the tree it started from, and the change over it.
+	for _, want := range []string{"src/main.go", "src/parser.go"} {
+		if _, err := os.Stat(filepath.Join(ground.dir, filepath.FromSlash(want))); err != nil {
+			t.Fatalf("%s is not in the restore: %v", want, err)
+		}
+	}
+	// What does not ship is not.
+	for _, unwanted := range []string{"test-files/case.json", "fixtures", "target/debug/binary"} {
+		if _, err := os.Lstat(filepath.Join(ground.dir, filepath.FromSlash(unwanted))); err == nil {
+			t.Fatalf("%s followed the work into the restore", unwanted)
+		}
+	}
+	// AND THE CHANGE READS AS A CHANGE THERE. The sentence the auditor is given
+	// says `git diff --cached` shows all of it, new files included, and that has
+	// to be true of the tree it is actually standing in.
+	staged := gitOut(t, ground.dir, "diff", "--cached", "--name-only")
+	if !strings.Contains(staged, "src/parser.go") {
+		t.Fatalf("the restore's index does not hold the change:\n%s", staged)
+	}
+	// And it takes itself away again.
+	ground.drop()
+	if _, err := os.Stat(ground.dir); err == nil {
+		t.Fatal("the restore was left behind")
+	}
+}
+
+// AND A WORKSPACE WITH NO REPOSITORY BEHIND IT IS RESTORED BY ITS OWN CLOCK —
+// which is the shape the failure was actually measured in.
+func TestARestoreOfANonRepositoryLeavesWhatTheRunMade(t *testing.T) {
+	workspace := t.TempDir()
+	writeFile(t, filepath.Join(workspace, "src", "main.rs"), "fn main() {}\n")
+	writeFile(t, filepath.Join(workspace, "Cargo.toml"), "[package]\n")
+	// The original tree predates the work; everything below is made after it.
+	before := time.Now().Add(-2 * time.Hour)
+	for _, path := range []string{"src/main.rs", "Cargo.toml", "src", "."} {
+		if err := os.Chtimes(filepath.Join(workspace, filepath.FromSlash(path)), before, before); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node := loneTestNode(t, "make the scorer pass")
+	node.graph.mu.Lock()
+	node.started = time.Now().Add(-time.Hour)
+	node.graph.mu.Unlock()
+
+	writeFile(t, filepath.Join(workspace, "src", "parser.rs"), "// the parser\n")
+	writeFile(t, filepath.Join(workspace, "test-files", "case.json"), "{}\n")
+	writeFile(t, filepath.Join(workspace, "target", "debug", "binary"), "elf\n")
+
+	tree := taskTree{dir: workspace, merge: mergeInPlace}
+	ground := auditGroundFor(node, tree, []string{"src/parser.rs"}, io.Discard)
+	defer ground.drop()
+	if !ground.restored {
+		t.Fatalf("no restore was made: %s", ground.why)
+	}
+	for _, want := range []string{"src/main.rs", "Cargo.toml", "src/parser.rs"} {
+		if _, err := os.Stat(filepath.Join(ground.dir, filepath.FromSlash(want))); err != nil {
+			t.Fatalf("%s is not in the restore: %v", want, err)
+		}
+	}
+	for _, unwanted := range []string{"test-files/case.json", "target/debug/binary"} {
+		if _, err := os.Lstat(filepath.Join(ground.dir, filepath.FromSlash(unwanted))); err == nil {
+			t.Fatalf("%s followed the work into the restore", unwanted)
+		}
+	}
+}
+
+// AND THE AUDIT FAILS ON IT, naming what is not there. This is the whole point
+// of the restore: the auditor did not have to be told the rule, it simply could
+// not find the thing the check was leaning on.
+func TestACheckLeaningOnAFileTheNodeDidNotWriteFailsItsAudit(t *testing.T) {
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "eeee5555eeee5555", 1, "make the scorer pass")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "parser.go"), "package main\n")
+	// The fixture the node dropped where the scorer looks, and never wrote.
+	writeFile(t, filepath.Join(tree.dir, "test-files", "case.json"), "the-scorers-fixture\n")
+
+	completer := &routedCompleter{audit: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("look", "bash", `{"command":"cat test-files/case.json"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("REFUTED — test-files/case.json is not in the change, so the check passes only in the copy the work made"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = repo })
+	node := loneTestNode(t, "make the scorer pass")
+	node.graph.mu.Lock()
+	node.spec.acceptance = "the scorer passes"
+	node.graph.mu.Unlock()
+
+	verdict := agent.auditNode(context.Background(), node, tree, []string{"parser.go"}, "the scorer passes now", io.Discard)
+	if !verdict.answered || verdict.verified {
+		t.Fatalf("the audit came back %s, want the finding", verdict.report())
+	}
+	if !strings.Contains(strings.Join(verdict.evidence, " "), "test-files/case.json") {
+		t.Fatalf("the finding does not name the missing path: %v", verdict.evidence)
+	}
+	// THE LOAD-BEARING HALF: the auditor could not read the file, because it was
+	// never standing where the file is. A test that only asserted the scripted
+	// verdict would pass over an auditor judging the dirty working copy.
+	completer.mu.Lock()
+	defer completer.mu.Unlock()
+	if len(completer.auditRequests) < 2 {
+		t.Fatalf("the auditor made %d requests, so it never read a result", len(completer.auditRequests))
+	}
+	for _, request := range completer.auditRequests {
+		for _, message := range request {
+			if message.Role == "tool" && strings.Contains(messageText(message), "the-scorers-fixture") {
+				t.Fatal("the auditor read a file the node never wrote, so it judged the working copy")
+			}
+		}
+	}
+	// And it was told where it stands, in words it can act on.
+	asked := messageText(completer.auditRequests[0][len(completer.auditRequests[0])-1])
+	if !strings.Contains(asked, "CLEAN RESTORE") {
+		t.Fatalf("the auditor was not told it is in a restore:\n%s", asked)
+	}
+}
+
+// loneTestNode is one node in a graph of its own, for the tests that drive a
+// landing or an audit directly rather than through a whole run.
+func loneTestNode(t *testing.T, title string) *TaskNode {
+	t.Helper()
+	graph := &TaskGraph{nodes: map[uint64]*TaskNode{}}
+	node := &TaskNode{graph: graph, id: 1, spec: taskSpec{title: title}, state: TaskRunning}
+	graph.mu.Lock()
+	graph.nodes[node.id] = node
+	graph.order = append(graph.order, node.id)
+	graph.mu.Unlock()
+	return node
+}
+
+// ── WHAT THE AUDITOR IS SHOWN OF WHAT ALREADY HAPPENED ──────────────────────
+
+// THE AUDITOR READS EVIDENCE; IT DOES NOT NECESSARILY REDO IT. A check is often
+// the most expensive thing in a task, and an auditor made to rediscover and
+// re-run it from nothing inside [auditDeadline] is an auditor that times out —
+// which is what was measured: a node landed unchecked because its scorer was
+// re-run twice by a judge that then ran out of its five minutes.
+func TestTheAuditorIsShownWhatTheWorkAlreadyRan(t *testing.T) {
+	node := loneTestNode(t, "make the scorer pass")
+	node.graph.mu.Lock()
+	node.spec.acceptance = "the scorer passes"
+	node.graph.mu.Unlock()
+	node.keepReceipts([]toolReceipt{{
+		tool:   "bash",
+		args:   `{"command":"./score.sh"}`,
+		result: "score: 41/60 — 19 cases failed",
+	}})
+
+	question := auditQuestion(node, taskTree{}, auditGround{dir: "/restore", restored: true}, []string{"parser.go"}, "it passes")
+	if !strings.Contains(question, "WHAT THE WORK ALREADY RAN") {
+		t.Fatalf("the auditor was shown nothing of what happened:\n%s", question)
+	}
+	for _, want := range []string{"./score.sh", "score: 41/60 — 19 cases failed"} {
+		if !strings.Contains(question, want) {
+			t.Errorf("the packet is missing %q:\n%s", want, question)
+		}
+	}
+	// AND THE PROVENANCE IS STATED, because it is the whole safety of showing it
+	// at all: in a restore those results came from ANOTHER tree — the one a
+	// verdict may not rest on — so they may settle a refutation and never an
+	// acceptance.
+	if !strings.Contains(question, "not the copy you are standing in") {
+		t.Errorf("the packet does not say where its evidence came from:\n%s", question)
+	}
+	// Standing in the work's own copy the warning is the opposite one.
+	inPlace := auditQuestion(node, taskTree{}, auditGround{dir: "/work"}, []string{"parser.go"}, "it passes")
+	if !strings.Contains(inPlace, "They came from this same copy.") {
+		t.Errorf("the packet misstates its own provenance:\n%s", inPlace)
+	}
+}
+
+// AND THEY ARE THE WORKER'S REAL RESULTS, READ OFF ITS TRANSCRIPT — the text the
+// model actually read, not the capped display copy that carries a contract
+// saying it is only ever for showing a person.
+func TestTheReceiptsAreTheWorkersOwnToolResultsAndAreBounded(t *testing.T) {
+	workspace := t.TempDir()
+	writeFile(t, filepath.Join(workspace, "note.txt"), "PELICAN-42\n")
+
+	var turn int
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			turn++
+			return toolResponse("read-1", "read", `{"path":"note.txt"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("read it"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
+	collect(t, mustSubmit(t, agent, "read the note"))
+
+	receipts := lastToolReceipts(agent, auditReceiptCount)
+	if len(receipts) == 0 {
+		t.Fatal("nothing was read off the worker's transcript")
+	}
+	if len(receipts) > auditReceiptCount {
+		t.Fatalf("%d receipts, want at most %d", len(receipts), auditReceiptCount)
+	}
+	last := receipts[len(receipts)-1]
+	if last.tool != "read" {
+		t.Errorf("the receipt names %q rather than the call that made it", last.tool)
+	}
+	if !strings.Contains(last.result, "PELICAN-42") {
+		t.Errorf("the receipt does not carry what the tool actually answered: %q", last.result)
+	}
+	if !strings.Contains(last.args, "note.txt") {
+		t.Errorf("the receipt does not say what was asked for: %q", last.args)
+	}
+	// AND EACH ONE IS BOUNDED, so a worker whose last command printed a megabyte
+	// cannot spend the auditor's whole context before it has read the acceptance.
+	for _, receipt := range receipts {
+		if len(receipt.result) > auditReceiptLimit+64 {
+			t.Fatalf("a receipt weighs %d bytes, over the bound of %d", len(receipt.result), auditReceiptLimit)
+		}
 	}
 }
