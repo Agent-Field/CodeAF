@@ -87,8 +87,17 @@ const (
 	// the tax this feature must not become.
 	routeJudgeWords = 6
 	// The judge's own budget. It answers with one small object, and what the
-	// tokens are actually for is the goal it writes when the answer is yes.
-	routeJudgeTokens = 700
+	// tokens are actually for is the two things it WRITES when the answer is
+	// yes: the goal, and the done-condition the work is finished against.
+	//
+	// IT GREW WITH THE SECOND FIELD. A judge that runs out of budget halfway
+	// through its object produces JSON nothing can salvage, which this file reads
+	// as a no and says nothing about — so a ceiling that fit one written field
+	// and not two would have turned the feature off quietly on exactly the
+	// requests worth starting. Nine hundred is both fields at their bounds
+	// ([routeGoalBytes], taskShapeAcceptanceLimit) with the object around them,
+	// and it is still a fraction of what the task it decides costs.
+	routeJudgeTokens = 900
 	routeJudgeTemp   = 0
 	// routeShapeLines is how much of the assistant's answer the judge is shown.
 	// TWO LINES IS THE SHAPE AND NOT THE ANSWER: what the judge is deciding is
@@ -134,6 +143,26 @@ type routeVerdict struct {
 	// means the worker MAY discover it is wide; the evidence gate still refuses a
 	// division the material does not support (task_divide.go).
 	Wide bool `json:"wide"`
+	// Acceptance is THE DONE-CONDITION THE WORK IS FINISHED AGAINST, and it is
+	// asked for here because this door had nothing else that could write one.
+	//
+	// A task is finished by a checker judging it against its acceptance ALONE —
+	// never against the brief, which is the executor's instruction and which the
+	// checker is deliberately not shown (task_audit.go's auditQuestion). So a
+	// door that admits a generic acceptance admits work nothing can judge, and
+	// the sentence this file used to write ("the goal above is met") named a goal
+	// that is not above anything the checker ever reads. Every OTHER door already
+	// writes a real one: propose_task's schema demands it, `/task` has the shaper
+	// write it (task_shape.go), a divided part carries its own (task_divide.go).
+	// This is that same field, asked of the judge that is already reading the
+	// turn and already writing the goal — one more line in a call that was being
+	// made anyway, which is how [Agent.shapeBrief] gets a name for free.
+	//
+	// AN ABSENT ONE IS SURVIVABLE and falls back to [routeFallbackAcceptance],
+	// exactly as an absent one from the shaper falls back to
+	// [taskPersonAcceptance]: a judgement nobody asked for must never be the
+	// reason work is refused.
+	Acceptance string `json:"acceptance"`
 }
 
 // routeJudgeBrief is what the judge is told, and it is the work-or-words law in
@@ -149,6 +178,13 @@ type routeVerdict struct {
 // nothing here about graphs, planners or shapes, because there is nothing left
 // in this file that could open one — and a brief that taught a choice the code
 // no longer makes would be teaching drift.
+//
+// WHAT IT ALSO ASKS FOR IS THE DONE-CONDITION, and that is a field rather than a
+// third question: the judge is not deciding anything by writing it, it is
+// writing down what a finished answer looks like for the goal it just wrote. The
+// paragraph telling it the condition is read ALONE, by somebody who cannot see
+// the goal, is the load-bearing half — a condition that says "the goal is met"
+// is a condition nobody can check (see [routeVerdict.Acceptance]).
 const routeJudgeBrief = `You judge ONE turn of a coding assistant, after the fact. The assistant answered the person in WORDS ALONE — it called no tool. You decide one thing: should that turn have been WORK?
 
 WORDS are a question, a discussion, advice, an opinion, a fact, an explanation, a plan somebody asked to read. SMALL WORK is words too, for this purpose: a few tool calls, one obvious edit, a file read and an answer. Handing small work off is slower than doing it, so it is not work.
@@ -165,7 +201,7 @@ Answer with ONE JSON object and nothing else — no prose, no code fence:
 
 or
 
-  {"work": true, "wide": true, "goal": "...", "why": "..."}
+  {"work": true, "wide": true, "goal": "...", "acceptance": "...", "why": "..."}
 
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
@@ -175,6 +211,15 @@ or
   goal   self-contained. Whoever reads it cannot see this conversation, so fold in
          what the person's words were pointing at: the subject, the files, the
          checks, what a finished answer looks like.
+  acceptance
+         DONE WHEN — the observable condition that says this is finished, in a
+         sentence or two. Somebody ELSE checks it, and they are shown THIS
+         SENTENCE ON ITS OWN: not the goal, not this conversation, not the
+         worker's account of itself. So name the thing that must exist and the
+         check that shows it — "every package under internal/ has been read and
+         the report names each pricing bug with its file and line" — and never
+         write "the goal is met" or "the task is complete", which give the
+         checker nothing to look at.
   why    ONE line, in a person's own words, saying what this looks like. It is
          shown to them beside the work, so write it as you would say it:
          "research across every package", "a sweep over forty files".
@@ -347,6 +392,12 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, as
 	}
 	verdict.Goal = clip(strings.TrimSpace(verdict.Goal), routeGoalBytes)
 	verdict.Why = clip(firstLine(verdict.Why), routeWhyBytes)
+	// THE SAME BOUND THE SHAPER'S DONE-CONDITION IS HELD TO, and it is that
+	// constant rather than a second number of this file's own: a condition
+	// somebody else can check is a sentence or two whichever call wrote it, and
+	// two spellings of that bound would be two answers to one question
+	// (task_shape.go's taskShapeAcceptanceLimit).
+	verdict.Acceptance = clip(strings.TrimSpace(verdict.Acceptance), taskShapeAcceptanceLimit)
 	return verdict, true
 }
 
@@ -381,11 +432,9 @@ func routeJudgeQuestion(asked, answered string) string {
 // stoppable there. So the spec goes straight to [TaskGraph.admit], which is the
 // same admission a countdown that ran out reaches.
 //
-// THE ACCEPTANCE IS THE HARNESS'S OWN SENTENCE and it is deliberately weak. A
-// judge writes a goal and a line; it is never asked for a done-condition,
-// because the person it is judging for did not state one — and an acceptance
-// this file invented in specifics would be a target nobody set (task_contract.go
-// on why a frozen acceptance matters).
+// THE ACCEPTANCE IS THE JUDGE'S OWN DONE-CONDITION, written in the same call
+// that wrote the goal ([routeVerdict.Acceptance]), and [routeAcceptance] stands
+// in for it when the judge did not write one.
 func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 	graph := a.graph()
 	id := graph.reserve()
@@ -398,7 +447,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 		// would otherwise open on a summary of a summary.
 		request:    a.taskRequest(),
 		brief:      verdict.Goal,
-		acceptance: "the goal above is met, and the report says what was done and how it was checked",
+		acceptance: routeAcceptance(verdict),
 		model:      a.resolveTaskModel("").model,
 		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. It is the same
 		// judgement the sizing judge is asked at the typed door and the same one
@@ -424,4 +473,31 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict) {
 		hub.send(Event{Kind: EventNotice, Text: "this looked like work, so task " +
 			strconv.FormatUint(id, 10) + " " + word + ": " + spec.title})
 	}
+}
+
+// routeFallbackAcceptance is what an auto-started task is finished against when
+// the judge wrote no done-condition of its own.
+//
+// IT NAMES WHAT THE CHECKER CAN ACTUALLY SEE. The checker is handed the task's
+// TITLE and this sentence and nothing else — no goal, no brief, no conversation
+// (task_audit.go's auditQuestion) — so the sentence that stood here before,
+// "the goal above is met", pointed at a paragraph that is above nothing the
+// checker reads, and a check against it was a check against a blank. This one
+// points at the title, which is on the page, and it asks for the two things any
+// piece of work can be held to: that the thing named was actually done, and that
+// the account of it says how that was checked.
+//
+// IT IS STILL WEAK, and deliberately so. A generic sentence this file invented
+// in specifics would be a target nobody set (task_contract.go on why the
+// acceptance is frozen). The strong version is the judge's own, which is why it
+// is asked for.
+const routeFallbackAcceptance = "the work named at the top is actually done, and the report says what was done and how it was checked"
+
+// routeAcceptance is the done-condition an auto-started task carries: the
+// judge's, or the stand-in.
+func routeAcceptance(verdict routeVerdict) string {
+	if acceptance := strings.TrimSpace(verdict.Acceptance); acceptance != "" {
+		return acceptance
+	}
+	return routeFallbackAcceptance
 }
