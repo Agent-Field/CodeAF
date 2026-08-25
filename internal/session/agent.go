@@ -117,7 +117,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// rides (see [Agent.enqueueSteering]): a job that exits and a watch with news
 	// are both work the person asked the harness to do FOR THEM, and the answer
 	// they are owed is a sentence, not a line in a transcript nobody is reading.
-	agent.jobs = newJobRegistry(config.Workspace, config.Place, agent.enqueueSteering)
+	// The registry is handed the DROPPINGS home rather than the Place, and the
+	// two differ for every agent that is not a session: a worker's job log
+	// belongs beside the transcript of the conversation that commissioned it, not
+	// in the repository it borrowed to work in (landing.go).
+	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueSteering)
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -217,7 +221,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// by the same string, and a memory-only session has the one this constructor
 	// minted for its cache lineage. Deriving a second identity here would give
 	// one conversation two threads the day somebody resumed it (chatlog.go).
-	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.Place)
+	// And it takes the DROPPINGS home for the registry's reason: the only thing
+	// the journal does with a Place is spill an over-long message's bytes through
+	// [writeStub], which is a dropping like any other (landing.go).
+	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what
 	// it knew yesterday, and a model that had to wait for the first post-turn

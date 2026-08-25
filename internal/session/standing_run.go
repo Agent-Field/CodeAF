@@ -327,6 +327,12 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg := r.parent
 	cfg.Workspace = item.Workspace
 	cfg.Place = Place{}
+	// THE FOLDER GOES BECAUSE THE PROBE IS NOT THE SESSION; THE LITTER STAYS WITH
+	// THE SESSION BECAUSE IT NEVER BELONGED TO ANY WORKSPACE. The probe's
+	// workspace is the ITEM'S repository — some other project entirely — so a job
+	// log resolved against a zero Place would be this program's droppings in
+	// somebody's tree, made by a check they never watched run (landing.go).
+	cfg.droppings = r.parent.droppingsPlace()
 	cfg.SessionFile = ""
 	cfg.AskConsent = false
 	cfg.InTask = true
@@ -334,7 +340,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg.standingItems = nil
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
-	agent.jobs = newJobRegistry(cfg.Workspace, cfg.Place, agent.enqueueSteering)
+	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueSteering)
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 

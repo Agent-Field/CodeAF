@@ -130,7 +130,7 @@ a background job**, not killed, and the call answers with one line and then
 whatever the command had already printed:
 
 ```
-still running as job 3; log at /path/to/workspace/.aforge-v3/jobs/3.log
+still running as job 3; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
 
 collecting 120 cases
 scored case 1
@@ -186,7 +186,7 @@ job 3 exited 0: BUILD OK
 
 … the last fifty lines …
 
-[job 3 · last 50 lines · full log: /path/to/.aforge-v3/jobs/3.log]
+[job 3 · last 50 lines · full log: ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log]
 ```
 
 If aforge is mid-turn the note lands at the next step; if the turn had already
@@ -242,7 +242,7 @@ Yes. `bash` with `background: true` registers the command as a **job**, runs it
 in its own process group, and returns immediately:
 
 ```
-job 3 started; log at /path/to/workspace/.aforge-v3/jobs/3.log
+job 3 started; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
@@ -268,7 +268,13 @@ Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).
 
 **Jobs do not outlive the conversation.** When the session closes, every running
 job is sent SIGTERM, given a shared 2-second grace, then killed. The log files
-under `<workspace>/.aforge-v3/jobs/` stay on disk for you to read afterwards.
+stay on disk for you to read afterwards, in **this conversation's own folder**
+under `logs/jobs/` — never in your project. That is true of every job aforge
+runs, including one a task's worker started in its own checkout: a job log is
+the harness's own droppings, not your work, so it is kept beside the transcript
+that explains what it was for and goes when you delete the conversation. Only a
+conversation with no folder at all still keeps them at
+`<workspace>/.aforge-v3/jobs/`.
 
 **You can see a job without asking.** Every job this conversation starts is also a row on
 the task column on the right, from the moment it starts until it ends — the command as its
@@ -810,7 +816,7 @@ Plainly, so you do not have to find out the hard way.
 
 - **Background jobs and watches**, including a foreground command that was
   promoted into one. Every running job is killed when the session closes. Their
-  log files stay under `<workspace>/.aforge-v3/jobs/`.
+  log files stay under this conversation's own folder, in `logs/jobs/`.
 - **A "don't ask again" answer to a permission question.** It is held in memory
   for this session only and is never written down, so the next session asks
   again.

@@ -164,7 +164,11 @@ func (a *Agent) stubOldOutputsLocked() int {
 			if workspace == "" {
 				continue
 			}
-			path, err := writeStub(a.config.Place, workspace, text)
+			// The FAMILY'S folder, which is this agent's own when it is a session
+			// and the commissioning conversation's when it is a worker. A worker
+			// asked for its Place instead, got the zero one, and filed every long
+			// result it read into the repository it borrowed (landing.go).
+			path, err := writeStub(a.config.droppingsPlace(), workspace, text)
 			if err != nil {
 				continue
 			}
