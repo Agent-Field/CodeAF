@@ -2026,7 +2026,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 				if line.row.Archived {
 					h.say("brought back", "")
 				} else {
-					h.say("put away · open the archive at the foot to bring it back", "")
+					h.say(homePutAwayWord, "")
 				}
 				a.refreshHome()
 				a.home.build()
@@ -3360,7 +3360,13 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// the whole list is what keeps a heading, a ledger line and a conversation on
 	// one grid.
 	if line.sw != nil {
-		return h.reading.paint(*line.sw, width, pal, at == h.cursor, at == h.hover)
+		return h.reading.paint(*line.sw, width, pal, switcherPaint{
+			sel: at == h.cursor, hover: at == h.hover,
+			// AND THE TWO THINGS THE READING CANNOT KNOW: which heading the cursor
+			// is standing under (homesection.go), and which single row this frame
+			// gave the spinner to (homespinner.go).
+			head: h.sectionInk(at, pal), spin: a.homeSpinCell(at),
+		})
 	}
 	switch line.kind {
 	case homeBlank:

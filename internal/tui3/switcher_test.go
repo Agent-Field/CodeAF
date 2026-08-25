@@ -259,7 +259,7 @@ func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 	if got := words(r.verbs(askingAt)); !strings.Contains(got, "y do it") || !strings.Contains(got, "n leave it") || !strings.Contains(got, "a put it away") || !strings.Contains(got, "c copy path") {
 		t.Fatalf("asking verbs are %q", got)
 	}
-	if got := words(r.verbs(standingAt)); !strings.Contains(got, "p pause it") {
+	if got := words(r.verbs(standingAt)); !strings.Contains(got, "p "+homeItemPauseWord) {
 		t.Fatalf("standing verbs are %q", got)
 	}
 	if row, ok := r.at(foldAt); !ok || !row.fold {
@@ -287,7 +287,7 @@ func TestSwitcherVerbsRequireTheStateAndAddressTheyActOn(t *testing.T) {
 				}
 			}
 		case switcherStanding:
-			if !strings.Contains(got, "resume it") || strings.Contains(got, "pause it") || strings.Contains(got, "y ") || strings.Contains(got, "n ") {
+			if !strings.Contains(got, switcherResumeWord) || strings.Contains(got, "p "+homeItemPauseWord) || strings.Contains(got, "y ") || strings.Contains(got, "n ") {
 				t.Fatalf("paused standing verbs are %q", got)
 			}
 		}

@@ -527,9 +527,29 @@ func (r switcherReading) rows(width int, pal palette) []string {
 	}
 	out := make([]string, 0, len(r.lines))
 	for _, line := range r.lines {
-		out = append(out, r.paint(line, width, pal, false, false))
+		out = append(out, r.paint(line, width, pal, switcherPaint{}))
 	}
 	return out
+}
+
+// switcherPaint is what the SURFACE knows about one line that the reading
+// cannot: where the keyboard and the pointer are standing, which heading the
+// cursor is under, and which single row on the page is allowed to animate.
+//
+// IT IS THREE VALUES AND NOT AN *app, which is what keeps this file pure. Each
+// of them is a fact the drawing surface holds and the reading has no way to ask
+// for (docs/design/home-rethink/ARCHITECTURE.md's three layers).
+type switcherPaint struct {
+	sel   bool
+	hover bool
+	// head is the ink a HEADING takes. The heading over the section the cursor is
+	// standing in steps up one ink tier and wears no ground (homesection.go); nil
+	// is the dim every other heading takes.
+	head func(string) string
+	// spin is THE ONE MOVING CELL ON THE PAGE, and "" on every other row. However
+	// many things are running, exactly one row animates (homespinner.go), so the
+	// moving mark gives way to the turning cell on that row alone.
+	spin string
 }
 
 // paint is one line of the reading, with the band on the row the keyboard or the
@@ -540,7 +560,7 @@ func (r switcherReading) rows(width int, pal palette) []string {
 // on a `›` would push every name two columns right for a fact the ground already
 // carries — which is the one device SCREEN 2a names for the cursor: "the band —
 // where the cursor is — selection, and the subject goes bold inside it".
-func (r switcherReading) paint(line switcherLine, width int, pal palette, sel, hover bool) string {
+func (r switcherReading) paint(line switcherLine, width int, pal palette, p switcherPaint) string {
 	if width < 1 {
 		return ""
 	}
@@ -554,14 +574,27 @@ func (r switcherReading) paint(line switcherLine, width int, pal palette, sel, h
 		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+switcherQuietWord)+3 <= width {
 			right += " · " + switcherQuietWord
 		}
-		return switcherSides(width, left, right, pal.dim, pal.dim)
+		leftInk := pal.dim
+		if p.head != nil {
+			leftInk = p.head
+		}
+		return switcherSides(width, left, right, leftInk, pal.dim)
 	case line.heading != "":
-		return pal.dim(fit(line.heading, width))
+		ink := pal.dim
+		if p.head != nil {
+			ink = p.head
+		}
+		return ink(fit(line.heading, width))
 	case line.row != nil:
-		return switcherPaintRow(*line.row, width, pal, r.view.grouped, sel, hover)
+		return switcherPaintRow(*line.row, width, pal, r.view.grouped, p)
 	}
 	return ""
 }
+
+// switcherResumeWord is the undoing of a pause, and it is spelled here because
+// nothing else on this surface offers it: an item's card and the standing place
+// both pause and stop, and only a row that is ALREADY paused has a resume.
+const switcherResumeWord = "resume it"
 
 // The two views this list offers and the keys that reach them. They are quoted
 // on the section line and in the manual from this one spelling.
@@ -570,22 +603,29 @@ const (
 	switcherQuietWord = "alt+q hide the quiet ones"
 )
 
-func switcherPaintRow(row switcherRow, width int, pal palette, grouped, sel, hover bool) string {
+func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p switcherPaint) string {
 	if row.fold {
-		return switcherBand(pal.dim(fit(row.foldWord, width)), width, pal, sel, hover)
+		return switcherBand(pal.dim(fit(row.foldWord, width)), width, pal, p)
 	}
 	if row.kind == switcherLedger {
 		// A LEDGER LINE IS A DOOR, so it takes the band like any other stop, and
 		// the place it names sits out at the right margin where every row's tail
 		// sits.
-		return switcherBand(switcherSides(width, row.title, row.place, pal.ink, pal.dim), width, pal, sel, hover)
+		return switcherBand(switcherSides(width, row.title, row.place, pal.ink, pal.dim), width, pal, p)
 	}
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	if row.paused {
 		glyph = tokens.GlyphPaused
 	}
 	if row.moving {
+		// THE ONE MOVING CELL. A row that is the page's spinner turns; every other
+		// live row holds the still mark, which is what makes a machine with twenty
+		// things out cost the wire exactly what a machine with one costs
+		// (homespinner.go).
 		glyph, glyphInk = tokens.GlyphWorking, pal.accent
+		if p.spin != "" {
+			glyph = p.spin
+		}
 	}
 	if row.needs {
 		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
@@ -623,7 +663,7 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped, sel, hov
 	// grey on a raised ground is grey on grey, which is the rule every row on
 	// this surface is painted under (palette.go's [overlayRowTinted]).
 	name, tailInk := pal.ink(fit(row.title, room)), pal.dim
-	if sel || hover {
+	if p.sel || p.hover {
 		name, tailInk = pal.bold(name), pal.ink
 	}
 	line := glyphInk(glyph) + " " + name
@@ -636,15 +676,15 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped, sel, hov
 			line += " " + tailInk(part)
 		}
 	}
-	return switcherBand(fit(line, width), width, pal, sel, hover)
+	return switcherBand(fit(line, width), width, pal, p)
 }
 
 // switcherBand is the one ground this list paints: the row the keyboard is on,
 // and the row the pointer is over, at the same rung — whether a person arrived
 // with `↓` or with the mouse, the row they are on is the row they are on
 // (palette.go's ladder).
-func switcherBand(line string, width int, pal palette, sel, hover bool) string {
-	if !sel && !hover {
+func switcherBand(line string, width int, pal palette, p switcherPaint) string {
+	if !p.sel && !p.hover {
 		return line
 	}
 	return pal.cursor(line, width)
@@ -694,9 +734,13 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 	if row.kind == switcherStanding {
 		verbs := switcherQuestionVerbs(row.options)
 		if row.paused {
-			return append(verbs, switcherVerb{key: 'r', word: "resume it"})
+			return append(verbs, switcherVerb{key: 'r', word: switcherResumeWord})
 		}
-		return append(verbs, switcherVerb{key: 'p', word: "pause it"})
+		// ONE SPELLING FOR ONE VERB. `pause` is what an item's own card and the
+		// standing place both call this act (homestanding.go's [homeItemActions],
+		// verbstrip.go's [app.standRowVerbs]), and a strip that said it a second
+		// way would be two words for one thing on one screen.
+		return append(verbs, switcherVerb{key: 'p', word: homeItemPauseWord})
 	}
 	if row.kind != switcherConversation {
 		return nil
