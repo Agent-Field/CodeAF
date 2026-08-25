@@ -306,6 +306,24 @@ type taskSpec struct {
 	//     told from a task that was never allowed any (task_index.go's
 	//     [TaskIndexEntry.MaySplit]).
 	armed string
+	// drawn is A DIVISION SOMEBODY ALREADY WROTE FOR THIS WORK: the shape a
+	// checkpoint mark's second reader drew of what was left of a turn, and the
+	// account it drew it from (checkpoint.go's [drawnDivision]). It is empty on
+	// every other door, and on every mark whose shape said one job.
+	//
+	// IT IS THE ONE FIELD OF THIS SPEC THAT IS AN INSTRUCTION TO THE HARNESS
+	// rather than to the worker. The parts are already at the head of the brief,
+	// where they read as a paragraph; this is the same parts in a shape the divide
+	// road can be handed, so that the worker starts with them ALREADY handed out
+	// instead of being asked to find them again (task_divide_sketch.go).
+	//
+	// IT IS NOT IN THE CHECKPOINT, deliberately, and the two ways a restored node
+	// can be holding one are both answered by leaving it out. A node restored
+	// AFTER its division has its parts back as nodes of their own, and a spec that
+	// still proposed them would divide the same work twice; a node restored BEFORE
+	// it ever ran comes back as one worker, which is what a task whose reviewer
+	// refused already is. Neither is a loss worth a second way to spawn work.
+	drawn drawnDivision
 }
 
 // taskTools is the belt's task family — one tool, in the conversation and in

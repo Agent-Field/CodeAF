@@ -173,6 +173,11 @@ type sessionEntry struct {
 	Mark    *journalMark    `json:"mark,omitempty"`
 	Ceiling *journalCeiling `json:"ceiling,omitempty"`
 
+	// Division is ONE division put to the road, whoever asked for it
+	// (task_divide.go). Absent from every line that is not one, and from every
+	// file written before it existed.
+	Division *journalDivision `json:"division,omitempty"`
+
 	Timestamp string `json:"timestamp"`
 }
 
@@ -267,6 +272,32 @@ type journalCeiling struct {
 	Rounds   int    `json:"rounds,omitempty"`
 	Decision string `json:"decision,omitempty"`
 	TaskID   uint64 `json:"taskId,omitempty"`
+}
+
+// journalDivision is ONE piece of work being put to the division road: who asked,
+// how many parts they asked for, how many exist afterwards, and what answered
+// (task_divide.go).
+//
+// IT EXISTS BECAUSE THREE COMPLETELY DIFFERENT OUTCOMES USED TO READ THE SAME.
+// A task that ran with one worker had NEVER ASKED to divide, had asked and been
+// refused by a free gate, or had asked and been refused by the reviewer — and the
+// only trace of any of it was the absence of child nodes. Over three measured
+// cells whose work a mastermind had already read as four jobs, every one landed
+// `parts=0`, and nothing in any file said which of the three had happened. So one
+// line, written wherever the road is asked.
+//
+// Source is `worker` for a division a worker reached for with the verb and
+// `sketch` for one the harness submitted on its behalf out of a mark's drawing
+// (task_divide_sketch.go). Requested is what was put; Admitted is how many parts
+// exist, which differs when the reviewer merges. Decision is `admitted` or
+// `refused:` and the gate that said no, so a bench can tell a floor refusal from
+// a busy machine from a reviewer that read the parts as one job.
+type journalDivision struct {
+	TaskID    uint64 `json:"taskId,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Requested int    `json:"requested,omitempty"`
+	Admitted  int    `json:"admitted,omitempty"`
+	Decision  string `json:"decision,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.
@@ -922,13 +953,15 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// warm — and every dollar on it is already counted in the seal that
 			// closed its turn. Folding it in here would bill the session twice
 			// for the same money.
-		case "mark", "ceiling":
+		case "mark", "ceiling", "division":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
 			// not a message and not money. Whatever the mark's reader cost is
 			// already on the usage line beside it and on its own call line, and
 			// what the ceiling did to the turn is already in the transcript —
-			// the line the person read, and the task the graph admitted.
+			// the line the person read, and the task the graph admitted. A
+			// division's parts are nodes in the graph's own checkpoint and its
+			// receipt is already in the worker's transcript.
 			// Replaying them would put machinery into somebody's conversation.
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
@@ -1481,6 +1514,17 @@ func (s *sessionFile) appendCeiling(ceiling journalCeiling) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "ceiling", Ceiling: &ceiling, Timestamp: stamp()})
+}
+
+// appendDivision writes down one division put to the road (see
+// [journalDivision]). A division nobody asked for writes nothing, for
+// [sessionFile.appendMark]'s reason: the whole value of the line is telling
+// never-asked from refused, and a line with no decision on it says neither.
+func (s *sessionFile) appendDivision(division journalDivision) {
+	if s == nil || strings.TrimSpace(division.Decision) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "division", Division: &division, Timestamp: stamp()})
 }
 
 // writeLine marshals one entry and appends it. A failed write is dropped

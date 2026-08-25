@@ -38,6 +38,11 @@ type divideNest struct {
 	graph   *TaskGraph
 	parent  *TaskNode
 	node    *Agent
+	// journal is the worker's own session file, which is where a node writes down
+	// what the division road decided (sessionfile.go's [journalDivision]). A real
+	// node always has one ([Agent.newTaskAgentOn] mints it), so the fixture gives
+	// the worker one too — a record only the tests that ask about it read.
+	journal string
 }
 
 // newDivideNest builds that shape. brief is what the task was admitted with —
@@ -84,10 +89,12 @@ func newDivideNestFrom(t *testing.T, spec taskSpec, limit int, worker Completer,
 	graph.admit(id, spec)
 	parent := graph.node(id)
 
+	journal := filepath.Join(t.TempDir(), "worker.jsonl")
 	node, err := newAgent(Config{
 		Workspace:   t.TempDir(),
 		Model:       "test/model",
 		System:      "SYSTEM",
+		SessionFile: journal,
 		InTask:      true,
 		Divide:      true,
 		RolesSource: source,
@@ -100,7 +107,7 @@ func newDivideNestFrom(t *testing.T, spec taskSpec, limit int, worker Completer,
 	}
 	t.Cleanup(func() { _ = node.Close() })
 	parent.openRoom().speaking(node)
-	return &divideNest{session: session, graph: graph, parent: parent, node: node}
+	return &divideNest{session: session, graph: graph, parent: parent, node: node, journal: journal}
 }
 
 // personSentence is what somebody typed to start all of this. A part three

@@ -2410,6 +2410,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// movedFrom is the model this node was admitted on, once it has stopped
 		// being the model it is running on. Empty is the ordinary case.
 		movedFrom string
+		// handedOut is the receipt for the parts the harness gave away on this
+		// node's behalf before it started, and an empty string is every node that
+		// was not handed a division (task_divide_sketch.go). It is kept OUTSIDE the
+		// loop because a second worker built after a provider fault is the same node
+		// with the same parts already running: it must read the same sentence, and
+		// the division must not be put a second time.
+		handedOut string
 	)
 	// ONE WORKER, OR TWO. The second exists for exactly one reason, stated at
 	// [terminalProviderFailure]: a node whose worker died because the PROVIDER
@@ -2429,8 +2436,25 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		room := node.openRoom()
 		room.speaking(child)
 
+		// AND THE DIVISION SOMEBODY ALREADY DREW IS PUT HERE, BEFORE THE FIRST
+		// REQUEST. A turn handed over on a mark's sketch arrives with its parts
+		// already named by a mastermind, and waiting for a cheap worker to re-derive
+		// them was measured never happening at all — so the harness submits the
+		// drawing on this worker's behalf, through the same verb and the same gates
+		// the worker's own division goes through (task_divide_sketch.go). It lands
+		// the node in the coordinating state a mid-run division lands it in, by the
+		// same road: the parts are children, so the tail of [runTaskChild] holds this
+		// node open and folds their reports.
+		//
+		// A NODE WITH NOTHING DRAWN, A ROAD THAT IS OFF, AND A DIVISION THE GATES OR
+		// THE REVIEWER REFUSED ALL ANSWER THE SAME EMPTY STRING, and the node then
+		// runs as one worker — which is what every task did before this existed.
+		if handedOut == "" {
+			handedOut = child.divideFromSketch(ctx)
+		}
+
 		var wrote []string
-		wrote, stopped, runErr = runTaskChild(ctx, child, node, node.instruction(), tree.dir, a.taskLimits(node), room, log)
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), handedOut), tree.dir, a.taskLimits(node), room, log)
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.

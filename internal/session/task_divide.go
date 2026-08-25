@@ -503,20 +503,65 @@ func (a *Agent) judgedDivisible(text string) bool {
 
 // ── the verb ────────────────────────────────────────────────────────────────
 
-// divideWork is the tool's whole life: read the request, put it to the two
-// gates, and — if both say yes — admit the parts on the nesting road.
+// The two askers a division can have, and the five ways one ends. They are
+// written down because the JOURNAL is what a bench reads (sessionfile.go's
+// [journalDivision]), and a decision spelled two ways is two decisions to
+// whatever is counting.
+//
+// THE GATE IS NAMED IN THE REFUSAL and not merely the fact of one, because the
+// three refusals are three different findings about the same work: `floor` says
+// the material does not enumerate enough to pay for parts, `lane` says nobody was
+// free to pick them up, and `review` says a mastermind read the parts together
+// and saw one job. A record that spelled all three "refused" could not tell a
+// road that is working from a road that is switched off by a busy machine.
+const (
+	divisionByWorker = "worker"
+	divisionBySketch = "sketch"
+
+	divisionAdmitted         = "admitted"
+	divisionRefusedMalformed = "refused:arguments"
+	divisionRefusedFloor     = "refused:floor"
+	divisionRefusedLane      = "refused:lane"
+	divisionRefusedCap       = "refused:cap"
+	divisionRefusedReview    = "refused:review"
+)
+
+// divideWork is the tool's whole life, and it is a WRAPPER because the life is
+// shared: the same request, the same gates and the same admission are reached by
+// a worker calling the verb and by the harness submitting a drawing on a worker's
+// behalf (task_divide_sketch.go). One body, so there is exactly one set of rules
+// about what a division costs and what it is allowed to do.
 //
 // EVERY ANSWER IS AN ORDINARY TOOL RESULT and never a Go error, the way every
 // other tool on this belt answers. A refusal is something the worker acts on by
 // carrying on, and an error would end its turn over a question it was entitled
 // to ask.
 func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, bool, error) {
+	answer, malformed := a.divideOnce(ctx, args, divisionByWorker)
+	return answer, malformed, nil
+}
+
+// divideOnce reads the request, puts it to the two gates, and — if both say yes —
+// admits the parts on the nesting road. It answers what the asker is told, and
+// whether what it read was malformed.
+//
+// AND IT WRITES DOWN WHAT IT DECIDED, once, on every road out. The line is the
+// last thing this function does whatever happened, which is why it is a deferred
+// write over one record rather than a call at each ending: five endings and five
+// call sites is four chances to add a sixth ending and forget (sessionfile.go's
+// [journalDivision] carries what the record is for).
+func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, bool) {
+	parent := a.config.taskID
+	line := journalDivision{TaskID: parent, Source: source}
+	defer func() { a.file.appendDivision(line) }()
+
 	parsed, problem := parseDivideArguments(args)
 	if problem != "" {
-		return problem, true, nil
+		line.Decision = divisionRefusedMalformed
+		return problem, true
 	}
+	line.Requested = len(parsed.Parts)
 	graph := a.graph()
-	parent := a.config.taskID
 
 	// GATE ONE: THE EVIDENCE. What the worker SAW has to name enough separate
 	// items for the parts to beat one worker doing them in order
@@ -552,7 +597,8 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 	node := graph.node(parent)
 	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
 	if thin && !node.armedByJudgement() {
-		return divisionTooNarrow(parsed.Evidence), false, nil
+		line.Decision = divisionRefusedFloor
+		return divisionTooNarrow(parsed.Evidence), false
 	}
 	// GATE TWO: THE FREE HANDS, AND IT IS THE LANES ONLY.
 	//
@@ -575,7 +621,8 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 	// So the parts are admitted, the frontier holds them, and the receipt says
 	// so ([divisionDone]).
 	if graph.freeHands() <= 0 {
-		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), false, nil
+		line.Decision = divisionRefusedLane
+		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), false
 	}
 
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
@@ -598,11 +645,20 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 	// asks again once a lane frees finds it still there. A second below-floor ask
 	// after this one gets the counter's answer, final, for nothing.
 	if thin && !node.takeTiebreak() {
-		return divisionTooNarrow(parsed.Evidence), false, nil
+		line.Decision = divisionRefusedFloor
+		return divisionTooNarrow(parsed.Evidence), false
 	}
 	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
 	if refusal != "" {
-		return refusal, false, nil
+		// A REVIEWER THAT COULD NOT BE REACHED ON THE ADJUDICATING PATH LEAVES THE
+		// FLOOR'S REFUSAL STANDING, and the record says `floor` because that is
+		// whose answer it is ([Agent.reviewDivision]). Everywhere else a refusal
+		// here is the reviewer's own reading of the parts.
+		line.Decision = divisionRefusedReview
+		if thin && refusal == divisionTooNarrow(parsed.Evidence) {
+			line.Decision = divisionRefusedFloor
+		}
+		return refusal, false
 	}
 	parsed.Parts = parts
 
@@ -619,7 +675,8 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 	}()
 	for range parsed.Parts {
 		if refusal := graph.claimChild(parent); refusal != "" {
-			return refusal, false, nil
+			line.Decision = divisionRefusedCap
+			return refusal, false
 		}
 		taken++
 	}
@@ -672,7 +729,8 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 		ids = append(ids, id)
 		titles = append(titles, part.Title)
 	}
-	return divisionDone(ids, titles, graph.machineBusy()), false, nil
+	line.Decision, line.Admitted = divisionAdmitted, len(ids)
+	return divisionDone(ids, titles, graph.machineBusy()), false
 }
 
 // parseDivideArguments reads one call and says, in plain words, what is wrong
