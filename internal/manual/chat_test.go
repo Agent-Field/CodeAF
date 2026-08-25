@@ -524,6 +524,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it started repeating the same line over and over", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
+		// Asked from a bill rather than from a screen: a cost autopsy found one
+		// turn hopping across six endpoints, each hop paying full price for a
+		// context the last endpoint already had. Both halves of that are things
+		// somebody asks — the money, and the hopping.
+		{"why does the same conversation suddenly cost more", "models-and-cost"},
+		{"does it keep the prompt cache warm", "models-and-cost"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of

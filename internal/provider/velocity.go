@@ -295,11 +295,11 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
 // compatible endpoint that is not a router either ignores it or 400s on it —
 // neither of which is worth risking for a preference it could not honour.
-func (c *Client) providerPreferences(model string, intent RoutingIntent) *providerPrefs {
+func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPrefs {
 	if !c.isOpenRouter() {
 		return nil
 	}
-	strategy := c.routingFor(intent)
+	strategy := c.routingFor(knobs.intent)
 	word := strategy.sortWord()
 	if word == "" {
 		return nil
@@ -324,6 +324,20 @@ func (c *Client) providerPreferences(model string, intent RoutingIntent) *provid
 		if strategy != RoutingPrice {
 			prefs.Order = order
 		}
+	}
+	// AND THE PIN GOES IN FRONT OF ALL OF IT (affinity.go). It is not a ranking
+	// and that is why it travels under BOTH sort words where the ledger's order
+	// may not: it names the one machine that already holds this lineage's prompt
+	// prefix, and a cold prefix cost 4.7× a warm one at identical token counts —
+	// more than any endpoint's tariff differs from another's, so the errand
+	// nobody is waiting on wants its cache back exactly as much as the person
+	// does. Its first request, having nothing pinned, still asks by price.
+	//
+	// It is a preference and never a demand: `allow_fallbacks` stays true above,
+	// so an endpoint that is busy, gone, or over the ceiling simply does not
+	// answer this one and the router picks by the sort word as before.
+	if held := c.heldEndpoint(knobs.cacheKey, model, prefs.Ignore); held != "" {
+		prefs.Order = append([]string{held}, withoutEndpoint(prefs.Order, held)...)
 	}
 	return prefs
 }
@@ -366,9 +380,21 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 // It holds the MOST RECENT answer and nothing else. A caller stamps it around a
 // turn and reads it beside each response, which is the grain the journal writes
 // at (internal/session's addUsage).
+//
+// AND IT COUNTS THE HOPS, because that is the fact a cost autopsy needs and the
+// one nobody could see: eleven moves across six endpoints in a single 41-request
+// turn, every one of them a cold prompt cache (affinity.go). A journal line that
+// records the endpoint alone shows where a request landed; [ServedEndpoint.Hops]
+// and [ServedEndpoint.Pinned] show whether it stayed.
 type ServedEndpoint struct {
 	mu   sync.Mutex
 	name string
+	// pinned is whether the last answer came from the endpoint its request had
+	// asked to come back to — a warm cache we kept, rather than one we found.
+	pinned bool
+	// hops counts how many times the answering endpoint CHANGED under this slot.
+	// It starts at zero for the first answer, which is an arrival and not a move.
+	hops int
 }
 
 // Name is the endpoint that answered most recently, empty when nothing has
@@ -383,7 +409,34 @@ func (s *ServedEndpoint) Name() string {
 	return s.name
 }
 
-func (s *ServedEndpoint) note(name string) {
+// Pinned reports whether the most recent answer came from the endpoint its own
+// request asked for by name — that is, whether this lineage kept the machine
+// holding its prompt cache. False is a first request, a lineage with no cache
+// key, a session with routing off, and every hop.
+func (s *ServedEndpoint) Pinned() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pinned
+}
+
+// Hops is how many times the answering endpoint changed while this slot was
+// open. Every hop is a prompt cache written from cold on the far side, so this
+// is the number a cost autopsy reads first.
+func (s *ServedEndpoint) Hops() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hops
+}
+
+// note records one answer: which endpoint served it, and which endpoint its
+// request had asked to come back to ("" when it asked for none).
+func (s *ServedEndpoint) note(name, asked string) {
 	if s == nil {
 		return
 	}
@@ -397,7 +450,11 @@ func (s *ServedEndpoint) note(name string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.name != "" && s.name != name {
+		s.hops++
+	}
 	s.name = name
+	s.pinned = asked != "" && asked == name
 }
 
 type servedEndpointContextKey struct{}
@@ -418,12 +475,13 @@ func ServedEndpointFrom(ctx context.Context) *ServedEndpoint {
 	return slot
 }
 
-// noteServed hands one answer's endpoint to whatever slot the caller opened.
-// It runs OUTSIDE the ledger's gates: a session with `routing off` has asked
-// not to be steered, which is not a request to be lied to about who answered.
-func noteServed(ctx context.Context, served string) {
+// noteServed hands one answer's endpoint — and the endpoint its request asked
+// to come back to, "" when none — to whatever slot the caller opened. It runs
+// OUTSIDE the ledger's gates: a session with `routing off` has asked not to be
+// steered, which is not a request to be lied to about who answered.
+func noteServed(ctx context.Context, served, asked string) {
 	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
-	slot.note(served)
+	slot.note(served, asked)
 }
 
 // noteVelocity folds one timed answer into this client's ledger.

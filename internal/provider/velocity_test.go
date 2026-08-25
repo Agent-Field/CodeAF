@@ -535,7 +535,7 @@ func TestNamedCutRefusesTheEndpointOnTheNextRequest(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences(model, IntentInteractive)
+	prefs := client.providerPreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) ||
 		!equalStrings(prefs.Ignore, []string{"molasses"}) {
 		t.Fatalf("preferences after cut = %#v, want the named endpoint refused behind the healthy lane", prefs)
@@ -559,7 +559,7 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences("vendor/fast-model", IntentInteractive)
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) || len(prefs.Ignore) != 0 {
 		t.Fatalf("preferences after unnamed cut = %#v, want no endpoint attributed", prefs)
 	}
