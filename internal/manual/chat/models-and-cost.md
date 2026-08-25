@@ -523,11 +523,14 @@ There is no slash command for it.
 `low`, `medium` and `high` are the provider's own three words, and they are sent as they
 are.
 
-`xhigh` and `max` send `high` **and a thinking budget** — 32,000 tokens for `xhigh`, 64,000
-for `max`. `high` is the top of the word ladder every provider shares, so the two rungs
-above it say "more than high" the only way that travels: with a number beside the word. An
-endpoint that understands the word and not the budget therefore sees `high` on all three of
-the top rungs, which is the honest answer — it cannot think harder than its own ceiling.
+`xhigh` and `max` send **a thinking budget instead of a word** — 32,000 tokens for `xhigh`,
+64,000 for `max`. `high` is the top of the word ladder every provider shares, so the two
+rungs above it say "more than high" the only way that travels: as a number. The request
+carries the word or the number and never both — a request carrying both is refused with
+`Only one of "reasoning.effort" and "reasoning.max_tokens" can be specified` — and the
+provider translates whichever one it was given for a model that reads the other. An
+endpoint that cannot be given a number at all falls back to `high`, which is the honest
+answer: it cannot think harder than its own ceiling.
 
 **None of this can fail a turn.**
 
