@@ -982,7 +982,8 @@ running
   nothing: a room is a live lane onto a task in *this* session's work, and a `@` mention
   resolves against work that has **landed** — a task still running in another window is
   neither. Go to that window to act on it. On a page whose only rows are another window's,
-  the foot reads `esc close · ↑↓ move` rather than promising a door.
+  the foot reads `type to filter` and nothing else — it names no `enter` and no verb,
+  because neither does anything there.
 - **A task nothing has named is left off**, because a row with no words on it says nothing
   anybody can act on.
 - They **leave on their own** when that window closes or finishes the work. Nothing
@@ -1147,17 +1148,16 @@ the door is armed, and the armed line names any task that would stop.
 going to get:
 
 - A task **this session is holding** — wherever on the page it is filed — opens its room,
-  exactly as `enter` on the roster does. The foot reads
-  `esc close · ↑↓ move · enter opens its room`.
+  exactly as `enter` on the roster does. The foot reads `enter open its room`.
 - A task **another conversation ran** has no room to open: a room is a live lane onto a task
   in this session's work, and that session is closed. `enter` **goes inside it** instead —
-  the card of everything the project wrote down about that piece of work, over the same
-  page, with this list still underneath. The foot reads
-  `esc close · ↑↓ move · enter goes inside it`. See *Going inside an old task* below.
+  the card of everything the record wrote down about that piece of work, over the same
+  page, with this list still underneath. The foot reads `enter go inside it`. See *Going
+  inside an old task* below.
 - A task **running in another window right now** takes no cursor at all: `↑`/`↓` step over
   it and `enter` does nothing, because it has neither a room here nor a landed row for a
-  mention to point at. On a page whose only rows are those, the foot reads
-  `esc close · ↑↓ move`.
+  mention to point at. On a page whose only rows are those, the foot names no `enter` at
+  all.
 
 Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
@@ -1199,8 +1199,8 @@ door — they are the ones above, reshaped:
   anywhere on it opens the roster page. It is not a row of chips at this width.
 - **The roster's rows** are two-line cards, each a full-width target, and one press opens it
   — a room, or the record card — which is what a click already did at every width.
-- **The roster's foot** is a `‹ back` band in place of the key legend `esc close · ↑↓
-  move · enter opens its room`. Tap it to go back to the conversation.
+- **The roster's foot** is a `‹ back` band in place of the key legend
+  `enter open its room · type to filter`. Tap it to go back to the conversation.
 - **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
@@ -1960,10 +1960,18 @@ inside the task's room, over an empty message box. One card comes up:
 
 The cursor opens on `keep going` — the destructive answer is never under the key you
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
-There is no bypass key: the card is always asked.
+**`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
+a list and the work behind it may be an hour old.
 
 With a pointer, the `✕` at the right end of a room's pinned header raises the same card.
 Strip chips do not carry a stop button.
+
+**There is one other way to stop a task, and it asks no card.** On the **tasks** place
+(`ctrl+.`, `/history`), `→` on a task this conversation is holding opens the row's verbs and
+draws `s stop it`; `s` then ends it. That is two deliberate presses with the word on screen
+for the second of them, which is what the card protects `x` from being without — and the
+card cannot be drawn over a full-screen place anyway, so it would be a question nobody could
+see. It uses the same door in the engine and answers with the same sentence.
 
 **What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
 turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
@@ -2220,6 +2228,44 @@ reading already in hand — nothing goes back to disk for it. On a phone the bot
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
 
-The row verb strip currently offers no `run it again` or `stop it`: the machine-wide
-record has no safe restart seam, and a completed record has no live worker to stop. Open
-the task room to use actions that genuinely exist there.
+## The foot of the tasks place, and the one verb on its row strip
+
+The last line of the tasks place is assembled from the clauses that are **true of the row
+under the cursor**, and never from a fixed sentence. Over a task this window is running it
+reads
+
+```
+enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
+```
+
+The last two keys are on every place and the router adds them. What comes before them
+changes with the cursor:
+
+- `enter open its room` over a task **this conversation is holding** — it has a room.
+- `enter go inside it` over work **another conversation ran** — no room exists, so `enter`
+  opens the record card instead.
+- **no `enter` clause at all** over work **another window is running**: the cursor cannot
+  stop there, so naming a key would be the page promising a door it has not got.
+- `→ verbs: stop it` **only while the row has that verb** — see below.
+- `type to filter`, which is the only thing on screen that says the filter exists. While a
+  filter is on, that clause becomes `esc clear the filter`, because that is the key whose
+  meaning just moved.
+
+**`→` opens the row's verbs, and the tasks place has exactly one: `s stop it`.** It is
+offered over a task **this conversation is holding** that is still `queued` or `running` —
+the same work the roster's own `x` can end, through the same door in the engine, and it
+answers with the engine's own sentence (`stopping task 7 — its branch is kept`). A settled
+task has nothing left to stop, work another conversation ran has no live worker here, and a
+session whose engine has no cancel door is offered nothing — in every one of those cases the
+verb is **absent**, and the foot does not name it.
+
+**It asks no confirmation, and that is deliberate.** The confirmation card guards `x`, which
+is one bare keystroke over a list; on the strip the word `stop it` is drawn on screen and
+only then does `s` mean anything, which is two deliberate presses with the verb in front of
+you. The card is also not available here: it is drawn in the conversation's chrome, and a
+question raised over a full-screen place would be one nobody could see.
+
+**There is no `run it again`, and no key is bound to one.** Nothing on this machine re-runs
+a finished task — a row here is an account of work that happened — and starting the same
+brief again is `/task <brief>`, which is new work with a new id. A capability that cannot
+work is left off rather than drawn dead, so the verb is named nowhere.

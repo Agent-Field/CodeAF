@@ -132,10 +132,16 @@ type stopCard struct {
 	spans []hudSpan
 }
 
+// stopActWord is ENDING THIS WORK, said once for every surface that offers it:
+// the card's own first answer, and the verb the tasks place puts on its `→`
+// strip (place_tasks.go's [tasksPlace.verbs]). Two spellings of one act is two
+// things for a person to learn about one key.
+const stopActWord = "stop it"
+
 // stopAnswers are the two answers, in the order they are drawn: the act first
 // because it is what the card is about, the refusal second because it is where
 // the cursor starts.
-var stopAnswers = [...]string{"stop it", "keep going"}
+var stopAnswers = [...]string{stopActWord, "keep going"}
 
 // stopKeepAt is which of them is "no", and it is the cursor's home.
 const stopKeepAt = 1

@@ -89,9 +89,11 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 			last = strings.TrimSpace(line)
 		}
 	}
-	// The foot is the ROUTER's now, and this place's own keys line is the head
-	// of it ([app.placeHint] appends the two keys that are true on every place).
-	if last != placeTailed(taskSheetRoomKeys) {
+	// The foot is the ROUTER's now, and this place's own sentence is the head of
+	// it ([app.placeHint] appends the two keys that are true on every place). The
+	// sentence itself is SCREEN 1e's and is pinned word for word in
+	// place_tasks_test.go; what this asserts is that nothing is drawn UNDER it.
+	if last != placeTailed(a.taskSheetKeysLine()) {
 		t.Fatalf("something is drawn under the place — it ends on %q, want its own foot:\n%s", last, plain(frame))
 	}
 
@@ -403,8 +405,11 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 	}
 	// THE FOOT SAYS WHICH DOOR enter IS. A page that promised a room over work
 	// that has none would be lying about its own key.
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetInsideKeys) {
+	if text := taskSheetText(a); !strings.Contains(text, tasksEnterInsideWord) {
 		t.Fatalf("the foot promises a room over a task that has none:\n%s", text)
+	}
+	if text := taskSheetText(a); strings.Contains(text, tasksEnterRoomWord) {
+		t.Fatalf("the foot offers a room over work this window never ran:\n%s", text)
 	}
 
 	drive(t, a, key("enter"))

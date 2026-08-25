@@ -268,8 +268,10 @@ func TestAnotherWindowsRowTakesNoCursor(t *testing.T) {
 	if _, ok := a.taskSheetCurrent(); ok {
 		t.Fatal("the cursor is standing on another window's work")
 	}
-	// And the foot promises nothing about enter, because enter does nothing here.
-	if line := a.taskSheetKeysLine(); line != taskSheetReadKeys {
+	// And the foot promises nothing about enter, and no verb either, because
+	// neither does anything here. What is left of SCREEN 1e's line is the one
+	// clause that is still true.
+	if line := a.taskSheetKeysLine(); line != tasksTypeWord {
 		t.Fatalf("the foot says %q over a page with no door on it", line)
 	}
 	// enter is a no-op rather than a panic or a mention of nothing.
