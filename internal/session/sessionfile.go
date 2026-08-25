@@ -301,6 +301,9 @@ type journalDivision struct {
 	// Error is why a review came to nothing, on the one decision where that is
 	// not the same fact as the counter's refusal ([divisionRefusedUnreviewed]).
 	Error string `json:"error,omitempty"`
+	// Parts is what was asked for, by title, so a refusal reads against
+	// something and not against a count.
+	Parts []string `json:"parts,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.

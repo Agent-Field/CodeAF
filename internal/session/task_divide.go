@@ -561,6 +561,9 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	defer func() { a.file.appendDivision(line) }()
 
 	parsed, problem := parseDivideArguments(args)
+	for _, part := range parsed.Parts {
+		line.Parts = append(line.Parts, part.Title)
+	}
 	if problem != "" {
 		line.Decision = divisionRefusedMalformed
 		return problem, true
@@ -663,11 +666,11 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		// reviewer", and a journal that cannot tell those apart is a journal
 		// that hides the road's own faults.
 		line.Decision = divisionRefusedReview
+		line.Error = why
 		if thin && refusal == divisionTooNarrow(parsed.Evidence) {
 			line.Decision = divisionRefusedFloor
 			if why != "" {
 				line.Decision = divisionRefusedUnreviewed
-				line.Error = why
 			}
 		}
 		return refusal, false
@@ -955,7 +958,10 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		return unanswered("unparseable")
 	}
 	if review.Refuse {
-		return nil, divisionNotAsWritten(review.Why), ""
+		// The reviewer's own reason rides the third value so the record can
+		// carry it: a refusal with no why is the one answer an autopsy cannot
+		// learn from, and a live cell has already been read that way.
+		return nil, divisionNotAsWritten(review.Why), "refused: " + strings.TrimSpace(review.Why)
 	}
 	parts := make([]dividePart, 0, len(review.Parts))
 	for _, part := range review.Parts {
