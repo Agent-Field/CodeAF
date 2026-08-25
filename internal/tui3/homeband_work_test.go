@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -9,11 +10,21 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // workLab is one conversation with `tasks` pieces of work behind it, the newest
 // first, each with a name and an outcome — which is the shape the work band is
 // about. The cursor is left on that conversation.
+//
+// THE FRAME IS [homeCardMin] WIDE BECAUSE THERE IS NO CARD BELOW IT. Home is one
+// flat list at every ordinary width and the row's own note carries the fact the
+// card was for (SCREEN 1a); the card exists only where the width is genuinely
+// spare (homebridge.go's ladder). A test whose subject is a BAND therefore has
+// to be asked at a width where a card is drawn at all, and a hundred and sixty
+// cells is where the list has everything it wants AND one still fits.
+//
+// homeCardWidest, just below, is the other end of the same ladder.
 func workLab(t *testing.T, tasks int) *app {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -29,11 +40,17 @@ func workLab(t *testing.T, tasks int) *app {
 		})
 	}
 	a := lab.app(mine)
-	a.width, a.height = 100, 40
+	a.width, a.height = homeCardMin, 40
 	a.openHome()
 	a.home.point(mine)
 	return a
 }
+
+// homeCardWidest is a frame wide enough for the card to reach [homeCardCap] —
+// the width past which its sentences have all the room they will ever ask for.
+// The card takes half of every cell past [homeCardMin] ([homeColumns]), so twice
+// the distance between the floor and the cap is what buys the last of them.
+const homeCardWidest = homeCardMin + 2*(homeCardCap-homeCardCol)
 
 // workCard is the right pane as plain rows.
 func workCard(t *testing.T, a *app) []string {
@@ -128,7 +145,12 @@ func TestATaskThatIsNotDoneLeadsWithItsState(t *testing.T) {
 		EndedAt: now.Add(-2 * time.Hour), SessionID: "aaaa000000000001",
 	})
 	a := lab.app(mine)
-	a.width, a.height = 100, 40
+	// THE SUBJECT HERE IS A WHOLE SENTENCE, so it is asked at the width where the
+	// card has all the room it will ever ask for. At [homeCardMin] the card is
+	// exactly [homeCardCol] cells and `▲ needs your look · nobody could judge it`
+	// is longer than that — which would be a test about clipping wearing the
+	// clothes of a test about wording.
+	a.width, a.height = homeCardWidest, 40
 	a.openHome()
 	a.home.point(mine)
 	rows := workCard(t, a)
@@ -213,34 +235,100 @@ func TestClickingTheWorkFoldLineTogglesIt(t *testing.T) {
 	}
 }
 
-// `→` IS THE KEYBOARD'S WAY IN, and it acts on the whole card because the
-// column has no cursor of its own. It took over from the bare `m` when every
-// letter went back to the box for good ([app.homeKey]'s always-types law).
-func TestTheRightArrowOpensEveryFoldOnTheCard(t *testing.T) {
+// `→` IS THE VERB STRIP'S FIRST, AND THE CARD'S FOLD LADDER ONLY WHERE THE ROW
+// HAS NO VERBS.
+//
+// The arrow used to be the card's outright — it took over from the bare `m` when
+// every letter went back to the box for good ([app.homeKey]'s always-types law).
+// The strip has the stronger claim on it now (verbstrip.go, SCREEN 3c): a row
+// with verbs draws them, because the one law that makes a bare letter safe is
+// that the line naming it is on screen. So on a conversation row `→` opens the
+// strip and the card does not move, and the card's own folds are reached by the
+// pointer instead ([TestClickingTheWorkFoldLineTogglesIt] — the gesture that did
+// not change).
+//
+// WHAT SURVIVES OF THE ARROW IS EVERY ROW THE STRIP HAS NOTHING TO OFFER, and
+// [TestTheRightArrowStillOpensACardNoRowIsOn] pins that end of it.
+func TestTheRightArrowOpensTheVerbStripAndLeavesTheCardAlone(t *testing.T) {
 	a := workLab(t, 6)
 	drive(t, a, key("down"))
-	a.homeKey(key("right"))
-	if strings.Contains(homeText(a), "…3 more tasks") {
-		t.Fatalf("→ did not open the work band:\n%s", homeText(a))
+	drive(t, a, key("right"))
+	if !a.strip.open {
+		t.Fatalf("→ on a row with verbs did not draw them:\n%s", homeText(a))
 	}
-	a.homeKey(key("left"))
 	if !strings.Contains(homeText(a), "…3 more tasks") {
-		t.Fatalf("← did not fold it back:\n%s", homeText(a))
+		t.Fatalf("→ opened the card's folds out from under the strip:\n%s", homeText(a))
 	}
-	// AND ONLY WITH NOTHING TYPED: in a draft the arrows belong to the caret,
-	// so no fold moves while something is in the box.
+	// AND THE WAY OUT LEAVES THE CARD WHERE IT WAS. `←` closes the strip rather
+	// than folding a band, which is the same one-layer-at-a-time rule esc keeps.
+	drive(t, a, key("left"))
+	if a.strip.open {
+		t.Fatalf("← did not leave the strip:\n%s", homeText(a))
+	}
+	if !strings.Contains(homeText(a), "…3 more tasks") {
+		t.Fatalf("leaving the strip moved the card's folds:\n%s", homeText(a))
+	}
+	// AND ONLY WITH NOTHING TYPED: in a draft the arrows belong to the caret, so
+	// neither the strip nor a fold moves while something is in the box.
 	subject, ok := a.homeSubject()
 	if !ok {
 		t.Fatal("the cursor's row has no subject")
 	}
 	a.homeKey(key("x"))
-	a.homeKey(key("right"))
-	if a.anyBandFoldOpen(subject) {
-		t.Fatal("→ opened the card's folds while something was typed")
+	drive(t, a, key("right"))
+	if a.strip.open || a.anyBandFoldOpen(subject) {
+		t.Fatal("→ acted on the row while something was typed")
 	}
 	// And an m, the letter that used to carry this, is just an m in the box.
 	a.homeKey(key("m"))
 	if !strings.Contains(a.home.box.String(), "m") {
 		t.Fatalf("m was eaten as a key: box is %q", a.home.box.String())
+	}
+}
+
+// AND THE ARROW IS STILL THE CARD'S WHERE THE STRIP HAS NOTHING TO SAY.
+//
+// This is the other half of the law above, and it is the half that kept the
+// gesture alive: the strip only claims `→` on a row that HAS verbs
+// ([app.openStrip] answers false otherwise and the arrow keeps every meaning it
+// already had). The card nobody's row is on — the machine's own, at rest — folds
+// its news past [machineNewsShown], and `→` still opens all of it while `←`
+// folds it back.
+func TestTheRightArrowStillOpensACardNoRowIsOn(t *testing.T) {
+	lab := newHomeLab(t)
+	now := middayNow()
+	work := lab.workspace("alpha")
+	mine := lab.session("-alpha", "aaaa000000000001", "Pricing Research", work, now.Add(-time.Hour))
+	// One more piece of news than the band draws, so there is something folded.
+	for i := 0; i < machineNewsShown+1; i++ {
+		if err := standing.Deliver(filepath.Dir(mine), standing.Note{
+			At:    now.Add(-time.Duration(i+1) * time.Minute),
+			Words: "keep an eye on thing " + strconv.Itoa(i), Text: "it moved",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := lab.app(mine)
+	a.width, a.height = homeCardWidest, 40
+	a.openHome()
+	// THE CURSOR ON NOTHING IS WHAT MAKES THIS CARD THE MACHINE'S ([app.homeDetail]),
+	// and a row nobody is on is a row with no verbs for the strip to take.
+	a.home.cursor, a.home.picked = homeRest, false
+	a.home.build()
+	subject, ok := a.homeSubject()
+	if !ok || subject.kind != bandKindMachine {
+		t.Fatalf("the cursor at rest is not on the machine's card: %+v", subject)
+	}
+
+	drive(t, a, key("right"))
+	if a.strip.open {
+		t.Fatalf("a row with no verbs still drew a strip:\n%s", homeText(a))
+	}
+	if !a.anyBandFoldOpen(subject) {
+		t.Fatalf("→ did not open the machine card's folds:\n%s", machineCardText(a, 48))
+	}
+	drive(t, a, key("left"))
+	if a.anyBandFoldOpen(subject) {
+		t.Fatalf("← did not fold the machine card back:\n%s", machineCardText(a, 48))
 	}
 }

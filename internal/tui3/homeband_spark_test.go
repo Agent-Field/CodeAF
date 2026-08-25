@@ -13,6 +13,13 @@ import (
 
 // handsLab is a machine with `working` conversations on it, and the app looking
 // at it with its reading already taken.
+//
+// THE FRAME IS WIDE ENOUGH FOR A CARD BECAUSE THE CHART ONLY EXISTS ON ONE.
+// There is no card at all below [homeCardMin] now (homebridge.go): at every
+// ordinary width home is the flat list and the fact a person keeps is the
+// pulse's `N working` — which is the law
+// [TestTheHandsSparkNeverDrawsAtTheListTier] states from the other side. So a
+// test whose subject is the chart asks at a width where a card is drawn.
 func handsLab(t *testing.T, working int) (*app, time.Time) {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -25,6 +32,7 @@ func handsLab(t *testing.T, working int) (*app, time.Time) {
 	}
 	a := lab.app(mine)
 	a.clock = func() time.Time { return now }
+	a.width, a.height = homeCardMin, 40
 	a.openHome()
 	return a, now
 }

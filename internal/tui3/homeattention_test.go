@@ -457,7 +457,8 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 	if at == homeRest {
 		t.Fatalf("nothing on the ledger is about work that landed:\n%s", homeText(a))
 	}
-	if !strings.Contains(homeText(a), "tasks landed") {
+	// AND IT COUNTS IN A PERSON'S WORDS: one task landed, never `1 tasks`.
+	if !strings.Contains(homeText(a), "1 task landed") {
 		t.Fatalf("the ledger does not say what landed:\n%s", homeText(a))
 	}
 	// THE WORD IN THE MARGIN IS THE DOOR, which is why the two are one field
