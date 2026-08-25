@@ -199,6 +199,93 @@ func TestTheCacheStartsOverWhenTheLedgerShrinks(t *testing.T) {
 	}
 }
 
+// A REPLACEMENT THAT GREW PAST THE OLD ONE IS STILL A REPLACEMENT. A ledger
+// rotated away and started again can be longer than what the cache had already
+// parsed by the time the next beat looks at it — so a cache that asked only
+// "did it shrink" would keep the rows of a file that is gone AND seek into the
+// new one past a prefix it never read, adding two ledgers together with the
+// middle missing. Identity is the question, not size.
+func TestTheCacheStartsOverWhenTheLedgerIsReplacedAndRegrows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	for i := 0; i < 3; i++ {
+		recordUsage(t, path, UsageLine{At: at.Add(time.Duration(i) * time.Hour),
+			Model: "old", Calls: 1, Input: 10, USD: 0.10})
+	}
+	cache := &UsageCache{Path: path}
+	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 3 {
+		t.Fatalf("first read gave %d lines, %v", len(lines), err)
+	}
+
+	// The rotation: the ledger is moved aside and a NEW file takes its name,
+	// then grows past the length of the one it replaced before anybody looks.
+	// The rows are appended directly, because the ledger's own writer is holding
+	// the descriptor that the rename carried away with it.
+	if err := os.Rename(path, path+".1"); err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		row, err := json.Marshal(UsageLine{At: at.Add(time.Duration(24+i) * time.Hour),
+			Day: "2026-08-26", Model: "new", Calls: 1, Input: 10, USD: 0.20})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := appendRaw(path, string(row)+"\n"); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read after the rotation: %v", err)
+	}
+	if len(lines) != 6 {
+		t.Fatalf("the cache holds %d lines, want the six of the ledger that is there: %+v", len(lines), lines)
+	}
+	for _, line := range lines {
+		if line.Model != "new" {
+			t.Fatalf("a row from the rotated-away ledger survived: %+v", lines)
+		}
+	}
+}
+
+// The same size and the same modification time are not the same file. A ledger
+// replaced by one that happens to match both would otherwise be answered out of
+// memory for as long as the window stayed open.
+func TestTheCacheNoticesAReplacementOfTheSameSizeAndTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	at := usageAt(t, "2026-08-25 08:00")
+	recordUsage(t, path, UsageLine{At: at, Model: "aaa", Calls: 1, Input: 10, USD: 0.10})
+	cache := &UsageCache{Path: path}
+	if lines, err := cache.Read(time.Time{}); err != nil || len(lines) != 1 {
+		t.Fatalf("first read gave %d lines, %v", len(lines), err)
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	// A different file of the same length, wearing the same name and the same
+	// modification time: exactly what a rotation with a same-shaped replacement
+	// leaves behind.
+	replacement := filepath.Join(filepath.Dir(path), "replacement")
+	recordUsage(t, replacement, UsageLine{At: at, Model: "zzz", Calls: 1, Input: 10, USD: 0.10})
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	if err := os.Chtimes(path, stat.ModTime(), stat.ModTime()); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	lines, err := cache.Read(time.Time{})
+	if err != nil {
+		t.Fatalf("read after the replacement: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Model != "zzz" {
+		t.Fatalf("the cache answered from the file that is gone: %+v", lines)
+	}
+}
+
 // THE LEDGER AND THE TRANSCRIPT HOLD THE SAME MONEY. A turn that seals writes
 // both, and the line the machine keeps has to be able to say whose the money was.
 func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {
