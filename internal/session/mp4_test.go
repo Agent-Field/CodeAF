@@ -90,19 +90,39 @@ func TestMP4FactsReadTheWideVersionOneHeader(t *testing.T) {
 }
 
 // The emptiness law's exits: bytes that are not an mp4, a header that states
-// no duration, and the spec's unknown sentinel all answer not-ok, so the note
-// carries no number nobody measured.
+// no duration or an unbelievable one, the spec's unknown sentinels, and a
+// track list the walk could not read whole all answer not-ok, so the note
+// carries no fact nobody measured. The damaged-track cases are the ones that
+// bite: "no sound track seen" must never masquerade as "without sound".
 func TestMP4FactsRefuseWhatTheyCannotMeasure(t *testing.T) {
+	lyingBox := []byte{0, 0, 0, 200, 'f', 'r', 'e', 'e', 1, 2, 3}
+	sentinelV1 := make([]byte, 32)
+	sentinelV1[0] = 1
+	binary.BigEndian.PutUint32(sentinelV1[20:24], 1000)
+	binary.BigEndian.PutUint64(sentinelV1[24:32], 0xFFFFFFFF)
+
 	cases := map[string][]byte{
-		"not an mp4 at all":         []byte("MP4 and then some bytes standing in for a render"),
-		"empty":                     nil,
-		"no movie header":           mp4TestFile(mp4TestTrack("soun")),
-		"zero duration":             mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 0))),
-		"zero timescale":            mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(0, 6050))),
-		"unknown duration":          mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 0xFFFFFFFF))),
-		"truncated header":          mp4TestFile(mp4TestBox("mvhd", make([]byte, 6))),
-		"lying box size":            {0, 0, 0, 200, 'm', 'o', 'o', 'v', 1, 2, 3},
-		"size under its own header": {0, 0, 0, 3, 'm', 'o', 'o', 'v', 0, 0, 0, 0},
+		"not an mp4 at all":                  []byte("MP4 and then some bytes standing in for a render"),
+		"empty":                              nil,
+		"no movie header":                    mp4TestFile(mp4TestTrack("soun")),
+		"zero duration":                      mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 0))),
+		"zero timescale":                     mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(0, 6050))),
+		"unknown duration":                   mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 0xFFFFFFFF))),
+		"32-bit sentinel in the wide header": mp4TestFile(mp4TestBox("mvhd", sentinelV1), mp4TestTrack("soun")),
+		"over an hour":                       mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 600*4000)), mp4TestTrack("soun")),
+		"under a tenth of a second":          mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 30)), mp4TestTrack("soun")),
+		"truncated header":                   mp4TestFile(mp4TestBox("mvhd", make([]byte, 6))),
+		"lying box size":                     {0, 0, 0, 200, 'm', 'o', 'o', 'v', 1, 2, 3},
+		"size under its own header":          {0, 0, 0, 3, 'm', 'o', 'o', 'v', 0, 0, 0, 0},
+		"no tracks at all":                   mp4TestFile(mp4TestBox("mvhd", mp4TestMovieHeader(600, 6050))),
+		"track without a handler": mp4TestFile(
+			mp4TestBox("mvhd", mp4TestMovieHeader(600, 6050)),
+			mp4TestBox("trak", mp4TestBox("mdia", nil))),
+		"damage hiding a later sound track": mp4TestFile(
+			mp4TestBox("mvhd", mp4TestMovieHeader(600, 6050)),
+			mp4TestTrack("vide"),
+			lyingBox,
+			mp4TestTrack("soun")),
 	}
 	for name, data := range cases {
 		if _, _, ok := mp4Facts(data); ok {
@@ -117,6 +137,10 @@ func TestMediaLengthReadsLikeAClock(t *testing.T) {
 		2 * time.Second: "2.0s",
 		time.Duration(115.125 * float64(time.Second)): "1m55s",
 		10 * time.Minute: "10m00s",
+		// The branch is taken on the rounded tenths, so nothing between 59.95
+		// and 60 can print the "60.0s" the sub-minute rule forbids.
+		time.Duration(59.96 * float64(time.Second)): "1m00s",
+		time.Duration(59.94 * float64(time.Second)): "59.9s",
 	}
 	for length, want := range cases {
 		if got := mediaLength(length); got != want {

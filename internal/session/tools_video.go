@@ -61,7 +61,7 @@ const videoLabel = "video"
 // The description carries the async law in the model's own terms, because a
 // model that does not know the call returns before the file exists will read the
 // job line as a failure and try again — twice the money, twice the wait.
-const generateVideoDescription = "Generate a video from a text prompt. This tool RETURNS IMMEDIATELY with a background job id, because a render takes minutes: the work keeps going while you and the user carry on talking, and when it lands you are told in a note naming the file — you do not wait for it, poll it, or call it twice. Give frame_paths to pin the motion (the first image is the opening frame, a second is the closing one) and reference_paths for pictures that set the style. EVERY CALL IS AN INDEPENDENT RENDER: the video model sees only this prompt and these images — no earlier clip, none of this conversation — so anything that must hold across clips (a face, a costume, a setting) must be described or passed as a picture on every call, and one clip continues from another only when the earlier clip's final frame is handed in as the next call's opening frame, which makes connected clips a sequence rather than a parallel batch. The landing note reports the clip's measured length and whether it carries sound. Watch it with the jobs tool and stop it with jobs kill; a stopped render saves nothing."
+const generateVideoDescription = "Generate a video from a text prompt. This tool RETURNS IMMEDIATELY with a background job id, because a render takes minutes: the work keeps going while you and the user carry on talking, and when it lands you are told in a note naming the file — you do not wait for it, poll it, or call it twice. Give frame_paths to pin the motion (the first image is the opening frame, a second is the closing one) and reference_paths for pictures that set the style. EVERY CALL IS AN INDEPENDENT RENDER: the video model sees only this prompt and these images — no earlier clip, none of this conversation — so anything that must hold across clips (a face, a costume, a setting) must be described or passed as a picture on every call, and one clip continues from another only when the earlier clip's final frame is handed in as the next call's opening frame, which makes connected clips a sequence rather than a parallel batch. The landing note reports the clip's measured length and whether it carries sound, whenever the file can be measured. Watch it with the jobs tool and stop it with jobs kill; a stopped render saves nothing."
 
 const generateVideoSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What happens in the shot: subject, action, camera movement, style, lighting. The whole prompt reaches the video model, so detail is worth writing."},` +
@@ -262,10 +262,11 @@ func videoFailure(model string, err error) string {
 func describeGeneratedVideo(workspace, path string, video []byte, model string) string {
 	measured := ""
 	if length, sound, ok := mp4Facts(video); ok {
-		measured = ", " + mediaLength(length) + " with sound"
+		carrying := " with sound"
 		if !sound {
-			measured = ", " + mediaLength(length) + " without sound"
+			carrying = " without sound"
 		}
+		measured = ", " + mediaLength(length) + carrying
 	}
 	return fmt.Sprintf("%s — %s of mp4 video%s, filmed on %s",
 		displayMediaPath(workspace, path), mediaByteSize(len(video)), measured, model)
