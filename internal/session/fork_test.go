@@ -756,7 +756,7 @@ func mustQuote(text string) string {
 // were already right.
 func TestTheSharedShellGateStillSpeaksInTheAuditorsVoice(t *testing.T) {
 	for _, refused := range []string{"", "rm -rf .", "go test ./... && rm -rf ."} {
-		text, ok := auditRefusal(refused, auditCommands)
+		text, ok := auditRefusal(refused, auditReadCommands)
 		if ok {
 			t.Fatalf("%q was allowed", refused)
 		}

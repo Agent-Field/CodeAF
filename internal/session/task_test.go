@@ -919,7 +919,7 @@ func TestAuditOffMergesUnaudited(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test"),
+			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -973,7 +973,7 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test"),
+			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1064,7 +1064,7 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Fix the failing test", "make TestHollow pass"),
+			proposeCall("Fix the failing test", "make TestHollow pass; the check is `go test ./...`"),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1511,7 +1511,14 @@ func TestRefutingAnUnverifiedNodeCascades(t *testing.T) {
 // including a destructive command, a command that runs the node's own code, and
 // a verification with a second command chained onto it.
 func TestAuditBeltIsReadOnly(t *testing.T) {
-	belt := auditBelt(t.TempDir(), auditCommands)
+	// The door is built the way a real audit builds it: the checks the work
+	// itself named, and the always-safe reading commands under them
+	// (task_checks.go). Nothing about the belt knows what `go test` is.
+	door := auditDoor{
+		checks:  []string{"go test", "go build", "go vet"},
+		allowed: append([]string{"go test", "go build", "go vet"}, auditReadCommands...),
+	}
+	belt := auditBelt(t.TempDir(), door.allowed)
 
 	byName := map[string]bare.Tool{}
 	for _, tool := range belt {
@@ -1556,12 +1563,12 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 		"go test ./...", "go  test ./... -run TestX", "go build ./...", "go vet ./...",
 		"git diff --cached", "git status --porcelain", "git log --oneline -5",
 	} {
-		if refusal, ok := auditRefusal(allowed, auditCommands); !ok {
+		if refusal, ok := auditRefusal(allowed, door.allowed); !ok {
 			t.Fatalf("the auditor may not run %q: %s", allowed, refusal)
 		}
 	}
 	// A prefix is matched at a word boundary, not as a string prefix.
-	if _, ok := auditRefusal("go testify", auditCommands); ok {
+	if _, ok := auditRefusal("go testify", door.allowed); ok {
 		t.Fatal("the allowlist matched a command that merely starts like one")
 	}
 }
@@ -2157,7 +2164,7 @@ func TestGoalContractFreezesAtAdmission(t *testing.T) {
 	// And the auditor reads that same frozen text — one acceptance, two
 	// readers, so the work cannot be finished against one and judged against
 	// another.
-	question := auditQuestion(node, taskTree{root: "/repo"}, auditGround{}, nil, "it claims it is done")
+	question := auditQuestion(node, taskTree{root: "/repo"}, auditGround{}, auditDoor{}, nil, "it claims it is done")
 	if !strings.Contains(question, admittedAcceptance) {
 		t.Fatalf("the auditor was given a different acceptance:\n%s", question)
 	}

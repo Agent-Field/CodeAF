@@ -1942,7 +1942,36 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 // settlePolicy is this agent's standing answer to "who decides a landing nobody
 // could check" (task_contract.go's [TaskSettle]). A blank row reads as asking,
 // which is the default and the only safe reading of a caller that said nothing.
-func (a *Agent) settlePolicy() TaskSettle { return settleOrAsk(a.config.TaskSettle) }
+//
+// EXCEPT THAT A LADDER MAY NOT END IN A PERSON WHO IS NOT THERE.
+//
+// [Config.AskConsent] is this build's one notion of "somebody is watching this
+// session and will answer" — it is what an interactive surface sets and what
+// `--once` and every other headless door deliberately leaves false. Where it is
+// false there is no card to press `[d] decide these for me` on, no settings
+// panel to turn `task.settle` to auto in, and nobody to read a landing that says
+// it is waiting on them. A node that landed needing a look in such a session is
+// a run that has stopped, and it was measured stopping: on a ten-hour benchmark
+// the main task landed "finished, but needs your look" and the harness sat there
+// until the wall clock ran out.
+//
+// So an unattended session reads as AUTO, which is not a bypass and not a new
+// road: it is the same [TaskSettleAuto] the person's own "decide these for me"
+// button sets (internal/tui3's settleAlways), reached by the same landing note,
+// answered by the same `tasks … resolve` verb, with the same standing escape —
+// the auto note tells the model to come back to the person when it genuinely
+// cannot tell. What changes is only who is asked FIRST, which is all this policy
+// has ever changed.
+//
+// IT NEVER GOES THE OTHER WAY. A session somebody IS watching keeps the row they
+// set, and a blank row still reads as asking: a build that started deciding on
+// behalf of a person who is sitting right there would be the opposite defect.
+func (a *Agent) settlePolicy() TaskSettle {
+	if !a.config.AskConsent {
+		return TaskSettleAuto
+	}
+	return settleOrAsk(a.config.TaskSettle)
+}
 
 // The two sentences a landing nobody could check ends with, and which one is
 // written is the whole of what `task.settle` changes.
@@ -3286,7 +3315,11 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	if check := a.config.TaskProgressCheck; check != nil {
 		return check(node.instruction(), append([]string(nil), evidence...))
 	}
-	auditor, err := a.newAuditAgent(dir, node)
+	// THE SAME DOOR THE NODE'S OWN AUDIT WOULD GET (task_checks.go). A progress
+	// check reads a running tree and decides whether the work is moving; it has
+	// no business with a wider hand than the judge that will grade the result,
+	// and no reason for a narrower one.
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node))
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}
