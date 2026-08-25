@@ -460,12 +460,17 @@ type homeLine struct {
 	// note is the phone inbox's `since you left` row — one thing that happened
 	// while you were away — and is nil on every other line (homephone.go).
 	note *homePhoneNote
-	// zone is what this row says while it is standing in one of the two zones
-	// above the list — `needs you`, `moving` — and nil on every line of the list
-	// itself (homeattention.go). A zone row keeps the KIND of the thing it stands
-	// for, so this field is the only thing that tells the two views of one live
-	// object apart.
-	zone *homeAttention
+	// sw is the reading's own line, for every row of the resting switcher, and
+	// nil on every line built any other way — a match under a query, an errand,
+	// the phone's inbox (homeswitch.go).
+	//
+	// IT IS WHAT PAINTS THE ROW AND NOT WHAT THE ROW IS. The kind is still
+	// [homeSession] or [homeItem], so every door on this screen goes on working
+	// unchanged; this pointer is how the row knows to be drawn as one flat ranked
+	// line — mark, name, project tag, note, age — rather than as a row under a
+	// project heading. It points INTO [homeView.reading], which is replaced whole
+	// with the lines it fills, so the two can never be a rebuild apart.
+	sw *switcherLine
 	// task is the ONE PIECE OF WORK a row was named after, and nil on every row
 	// that stands for a conversation as a whole. The `needs you` strip's landed
 	// rows are the ones that carry it today (homeattention.go's [attentionTask]):
@@ -625,13 +630,21 @@ type homeView struct {
 	// nothing at the two wider tiers and vanish whole below them
 	// (homeattention.go).
 	tier homeTier
-	// zoneTop and zoneRows belong to the zones' own column at [homeTierColumns]:
-	// which of its rows it is showing, and which line of it landed on each screen
-	// row so a press can find one (homebridge.go). Both are meaningless at every
-	// narrower tier, where the zones are strips inside the one column [top] and
-	// the frame's own hit map already answer for.
-	zoneTop  int
-	zoneRows []int
+	// reading is the resting list as switcher.go read it — the ledger, the
+	// ranked rows, the fold — and every line of [homeView.lines] built from it
+	// points into this (homeswitch.go). It is replaced whole with those lines,
+	// which is what makes the pointers safe.
+	reading switcherReading
+	// grouped is `alt+g` and hideQuiet is `alt+q`, seeded from the app's own two
+	// flags when the screen opens so that the view a person chose survives
+	// closing home; moreOpen is the one fold at the foot of the list standing
+	// open, and it dies with the screen as every other fold here does.
+	grouped   bool
+	hideQuiet bool
+	moreOpen  bool
+	// ledger is what the `since you left` block was told about memory, taken with
+	// the world rather than at the draw ([app.readSwitchLedger]).
+	ledger switcherLedgerInput
 	// spin is the ONE line on this page that animates, and [homeRest] when
 	// nothing on it is moving (homespinner.go).
 	spin int
@@ -727,6 +740,11 @@ func (a *app) openHome() tea.Cmd {
 		deliverables: map[string]homeDeliverablesCache{},
 		expanded:     map[string]bool{},
 		itemsOpen:    map[string]bool{},
+		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
+		// this screen and nothing else does, which is why they are seeded from
+		// the app rather than kept here (homeswitch.go).
+		grouped:   a.switchGrouped,
+		hideQuiet: a.switchQuiet,
 		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
 		// screen, so opening home again finds every one that was still going —
 		// with its row, its tail and its pane exactly as they were left
@@ -734,6 +752,9 @@ func (a *app) openHome() tea.Cmd {
 		exchanges: a.exchanges,
 	}
 	a.readStandBands()
+	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
+	// beat (homeswitch.go's [app.readSwitchLedger]).
+	a.readSwitchLedger()
 	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
 	// bands, because a project home knows only through a watch is one of the
 	// projects this has to answer for ([homeView.readGone]).
@@ -953,6 +974,7 @@ func (a *app) refreshHome() {
 	// a beat apart would sort a firing item against a world that had not heard of
 	// it yet.
 	a.readStandBands()
+	a.readSwitchLedger()
 	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO, for the
 	// reason above it: the pulse line's count and the machine card's rows are
 	// derived from these bands, and a reading taken on its own clock would be a
@@ -992,12 +1014,6 @@ func (h *homeView) build() {
 	// number would take the exchange off the screen at the instant it asked a
 	// question (homeexchange.go).
 	previousExchange := h.focusedExchange()
-	// AND SO IS THE ZONE IT WAS STANDING IN. A row in `needs you` and the same
-	// row under its own project are two views of one live object, which the four
-	// restores above cannot tell apart — so the zone is remembered here and the
-	// cursor put back into it after they have run (homeattention.go's
-	// [homeView.pointZone] carries the whole of why).
-	defer h.pointZone(h.cursorZone())
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -1900,9 +1916,10 @@ func (l homeLine) stop() bool {
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
 		return true
-	// attention lane: a strip's fold is a door like every other fold on this
-	// column; its label is not, for [homeHeading]'s reason (homeattention.go).
-	case homeAttentionMore:
+	// the switcher's own two: a `since you left` line is a door into the place
+	// that owns it, and the fold at the foot is a door over the rows it is
+	// hiding. Its headings are not, for [homeHeading]'s reason (homeswitch.go).
+	case homeLedger, homeSwitchFold:
 		return true
 	}
 	return false
@@ -2260,20 +2277,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.foldElsewhere(true)
 			return nil
 		}
-		// AT THE COLUMNS TIER THE ARROW FOLLOWS THE GEOGRAPHY. The zones stand
-		// to the left of the list, so → off a row in `needs you` or `moving`
-		// crosses the gutter into the list ([homeView.crossColumns]), the way
-		// tab does but pointed rather than circular. The zone's own `…N more`
-		// line stays a fold, because the cursor is standing on the fold itself.
-		if h.box.empty() && h.threeColumns() && h.cursor < h.zoneSplit() {
-			if line, ok := h.focusedLine(); ok && line.kind == homeAttentionMore && line.folded {
-				h.foldZone(line.dir, true)
-				return nil
-			}
-			if h.crossColumns(true) {
-				a.refreshHomeRepo(time.Now())
-				return nil
-			}
+		// AND THE SWITCHER'S OWN FOLD, which is the same gesture at the scale of
+		// the whole list (homeswitch.go).
+		if line, ok := h.focusedLine(); ok && line.kind == homeSwitchFold && line.folded {
+			h.foldSwitch(true)
+			return nil
 		}
 		// AND THE SAME ARROW ONE SCALE FURTHER: over a card, → opens every
 		// band the card is folding, and ← below folds them all back
@@ -2297,31 +2305,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 				return nil
 			}
 		}
-		// AND FROM REST IT IS THE NAMED WAY INTO WHAT NEEDS YOU
-		// ([app.homeZoneEntry]), which is the one thing `tab` used to do here that
-		// no arrow did.
-		if a.homeZoneEntry() {
-			a.refreshHomeRepo(time.Now())
+		// AND THE SWITCHER'S OWN FOLD CLOSES BACK, the other half of the gesture
+		// `→` opens it with (homeswitch.go).
+		if line, ok := h.focusedLine(); ok && line.kind == homeSwitchFold && !line.folded {
+			h.foldSwitch(false)
 			return nil
-		}
-		// ← CROSSES BACK ACROSS THE GUTTER: off a plain row in the list at the
-		// columns tier, the arrow lands in the zones' column, on the same
-		// conversation when the zones hold one ([homeView.crossColumns]).
-		// Fold lines are exempt because the cursor is standing on the thing
-		// the arrow folds; an opened zone tail closes for the same reason.
-		if h.box.empty() && h.threeColumns() {
-			if line, ok := h.focusedLine(); ok && line.kind == homeAttentionMore && !line.folded {
-				h.foldZone(line.dir, false)
-				return nil
-			}
-			if h.cursor >= h.placesFrom() {
-				if line, ok := h.focusedLine(); ok &&
-					(line.kind == homeSession || line.kind == homeItem || line.kind == homeExchangeRow) &&
-					h.crossColumns(false) {
-					a.refreshHomeRepo(time.Now())
-					return nil
-				}
-			}
 		}
 		if line, ok := h.focusedLine(); ok && (line.kind == homeQuiet || line.kind == homeSession) && h.expanded[line.dir] {
 			h.fold(line.dir, false)
@@ -2492,10 +2480,16 @@ func (h *homeView) buildFor() {
 		h.buildPhone()
 		return
 	}
-	// attention lane: `needs you` and `moving` ride above the list, gathered from
-	// the same reading it is built from (homeattention.go).
-	h.buildAttention()
-	h.buildWorld()
+	// THE SWITCHER IS THE RESTING SHAPE AND THE DROP-UP IS THE TYPED ONE
+	// (homeswitch.go). With nothing in the box this screen is one flat ranked
+	// list of everything on the machine; the first character makes it the
+	// ranked-by-[homeRank] drop-up it has always been, with `ask here` and the
+	// action row against the box.
+	if h.searching() {
+		h.buildWorld()
+		return
+	}
+	h.buildSwitch()
 }
 
 // homeEnter is the one decision this surface makes, and it makes a different
@@ -2568,10 +2562,14 @@ func (a *app) homeEnter() tea.Cmd {
 		h.archiveOpen = line.folded
 		h.build()
 		return nil
-	case homeAttentionMore:
-		// attention lane: one strip's own tail, keyed by the strip it belongs to
-		// (homeattention.go).
-		h.foldZone(line.dir, line.folded)
+	case homeLedger:
+		// A `since you left` LINE IS A DOOR INTO THE PLACE THAT OWNS IT
+		// (homeswitch.go). It is the whole discoverability mechanism of this
+		// design: you learn a place exists on the day it has something to tell
+		// you, and enter takes you to it.
+		return a.homeLedgerEnter(line)
+	case homeSwitchFold:
+		h.foldSwitch(line.folded)
 		return nil
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
@@ -3107,14 +3105,6 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		return a.exchangePress(column, row)
 	}
 	at := hits[y]
-	// bridge lane: at [homeTierColumns] this screen row also carries a row of the
-	// zones' column, and which of the two a press meant is a question about the x
-	// (homebridge.go). Everything below acts on the line it lands on and cannot
-	// tell which column that line was drawn in — a zone row is a door of the kind
-	// it always was.
-	if zoned, ok := a.homeZoneHit(x, y); ok {
-		at = zoned
-	}
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
 	}
@@ -3162,12 +3152,12 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	// attention lane: a strip's tail is a fold like the four above it
-	// (homeattention.go).
-	if a.home.lines[at].kind == homeAttentionMore {
+	// the switcher's own fold over everything the list is not drawing, which is
+	// the same gesture at the scale of the whole list (homeswitch.go).
+	if a.home.lines[at].kind == homeSwitchFold {
 		a.home.cursor = at
 		a.home.picked = true
-		a.home.foldZone(a.home.lines[at].dir, a.home.lines[at].folded)
+		a.home.foldSwitch(a.home.lines[at].folded)
 		a.touch()
 		return nil
 	}
@@ -3283,12 +3273,6 @@ func (a *app) homeHover(x, y int) {
 	left, right := homeColumns(width)
 	if !inPane && (right <= 0 || x < left) && y >= 0 && y < len(hits) {
 		at := hits[y]
-		// bridge lane: and the zones' column is hit-tested the way the press does
-		// it, so the row that lights up is the row a click would take
-		// (homebridge.go).
-		if zoned, ok := a.homeZoneHit(x, y); ok {
-			at = zoned
-		}
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
@@ -3340,7 +3324,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// the body, the frame is exactly the whole terminal, the tail-clamp keeps row
 	// 0 and the last rows, and the caret rides the clamp. What is left here is
 	// home's own body and the three hit maps it answers the pointer with.
-	lines, hits, caretX, caretY := placeFrame(a, width, height, homeMark{-1, -1, -1},
+	lines, hits, caretX, caretY := placeFrame(a, width, height, homeMark{-1, -1},
 		func(width, room int) []placeRow[homeMark] {
 			left, right := homeColumns(width)
 			a.homeWindow(room)
@@ -3349,7 +3333,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 			for _, drawn := range body {
 				rows = append(rows, placeRow[homeMark]{
 					text: drawn.text,
-					hit:  homeMark{line: drawn.hit, pane: drawn.pane, zone: drawn.zone},
+					hit:  homeMark{line: drawn.hit, pane: drawn.pane},
 				})
 			}
 			return rows
@@ -3358,26 +3342,25 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// by the draw for the reason [standingCard.choiceRow] is: the press and the
 	// hover resolve against what this frame actually drew, so a stale map is a
 	// click answering for a row that has moved. They are unpacked AFTER the frame
-	// so the clamp that cuts rows cuts all three of them the same way.
-	rows, panes, zones := make([]int, len(hits)), make([]int, len(hits)), make([]int, len(hits))
+	// so the clamp that cuts rows cuts both of them the same way.
+	rows, panes := make([]int, len(hits)), make([]int, len(hits))
 	for i, mark := range hits {
-		rows[i], panes[i], zones[i] = mark.line, mark.pane, mark.zone
+		rows[i], panes[i] = mark.line, mark.pane
 	}
-	a.home.pane, a.home.zoneRows = panes, zones
+	a.home.pane = panes
 	return lines, rows, caretX, caretY
 }
 
 // homeMark is what one row of home answers the pointer with: which line of the
-// LIST it drew, which row of the right pane landed on it, and which line of the
-// ZONES' column did — three maps that share a screen row at the columns tier,
-// told apart by the x the press arrived at (homebridge.go's [app.homeZoneHit]).
+// LIST it drew, and which row of the right pane landed on it. The two share a
+// screen row and are told apart by the x the press arrived at
+// ([app.homePane]: the gutter belongs to the column on its right).
 //
 // It is named apart from [homeHit], which is a PROJECT that survived the box and
 // has nothing to do with the pointer.
 type homeMark struct {
 	line int
 	pane int
-	zone int
 }
 
 // homeDrawn is one screen line, the column line it belongs to, and — while an
@@ -3387,43 +3370,30 @@ type homeDrawn struct {
 	hit  int
 	// pane is which row of the right column landed on this screen line, or -1.
 	pane int
-	// zone is which line of the ZONES' column landed on it, or -1 — the same
-	// answer for the first of the three columns that `hit` is for the second
-	// (homebridge.go).
-	zone int
 }
 
 // homeColumns splits the frame: everything the list has on the left and the
-// card on the right, with the detail dropped entirely on a frame too narrow to
-// hold two readable columns ([homeMinDetail]).
+// card on the right, with the card absent entirely below [homeCardMin].
 //
-// AT THE COLUMNS TIER THE LEFT HALF IS TWO COLUMNS, and this still answers for
-// both of them as one number: the card's edge is measured off the WIDTH and
-// never off what the zones found, so it stands in the same cell whether the
-// zones are drawn beside the list or the list has taken their room
-// (homebridge.go's [homeView.threeColumns]). Everything that resolves a pointer
-// against the card — the press, the hover, the pane — reads this and needs to
-// know nothing about the tier.
+// THE LIST IS WHAT THE WIDTH IS FOR AND THE CARD TAKES WHAT IS SPARE. Below the
+// tier there is one column and it is the whole frame; above it the card takes
+// half of every cell past the tier's own floor, up to [homeCardCap], and the
+// list keeps the rest — so a wider terminal widens the thing a person reads
+// twenty rows of, and the card stops growing once its sentences fit.
+// Everything that resolves a pointer against the card — the press, the hover,
+// the pane — reads this and needs to know nothing about the tier.
 func homeColumns(width int) (left, right int) {
-	if width < homeMinDetail {
+	if width < homeCardMin {
 		return width, 0
 	}
-	if width >= homeMinColumns {
-		zone, places, card := homeThreeColumns(width)
-		return zone + homeGutter + places, card
+	card := homeCardCol
+	if extra := width - homeCardMin; extra > 0 {
+		card += extra / 2
 	}
-	left = width / 2
-	if left > homeListCap {
-		left = homeListCap
+	if card > homeCardCap {
+		card = homeCardCap
 	}
-	if left < homeListFloor {
-		left = homeListFloor
-	}
-	right = width - left - homeGutter
-	if right < homeDetailFloor {
-		return width, 0
-	}
-	return left, right
+	return width - card - homeGutter, card
 }
 
 // homeBody draws the two columns side by side, room rows tall.
@@ -3450,7 +3420,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 			if i < len(pane) {
 				text = pane[i]
 			}
-			drawn = append(drawn, homeDrawn{text: text, hit: -1, pane: i, zone: -1})
+			drawn = append(drawn, homeDrawn{text: text, hit: -1, pane: i})
 		}
 		return drawn
 	}
@@ -3473,10 +3443,6 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	// would take the outcome, the last line said and the arithmetic off the card
 	// entirely and leave a title floating in the middle of the frame. The list is
 	// the thing typing is about; the card beside it reads top down, as a card does.
-	// bridge lane: at [homeTierColumns] this is TWO columns rather than one — the
-	// zones in their own, the places beside them — and it comes back the same
-	// shape either way, so nothing below this line knows which it got
-	// (homebridge.go's [app.homeLeft]).
 	column := a.homeLeft(left, room, pal)
 	lift := a.homeLift(len(column), room)
 	var detail []string
@@ -3485,9 +3451,9 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	}
 	drawn := make([]homeDrawn, 0, room)
 	for i := 0; i < room; i++ {
-		text, hit, pane, zone := "", -1, -1, -1
+		text, hit, pane := "", -1, -1
 		if at := i - lift; at >= 0 && at < len(column) {
-			text, hit, zone = column[at].text, column[at].hit, column[at].zone
+			text, hit = column[at].text, column[at].hit
 		}
 		if right > 0 && i < len(detail) {
 			// THE PANE'S ROWS ARE THE BODY'S ROWS, ONE FOR ONE. The detail
@@ -3508,7 +3474,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 			}
 			text += strings.Repeat(" ", pad+homeGutter) + detail[i]
 		}
-		drawn = append(drawn, homeDrawn{text: text, hit: hit, pane: pane, zone: zone})
+		drawn = append(drawn, homeDrawn{text: text, hit: hit, pane: pane})
 	}
 	return drawn
 }
@@ -3543,7 +3509,7 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 		if h.searching() {
 			word = homeNoMatchWord
 		}
-		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1, zone: -1}}
+		return []homeDrawn{{text: "  " + pal.dim(fit(word, width-2)), hit: -1, pane: -1}}
 	}
 	return a.homeRows(h.top, len(h.lines), width, room, pal)
 }
@@ -3551,11 +3517,8 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 // homeRows is ONE column's window of the line list: at most room rows, from
 // `top`, stopping short of `end`.
 //
-// THE END IS A PARAMETER BECAUSE THE LIST IS DRAWN IN TWO PLACES NOW. At
-// [homeTierColumns] the zones are a column of their own and the places are the
-// column beside it, both windows onto the one list of lines (homebridge.go), and
-// a row of either is drawn by the same [app.homeLine] against the width its own
-// column has.
+// THE END IS A PARAMETER because the window onto the list is a range rather than
+// a count: `top` is where it starts and `end` is the last line there is.
 func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 	h := &a.home
 	if top < 0 {
@@ -3568,7 +3531,7 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 	at := top
 	for ; at < end && len(drawn) < room; at++ {
 		drawn = append(drawn, homeDrawn{
-			text: a.homeLine(h.lines[at], at, width, pal), hit: at, pane: -1, zone: -1,
+			text: a.homeLine(h.lines[at], at, width, pal), hit: at, pane: -1,
 		})
 	}
 	// A LONG LIST'S TAIL FADES WITH DEPTH — NEVER STRIPES (depthfade.go). This
@@ -3597,10 +3560,14 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 // homeLine draws one line of the left column.
 func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	h := &a.home
-	// attention lane: the two zones above the list draw their own labels, rows
-	// and fold, and answer false for everything else (homeattention.go).
-	if text, ok := a.attentionLine(line, at, width, pal); ok {
-		return text
+	// THE SWITCHER PAINTS ITS OWN ROWS (homeswitch.go). Every line the resting
+	// list is made of carries the reading's own line, and the reading is what
+	// knows the shape: the state mark in the first cell, the name, the project as
+	// a tag, the note, and `here` or an age at the right margin. One painter for
+	// the whole list is what keeps a heading, a ledger line and a conversation on
+	// one grid.
+	if line.sw != nil {
+		return h.reading.paint(*line.sw, width, pal, at == h.cursor, at == h.hover)
 	}
 	switch line.kind {
 	case homeBlank:
@@ -4197,6 +4164,14 @@ func (a *app) homeDetail(width, room int, pal palette) []string {
 		// not on any more.
 		return nil
 	}
+	if line.sw != nil {
+		// THE SWITCHER'S CARD IS FIVE BANDS AND IT ACTS (SCREEN 1d,
+		// homeswitch.go). It is only ever drawn past [homeCardMin], where the
+		// width is genuinely spare, so it may not be a second reading of the row
+		// beside it — every band on it either asks something answerable here or
+		// points at a place.
+		return a.homeSwitchCard(line, width, room, pal)
+	}
 	row := line.row
 
 	// The bands, in order, each already painted. The first is the title and is
@@ -4470,12 +4445,35 @@ func (a *app) homeLast(row session.SessionRow) string {
 // homeHint is the line under the foot: what the keyboard does, and what the box
 // will do with what is in it.
 //
-// bridge lane: and it gains ONE clause at the widest tier, where there is a key
-// that does not exist at any other — tab, between the zones (homebridge.go). It
-// is added here rather than written into each sentence below so that a hint and
-// the frame it is drawn under can never disagree about which tier this is.
+// IT GAINS ONE CLAUSE ON A ROW THAT HAS VERBS, and it gains it here rather than
+// in each of the sentences below so that a hint and the strip can never disagree
+// about whether `→` does anything (verbstrip.go). The zones' own `tab` clause
+// left with the zones: there is one column now, and `tab` belongs to the router.
 func (a *app) homeHint() string {
-	return homeHintWithTab(a.homeHintWords(), a.homeTabbable())
+	hint := a.homeHintWords()
+	if a.strip.open || len(a.homeRowVerbs()) == 0 {
+		return hint
+	}
+	return homeHintClause(hint, homeVerbsWord)
+}
+
+// homeVerbsWord is how the foot advertises the strip. It names the key and the
+// noun, in the hint slot's own grammar (render.go's [app.hintWord]), and never
+// the letters themselves — those are drawn on the strip and nowhere else, which
+// is SCREEN 3a's whole clause.
+const homeVerbsWord = "→ verbs"
+
+// homeHintClause puts one clause on a hint BEFORE THE WAY OUT: every hint this
+// screen draws ends with `esc`, because the way out is the last thing a person
+// needs to be told and the first thing they look for.
+func homeHintClause(hint, clause string) string {
+	if strings.Contains(hint, clause) {
+		return hint
+	}
+	if at := strings.LastIndex(hint, " · esc"); at >= 0 {
+		return hint[:at] + " · " + clause + hint[at:]
+	}
+	return hint + " · " + clause
 }
 
 // homeHintWords is that line before the tier's own key is put on it.
@@ -4529,6 +4527,14 @@ func (a *app) homeHintWords() string {
 		return "enter or → show what is put away · esc close"
 	case line.kind == homeArchiveFold:
 		return "enter or ← fold the archive · esc close"
+	case line.kind == homeLedger:
+		// THE ROW SAYS WHERE IT GOES, so the hint says what the key does with it
+		// and never repeats the name (homeswitch.go).
+		return "enter opens the place this happened in · esc close"
+	case line.kind == homeSwitchFold && line.folded:
+		return "enter or → show them · esc close"
+	case line.kind == homeSwitchFold:
+		return "enter or ← fold them away · esc close"
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's

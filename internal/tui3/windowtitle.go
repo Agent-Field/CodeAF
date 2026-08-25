@@ -57,6 +57,18 @@ const (
 // question ([app.asking]) or any kept one's ([app.waitingCount], the same
 // predicate home's rung and the banner read) — because the tab stands for the
 // whole terminal, not for the one conversation it happens to be drawing.
+// attentionPick is the glyph tier: the drawn shape, or its plain stand-in on a
+// surface being read aloud. It lived with the two attention strips until the
+// switcher replaced them, and it survives here because the window's own title is
+// the one other place a state mark is chosen (styles.go's [glyphRunASCII] holds
+// the law).
+func attentionPick(ascii bool, glyph, plain string) string {
+	if ascii {
+		return plain
+	}
+	return glyph
+}
+
 func (a *app) windowTitle() string {
 	name := a.sessionName()
 	switch {

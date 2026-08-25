@@ -178,12 +178,17 @@ func (a *app) rowVerbs() []verb {
 	return nil
 }
 
-// homeRowVerbs is the strip on home, and today it carries exactly the three
-// actions home has been ADVERTISING on a standing item's row without binding
-// (`homeItemActions`, homestanding.go). They were bound to ctrl+e and ctrl+x,
-// which the line never named, and bare `p` and `s` typed. Now the line and the
-// keys are the same three things.
+// homeRowVerbs is the strip on home. On the resting switcher the verbs are the
+// READING's — the question's own option words on a row that is asking, and the
+// doors a row with an address has (homeswitch.go's [app.homeSwitchVerbs]); on a
+// row built any other way it carries the two actions home has been ADVERTISING
+// on a standing item without binding (`homeItemActions`, homestanding.go), which
+// were bound to ctrl+e and ctrl+x, which the line never named, and whose bare
+// `p` and `s` typed.
 func (a *app) homeRowVerbs() []verb {
+	if verbs := a.homeSwitchVerbs(); len(verbs) > 0 {
+		return verbs
+	}
 	line, ok := a.home.previewLine()
 	if !ok || line.kind != homeItem {
 		return nil

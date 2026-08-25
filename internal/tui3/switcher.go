@@ -489,9 +489,37 @@ func (a *app) enginePending() bool {
 
 const switcherShown = 8
 
+// switcherVerb is one thing the strip can offer for a row: the letter, the word
+// it is spelled with, and — for the two verbs that ANSWER a question — the
+// option key that answer has to be sent under.
+//
+// THE ANSWER KEY IS CARRIED AND NEVER DERIVED. A question's options are the ones
+// that session offered ("1", "3", sometimes "2"), and a strip that recomputed
+// them from the letter it drew would be answering a different question than the
+// one on the row (homeband_answer.go's [app.answerKey] holds the same law for
+// the digits).
 type switcherVerb struct {
-	key  rune
-	word string
+	key    rune
+	word   string
+	answer string
+}
+
+// switcherView is HOW this reading is shown, as opposed to what is in it: the
+// three things `alt+g`, `alt+q` and the fold line change about one list of
+// facts. They travel together because they are one question — what shape is this
+// list in — and a reader that took three bools in a row would be a reader whose
+// call sites are three unlabelled trues.
+type switcherView struct {
+	// grouped is `alt+g`: the flat ranked list becomes one block per project.
+	grouped bool
+	// hideQuiet is `alt+q`: nothing that is neither asking nor moving is drawn,
+	// and the fold at the foot says so in one word.
+	hideQuiet bool
+	// all is the fold standing open — every row drawn, with no cap at all. It is
+	// a door and not a setting ([homeQuiet] states the rule this inherits): a
+	// line that says rows are being hidden and cannot be asked to stop hiding
+	// them is a dead end somebody hits and gives up at.
+	all bool
 }
 
 type switcherLedgerInput struct {
@@ -540,17 +568,20 @@ type switcherReading struct {
 	lines        []switcherLine
 	chatCount    int
 	hasAttention bool
-	grouped      bool
-	hideQuiet    bool
+	view         switcherView
 	now          time.Time
+	// hidden is how many rows the fold at the foot is standing for, and zero
+	// when there is no fold. It is what the door needs to know whether opening
+	// it would show anything.
+	hidden int
 }
 
 // readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, bucket string, seen time.Time, now time.Time, grouped bool, hideQuiet bool, ledger switcherLedgerInput) switcherReading {
-	r := switcherReading{grouped: grouped, hideQuiet: hideQuiet, now: now}
+func readSwitcher(world session.World, items map[string][]StandingItemView, bucket string, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
+	r := switcherReading{view: view, now: now}
 	projectByDir := make(map[string]session.Project, len(world.Projects))
 	var all []switcherRow
 	hereSet := false
@@ -605,12 +636,22 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, buck
 	}
 
 	r.addLedger(items, world, seen, ledger)
-	if grouped {
+	if view.grouped {
 		r.addGrouped(all, bucket, projectByDir)
 	} else {
 		r.addFlat(all)
 	}
 	return r
+}
+
+// switcherCap is how many rows this reading draws before the rest go behind one
+// door. It is [switcherShown] at rest and NO CAP AT ALL once the fold has been
+// opened, which is the whole of what opening it means.
+func (r switcherReading) cap(n int) int {
+	if r.view.all {
+		return n
+	}
+	return min(switcherShown, n)
 }
 
 func switcherSortAt(row session.SessionRow) time.Time {
@@ -808,11 +849,11 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 		}
 	}
 	selected := append([]switcherRow(nil), active...)
-	if !r.hideQuiet {
+	if !r.view.hideQuiet {
 		selected = append(selected, quiet...)
 	}
-	shown := min(switcherShown, len(selected))
-	selected = selected[:shown]
+	capped := min(switcherShown, len(selected))
+	selected = selected[:r.cap(len(selected))]
 	byProject := map[string][]switcherRow{}
 	for _, row := range selected {
 		byProject[row.project] = append(byProject[row.project], row)
@@ -854,24 +895,25 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 			r.lines = append(r.lines, switcherLine{row: &copy})
 		}
 	}
-	hidden := len(active) + len(quiet) - len(selected)
+	hidden := len(active) + len(quiet) - capped
 	if hidden > 0 {
 		clause := ""
-		if len(selected) >= len(active) {
-			quietAt := len(selected) - len(active)
-			if r.hideQuiet {
+		if capped >= len(active) {
+			quietAt := capped - len(active)
+			if r.view.hideQuiet {
 				clause = "quiet"
 			} else if quietAt < len(quiet) && !quiet[quietAt].at.IsZero() {
 				clause = "quiet since " + strings.ToLower(quiet[quietAt].at.Format("Jan 2"))
 			}
 		}
+		r.hidden = hidden
 		r.addFold(foldLine(hidden, clause))
 	}
 }
 
 func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 	eligible := all
-	if r.hideQuiet {
+	if r.view.hideQuiet {
 		eligible = nil
 		for _, row := range all {
 			if row.needs || row.moving {
@@ -879,26 +921,40 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 			}
 		}
 	}
-	shown := min(switcherShown, len(eligible))
+	// WHAT THE FOLD STANDS FOR IS COUNTED AT THE CAP AND NEVER AT WHAT IS DRAWN.
+	// An opened fold draws every row and still says how many rows it is the door
+	// over, because it is the way back — a fold that vanished when it was opened
+	// would leave the list with no way to become a summary again.
+	capped := min(switcherShown, len(eligible))
+	shown := r.cap(len(eligible))
 	for _, row := range eligible[:shown] {
 		copy := row
 		r.lines = append(r.lines, switcherLine{row: &copy})
 	}
-	if more := len(all) - shown; more > 0 {
+	if more := len(all) - capped; more > 0 {
 		clause := ""
-		if shown < len(all) && !all[shown].needs && !all[shown].moving {
-			if r.hideQuiet {
+		if capped < len(all) && !all[capped].needs && !all[capped].moving {
+			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if !all[shown].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(all[shown].at.Format("Jan 2"))
+			} else if !all[capped].at.IsZero() {
+				clause = "quiet since " + strings.ToLower(all[capped].at.Format("Jan 2"))
 			}
 		}
+		r.hidden = more
 		r.addFold(foldLine(more, clause))
 	}
 }
 
+// addFold puts the one door over everything this reading is not drawing, and
+// wears the mark that says which way it goes — `▸` while it is hiding rows,
+// `▾` once it has been opened, the same two marks every other fold on this
+// surface uses.
 func (r *switcherReading) addFold(word string) {
-	row := switcherRow{kind: switcherFold, fold: true, foldWord: word}
+	mark := tokens.GlyphCollapsed
+	if r.view.all {
+		mark = tokens.GlyphExpanded
+	}
+	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + strings.TrimPrefix(word, tokens.GlyphCollapsed)}
 	r.lines = append(r.lines, switcherLine{row: &row})
 }
 
@@ -920,34 +976,58 @@ func (r switcherReading) rows(width int, pal palette) []string {
 	}
 	out := make([]string, 0, len(r.lines))
 	for _, line := range r.lines {
-		switch {
-		case line.section:
-			left := "what wants you first"
-			if r.chatCount > 0 {
-				left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
-			}
-			right := "alt+g group by project"
-			if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · alt+q hide the quiet ones")+3 <= width {
-				right += " · alt+q hide the quiet ones"
-			}
-			out = append(out, switcherSides(width, left, right, pal.dim, pal.dim))
-		case line.heading != "":
-			out = append(out, pal.dim(fit(line.heading, width)))
-		case line.row != nil:
-			out = append(out, switcherPaintRow(*line.row, width, pal, r.grouped))
-		case line.blank:
-			out = append(out, "")
-		}
+		out = append(out, r.paint(line, width, pal, false, false))
 	}
 	return out
 }
 
-func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) string {
+// paint is one line of the reading, with the band on the row the keyboard or the
+// pointer is standing on.
+//
+// THE BAND IS THE WHOLE OF THE SELECTION AND THERE IS NO LEAD. This list has its
+// state mark in the first cell of every row (SCREEN 1a), so two more cells spent
+// on a `›` would push every name two columns right for a fact the ground already
+// carries — which is the one device SCREEN 2a names for the cursor: "the band —
+// where the cursor is — selection, and the subject goes bold inside it".
+func (r switcherReading) paint(line switcherLine, width int, pal palette, sel, hover bool) string {
+	if width < 1 {
+		return ""
+	}
+	switch {
+	case line.section:
+		left := "what wants you first"
+		if r.chatCount > 0 {
+			left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
+		}
+		right := switcherGroupWord
+		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+switcherQuietWord)+3 <= width {
+			right += " · " + switcherQuietWord
+		}
+		return switcherSides(width, left, right, pal.dim, pal.dim)
+	case line.heading != "":
+		return pal.dim(fit(line.heading, width))
+	case line.row != nil:
+		return switcherPaintRow(*line.row, width, pal, r.view.grouped, sel, hover)
+	}
+	return ""
+}
+
+// The two views this list offers and the keys that reach them. They are quoted
+// on the section line and in the manual from this one spelling.
+const (
+	switcherGroupWord = "alt+g group by project"
+	switcherQuietWord = "alt+q hide the quiet ones"
+)
+
+func switcherPaintRow(row switcherRow, width int, pal palette, grouped, sel, hover bool) string {
 	if row.fold {
-		return pal.dim(fit(row.foldWord, width))
+		return switcherBand(pal.dim(fit(row.foldWord, width)), width, pal, sel, hover)
 	}
 	if row.kind == switcherLedger {
-		return switcherSides(width, row.title, row.place, pal.ink, pal.dim)
+		// A LEDGER LINE IS A DOOR, so it takes the band like any other stop, and
+		// the place it names sits out at the right margin where every row's tail
+		// sits.
+		return switcherBand(switcherSides(width, row.title, row.place, pal.ink, pal.dim), width, pal, sel, hover)
 	}
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	if row.paused {
@@ -965,7 +1045,7 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) str
 		project = ""
 	}
 	if row.here {
-		age = "here"
+		age = homeHereWord
 	}
 	if width < 80 {
 		note = ""
@@ -988,17 +1068,35 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool) str
 	}
 	tail := switcherTailWidth(parts)
 	room := max(0, width-ansi.StringWidth(glyph)-1-tail)
-	line := glyphInk(glyph) + " " + pal.ink(fit(row.title, room))
+	// THE SUBJECT GOES BOLD INSIDE THE BAND and the tail steps up with it: dim
+	// grey on a raised ground is grey on grey, which is the rule every row on
+	// this surface is painted under (palette.go's [overlayRowTinted]).
+	name, tailInk := pal.ink(fit(row.title, room)), pal.dim
+	if sel || hover {
+		name, tailInk = pal.bold(name), pal.ink
+	}
+	line := glyphInk(glyph) + " " + name
 	used := ansi.StringWidth(line)
 	if pad := width - used - tail; pad > 0 {
 		line += strings.Repeat(" ", pad)
 	}
 	for _, part := range parts {
 		if part != "" {
-			line += " " + pal.dim(part)
+			line += " " + tailInk(part)
 		}
 	}
-	return fit(line, width)
+	return switcherBand(fit(line, width), width, pal, sel, hover)
+}
+
+// switcherBand is the one ground this list paints: the row the keyboard is on,
+// and the row the pointer is over, at the same rung — whether a person arrived
+// with `↓` or with the mouse, the row they are on is the row they are on
+// (palette.go's ladder).
+func switcherBand(line string, width int, pal palette, sel, hover bool) string {
+	if !sel && !hover {
+		return line
+	}
+	return pal.cursor(line, width)
 }
 
 func switcherTailWidth(parts []string) int {
@@ -1035,24 +1133,39 @@ func (r switcherReading) verbs(i int) []switcherVerb {
 	if !ok {
 		return nil
 	}
+	return switcherVerbsFor(row)
+}
+
+// switcherVerbsFor is the same answer taken from a row rather than from its
+// position, which is what the surface holding these rows as lines of its own
+// column needs (homeswitch.go).
+func switcherVerbsFor(row switcherRow) []switcherVerb {
 	if row.kind == switcherStanding {
 		verbs := switcherQuestionVerbs(row.options)
 		if row.paused {
-			return append(verbs, switcherVerb{'r', "resume it"})
+			return append(verbs, switcherVerb{key: 'r', word: "resume it"})
 		}
-		return append(verbs, switcherVerb{'p', "pause it"})
+		return append(verbs, switcherVerb{key: 'p', word: "pause it"})
 	}
 	if row.kind != switcherConversation {
 		return nil
 	}
 	verbs := switcherQuestionVerbs(row.options)
-	verbs = append(verbs, switcherVerb{'a', "put it away"})
+	verbs = append(verbs, switcherVerb{key: 'a', word: "put it away"})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
-		verbs = append(verbs, switcherVerb{'t', "new chat here"}, switcherVerb{'o', "open folder"}, switcherVerb{'c', "copy path"})
+		verbs = append(verbs, switcherVerb{key: 't', word: "new chat here"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'c', word: "copy path"})
 	}
 	return verbs
 }
 
+// switcherQuestionVerbs is 1b's answer-in-place: the question's OWN option
+// words, on the two letters a hand already knows, carrying the option key the
+// answer has to be sent under.
+//
+// TWO, AND NEVER THE WHOLE LIST. A strip is one row of the frame and a question
+// with five options would push the list down by two more; the digits still
+// answer every one of them, on the row, because they are drawn there
+// (homeband_answer.go).
 func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
 	var verbs []switcherVerb
 	for i, option := range options {
@@ -1064,7 +1177,7 @@ func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
 			key = 'n'
 		}
 		if word := strings.TrimSpace(option.Label); word != "" {
-			verbs = append(verbs, switcherVerb{key, word})
+			verbs = append(verbs, switcherVerb{key: key, word: word, answer: option.Key})
 		}
 	}
 	return verbs
