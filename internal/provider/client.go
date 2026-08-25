@@ -36,11 +36,24 @@ type Config struct {
 	SupportsParameter func(model, parameter string) (bool, bool)
 
 	// Routing says how this client asks the router to choose among the
-	// endpoints serving one model (velocity.go). NIL IS LATENCY — the default a
-	// person waiting on an answer would pick — so a caller that has never heard
-	// of the row still chases speed, and one that has hands down the resolved
-	// setting rather than a path to it.
+	// endpoints serving one model (velocity.go). NIL IS NOBODY'S CHOICE, not a
+	// choice of latency: the adapter then decides per request from who is
+	// waiting on it, so a caller that has never heard of the row still chases
+	// speed on a person's own turn and price on an errand. A caller that HAS
+	// heard of it hands down the resolved setting rather than a path to it, and
+	// that setting wins over everything.
 	Routing RoutingSource
+
+	// ModelPrice is the model's OWN published list price, per token in US
+	// dollars, from rows already in memory. It is what the latency ask's price
+	// ceiling is derived from (velocity.go's latencyPriceCeiling), and like
+	// SupportsParameter it must not block or perform I/O: a catalog that has not
+	// resolved answers known=false, which sends no ceiling at all.
+	//
+	// known=false is the ONLY way to say "no price". A published zero is a real
+	// figure — the free variants a router carries — and must not be reported as
+	// unknown.
+	ModelPrice func(model string) (prompt, completion float64, known bool)
 
 	// Fallbacks are the models to try, in order, when no endpoint serving the
 	// configured one will accept the request's shape (endpoints.go). It is the
@@ -246,6 +259,10 @@ const maxResponseBytes = 64 << 20
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
+	// intent is whether a person is waiting on this call (velocity.go). It is
+	// resolved once here, at the top of the call, rather than at encode time,
+	// because it is a fact about the CALLER and cannot change between the two.
+	intent RoutingIntent
 	// relaxed is what this encode has been told to leave off the body, set only
 	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
 	// which is what keeps a healthy request byte-for-byte what it always was.
@@ -253,7 +270,11 @@ type callKnobs struct {
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
-	return callKnobs{cacheKey: CacheKeyFrom(ctx), effort: effortFrom(ctx)}
+	return callKnobs{
+		cacheKey: CacheKeyFrom(ctx),
+		effort:   effortFrom(ctx),
+		intent:   routingIntentFrom(ctx),
+	}
 }
 
 // modelFor names the model a request will actually run against: the one the
@@ -429,9 +450,11 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
 	// than "instant" (velocity.go).
+	served := servedProvider(payload)
+	noteServed(ctx, served)
 	c.noteVelocity(
 		c.modelFor(request),
-		servedProvider(payload),
+		served,
 		0,
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
@@ -703,6 +726,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// still a sighting: its TTFT is the whole call, which is exactly the
 	// complaint a person has about it.
 	generation := c.clock()
+	noteServed(ctx, served)
 	if !firstToken.IsZero() {
 		c.noteVelocity(
 			c.modelFor(request),

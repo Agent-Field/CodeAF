@@ -750,6 +750,10 @@ func (c Config) providerConfig(model string) provider.Config {
 		// "unknown", which the adapter treats as "send nothing on your own
 		// initiative" — never as permission.
 		SupportsParameter: c.Models.SupportsParameter,
+		// And the model's own list price, which is what the adapter bounds a
+		// latency-sorted request against. Same contract: never blocks, and
+		// "nobody published one" sends no ceiling at all.
+		ModelPrice: c.Models.PriceNow,
 	}
 }
 

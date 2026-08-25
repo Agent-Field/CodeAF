@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -12,9 +13,16 @@ import (
 //
 // A router fans one model over many endpoints. Two of them are a datacentre
 // away with a warm replica; one is a machine somebody is also training on, and
-// it answers the same request at a fifth of the speed for the same price. The
-// model id says nothing about which one a request landed on, so a session that
-// only names its model is describing a decision it did not make.
+// it answers the same request at a fifth of the speed. The model id says
+// nothing about which one a request landed on, so a session that only names its
+// model is describing a decision it did not make.
+//
+// AND THEY DO NOT CHARGE THE SAME. That was assumed here for a long time and it
+// is simply false: an endpoint's tariff is its own, and the model id's published
+// list price is a figure none of them is obliged to match. Asking for the
+// fastest one and saying nothing about price is how a cost autopsy over 44
+// bench cells found this surface paying ~3.5× list at identical token counts —
+// see latencyPriceCeiling, which is the whole of the answer.
 //
 // This file is the half of the adapter that both ASKS for speed and CHECKS it.
 // Asking is one object on the wire — the routing preferences below. Checking is
@@ -35,8 +43,11 @@ import (
 type RoutingStrategy string
 
 const (
-	// RoutingLatency asks for the currently-fastest endpoint. It is the default
-	// because a chat session is a person waiting.
+	// RoutingLatency asks for the currently-fastest endpoint UNDER A PRICE
+	// CEILING (see latencyPriceCeiling). It is what a call with nobody's row
+	// written and a person waiting on it gets, because a chat session is a
+	// person waiting — and the ceiling is there because being served fastest was
+	// never worth being charged anything.
 	RoutingLatency RoutingStrategy = "latency"
 	// RoutingPrice asks for the cheapest endpoint that can serve the request.
 	RoutingPrice RoutingStrategy = "price"
@@ -57,6 +68,59 @@ func (s RoutingStrategy) sortWord() string {
 	default:
 		return "latency"
 	}
+}
+
+// ── WHO IS WAITING ──────────────────────────────────────────────────────────
+//
+// Sorting by latency is a decision about a PERSON, not about a model: it is
+// worth something only when somebody is sitting there watching the answer
+// arrive. A task worker, a divided part, an auditor, a judge, a title, a memory
+// pass — nobody is waiting on any of those, and pinning the fastest endpoint
+// for them buys nothing and pays whatever that endpoint charges.
+//
+// So the request carries who is waiting, and this file is the one place that
+// reads it.
+
+// RoutingIntent says whether a person is waiting on this call.
+type RoutingIntent int
+
+const (
+	// IntentInteractive is a call somebody is watching arrive. It is the zero
+	// value, because a call that has said nothing about itself is the
+	// conversation's own turn until something says otherwise.
+	IntentInteractive RoutingIntent = iota
+	// IntentBackground is a call nobody is waiting on. Speed is worth nothing
+	// to it and price is worth everything.
+	IntentBackground
+)
+
+type routingIntentContextKey struct{}
+
+// WithRoutingIntent states who is waiting on the calls made under ctx.
+//
+// IT IS SAID AND NEVER INFERRED. "Nobody is watching this stream" is close to
+// the answer but is not it: a tool that asks a model something takes the
+// observer off the context and the person is still sitting there waiting for
+// the turn it belongs to. Only the call site knows whether anybody is waiting,
+// so only the call site may say — and a call that says nothing keeps the
+// behaviour it has always had.
+func WithRoutingIntent(ctx context.Context, intent RoutingIntent) context.Context {
+	return context.WithValue(ctx, routingIntentContextKey{}, intent)
+}
+
+// RoutingIntentFrom answers who is waiting on the calls made under ctx,
+// interactive when nothing said. It is the read half of [WithRoutingIntent],
+// exported so a surface can assert what its own calls will ask for without
+// standing up a router.
+func RoutingIntentFrom(ctx context.Context) RoutingIntent {
+	return routingIntentFrom(ctx)
+}
+
+// routingIntentFrom answers who is waiting on this call, interactive when
+// nothing said.
+func routingIntentFrom(ctx context.Context) RoutingIntent {
+	intent, _ := ctx.Value(routingIntentContextKey{}).(RoutingIntent)
+	return intent
 }
 
 // ParseRoutingStrategy reads a settings word. An unrecognized word is NOT an
@@ -92,21 +156,48 @@ type staticRouting RoutingStrategy
 func (s staticRouting) RoutingStrategy() RoutingStrategy { return RoutingStrategy(s) }
 
 // StaticRouting is one already-resolved answer as a source. The empty strategy
-// is the default rather than a refusal, so a caller that has nothing to say
-// gets latency.
+// is NOBODY HAVING CHOSEN rather than a refusal, so a caller that has nothing
+// to say leaves the adapter to decide per request from who is waiting on it —
+// see [Client.routingFor].
 func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRouting(strategy) }
 
-// routing resolves the strategy for this client.
-func (c *Client) routing() RoutingStrategy {
+// routingChoice is the strategy A PERSON CHOSE, and whether one was chosen at
+// all. An empty source, an empty word, or no source is "nobody said" — which is
+// a different fact from "somebody said latency", and the whole of what lets the
+// default below depend on who is waiting while an explicit row still wins.
+func (c *Client) routingChoice() (RoutingStrategy, bool) {
 	if c.config.Routing == nil {
-		return RoutingLatency
+		return RoutingLatency, false
 	}
 	strategy := c.config.Routing.RoutingStrategy()
 	if strings.TrimSpace(string(strategy)) == "" {
-		return RoutingLatency
+		return RoutingLatency, false
 	}
 	parsed, _ := ParseRoutingStrategy(string(strategy))
-	return parsed
+	return parsed, true
+}
+
+// routing resolves the strategy for this client with nothing said about who is
+// waiting. It is what the ledger's own gates read — they only ever ask whether
+// routing is off — and it keeps the old answer: no row means latency.
+func (c *Client) routing() RoutingStrategy {
+	strategy, _ := c.routingChoice()
+	return strategy
+}
+
+// routingFor resolves the strategy one request will actually ask for.
+//
+// THE PERSON'S ROW WINS OUTRIGHT. Everything below it is the DEFAULT moving
+// with who is waiting: the conversation's own turn chases speed, and a call
+// nobody is sitting in front of chases price.
+func (c *Client) routingFor(intent RoutingIntent) RoutingStrategy {
+	if chosen, ok := c.routingChoice(); ok {
+		return chosen
+	}
+	if intent == IntentBackground {
+		return RoutingPrice
+	}
+	return RoutingLatency
 }
 
 // providerPrefs is the routing preference object.
@@ -123,11 +214,74 @@ func (c *Client) routing() RoutingStrategy {
 // silently drops it, because a planning call that was supposed to think and did
 // not is a wrong answer rather than a slow one.
 type providerPrefs struct {
-	Sort              string   `json:"sort,omitempty"`
-	Order             []string `json:"order,omitempty"`
-	Ignore            []string `json:"ignore,omitempty"`
-	AllowFallbacks    *bool    `json:"allow_fallbacks,omitempty"`
-	RequireParameters *bool    `json:"require_parameters,omitempty"`
+	Sort              string    `json:"sort,omitempty"`
+	Order             []string  `json:"order,omitempty"`
+	Ignore            []string  `json:"ignore,omitempty"`
+	AllowFallbacks    *bool     `json:"allow_fallbacks,omitempty"`
+	RequireParameters *bool     `json:"require_parameters,omitempty"`
+	MaxPrice          *maxPrice `json:"max_price,omitempty"`
+}
+
+// maxPrice is the ceiling an endpoint's own tariff must sit under to serve this
+// request. The router spells the numbers in US DOLLARS PER MILLION TOKENS,
+// which is a million times the unit the catalog publishes; the conversion is
+// [Client.priceCeiling]'s and is done in exactly one place.
+//
+// Neither field is omitempty. A model whose list price really is zero — the
+// free variants a router publishes — gets a ceiling of zero, and that is the
+// honest ask rather than a missing one; dropping it would quietly send `{}` and
+// mean the opposite.
+//
+// IT CANNOT EXPRESS A CACHE-READ CEILING. The router's field takes `prompt`,
+// `completion`, `request` and `image` and nothing else, so the 4.0× the cost
+// autopsy measured on CACHED tokens is bounded only indirectly, through the
+// prompt ceiling that the same endpoint's tariff is derived from. That is a
+// real limit of the mechanism and not an omission here.
+type maxPrice struct {
+	Prompt     float64 `json:"prompt"`
+	Completion float64 `json:"completion"`
+}
+
+// latencyPriceCeiling is how far above a model's own published list price an
+// endpoint may charge and still be worth choosing for speed.
+//
+// THE MEASUREMENT IT ANSWERS. A cost autopsy over 44 bench cells found this
+// surface paying ~3.5× what the model's list price says the same token counts
+// should cost: 1.4× list on uncached prompt tokens, 4.0× on cached ones (a
+// ~44% cache discount where list promises 80%), and 1.9× on output. Nothing
+// about the model or the answer differed. The whole gap was `sort: latency`
+// asking the router for the fastest endpoint and then accepting whatever that
+// endpoint charged, because the ask carried no ceiling at all.
+//
+// 1.25 IS THE HONEST BOUND, and the reasoning is about a person rather than
+// about a number. An endpoint 25% over list is buying a latency edge somebody
+// can actually feel on a turn. An endpoint 4× over list is buying nothing a
+// person notices on a five-minute task — the answer arrives while they are
+// still reading the last one either way — so there is no version of "a chat
+// session is a person waiting" that justifies paying it.
+const latencyPriceCeiling = 1.25
+
+// priceCeiling is the ceiling one request carries, nil when there is none to
+// carry.
+//
+// ABSENCE, NEVER A GUESS. A model the catalog has no published price for — a
+// row that never loaded, a slug the router calls "it depends", a catalog still
+// warming — sends no ceiling and routes exactly as it did before. A ceiling
+// invented from a neighbouring model's price would be this process quietly
+// refusing endpoints on a number nobody published.
+func (c *Client) priceCeiling(model string) *maxPrice {
+	if c.config.ModelPrice == nil {
+		return nil
+	}
+	prompt, completion, known := c.config.ModelPrice(normalizeModel(model))
+	if !known || prompt < 0 || completion < 0 {
+		return nil
+	}
+	const perMillion = 1_000_000
+	return &maxPrice{
+		Prompt:     prompt * perMillion * latencyPriceCeiling,
+		Completion: completion * perMillion * latencyPriceCeiling,
+	}
 }
 
 // providerPreferences builds the object one request will carry, nil when none
@@ -141,19 +295,35 @@ type providerPrefs struct {
 // It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
 // compatible endpoint that is not a router either ignores it or 400s on it —
 // neither of which is worth risking for a preference it could not honour.
-func (c *Client) providerPreferences(model string) *providerPrefs {
+func (c *Client) providerPreferences(model string, intent RoutingIntent) *providerPrefs {
 	if !c.isOpenRouter() {
 		return nil
 	}
-	strategy := c.routing()
+	strategy := c.routingFor(intent)
 	word := strategy.sortWord()
 	if word == "" {
 		return nil
 	}
 	yes := true
 	prefs := &providerPrefs{Sort: word, AllowFallbacks: &yes, RequireParameters: &yes}
+	if strategy == RoutingLatency {
+		// The ceiling rides the latency ask and only the latency ask. Sorting by
+		// price is already asking for the cheapest thing available, and a ceiling
+		// on top of it could only ever take endpoints away without changing which
+		// one is chosen.
+		prefs.MaxPrice = c.priceCeiling(model)
+	}
 	if c.velocity != nil {
-		prefs.Order, prefs.Ignore = c.velocity.preferences(model)
+		order, ignore := c.velocity.preferences(model)
+		prefs.Ignore = ignore
+		// THE LEDGER'S ORDER IS A SPEED RANKING, and `provider.order` names what
+		// to try FIRST — so sending it beside `sort: price` would put this
+		// process's own fastest lane ahead of the cheapest one and quietly undo
+		// the sort. A request that asked for price gets the refusals, which are
+		// about endpoints that will not answer at all, and nothing that ranks.
+		if strategy != RoutingPrice {
+			prefs.Order = order
+		}
 	}
 	return prefs
 }
@@ -172,10 +342,88 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 	relaxed := *prefs
 	relaxed.RequireParameters = nil
 	relaxed.Ignore = nil
+	// The price ceiling is the third thing that can empty the endpoint set: a
+	// model whose every endpoint charges above its own list price has no lane
+	// left once the ceiling is applied, and "no endpoints found" is a worse
+	// answer than a dear one. It comes off with the rest of the filter, and the
+	// sort still asks for the fastest of whatever remains.
+	relaxed.MaxPrice = nil
 	if relaxed.Sort == "" && len(relaxed.Order) == 0 && relaxed.AllowFallbacks == nil {
 		return nil
 	}
 	return &relaxed
+}
+
+// ServedEndpoint is a slot one caller opens to be told WHICH endpoint answered
+// its calls.
+//
+// It exists because [LastServed] cannot answer that question honestly for a
+// caller: the ledger's latest sighting is process-wide, and two task nodes
+// running the same model concurrently would each read the other's endpoint. The
+// slot is scoped to the context the caller stamped, so what it holds is always
+// an answer to one of that caller's own requests.
+//
+// It holds the MOST RECENT answer and nothing else. A caller stamps it around a
+// turn and reads it beside each response, which is the grain the journal writes
+// at (internal/session's addUsage).
+type ServedEndpoint struct {
+	mu   sync.Mutex
+	name string
+}
+
+// Name is the endpoint that answered most recently, empty when nothing has
+// answered yet or when no answer named its server — which is every endpoint
+// that is not a router.
+func (s *ServedEndpoint) Name() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.name
+}
+
+func (s *ServedEndpoint) note(name string) {
+	if s == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		// THE ATTRIBUTION LAW, the same one the ledger keeps: an answer whose
+		// server did not identify itself replaces nothing. Blanking the slot
+		// would turn one unnamed reply into "we no longer know" about the named
+		// ones beside it.
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.name = name
+}
+
+type servedEndpointContextKey struct{}
+
+// WithServedEndpoint asks the adapter to write down, in the caller's own slot,
+// which endpoint answered each call made under ctx.
+func WithServedEndpoint(ctx context.Context, slot *ServedEndpoint) context.Context {
+	if slot == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, servedEndpointContextKey{}, slot)
+}
+
+// ServedEndpointFrom returns the slot in force for ctx, nil when none was
+// opened — which every method here answers correctly, so a caller never tests.
+func ServedEndpointFrom(ctx context.Context) *ServedEndpoint {
+	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
+	return slot
+}
+
+// noteServed hands one answer's endpoint to whatever slot the caller opened.
+// It runs OUTSIDE the ledger's gates: a session with `routing off` has asked
+// not to be steered, which is not a request to be lied to about who answered.
+func noteServed(ctx context.Context, served string) {
+	slot, _ := ctx.Value(servedEndpointContextKey{}).(*ServedEndpoint)
+	slot.note(served)
 }
 
 // noteVelocity folds one timed answer into this client's ledger.

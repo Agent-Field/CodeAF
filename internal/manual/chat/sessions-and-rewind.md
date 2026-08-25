@@ -273,11 +273,13 @@ change which conversation you were having. A conversation you opened and never s
 anything in is reused rather than piled up, and the leftovers are cleaned away.
 
 **What is in the file:** JSONL, append-only, one header line and then one line per
-**completed** message, per compaction pass, and per piece of spending. The line types are
-`session` (the header: version, id, working directory, model, timestamp), `message`,
-`compaction`, `rewind`, `title` and `usage`. Message content is written as text. A `usage`
-line records what one piece of work cost, and on a resume those lines are added back up —
-which is why the bill survives a restart.
+**completed** message, per compaction pass, per piece of spending, and per request. The
+line types are `session` (the header: version, id, working directory, model, timestamp),
+`message`, `compaction`, `rewind`, `title`, `usage` and `call`. Message content is written
+as text. A `usage` line records what one piece of work cost, and on a resume those lines
+are added back up — which is why the bill survives a restart. A `call` line records one
+request's own shape and is **never** added up: the money on it is already counted in the
+`usage` line that closed its turn.
 
 The session id is 16 random hex characters, minted when the file is created and replayed
 unchanged on every resume — that is what keeps one conversation one identity across days.
@@ -310,6 +312,24 @@ sum — see the spending pages for what that means the day after you reach one.
 The file version is still `1`. A file written before `usage` lines existed opens exactly as
 it always did, and a file that has them opens in an older build too, which skips the lines
 it does not recognise.
+
+## What one request cost — the call lines in the file
+
+A turn is not one request. It is the answer, then a tool result, then the next answer, over
+and over — sixty or more requests on a long one — and the `usage` line above is the sum of
+all of them. A sum cannot say what the twentieth request cost, or how much of its prompt
+was served warm, or which endpoint answered it.
+
+So aforge also writes one `call` line **per answered request**, carrying the model that
+answered, the endpoint that served it when the provider names one, tokens in, cache read,
+cache write, tokens out, and the provider's own figure for the money. A request the
+provider reported no usage for writes no line — a row of zeros would read as a fact.
+
+These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
+them, and a resume ignores them entirely, because every dollar on them is already in the
+`usage` line that sealed the turn. They are there so a question about *shape* — what does a
+mostly-cached request actually cost here — can be read out of the file instead of guessed
+at.
 
 ## Picking up where you left off
 

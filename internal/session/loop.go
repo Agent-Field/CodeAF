@@ -353,6 +353,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 	})
 
+	// WHO IS WAITING ON THIS TURN. A conversation's turn is a person watching an
+	// answer arrive, and the endpoint that starts soonest is what they are asking
+	// for. A TASK NODE's turn is the same machinery with nobody in front of it —
+	// a whole conversation, hub and observer and room, running while the person
+	// is somewhere else — and speed is worth nothing to it. It routes by price
+	// instead (internal/provider's velocity.go), which is the only thing said
+	// here: an explicit routing row still wins over both.
+	if a.config.InTask {
+		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
+	}
+
+	// The slot the adapter writes each answer's endpoint into. It is per turn and
+	// per agent, which is the only scope in which the answer is honest: the
+	// process-wide ledger's latest sighting belongs to whichever concurrent node
+	// finished last. Read beside every response by [Agent.addUsage].
+	served := &provider.ServedEndpoint{}
+	ctx = provider.WithServedEndpoint(ctx, served)
+
 	// The model is latched for the whole turn. SetModel's contract is that a
 	// turn in flight finishes on the model it started on, and reading a.model
 	// per step broke it: a swap between two steps would send one model the
@@ -455,7 +473,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 
 		turn.Turns++
-		a.addUsage(&turn, response)
+		a.addUsage(&turn, response, served.Name())
 
 		calls := response.ToolCalls()
 
@@ -1746,7 +1764,17 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // addUsage folds one response's accounting into the turn and the session, and
 // remembers the provider's own context size — the honest number the compaction
 // threshold prefers over an estimate.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
+//
+// It also writes ONE JOURNAL LINE PER RESPONSE, after the folds and changing
+// none of them. The seal at the end of the turn is a sum of sixty-odd calls
+// with wildly different shapes, and a sum cannot answer the question a cost
+// autopsy actually asks — what did a call with THIS many cached tokens cost,
+// served by WHOM. That had to be reconstructed from transcript byte counts
+// once; the line below is so it never has to be again. See
+// [sessionFile.appendCall] for why it is evidence and never spend.
+//
+// `served` is the endpoint the router says answered, "" when nothing said.
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, served string) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -1788,6 +1816,27 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 		a.contextTokens = context
 	}
 	a.mu.Unlock()
+
+	a.file.appendCall(journalCall{
+		Model:      strings.TrimSpace(response.Model),
+		Endpoint:   strings.TrimSpace(served),
+		Input:      usage.PromptTokens,
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		Output:     usage.CompletionTokens,
+		CostUSD:    costOf(usage),
+	})
+}
+
+// costOf is the provider's own figure for one call, zero when it did not send
+// one. Zero and absent are the same thing on the journal line, which is the
+// emptiness law: a call whose cost nobody reported writes no cost, and a reader
+// must not be able to tell that apart from free by looking at the number.
+func costOf(usage *ai.Usage) float64 {
+	if usage == nil || usage.Cost == nil {
+		return 0
+	}
+	return *usage.Cost
 }
 
 // assistantContent passes the response's content parts through, falling back

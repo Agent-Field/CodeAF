@@ -578,6 +578,35 @@ func (c *Catalog) SupportsParameter(modelID, parameter string) (bool, bool) {
 	return false, true
 }
 
+// PriceNow is what modelID's own published tariff is, per token in US dollars,
+// and whether anybody actually published one.
+//
+// The third value carries the whole distinction the price fields cannot: a zero
+// price is a real figure — eighteen rows really are free — and "the provider
+// said nothing" is not. A caller that read the two the same way would either
+// invent a free model or throw away a real one. `PriceUnknown` is the row's own
+// word for the second case, and a row the catalog has never seen is the same
+// answer arrived at differently.
+//
+// It never waits, for [Catalog.SupportsParameter]'s reason: the caller is the
+// model adapter shaping a body it is about to send, and a still-warming catalog
+// blocking there would put a fetch in front of the first call of every run. A
+// catalog that has not resolved is one more way of not knowing.
+func (c *Catalog) PriceNow(modelID string) (prompt, completion float64, known bool) {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return 0, 0, false
+	}
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok || model.PriceUnknown {
+		return 0, 0, false
+	}
+	if model.PromptPrice < 0 || model.CompletionPrice < 0 {
+		return 0, 0, false
+	}
+	return model.PromptPrice, model.CompletionPrice, true
+}
+
 // NearestModels names the models most like modelID, closest first, for a caller
 // that has to move off it and would rather not ask a person which way to go.
 //

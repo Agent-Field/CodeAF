@@ -953,8 +953,9 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		response, err := client.CompleteWithMessages(
 			// WithoutStream for the reason the guardian and the route judge use
 			// it: nobody is watching this, and a stream would be typing into a
-			// room that is not open.
-			provider.WithoutStream(ctx),
+			// room that is not open. IntentBackground says the same thing to the
+			// router — nobody is waiting, so route on price rather than on speed.
+			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
 			[]ai.Message{
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),
