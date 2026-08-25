@@ -939,16 +939,16 @@ two aforge windows on one journal would both append to it and neither would end 
 conversation. (One this terminal is holding is a different matter entirely — `enter` goes
 to it.) Home knows this **before you press anything**.
 
-**On the card**, at 160 columns and wider: the place line under the title carries
-`open in another window`, with what that window is doing after it —
+**On the row**, at every width: the right margin says `another window` where the age would
+be. That margin carries the one thing that decides what `enter` will do, and worst news
+comes first — `folder gone`, then `another window`, then `here` for the conversation this
+window is holding, and the age when none of them is true.
+
+**On the card**, at 160 columns and wider: the place line under the title carries the long
+form, `open in another window`, with what that window is doing after it —
 `open in another window · working`. The conversation **this** terminal is holding reads
 `open here` in the same slot, and `enter` goes to it; the lock it would meet is our own, so
 home asks itself before it asks the kernel (*Switch between projects without leaving*).
-
-**The row itself does not say it.** The resting list spends its right margin on the project,
-the note and the age, and a fourth word there would cost the name the width it needs. What
-the row does carry is the note — a conversation another window is sitting on is usually
-either asking something or moving, and the note says which.
 
 **On enter.** Nothing is tried. Home stays open, nothing is written into the conversation
 underneath, and one dim line appears at the foot of the screen:
@@ -986,9 +986,9 @@ The status line then reads `2 open`, and `tab` over an empty message box goes ba
 Two refusals are still possible and both leave home standing:
 
 - the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
-  already knew — the row reads `folder gone` and the card says so too, see *Enter does
-  nothing on a row — the folder is gone* — and this line is the check made again on the
-  keystroke, for a folder deleted in the seconds since;
+  already knew — the row reads `folder gone` in its right margin and the card's place line
+  says so too, see *Enter does nothing on a row — the folder is gone* — and this line is the
+  check made again on the keystroke, for a folder deleted in the seconds since;
 - this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
   one`.
 
@@ -1000,13 +1000,16 @@ reboot is the usual way — cannot be opened, because the conversation would com
 agent whose tool root does not exist and every command and every relative path in it would
 fail.
 
-Home says so **on the card**, at 160 columns and wider: the place line under the title
+Home says so **on the row**, at every width: `folder gone` in the right margin, where the
+age would be. And **on the card**, at 160 columns and wider: the place line under the title
 carries `that folder is gone` where the branch would be, against the address it is about.
 
 `enter`, `ctrl+t new chat here` and `ctrl+o open folder` all want that directory — `enter`
 opens a conversation rooted in it, `ctrl+t` starts a fresh one there, and `ctrl+o` hands it
-to your file manager — so each of them refuses rather than pretending. `ctrl+y copy path`
-still works, because a path is a string.
+to your file manager — so each of them refuses rather than pretending. The row's verb strip
+drops `t new chat here` and `o open folder` for the same reason: a strip only ever names
+letters that work. `ctrl+y copy path` and `c copy path` still do, because a path is a
+string.
 
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
