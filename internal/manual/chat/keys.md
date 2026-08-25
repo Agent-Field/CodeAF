@@ -1045,38 +1045,35 @@ found somewhere else to go, and that rule is gone (the home page, *space space d
 nothing*).
 
 Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
-`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the project headings ·
-home opens with the cursor on **no row**, and **the first `down` lands at the top of the
-projects list** on a frame 110 columns or wider — the middle column, always, whatever the
-zones beside it hold; on a narrower frame, where the zones are strips over the list, it
-walks into `needs you` instead · `pgup`/`pgdown` jump four · `enter` acts on the row under
-the cursor · **`←` from rest enters `needs you`** on a frame 110 columns or wider, where home
-draws three columns, and `←`/`→` cross the gutter between the zones and the list from any
-row; the foot names it `← what needs you` · **`tab` is the next place**, not the next zone
-· `backspace`,
+`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the headings and the section
+line · home opens with the cursor on **the conversation this window is holding**, and `↑`
+off the top of the list walks up onto **no row at all**, from where the first `down` lands
+back on the first row the cursor can stand on · `pgup`/`pgdown` jump a screenful · `enter`
+acts on the row under the cursor · **`tab` is the next place** — home is one column now and
+there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
+**`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
+as aforge is running and neither written to disk · `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
 — home's own page has the table) · **anything else you type goes into the box**, which
 searches the whole machine and offers to start a new conversation at the same time.
 
-`→` and `←` are the fold's, the way they are in the task column: on a project's
-`…13 more, quiet since 1d` line, `enter` or `→` opens it and `enter` or `←` folds it away;
-`←` on a conversation inside an opened project folds that project too. On a conversation
-or watch row with the box empty, `→` opens **every folded band on the card** you are
-looking at and `←` folds them all back — one layer at a time, so `←` folds the card's
-bands before it folds anything on the list. **On the three-column frame (110 columns and
-up) the same arrows also cross the columns**: `→` off a row in `needs you` or `moving`
-crosses into the list and `←` off a conversation in the list crosses back, each landing
-on the same conversation when the far column holds it. While something is typed the two
-arrows move the caret in the box instead.
+**`→` opens the row's verbs**, and while that strip is drawn its letters are the verbs and
+the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
+`o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
+with no verbs the arrows are the fold's, the way they are in the task column: on home's one
+fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+folds them back, and on a card `→` opens every folded band while `←` folds them again.
+While something is typed the two arrows move the caret in the box instead.
 
-**A letter always types. Every letter, always** — there is no row, cursor, hover or pick
-that turns one into a shortcut, so "make me a site" comes out whole wherever the cursor
-is resting. The card's actions ride chords, which can never begin a word: **`ctrl+e` puts
-the conversation away into the archive** — the folded `archive · N put away` line at the
-very foot — and `ctrl+e` on a row inside the open archive brings it back (the archive
-page section has the whole shape). **`ctrl+t`** starts a new conversation in that row's
+**A letter always types**, unless the verb strip that names it is on screen — that visible
+strip is the one state where a printable key is a verb, and it is why it has to be drawn.
+Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
+actions otherwise ride chords, which can never begin a word: **`ctrl+e` puts the
+conversation away** — it leaves the list, and typing its name is how you find it again, with
+`ctrl+e` on the found row bringing it back. **`ctrl+t`** starts a new conversation in that row's
 project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
 folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
 **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
@@ -1084,8 +1081,8 @@ item thinks** one rung. **With the cursor on no row at all** — one `↑` up of
 where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
 instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
 under your pointer when there is one, the cursor's row otherwise — and the card's own
-dim legend names exactly the keys that work. The one printable exception is the digits
-on a waiting row's answer chips, which are drawn on the row itself.
+dim legend names the verbs, and the strip names the letters. The other printable exception
+is the digits on a waiting row's answer chips, which are drawn on the line above the box.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it;
 a click on a `…13 more` line toggles it in one press.
@@ -1099,13 +1096,14 @@ there is no hover on glass. Home's own page has the whole shape.
 
 The top line carries `esc close` on the right. The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`, and the line under it
-changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest,
+changes with what the cursor is on — `↑↓ move · enter open · esc close` at rest, with
+`→ verbs` added on a row that has any,
 `enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear` on the action
-row, and `enter or → show them · esc close` on a folded project.
+row, and `enter or → show them · esc close` on the fold.
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in, with the preview card beside it. **While anything is typed the list is a
-drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
+this window is in; a card stands beside it only at 160 columns and wider. **While anything
+is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
 `ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,

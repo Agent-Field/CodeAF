@@ -13,11 +13,12 @@ which lands on the row spelled `ask here: "…"`.
  enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
 ```
 
-What you get is **a row in the left column and a pane on the right**. The row goes into the
-project's block, above its conversations, and it stays there — with what the errand is doing
-written in its tail — until the errand is finished and you have read what it came to. The
-pane beside it is the exchange itself: what you said, the reply as it streams, one line per
-tool call, and the card when one arrives.
+What you get is **a row at the top of home's list and a pane holding the exchange**. The row
+stays there — with what the errand is doing written in its tail — until the errand is
+finished and you have read what it came to. The pane is the exchange itself: what you said,
+the reply as it streams, one line per tool call, and the card when one arrives. On an
+ordinary width the pane takes the frame while it has the keyboard, and the list comes back
+with `esc`.
 
 The cursor lands on the new row and the keyboard goes into the pane, so you can answer
 straight away. `tab` or `esc` puts the keyboard back on the column; the row stays, and `→`
@@ -41,8 +42,9 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ answered`** — it finished and nothing standing came of it.
 
 The rows sort the way everything else on this screen sorts: **what wants you first, then
-what is moving, then what is done**. They sit above the standing items and above the
-conversations of the same project.
+what is moving, then what is done**. They sit at the very **top of home's one list**, above
+everything the machine has to say for itself — an errand is a thing you asked for a minute
+ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
 `↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
@@ -136,8 +138,9 @@ reminder arrives".
 
 ## How do I get back to the list from ask here — tab, esc, → and clicking a row
 
-While the cursor is on an exchange row, home has **two zones**: the list on the left and the
-pane on the right. Exactly one of them has the keyboard, and there are five ways to move it:
+While the cursor is on an exchange row, home has **two zones**: the list, and the pane the
+exchange is drawn in. Exactly one of them has the keyboard, and there are five ways to move
+it:
 
 - **`tab` inside the pane** hands the keyboard back to the list, from any state the pane is
   in; **`→` on the exchange's row** takes it back in. (Both directions used to be `tab`; a
@@ -156,7 +159,7 @@ pane on the right. Exactly one of them has the keyboard, and there are five ways
 With the keyboard on the list, `↑`/`↓`, `ctrl+p`/`ctrl+n` and `pgup`/`pgdown` all walk the
 column exactly as they do with no exchange on screen, and `enter` opens the row under the
 cursor. **The pane follows the cursor** — walk off the exchange and the row you land on
-draws its own preview card again, which is what the right-hand column is for.
+draws its own card again, where the frame is wide enough to have one.
 
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
 the list`, with `1 yes · 2 change · 3 once · 0 no` in front of it when a card is up and
@@ -167,9 +170,9 @@ the list`, with `1 yes · 2 change · 3 once · 0 no` in front of it when a card
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
-On a terminal too narrow for two columns (**under 80 columns**, or one where the second
-column would be under 34) home has no right-hand pane to put an exchange in. It does not
-refuse. The two zones are **stacked** instead of sat side by side:
+On a terminal too narrow for two columns — **under 160 columns**, which is every ordinary
+width now — home has no right-hand pane to put an exchange in. It does not refuse. The two
+zones are **stacked** instead of sat side by side:
 
 - the **list** is the screen until you enter an exchange;
 - the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
@@ -220,8 +223,8 @@ Which project the errand belongs to is the project **under the cursor** — walk
 of its rows and press `ctrl+enter` to say "this one". With the cursor still on the typing
 rows it is the project this window is in, and the home directory `~` when this window is in
 no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
-row is drawn in that project's block, or in this window's own block when that project is not
-one of the ones home is currently showing open.
+row is drawn at the top of the list whichever project it ended up in, and the project it
+belongs to is what the errand's own record says.
 
 ## How do I answer the card, or say no to it — 1 yes, 2 change, 3 once, 0 no
 
