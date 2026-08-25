@@ -1814,10 +1814,10 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "pgup":
-		a.roomScroll(-a.page())
+		a.roomScroll(-a.scrollPage())
 		return nil, true
 	case "pgdown":
-		a.roomScroll(a.page())
+		a.roomScroll(a.scrollPage())
 		return nil, true
 
 	case "up":

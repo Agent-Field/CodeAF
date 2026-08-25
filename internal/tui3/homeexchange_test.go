@@ -518,7 +518,7 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 	}
 	// AND A FOLLOW-UP STILL WORKS, because the session is still there.
 	before := len(lab.agent.sent)
-	drive(t, a, key("tab"))
+	drive(t, a, key("right"))
 	typeHome(a, "make it 7")
 	drive(t, a, key("enter"))
 	if len(lab.agent.sent) != before+1 {
@@ -678,13 +678,19 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("asking here should put the keyboard in the pane")
 	}
+	// THE TOGGLE IS NOW TWO DIFFERENT KEYS, AND THAT IS THE LAYERING LAW RATHER
+	// THAN AN INCONSISTENCY. A box that has taken the keyboard owns its own keys
+	// — so `tab` inside the pane still hands the keyboard back, exactly as it
+	// always did — while from the LIST, where nothing has taken the keyboard,
+	// `tab` is the router's way to the next place (placekeys.go). The way back
+	// in is `→`, the arrow that points at the column the errand is drawn in.
 	drive(t, a, key("tab"))
 	if ex.focused {
 		t.Fatal("tab did not hand the keyboard to the list")
 	}
-	drive(t, a, key("tab"))
+	drive(t, a, key("right"))
 	if !ex.focused {
-		t.Fatal("tab did not bring the keyboard back to the pane")
+		t.Fatal("→ did not bring the keyboard back to the pane")
 	}
 	// AND IT LEAVES FROM THE OFFER ROW TOO, which is the state that held the
 	// keyboard hostage: `continue as a conversation` answered ↑ and enter and
@@ -698,7 +704,7 @@ func TestTabTogglesTheListAndThePaneAtHome(t *testing.T) {
 		t.Fatalf("tab did not leave %q", homeContinueWord)
 	}
 	// AND SO DOES esc, from the same row.
-	drive(t, a, key("tab"), key("down"), key("esc"))
+	drive(t, a, key("right"), key("down"), key("esc"))
 	if ex.focused || ex.onOffer {
 		t.Fatalf("esc did not leave %q", homeContinueWord)
 	}
@@ -808,12 +814,12 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 		t.Fatal("the list does not move after a yes")
 	}
 	// AND THE EXCHANGE IS STILL REACHABLE for a follow-up: its row is where it
-	// was, and tab on it takes the keyboard back into the pane. tab is about the
-	// row under the cursor now, which is what lets every OTHER row keep its own
+	// was, and `→` on it takes the keyboard back into the pane. The key is about
+	// the row under the cursor, which is what lets every OTHER row keep its own
 	// card while an errand is open.
-	drive(t, a, key("up"), key("tab"))
+	drive(t, a, key("up"), key("right"))
 	if !ex.focused {
-		t.Fatal("tab on the exchange row did not bring the answered exchange back")
+		t.Fatal("→ on the exchange row did not bring the answered exchange back")
 	}
 }
 
@@ -1229,7 +1235,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	}
 	// AND IT IS STILL ANSWERABLE.
 	a.home.cursor = exchangeRowAt(a, ex)
-	drive(t, a, key("tab"), key("1"))
+	drive(t, a, key("right"), key("1"))
 	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
 		t.Fatalf("the card outlived home but could not be answered, the agent saw %v", lab.agent.answered)
 	}

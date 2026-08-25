@@ -45,11 +45,20 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
 session has tasks to come back to.
 
-Four things take the whole frame instead of sharing it, at every width: the settings
-panel (`ctrl+,`), the task page (`ctrl+.`, or `/history`), home (`/home`, or space
-twice on an empty box), and the rewind timeline (`/rewind`). While any of them is up
-nothing else is drawn — no conversation, no box, no status line — and `esc` gives the
-frame back. **Only one of the four is ever up:** opening any one closes the other three.
+**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
+standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
+jump straight to one, and each has commands of its own (`/home`, `/history`, `/standing`,
+`/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
+deliberately not one of the seven — it is something you do to this conversation rather than
+a room in the machine.
+
+While any of them is up nothing else is drawn — no conversation, no box, no status line —
+and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
+
+Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
+naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+**composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
+hint line last. See the **Places** page.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
@@ -1633,8 +1642,9 @@ blue one full step calmer than the accent — for your message's words, tool nam
 spinner, and headings; a neutral narration grey for the reply's working prose, one shade
 under the body; dim for everything the surface says about itself — stats, notes, hunk
 markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
-and an overdue context meter; warn for a bound about to be reached and only that; and
-violet for **the question hue and nothing else**.
+and an overdue context meter; amber for a bound about to be reached **and for anything
+waiting on you**; a mint green for **money and only money**; and violet for **the
+question hue inside a conversation**.
 
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
@@ -1644,9 +1654,22 @@ home's top line, and every band heading on the machine's card are **structure**,
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
 
-Violet is spent on the moment aforge is waiting for you and on nothing else: the consent
-question, its glyph, its choices, the status word, and the legend while one is up. Its
-whole value is that seeing it anywhere means one thing.
+Violet is spent on the moment aforge is waiting for you **inside this conversation** and
+on nothing else: the consent question, its glyph, its choices, the status word, and the
+legend while one is up. Its whole value is that seeing it anywhere means one thing.
+
+**On home and the other places, "waiting on you" is amber, not violet.** The `▲` mark and
+the `needs you` label at the head of that strip, the answer chips on a card, and the strip
+under the list where you answer without opening anything — all amber, the same amber the
+`?` on a finished-but-unchecked task already wore. Home used to say the one thing in two
+colours; it no longer does. This is a deliberate one-sided move: the conversation's own
+consent block stays violet, so the two surfaces differ on purpose, and whether the chat
+should follow is the owner's call rather than a bug.
+
+**Money has its own colour.** A figure in dollars — on the spend place, on a task's row,
+on a standing order's cost — is a mint green that nothing else on the surface wears. It is
+not the green of a finished tick: landing and paying are two different events, and a table
+where they share a colour is a table that says they are one.
 
 Hue carries identity; weight carries markdown. Your message is the soft muted blue
 behind its accent `› ` glyph — a quiet colour of your own, a full step calmer than the

@@ -337,8 +337,19 @@ var (
 	hueDel    = mustHue("#C67173", quiet)
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
-	// hueWarn is the SIXTH colour, and it exists for one shape: a bound that is
-	// about to be reached. A deadline thirty seconds out is not a failure and
+	// hueWarn is the SIXTH colour, and since the places wave it carries two
+	// readings that are the same reading: A BOUND ABOUT TO BE REACHED, and A
+	// PERSON BEING WAITED ON. Home used to say the second of those in two colours
+	// — the `needs you` mark and the answer chips in the violet of [hueAsk],
+	// the "finished, needs your look" glyph in this amber — which meant the
+	// screen had two ways to say the one thing a person is meant to act on. They
+	// are settled here, on the colour that was already right for the glyph, and
+	// they are the same reading because both are the machine saying "this stops
+	// unless you do something". The chat's own consent block keeps [hueAsk]: a
+	// question inside a conversation is a different object from a row on a list,
+	// and moving it is the owner's call rather than this wave's.
+	//
+	// A deadline thirty seconds out is not a failure and
 	// must not wear the failure hue — the call may still land — but it is no
 	// longer a fact you can leave in the dim tier either, because it is the one
 	// thing on the row that is about to change what happens. Nord's yellow, one
@@ -400,6 +411,27 @@ var (
 	// mid-tone by construction and reads on a dark terminal and a white page
 	// alike.
 	hueViolet = mustHue("#8F6FA8", quiet)
+	// hueMoney is the EIGHTH colour, and it is the only one this table has ever
+	// added for a single reading: what a thing cost.
+	//
+	// Until the places wave a figure in dollars was painted `dim` and lifted to
+	// `warn` near the day's ceiling (pulse.go), which says "money is telemetry
+	// until it is nearly a problem" — fine on one line of a status bar, wrong on
+	// a page whose whole subject is spend, and wrong on a row where the cost sits
+	// beside a project tag and an age and has to be findable among them. It could
+	// not borrow [hueAdd]: that green means IT LANDED, and a table where the
+	// finished tick and the bill are one colour is a table that says finishing
+	// and paying are the same event.
+	//
+	// The hue is the mint the design's own token table names for money — H 144,
+	// where [hueAdd]'s olive is H 92 — held at THIS table's lightness rather than
+	// the token table's: L 69.0 sits inside the fifteen-point signal band beside
+	// the accent's 75.9 and the diff-minus' 61.0, where the token green's 76.1
+	// would have widened the band past its law. 115 on the 256 rung, one clear
+	// step off [hueData]'s 116 and far from [hueAdd]'s 144, so the three greens
+	// and blue-greens of this table never collapse into one another where hues
+	// get rounded.
+	hueMoney = mustHue("#90D0AA", heavy)
 )
 
 // ── THE GROUND LADDER ───────────────────────────────────────────────────────
@@ -642,6 +674,12 @@ var (
 	// nothing — the near miss was #31859C, whose neighbour is 67, one step
 	// from the light accent's own index.
 	lightData = mustHue("#2C8A9E", heavy)
+	// The money hue inverted for the page, the same way the data hue was: the
+	// same mint at H 144, deepened rather than paled, because on white what leads
+	// is what is DARKER. L 45.1 sits in the middle of the light signal band —
+	// warn's 38.6 is its floor and del's 53.3 its ceiling — and 71 on the 256
+	// rung is claimed by nothing (the light accent's own index is 67).
+	lightMoney = mustHue("#34B266", heavy)
 
 	// The light ladder's own three grounds. THE STEPS ARE THE SAME THREE STEPS
 	// (see THE GROUND LADDER above) and they carry the same names — what changes
@@ -676,6 +714,9 @@ type ramp struct {
 	warn               hue
 	data               hue
 	violet             hue
+	// money is what a thing cost ([hueMoney]). It is named apart from `add` for
+	// the reason that hue's own note gives: landing and paying are two events.
+	money hue
 	// The three drawable steps of THE GROUND LADDER. The fourth step, rest, is
 	// not here and cannot be: it is the absence of a paint, not a colour.
 	cursor, selected, mark hue
@@ -692,7 +733,7 @@ type ramp struct {
 var darkRamp = ramp{
 	ink: hueInk, live: hueLive, accent: hueAccent, muted: hueMuted, narr: hueNarr, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
-	data: hueData, violet: hueViolet, fade: thoughtFade,
+	data: hueData, violet: hueViolet, money: hueMoney, fade: thoughtFade,
 	cursor: hueCursor, selected: hueSelected, mark: hueMark,
 	ring: taskRing,
 }
@@ -700,7 +741,7 @@ var darkRamp = ramp{
 var lightRamp = ramp{
 	ink: lightInk, live: lightLive, accent: lightAccent, muted: lightMuted, narr: lightNarr, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
-	data: lightData, violet: hueViolet, fade: lightFade,
+	data: lightData, violet: hueViolet, money: lightMoney, fade: lightFade,
 	cursor: lightCursor, selected: lightSelected, mark: lightMark,
 	ring: lightTaskRing,
 }
@@ -1036,6 +1077,17 @@ func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
 // (styles.go's [hueWarn]). The only thing that wears it today is a timeout with
 // seconds left on it (toolview.go).
 func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
+
+// warnBold is [palette.askBold]'s opposite number now that WAITING ON A PERSON
+// is amber on home and its places: the hue and the weight together, so the mark
+// on a row that has stopped on you leads on a truecolor terminal and on a
+// sixteen-colour one alike. The chat's own question block keeps [palette.ask].
+func (p palette) warnBold(s string) string { return p.bold(p.warn(s)) }
+
+// money is what a thing cost ([hueMoney]) — a figure in dollars, and nothing
+// else. It is deliberately not [palette.add]: that green is the tick on work
+// that landed, and a bill is not an achievement.
+func (p palette) money(s string) string { return p.paint(s, p.ramp.money) }
 
 // data is the payload rule's ink (payload.go): the datum inside a quiet line —
 // a model id, a figure, a key chord — one hue of its own so it reads as a

@@ -225,6 +225,9 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
 				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
+				// money joined the band in the places wave: it is a signal like
+				// the rest, so it answers to the band like the rest.
+				"money": hueMoney,
 			},
 			reading: map[string]hue{"ink": hueInk, "muted": hueMuted, "narr": hueNarr, "dim": hueDim},
 		},
@@ -233,6 +236,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
 				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
+				"money": lightMoney,
 			},
 			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
 		},
@@ -310,11 +314,13 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
 			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
 			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
+			"money": hueMoney,
 		}},
 		{"light", map[string]hue{
 			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
 			"narr": lightNarr, "dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
 			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
+			"money": lightMoney,
 		}},
 	} {
 		t.Run(ladder.name, func(t *testing.T) {

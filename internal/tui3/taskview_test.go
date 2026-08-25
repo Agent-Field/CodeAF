@@ -63,8 +63,12 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 		t.Fatal("ctrl+. did not open the task page")
 	}
 	frame, _, _ := a.frame()
-	if !strings.Contains(plain(frame), taskSheetWord) {
-		t.Fatalf("the frame is not the task page:\n%s", plain(frame))
+	// THE PLACE NAMES ITSELF ON THE TAB BAR. This page used to draw its own
+	// title row, `history … esc close`, across its head; the router draws the
+	// seven places above the rule and the shared hint line says how to leave, so
+	// a title here would be the frame naming itself twice (pages.go).
+	if !strings.Contains(plain(frame), pageTasks.word()) {
+		t.Fatalf("the frame is not the tasks place:\n%s", plain(frame))
 	}
 	// The conversation is not drawn under it, and neither is the box a person
 	// types into: the page took the frame whole.
@@ -82,8 +86,10 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 			last = strings.TrimSpace(line)
 		}
 	}
-	if last != taskSheetRoomKeys {
-		t.Fatalf("something is drawn under the page — it ends on %q, want its own foot:\n%s", last, plain(frame))
+	// The foot is the ROUTER's now, and this place's own keys line is the head
+	// of it ([app.placeHint] appends the two keys that are true on every place).
+	if last != placeTailed(taskSheetRoomKeys) {
+		t.Fatalf("something is drawn under the place — it ends on %q, want its own foot:\n%s", last, plain(frame))
 	}
 
 	drive(t, a, key("esc"))
@@ -138,10 +144,12 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 	if !a.taskSheet.open {
 		t.Fatal("/history did not open the task page")
 	}
-	// And the page names itself with the same word the command spells, so a
-	// person who typed it recognizes what came up.
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetWord) {
-		t.Fatalf("the page does not say what it is:\n%s", text)
+	// And the place names itself on the tab bar, with the word the tab bar and
+	// the manual both call it. The COMMAND keeps its own older word — /history
+	// still opens this, and [taskSheetWord] is still what that command is called
+	// — which is why the two are checked apart.
+	if text := taskSheetText(a); !strings.Contains(text, pageTasks.word()) {
+		t.Fatalf("the place does not say what it is:\n%s", text)
 	}
 }
 

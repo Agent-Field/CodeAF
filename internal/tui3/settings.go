@@ -898,6 +898,7 @@ func (a *app) openSettings() {
 		a.note(settingsRemoteWord)
 	}
 	a.standDownFullscreen()
+	a.page = pageSettings
 	a.sheet = sheet{
 		open:         true,
 		registry:     a.registry(),
@@ -918,9 +919,11 @@ func (a *app) closeSettings() {
 // standDownFullscreen closes every page that takes the frame at every width, so
 // that the one about to open is alone in believing it owns it.
 //
-// THE LAW IS THAT THE FOUR ARE MUTUALLY EXCLUSIVE: the settings panel, the task
-// page (taskview.go), home (home.go) and the rewind timeline (rewindsheet.go)
-// each take the frame WHOLE — keyboard and pointer with it — and view.go's
+// THE LAW IS THAT THEY ARE MUTUALLY EXCLUSIVE: the settings panel, the task
+// page (taskview.go), home (home.go), the rewind timeline (rewindsheet.go), the
+// standing place and the memory place (both promoted out of being overlays by
+// the router, placebodies.go) and the two places that draw only their own
+// explanation (teachplace.go) each take the frame WHOLE — keyboard and pointer with it — and view.go's
 // [app.frame] can only draw one, so a second one opened underneath would take the
 // keys of a page nobody can see. Every open path calls this FIRST and none of
 // them tests for the others itself, because four pages each remembering to close
@@ -947,6 +950,19 @@ func (a *app) standDownFullscreen() {
 	// page that took it.
 	if a.rewSheet.open {
 		a.closeRewindSheet(true)
+	}
+	// AND THE THREE THE ROUTER ADDED. The standing list and the memory list used
+	// to be overlays and were therefore not in this law at all; they take the
+	// frame now, so they join it, and a place that draws only its own explanation
+	// joins it for the same reason (pages.go).
+	if a.standPage.open {
+		a.standPage.close()
+	}
+	if a.memPanel.open {
+		a.memPanel.close()
+	}
+	if a.teach.open {
+		a.teach.close()
 	}
 }
 
@@ -1476,6 +1492,14 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.connEntryKey(msg), true
 	}
 
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing and hands everything else straight back, so what follows keeps
+	// its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd, true
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc backs out one layer at a time: the search first, then whatever the
@@ -1495,9 +1519,14 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.closeSettings()
 		return nil, true
 
-	case "left", "shift+tab":
+	// ← AND → MOVE THIS PANEL'S OWN SECTIONS, and `tab` no longer does. `tab` is
+	// the way to the NEXT PLACE now (pages.go), and a key that meant "next
+	// section" on one place and "next place" on the other six would be the exact
+	// per-place grammar the router exists to end. The two arrows were always the
+	// other half of this binding and they keep it.
+	case "left":
 		s.tabBy(-1)
-	case "right", "tab":
+	case "right":
 		s.tabBy(1)
 
 	case "up", "ctrl+p":
@@ -1833,91 +1862,62 @@ func (a *app) sheetHover(y int) {
 // and the pointer resolves against them, and two answers to "where is the tab
 // bar" is how a click lands on the wrong tab.
 func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
+	// THE HEAD AND THE FOOT BELONG TO THE ROUTER (pages.go). This panel's title
+	// row is gone — the place tab bar above says `settings` — and so is its keys
+	// line, which is the one hint every place shares now. ITS OWN TAB BAR STAYS,
+	// as the first row of its body, and the two bars are not a repetition: the
+	// upper one is the seven places and the lower one is this place's sections.
+	// The panel is where [placeTabBar] was lifted from, so they are drawn by the
+	// same geometry and read as one object at two scales.
 	s := &a.sheet
 	pal := a.pal
-	lines := make([]string, 0, height)
-	hits := make([]sheetHit, 0, height)
-	add := func(text string, hit sheetHit) {
-		lines = append(lines, text)
-		hits = append(hits, hit)
-	}
-	caretX, caretY := 0, 0
-
-	add(sheetTitle(width, s, pal), sheetHit{})
-	add("", sheetHit{})
-	add(sheetTabBar(width, s.tab, pal), sheetHit{kind: sheetHitTabs})
-	add(pal.dim(rule(width)), sheetHit{})
-	add("", sheetHit{})
-
-	// The foot is three rows and it is spoken for before the list is: a rule, a
-	// line for what the panel has to say, and the keys.
-	const foot = 3
-	room := height - len(lines) - foot
-	if room < 1 {
-		room = 1
-	}
-
-	if s.sel != nil {
-		body, at := s.selectLines(width, room, pal, a.reasoningFor)
-		for i, line := range body {
-			hit := sheetHit{}
-			if at[i] >= 0 {
-				hit = sheetHit{kind: sheetHitOption, index: at[i]}
+	return placeFrame(a, width, height, sheetHit{},
+		func(width, room int) []placeRow[sheetHit] {
+			rows := make([]placeRow[sheetHit], 0, room)
+			rows = append(rows, placeRow[sheetHit]{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+			rows = append(rows, placeRow[sheetHit]{text: pal.dim(rule(width))})
+			rows = append(rows, placeRow[sheetHit]{})
+			room -= len(rows)
+			if room < 1 {
+				room = 1
 			}
-			add(line, hit)
-		}
-	} else {
-		body, owner := s.listLines(width, pal, a.hoveredSheetRow())
-		at := s.cursorLine(owner)
-		// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two lines —
-		// the name and the value under it — and a window that pinned only the
-		// first would push the value off the bottom edge, leaving a selection
-		// band with one end cut off and the fact being changed off screen. The
-		// last line is pinned first and the first line second, so a row taller
-		// than the window still shows its name.
-		if last := s.cursorLastLine(owner, at, width); last != at {
-			s.top = listTop(last, s.top, len(body), room)
-		}
-		s.top = listTop(at, s.top, len(body), room)
-		for i := 0; i < room; i++ {
-			index := s.top + i
-			if index >= len(body) {
-				add("", sheetHit{})
-				continue
+			if s.sel != nil {
+				body, at := s.selectLines(width, room, pal, a.reasoningFor)
+				for i, line := range body {
+					hit := sheetHit{}
+					if at[i] >= 0 {
+						hit = sheetHit{kind: sheetHitOption, index: at[i]}
+					}
+					rows = append(rows, placeRow[sheetHit]{text: line, hit: hit})
+				}
+				return rows
 			}
-			hit := sheetHit{}
-			if owner[index] >= 0 {
-				hit = sheetHit{kind: sheetHitRow, index: owner[index]}
+			body, owner := s.listLines(width, pal, a.hoveredSheetRow())
+			at := s.cursorLine(owner)
+			// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two
+			// lines — the name and the value under it — and a window that pinned
+			// only the first would push the value off the bottom edge, leaving a
+			// selection band with one end cut off and the fact being changed off
+			// screen. The last line is pinned first and the first line second, so
+			// a row taller than the window still shows its name.
+			if last := s.cursorLastLine(owner, at, width); last != at {
+				s.top = listTop(last, s.top, len(body), room)
 			}
-			add(body[index], hit)
-		}
-	}
-
-	add(pal.dim(rule(width)), sheetHit{})
-	switch {
-	case s.edit != nil:
-		box, column := s.editLine(width, pal)
-		caretX, caretY = column, len(lines)
-		add(box, sheetHit{})
-	case s.sel != nil:
-		box, column := s.filterLine(width, pal)
-		caretX, caretY = column, len(lines)
-		add(box, sheetHit{})
-	case s.msg != "":
-		add(" "+pal.bad(fit(s.msg, width-2)), sheetHit{})
-	default:
-		add(" "+pal.dim(fit(s.footNote(), width-2)), sheetHit{})
-	}
-	add(" "+pal.dim(fit(s.keysLine(), width-2)), sheetHit{})
-
-	// A terminal too short for the whole panel keeps its head and its foot:
-	// what this is, and how to leave.
-	if len(lines) > height {
-		lines = append(lines[:1], lines[len(lines)-(height-1):]...)
-		hits = append(hits[:1], hits[len(hits)-(height-1):]...)
-		caretY = height - 2
-	}
-	return lines, hits, caretX, caretY
+			s.top = listTop(at, s.top, len(body), room)
+			for i := 0; i < room; i++ {
+				index := s.top + i
+				if index >= len(body) {
+					rows = append(rows, placeRow[sheetHit]{})
+					continue
+				}
+				hit := sheetHit{}
+				if owner[index] >= 0 {
+					hit = sheetHit{kind: sheetHitRow, index: owner[index]}
+				}
+				rows = append(rows, placeRow[sheetHit]{text: body[index], hit: hit})
+			}
+			return rows
+		})
 }
 
 func rule(width int) string {

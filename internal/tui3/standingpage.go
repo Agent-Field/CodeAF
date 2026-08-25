@@ -111,9 +111,10 @@ const (
 	// transcript ([standUpdateWord] says the same word about the same event).
 	standResumedWord = "going again"
 	// standPageVerbs is the hint slot's line while the page is up. It is
-	// [homeItemActions] — the three keys a person already learned on home — plus
-	// the one key that is this page's own.
-	standPageVerbs = homeItemActions + " · n " + standNotHereWord + " · esc"
+	// [homeItemActions] — the keys a person already learned on home — plus the
+	// one verb that is this place's own. The three letters live on the row's `→`
+	// strip now (verbstrip.go), which is what the line has always described.
+	standPageVerbs = homeItemActions + " · " + standNotHereWord + " · esc"
 )
 
 // The mark a "not here" line leads with, and its stand-in on a terminal that
@@ -519,6 +520,12 @@ func (a *app) openStandingAt(id string) {
 		a.note(standNothingWord)
 		return
 	}
+	// IT JOINS THE EXCLUSION LAW NOW THAT IT TAKES THE FRAME. As an overlay it
+	// stood under the draft and could sit beneath any page; as a place it owns
+	// the whole screen, so a page opened under it would take keys nobody can see
+	// ([app.standDownFullscreen] holds the law and the reason).
+	a.standDownFullscreen()
+	a.page = pageStanding
 	a.closeLists()
 	a.dismissWelcome()
 	a.standPage.start(rows)
@@ -526,13 +533,16 @@ func (a *app) openStandingAt(id string) {
 	a.touch()
 }
 
-// standPageKey routes one keypress while the page owns the keyboard.
-//
-// The letters are bare rather than chords, which is what being modal buys: no
-// draft is under this list for a letter to fall through into, so `p`, `s` and
-// `n` can mean what they say (permissions.go's `d` is claimed on the same
-// terms).
+// standPageKey routes one keypress while this place owns the keyboard.
 func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
+	// when the row has verbs — and hands everything else straight back, so this
+	// handler keeps its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
 	p := &a.standPage
 	var cmd tea.Cmd
 	switch msg.String() {
@@ -548,12 +558,13 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 		p.move(standRowsMax - 1)
 	case "enter":
 		cmd = a.standPageEnter()
-	case "p":
-		a.standPageWrite(standPause)
-	case "s":
-		a.standPageWrite(standDown)
-	case "n":
-		a.standPageWrite(standExcept)
+	// `p`, `s` AND `n` USED TO BE BARE LETTERS HERE, and the comment above this
+	// function said exactly why they could be: "no draft is under this list for a
+	// letter to fall through into". There is one now — this is a place, and a
+	// place has a composer — so the three verbs moved onto the row's `→` strip,
+	// where a letter is a verb only while the line naming it is on screen
+	// (verbstrip.go's [app.standRowVerbs]). Every printable key belongs to the
+	// composer again, which is the trade the promotion makes.
 	}
 	a.touch()
 	return cmd
@@ -568,17 +579,14 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 // click that did that would be a gesture nobody could aim.
 func (a *app) standPagePress(y int) tea.Cmd {
 	p := &a.standPage
-	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeOverlay {
-		// A press anywhere else closes it, which is what pressing outside a
-		// modal list means everywhere on this surface.
-		p.close()
-		a.touch()
-		return nil
-	}
+	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
+	// and the head is one number for every place ([placeHeadRows]). It used to
+	// resolve against the chrome's overlay marks, which is what an overlay had
+	// and a place does not — a place is the whole frame, so there is no chrome
+	// under it to ask.
 	at := -1
-	if mark.index >= 0 && mark.index < len(p.owner) {
-		at = p.owner[mark.index]
+	if line := y - placeHeadRows; line >= 0 && line < len(p.owner) {
+		at = p.owner[line]
 	}
 	if at < 0 {
 		// A heading, a "not here" line, or a blank under the last row: a line

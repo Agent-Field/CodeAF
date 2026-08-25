@@ -660,8 +660,14 @@ func TestTypingTakesTheZonesAway(t *testing.T) {
 	}
 }
 
-// THE MARK CARRIES THE MEANING AND THE TEXT STAYS CALM: `▲` in the question hue,
-// `●` in the still blue under it, and the name in ink either way.
+// THE MARK CARRIES THE MEANING AND THE TEXT STAYS CALM: `▲` in the waiting-on-you
+// hue, `●` in the still blue under it, and the name in ink either way.
+//
+// The mark used to be asserted against [palette.askBold] — the violet. The
+// places wave moved every reading of "a person is being waited on" onto the
+// amber the "needs your look" glyph already wore ([hueWarn] holds the reason),
+// so what this test pins is unchanged in substance: ONE hue, not the list's, on
+// the one cell that says a person has to act.
 func TestTheZoneMarksAreTheOnlyColouredCells(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	pal := a.pal
@@ -675,8 +681,8 @@ func TestTheZoneMarksAreTheOnlyColouredCells(t *testing.T) {
 	if ask == moving {
 		t.Fatalf("the two zones wear the same paint: %q", ask)
 	}
-	if ask != pal.askBold(homeAskGlyph) {
-		t.Fatalf("the needs-you mark is not in the question hue: %q", ask)
+	if ask != pal.warnBold(homeAskGlyph) {
+		t.Fatalf("the needs-you mark is not in the waiting-on-you hue: %q", ask)
 	}
 	if moving != pal.muted(homeLiveGlyph) {
 		t.Fatalf("the moving mark is not in the still hue: %q", moving)

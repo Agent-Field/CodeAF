@@ -123,9 +123,16 @@ func standPageApp(t *testing.T, stand, excepted []standing.Item) (*app, *standPa
 // standPageScreen is the open page as a reader sees it, blank lines dropped —
 // the block is padded to the height the frame reserved, and the padding is not
 // something a person reads.
+// standPageScreen is what a person sees on the standing PLACE. It reads the
+// frame rather than the overlay rows: the list was an overlay under the draft
+// until the router promoted it, and it takes the whole terminal now
+// (placebodies.go).
 func standPageScreen(a *app) string {
 	out := make([]string, 0, standRowsMax)
-	for _, line := range plainOverlay(a) {
+	width, height := a.size()
+	lines, _, _, _ := a.standPageFrame(width, height)
+	for _, line := range lines {
+		line = plain(line)
 		if strings.TrimSpace(line) != "" {
 			out = append(out, strings.TrimRight(line, " "))
 		}
@@ -325,6 +332,10 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 	}, nil)
 	typeLine(t, a, "/standing")
 
+	// THE VERBS ARE ON THE ROW'S STRIP NOW. `p` was a bare letter while this was
+	// a modal overlay with no box under it; it is a place with a composer, so `→`
+	// draws the verbs and only then is a letter a verb (verbstrip.go).
+	drive(t, a, key("right"))
 	drive(t, a, key("p"))
 	if len(agent.paused) != 1 || agent.paused[0] != "c1" {
 		t.Fatalf("p paused %v", agent.paused)
@@ -339,6 +350,7 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 		t.Fatalf("the paused order kept its old mark:\n%s", screen)
 	}
 
+	drive(t, a, key("right"))
 	drive(t, a, key("n"))
 	if len(agent.excepts) != 1 || agent.excepts[0] != "c1" {
 		t.Fatalf("n excepted %v", agent.excepts)
@@ -350,6 +362,7 @@ func TestTheStandingPageKeysReachTheEngine(t *testing.T) {
 
 	// The cursor held its PLACE, so the next verb lands on whatever moved up
 	// into it rather than on nothing.
+	drive(t, a, key("right"))
 	drive(t, a, key("s"))
 	if len(agent.downed) != 1 || agent.downed[0] != "p1" {
 		t.Fatalf("s stopped %v", agent.downed)
@@ -372,7 +385,7 @@ func TestStartingAPausedOrderAgainSaysGoingAgain(t *testing.T) {
 	}, nil)
 	agent.status = standing.StatusActive
 	typeLine(t, a, "/standing")
-	drive(t, a, key("p"))
+	drive(t, a, key("right"), key("p"))
 	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, standResumedWord+" · draft the weekly update") {
 		t.Fatalf("a resumed order did not say %q:\n%s", standResumedWord, text)
 	}
@@ -387,7 +400,7 @@ func TestARefusedWriteSaysTheEnginesOwnSentence(t *testing.T) {
 	}, nil)
 	agent.refusal = errors.New("standing orders are not built yet")
 	typeLine(t, a, "/standing")
-	drive(t, a, key("s"))
+	drive(t, a, key("right"), key("s"))
 	text := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(text, "standing orders are not built yet") {
 		t.Fatalf("the refusal was not said:\n%s", text)
@@ -414,17 +427,30 @@ func TestEscLeavesTheStandingPage(t *testing.T) {
 	}
 }
 
-// THE VERBS ARE NAMED WHERE A PERSON LOOKS FOR THEM, because three of the four
-// are bare letters and one of them stops a thing for good.
+// THE VERBS ARE NAMED WHERE A PERSON LOOKS FOR THEM, and NOTHING IS NAMED THAT
+// IS NOT BOUND.
+//
+// The line used to promise four bare letters. Three of them moved onto the row's
+// `→` strip when this became a place with a composer under it, so the hint names
+// the key that reaches them and the strip names the letters — which is the whole
+// of "no key does anything that isn't drawn on screen right now" (verbstrip.go).
 func TestTheStandingPageNamesItsVerbs(t *testing.T) {
 	a, _ := standPageApp(t, []standing.Item{
 		standOrder("p1", "draft the weekly update", standing.AltitudeProject),
 	}, nil)
 	typeLine(t, a, "/standing")
-	hint := a.hintWord()
-	for _, want := range []string{"enter", "p pause", "s stop", "n " + standNotHereWord, "esc"} {
+	hint := a.placeHint()
+	for _, want := range []string{"enter", "→", homeItemPauseWord, homeItemStopWord, standNotHereWord, "esc"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the hint does not name %q: %q", want, hint)
+		}
+	}
+	// AND THE STRIP NAMES THE LETTERS, once `→` has drawn it.
+	drive(t, a, key("right"))
+	strip := plain(strings.Join(a.placeStrip(a.width), "\n"))
+	for _, want := range []string{"p " + homeItemPauseWord, "s " + homeItemStopWord, "n " + standNotHereWord} {
+		if !strings.Contains(strip, want) {
+			t.Fatalf("the strip does not offer %q: %q", want, strip)
 		}
 	}
 }
@@ -478,9 +504,16 @@ func TestTheStandingPageHoldsAtEveryWidth(t *testing.T) {
 		if !a.standPage.open {
 			t.Fatalf("at %d the page did not open", width)
 		}
-		lines := plainOverlay(a)
-		if len(lines) != a.overlayHeight() {
-			t.Fatalf("at %d the page drew %d lines into %d rows", width, len(lines), a.overlayHeight())
+		// IT IS A PLACE NOW, SO IT IS EXACTLY THE WHOLE TERMINAL — the law every
+		// page on this surface holds, and one this list could not hold while it
+		// was a twelve-row overlay under the draft (pages.go's [placeFrame]).
+		frame, _, _, _ := a.standPageFrame(width, a.height)
+		if len(frame) != a.height {
+			t.Fatalf("at %d the place drew %d lines into %d rows", width, len(frame), a.height)
+		}
+		lines := make([]string, 0, len(frame))
+		for _, line := range frame {
+			lines = append(lines, plain(line))
 		}
 		for _, line := range lines {
 			if ansi.StringWidth(line) > width {

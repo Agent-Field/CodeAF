@@ -371,7 +371,13 @@ The same page opens with the cursor already on one order when you click its row 
 ## The keys on the standing orders page
 
 The line under the box says them while the page is up:
-`enter open where it was asked · p pause · s stop · n not here · esc`
+`enter open where it was asked · → pause · stop · not here · esc`
+
+The three verbs are on the row's own strip: press **`→`** and they appear as
+`p pause   s stop   n not here` under the list, and only while that strip is drawn are those
+letters verbs. `esc` or `←` closes it. They were bare letters while this was a small list
+drawn over the conversation; standing is a place now, with a composer at the foot, so every
+printable key belongs to the composer.
 
 | Key | What it does |
 | --- | --- |
