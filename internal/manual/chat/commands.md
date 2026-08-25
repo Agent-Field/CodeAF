@@ -801,7 +801,8 @@ greeting you is not the same as being out of reach: `/home`, or `space` twice on
 box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
 refuses.
 
-There is no argument form and no key chord — `/home` is the only way in. Projects are dim
+There is no argument form. There are three other ways in: **`alt+1`**, home being the first
+of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
 headings, one line per conversation under each: a glyph (`▲` waiting on you, `●` running,
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
@@ -1066,9 +1067,11 @@ this conversation's work **and every earlier conversation's**. It is the one pla
 answers "what did we do about this last week" — the roster's column beside the conversation
 is built from this session's own work, and carries only a short dulled note of the rest.
 
-**It is not `/tasks`, and there is no `/tasks`.** `/task <brief>` and its `solo` and
+**It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` and
 `adaptive` forms mean *give aforge work*; this page starts none, so it does not share their
-word. Typing `/history` is the only slash form.
+word. Typing `/history` is the only slash form — but the PLACE this opens is called `tasks`
+on the tab bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a
+place, not a command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
 current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
@@ -1198,7 +1201,10 @@ Moving in it:
 
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
-- ← / shift+tab and → / tab switch tabs, clamping at the ends rather than wrapping.
+- ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
+  does**: it is the way to the next place — home, tasks, standing, memory, spend, search,
+  settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
+  bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
   grouping matches under faint tab headings and moving the tab bar to the first match's
   tab, so backing out leaves you where the thing lives. backspace, ctrl+w and ctrl+u edit

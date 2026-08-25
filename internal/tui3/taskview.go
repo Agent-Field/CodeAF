@@ -83,7 +83,7 @@ import (
 // two more doors — /history, and the line at the bottom of the column.
 const (
 	taskSheetKey = "ctrl+."
-	// taskSheetWord is the page's name, in the title and in the command list
+	// taskSheetWord is what the COMMAND is called, in the command list
 	// alike, and it is the word the command spells: /history.
 	//
 	// IT IS NOT SPELLED "tasks", AND THAT IS THE WHOLE OF WHY THE COMMAND IS
@@ -500,6 +500,7 @@ func (a *app) openTaskSheet() bool {
 	// believe it owns the frame: view.go draws them in a fixed order, so a page
 	// opened under another would take the keyboard and never be seen.
 	a.standDownFullscreen()
+	a.page = pageTasks
 	a.taskSheet = taskSheet{open: true}
 	a.taskSheetFollow()
 	a.noticeEvent(eventTaskPageOpened)
@@ -866,6 +867,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 
 	defer a.touch()
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing and hands everything else straight back, so what follows keeps
+	// its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd, true
+	}
 	// THE CARD IS A MODE OF THIS PAGE AND IT TAKES THE KEYS FIRST. It is drawn
 	// over the list, so every key while it is up belongs to it — including esc,
 	// which backs out one layer to the list rather than closing the page
@@ -1156,9 +1164,9 @@ func (a *app) taskSheetScroll(delta int) {
 // [app.frame] beside the two sheets that do.
 func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, int) {
 	// THE CARD IS DRAWN INSTEAD OF THE LIST, not over the top of it. It is a mode
-	// of this page and it takes the whole of the page's frame, so the rows below
-	// are not built at all while it is up — and the hits it returns are its own,
-	// mapped through here so that view.go plugs into one function either way
+	// of this place and it takes the whole of the frame, so the rows below are not
+	// built at all while it is up — and the hits it returns are its own, mapped
+	// through here so that view.go plugs into one function either way
 	// (taskrecord.go).
 	// It answers NO HITS OF ITS OWN. The card's rows are resolved against the
 	// card's own frame ([app.taskCardPress]), and a list hit reported for a row
@@ -1167,104 +1175,74 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 		lines, _, caretX, caretY := a.taskCardFrame(width, height)
 		return lines, nil, caretX, caretY
 	}
+	// THE HEAD AND THE FOOT BELONG TO THE ROUTER (pages.go). This page's own
+	// title, its tally and its keys line are gone from here: the tab bar says
+	// which place this is, the tally is the place's note above the composer, and
+	// the keys are the one hint line every place shares. What is left is the
+	// list, which is what this file was always about.
 	pal := a.pal
-	lines := make([]string, 0, height)
-	hits := make([]taskSheetHit, 0, height)
-	add := func(text string, hit taskSheetHit) {
-		lines = append(lines, text)
-		hits = append(hits, hit)
-	}
-
-	items := a.taskSheetItems()
-	a.taskSheet.cursor = taskSheetClamp(items, a.taskSheet.cursor)
-
-	add(a.taskSheetTitle(width), taskSheetHit{})
-	add("", taskSheetHit{})
-	add(pal.dim(rule(width)), taskSheetHit{})
-
-	// The foot is three rows and it is spoken for before the list is: a rule, the
-	// tally, and the keys. A FOURTH JOINS THEM WHILE A FILTER IS ON, because what
-	// was typed has to be on screen — a list that has lost rows for a reason a
-	// reader cannot see is a list that has lost them for no reason at all
-	// (settings.go's [sheetTitle] says the same thing about its own search).
-	foot := 3
-	if a.taskSheetFiltering() {
-		foot++
-	}
-	head := len(lines)
-	room := height - head - foot
-	if room < 1 {
-		room = 1
-	}
-
-	a.taskSheet.top = a.taskSheetTop(items, a.taskSheet.cursor, a.taskSheet.top, room, width)
-	// plain records, per line of the list region, whether that line is wearing
-	// neither the selection band nor the hover step — which is the one thing the
-	// depth fade needs to know and the one thing it cannot ask a finished string
-	// (depthfade.go). It is reported by the row builder rather than recomputed
-	// here, because a second answer to "is this row the cursor's" is how a list
-	// ends up fading the row a person is standing on.
-	var plain []bool
-	more := false
-	for at := a.taskSheet.top; at < len(items); at++ {
-		if len(lines)-head >= room {
-			more = true
-			break
-		}
-		item := items[at]
-		hit := taskSheetHit{}
-		if item.pick() {
-			hit = taskSheetHit{kind: taskSheetHitRow, index: at}
-		}
-		rows, bare := a.taskSheetItemRows(item, at, width)
-		for _, text := range rows {
-			if len(lines)-head >= room {
-				more = true
-				break
+	return placeFrameWithBar(a, width, height, taskSheetHit{},
+		func(width, room int) []placeRow[taskSheetHit] {
+			items := a.taskSheetItems()
+			a.taskSheet.cursor = taskSheetClamp(items, a.taskSheet.cursor)
+			a.taskSheet.top = a.taskSheetTop(items, a.taskSheet.cursor, a.taskSheet.top, room, width)
+			rows := make([]placeRow[taskSheetHit], 0, room)
+			// plain records, per line of the list region, whether that line is
+			// wearing neither the selection band nor the hover step — which is the
+			// one thing the depth fade needs to know and the one thing it cannot
+			// ask a finished string (depthfade.go). It is reported by the row
+			// builder rather than recomputed here, because a second answer to "is
+			// this row the cursor's" is how a list ends up fading the row a person
+			// is standing on.
+			var plain []bool
+			more := false
+			for at := a.taskSheet.top; at < len(items); at++ {
+				if len(rows) >= room {
+					more = true
+					break
+				}
+				item := items[at]
+				hit := taskSheetHit{}
+				if item.pick() {
+					hit = taskSheetHit{kind: taskSheetHitRow, index: at}
+				}
+				text, bare := a.taskSheetItemRows(item, at, width)
+				for _, line := range text {
+					if len(rows) >= room {
+						more = true
+						break
+					}
+					rows = append(rows, placeRow[taskSheetHit]{text: line, hit: hit})
+					plain = append(plain, bare)
+				}
 			}
-			add(text, hit)
-			plain = append(plain, bare)
-		}
-	}
-	// THE TAIL OF A CUT-OFF LIST FADES WITH DEPTH — NEVER STRIPES (depthfade.go).
-	// It is applied to the drawn rows and not to the blank padding under them: a
-	// list that stopped short of the window has nothing below it to point at, and
-	// `more` is false there anyway.
-	for i := range plain {
-		if !plain[i] {
-			continue
-		}
-		if stop := tailStop(i, len(plain), more); stop >= 0 {
-			lines[head+i] = pal.fadeRow(lines[head+i], stop)
-		}
-	}
-	for len(lines)-head < room {
-		add("", taskSheetHit{})
-	}
-
-	add(pal.dim(rule(width)), taskSheetHit{})
-	add(" "+pal.dim(fit(a.taskSheetTally(items), width-2)), taskSheetHit{})
-	if a.taskSheetFiltering() {
-		add(" "+pal.dim(fit(a.taskSheetFilterLine(items), width-2)), taskSheetHit{})
-	}
-	// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
-	// (taskphone.go). The count above it stays — a bar is the way out, and the
-	// tally is what the page is holding.
-	if layoutTier(width) == tierPhone {
-		line, _ := a.taskSheetBar(width)
-		add(line, taskSheetHit{kind: taskSheetHitBar})
-	} else {
-		add(" "+pal.dim(fit(a.taskSheetKeysLine(), width-2)), taskSheetHit{})
-	}
-
-	// A terminal too short for the whole page keeps its head and its foot: what
-	// this is, and how to leave. It is [app.sheetFrame]'s own trim, for the same
-	// reason.
-	if len(lines) > height && height > 1 {
-		lines = append(lines[:1], lines[len(lines)-(height-1):]...)
-		hits = append(hits[:1], hits[len(hits)-(height-1):]...)
-	}
-	return lines, hits, 0, 0
+			// THE TAIL OF A CUT-OFF LIST FADES WITH DEPTH — NEVER STRIPES
+			// (depthfade.go). It is applied to the drawn rows and not to the blank
+			// padding under them: a list that stopped short of the window has
+			// nothing below it to point at, and `more` is false there anyway.
+			for i := range plain {
+				if !plain[i] {
+					continue
+				}
+				if stop := tailStop(i, len(plain), more); stop >= 0 {
+					rows[i].text = pal.fadeRow(rows[i].text, stop)
+				}
+			}
+			for len(rows) < room {
+				rows = append(rows, placeRow[taskSheetHit]{})
+			}
+			return rows
+		},
+		// phone lane: the key legend becomes a `‹ back` band a thumb leaves by
+		// (taskphone.go). The count above it stays — a bar is the way out, and
+		// the tally is what the page is holding.
+		func(width int) (string, taskSheetHit, bool) {
+			if layoutTier(width) != tierPhone {
+				return "", taskSheetHit{}, false
+			}
+			line, _ := a.taskSheetBar(width)
+			return line, taskSheetHit{kind: taskSheetHitBar}, true
+		})
 }
 
 // taskSheetTop follows the cursor with the window. On a wide frame an item is a
@@ -1353,17 +1331,11 @@ func (a *app) taskSheetItemLines(item taskSheetItem, width int) int {
 	return len(rows)
 }
 
-// taskSheetTitle is the head: what this is on the left, and how to leave on the
-// right.
-func (a *app) taskSheetTitle(width int) string {
-	left := " " + a.pal.bold(a.pal.ink(taskSheetWord))
-	right := "esc close "
-	gap := width - ansi.StringWidth(" "+taskSheetWord) - ansi.StringWidth(right)
-	if gap < 1 {
-		return fit(left, width)
-	}
-	return left + strings.Repeat(" ", gap) + a.pal.dim(right)
-}
+// THE TITLE ROW IS GONE. This page drew `history … esc close` across its own
+// head; under the router the tab bar above the rule says which place this is and
+// the shared hint line says how to leave, so a title here would be the frame
+// naming itself twice (pages.go). [taskSheetWord] survives because it is still
+// what the COMMAND is called — `/history` — and the manual quotes it.
 
 // taskSheetTally is the one line of aggregate at the foot: how much is on this
 // page, in the same two words the sections are headed with.

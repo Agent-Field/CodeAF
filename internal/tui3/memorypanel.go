@@ -13,7 +13,7 @@ import (
 const memoryPanelRows = 12
 
 const (
-	memoryFilterHint = "filter · ↑↓ · enter expand · del forget · tab scope · esc close"
+	memoryFilterHint = "filter · ↑↓ · enter expand · → verbs · alt+s shelf · esc close"
 	memoryEditHint   = "edit memory · enter save · esc cancel"
 )
 
@@ -252,9 +252,16 @@ func wrapText(text string, width int) []string {
 	return lines
 }
 
-func (a *app) openMemory() {
+// memoryReady is whether the memory place has a store to open onto. It is the
+// guard [app.openMemory] refuses on, asked out loud so a door can choose a
+// different answer instead of walking into the refusal.
+func (a *app) memoryReady() bool {
 	_, ok := a.brain()
-	if !ok || a.memory == nil {
+	return ok && a.memory != nil
+}
+
+func (a *app) openMemory() {
+	if !a.memoryReady() {
 		a.note("memory is off · turn it on under /settings")
 		return
 	}
@@ -263,6 +270,12 @@ func (a *app) openMemory() {
 		a.note("could not read what is remembered · " + err.Error())
 		return
 	}
+	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
+	// ([app.standDownFullscreen]). It is done here rather than at the top of the
+	// function so that a refusal — memory switched off, a store that will not
+	// answer — leaves whatever page a person was on standing where it was.
+	a.standDownFullscreen()
+	a.page = pageMemory
 	a.memPanel.start(memories)
 	for _, memory := range memories {
 		_, title, at, err := a.memory.MemoryProvenance(memory.ID)
@@ -273,7 +286,15 @@ func (a *app) openMemory() {
 	a.touch()
 }
 
-func (a *app) memoryKey(msg tea.KeyPressMsg) {
+func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
+	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
+	// (placekeys.go). It claims the chords that mean the same thing wherever you
+	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
+	// when the row has verbs — and hands everything else straight back, so this
+	// handler keeps its right of first refusal over its own keys.
+	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
 	p := &a.memPanel
 	if p.edit != nil {
 		switch msg.String() {
@@ -294,7 +315,7 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) {
 			listNavigate(msg, p.edit, func(int) {}, func() {}, memoryPanelRows)
 		}
 		a.touch()
-		return
+		return nil
 	}
 	if p.expanded != "" {
 		switch msg.String() {
@@ -309,7 +330,7 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) {
 			}
 		}
 		a.touch()
-		return
+		return nil
 	}
 	switch msg.String() {
 	case "esc":
@@ -321,25 +342,27 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) {
 	case "delete", "ctrl+d":
 		if memory, ok := p.choice(); ok && a.memory.ForgetMemory(memory.ID) == nil {
 			p.undoID, p.undoName = memory.ID, memory.Title
-			p.footer = "forgot '" + memory.Title + "' — u to undo"
+			// THE RECEIPT NAMES THE WAY BACK IN THE WORDS THE KEY IS ACTUALLY
+			// SPELLED IN NOW. `u` alone would be a letter this place no longer
+			// binds, and a receipt that names an unbound key is the exact defect
+			// the strip exists to fix (verbstrip.go).
+			p.footer = "forgot '" + memory.Title + "' · → " + memoryUndoWord
 			p.remove(memory.ID)
 		}
-	case "u":
-		if p.undoID != "" && a.memory.RestoreMemory(p.undoID) == nil {
-			// The tombstoned row is retained as the one-deep undo payload.
-			memories, err := a.memory.ListMemories("", 500)
-			if err == nil {
-				p.all = memories
-				p.reindex()
-			}
-			p.footer = "restored '" + p.undoName + "'"
-			p.undoID, p.undoName = "", ""
-		}
-	case "tab":
-		p.scope = (p.scope + 1) % len(memoryScopes)
-		p.rank()
+	// `u` AND `tab` USED TO BE HERE AND BOTH HAD TO GO.
+	//
+	// `u` put a forgotten line back, and it was matched ahead of the default arm
+	// — so the letter could not be TYPED into the filter at all, and a search for
+	// a word with a `u` in it silently restored something instead. It is a verb
+	// on the row's `→` strip now, offered only while there is something to put
+	// back (verbstrip.go's [app.memoryRowVerbs]).
+	//
+	// `tab` cycled which shelf this place shows. `tab` is the way to the next
+	// place now, so the view moved to `alt+s` — the class a view belongs to
+	// (placekeys.go's [app.placeAlt]).
 	default:
 		listNavigate(msg, &p.filter, p.move, p.rank, memoryPanelRows)
 	}
 	a.touch()
+	return nil
 }

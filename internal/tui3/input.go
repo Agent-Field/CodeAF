@@ -345,8 +345,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.effortMenuKey(msg)
 	}
 	if a.memPanel.open && msg.String() != "ctrl+c" {
-		a.memoryKey(msg)
-		return nil
+		return a.memoryKey(msg)
+	}
+
+	// And a place that draws only its own explanation — spend, search — at the
+	// same rung and for the same reason: it takes the whole frame, so there is
+	// nothing under it a key could mean anything to (teachplace.go).
+	if a.teach.open && msg.String() != "ctrl+c" {
+		return a.teachKey(msg)
 	}
 
 	// And the session picker is modal at the same rung, for the same reasons: it
@@ -692,10 +698,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.cycleEffort()
 
 	case "pgup":
-		a.scroll(-a.page())
+		a.scroll(-a.scrollPage())
 		return nil
 	case "pgdown":
-		a.scroll(a.page())
+		a.scroll(a.scrollPage())
 		return nil
 
 	case jumpKey:

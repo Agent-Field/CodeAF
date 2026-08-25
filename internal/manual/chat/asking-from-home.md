@@ -20,7 +20,8 @@ pane beside it is the exchange itself: what you said, the reply as it streams, o
 tool call, and the card when one arrives.
 
 The cursor lands on the new row and the keyboard goes into the pane, so you can answer
-straight away. `tab` or `esc` puts the keyboard back on the column; the row stays.
+straight away. `tab` or `esc` puts the keyboard back on the column; the row stays, and `→`
+on it takes the keyboard back in.
 
 ## The exchange row on home — working, waiting on you, stood
 
@@ -43,8 +44,10 @@ The rows sort the way everything else on this screen sorts: **what wants you fir
 what is moving, then what is done**. They sit above the standing items and above the
 conversations of the same project.
 
-`enter` or `tab` on the row hands the keyboard to the pane. The hint under the box says so:
-`↑↓ move · enter or tab answer this ask here · esc close`.
+`enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
+`↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
+until the places arrived and took that key for the next place; `→` points at the column the
+pane is drawn in, which is where the gesture went.)
 
 ## How do I know ask here is doing something — the spinner, the clock and the live strip
 
@@ -131,12 +134,16 @@ its own `while you were away`. The full order is on the keeping-an-eye page unde
 reminder arrives".
 
 
-## How do I get back to the list from ask here — tab, esc, and clicking a row
+## How do I get back to the list from ask here — tab, esc, → and clicking a row
 
 While the cursor is on an exchange row, home has **two zones**: the list on the left and the
 pane on the right. Exactly one of them has the keyboard, and there are five ways to move it:
 
-- **`tab`** toggles them, from any state either one is in — a half-typed follow-up, the
+- **`tab` inside the pane** hands the keyboard back to the list, from any state the pane is
+  in; **`→` on the exchange's row** takes it back in. (Both directions used to be `tab`; a
+  place's `tab` is the way to the next place, and a box that has taken the keyboard keeps
+  its own keys, which is why one half of the toggle stayed and the other moved to the arrow
+  that points at the pane.) It works from
   `continue as a conversation` row, an open card. It never loses what is in the pane.
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
@@ -268,7 +275,7 @@ it`.
 arrives while the turn that made it is still running, so the folder is not touched then:
 aforge remembers where it belongs, and moves it when the exchange is filed — after you have
 seen it settled and walked off its row, or when you quit — and after the session has been
-closed. Until then **the exchange is still alive**: `tab` back into the pane and a follow-up
+closed. Until then **the exchange is still alive**: `→` back into the pane and a follow-up
 goes to the same conversation. Nothing is copied and nothing is deleted; the folder only
 ever moves, once.
 

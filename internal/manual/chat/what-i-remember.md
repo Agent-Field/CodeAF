@@ -34,28 +34,45 @@ memory is off · turn it on under /settings
 
 ## How do I see what aforge remembers about me?
 
-Open `/memory`. Its twelve-row list starts with the most recently updated
-memories. Type to filter title, text and tags; the same prefix, substring
-and fuzzy subsequence ranking as the model picker is applied to the list loaded
-when the panel opened. A `*` marks a memory that has helped at least five
-times. Press tab
-to cycle the scope shown: all, user, project, env, then all again.
+Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
+place now**, one of seven, taking the whole screen with the tab bar above it and a composer
+at the foot, rather than a twelve-row list drawn over the conversation.
 
-Enter expands the selected memory to show its full text, tags, how many times it
-has helped (`used · 7`), age, and where it came from. Esc returns to the list; esc from the list closes the
-panel. `/memory <query>` prints matching lines into the conversation.
+The list starts with the most recently updated memories. Type to filter title, text and
+tags — **every letter, `u` included** — with the same prefix, substring and fuzzy
+subsequence ranking the model picker uses. A `*` marks a memory that has helped at least
+five times.
+
+**`alt+s` walks the shelves**: all, user, project, env, then all again. That was `tab` until
+the places arrived; `tab` is the way to the next place now, and a view of a place belongs to
+the `alt+<letter>` class.
+
+Enter expands the selected memory to show its full text, tags, how many times it has helped
+(`used · 7`), age, and where it came from. Esc returns to the list; esc from the list leaves
+the place. `/memory <query>` and `/memories <query>` print matching lines into the
+conversation instead of opening anything — a query is a question rather than a door.
 
 ## How do I edit a memory?
 
-In `/memory`, press enter to expand a row, then enter again (or `e`) to edit.
-The edit line is preloaded with the complete memory text. Enter saves it; esc
-cancels without changing anything. The title and tags stay as they were.
+Two ways. Press **`→`** on the row and the verb strip offers `e fix the wording`; or press
+enter to expand the row and then enter again (or `e`) to edit. The edit line is preloaded
+with the complete memory text. Enter saves it; esc cancels without changing anything. The
+title and tags stay as they were.
+
+While the strip is drawn its letters are the verbs and the filter box is asleep; `esc` or
+`←` closes it and every letter is a character again.
 
 ## How do I forget a memory and undo forgetting one?
 
-In the `/memory` list, delete (or ctrl+d) forgets the selected row immediately.
-The footer says `forgot '<title>' — u to undo`; press `u` to restore it. Undo is
-one-deep: only the most recent forget in this panel session can be restored.
+In the memory place, **delete** (or ctrl+d) forgets the selected row immediately, and so
+does `f` on the row's `→` strip. The line above the composer says
+`forgot '<title>' · → put it back`; press **`→` then `u`** to restore it. Undo is one-deep:
+only the most recent forget in this visit can be restored.
+
+**`u` is not a bare key, and that is a fix rather than a cost.** It used to be matched ahead
+of the filter, which meant the letter could not be typed at all — a search for a word with a
+`u` in it lost the letter and put something back instead. On the strip it is a verb only
+while the strip is drawn, and it is offered only while there is something to put back.
 
 ## Where did a memory come from, and who says so?
 
