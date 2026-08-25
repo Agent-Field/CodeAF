@@ -60,13 +60,22 @@ said much yet: the space is the slack under a short page, the same as a new conv
 shows. It fills from the top as the task works, and the page follows the newest line
 until you scroll up.
 
-Two things that look like the same picture and are not:
+Three things that look like the same picture and are not:
 
 - **A task that has finished** ends its page with `task finished — esc to return`. There
   is nothing more coming; scroll up to read what it did.
 - **A task that has not started** — one still queued behind the running ones — has a
   page with only its instruction on it. The roster's row for it says `queued`; the page
   fills when it starts.
+- **A row that was never a task.** A background job — a server, a build, a watch, a video
+  render — sits on the same column, and its page has no chat in it because a job has no
+  agent and writes no transcript. It shows the job's log line and
+  `a background job keeps a log, not a transcript`. Its row is the one whose dim
+  under-line starts with `job` and a number.
+
+No task page ever draws an empty body under its header. If a finished task's transcript
+is gone from the disk, the page still carries the task's report and says
+`this task's transcript is not here any more`.
 
 If the page is long but the frame is short, scroll: the wheel over the page, `pgup`, or
 `↑` over an empty box all move it. `ctrl+l` is not the key here — it returns the

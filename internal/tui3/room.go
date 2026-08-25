@@ -328,6 +328,14 @@ const (
 	// actually gone — a session folder somebody deleted — and it says so as a
 	// fact rather than leaving a foot under a blank.
 	roomGoneWord = "this task's transcript is not here any more"
+	// roomJobLogWord stands in that line's place for a BACKGROUND JOB, which never
+	// had a transcript to lose. A job is a roster row and not a node in the graph
+	// (session's jobrow.go), so nothing was ever journaled for it and the whole
+	// record of what it did is the log its report names — drawn on the row above
+	// this line, the same string the roster draws ([app.railJobLog]). Saying the
+	// transcript was gone would be the wrong half of the truth: there is no file
+	// missing, there is a different kind of work.
+	roomJobLogWord = "a background job keeps a log, not a transcript"
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
@@ -452,9 +460,25 @@ func (a *app) openRoom(id uint64, title string) {
 		// and it opens finished, because there is nothing to listen to. A call the
 		// file left running is resolved on the way in for that same reason:
 		// nothing is coming for it here either.
+		//
+		// THE REFUSAL ITSELF IS NOT DRAWN, and that is a law and not a taste. What
+		// the door says here is `no task 4 in this session` — the engine telling a
+		// caller that an id is not in its graph — which is machinery vocabulary
+		// about a row the person is looking at RIGHT NOW, and it reads as the
+		// surface having lost the work rather than as an answer to anything they
+		// did. The roster's row-space is deliberately wider than the graph's: a
+		// background job is published as a row and never admitted as a node
+		// (session's jobrow.go, "it registers and it does not admit"), so a person
+		// walking into one reaches this branch on a perfectly healthy session.
+		//
+		// AND IT IS NOT APPENDED AS A BLOCK, which is the second half of the bug it
+		// caused. The "there is nothing here" line below is drawn only for a room
+		// whose block list is EMPTY, so one machinery note was enough to make the
+		// page count itself as having a transcript — leaving a correct header over
+		// a body holding the refusal and the foot, and nothing else. What the room
+		// knows is drawn by [app.roomRecordRows] instead.
 		room.done = true
 		a.roomResolveUnfinished()
-		a.roomNote(err.Error())
 		a.roomPump = a.wake()
 		return
 	}
@@ -2759,11 +2783,12 @@ func (a *app) roomRows(width int) []row {
 		closed = false
 	}
 	if room.done {
-		// AN EMPTY LANDED ROOM SAYS WHY IT IS EMPTY, above the foot. It is drawn
-		// only when the entry list is empty: a room with even one block is a room
-		// with a transcript, and the foot alone is the whole of what it adds.
+		// AN EMPTY LANDED ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above
+		// the foot. It is drawn only when the entry list is empty: a room with even
+		// one block is a room with a transcript, and the foot alone is the whole of
+		// what it adds.
 		if len(room.entries) == 0 && room.harnessProgress == "" {
-			out = append(out, row{text: a.pal.dim(fit(roomGoneWord, width)), entry: -1})
+			out = a.roomRecordRows(out, width)
 		}
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
@@ -2787,6 +2812,63 @@ func (a *app) roomRows(width int) []row {
 	a.hoverPass(out, width)
 	room.rows, room.width, room.height, room.dirty = out, width, height, false
 	return out
+}
+
+// roomRecordRows is what a landed room draws when it has NO TRANSCRIPT TO DRAW:
+// the facts this surface already holds about the row, and then one honest line
+// about why there is nothing else on the page.
+//
+// A ROOM IS NEVER AN EMPTY BODY UNDER A CORRECT HEADER. That combination is the
+// worst page this surface can draw, because everything about it says the program
+// has lost the work: the header names the task, gives its state and its elapsed —
+// all of it read off the row the roster is still showing ([app.roomNode]) — and
+// then the space where the work should be is blank. A person cannot tell that
+// from a task whose output vanished, and there is nothing on the page to act on.
+// So whatever else is true, the room spends these rows on what it can stand
+// behind.
+//
+// THE ROW IS THE SOURCE, NOT THE ENGINE, and that is the point: this branch is
+// reached precisely when a door refused the id or the journal was not found, so
+// asking the engine again would answer nothing twice. The roster's record was
+// published by the engine on a [session.TaskNotice] and is as true as the header
+// drawn from it.
+//
+// A BACKGROUND JOB IS THE ORDINARY CASE HERE AND NOT AN EDGE. A job is a row and
+// never a node (session's jobrow.go), so it has no room in the engine's sense at
+// all — but the roster is a flat list and its enter key opens whatever is under
+// it ([app.railEnter]), so people walk in. What a job has is a LOG, its report
+// carries the path ([app.railJobLog] draws the same string on the row), and that
+// path is the entire record of what the work did. Saying the transcript is "not
+// here any more" about one would be a lie in the other direction — a job never
+// wrote a transcript to lose.
+func (a *app) roomRecordRows(out []row, width int) []row {
+	node := a.roomNode()
+	if node == nil {
+		// A page this surface never had a row for. There is nothing to add to the
+		// blank except the reason it is blank.
+		return append(out, row{text: a.pal.dim(fit(roomGoneWord, width)), entry: -1})
+	}
+	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
+	// a person came for. It CUTS rather than wrapping for a job, exactly as the
+	// roster's own row does and for that row's reason — the handle is the number
+	// and the leading directory is one the person already knows — and it wraps for
+	// anything else, where the report is prose somebody wrote.
+	if report := strings.TrimSpace(node.report); report != "" {
+		if node.kind == session.TaskKindJob {
+			out = append(out, row{text: a.pal.dim(fit(report, width)), entry: -1})
+		} else {
+			for _, line := range wrap(report, width) {
+				out = append(out, row{text: a.pal.dim(line), entry: -1})
+			}
+		}
+	}
+	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, in the vocabulary that is true of
+	// this kind of work.
+	word := roomGoneWord
+	if node.kind == session.TaskKindJob {
+		word = roomJobLogWord
+	}
+	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
 }
 
 // roomToolTail is how many of a folded turn's calls a room keeps on screen:
