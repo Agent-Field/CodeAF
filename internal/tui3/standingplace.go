@@ -51,6 +51,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -166,6 +169,117 @@ func standingShelves(stand, excepted, elsewhere []StandingItemView) []standRow {
 	return append(append(rows, standRow{kind: standRowShelf, shelf: standOtherWord}), far...)
 }
 
+// ── the window: WHEN IT FIRED ───────────────────────────────────────────────
+//
+// Screen 3d gives every place that has a time axis the same four keys, and names
+// what each place's axis is: tasks is when it ran, memory is when it was
+// learned, and standing is WHEN IT FIRED.
+//
+// THE WINDOW SCOPES WHAT IS LISTED, AND IT OPENS HOLDING EVERYTHING. A reference
+// page whose whole job is to say what is standing over you may not arrive having
+// quietly dropped an order — so [standingOpenWindow] measures the oldest firing
+// the machine has and opens on a span that reaches it, and narrowing is then the
+// person's own deliberate act rather than a default they never chose.
+//
+// AND AN ORDER THAT HAS NEVER FIRED IS NEVER SCOPED AWAY. A rule that only holds
+// is never examined and never fires; a watch whose first moment has not come has
+// no firing either. Neither has a date to be outside a window, and filtering a
+// record by a fact it does not have is the emptiness law broken from the far
+// side — it would answer "not in this fortnight" about something that was never
+// anywhere.
+
+// standingOpenWindow is the span the place opens on: from the oldest firing it
+// can see to today, by the day, so that the first frame hides nothing.
+//
+// A MACHINE THAT HAS NEVER FIRED ANYTHING OPENS ON TODAY. There is no history to
+// span, and a window invented backwards over an empty calendar would be arrows
+// steering nothing.
+func standingOpenWindow(now time.Time, groups ...[]StandingItemView) session.UsageWindow {
+	oldest := time.Time{}
+	for _, views := range groups {
+		for _, view := range views {
+			at := view.Item.LastFired
+			if at.IsZero() {
+				continue
+			}
+			if oldest.IsZero() || at.Before(oldest) {
+				oldest = at
+			}
+		}
+	}
+	if oldest.IsZero() || oldest.After(now) {
+		oldest = now
+	}
+	return session.UsageWindow{From: oldest, To: now, Grain: session.GrainDay}.Normalized()
+}
+
+// standingInWindow keeps the orders whose last firing the window holds, and
+// every order that has never fired at all.
+func standingInWindow(views []StandingItemView, win session.UsageWindow) []StandingItemView {
+	if win.Label() == "" {
+		return views
+	}
+	kept := make([]StandingItemView, 0, len(views))
+	for _, view := range views {
+		if view.Item.LastFired.IsZero() || win.Holds(view.Item.LastFired) {
+			kept = append(kept, view)
+		}
+	}
+	return kept
+}
+
+// standingShelvesIn is [standingShelves] over only the orders the window holds.
+// It is one function because scoping is one rule, and a caller that filtered its
+// own slice before laying them out would be a second place deciding what "when
+// it fired" means.
+func standingShelvesIn(win session.UsageWindow, stand, excepted, elsewhere []StandingItemView) []standRow {
+	return standingShelves(
+		standingInWindow(stand, win),
+		standingInWindow(excepted, win),
+		standingInWindow(elsewhere, win))
+}
+
+// standingWindowRoom is whether this frame has room to draw the control beside
+// the page's name.
+//
+// ONE PREDICATE ANSWERS THE PAINT AND THE KEYS, which is what keeps the surface
+// honest: a capability that cannot work is absent rather than broken, so on a
+// frame too narrow for the label the arrows are not drawn AND the keys do
+// nothing ([standPage.window] asks this same question). A control bound but
+// invisible is the exact defect the verb strip exists to end.
+func standingWindowRoom(width int, win session.UsageWindow) bool {
+	words := placeWindowWords(win)
+	if words == "" || phoneList(width) {
+		// AT [tierPhone] THERE IS NO WIDTH TO SHARE, which is the same answer the
+		// rows themselves give: a list wraps its tail onto a line of its own
+		// there rather than cutting both halves in half ([overlayItemLines]). A
+		// header packed edge to edge with a control would be that arithmetic
+		// again, and the control is the half a phone can most afford to lose.
+		return false
+	}
+	return width >= ansi.StringWidth(standingHeadWords)+ansi.StringWidth(words)+standingHeadGap
+}
+
+// standingHeadGap is the least air between the page's name and the control at
+// the other end of its line. Two cells would technically fit and would read as
+// one run-on row; four is a gap a person's eye reads as a gap, which is screen
+// 2a's own device — air where there is no fifth brightness tier to spend.
+const standingHeadGap = 4
+
+// standingHeadWords is the page's name as the header lays it out, indent and
+// all. It is measured as well as drawn, so it is one string.
+const standingHeadWords = "  " + standHeading
+
+// standingHeaderRow is the place's first line: what this page is on the left,
+// and on the right the window that scopes it, drawn as its own control.
+func standingHeaderRow(width int, win session.UsageWindow, pal palette) string {
+	if !standingWindowRoom(width, win) {
+		return pal.dim(fit(standingHeadWords, width))
+	}
+	gap := width - ansi.StringWidth(standingHeadWords) - ansi.StringWidth(placeWindowWords(win))
+	return pal.dim(standingHeadWords) + strings.Repeat(" ", gap) + placeWindowRow(win, pal)
+}
+
 // standRowStops is which rows a cursor may come to rest on: the orders, and
 // nothing else. A heading, a "not here" line and a "last look" paragraph are
 // things to READ — furniture the page chose — and a selection on one would be a
@@ -191,25 +305,53 @@ func standRowLabel(row standRow, pal palette) string {
 	return glyph + " " + strings.TrimSpace(row.view.Item.Title())
 }
 
-// standRowNote is the dim tail: where the order stands, in [standRollup]'s words
-// and never in a second set of them. A heading and a "not here" line have no
-// tail at all, which is also what makes them one line at every width
-// ([overlayItemLines] counts the tail).
+// standRowNote is the dim tail: HOW MUCH ROPE the order has, and then where it
+// stands. A heading and a "not here" line have no tail at all, which is also
+// what makes them one line at every width ([overlayItemLines] counts the tail).
 //
-// THE WORDS OUTRANK THE ROLLUP, exactly as they do on home's own row
-// ([standFitNote] is that clip): the tail can be a whole sentence a run stopped
-// on, and a row that spent all of a narrow frame on it would be a page of
-// clauses with nothing to tell the orders apart. At [tierPhone] the tail has a
-// line of its own and is left whole.
+// THE ROPE LEADS BECAUSE IT IS THE ONE COLUMN THAT EARNS ITS PLACE. Screen 2f
+// says so outright — it is "the only fact that changes whether you have to watch
+// it" — so it goes at the head of the tail, where the clip that shortens a
+// narrow row eats the clause behind it and never the rope.
+//
+// AND IT IS [standing.RopeWord]'S ANSWER, never a second reading of
+// [standing.Item.Grant] taken here. Three rungs are a rule about a person's
+// trust in a machine, and a surface that decided for itself which rung a row was
+// on would be a second authority on the one question this column exists to ask.
+//
+// THE STATUS CLAUSE BEHIND IT IS [standRollup]'S, exactly as it has always been:
+// needs your look, checking now, paused, the cadence, what the last look found —
+// one derivation with one set of words, shared with home's own rows.
+//
+// THE WORDS OUTRANK BOTH, exactly as they do on home's own row ([standFitNote]
+// is that clip): the tail can be a whole sentence a run stopped on, and a row
+// that spent all of a narrow frame on it would be a page of clauses with nothing
+// to tell the orders apart. At [tierPhone] the tail has a line of its own and is
+// left whole.
 func standRowNote(row standRow, width int, now time.Time) string {
 	if row.kind != standRowItem {
 		return ""
 	}
-	note := standRollup(row.view, now)
+	note := joinDot(standRopeWord(row.view.Item), standRollup(row.view, now))
 	if phoneList(width) {
 		return note
 	}
 	return standFitNote(note, width)
+}
+
+// standRopeWord is how much rope an order has, and NOTHING AT ALL for one that
+// can never act.
+//
+// A RULE THAT ONLY HOLDS HAS NO ROPE TO REPORT. Nothing examines it, nothing
+// fires it, and it cannot do a thing unattended however long it stands — so
+// `asks first` on such a row would be answering a question the row does not
+// raise, which is the emptiness law applied to a fact rather than to a figure
+// ([standRollup] keeps the same silence about a rule's cadence).
+func standRopeWord(item standing.Item) string {
+	if item.When.Kind == standing.WhenHold {
+		return ""
+	}
+	return standing.RopeWord(item)
 }
 
 // standRowNotHereLine is the footnote under a shelf: one order that deliberately
@@ -260,8 +402,8 @@ func standLastLook(view StandingItemView, width int, pal palette, now time.Time)
 // AND THE WINDOW IS WHATEVER IS LEFT, which is the whole of what promotion
 // bought this list: the frame says how many rows there are, the cursor is
 // followed within them, and nothing is behind a fold.
-func standingLines(rows []standRow, cursor, top, width, room, hover int, pal palette, now time.Time) (
-	lines []string, owner []int, scrolled, shown int) {
+func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width, room, hover int,
+	pal palette, now time.Time) (lines []string, owner []int, scrolled, shown int) {
 	if room <= 0 || width < 1 {
 		return nil, nil, top, 0
 	}
@@ -271,8 +413,10 @@ func standingLines(rows []standRow, cursor, top, width, room, hover int, pal pal
 	// THE HEADINGS ARE [overlayFill.plain] LINES, which is what makes them
 	// unpressable without anything downstream having to know they are headings:
 	// plain records the line as belonging to row -1, and the pointer's own
-	// resolver already swallows -1.
-	fill.plain(pal.dim(fit("  "+standHeading, width)))
+	// resolver already swallows -1. The window control rides the first of them
+	// for the same reason it is drawn there at all — it is about the WHOLE list
+	// and answers to no row on it.
+	fill.plain(standingHeaderRow(width, win, pal))
 	for at := scrolled; at < len(rows) && fill.room(); at++ {
 		row := rows[at]
 		var fitted bool

@@ -45,7 +45,7 @@ import (
 // IT WAS THE PAGE'S CEILING and it is not one any more: the list was an overlay
 // under the draft, twelve rows at most, and a place takes the whole terminal —
 // so the window a cursor is followed within is what the last paint had room for
-// ([standPage.window]) and never a constant. What a constant is still honest for
+// ([standPage.visible]) and never a constant. What a constant is still honest for
 // is the one moment there is no paint to ask: a page key pressed before the
 // first frame, which cannot happen on the surface and can in a test. Twelve is
 // the number the overlay used, kept so that gesture moves by the same amount it
@@ -68,8 +68,9 @@ type standPage struct {
 	// things to read.
 	cursor int
 	top    int
-	// shown is how many rows the LAST PAINT had room for, and it is the window
-	// the cursor is followed within.
+	// shown is how many rows the LAST PAINT had room for, and it is how far the
+	// cursor is followed ([standPage.visible]). It is not [standPage.win], which
+	// is the TIME window this place is listing.
 	//
 	// IT IS WRITTEN BY THE PAINT because this is a place: the body is however
 	// many rows the frame had left after the pulse, the tab bar, the composer
@@ -81,6 +82,11 @@ type standPage struct {
 	// layout for the pointer — the same bargain the other panels make
 	// (permissions.go, connectpanel.go). A heading answers to no row.
 	owner []int
+	// win is WHEN IT FIRED — this place's time axis (screen 3d), drawn as the
+	// control on the header row and moved by the four shift-arrows. It opens
+	// holding every firing the machine has, so the first frame hides nothing and
+	// narrowing is the person's own act ([standingOpenWindow]).
+	win session.UsageWindow
 }
 
 // ── the interface the frame asks of a place ─────────────────────────────────
@@ -95,7 +101,12 @@ type standPage struct {
 // ([standNothingWord]) and never a silent return.
 func (p *standPage) open(a *app) tea.Cmd {
 	a.readStandingElsewhere()
-	rows := a.standingPageRows()
+	// THE WINDOW IS MEASURED BEFORE ANYTHING IS SCOPED BY IT, over every order
+	// the machine holds — which is what makes the span it opens on the true one
+	// and the first frame's list complete.
+	stand, excepted, elsewhere := a.standingPageParts()
+	win := standingOpenWindow(a.now(), stand, excepted, elsewhere)
+	rows := standingShelvesIn(win, stand, excepted, elsewhere)
 	if len(rows) == 0 {
 		a.note(standNothingWord)
 		return nil
@@ -105,7 +116,7 @@ func (p *standPage) open(a *app) tea.Cmd {
 	// the whole screen, so a page left open under it would take keys nobody can
 	// see ([app.standDownFullscreen] holds the law and the reason).
 	a.standDownFullscreen()
-	*p = standPage{up: true, rows: rows}
+	*p = standPage{up: true, rows: rows, win: win}
 	p.cursor = p.settle(0)
 	a.page = pageStanding
 	a.closeLists()
@@ -127,7 +138,7 @@ func (p *standPage) close(a *app) {
 // "nothing reads the disk on a draw".
 func (p *standPage) body(a *app, width, room int) []placeRow[int] {
 	lines, owner, top, shown := standingLines(
-		p.rows, p.cursor, p.top, width, room, p.hover(), a.pal, a.now())
+		p.rows, p.win, p.cursor, p.top, width, room, p.hover(), a.pal, a.now())
 	p.top, p.shown, p.owner = top, shown, owner
 	rows := make([]placeRow[int], 0, room)
 	for i, text := range lines {
@@ -223,6 +234,42 @@ func (p *standPage) verbs(a *app) []verb {
 		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return p.ask(a, standDown) }},
 		{key: 'n', word: standNotHereWord, do: func() tea.Cmd { return p.ask(a, standExcept) }},
 	}
+}
+
+// window is the four time keys of screen 3d, and this place's axis is WHEN IT
+// FIRED.
+//
+// IT RE-GROUPS THE CACHED READING AND NEVER WALKS THE STORE AGAIN. The orders
+// are already in memory — the open collected them — so moving the window is
+// arithmetic over a slice, which is what lets a person hold the arrow down. A
+// window key that reached the disk would be the law this place is built on
+// broken by the one gesture most likely to repeat.
+//
+// AND A FRAME TOO NARROW TO DRAW THE CONTROL HAS NO WINDOW AT ALL. The same
+// predicate answers the paint and the keys ([standingWindowRoom]), so the arrows
+// are never bound where they are not drawn — a capability that cannot be seen is
+// absent rather than silently working.
+func (p *standPage) window(a *app, key string) bool {
+	if !p.up {
+		return false
+	}
+	width, _ := a.size()
+	if !standingWindowRoom(width, p.win) {
+		return false
+	}
+	next := placeWindowStep(p.win, key)
+	if next == p.win {
+		return false
+	}
+	p.win = next
+	// THE CURSOR GOES BACK TO THE TOP because the list under it is a different
+	// list: a window that dropped four rows would otherwise leave the cursor on
+	// whatever slid into its line number, which is [app.refreshHome]'s own
+	// warning about a list reordering under a cursor.
+	p.rows = a.standingPageRows(p.win)
+	p.top = 0
+	p.cursor = p.settle(0)
+	return true
 }
 
 // note is the line a place may say about what it is HOLDING, under the rule and
@@ -355,13 +402,19 @@ func (p *standPage) move(delta int) {
 // whole terminal, so there is nothing for a fold to save and nothing behind it a
 // person could get to.
 func (p *standPage) follow() {
-	p.top = listTop(p.cursor, p.top, len(p.rows), p.window())
+	p.top = listTop(p.cursor, p.top, len(p.rows), p.visible())
 }
 
-// window is how many rows the cursor is followed within, and how far a page key
+// visible is how many rows the cursor is followed within, and how far a page key
 // steps: what the last paint had room for, and [standRowsMax] before there has
 // been a paint to ask.
-func (p *standPage) window() int {
+//
+// It is NOT called `window`, and the difference matters on this place more than
+// anywhere: [standPage.window] is screen 3d's TIME window — which firings the
+// page is listing — while this is how much of the list the terminal can show at
+// once. Two senses of one word on one struct is how a keystroke ends up
+// scrolling the calendar.
+func (p *standPage) visible() int {
 	if p.shown > 0 {
 		return p.shown
 	}
@@ -497,7 +550,7 @@ func (p *standPage) ask(a *app, which standVerb) tea.Cmd {
 	// rebuilt from the bands the open already collected — and an order excepted
 	// from here, which stops being a row and becomes a `not here` line, is still
 	// accounted for and so still deduplicated out of that shelf.
-	p.adopt(a.standingPageRows())
+	p.adopt(a.standingPageRows(p.win))
 	return nil
 }
 
@@ -533,7 +586,7 @@ func (p *standPage) write(a *app, item standing.Item, status standing.Status) te
 	}
 	a.note(receipt + " · " + strings.TrimSpace(item.Title()))
 	a.readStandingElsewhere()
-	p.adopt(a.standingPageRows())
+	p.adopt(a.standingPageRows(p.win))
 	return nil
 }
 
@@ -586,9 +639,9 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "down", "ctrl+n":
 		p.move(1)
 	case "pgup":
-		p.move(-p.window())
+		p.move(-p.visible())
 	case "pgdown":
-		p.move(p.window())
+		p.move(p.visible())
 	case "enter":
 		cmd = p.enter(a)
 		// `p`, `s` AND `n` USED TO BE BARE LETTERS HERE, and the comment above this
@@ -611,13 +664,24 @@ func (a *app) standPageKey(msg tea.KeyPressMsg) tea.Cmd {
 // cursor's arithmetic is done against the list it produced; three callers each
 // assembling the shelves in their own order is three answers to "which row is
 // row four".
-func (a *app) standingPageRows() []standRow {
-	var stand, excepted []StandingItemView
+func (a *app) standingPageRows(win session.UsageWindow) []standRow {
+	stand, excepted, elsewhere := a.standingPageParts()
+	return standingShelvesIn(win, stand, excepted, elsewhere)
+}
+
+// standingPageParts is the three readings the page is laid out from, taken
+// together: what the conversation's engine says stands here, what the person
+// excepted from here, and what the machine's store holds anywhere.
+//
+// THEY ARE GATHERED ONCE AND HANDED ON, because the first of them reaches
+// through the engine. A caller that wanted the window measured over everything
+// AND the rows scoped by it would otherwise ask the engine twice for one frame.
+func (a *app) standingPageParts() (stand, excepted, elsewhere []StandingItemView) {
 	if agent, ok := a.standingSeam(); ok {
 		here, out := agent.StandingHere()
 		stand, excepted = a.standViews(here), a.standViews(out)
 	}
-	return standingShelves(stand, excepted, a.standingPlaceViews())
+	return stand, excepted, a.standingPlaceViews()
 }
 
 // standViews resolves the one fact a standing document does not hold — whether a

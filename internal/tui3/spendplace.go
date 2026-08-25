@@ -403,18 +403,7 @@ func spendSides(width int, left, right string, leftInk, rightInk func(string) st
 // step gives the four drawn arrow chords their complete grammar. Unknown keys
 // leave the reading alone because an undrawn key never acts on this surface.
 func (r spendReading) step(win session.UsageWindow, key string) session.UsageWindow {
-	switch key {
-	case "shift+left":
-		return win.Step(-1)
-	case "shift+right":
-		return win.Step(1)
-	case "shift+up":
-		return win.Coarser()
-	case "shift+down":
-		return win.Finer()
-	default:
-		return win
-	}
+	return placeWindowStep(win, key)
 }
 
 // THE EMPTY SPEND PAGE IS THE ROUTER'S TEACHING AND NOT A SECOND ONE. A ledger

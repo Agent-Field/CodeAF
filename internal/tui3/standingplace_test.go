@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -60,7 +61,7 @@ func standingFixture() (stand, excepted, elsewhere []StandingItemView) {
 // text with the ink stripped.
 func standingPaint(t *testing.T, rows []standRow, cursor, width, room int) ([]string, []int) {
 	t.Helper()
-	lines, owner, _, _ := standingLines(rows, cursor, 0, width, room, -1,
+	lines, owner, _, _ := standingLines(rows, session.UsageWindow{}, cursor, 0, width, room, -1,
 		newPalette(tokens.NoColor, false), standingNow)
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -254,7 +255,7 @@ func TestTheReadingScrollsToTheRowTheCursorIsOn(t *testing.T) {
 	}
 	rows := standingShelves(nil, nil, elsewhere)
 	last := len(rows) - 1
-	lines, _, top, shown := standingLines(rows, last, 0, 120, 4, -1,
+	lines, _, top, shown := standingLines(rows, session.UsageWindow{}, last, 0, 120, 4, -1,
 		newPalette(tokens.NoColor, false), standingNow)
 	if shown < 1 || top == 0 {
 		t.Fatalf("a four-row frame did not scroll (top %d, window %d)", top, shown)
@@ -396,5 +397,192 @@ func TestTheReadingObeysTheEmptinessLaw(t *testing.T) {
 	}
 	if !strings.Contains(screen, standHeading) {
 		t.Fatalf("the reading lost its heading:\n%s", screen)
+	}
+}
+
+// ── the rope column ─────────────────────────────────────────────────────────
+
+// THE ROPE LEADS THE ROW'S TAIL, IN THREE RUNGS, AND IT IS THE SHARED
+// DERIVATION.
+//
+// Screen 2f says this is "the only fact that changes whether you have to watch
+// it", so it goes at the head of the tail where a narrow frame's clip cannot
+// reach it first. And the rung is [standing.RopeWord]'s answer: three rungs are
+// a rule about a person's trust in a machine, and a surface that decided for
+// itself which one a row was on would be a second authority on the one question
+// this column exists to ask.
+func TestTheRopeLeadsTheRowsTailInThreeRungs(t *testing.T) {
+	rung := func(clean int, grant string) string {
+		view := standingView("r", "watch the release feed", standing.AltitudeProject)
+		view.Item.Grant, view.Item.CleanRuns = grant, clean
+		rows := standingShelves(nil, nil, []StandingItemView{view})
+		return standRowNote(rows[len(rows)-1], 200, standingNow)
+	}
+	for _, row := range []struct {
+		clean int
+		grant string
+		want  string
+	}{
+		{0, "", standing.RopeAsksFirst},
+		{99, "", standing.RopeAsksFirst},
+		{0, "tell me without asking", "earning trust 0/5"},
+		{4, "tell me without asking", "earning trust 4/5"},
+		{5, "tell me without asking", standing.RopeTrusted},
+	} {
+		got := rung(row.clean, row.grant)
+		if !strings.HasPrefix(got, row.want) {
+			t.Fatalf("a row with grant %q and %d clean firings leads with %q, want %q",
+				row.grant, row.clean, got, row.want)
+		}
+		// AND THE STATUS CLAUSE IS STILL BEHIND IT — home's own [standRollup] and
+		// not a second set of words for the same record.
+		if !strings.Contains(got, "Mondays at 9am") {
+			t.Fatalf("the rope displaced the clause: %q", got)
+		}
+	}
+}
+
+// A RULE THAT ONLY HOLDS HAS NO ROPE TO REPORT. Nothing examines it, nothing
+// fires it, and it cannot act unattended however long it stands — so `asks
+// first` there would be answering a question the row does not raise. That is the
+// emptiness law applied to a fact rather than to a figure.
+func TestARuleThatOnlyHoldsHasNoRopeToReport(t *testing.T) {
+	rule := standingView("h", "never touch the public API", standing.AltitudeProject)
+	rule.Item.When = standing.When{Kind: standing.WhenHold}
+	rows := standingShelves(nil, nil, []StandingItemView{rule})
+	note := standRowNote(rows[len(rows)-1], 200, standingNow)
+	if note != standHoldsWord {
+		t.Fatalf("a rule's tail is %q, want %q", note, standHoldsWord)
+	}
+	for _, banned := range []string{standing.RopeAsksFirst, standing.RopeTrusted, "earning trust"} {
+		if strings.Contains(note, banned) {
+			t.Fatalf("a rule that only holds says %q", banned)
+		}
+	}
+}
+
+// AND THE ROPE SURVIVES A NARROW FRAME while the clause gives way, which is what
+// putting it first is for.
+func TestTheRopeOutlastsTheClauseOnANarrowRow(t *testing.T) {
+	view := standingView("r", "watch every agentfield repo and summarise what merged",
+		standing.AltitudeProject)
+	view.Item.Grant, view.Item.CleanRuns = "summarise without asking", standing.TrustAfter
+	rows := standingShelves(nil, nil, []StandingItemView{view})
+	for _, width := range []int{60, 80, 120, 200} {
+		note := standRowNote(rows[len(rows)-1], width, standingNow)
+		if !strings.HasPrefix(note, standing.RopeTrusted) {
+			t.Fatalf("at %d the tail is %q and does not lead with the rope", width, note)
+		}
+	}
+}
+
+// ── the window: when it fired ───────────────────────────────────────────────
+
+// THE LABEL IS THE CONTROL AND THE READING AT ONCE, drawn BETWEEN ITS ARROWS on
+// the header row — screen 3d's own move. A person reads the span they are
+// looking at and the keys that move it in one glance, on the row that reports
+// it.
+func TestTheWindowIsDrawnBetweenItsArrowsOnTheHeader(t *testing.T) {
+	// THE WINDOW'S OWN CALENDAR IS THE LOCAL ONE ([session.UsageWindow] buckets
+	// on local days), so the fixture is built in it — a window handed UTC
+	// midnights would label the day before wherever the machine sits west of it.
+	win := session.UsageWindow{
+		From:  time.Date(2026, 8, 12, 0, 0, 0, 0, time.Local),
+		To:    time.Date(2026, 8, 25, 0, 0, 0, 0, time.Local),
+		Grain: session.GrainDay,
+	}
+	head := plain(standingHeaderRow(120, win, newPalette(tokens.NoColor, false)))
+	for _, want := range []string{standHeading, "shift+← ", "aug 12 – aug 25", " →"} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("the header does not draw %q: %q", want, head)
+		}
+	}
+	if at, over := strings.Index(head, "shift+←"), strings.Index(head, "aug 12"); at < 0 || at > over {
+		t.Fatalf("the label is not between its arrows: %q", head)
+	}
+	if got := ansi.StringWidth(head); got != 120 {
+		t.Fatalf("the header is %d cells at a width of 120: %q", got, head)
+	}
+}
+
+// A FRAME TOO NARROW TO DRAW THE CONTROL HAS NO WINDOW AT ALL — the arrows are
+// not drawn and, because one predicate answers both, the keys are not bound
+// either. A control bound but invisible is the defect the verb strip exists to
+// end; a capability that cannot work is absent, not broken.
+func TestANarrowFrameDrawsNoWindowControl(t *testing.T) {
+	win := session.UsageWindow{
+		From:  time.Date(2026, 8, 12, 0, 0, 0, 0, time.Local),
+		To:    time.Date(2026, 8, 25, 0, 0, 0, 0, time.Local),
+		Grain: session.GrainDay,
+	}
+	pal := newPalette(tokens.NoColor, false)
+	if standingWindowRoom(44, win) {
+		t.Fatal("a phone frame claims room for the window control")
+	}
+	head := plain(standingHeaderRow(44, win, pal))
+	if strings.Contains(head, "shift+") {
+		t.Fatalf("a narrow header drew the control anyway: %q", head)
+	}
+	if !strings.Contains(head, standHeading) {
+		t.Fatalf("the narrow header lost the page's name: %q", head)
+	}
+	// AND A WINDOW NOBODY HAS CHOSEN DRAWS NOTHING AT ANY WIDTH: arrows around
+	// no reading would be a control over nothing.
+	if standingWindowRoom(200, session.UsageWindow{}) {
+		t.Fatal("an unchosen window claims room")
+	}
+	if got := plain(standingHeaderRow(200, session.UsageWindow{}, pal)); strings.Contains(got, "shift+") {
+		t.Fatalf("an unchosen window drew arrows: %q", got)
+	}
+}
+
+// THE PLACE OPENS ON A WINDOW THAT HOLDS EVERY FIRING IT CAN SEE, so the first
+// frame hides nothing. A reference page whose whole job is to say what stands
+// over you may not arrive having quietly dropped an order; narrowing is the
+// person's own deliberate act.
+func TestTheWindowOpensHoldingEveryFiring(t *testing.T) {
+	old := standingView("old", "watch the release feed", standing.AltitudeProject)
+	old.Item.LastFired = standingNow.AddDate(0, -3, 0)
+	recent := standingView("recent", "keep the changelog index fresh", standing.AltitudeProject)
+	recent.Item.LastFired = standingNow.AddDate(0, 0, -1)
+	never := standingView("never", "never touch the public API", standing.AltitudeProject)
+
+	win := standingOpenWindow(standingNow, []StandingItemView{old, recent, never})
+	for _, view := range []StandingItemView{old, recent} {
+		if !win.Holds(view.Item.LastFired) {
+			t.Fatalf("the window it opens on drops %q, fired %s", view.Item.ID, view.Item.LastFired)
+		}
+	}
+	if kept := standingInWindow([]StandingItemView{old, recent, never}, win); len(kept) != 3 {
+		t.Fatalf("the opening window scoped %d of 3 orders away", 3-len(kept))
+	}
+	// A MACHINE THAT HAS NEVER FIRED ANYTHING OPENS ON TODAY rather than on a
+	// span invented backwards over an empty calendar.
+	quiet := standingOpenWindow(standingNow, []StandingItemView{never})
+	if !quiet.Holds(standingNow) {
+		t.Fatalf("a machine with no firings opened on %q", quiet.Label())
+	}
+}
+
+// AN ORDER THAT HAS NEVER FIRED IS NEVER SCOPED AWAY. A rule that only holds is
+// never examined and never fires; a watch whose first moment has not come has no
+// firing either. Neither has a date to be outside a window, and filtering a
+// record by a fact it does not have would answer "not in this fortnight" about
+// something that was never anywhere.
+func TestTheWindowNeverScopesAwayAnOrderThatHasNeverFired(t *testing.T) {
+	fortnight := session.LastDays(standingNow, 14)
+	inside := standingView("inside", "keep the changelog index fresh", standing.AltitudeProject)
+	inside.Item.LastFired = standingNow.AddDate(0, 0, -2)
+	outside := standingView("outside", "watch the release feed", standing.AltitudeProject)
+	outside.Item.LastFired = standingNow.AddDate(0, -3, 0)
+	never := standingView("never", "never touch the public API", standing.AltitudeProject)
+
+	kept := standingInWindow([]StandingItemView{inside, outside, never}, fortnight)
+	var ids []string
+	for _, view := range kept {
+		ids = append(ids, view.Item.ID)
+	}
+	if strings.Join(ids, ",") != "inside,never" {
+		t.Fatalf("a fortnight kept %v, want the recent one and the one that never fired", ids)
 	}
 }
