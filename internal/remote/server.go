@@ -846,10 +846,23 @@ func (s *server) handshake(line []byte) error {
 
 // refuse says why on the wire and then hands the same sentence back as the
 // error, so the exit code and the surface's message are the one fact.
+//
+// IT IS TYPED BECAUSE THE SENTENCE HAS ALREADY BEEN DELIVERED. Over ssh the
+// engine's stderr is the person's stderr — that is how a passphrase prompt
+// reaches them (cmd/aforge/chatv3_host.go) — so a door that also prints this
+// error writes the same line onto the same terminal the wire is about to draw
+// it on. [Refusal] is how the engine door knows to exit quietly instead.
 func (s *server) refuse(reason string) error {
 	s.fatal(reason)
-	return errors.New(reason)
+	return &Refusal{Reason: reason}
 }
+
+// Refusal is a handshake the engine turned away, with the reason ALREADY on the
+// wire. A caller that holds one has nothing left to say: the surface has been
+// told, in these words, and the only thing still owed is a non-zero exit.
+type Refusal struct{ Reason string }
+
+func (r *Refusal) Error() string { return r.Reason }
 
 // readCall is the frame check every line after the handshake goes through.
 func readCall(line []byte) (Frame, error) {

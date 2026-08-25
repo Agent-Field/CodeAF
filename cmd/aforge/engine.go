@@ -94,11 +94,25 @@ func runRemoteEngine(args []string) error {
 			return enginehost.Splice(os.Stdin, os.Stdout, conn)
 		}
 	}
-	return remote.Serve(os.Stdin, os.Stdout, remote.Options{
+	return quietRefusal(remote.Serve(os.Stdin, os.Stdout, remote.Options{
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
-	})
+	}))
+}
+
+// quietRefusal is the door's half of [remote.Refusal]: a handshake this engine
+// turned away has already had its reason written down the wire, and OVER SSH
+// THIS PROCESS'S STDERR IS THE PERSON'S TERMINAL — the same terminal the
+// surface is about to draw that reason on. Printing it here as well is how one
+// refusal became two identical `error:` lines on `aforge chat --host
+// devbox:/nowhere`. The exit code stays 1, because the engine did fail.
+func quietRefusal(err error) error {
+	var refusal *remote.Refusal
+	if errors.As(err, &refusal) {
+		return exitStatus(1)
+	}
+	return err
 }
 
 // attachEngineHost is step one: a connection to this workspace's host, starting
