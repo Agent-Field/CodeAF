@@ -24,12 +24,16 @@ import "html/template"
 // in, and asking again with a toggle would be one more decision for somebody
 // who only wanted to look at a log.
 
-// browseData is what the template is given: whose disk this is, the token the
-// page authorises itself with, and the ceiling — interpolated rather than
-// spelled in the JavaScript, so the number lives in exactly one place.
+// browseData is what the template is given: whose disk this is and the ceiling
+// — interpolated rather than spelled in the JavaScript, so the number lives in
+// exactly one place.
+//
+// THERE IS NO TOKEN IN IT. The page authorises itself with the cookie the door
+// set on the way in (filedoor.go's handToken), which means the secret is in
+// neither the address bar nor the document, and a fetch this page makes carries
+// it without anything here having to hold it.
 type browseData struct {
 	Host     string
-	Token    string
 	MaxBytes int64
 }
 
@@ -40,6 +44,10 @@ const browseSource = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Nothing navigated to from here learns where it was opened from. Belt as
+     well as braces now the address holds no token, and the braces the day
+     somebody puts one back. -->
+<meta name="referrer" content="no-referrer">
 <title>{{.Host}} — aforge files</title>
 <style>
 :root {
@@ -121,7 +129,9 @@ body.dropping #veil { display: grid; }
 </main>
 <div id="veil">drop a file to send it over</div>
 <script>
-const TOKEN = {{.Token}};
+// No token anywhere on this page: every call below is same-origin, so the
+// browser sends the door's HttpOnly cookie with it and the page never handles
+// the secret at all.
 const HOST = {{.Host}};
 const MAX_BYTES = {{.MaxBytes}};
 const MAX_LABEL = Math.round(MAX_BYTES / (1024 * 1024)) + "MB";
@@ -227,9 +237,12 @@ function drawRows(entries, truncated) {
       if (entry.dir) {
         link.addEventListener("click", () => go(target));
       } else {
-        link.href = "/api/" + TOKEN + "/file?path=" + encodeURIComponent(target);
+        link.href = "/api/file?path=" + encodeURIComponent(target);
         link.target = "_blank";
-        link.rel = "noopener";
+        // noreferrer as well as noopener: the tab that opens is looking at a
+        // file off somebody else's disk, and it is told neither what opened it
+        // nor where from.
+        link.rel = "noopener noreferrer";
       }
       name.appendChild(link);
     }
@@ -258,7 +271,7 @@ function drawRows(entries, truncated) {
 async function go(where) {
   const asked = where || ".";
   try {
-    const answer = await fetch("/api/" + TOKEN + "/ls?path=" + encodeURIComponent(asked));
+    const answer = await fetch("/api/ls?path=" + encodeURIComponent(asked));
     if (!answer.ok) { say((await answer.text()).trim() || "that listing did not come back", true); return; }
     const listing = await answer.json();
     here = asked;
@@ -310,7 +323,7 @@ function send(file) {
     const form = new FormData();
     form.append("file", file, file.name);
     const request = new XMLHttpRequest();
-    request.open("POST", "/api/" + TOKEN + "/put");
+    request.open("POST", "/api/put");
     request.upload.addEventListener("progress", (e) => {
       if (!e.lengthComputable) { say("sending " + file.name + "…"); return; }
       say("sending " + file.name + " — " + Math.round((e.loaded / e.total) * 100) + "%");
