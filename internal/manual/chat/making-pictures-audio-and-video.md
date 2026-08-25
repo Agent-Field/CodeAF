@@ -132,11 +132,36 @@ prompt can still land on the average when each detail is what everyone in that
 genre writes: the glowing shape on a dark field, the neon palette, the adjective
 pile ("ultra-detailed", "cinematic"). Eight models given that prompt return
 eight competent copies of the same picture, because the prompt asked for the
-mean of the genre. Distinctive work states at least one concrete decision the
-average would not make — a real medium, an unexpected palette, a metaphor
-specific to the subject rather than the industry. This applies however the
-render is made: the same law covers a prompt sent through `generate_image` and
-one a script of aforge's own sends to an API.
+mean of the genre. And the mean cannot be escaped from inside the genre —
+recolor a glowing dark-mode network and it is still a glowing dark-mode
+network. The exit is a **real medium, named**: a print process, a photographic
+setup, a drafting or filmmaking tradition. A real medium carries its own
+physics and its own, different average — a risograph poster or an editorial
+photograph simply is not drawn from the pool "digital AI art" comes from. This
+applies however the render is made: the same law covers a prompt sent through
+`generate_image` and one a script of aforge's own sends to an API.
+
+## Why is everything you make glowing on a dark background?
+
+Because that is the statistical center of the genre the prompt stayed inside —
+"digital tech illustration" resolves to luminous lines on a dark field almost
+regardless of the other words — and because saying **"no glow" does not work**:
+image and video models barely read negation, so the word "glow" in "no glow"
+pulls toward glow. Two fixes, and they work together:
+
+- **Leave the genre, do not redecorate it.** Name a real medium with real
+  physics — "flat vector print, two spot colors on warm paper", "daylight
+  editorial photograph", "pencil technical drawing on vellum". Each of those has
+  its own average, and none of them glows.
+- **Specify positively until the default has no room.** Instead of forbidding,
+  describe what IS there: the surface (matte paper, cloth, brushed metal), the
+  light (overcast daylight, one window, flat studio), the palette by name.
+  Matte ink on cream paper *cannot* glow; a prompt that establishes it never
+  needs the word "no".
+
+When a render comes back, aforge judges it against the genre as well as the
+brief — "could this be mistaken for every other image of its kind?" — and
+iterates when the answer is yes.
 
 **Nothing asked for sharpness.** `generate_image` takes `size` (for example
 `1024x1024`) and `generate_video` takes `resolution` (for example `1080p`), both

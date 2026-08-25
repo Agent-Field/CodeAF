@@ -348,6 +348,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// copies of the same picture — a detailed prompt is not yet a
 		// distinctive one.
 		{"all the images you generated look the same generic style", "making-pictures-audio-and-video"},
+		// The complaint survived the first fix: the render swapped palette and
+		// metaphor and kept the genre's deepest habit anyway.
+		{"why is everything you make glowing on a dark background", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught
