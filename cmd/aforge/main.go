@@ -181,7 +181,12 @@ func run() error {
 const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
-  aforge chat [--db path] [--session id|new]
+  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
+              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
+                         --session names a transcript FILE to resume, not an id and not
+                         the word "new": a path that does not exist yet is a new
+                         conversation written there, and no --session at all resumes
+                         this directory's most recent
   aforge resume          pick an earlier conversation by name and open it
                          the same list is /resume inside the chat
   aforge serve [--workspace path] [--relay url]
