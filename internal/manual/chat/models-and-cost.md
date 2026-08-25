@@ -216,6 +216,8 @@ under the class answering it, saying which model comes out. As shipped:
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
 | `routerconfirm` | mastermind | a second look before work starts itself |
+| `markreader` | mastermind | what is left of a long answer, and whether it has parts |
+| `handoff` | mastermind | the instruction a handed-over turn gives whoever finishes it |
 | `division` | mastermind | the parts a worker hands its own work out in |
 
 The list is built from what is registered in the running binary, so it is the truth about
@@ -231,6 +233,15 @@ a designer that writes badly puts a wrong answer on the menu with a name on it;
 starting itself, and it is asked on nothing else, so it costs a call only where something was
 about to be spent; `division` reads a task's parts before any of them exists, and every turn
 every part ever takes runs on the brief it leaves behind.
+
+`markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
+asked at most three times, and only on an answer that has already spent ten rounds of tool
+calls, plus once at the end of any answer that touched a tool at all — it reads the account of
+the work and says what is left of your question. `handoff` writes the instruction the task
+opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
+a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
+of 18, and that is the one answer that quietly drops a handover you were owed. There is no
+cheaper reading of that question — there is only a wrong one.
 
 **`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
 the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
