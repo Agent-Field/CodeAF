@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -427,8 +428,7 @@ const homePutAwayWord = "put away · type its name to find it again"
 
 // ── the card ────────────────────────────────────────────────────────────────
 
-// homeCardBands is which of the registry's bands the switcher's card draws, in
-// the order it draws them (SCREEN 1d).
+// ── the card at ≥160 columns (SCREEN 1d) ────────────────────────────────────
 //
 // SIXTEEN REGISTERED BANDS BECAME FIVE, AND EVERY ONE EITHER ASKS YOU SOMETHING
 // YOU CAN ANSWER HERE OR POINTS AT A PAGE. That is the whole selection rule. The
@@ -437,20 +437,37 @@ const homePutAwayWord = "put away · type its name to find it again"
 // it may not be a second reading of what the row already says. What went:
 //
 //   - `state` and `leftoff` — what a conversation is doing and the last thing it
-//     said. The row's own note carries exactly that now ([switcherConversationNote]),
-//     one column over, for a person who is not pointing at anything.
+//     said. The row's own note carries exactly that now
+//     ([switcherConversationNote]), one column over, for a person who is not
+//     pointing at anything.
 //   - `news`, `nextup`, `watchlist`, `sinceleft`, `agents`, `today` — every one of
 //     them is a thing that happened by itself, and every one of them is a line of
 //     the ledger at the top of the list or a row of a place the ledger opens.
-//   - `gone` — folded into the place line, where the address it is about is.
+//   - `gone` and `repo` — folded into the place line, where the address they are
+//     about is.
 //   - `spend` and `thinking` — folded into one facts line ([app.homeCardFacts]).
 //   - `keys` — the legend became the `→ verbs` hint, because the letters live on
 //     the strip and only while the strip is drawn (SCREEN 3a).
 //
-// The five that stayed are the five that act: a question you can answer without
-// opening anything, the work and what it came to, the files it made, what it
-// cost, and where the repository stands.
-var homeCardBands = []string{"answer", "work", "deliverables"}
+// THE ORDER AND THE WORDING ARE THE DESIGN'S, EXACTLY (FIDELITY.md item 8): the
+// title, the place line, `it is stopped on you` with the question and its answer
+// keys, `work` with `▸ N more tasks` naming the tasks place, `made for you` with
+// the path, the facts line, then `→ verbs`.
+
+// The card's three section words. Each is quoted in the manual exactly as it is
+// spelled here, and each names what is UNDER it rather than what kind of band it
+// is — `made for you` and not `deliverables`, because the card is read by a
+// person and not by the registry.
+const (
+	homeCardStoppedWord = "it is stopped on you"
+	homeCardWorkWord    = "work"
+	homeCardMadeWord    = "made for you"
+)
+
+// homeCardTasks is how many pieces of work the card shows before the rest fold.
+// Three, because the fold's whole point is to name the place that holds the
+// rest, and a card is not that place.
+const homeCardTasks = 3
 
 // homeSwitchCard is the card beside the switcher: the title, the place, the five
 // bands, and the hint that names the strip.
@@ -465,49 +482,37 @@ func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []stri
 		width: width, now: a.home.world.Read, pal: pal,
 	}
 	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
-	if place := a.homeCardPlace(row, width, pal); place != nil {
-		bands = append(bands, place)
-	}
-	for _, name := range homeCardBands {
-		if rows := a.drawHomeBandNamed(name, ctx); len(rows) > 0 {
-			bands = append(bands, rows)
+	for _, band := range [][]string{
+		a.homeCardPlace(row, width, pal),
+		a.homeCardAnswer(ctx),
+		a.homeCardWork(ctx),
+		a.homeCardMade(ctx),
+		a.homeCardFacts(ctx),
+		a.homeCardVerbs(width, pal),
+	} {
+		if len(band) > 0 {
+			bands = append(bands, band)
 		}
-	}
-	if facts := a.homeCardFacts(ctx); facts != nil {
-		bands = append(bands, facts)
-	}
-	if hint := a.homeCardVerbs(width, pal); hint != nil {
-		bands = append(bands, hint)
 	}
 	return homeBands(bands, room)
-}
-
-// drawHomeBandNamed draws the one registered band with this name, and nothing
-// at all when nothing is registered under it.
-//
-// IT ASKS THE REGISTRY RATHER THAN THE FUNCTION, so a band stays one file that
-// says what it is about and this list stays a list of names. A name nothing
-// answers to draws nothing, which is what makes deleting a band a one-file
-// change rather than a two-file one.
-func (a *app) drawHomeBandNamed(name string, ctx bandContext) []string {
-	for _, band := range homeBandsFor(ctx.subject.kind) {
-		if band.name == name {
-			return band.draw(a, ctx)
-		}
-	}
-	return nil
 }
 
 // homeCardPlace is the card's second line: WHERE this conversation is, where its
 // repository stands, and whether it is the one this window is holding.
 //
-//	~/aforge-v2 · master · 1 file dirty · here
+//	~/aforge-v2 · master, 1 file dirty · here
 //
 // THE REPOSITORY IS ON THE PLACE LINE RATHER THAN IN A BAND OF ITS OWN, because
 // a branch and a dirty count are facts ABOUT that address and a band between the
 // address and them would be saying the same address twice. The reading itself is
 // still homeband_repo.go's — one bounded `git status` per workspace per
 // [homeRepoTTL], taken when a card arrives and never on a draw.
+//
+// AND THE REPOSITORY'S OWN CLAUSES ARE JOINED WITH COMMAS. The line is three
+// things — the address, the state of the repository there, and the door word —
+// separated by ` · `; inside the middle one, `master, 1 file dirty` is one
+// clause about one repository, and a second `·` there would read as a fourth
+// thing (SCREEN 1d spells it exactly this way).
 //
 // AND A FOLDER THAT IS NOT THERE ANY MORE SAYS SO HERE, in place of the branch
 // it cannot have: the refusal belongs against the address it is about
@@ -526,13 +531,14 @@ func (a *app) homeCardPlace(row session.SessionRow, width int, pal palette) []st
 		parts = append(parts, homeGoneWord)
 	default:
 		if repo := a.home.repos[where]; repo.line != "" {
-			parts = append(parts, repo.line)
+			parts = append(parts, strings.Join(strings.Split(repo.line, " · "), ", "))
 		}
 	}
-	if held := a.homeHolding(row); held != "" {
-		parts = append(parts, held)
-	} else if a.homeMark(row) == markHere {
+	switch {
+	case a.homeMark(row) == markHere:
 		parts = append(parts, homeHereWord)
+	case row.Open || row.Live:
+		parts = append(parts, a.homeHolding(row))
 	}
 	// THE WHOLE LINE IS A DOOR (pathlink.go), and the anchor covers all of it
 	// rather than the path half: the address and what is true about it are one
@@ -541,29 +547,143 @@ func (a *app) homeCardPlace(row session.SessionRow, width int, pal palette) []st
 	return []string{pal.dim(a.pathLink(where, fitLeft(strings.Join(parts, " · "), width)))}
 }
 
-// homeCardFacts is `spend` and `thinking` on ONE line — what this cost, and the
-// rung it thinks at.
+// homeCardAnswer is the band that ACTS: what this conversation is stopped on,
+// the question in its own words, and the keys that answer it from here.
 //
-//	spent $1.63 · 3.6M tokens · last active 3h
+//	it is stopped on you
+//	Add a --report-only mode so the report can be
+//	regenerated without re-running the sweep?
+//	1 do it   2 leave it
+//
+// THE LEAD LINE IS WHY THE CARD IS WORTH ITS CELLS. A card that drew the answer
+// keys alone would be asking a person to answer a question it had not asked;
+// the row's note says `asks: …` cut to one line, and this is the place the whole
+// of it fits.
+func (a *app) homeCardAnswer(ctx bandContext) []string {
+	keys := drawAnswerBand(a, ctx)
+	if len(keys) == 0 {
+		return nil
+	}
+	question, ok := answerable(a.homeTrue(ctx.subject.row), ctx.now)
+	if !ok {
+		return keys
+	}
+	rows := []string{ctx.pal.dim(fit(homeCardStoppedWord, ctx.width))}
+	for _, said := range wrap(switcherFirstLine(question.Text), ctx.width) {
+		rows = append(rows, ctx.pal.ink(said))
+	}
+	return append(rows, keys...)
+}
+
+// homeCardWork is what this conversation had run and what it came to, and the
+// door onto the rest of it.
+//
+//	work
+//	✓ toy-scale validation of decomposition          $1.63
+//	▸ 3 more tasks                                   tasks
+//
+// THE FOLD NAMES THE PLACE THAT HOLDS THE REST, in the right margin every row of
+// this surface says where it goes in. Anything that grows says `▸ N more` and
+// names its page (SCREEN 1d); a card is not the tasks place and must not pretend
+// to be one.
+func (a *app) homeCardWork(ctx bandContext) []string {
+	row, pal := ctx.subject.row, ctx.pal
+	var drawn [][]string
+	for _, entry := range row.Tasks.Rows {
+		label := strings.TrimSpace(entry.Label)
+		if label == "" {
+			label = strings.TrimSpace(entry.Title)
+		}
+		cost := ""
+		if entry.Cost > 0 {
+			cost = dollars(entry.Cost)
+		}
+		lead := a.homeTaskGlyph(entry, row) + " "
+		body := bandSides(ctx.width-2, 0, 8, label, cost, pal.muted, placeMoneyInk(pal))
+		if len(body) == 0 {
+			continue
+		}
+		body[0] = lead + body[0]
+		// AND A TASK THAT IS NOT DONE SAYS WHY, UNDER ITS OWN NAME. The design's
+		// example (SCREEN 1d) is a card of landed work, where the mark and the
+		// figure are the whole row; a run that failed, gave up or was cut off has
+		// something a person has to read, and a card that drew it as one more
+		// tick with a price on it would be the screen calling every outcome the
+		// same outcome.
+		if homeTaskWord(entry, row) != doneWord {
+			body = append(body, homeWorkUnder(entry, row, ctx.width, pal)...)
+		}
+		drawn = append(drawn, body)
+	}
+	if len(drawn) == 0 {
+		return nil
+	}
+	rows := []string{pal.dim(fit(homeCardWorkWord, ctx.width))}
+	shown := drawn
+	if len(drawn) > homeCardTasks {
+		shown = drawn[:homeCardTasks]
+	}
+	for _, group := range shown {
+		rows = append(rows, group...)
+	}
+	if more := len(drawn) - len(shown); more > 0 {
+		rows = append(rows, switcherSides(ctx.width,
+			foldLine(more, "")+" "+switcherPlural(more, "task", "tasks"),
+			pageTasks.word(), pal.dim, pal.dim))
+	}
+	return rows
+}
+
+// homeCardMade is the files this conversation left behind, under the words a
+// person would use for them.
+func (a *app) homeCardMade(ctx bandContext) []string {
+	rows := a.drawHomeBandNamed("deliverables", ctx)
+	if len(rows) == 0 {
+		return nil
+	}
+	return append([]string{ctx.pal.dim(fit(homeCardMadeWord, ctx.width))}, rows...)
+}
+
+// drawHomeBandNamed draws the one registered band with this name, and nothing
+// at all when nothing is registered under it.
+//
+// IT ASKS THE REGISTRY RATHER THAN THE FUNCTION, so a band stays one file that
+// says what it is about and this list stays a list of names. A name nothing
+// answers to draws nothing, which is what makes deleting a band a one-file
+// change rather than a two-file one.
+func (a *app) drawHomeBandNamed(name string, ctx bandContext) []string {
+	for _, band := range homeBandsFor(ctx.subject.kind) {
+		if band.name == name {
+			return band.draw(a, ctx)
+		}
+	}
+	return nil
+}
+
+// homeCardFacts is `spend` and `thinking` on ONE line — what this cost, and the
+// rung work started here would think at.
+//
+//	spent $1.63 · 3.6M tokens · thinking high
 //
 // TWO BANDS BECAME ONE LINE because they are one sentence: both are arithmetic
 // about the thing on the card, and a blank row between "what it cost" and "how
 // hard it thinks" was a paragraph break inside a clause.
 //
-// A CONVERSATION HAS NO RUNG THIS SCREEN CAN HONESTLY STATE, so it says none.
-// The only rungs home can read are the install's default and a standing item's
-// own (homeband_thinking.go's [app.bandRung]); a conversation's is its own
-// sticky setting, belongs to the window that session is open in, and is
-// deliberately untouchable from here (home.go's ctrl+v). Printing the machine's
-// default on a chat's card would be advertising a fact about the install as a
-// fact about the chat.
+// THE RUNG IS THE INSTALL'S AND THE CARD DOES NOT OFFER TO MOVE IT. A
+// conversation's own rung is its own sticky setting and belongs to the window
+// that session is open in, which is why ctrl+v deliberately does nothing here
+// (home.go) and why the legend never named a key for it. What the line states is
+// the rung a task started from this card would think at, which is the fact a
+// person reading a bill wants beside it.
 func (a *app) homeCardFacts(ctx bandContext) []string {
 	clauses := []string{}
 	if facts := homeFacts(ctx.subject.row, ctx.now); facts != "" {
 		clauses = append(clauses, strings.Split(facts, " · ")...)
 	}
-	if rung, _ := a.bandRung(ctx.subject); effortClause(rung) != "" {
-		clauses = append(clauses, effortClause(rung))
+	if dir, ok := a.effortProfile(); ok {
+		if clause := effortClause(config.DefaultEffortAt(dir)); clause != "" {
+			clauses = append(clauses, clause)
+		}
 	}
 	if len(clauses) == 0 {
 		return nil

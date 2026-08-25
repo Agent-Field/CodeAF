@@ -6,9 +6,12 @@ Type `/home`. It takes the whole screen and shows **every conversation on this m
 from every project**, not just the folder this window was started in.
 
 The top line reads `aforge` on the left, with the machine's own vital signs dim on the
-right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below). The way out
-is named at the foot, on the hint line: `esc close`. `esc` puts you back in exactly the chat
-you came from, untouched — nothing was closed and nothing was sent while you were looking.
+right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below).
+`esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
+nothing was sent while you were looking. The resting foot does not spend a cell naming it:
+it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
+place`, four keys and no more, and `alt+.` draws the whole map over the cells you are
+already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
@@ -348,7 +351,8 @@ the pulse, the tab bar, the rule, the rows and the fold:
  ○ Bounty Reward Companies           leadgen                                      3h
  ○ Thor Fight Clip Generation        media                                       13h
  ▸ 17 more
- type to search or start something new · ↑↓ pick · enter open
+ › say what you want done                                        here ~/aforge-v2
+ type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
 Eight rows is a legitimate home. The section line
@@ -380,29 +384,38 @@ line, and five bands, each drawn only if it has something to say:
 
 ```
 Swarm Task Splitting Ideation
-~/aforge-v2 · master · 1 file dirty · open here
+~/aforge-v2 · master, 1 file dirty · here
 
-1 yes · 2 no
+it is stopped on you
+Add a --report-only mode so the report can be
+regenerated without re-running the sweep?
+1 do it   2 leave it
 
-Port the Picker                              2h
-  the roster resumes cleanly · 14 files
-▸ …3 more tasks
+work
+✓ toy-scale validation of decomposition             $1.63
+▸ 3 more tasks                                      tasks
 
-· swarm-decomposition.md                     2h
+made for you
+· swarm-decomposition.md                               2h
 
-spent $1.63 · 3.6M tokens · last active 3h
+spent $1.63 · 3.6M tokens · thinking high
 
 → verbs: put it away, new chat here, open folder, copy path
 ```
 
-- **the answers** to the question it is stopped on, as chips a digit gives. The question
-  itself is not repeated here — it is on the row and on the line above the box;
-- **the work** and what each task came to, three tasks and then `▸ …3 more tasks`;
-- **the files it made**;
-- **one facts line** — what it cost and when it was last active;
-- and **the place line** under the title, which carries the repository —
-  `~/aforge-v2 · master · 1 file dirty · open here`, and `that folder is gone` in place of
-  the branch where the directory is not there any more.
+- **the place line** under the title carries the repository — the branch and the dirty count
+  as one clause, `master, 1 file dirty`, and `that folder is gone` in its place where the
+  directory is not there any more — then the door word: `here` for the conversation this
+  window is holding, `open in another window` for one somebody else has;
+- **`it is stopped on you`**, the question in its own words, and the keys that answer it
+  from here. A digit sends the answer without opening anything;
+- **`work`** — each task with its mark and what it cost, a run that is not done keeping its
+  outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
+  the tasks place** rather than unfolding: a card is not the place that holds them;
+- **`made for you`** — the files it left behind;
+- **one facts line** — what it cost, the tokens, and the rung work started here would think
+  at (`thinking high`); `ctrl+v` still does not move a conversation's own rung from here;
+- and **`→ verbs: …`**, which names what can be done and never the letters.
 
 The old `keys` legend is gone from the card. Its last line names the strip instead —
 `→ verbs: …` — because a letter is a verb only while the strip naming it is on screen.
@@ -448,7 +461,8 @@ good, `ctrl+v` think harder. And every printable key still goes to the box — t
 promises `type to search or start something new`, and the strip is the one state on this
 screen where that is suspended, which is why it has to be visible.
 
-The foot line says when the key does anything: a row with verbs adds `→ verbs` to the hint
+The card names it — `→ verbs: …` — and `alt+.` draws it on the map; the resting foot does
+not, because that line is four keys exactly. A row with verbs is any row
 under the box.
 
 ## Which column am I in — there is one column, and the band is the cursor
@@ -715,16 +729,20 @@ read top to bottom as bands separated by blank lines — no rules and no borders
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    banded row on the left wears, so the eye travels between them;
 2. one dim line of **where it is**, which carries the repository and whether a window is
-   holding it — `~/aforge-v2 · master · 1 file dirty · open here`. The whole line is a
-   **link**: cmd+click it (ctrl+click on Linux) and the folder opens, in the terminals that
-   make hyperlinks. A folder that is no longer on this disk says `that folder is gone` in
-   place of the branch and is not linked;
-3. the **answers** to the question it is stopped on, as chips — the question itself is on
-   the row and on the line above the box, and this card does not say it twice;
-4. the **work it ran** — the tasks, name first, with what each came to underneath (its own
-   section below);
-5. the **files it made**;
-6. a dim line of **facts**: `spent $1.63 · 3.6M tokens · last active 3h`;
+   holding it — `~/aforge-v2 · master, 1 file dirty · here`. The branch and the dirty count
+   are one clause about one repository, so they are joined by a comma; the ` · ` separates
+   the address, the repository and the door word. The whole line is a **link**: cmd+click it
+   (ctrl+click on Linux) and the folder opens, in the terminals that make hyperlinks. A
+   folder that is no longer on this disk says `that folder is gone` in place of the branch
+   and is not linked;
+3. `it is stopped on you`, the **question** in its own words, and the keys that answer it —
+   the one band that acts;
+4. `work` — each task with its mark and what it cost, `✓ toy-scale validation of
+   decomposition   $1.63`, a run that is not done keeping its outcome under it, then
+   `▸ N more tasks` with `tasks` at the margin, which **names the tasks place** rather than
+   unfolding;
+5. `made for you` — the **files it made**;
+6. a dim line of **facts**: `spent $1.63 · 3.6M tokens · thinking high`;
 7. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder, copy
    path`.
 
@@ -910,11 +928,12 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open
+type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
-and the line under it says what the keyboard does, which changes with what the cursor is
-on — at rest, `↑↓ move · enter open · esc close`.
+and it says what THAT row's keys do on every row that has its own — a `since you left`
+line, the fold, the action row — always with `alt+. map · tab next place` before the way
+out.
 
 ## Typing a long question on home — does the box wrap, and where does a paste go
 
@@ -1354,8 +1373,8 @@ its rows:
   nothing that wants you
 - `nothing here yet — say something and this fills up` where the first row will be, dim —
   over two rows, split at the dash, so a narrow frame never cuts it short
-- the box at the foot reading `type to search or start something new · ↑↓ pick · enter
-  open`, and the key line under it
+- the box at the foot reading `› say what you want done`, and under it the foot,
+  `type to search or start something new · ↑↓ pick · enter open · tab next place`
 
 Typing there works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
 conversation: "…"` rise out of the box, and `enter` starts the conversation. The arrows
