@@ -29,5 +29,7 @@ cd "docs/design/home-rethink" && python3 -m http.server 8765
 
 `github.md` says `path: internal/tui2` and every screen maps to `internal/tui2/...`.
 Per this repo's CLAUDE.md, **`internal/tui3` is the live surface** and `internal/tui2`
-is the older one. Confirm with the owner which surface these mockups target before
-building.
+is the older one. Settled 2026-08-25: the build targets `internal/tui3`; the tui2 paths
+are only where the palette and glyph tokens live, which tui3 imports. The plan and the
+decisions are in `LANES.md`; `RECON.md`, `DATA-AUDIT.md` and `PAGES.md` are what it rests
+on; `SCREENS.txt` is every artboard's text for a session without a browser.
