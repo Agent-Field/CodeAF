@@ -445,11 +445,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happened to the card asking whether to run it", "tasks"},
 
 		// And the shape that reads strangest of all, because the reply had
-		// already started: the read at the front of a turn now runs BESIDE the
-		// answer instead of in front of it, so a turn can open with a sentence or
-		// two of an ordinary reply and then hand itself over. Somebody watching
-		// that happen asks about the half-answer, not about a judge.
-		{"this reads like work moving it to a task", "tasks"},
+		// already started: a reply can stop halfway and hand itself over, when a
+		// second model reads what is left of it and finds independent parts.
+		// Somebody watching that happen asks about the half-answer, not about a
+		// judge — and they say the line back in its own words.
+		{"this has parts handing it to a task", "tasks"},
+		{"why did it hand my answer to a team", "tasks"},
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
 

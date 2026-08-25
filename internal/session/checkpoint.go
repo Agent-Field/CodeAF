@@ -13,10 +13,12 @@ package session
 // tool calls.
 //
 // What neither has is a reading taken WHILE THE WORK IS HAPPENING, when the cost
-// is a fact rather than a guess. That is what this file is. The race lands at
-// the same boundary this does and through the same door
-// ([Agent.handOverRunningTurn]) — it is the same event on a different clock, and
-// what differs is only which of them noticed first.
+// is a fact rather than a guess. That is what this file is, and it is now the
+// ONE door out of a running turn ([Agent.handOverRunningTurn]). The race used to
+// be the other one; it was demoted to triage in the same wave that measured this
+// question, and what its both-yes does now is TIGHTEN THIS METER so the first
+// mark lands at the next step boundary instead of after the full price
+// ([checkpointMeter.tighten]).
 //
 // ── THE FRAME IS SKI RENTAL ──
 //
@@ -30,38 +32,84 @@ package session
 // buying costs, and then buy. That is exactly the shape here, with one softening
 // and one hardening:
 //
-//   - THE TRIGGER IS DETERMINISTIC COST AND NEVER CONTENT. Nothing here reads a
-//     word of what the turn is about. A counter of finished tool rounds is the
-//     whole of the input, so there is no phrasing that defeats it and no kind of
-//     work it is tuned for.
-//   - THE JUDGEMENT STAYS THE MODEL'S, up to a point. At each mark the harness
-//     states the fact and asks one question; the model answers it in the turn it
-//     is already in, and a turn that is genuinely one long job carries on.
-//   - AND PAST THE LAST MARK THE HARNESS STOPS ASKING. Two refusals to hand over
-//     are a judgement; a third is momentum. At the ceiling the turn ends and the
-//     REMAINING work moves onto the one road, where it is watched — and remaining
-//     is the whole of what is still asked there ([checkpointNothingLeft]): a turn
-//     that answers the handoff by saying it is finished is left to finish, which
-//     is not the harness asking again but the harness having nothing to move.
+//   - THE TRIGGER IS DETERMINISTIC COST AND NEVER CONTENT. Nothing decides to
+//     LOOK on account of what the turn is about. A counter of finished tool
+//     rounds is the whole of the input, so there is no phrasing that defeats it
+//     and no kind of work it is tuned for.
+//   - THE JUDGEMENT IS READ FROM THE WORK, up to a point. At each mark the
+//     harness has somebody sketch what is left, and a turn that is genuinely one
+//     long job carries on with nothing said and nothing spent but that one call.
+//   - AND PAST THE LAST MARK THE HARNESS STOPS READING. Two sketches saying "one
+//     job" are a judgement; a third would be momentum. At the ceiling the turn
+//     ends and the REMAINING work moves onto the one road, where it is watched —
+//     and remaining is the whole of what is still asked there
+//     ([checkpointNothingLeft]): a turn that answers the handoff by saying it is
+//     finished is left to finish, which is not the harness asking again but the
+//     harness having nothing to move.
 //
 // ── WHY THE MARKS ARE GEOMETRIC AND NOT ONE LINE ──
 //
 // A single threshold is a single chance to be wrong. Doubling the interval each
-// time means a turn that is honestly one long job is interrupted a bounded
-// number of times — three, over four times the handoff price — while a turn that
-// is four jobs in a trench coat is asked early, when the findings are still worth
-// handing over. The person's attention and the model's context are both spent by
-// asking, so asking gets rarer as the evidence that the answer is "carry on"
-// accumulates. [checkpointRatio] is the whole of that policy.
+// time means a turn that is honestly one long job is looked at a bounded number
+// of times — three, over four times the handoff price — while a turn that is four
+// jobs in a trench coat is read early, when the findings are still worth handing
+// over. Each look costs a model call, so looking gets rarer as the evidence that
+// the answer is "carry on" accumulates. [checkpointRatio] is the whole of that
+// policy.
+//
+// ── WHY THE MARK IS READ BY SOMEBODY ELSE ──
+//
+// This used to be a question INJECTED INTO THE RUNNING TURN. A line rode the
+// ambient note lane at each mark, said the answer had now cost more than handing
+// it over would have, and asked the model to say in one line whether what was
+// left was one job or several independent parts. It was measured off-policy over
+// 240 completions against real recorded transcripts at the round-ten mark
+// (bench/oneroad/replay/RESULTS.md), and the finding that killed it is not that
+// the answers were wrong. It is that THERE OFTEN WAS NO ANSWER: the running chat
+// model emitted a tool call instead of answering between 17% and 53% of the time,
+// depending on the phrasing. A mechanism whose decision is left to a model in
+// tool momentum is a mechanism that is off in exactly the momentum it exists to
+// interrupt.
+//
+// The mastermind tier answered the same questions on the same transcripts with
+// 0% to 7% unanswered. So the mark is READ BY A SIDECAR ([Agent.readMark]): one
+// call, on the tier that thinks, over the transcript the turn has built — and the
+// running model never sees a word of it. Nothing is injected into the turn at any
+// mark, which is why there is no note const in this file any more.
+//
+// ── AND WHAT IT IS ASKED FOR IS A SHAPE AND NOT A DECISION ──
+//
+// Four phrasings were measured against both models. The one that asks the reader
+// to DECIDE — "one job, or several independent parts" — scored 96% on the traps
+// and 67% on the one genuinely wide case. The one that asks it to SKETCH what
+// remains as parts and arrows ([checkpointSketchAsk]) scored 58% on the traps and
+// 100% on the wide case, with nothing ambiguous and nothing unanswered at all.
+//
+// THE ASYMMETRY PICKS THE SKETCH. A wrong SPLIT costs one downstream check: the
+// task is armed, the worker MAY reach for divide_work, and both the evidence gate
+// and the division reviewer still stand in front of any actual division
+// (task_divide.go) — the reviewer now adjudicates even a floor refusal on
+// judge-armed work, so an over-suggestion is refused for free. A wrong CONTINUE
+// costs THE WHOLE ROAD, silently, on precisely the turn this was built for. So
+// the reading that never misses width and over-suggests on single jobs is the
+// right shape of wrong.
+//
+// ── AND THE HARNESS DOES THE DECIDING ──
+//
+// What comes back is PARSED AND NEVER INTERPRETED: the first line, split on a
+// top-level ' | ', and two or more parts is a SPLIT ([parseCheckpointSketch]).
+// Everything else is a CONTINUE — one part, a fork nested under a first step,
+// prose, an empty answer, a call that never came back, an install with no
+// mastermind to ask. THAT FAIL-OPEN IS SAFE BECAUSE THE CEILING IS THE RECOVERY
+// BOUND: a turn whose sidecar can never be reached is a turn the last mark moves
+// anyway, which is what this file did before any of it was read.
 //
 // ── WHAT THIS FILE DELIBERATELY DOES NOT DO ──
 //
-// It opens no new door into the graph. The ceiling admits its task through
-// [Agent.launchRouteTask], which is the road route_judge.go already takes for
-// work nobody groomed: straight to [TaskGraph.admit], no card, told after. It
-// invents no new message kind either — a mark's checkpoint rides the ambient
-// note lane the loop detector's nudge rides (looped.go), which is plain user-role
-// text drained into the next request exactly as a person's steering is.
+// It opens no new door into the graph. Both marks and the ceiling admit their
+// task through [Agent.launchRouteTask], which is the road route_judge.go already
+// takes for work nobody groomed: straight to [TaskGraph.admit], no card, told
+// after.
 
 import (
 	"context"
@@ -70,8 +118,16 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// The mark reader is registered here, beside the call it belongs to, exactly as
+// the confirm, the auditor and the shaper are (internal/roles states the open
+// registry law). Its tier is the mastermind's for the measured reason the role's
+// own comment carries: the cheap reader and the running model both answer this
+// question with a tool call too often to be relied on.
+func init() { roles.Register(roles.RoleMarkReader, roles.TierMastermind) }
 
 const (
 	// checkpointPrice is what handing this turn over costs, in the same unit the
@@ -98,23 +154,23 @@ const (
 
 	// checkpointRatio is how much dearer each mark is than the one before it.
 	//
-	// Two, because the evidence moves. A model that has answered one checkpoint
-	// with "this is one job" has said something, and the harness must charge more
-	// before doubting it again — otherwise the interval measures the harness's
-	// impatience rather than the turn's cost. Doubling also bounds the whole
-	// mechanism at a glance: three marks span four times the price, and a turn
-	// can never be interrupted a fourth time however long it runs.
+	// Two, because the evidence moves. A mark whose sketch said "this is one job"
+	// has said something, and the harness must charge more before doubting it
+	// again — otherwise the interval measures the harness's impatience rather than
+	// the turn's cost. Doubling also bounds the whole mechanism at a glance: three
+	// marks span four times the price, and a turn can never be read a fourth time
+	// however long it runs.
 	checkpointRatio = 2
 
 	// checkpointMarks is how many marks a turn has, and the LAST of them is the
-	// ceiling rather than a fourth question ([Agent.checkpointRound]).
+	// ceiling rather than a fourth reading ([Agent.checkpointRound]).
 	//
-	// Three, because two questions are the most a note can usefully ask. The loop
+	// Three, because two readings are the most that are worth paying for. The loop
 	// detector reached the same number from the other side — past two nudges the
 	// notes have stopped working and a third is the harness talking to itself
 	// (looped.go's loopNudgeCeiling) — and the answer here is the same answer:
-	// stop writing notes and do something. What this does instead of asking the
-	// person is move the work somewhere it is watched.
+	// stop asking and do something. What this does instead of asking again is move
+	// the work somewhere it is watched.
 	checkpointMarks = 3
 
 	// checkpointBriefTokens bounds the handoff brief. The shaper writes the same
@@ -140,35 +196,102 @@ const (
 	// ruled out and how anybody could tell it is done — and above every sentinel
 	// this has been shown, each of which is a single unspaced token.
 	checkpointBriefWords = 4
+
+	// checkpointSketchTokens is the sidecar's whole budget. What it is asked for
+	// is one line of shape and one sentence naming the letters, and a reader that
+	// runs out of room halfway through the shape writes a line the parser reads as
+	// ONE PART — a silent CONTINUE from the one call that was supposed to notice
+	// width. Three hundred is both halves at any length a sketch of a turn's
+	// remaining work honestly takes, and a fraction of the tool round it stands
+	// between.
+	checkpointSketchTokens = 300
+
+	// checkpointSketchTemp is zero for the reason the route judge's is: this is a
+	// reading of evidence that the harness then parses deterministically, and
+	// sampling variety in it would be the same transcript answering SPLIT on one
+	// run and CONTINUE on the next.
+	checkpointSketchTemp = 0
+
+	// checkpointSketchWindow is how long the mark's read gets, and unlike the
+	// race's two windows (route_judge.go) SOMEBODY IS WAITING ON THIS ONE. It
+	// stands at a step boundary of a turn that is running: the next round of tools
+	// does not start until it answers or the clock runs out. So it is a person's
+	// patience rather than a generous bound.
+	//
+	// Thirty seconds is what a mastermind reading a whole transcript needs, and
+	// what it can cost a turn is bounded twice over — at most three of them, and
+	// only on a turn that has already spent ten rounds of tool calls, which is
+	// minutes. A read that misses it is a CONTINUE, exactly as an unreachable one
+	// is, and the ceiling still stands behind both.
+	checkpointSketchWindow = 30 * time.Second
+
+	// checkpointSketchParts is how many top-level parts in the shape make a SPLIT.
+	// Two: one part is one job, and the only question being asked is whether what
+	// is left can be held by more than one pair of hands.
+	checkpointSketchParts = 2
+
+	// checkpointSketchBytes bounds each half of the sketch on its way into a
+	// worker's brief. A shape is a line and a legend is a sentence; anything past
+	// this is a reader that answered a different question, and the brief under it
+	// is the document that matters.
+	checkpointSketchBytes = 600
 )
 
-// checkpointNote is what the model reads at a mark, and every line of it is
-// deliberate.
+// checkpointSketchAsk is what the sidecar is asked at every mark, and it is
+// PINNED WORD FOR WORD because the wording is the measurement.
 //
-// IT IS META AND CARRIES NO THRESHOLD. It states one fact — this has cost more
-// than handing it over would have — and asks one question. It never says how
-// many rounds, because a number invites the model to count toward the next one
-// instead of to look at the work in front of it, which is the same law
-// prompts/system.md is pinned to (task_escalation_test.go).
+// It is variant C of four that were scored off-policy over 240 completions
+// (bench/oneroad/replay/RESULTS.md). What makes it the winner is not that it
+// reasons better — it is that it asks for a DRAWING rather than a decision, and a
+// model asked to draw one line answers with one line. Across both models it left
+// nothing ambiguous and nothing unanswered, where every phrasing that asked for a
+// judgement was ignored outright on a quarter to a half of the turns.
 //
-// IT NAMES NOTHING ABOUT THE KIND OF WORK. aforge is a general harness: a
-// research sweep, a writing project and a mechanical change are one shape of
-// problem to this question, and a sentence about files would read as an
-// instruction about programming to a model in the middle of a literature review.
+// IT NAMES NOTHING ABOUT THE KIND OF WORK, which is the law prompts/system.md and
+// the ceiling's line are both held to. aforge is a general harness: a research
+// sweep, a writing project and a mechanical change are one shape of problem to
+// this question, and a sentence about files would read as an instruction about
+// programming to a reader watching a literature review.
 //
-// IT NAMES THE HAND, THOUGH. The measured failure is precisely a model that has
-// propose_task on its belt and does not reach for it, so a note that said "hand
-// it over" without saying with what would be the prompt's advice repeated at a
-// model that has already not taken it. The dowry clause is system.md's law said
-// once more at the moment it is needed: whoever takes this cannot see any of it.
-const checkpointNote = "[checkpoint] This answer has now cost more than handing it over would have. " +
-	"Say in one line what is still left: one job, or several independent parts. " +
-	"Several parts — hand it over now with propose_task, and write into the brief everything you " +
-	"have learned here, because whoever takes it cannot see any of this. " +
-	"One job — say what is left, and carry on."
+// AND IT CARRIES NO THRESHOLD AND NO PRICE. The reader is not told what the turn
+// has cost, because a number invites it to answer about the number. It is shown
+// the work and asked what is left of it.
+//
+// THE LEGEND IS ASKED FOR BECAUSE THE SHAPE ALONE IS USELESS TO A WORKER. `A | B
+// | C` is what the harness parses; "A is the validation workflow, B is …" is what
+// rides into the brief so that whoever takes the work has the parts already named
+// ([checkpointSketch.head]).
+const checkpointSketchAsk = "[checkpoint] In one line, sketch what remains as parts and arrows: " +
+	"independent parts separated by ' | ', ordered steps joined by ' > '. " +
+	"Example shapes: 'A | B | C' or 'A > B > C' or 'A > (B | C)'. " +
+	"Nothing else on that line. Then one sentence saying what each letter is."
+
+// checkpointSplitNote is the ONE line a person reads when a mark's sketch says
+// the work in front of it has parts.
+//
+// It is the third line in this register and the last of the family: the
+// mid-answer handoff's ([taskEscalationNote]), the ceiling's
+// ([checkpointCeilingNote]) and this one. All three are an observation, a middle
+// dot and a promise, all three are lowercase with no full stop, and nothing in
+// any of them is machinery.
+//
+// WHAT DIFFERS IS THE OBSERVATION, because the three moments have honestly seen
+// different things. The ceiling has watched an answer outrun its own price and
+// says so. This one has had somebody read the work and draw what is left of it,
+// and the true thing it has to say is that the drawing came back with more than
+// one part in it — so it says that, and nothing about how long the turn has been
+// running, which at the first mark may be no time at all.
+//
+// AND THE PROMISE IS THE ONE THING THIS PATH CAN PROMISE THAT THE OTHERS CANNOT.
+// The ceiling says the work "can split", because arming is all it did. Here the
+// parts are already named and already at the head of the brief, so the honest
+// promise is about the shape of the hands rather than about a possibility — and
+// it still stops short of saying it WILL split, because the evidence gate and the
+// reviewer stand in front of every actual division (task_divide.go).
+const checkpointSplitNote = "this has parts · handing it to a task that can take them side by side"
 
 // checkpointCeilingNote is the ONE line a person reads when the harness stops
-// asking and moves the work itself.
+// reading and moves the work itself.
 //
 // It is [taskEscalationNote]'s register and it is that line's sibling — an
 // observation, a middle dot, a promise (internal/tui3's taskWideNote) — because
@@ -185,27 +308,28 @@ const checkpointNote = "[checkpoint] This answer has now cost more than handing 
 // "can" and not "will".
 const checkpointCeilingNote = "this is running long · moving it to a task that is watched and can split"
 
-// checkpointHandoffAsk is what the model is asked for at the ceiling, and it is
+// checkpointHandoffAsk is what the model is asked for on the way out, and it is
 // the LAST thing this turn does with it.
 //
-// IT IS NOT A THIRD CHECKPOINT. The decision is made by the time this is sent;
-// what is being asked for is the dowry — the turn's findings, written down —
-// because the model that has just spent the whole turn is the only reader in the
-// building that holds them.
+// IT IS NOT A READING OF ANY KIND. The decision is made by the time this is sent
+// — by a mark's sketch or by the ceiling — and what is being asked for is the
+// dowry: the turn's findings, written down, because the model that has just spent
+// the whole turn is the only reader in the building that holds them.
 //
 // IT IS SENT WITH NO BELT (see [Agent.checkpointBrief]), which is what makes it
 // safe to ask a model that has spent the turn grinding: with no tool to reach
 // for, the only legal answer is the document.
 //
 // AND IT ASKS WHAT REMAINS BEFORE IT ASKS FOR THE DOCUMENT, which is the one
-// question neither clock into this door can answer for itself. The ceiling reads
-// a counter and the race reads a request; neither of them can see that the turn
-// finished the work thirty seconds ago. A measured turn wrote all eight files it
-// was asked for inline, the race's confirm landed at the tail of it, and the
-// conversion started a task on the leftovers of a finished answer — junk work,
-// duplicating a turn nobody needed to duplicate. So the model that holds the
-// findings is asked the question it is the only reader able to answer, and
-// [checkpointNothingLeft] is the answer that stops the handover dead.
+// question no clock into this door can answer for itself. The ceiling reads a
+// counter and a mark's sketch reads a transcript that is already a step old;
+// neither of them can see that the turn finished the work thirty seconds ago. A
+// measured turn wrote all eight files it was asked for inline, the race's confirm
+// landed at the tail of it, and the conversion started a task on the leftovers of
+// a finished answer — junk work, duplicating a turn nobody needed to duplicate.
+// So the model that holds the findings is asked the question it is the only
+// reader able to answer, and [checkpointNothingLeft] is the answer that stops the
+// handover dead.
 //
 // THE FIRST LINE IS THE DECLARATION AND NOT A NAME. It used to ask for a short
 // name for the work there, and the name is not taken from here any more
@@ -235,34 +359,6 @@ const checkpointHandoffAsk = "[handing over] This is being handed to somebody wh
 // a turn that answers it is a turn that simply carries on to its own end.
 const checkpointNothingLeft = "NOTHING LEFT TO DO"
 
-// isCheckpointNote reports whether one recorded message is a checkpoint this
-// file wrote into a running turn.
-//
-// IT EXISTS FOR ONE READER, and that reader is [Agent.alreadyWorking] (task.go).
-// A checkpoint lands in the transcript as plain user-role text — that is the
-// whole of why it reaches the model at all — and the question "has this answer
-// already done work" is answered by walking back to the last thing said to this
-// agent. Without this the harness's own question would read as the start of a
-// fresh answer, and the mid-answer handoff line would go missing on exactly the
-// handoffs the checkpoint caused.
-//
-// It matches the text rather than a flag because the transcript keeps messages
-// and not the [userMessage] they arrived as, and because the alternative — a
-// second record of which lines the session wrote — is a second account of one
-// fact that can fall out of step with the first (task.go states the same
-// argument for reading this from the transcript at all).
-func isCheckpointNote(message ai.Message) bool {
-	if message.Role != "user" {
-		return false
-	}
-	for _, part := range message.Content {
-		if strings.Contains(part.Text, checkpointNote) {
-			return true
-		}
-	}
-	return false
-}
-
 // ── the meter ───────────────────────────────────────────────────────────────
 
 // checkpointMeter is one turn's running cost and how much of the ladder it has
@@ -276,18 +372,77 @@ type checkpointMeter struct {
 	rounds int
 	// marks is how many of the ladder's rungs have already fired.
 	marks int
+	// firstAt is where the FIRST rung stands when the pre-turn race has already
+	// said this message reads like work, and zero on every ordinary turn — see
+	// [checkpointMeter.tighten].
+	firstAt int
+	// raced is what that race's both-yes actually wrote: the breadth two readers
+	// agreed on and the done-condition the screen composed ([routeVerdict]).
+	//
+	// IT IS KEPT RATHER THAN SPENT because the race no longer starts anything on
+	// its own. Whatever task this turn eventually hands over to — at a mark or at
+	// the ceiling — is the task that verdict was written about, and dropping it
+	// would mean a converted turn losing an acceptance a judge wrote and a
+	// breadth two models agreed on for no saving whatever. The goal it carries is
+	// deliberately NOT kept: the dowry replaces it, because a goal written before
+	// the turn began is the one thing on the table that knows least.
+	raced routeVerdict
 }
 
-// checkpointMarkAt is the round the nth mark stands on: the price, doubled once
-// per mark already passed. It is computed from the two constants rather than
-// written out as a list, so the ladder cannot disagree with the policy it is
-// supposed to be.
+// checkpointMarkAt is the round the nth ORDINARY mark stands on: the price,
+// doubled once per mark already passed. It is computed from the two constants
+// rather than written out as a list, so the ladder cannot disagree with the
+// policy it is supposed to be.
 func checkpointMarkAt(n int) int {
 	at := checkpointPrice
 	for step := 1; step < n; step++ {
 		at *= checkpointRatio
 	}
 	return at
+}
+
+// markAt is the ladder AS THIS TURN ACTUALLY CLIMBS IT: [checkpointMarkAt],
+// except for a first rung the race has pulled down.
+func (m *checkpointMeter) markAt(n int) int {
+	if n == 1 && m.firstAt > 0 {
+		return m.firstAt
+	}
+	return checkpointMarkAt(n)
+}
+
+// tighten is what a raced both-yes DOES now, and it is the whole of the race's
+// remaining power over a turn.
+//
+// THE RACE USED TO CONVERT THE TURN OUTRIGHT and the benchmark took that away
+// from it: on the ten measured cells the raced screen converted both of the
+// small-work traps, which is a message taken out of a conversation that was about
+// to answer it. What the race reads is a REQUEST nobody has worked on yet, and no
+// amount of confirming makes that evidence about the work. What it is genuinely
+// good for is TRIAGE — noticing early that this one is worth looking at — so that
+// is what it now does: the first mark moves down to the very boundary the verdict
+// landed on, and the reading that decides anything is still the sidecar's, over
+// the work itself.
+//
+// THE LATER RUNGS DO NOT MOVE. Only the first is pulled down; the second and the
+// ceiling stand at the ordinary doubling marks, because what the race noticed is
+// a reason to LOOK SOONER and not a reason to look oftener.
+//
+// AND THE VERDICT IS KEPT EVEN WHEN THE RUNG CANNOT MOVE. A yes that lands after
+// the first mark has already fired has nothing left to tighten, but the reading
+// of breadth and the done-condition it carries are still about this work and
+// still belong to whatever task starts out of it.
+func (m *checkpointMeter) tighten(verdict routeVerdict) {
+	if m == nil {
+		return
+	}
+	m.raced = verdict
+	if m.marks > 0 || m.firstAt > 0 {
+		return
+	}
+	// The boundary this is called at is the boundary [checkpointMeter.round] is
+	// about to count, so this fires the first mark HERE rather than one round
+	// later: the two are read in that order at one step boundary (loop.go).
+	m.firstAt = m.rounds + 1
 }
 
 // round folds one finished tool round into the meter and reports which mark, if
@@ -308,11 +463,197 @@ func (m *checkpointMeter) round() int {
 	if m.marks >= checkpointMarks {
 		return 0
 	}
-	if m.rounds < checkpointMarkAt(m.marks+1) {
+	if m.rounds < m.markAt(m.marks+1) {
 		return 0
 	}
 	m.marks++
 	return m.marks
+}
+
+// ── the sketch ──────────────────────────────────────────────────────────────
+
+// checkpointSketch is what one mark's sidecar drew: the shape line, the sentence
+// under it naming the letters, and how many parts the harness read out of the
+// shape. An empty one is every failure — no mastermind, a fault, a window that
+// ran out, an answer with nothing in it — and it decides nothing and heads
+// nothing.
+type checkpointSketch struct {
+	shape  string
+	legend string
+	parts  int
+}
+
+// split reports the one decision this file takes off a sketch.
+func (s checkpointSketch) split() bool { return s.parts >= checkpointSketchParts }
+
+// drawn reports whether the reader answered with a shape at all, which is a
+// different question from whether the shape has parts in it: an unreachable
+// reader, a fault and a blank reply all answer no here, and so does nothing else.
+func (s checkpointSketch) drawn() bool { return s.shape != "" }
+
+// head puts the sketch above the dowry, so that the worker's first paragraph is
+// the parts already named.
+//
+// IT IS THE WHOLE REASON THE LEGEND IS ASKED FOR. A worker armed to divide has to
+// name its own parts to divide_work and defend them with evidence
+// (task_divide.go); handing it a division somebody has already drawn out of the
+// same transcript is the difference between a worker that discovers the shape and
+// one that is told it. The dowry still stands underneath, unchanged and doing what
+// it always did.
+//
+// ONLY A SKETCH WITH PARTS IN IT HEADS ANYTHING. A shape saying the work is one
+// job — a chain, a fork behind a step, a single atom — has no parts to name, and
+// a brief that opened on a picture of one job would be a paragraph of machinery
+// in front of a worker's instruction. The ceiling reaches this with such a sketch
+// routinely, because it fires whatever the last reading said.
+//
+// IT IS CLIPPED TO THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, from the
+// front, so the shape and the legend survive a dowry that was already at the
+// limit.
+func (s checkpointSketch) head(goal string) string {
+	if !s.split() {
+		return goal
+	}
+	var out strings.Builder
+	out.WriteString("WHAT IS LEFT, AS PARTS: ")
+	out.WriteString(s.shape)
+	if s.legend != "" {
+		out.WriteString("\n")
+		out.WriteString(s.legend)
+	}
+	if goal != "" {
+		out.WriteString("\n\n")
+		out.WriteString(goal)
+	}
+	return clip(out.String(), taskShapeBriefLimit)
+}
+
+// parseCheckpointSketch reads the sidecar's answer.
+//
+// THE FIRST NON-EMPTY LINE IS THE SHAPE AND EVERYTHING UNDER IT IS THE LEGEND,
+// which is the contract [checkpointSketchAsk] states in those words. Backticks
+// and emphasis come off the shape because a model told to write one line and
+// nothing else writes it in a code span about as often as it writes it bare —
+// measured, on both models.
+//
+// A reader that opened with prose instead has written a shape with no separator
+// in it, which reads as one part, which is a CONTINUE. That is the fail-open
+// direction and it needs no branch of its own.
+func parseCheckpointSketch(answer string) checkpointSketch {
+	lines := strings.Split(strings.TrimSpace(answer), "\n")
+	shape, rest := "", 0
+	for index, line := range lines {
+		if trimmed := strings.Trim(strings.TrimSpace(line), "`*_ "); trimmed != "" {
+			shape, rest = trimmed, index+1
+			break
+		}
+	}
+	if shape == "" {
+		return checkpointSketch{}
+	}
+	return checkpointSketch{
+		shape:  clip(shape, checkpointSketchBytes),
+		legend: clip(strings.TrimSpace(strings.Join(lines[rest:], "\n")), checkpointSketchBytes),
+		parts:  topLevelParts(shape),
+	}
+}
+
+// topLevelParts counts the independent parts of a shape, and it is the whole of
+// the harness's reading of what a sidecar drew.
+//
+// THE RULES, WITH THE EXAMPLES THE ASK ITSELF GIVES:
+//
+//   - `A | B | C` is THREE parts, and a SPLIT. Nothing has to happen before
+//     anything else, so three pairs of hands can start now.
+//   - `A > B > C` is ONE part, and a CONTINUE. It is a chain: the second step
+//     cannot begin until the first is done, so handing it out buys nothing.
+//   - `A > (B | C)` is ONE part, and a CONTINUE. The fork is real, but it is
+//     BEHIND a step that has not happened yet — at THIS mark the work in front of
+//     the turn is A, which is one job. This is the stricter reading of the
+//     benchmark's own scoring, and re-scoring variant C that way took the
+//     mastermind's trap accuracy from 58% to 100%.
+//   - `(A | B) > C` is ONE part for the same reason read from the other end: the
+//     whole line is one bracketed group, so there is no top-level separator, and
+//     the thing this counts is what stands at the TOP LEVEL of the line.
+//   - anything with no separator at all — a word, a sentence, an apology — is one
+//     part, and a CONTINUE.
+//
+// A separator with nothing beside it does not make a part, so a line that opens
+// or ends on one counts what is actually there. Brackets of any kind nest, and an
+// unbalanced closer is ignored rather than taken below zero: a shape a model
+// mis-typed is still a shape, and the honest failure is to read it as narrow.
+func topLevelParts(shape string) int {
+	parts, depth := 0, 0
+	var current strings.Builder
+	closeOne := func() {
+		if strings.TrimSpace(current.String()) != "" {
+			parts++
+		}
+		current.Reset()
+	}
+	for _, letter := range shape {
+		switch letter {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '|':
+			if depth == 0 {
+				closeOne()
+				continue
+			}
+		}
+		current.WriteRune(letter)
+	}
+	closeOne()
+	return parts
+}
+
+// readMark is the sidecar: ONE call, at one mark, asking somebody who is not the
+// running model what is left of this turn.
+//
+// IT IS ASKED OF THE CREW ALONE — the empty `sessionDefault` — which is the same
+// refusal [Agent.askRouteAhead] makes and for a sharper reason. The ladder's
+// floor is the conversation's own model (auxiliary.go), and the conversation's
+// own model is precisely the reader this whole mechanism was rebuilt to stop
+// relying on: it answered the same question with a tool call instead of an answer
+// on up to half the measured turns. Falling through to it would be the running
+// model deciding whether to interrupt itself, quietly, under a different name. So
+// an install with no mastermind gets NO MARK READING AT ALL, which is the
+// codebase's law about a capability that cannot work being absent rather than
+// broken — and the ceiling still moves the turn at the last mark, which is what
+// that install had before this existed.
+//
+// IT IS SENT WITH NO BELT, for [Agent.checkpointBrief]'s reason: a reader with no
+// hand to reach for can only answer with the drawing.
+//
+// AND IT IS BILLED TO THE ERRAND POCKET rather than to the turn, which is where
+// this parts company with the dowry ask. The dowry is the conversation's own
+// model reading the conversation's own transcript — the last step of the answer.
+// This is a side-call to a different model that the person did not ask for, which
+// is what the auxiliary pocket is for (loop.go's [Agent.addAuxiliaryUsage]).
+//
+// EVERY FAILURE IS AN EMPTY SKETCH, and an empty sketch is a CONTINUE. There is
+// no retry and no repair turn: the next mark will ask again if the turn is still
+// running, and the ceiling stands behind all of them.
+func (a *Agent) readMark(ctx context.Context) checkpointSketch {
+	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
+	defer done()
+	// THE TRANSCRIPT AS THE TURN HAS BUILT IT, which is the same evidence the
+	// dowry ask rides and carries the same clipping: every tool result in it was
+	// bounded on its way into the transcript, so the reader sees what the running
+	// model sees and no second discipline of this file's own can drift from it.
+	messages := append(a.snapshot(), textMessage("user", checkpointSketchAsk))
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
+		ai.WithMaxTokens(checkpointSketchTokens),
+		ai.WithTemperature(checkpointSketchTemp))
+	if err != nil || response == nil {
+		return checkpointSketch{}
+	}
+	a.addAuxiliaryUsage(response, reader, 1)
+	return parseCheckpointSketch(response.Text())
 }
 
 // ── the turn's side ─────────────────────────────────────────────────────────
@@ -323,11 +664,16 @@ func (m *checkpointMeter) round() int {
 //
 // It reports whether THE TURN IS OVER, which is the one thing a hook could not
 // have said: the control plane's law is that only pre-action may stop something
-// (hooks.go), and the ceiling stops a turn. So it stands in the loop as a line of
-// its own, beside the two route-judge seams that also end turns.
+// (hooks.go), and both a split and the ceiling stop a turn. So it stands in the
+// loop as a line of its own, beside the triage seam that feeds it.
 //
-// EVERYTHING BUT THE CEILING IS AN ASIDE. A mark queues one note and the turn
-// carries on exactly as it would have; a gated turn does not even count.
+// WHAT COSTS ANYTHING IS THE MARK AND NOT THE ROUND. A round that crosses no mark
+// returns before a single call is made, which is every round of almost every turn
+// this session will ever run.
+//
+// AND A MARK THAT SAYS CONTINUE COSTS THE TURN NOTHING BUT THE CALL. Nothing is
+// injected, nothing is said, the model is not told it was looked at, and the
+// meter simply walks on to the next mark.
 func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string) bool {
 	if !a.checkpoints(ctx, user) {
 		return false
@@ -336,17 +682,18 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	if mark == 0 {
 		return false
 	}
+	// THE SKETCH IS READ AT EVERY MARK, THE CEILING'S INCLUDED. At the first two
+	// it is the decision; at the ceiling the decision is already made and the
+	// drawing is still worth its call, because it is what names the parts at the
+	// head of the brief the worker opens on.
+	sketch := a.readMark(ctx)
 	if mark < checkpointMarks {
-		// THE AMBIENT LANE (agent.go), which is the lane the loop detector's nudge
-		// takes and for the same two reasons: the note belongs to the turn it is
-		// about, so nobody is waiting to be told about it, and a note dropped at a
-		// step boundary rides into the next request exactly as a person's steering
-		// does. The drain at the top of [Agent.runTurn] is what puts it in front of
-		// the model, which is why nothing here has to reach the wire itself.
-		a.enqueueAmbientNote(checkpointNote)
-		return false
+		if !sketch.split() {
+			return false
+		}
+		return a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointSplitNote, meter.raced, sketch)
 	}
-	return a.checkpointCeiling(ctx, hub, turn, started, model)
+	return a.checkpointCeiling(ctx, hub, turn, started, model, meter.raced, sketch)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -373,6 +720,10 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 //   - AND NOT MID-INTERRUPT. A turn the person has just stopped is a turn they
 //     have said they do not want; moving its remains onto the rail would be
 //     answering an interrupt with a task.
+//
+// IT IS ALSO WHAT STOPS THE SIDECAR BEING BILLED ON THOSE TURNS, because it
+// stands in front of the meter and therefore in front of every call this file
+// makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	if a.config.InTask || !a.config.AskConsent {
 		return false
@@ -390,11 +741,11 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one
 // road. Past the last mark there is no branch back into the conversation on
-// account of the WORK — the model was asked twice and the harness has stopped
-// asking — and it reports whether the turn is over.
+// account of the WORK — the work was read twice and the harness has stopped
+// reading — and it reports whether the turn is over.
 //
-// THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a
-// third refusal: it is the model saying nothing remains at all
+// THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a third
+// sketch: it is the model saying nothing remains at all
 // ([checkpointNothingLeft]). The ceiling exists to move A GRIND somewhere it is
 // watched, and a turn that is finishing is not a grind — the meter simply stops
 // mattering the moment the turn ends. What that answer costs, if the model is
@@ -404,58 +755,66 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 // direction would cost is what was measured — a task admitted over the top of a
 // finished answer, which then stops on its own, having duplicated it.
 //
-// EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S, because the ceiling is
-// not the only clock that can decide mid-turn that this belongs on the rail. It
-// contributes the two things that are its own: the line, and a verdict ARMED TO
-// SPLIT. This turn outran one pair of hands by measurement rather than by
-// anybody's opinion, which is the strongest evidence of breadth any door into
-// the graph has; arming costs nothing if it is wrong, because it only means the
-// worker MAY discover the work is wide and the evidence gate still refuses a
-// division the material does not support (task_divide.go).
-func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string) bool {
-	return a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, routeVerdict{Wide: true})
+// EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S. It contributes the
+// two things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
+// outran one pair of hands by measurement rather than by anybody's opinion, which
+// is the strongest evidence of breadth any door into the graph has; arming costs
+// nothing if it is wrong, because it only means the worker MAY discover the work
+// is wide and the evidence gate still refuses a division the material does not
+// support (task_divide.go).
+//
+// THE SKETCH RIDES ALONG WHEN THERE IS ONE. The ceiling does not need it to
+// decide — nothing can stop it now but the remains contract — but a drawing of
+// what is left is exactly what the worker's first paragraph should be, and the
+// mark that produced it was paid for either way.
+func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, verdict routeVerdict, sketch checkpointSketch) bool {
+	verdict.Wide = true
+	return a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, sketch)
 }
 
 // handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
-// of it onto the one road. It is one function because two clocks reach it and
+// of it onto the one road. It is one function because two moments reach it and
 // there must not be two versions of what happens next:
 //
-//   - the CEILING above, when an answer has cost more than handing it over
-//     would have ([Agent.checkpointRound]);
-//   - the RACE, when the second model reading the request said it was work and
-//     the answer is only seconds old ([Agent.routeConvert], route_judge.go).
+//   - a MARK whose sketch came back with independent parts in it
+//     ([Agent.checkpointRound]);
+//   - the CEILING, when an answer has cost more than handing it over would have
+//     and the harness has stopped reading ([Agent.checkpointCeiling]).
 //
-// The caller brings the line the person reads and a verdict carrying whatever
-// its own reading knew — breadth, a done-condition, the one line about why. What
-// this adds is the four things that are the same however the decision arrived:
-// the dowry, the task, the gap, and a turn sealed with the transcript left in a
-// state the next turn can open on.
+// BOTH OF THEM ARE THIS FILE NOW. The race was the third and is not any more: a
+// read of a REQUEST nobody has worked on yet was measured converting turns whose
+// work was small, so what it does instead is pull this file's first mark forward
+// (route_judge.go's [Agent.routeTriage]). Its verdict still arrives here, on the
+// meter, because the breadth and the done-condition it wrote are about this work.
 //
-// AND IT CAN DECLINE, on the one ground neither clock can see for itself: the
-// model answering the dowry ask with [checkpointNothingLeft]. Both clocks decide
+// The caller brings the line the person reads, a verdict carrying whatever any
+// earlier reading knew, and the sketch if a mark drew one. What this adds is the
+// five things that are the same however the decision arrived: the dowry, the
+// parts at the head of it, the task, the gap, and a turn sealed with the
+// transcript left in a state the next turn can open on.
+//
+// AND IT CAN DECLINE, on the one ground no clock can see for itself: the model
+// answering the dowry ask with [checkpointNothingLeft]. Every clock here decides
 // on evidence that is old by the time it is spent — a counter of rounds already
-// finished, a verdict about a request the turn may since have answered — and the
-// model holding the findings is the only reader that knows whether there is any
-// work left to hand anybody. When there is not, NOTHING HAPPENS: no task, no
-// line, no gap spent, no turn sealed. The turn carries on and its own answer
-// stands, which is the honest outcome for a turn that was already finishing.
+// finished, a sketch drawn a step ago — and the model holding the findings is the
+// only reader that knows whether there is any work left to hand anybody. When
+// there is not, NOTHING HAPPENS: no task, no line, no gap spent, no turn sealed.
+// The turn carries on and its own answer stands, which is the honest outcome for
+// a turn that was already finishing.
 //
 // THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
 // ride the spec's request, verbatim, exactly as they do on every other door into
 // the graph, and [composeBrief] prints them above the work under the rule that
 // says where the two read differently theirs are what was asked for
-// (task_brief.go). That is what makes the choice of brief-writer below a
-// question about the DOWRY alone: no writer on this path can lose the ask,
-// because the ask does not travel through any of them.
+// (task_brief.go).
 //
-// AND THE GOAL IS THE DOWRY, WHICHEVER CLOCK CALLED. The model that has just
-// spent the turn is the only reader in the building holding what the turn found
-// out, and on the race's path that is the whole point of converting rather than
-// starting over: the seconds of inline work already done are not thrown away,
-// they are written down for whoever takes it. A goal written before the turn
-// began — the race's own, from the request alone — would be the one thing on the
-// table that knows least.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict) bool {
+// AND THE GOAL IS THE DOWRY, UNDER THE SKETCH. The model that has just spent the
+// turn is the only reader in the building holding what the turn found out; the
+// sketch above it is the shape a second reader drew of what is left. A goal
+// written before the turn began — the race's own, from the request alone — would
+// be the one thing on the table that knows least, which is why it is dropped
+// where the other two fields of that verdict are kept.
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, sketch checkpointSketch) bool {
 	asked := a.taskRequest()
 	goal, remains := a.checkpointBrief(ctx, turn, model, asked)
 	if !remains {
@@ -465,7 +824,24 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		return false
 	}
 	verdict.Work = true
-	verdict.Goal = goal
+	verdict.Goal = sketch.head(goal)
+	if sketch.split() {
+		// AND THE ROAD IS ARMED BY THE READER THAT ACTUALLY READ THE WORK. A
+		// mastermind was shown this turn's transcript and drew independent parts out
+		// of it, which is the same fact the sizing judge banks at the typed `/task`
+		// door and is banked the same way ([Agent.rememberDivisible]) — so the task
+		// is armed `judged` rather than `wide`, and [TaskNode.armedByJudgement] can
+		// tell a model that read the work from a counter reading its own text
+		// (task_divide.go). It is banked against the goal this hands over, and
+		// admission happens on the next line, so there is nothing in between for the
+		// single-entry bank to lose.
+		//
+		// DIVISION IS STILL THE WORKER'S OWN ACT AND IS NEVER MINTED FROM CHAT. The
+		// parts named above are an instruction, not a graph: the worker must put its
+		// own division to the evidence gate and to the reviewer inside the task, and
+		// arming only means it is allowed to try.
+		a.rememberDivisible(verdict.Goal)
+	}
 
 	// THE LINE GOES ABOVE THE TASK'S OWN, which is where taskEscalationNote stands
 	// over the card it explains (task.go). It is [EventNotice] for that line's
@@ -485,7 +861,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
 	// appearing over the top of a conversation cannot be followed immediately by
-	// more of it (route_judge.go), and both roads into here are exactly that
+	// more of it (route_judge.go), and every road into here is exactly that
 	// interruption. The counter itself is not moved — it belongs to the front of a
 	// turn and this is the middle of one.
 	a.mu.Lock()
@@ -519,7 +895,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 // the conversation's history and none of its work.
 //
 // The shaper (task_shape.go) is the other candidate and reads the REQUEST alone,
-// which is the same loss by a different road.
+// which is the same loss by a different road. The mark's own sidecar is not a
+// candidate either: it drew a SHAPE, in one line, which is exactly the thing a
+// worker cannot work from on its own.
 //
 // So it is asked of the one reader that actually holds the findings: the model
 // that has just spent the turn. One more request, on the turn's own model and the
@@ -529,8 +907,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 //
 // No [ai.WithTools], which is the whole safety of asking a model that has just
 // ground through the ceiling to do one more thing: with no hand to reach for, the
-// only answer it can give is the document. That is also why this is not a third
-// checkpoint — it cannot be answered with more work.
+// only answer it can give is the document.
 //
 // AND NO BELT IS NOT THE SAME FACT AS NO TOOL GRAMMAR, which is the thing this
 // was measured being wrong about. An omitted tools array takes the hand away; it
@@ -543,7 +920,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 // ── AND IT CANNOT LOSE THE ASK ──
 //
 // Because the ask does not go through it. The person's words ride the spec's
-// request verbatim (see [Agent.checkpointCeiling]); this writes the brief and
+// request verbatim (see [Agent.handOverRunningTurn]); this writes the brief and
 // nothing else, and when it fails — a provider fault, an interrupt, an empty
 // reply — the brief falls back to their words, which is [unshaped]'s answer to
 // the same failure at the typed door. A task started on the person's own sentence

@@ -533,30 +533,35 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 
 		// AND THE RACE STARTED AT THE FRONT OF THE TURN IS ASKED WHETHER IT HAS
 		// ANSWERED YET (route_judge.go). It is a non-blocking read: a question still
-		// in flight costs this boundary nothing and gets asked again at the next one,
-		// and a both-yes ends the turn here and moves it onto the rail with what the
-		// answer has already found out riding along as the dowry. It stands above the
-		// price below because it is the EARLIER reading — it judged the request
-		// before a tool had run — and the two of them go through one door.
-		if a.routeConvert(ctx, hub, race, &turn, started, model) {
-			return true
-		}
+		// in flight costs this boundary nothing and gets asked again at the next one.
+		// A both-yes ENDS NOTHING — it tightens the meter below, so the reading of
+		// the work happens at this boundary rather than after the full handoff
+		// price. It stands above that line because it feeds it, and because a
+		// verdict read after the meter had already counted this round would arrive
+		// one boundary too late to move the mark it is pulling down.
+		a.routeTriage(race, meter)
 
 		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
 		// what handing it over would cost instead (checkpoint.go). The two prior
 		// answers to a grinding turn both decide BEFORE there is any evidence —
 		// the prompt teaches a judgement the model forgets under momentum, and the
 		// route judge reads a request nobody has worked on yet — so this is the
-		// one reading taken while the cost is a fact. At each geometric mark it
-		// states that fact and asks the model one question, in the ambient note
-		// lane the loop detector's nudge already rides; past the last mark it stops
-		// asking, ends the turn, and moves what is left onto the one road, where
-		// the work runs supervised.
+		// one reading taken while the cost is a fact. At each geometric mark a
+		// sidecar on the tier that thinks is shown the transcript and asked to
+		// sketch what is left; a sketch with independent parts in it ends the turn
+		// there, and past the last mark the harness stops reading, ends the turn,
+		// and moves what is left onto the one road, where the work runs supervised.
+		//
+		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
+		// the turn and never inside it, which is the whole of the wave that measured
+		// it: a model deep in tool momentum answers a mid-turn question with a tool
+		// call up to half the time.
 		//
 		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
 		// the control plane's law is that pre-action is the only hook that may
-		// (hooks.go). It stands with the two route-judge seams that also end turns,
-		// and a false is the turn carrying on exactly as it would have.
+		// (hooks.go). It is the one seam left in this loop that can end a turn out
+		// of a judgement, and a false is the turn carrying on exactly as it would
+		// have.
 		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model) {
 			return true
 		}

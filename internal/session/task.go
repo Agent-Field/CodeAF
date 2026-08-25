@@ -726,6 +726,14 @@ const taskEscalationNote = "this one wants more hands · handing it over with ev
 // propose_task on the first step of a turn correctly sees nothing, and a batch
 // that pairs a read with a proposal sees nothing either — that batch has not
 // learned anything yet. Only a step that FOLLOWS a finished batch is mid-work.
+//
+// EVERY USER MESSAGE ENDS THE ANSWER, WITH NO EXCEPTIONS. There used to be one:
+// the harness's own checkpoint rode this lane as plain user-role text, and a
+// reader that took it for somebody speaking would have silenced the mid-answer
+// line on exactly the handoffs it caused. The checkpoint does not write into a
+// running turn at all any more — it is read beside the turn by a sidecar
+// (checkpoint.go) — so the only user-role text below the last thing said is a
+// person's own steering, which IS them speaking again.
 func (a *Agent) alreadyWorking() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -734,18 +742,6 @@ func (a *Agent) alreadyWorking() bool {
 		case "tool":
 			return true
 		case "user":
-			// EXCEPT THE HARNESS'S OWN CHECKPOINT, which is the one line in this
-			// lane that is not somebody addressing the agent (checkpoint.go). It is
-			// written INTO a running answer, priced against what handing that answer
-			// over would cost, and it is the line that most often produces the
-			// proposal standing just below it — so a reader that treated it as the
-			// start of a fresh answer would silence the mid-answer line on precisely
-			// the handoffs it caused, and hand the worker a brief nobody asked for
-			// the findings in. Everything else here still ends the answer: a
-			// person's own steering is them speaking again.
-			if isCheckpointNote(a.messages[index]) {
-				continue
-			}
 			return false
 		}
 	}
