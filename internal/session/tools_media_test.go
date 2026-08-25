@@ -366,14 +366,27 @@ func TestGenerateMusicKilledSaysNothing(t *testing.T) {
 // A failed compose arrives as a note too — the failure has no turn left to
 // answer, exactly as a failed render has not.
 func TestGenerateMusicFailureArrivesAsANote(t *testing.T) {
-	media := &scriptedMedia{musicErr: errors.New("the model is overloaded")}
-	agent, _ := newMediaAgent(t, media, nil)
-	if result, isError := runTool(t, agent, "generate_music", `{"prompt":"a theme"}`); isError {
-		t.Fatalf("generate_music refused to submit: %s", result)
-	}
-	waitFor(t, "the failure note", func() bool { return notesContain(agent, "job 1 failed") })
-	if !notesContain(agent, "music generation failed (compose/model): the model is overloaded") {
-		t.Fatalf("notes %v do not carry the provider's cause", sessionNotes(agent))
+	for _, testCase := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"the provider refused", errors.New("the model is overloaded"), "music generation failed (compose/model): the model is overloaded"},
+		// The media client's own request bound, named as a timeout and not as
+		// the plumbing sentence the http client writes.
+		{"it timed out", fmt.Errorf("execute media request: %w", context.DeadlineExceeded), "music generation timed out (compose/model); no music was saved"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			media := &scriptedMedia{musicErr: testCase.err}
+			agent, _ := newMediaAgent(t, media, nil)
+			if result, isError := runTool(t, agent, "generate_music", `{"prompt":"a theme"}`); isError {
+				t.Fatalf("generate_music refused to submit: %s", result)
+			}
+			waitFor(t, "the failure note", func() bool { return notesContain(agent, "job 1 failed") })
+			if !notesContain(agent, testCase.want) {
+				t.Fatalf("notes %v do not say %q", sessionNotes(agent), testCase.want)
+			}
+		})
 	}
 }
 

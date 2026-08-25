@@ -104,11 +104,15 @@ type musicChunk struct {
 
 // GenerateMusic composes one clip and returns it whole.
 //
-// It is synchronous like every other generation call on this client and unlike
-// video: the stream is an artifact-delivery mechanism the provider insists on,
-// not something a caller watches. A composition takes seconds to a minute, so
-// there is no job, no polling and no note — the tool that calls this waits, as
-// it does for an image.
+// It is one blocking call, like every other generation call on this client:
+// the stream is an artifact-delivery mechanism the provider insists on, not
+// something a caller watches, and nothing here polls. What differs is who
+// waits. A composition takes most of a minute, so the session's tool
+// (internal/session/tools_music.go) runs this in a job's goroutine and lands
+// the result as a note, the way it does a video render — which is why ctx
+// must be honoured all the way down: `jobs kill` is that context being
+// cancelled, and a call that ignored it would compose on into a job nobody
+// owns. The harness belt (internal/exec) still calls this and waits.
 func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (*MusicResponse, error) {
 	if strings.TrimSpace(request.Model) == "" {
 		return nil, fmt.Errorf("music generation needs a model")

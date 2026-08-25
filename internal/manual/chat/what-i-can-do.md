@@ -511,7 +511,8 @@ kind is a separate answer, so drawing may be there while filming is not.
   note naming it, and `jobs kill` stops it. Both keep working while aforge
   carries on with other things.
 
-Each saves a file and answers with its path — never the media itself — and each
+Each saves a file and names its path — in the call's own answer for a picture or a
+voiceover, in the job's note for music or a video — never the media itself, and each
 costs real money, a video most of all. A path is all that goes into the
 conversation, but **you see a picture without leaving the terminal and without
 asking**: the moment `generate_image` finishes, the image is drawn under its row
