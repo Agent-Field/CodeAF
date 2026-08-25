@@ -95,6 +95,12 @@ const lsDescription = "List directory contents. Returns entries sorted alphabeti
 
 // ── path resolution ────────────────────────────────────────────────────────
 
+// ResolvePath is [resolveToCwd] for the wrappers the session fits around
+// these tools: write's append mode reads the file the inner write will land
+// on, and resolving that path any other way would be a second, driftable copy
+// of pi's normalization.
+func ResolvePath(path, cwd string) string { return resolveToCwd(path, cwd) }
+
 // resolveToCwd mirrors pi's path-utils.js:resolveToCwd. It expands ~, strips
 // a leading @, normalizes unicode spaces, and resolves the path against cwd.
 // On Unix the ~ expansion and unicode-space normalization are the only

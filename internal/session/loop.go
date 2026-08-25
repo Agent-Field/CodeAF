@@ -58,7 +58,8 @@ const (
 
 const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
 	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
-	"when writing is in scope, and keep the final report short."
+	"when writing is in scope — a long file is written in parts, a first write and then " +
+	"write calls with append:true — and keep the final report short."
 
 // ── retry classification (pi-ai compat, verbatim from internal/exec/bare) ───
 
@@ -346,6 +347,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// this count keeps that exceptional continuation both useful and bounded.
 	truncations := 0
 
+	// And the same stop can fall mid-TOOL-CALL, which is dearer: the arguments
+	// that did stream are already paid for. This counts the writes the salvage
+	// yard (salvage.go) lands from such cuts, bounded on its own budget there.
+	salvages := 0
+
 	for {
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
@@ -461,11 +467,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			return true
 		}
 
+		// A CALL THE LIMIT CUT IN HALF IS SALVAGED BEFORE IT IS RECORDED
+		// (salvage.go): a severed write gets its arguments repaired to what
+		// verifiably arrived and runs like any other call — gate, events,
+		// transcript all see the repaired bytes — and its result is reshaped
+		// below into the way to continue. Everything else severed keeps its
+		// refusal, reworded from a parser's shrug into cause and remedy.
+		severed := a.considerSeverance(calls, store.ClassifyEnd(provider.FinishReason(response), true), &salvages)
+
 		a.record(ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls})
 		partial.reset()
 		usedTools = true
 
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+		if severed != nil {
+			results[severed.index] = severed.amend(results[severed.index])
+		}
 
 		// Results append in the order the calls were issued, never in the
 		// order they finished: the pairing with tool_call_id is by id, but the
