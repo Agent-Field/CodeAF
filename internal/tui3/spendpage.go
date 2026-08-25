@@ -102,6 +102,12 @@ func (a *app) readSpendLines(now time.Time) {
 func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(a.spendNames())
+	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
+	// because WHICH rows exist does not depend on the width — only what each of
+	// them can fit does. Waiting for a draw would leave the cursor standing on
+	// the header until the first frame, which is a real state on a window that
+	// opened this place and has not painted yet.
+	_, p.stops = p.reading.body(a.width, a.pal)
 	p.cursor = a.nearestSpendStop(p.cursor)
 }
 
@@ -187,7 +193,11 @@ func (a *app) nearestSpendStop(from int) int {
 			return i
 		}
 	}
-	for i := from - 1; i >= 0; i-- {
+	// THE WALK BACK STARTS INSIDE THE NEW PAGE AND NOT WHERE THE CURSOR WAS. A
+	// window moved onto a quieter fortnight redraws with fewer rows — or none —
+	// and a cursor left standing past the end would index a slice that has since
+	// got shorter.
+	for i := min(from, len(a.spend.stops)) - 1; i >= 0; i-- {
 		if a.spend.stops[i].ok {
 			return i
 		}

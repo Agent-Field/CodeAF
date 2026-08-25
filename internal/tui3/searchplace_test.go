@@ -179,3 +179,104 @@ func TestSearchGenerationGuardsRejectStaleTicksAndResults(t *testing.T) {
 		t.Fatal("completion acceptance did not follow the current generation")
 	}
 }
+
+// ── the place, as a person meets it ─────────────────────────────────────────
+
+// searchLab is an app standing in the search place over a store this test wrote.
+func searchLab(t *testing.T, store *searchFakeStore) *app {
+	t.Helper()
+	a := placeApp(t)
+	a.searchStore = store
+	a.showPage(pageSearch)
+	return a
+}
+
+// TYPING SEARCHES, AND THE READ IS NEVER ON THE KEYSTROKE. Each letter arms a
+// quiet interval; only an interval that survives to its end becomes a query.
+func TestTypingOnTheSearchPlaceAsksOnlyAfterTheQuietInterval(t *testing.T) {
+	hits, _ := searchFixture()
+	fake := &searchFakeStore{hits: hits}
+	a := searchLab(t, fake)
+	if !strings.Contains(placeFrameText(a), "search reads every message") {
+		t.Fatalf("the empty place did not say what it is for:\n%s", placeFrameText(a))
+	}
+	typeInto(t, a, "report")
+	if fake.got != "" {
+		t.Fatalf("a keystroke read the store for %q", fake.got)
+	}
+	// The interval, arriving, is what sends the read; the read's answer is what
+	// puts rows on the page.
+	cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen})
+	if cmd == nil {
+		t.Fatal("the quiet interval did not become a read")
+	}
+	done, ok := cmd().(searchDoneMsg)
+	if !ok {
+		t.Fatalf("the read answered %T", cmd())
+	}
+	if fake.got != "report" {
+		t.Fatalf("the store was asked for %q", fake.got)
+	}
+	a.searchDone(done)
+	if text := placeFrameText(a); !strings.Contains(text, "Swarm splitting") {
+		t.Fatalf("the results are not on the page:\n%s", text)
+	}
+}
+
+// AN OLD INTERVAL AND AN OLD ANSWER ARE BOTH DROPPED, so a slow store cannot
+// put yesterday's words under today's.
+func TestTheSearchPlaceDropsAStaleIntervalAndAStaleAnswer(t *testing.T) {
+	hits, _ := searchFixture()
+	fake := &searchFakeStore{hits: hits}
+	a := searchLab(t, fake)
+	typeInto(t, a, "report")
+	stale := a.search.ask
+	typeInto(t, a, "s")
+	if a.searchTick(searchTickMsg{gen: stale.gen}) != nil {
+		t.Fatal("an interval armed for words already replaced became a read")
+	}
+	a.searchDone(searchDoneMsg{ask: stale, hits: hits})
+	if len(a.search.hits) != 0 {
+		t.Fatalf("a stale answer landed on the page: %d hits", len(a.search.hits))
+	}
+}
+
+// EMPTYING THE BOX PUTS THE RESULTS AWAY WITH THE WORDS THAT FOUND THEM, and
+// reads nothing: a search for nothing is a table scan with no question in it.
+func TestClearingTheSearchBoxTakesTheResultsWithIt(t *testing.T) {
+	hits, _ := searchFixture()
+	fake := &searchFakeStore{hits: hits}
+	a := searchLab(t, fake)
+	typeInto(t, a, "report")
+	a.searchDone(searchDoneMsg{ask: a.search.ask, hits: hits})
+	if len(a.search.hits) == 0 {
+		t.Fatal("the results never landed")
+	}
+	asked := fake.got
+	drive(t, a, key("esc"))
+	if len(a.search.hits) != 0 || !a.search.open {
+		t.Fatalf("esc left %d hits, open %v — the first esc clears the box", len(a.search.hits), a.search.open)
+	}
+	if fake.got != asked {
+		t.Fatalf("clearing the box read the store for %q", fake.got)
+	}
+	drive(t, a, key("esc"))
+	if a.search.open {
+		t.Fatal("the second esc did not leave the place")
+	}
+}
+
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. With no index behind it
+// the place keeps saying what it is for rather than drawing an empty result
+// list under somebody's words.
+func TestTheSearchPlaceWithNoIndexSaysWhatItIsForAndNothingElse(t *testing.T) {
+	a := placeApp(t)
+	a.showPage(pageSearch)
+	typeInto(t, a, "report")
+	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
+		t.Fatal("a surface with no index sent a read anyway")
+	}
+	if a.search.waiting {
+		t.Fatal("a surface with no index is still waiting on an answer")
+	}
+}
