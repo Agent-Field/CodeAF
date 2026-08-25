@@ -507,10 +507,16 @@ Several things can name a rung, and the most specific one wins:
    and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
 
-**This conversation's own rung has a chip above the message box, and `ctrl+v` walks it.**
-See *The thinking chip above the message box — `ctrl+v`* on the keys page for the chip,
-the chord and the five-row menu a click on it opens. The **thinking** row in `/settings`
-stays what it is: the answer for every conversation that has not been dialled by hand.
+**`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
+**this conversation's** rung, which has a chip above the box naming it. On a task — the
+roster row under the cursor, or the page you are inside — it moves that task's rung. On
+home with the cursor on no row at all, it moves the **thinking** row itself, the
+machine-wide default. On a standing item's card it moves that item's. The rung climbs one
+step each press and wraps from `max` back to `low`; it never goes back to "nobody said".
+The **thinking** row in `/settings` stays what it is: the answer for every conversation
+that has not been dialled by hand. The keys page has the whole of it — see *The thinking
+chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
+There is no slash command for it.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 

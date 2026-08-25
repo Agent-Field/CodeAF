@@ -1758,7 +1758,9 @@ scroll away, and the `tasks` label stays with it.
 From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
 follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
-same: `↑↓ move · →← tree · enter open · w wide · esc`. While the column holds the keyboard
+same: `↑↓ move · →← tree · enter open · w wide · esc`, and it gains `ctrl+v think harder`
+before the `esc` while the row under the cursor is work that has not finished — that chord
+moves the task's own thinking rung. While the column holds the keyboard
 the wheel walks that cursor instead of the window, so the two never fight.
 
 There is **one scrollbar-less window and no second one**: the wheel, the arrow keys and a

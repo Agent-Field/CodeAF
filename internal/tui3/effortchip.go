@@ -193,8 +193,16 @@ func (a *app) paintEffortChip(text string) string {
 }
 
 // effortFlashing reports whether the chip is still wearing its last change.
+//
+// IT ASKS WHETHER THE NEWEST MOVE WAS ITS. The window records one move
+// ([app.effortLit]), so a rung moved on a task or on home since takes the
+// emphasis off this chip on the same frame it lights that card — one answer on
+// the screen to "what just changed", which is what [effortMoved] is for.
 func (a *app) effortFlashing() bool {
-	return !a.effortLit.IsZero() && a.now().Before(a.effortLit)
+	if a.effortLit.where != effortScopeConversation || a.effortLit.at.IsZero() {
+		return false
+	}
+	return a.now().Sub(a.effortLit.at) < effortFlashFor
 }
 
 // ── the chord ───────────────────────────────────────────────────────────────
@@ -218,19 +226,11 @@ func (a *app) cycleEffort() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return a.setEffortRung(dial, nextRung(effort.Rung(dial.ResolvedEffort())))
-}
-
-// nextRung is one step up [effort.Rungs], wrapping. Anything that is not a rung
-// — absence, and a word an older file left behind — lands on the cheapest, which
-// is where a ladder starts.
-func nextRung(now effort.Rung) effort.Rung {
-	for at, rung := range effort.Rungs {
-		if rung == now {
-			return effort.Rungs[(at+1)%len(effort.Rungs)]
-		}
-	}
-	return effort.Rungs[0]
+	// THE WHEEL IS ONE FUNCTION FOR ALL FOUR SURFACES ([effortNext] in
+	// effortscope.go). A second copy here would be a second place for "and it
+	// wraps" to stop being true, and a person who learns the walk on the chip
+	// knows it on a task for exactly as long as the two agree.
+	return a.setEffortRung(dial, effortNext(effort.Rung(dial.ResolvedEffort())))
 }
 
 // setEffortRung is the ONE path from the chord and from the menu to the session,
@@ -247,7 +247,7 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 	if !dial.SetConversationEffort(rung.String()) {
 		return nil
 	}
-	a.effortLit = a.now().Add(effortFlashFor)
+	a.effortLit = effortMoved{where: effortScopeConversation, at: a.now()}
 	a.touch()
 	if got := dial.ResolvedEffort(); got != rung.String() {
 		// The note names the model whose own level is winning and the door that

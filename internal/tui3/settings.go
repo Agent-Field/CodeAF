@@ -519,17 +519,27 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "reading", widget: widgetCycle,
 		about: "which rung reads your documents. auto walks local, then free, then paid OCR.",
 	},
-	// The install's own rung on the effort ladder (internal/effort), which is the
-	// LAST scope the resolver consults and therefore the answer for every
-	// conversation nobody has dialled by hand. It sits with the models because
-	// how hard they think is a question about them, and it names the chip that
-	// moves ONE conversation off it, because a row that set a default without
-	// saying the default could be overridden is a row people come back to
-	// confused (effortchip.go).
+	// HOW HARD EVERYTHING ON THIS MACHINE THINKS, on the tab that lists the
+	// models it thinks with. The rung is not a model and not a price, but it is
+	// the other half of what a call is made of, and a person who has just picked
+	// a model is exactly the person deciding how hard to work it. It is the LAST
+	// scope the resolver consults (internal/effort) and therefore the answer for
+	// every conversation nobody has dialled by hand.
+	//
+	// IT IS ONE OF SEVERAL DOORS ONTO ONE LADDER and it says so plainly, because
+	// a setting a person can reach many ways has to read the same in all of them:
+	// this row and the same [effortKey] chord on home with the cursor at rest
+	// (homeeffort.go) both move THIS row, while the nearer scopes that outrank it
+	// — a conversation's own rung above the message box (effortchip.go), a task's
+	// (taskeffort.go), a standing item's (homeband_thinking.go) — take the same
+	// chord over their own surfaces. A row that set a default without saying the
+	// default could be overridden is a row people come back to confused.
 	config.KeyEffort: {
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +
-			"otherwise. " + effortKey + " above the message box moves one conversation on its own.",
+			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the chip " +
+			"above the message box for one conversation, a task, a standing item, or home " +
+			"with the cursor on no row, which is this same row.",
 	},
 	// It belongs on this tab and not under Session because it is a question
 	// about WHERE a request goes, not about what this conversation may do: one

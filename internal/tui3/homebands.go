@@ -238,6 +238,7 @@ const (
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
 	bandOrderSpend       = 90  // what it has cost
+	bandOrderThinking    = 93  // the machine and a standing item: the rung it thinks at
 	bandOrderToday       = 95  // the machine: what the day came to, counted and priced
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
