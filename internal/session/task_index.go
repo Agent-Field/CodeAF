@@ -186,6 +186,20 @@ type TaskIndexEntry struct {
 	// checkpoint and in the node journal's header too, and a row without it made
 	// re-pricing a landed task a three-file join.
 	Model string `json:"model,omitempty"`
+	// RepairedOn is the model a REPAIR ROUND ran on, and it is here only when
+	// that was not the model beside it: work the checker sent back is handed to
+	// the careful tier (internal/session's repair_role.go), and this is the one
+	// row in this file that says an escalation was bought.
+	//
+	// IT IS THE COMPANION TO Cost AND IT ANSWERS THE SAME QUESTION Model DOES,
+	// one layer down. A node's bill is the sum of every agent it took — the
+	// worker, each correction round, each check — so a row carrying one model and
+	// one figure cannot say whether an expensive total was an expensive task or a
+	// cheap task that needed rescuing, and those are different facts about a
+	// crew's economics. Additive, and absent means the ladder floored: either
+	// nothing was sent back, or the careful tier resolves to the model the work
+	// was already on.
+	RepairedOn string `json:"repairedOn,omitempty"`
 	// Tokens is input plus output, as ONE sum. The index carries citations, and
 	// the four-way split — with the cache share in it — lives in the journal
 	// this row's TranscriptURI names; a row that spelled out all four would be
@@ -643,7 +657,11 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// run up at, and empty when it took the conversation's. Tokens is the
 		// same frozen tally as the cost beside it, summed to the one figure a
 		// citation carries.
-		Model:         n.spec.model,
+		Model: n.spec.model,
+		// AND WHERE THE ESCALATION WENT, straight off the node, written only when
+		// a correction round really did move ([TaskNode.repairedOn] holds that
+		// rule so no reader has to).
+		RepairedOn:    n.repaired,
 		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
 		SessionID:     session,

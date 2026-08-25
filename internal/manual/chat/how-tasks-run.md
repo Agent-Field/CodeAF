@@ -328,6 +328,20 @@ The work so far stands and is already in this working copy. Do not start it agai
 The worker is fresh; the worktree is not. The task stays *running* while a round is under
 way, and you see one plain line of what is being closed.
 
+**A correction round is attempted by a more capable model.** The first attempt runs on the
+task's own model; when a check finds gaps, the worker sent back to close them runs on your
+crew's **careful work** model — the `repair` role, in `/crew`. It is the one place aforge
+spends more than you asked it to, and it is spent only after something has actually gone
+wrong, on a job the check has already narrowed to named gaps in a working copy that is
+already most of the way there. Two things turn it off by themselves: a crew whose careful
+model is the same as the model the work is on repairs on that model and costs nothing
+extra, and a task whose model **you named** — on the card or from inside its room — keeps
+your model for the correction round too.
+
+The correction worker is also handed the change as it stands: the files the first attempt
+wrote, `git diff --cached --stat` over them, and the sentence that `git diff --cached`
+shows the whole thing. It reads the diff rather than the repository.
+
 **How many rounds:** `task.repair_rounds`, default **1**, profile-only. 0 turns correction
 off. With the default, a task is worth at most **2 checks and 1 correction worker**.
 

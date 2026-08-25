@@ -2022,6 +2022,11 @@ conversation's model afterwards does not move work that was already handed over.
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
 you, from inside that task's own room — see the next section.
 
+**A model you named is kept even when the work is sent back.** If a check finds gaps, the
+worker that closes them normally runs on your crew's careful model rather than the task's
+(see *What happens when the work is not right yet*) — but only where nobody named a model.
+Name one, here or in the task's room, and every round of that task runs on it.
+
 ## Changing the model for one task while it is running — switch, change or swap a task's model
 
 **Walk into the task's room and press the model's name at the bottom of the screen.**

@@ -298,6 +298,29 @@ const (
 	repairStands  = "The work so far stands and is already in this working copy. Do not start it again and do not undo any of it: close the gaps above, and nothing else."
 )
 
+// The third thing a repair round adds: WHERE THE NINETY PERCENT IS.
+//
+// A worker opening on a brief reads it as a job to start, and the first thing it
+// does is go and find out what is in the repository — which is the right instinct
+// on a fresh task and pure waste here, because the tree it is standing in was
+// filled by the last worker an hour ago. Worse, it is waste bought at the
+// escalated tier: the cascade puts this round on the careful model
+// (repair_role.go), and a careful model re-exploring a repository from scratch is
+// the most expensive way there is to learn something the harness already knew.
+//
+// So the round is handed the change instead of the world: the files the work has
+// written, the shape of the diff, and the one sentence that says where the whole
+// of it can be read in a single command.
+const (
+	repairSawHeading = "WHAT IS ALREADY IN THIS WORKING COPY:"
+	// repairDiffPointer is spelled to match the auditor's own orientation line
+	// ([auditQuestion]) on purpose: both readers are standing in the same staged
+	// tree, and two sentences describing it differently would be two accounts of
+	// one fact.
+	repairDiffPointer = "Its changes are staged, so `git diff --cached` shows all of them, new files included. Read that before you read anything else in the repository."
+	repairNoDiff      = "This workspace is not a repository, so there is no diff to read: the files named above are the change."
+)
+
 // ── the words a person actually reads ───────────────────────────────────────
 
 // The leads for the three landings. They are constants because three different
@@ -762,7 +785,7 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 		}
 		fmt.Fprintf(log, "repair %d of %d: sent back — %s\n",
 			round, rounds, strings.Join(out.verdict.evidence, " · "))
-		repaired, said := a.repairNode(ctx, node, tree, out.verdict, round, log)
+		repaired, said := a.repairNode(ctx, node, tree, out.verdict, out.changed, round, log)
 		out.changed = alsoChanged(out.changed, repaired)
 		if said = strings.TrimSpace(said); said != "" {
 			// The newest account of the work replaces the old one, for the reason
@@ -790,11 +813,18 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 // seeing what it left out — the same argument that put an independent auditor on
 // the gate in the first place, one layer down.
 //
+// AND IT IS WHERE THE EXPENSIVE MODEL IS BOUGHT. The worker below resolves its
+// model through [roleRepair], which sits on the high tier — the one escalation
+// in this build, made after a MEASURED failure rather than on a guess, on work
+// the auditor has already narrowed to named gaps in a tree somebody else filled.
+// repair_role.go carries the whole argument, including why a model somebody
+// named for this node wins over it and why an all-flash crew needs no branch.
+//
 // It never returns an error. A repair round that could not start, or that hit a
 // threshold, or that wrote nothing, is not a failure of the node: it is a round
 // that closed no gaps, and the auditor that follows will say so in evidence a
 // person can read.
-func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, round int, log io.Writer) ([]string, string) {
+func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, changed []string, round int, log io.Writer) ([]string, string) {
 	// THE SURFACE HEARS "STILL WORKING", AND IT HEARS WHAT IS BEING CLOSED. The
 	// node never left TaskRunning — nothing landed, nothing was undone — so what
 	// goes out is an ordinary running update with the gap on it, and the machinery
@@ -802,7 +832,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
 
-	child, err := a.newTaskAgent(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round))
+	child, err := a.newTaskAgentOn(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round), a.repairModel(node))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
@@ -811,6 +841,14 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
 	}()
+	// WHERE THE MONEY WENT, written off the worker that actually exists rather
+	// than off the id the cascade asked for, and only when the ladder really did
+	// move ([TaskNode.repairedOn]). The job log says it in words for whoever is
+	// reading a run happen; the project's index says it as a field, which is what
+	// a bench can add up afterwards.
+	if on := child.Model(); node.repairedOn(on) {
+		fmt.Fprintf(log, "repair %d: on %s\n", round, on)
+	}
 
 	// The room follows the work: somebody watching this node came to watch the
 	// node, and a repair round is the node still working (task_room.go). It is
@@ -822,22 +860,28 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	room.speaking(child)
 	defer room.speaking(spoke)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, verdict), tree.dir, a.taskLimits(node), room, log)
+	wrote, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, tree, verdict, changed), tree.dir, a.taskLimits(node), room, log)
 	switch {
 	case stopped != "":
 		fmt.Fprintf(log, "repair %d: %s\n", round, stopped)
 	case runErr != nil:
 		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
 	}
-	return changed, taskReport(child)
+	return wrote, taskReport(child)
 }
 
 // repairInstruction is what the repairing worker is asked.
 //
 // It is the node's OWN instruction — the same assembled brief, the same frozen
 // acceptance, read from the same fields the first run read (task_run.go's
-// [TaskNode.instruction]) — with two things added: the gaps, VERBATIM, and the
-// sentence that the work stands.
+// [TaskNode.instruction]) — with three things added: what is already in the
+// working copy, the gaps VERBATIM, and the sentence that the work stands.
+//
+// THE ORDER IS ORIENTATION, THEN FINDING, THEN RULE. A worker reads the job, then
+// where the job already got to, then what is wrong with it, then what it may
+// touch — which is the order somebody handing work back across a desk would say
+// it in. The gaps sit next to the rule that bounds them on purpose: they are the
+// only two sentences in this document about THIS round.
 //
 // THE EVIDENCE IS NOT PARAPHRASED. It goes in exactly as the auditor wrote it,
 // because it is the most precise description of what is missing that exists
@@ -846,15 +890,44 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 // law is about what a PERSON reads; a worker being told what to fix is machinery
 // talking to machinery, and the heading calls it a review because that is what
 // it is.)
-func repairInstruction(node *TaskNode, verdict auditVerdict) string {
+func repairInstruction(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) string {
 	var out strings.Builder
 	out.WriteString(node.instruction())
+	if ground := repairGround(tree, changed); ground != "" {
+		out.WriteString("\n\n" + repairSawHeading + "\n" + ground)
+	}
 	out.WriteString("\n\n" + repairHeading + "\n")
 	for _, line := range verdict.evidence {
 		out.WriteString(line + "\n")
 	}
 	out.WriteString("\n" + repairStands)
 	return out.String()
+}
+
+// repairGround is the change as it stands: what the work has written, how much
+// of each file moved, and where the whole diff can be read in one command.
+//
+// IT IS BOUNDED BY THE BRIEF'S OWN LIMIT and not by a figure of its own. A worker
+// opens on one document, [briefAskLimit] is what that document already holds a
+// verbatim section to, and the reason is the same in both places: a paragraph is
+// the ordinary case and the bound is for the other one — a node that rewrote nine
+// hundred files, whose `--stat` would otherwise be the whole prompt. A second
+// constant here would be a second answer to one question, which is the drift
+// CLAUDE.md's one-source-of-truth law names.
+func repairGround(tree taskTree, changed []string) string {
+	var out strings.Builder
+	if len(changed) > 0 {
+		out.WriteString("Files the work has written so far: " + strings.Join(changed, ", ") + "\n\n")
+	}
+	if tree.root == "" {
+		out.WriteString(repairNoDiff)
+		return clip(strings.TrimSpace(out.String()), briefAskLimit)
+	}
+	out.WriteString(repairDiffPointer)
+	if stat := stagedDiffStat(tree.dir); stat != "" {
+		out.WriteString("\n\n" + stat)
+	}
+	return clip(strings.TrimSpace(out.String()), briefAskLimit)
 }
 
 // mendingLine is the gap as a surface may draw it: the first line of evidence,

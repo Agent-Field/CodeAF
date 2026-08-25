@@ -441,6 +441,18 @@ type TaskNode struct {
 	// id while `mend` on the same card said "model X has no tools; using Y", so
 	// one row disagreed with itself about what was running.
 	ran string
+	// repaired is the model a REPAIR ROUND ran on, when the cascade moved that
+	// round off the model the node itself is on (repair_role.go). It is "" for
+	// every node that was never sent back, and for every node whose repair
+	// floored onto its own model — an all-flash crew, or a model somebody named.
+	//
+	// IT IS THE BILL AND NOT THE ROW. [TaskNode.ran] answers "what is this node
+	// running on", which is a fact a surface draws; this answers "what did the
+	// last ten percent of this node cost extra", which is a question asked of the
+	// project's record afterwards, so it reaches the index
+	// ([TaskNode.indexEntryLocked]) and nothing a person is looking at while the
+	// work runs.
+	repaired string
 	// settling NAMES the resolution in flight over a landed node, in the plain
 	// words a second caller is told, and it is "" when nobody holds the node
 	// (task_audit.go's ResolveUnverified).
@@ -1177,10 +1189,16 @@ func (n *TaskNode) model() string {
 // just chose. The sentence beside it goes with it, and only when it is the
 // rescue's own: a repair round's `mend` is about the work and has nothing to do
 // with this.
+// AND THE WORD IS WRITTEN BESIDE THE ID, because a pick made here is a pick.
+// [TaskNode.modelPicked] reads the word to answer "did anybody name a model for
+// this work" — which is what holds the repair cascade off a node whose model
+// somebody chose (repair_role.go) — and a retarget that moved only the id would
+// leave the person's own choice looking like an inherited default.
 func (n *TaskNode) retarget(model string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	n.spec.model = model
+	n.spec.modelWord = model
 	if n.ran != "" {
 		n.ran = ""
 		if isTaskModelRescueNote(n.mend) {
@@ -3443,11 +3461,28 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // store, no reflex, or a router that answered nothing: the node opens with
 // exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
+	return a.newTaskAgentOn(ctx, dir, node, suffix, "")
+}
+
+// newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
+// exists for exactly one caller: the repair round, whose model is the cascade's
+// answer rather than the node's (repair_role.go, task_audit.go's repairNode).
+//
+// AN EMPTY `on` IS THE ORDINARY CASE and means "the node's own", so every other
+// caller is byte-for-byte where it was. What a named model does NOT do is move
+// the node: the spec is not touched, the row is not touched, and the escalation
+// is recorded as a bill rather than as a retarget — a repair round is one worker
+// among several a node takes, and a node whose row started naming the repair's
+// model would be telling a person their work moved when it did not.
+func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string) (*Agent, error) {
 	// The model it is ACTUALLY on rather than the id it was admitted with, so a
 	// second worker built for a node that was moved is built for where the node
 	// now is ([TaskNode.runOn]). They are the same string for every node nothing
 	// has moved, which is almost all of them.
 	model := node.runModel()
+	if on = strings.TrimSpace(on); on != "" {
+		model = on
+	}
 	var (
 		tasker *TaskGraph
 		nodeID uint64
@@ -3476,13 +3511,21 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 				a.mu.Unlock()
 				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
 			}
-			node.graph.mu.Lock()
-			node.mend = taskModelRescueNote(model, fallback)
-			// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
-			// on: the sentence above and [TaskNode.notice]'s model are two halves of
-			// one card, and until this line they named different models.
-			node.ran = fallback
-			node.graph.mu.Unlock()
+			// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model
+			// belongs to one round and not to the node (see [Agent.newTaskAgentOn]),
+			// so a rescue inside a repair round swaps the model it is about to call
+			// and says nothing on the card: the sentence would be about a worker the
+			// person was never told existed, and it would overwrite the one line the
+			// repair loop legitimately owns there — the gap being closed.
+			if on == "" {
+				node.graph.mu.Lock()
+				node.mend = taskModelRescueNote(model, fallback)
+				// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
+				// on: the sentence above and [TaskNode.notice]'s model are two halves of
+				// one card, and until this line they named different models.
+				node.ran = fallback
+				node.graph.mu.Unlock()
+			}
 			model = fallback
 		}
 	}
@@ -3988,6 +4031,24 @@ func stagedPaths(dir string) []string {
 		}
 	}
 	return paths
+}
+
+// stagedDiffStat is the node's change AS A SHAPE: one line per file with how
+// much of it moved, read off the same index [stagedPaths] reads.
+//
+// It is the `--stat` and never the diff itself. The whole diff is already in the
+// working copy the reader is standing in — a repair round can open any of it
+// with `git diff --cached` and nothing here should pay to copy it into a prompt
+// — and what a reader cannot get in one glance is the SHAPE: which files, how
+// big, and therefore where the ninety percent that already works lives
+// (task_audit.go's repairInstruction is the one caller). An empty answer is what
+// a workspace that is not a repository gives, and it renders as nothing.
+func stagedDiffStat(dir string) string {
+	out, err := git(dir, "diff", "--cached", "--stat")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // stageTaskWork puts everything the node wrote into the worktree's index, and
