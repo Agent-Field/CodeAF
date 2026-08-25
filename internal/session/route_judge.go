@@ -15,13 +15,32 @@ package session
 //
 //   - BESIDE the turn ([Agent.routeAhead]), reading the REQUEST and nothing
 //     else. It is launched at the front of the turn and RUNS WHILE THE MODEL
-//     ANSWERS. A yes CONVERTS the turn it is racing at the next step boundary:
-//     the turn ends there, the message goes to the graph as the person's own
-//     words, and the seconds of inline work that already happened ride along as
-//     the dowry. A verdict that arrives after the turn has finished is dropped.
+//     ANSWERS. A yes is TRIAGE and no longer a conversion: it tightens the
+//     checkpoint's meter so the work itself is read at the next step boundary
+//     instead of after the full handoff price ([Agent.routeTriage]). A verdict
+//     that arrives after the turn has finished is dropped.
 //   - AFTER a turn that answered in words alone ([Agent.routeJudge]), reading
 //     the request and two lines of what came back. A yes starts the work the
 //     answer only talked about.
+//
+// ── WHY THE PRE-TURN READ NO LONGER CONVERTS ──
+//
+// It used to end the turn it was racing outright, and the benchmark took that
+// away from it. Over ten measured cells the raced screen converted BOTH of the
+// small-work traps — messages whose fastest correct answer was a few tool calls
+// in the conversation, taken out of it and handed to a worker in a worktree. The
+// reason is structural rather than a tuning problem: what this read has in front
+// of it is a REQUEST NOBODY HAS WORKED ON YET, and no amount of confirming turns
+// that into evidence about the work. Reading the work is what checkpoint.go's
+// sidecar does, at a mark, over the transcript the turn has actually built.
+//
+// So the race keeps the thing it is genuinely good at — noticing early that this
+// one is worth looking at — and gives up the thing it was bad at. A both-yes now
+// pulls the first mark down to the very next boundary, and a person sees NOTHING
+// at all until the reading of the work says something (THE EMPTINESS LAW: a
+// judgement that changed nothing they can observe is not announced). What its
+// verdict wrote about breadth and about the done-condition is kept and rides
+// whatever task eventually starts.
 //
 // THE PRE-TURN READ EXISTS BECAUSE THE POST-TURN ONE CANNOT SEE THE FAILURE THAT
 // COSTS THE MOST. A chat message carrying four independent pieces of work was
@@ -60,6 +79,9 @@ package session
 //     have been work is a question with no useful answer — so the post-turn read
 //     watches a TOOL-LESS turn only. The pre-turn read is made before any tool
 //     has run, which is the whole reason it is made there.
+//     (The pre-turn read starts nothing directly at all any more — it hands the
+//     decision to the reading of the work — but the post-turn read still does,
+//     and everything below is written about that.)
 //   - IT IS RATE-LIMITED, and auto-start makes the limit MORE load-bearing rather
 //     than less: at most one task every [routeJudgeGap] turns, which is also what
 //     makes two in a row impossible. Somebody who has just stopped one is having
@@ -608,12 +630,11 @@ type routeRace struct {
 	// spent is the turn's own mark that this verdict has been taken, and it makes
 	// ONE VERDICT PER TURN a property of the race rather than of whoever reads it.
 	//
-	// IT MATTERS BECAUSE A YES CAN NOW BE DECLINED. A conversion whose dowry came
-	// back saying nothing remains leaves the turn RUNNING (checkpoint.go's
-	// [Agent.handOverRunningTurn]), and a settled race that is still answering
-	// would be re-read at every step boundary after it — one more handoff ask,
-	// billed to the person, at every round of a turn that already said it was
-	// finishing.
+	// IT MATTERS BECAUSE A YES CHANGES NOTHING VISIBLE. What it does is tighten
+	// the checkpoint's meter ([Agent.routeTriage]), which is a thing worth doing
+	// exactly once: a settled race that answered again at every boundary would
+	// keep re-pulling a rung that has already moved, and would go on holding a
+	// verdict the turn has finished with.
 	//
 	// IT NEEDS NO LOCK because it is written and read on the TURN'S goroutine
 	// alone. The race's own goroutine touches `verdict` and `work` and closes
@@ -667,12 +688,16 @@ func (r *routeRace) end() {
 // Everything gated here returns nil, which is a turn running exactly as it did
 // before this file existed.
 //
-// WHAT A YES DOES IS CONVERT THE TURN ([Agent.routeConvert]), at the next step
-// boundary. The person's message is already the spec's request
-// ([Agent.taskRequest], written into the transcript and into a.personAsk by
-// [Agent.startTurnLocked] before the loop begins), so the work is genuinely
-// handed over rather than copied, and what the conversation had already found
-// out by then goes with it rather than being thrown away.
+// WHAT A YES DOES IS TIGHTEN THE CHECKPOINT'S METER ([Agent.routeTriage]), at
+// the next step boundary. The turn carries on exactly as it was; what changes is
+// that the reading of the WORK — checkpoint.go's sidecar — happens at that
+// boundary instead of after ten rounds of tool calls. Everything that can end the
+// turn belongs to that reading, and nothing is said to the person here, because
+// nothing they can observe has happened. The person's message is already the
+// spec's request ([Agent.taskRequest], written into the transcript and into
+// a.personAsk by [Agent.startTurnLocked] before the loop begins), so a handover
+// out of that reading is genuinely a hand-off rather than a copy, and what the
+// conversation had already found out by then goes with it.
 //
 // WHAT IT COSTS: one low-tier call on a substantial message the gap allows,
 // which is a few hundred tokens of request and one small object back. The
@@ -769,87 +794,45 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 	return race
 }
 
-// routeConvert is where the race LANDS, called at every step boundary of the
-// turn it is racing ([Agent.runTurn]).
+// routeTriage is where the race LANDS, called at every step boundary of the turn
+// it is racing ([Agent.runTurn]).
 //
-// IT IS THE CEILING'S EVENT ARRIVING FROM A DIFFERENT CLOCK. The checkpoint's
-// ceiling ends a turn because the answer has outrun what handing it over costs;
-// this ends one because a second model read the request and said it was work
-// before the answer had got going. Both are the harness deciding mid-turn that
-// this belongs on the rail, so both go through the same machinery
-// ([Agent.handOverRunningTurn], checkpoint.go) and differ in one line of prose
-// and the verdict they carry.
+// IT IS NOT A DOOR ANY MORE, AND THAT IS THE POINT OF THE WAVE. It used to end
+// the turn here and hand it to the graph; the benchmark measured that conversion
+// taking both of its small-work traps out of the conversation, because a read of
+// an UNANSWERED REQUEST cannot tell a job that is four jobs from a job that
+// sounds like four. So what a both-yes buys now is a LOOK, sooner: the
+// checkpoint's first mark moves down to this boundary, and the reading that can
+// actually end a turn is the one over the transcript the turn has built
+// (checkpoint.go's [Agent.readMark]).
 //
-// A LATE VERDICT IS DROPPED, and that is a law rather than an accident. The turn
-// that finished already had its own reading — the post-turn judge ran on it
-// (route_judge.go's second moment) — so spending this one too would be two
-// judgements on one turn and, worse, a task starting over the top of an answer
-// the person has already read. That is precisely the surprise the card used to
-// stand in front of. So the race is asked only at a boundary of a turn that is
-// still running, and the turn's end throws whatever is left of it away.
+// IT SAYS NOTHING AND STARTS NOTHING, which is why it answers nothing either. The
+// person is not told that a judgement was made about their message, because at
+// this instant nothing has happened to their turn that they could observe — THE
+// EMPTINESS LAW, applied to an event rather than to a number.
 //
-// AND A YES CAN STILL COME TO NOTHING. This read is made of the REQUEST, seconds
-// before an answer that may already have finished the job — measured, on a turn
-// that wrote all eight files it was asked for while the confirm was still
-// thinking. The dowry ask puts the question to the one reader that can answer it
-// and the handover drops itself when the answer is that nothing remains
-// (checkpoint.go); this returns false there, which is the turn simply carrying on
-// to the answer it was about to give. The verdict is spent either way
-// ([routeRace.yes]) — it was read, and a read verdict does not get a second
-// boundary.
-func (a *Agent) routeConvert(ctx context.Context, hub *eventHub, race *routeRace, turn *Usage, started time.Time, model string) bool {
+// A LATE VERDICT IS STILL DROPPED, and that is still a law. The turn that
+// finished already had its own reading (the post-turn judge, this file's second
+// moment), and tightening a meter that belongs to a turn which has ended would be
+// carrying one turn's triage into the next one. So the race is asked only at a
+// boundary of a turn that is still running, and the turn's end throws whatever is
+// left of it away.
+//
+// AND THE GATES THAT USED TO STAND HERE STAND ONE LINE LATER. An interrupt and a
+// closed session both used to be re-read here before anything was admitted;
+// nothing is admitted here now, and [Agent.checkpoints] re-reads both of them in
+// front of every call and every handover this can lead to.
+func (a *Agent) routeTriage(race *routeRace, meter *checkpointMeter) {
 	verdict, ok := race.yes()
 	if !ok {
-		return false
+		return
 	}
 	// ONE VERDICT PER TURN. The race answered, so it is over whatever this
 	// boundary does with the answer — there is no second chance to spend it and
 	// nothing left for it to pay for.
 	race.end()
-	if ctx.Err() != nil {
-		// AN INTERRUPT DISCARDS IT. A turn the person has just stopped is a turn
-		// they have said they do not want, and moving its remains onto the rail
-		// would be answering an interrupt with a task (checkpoint.go keeps the same
-		// law at the same boundary).
-		return false
-	}
-	// The other gates were passed when the race was launched and none of them can
-	// move under a running turn — the config is fixed and the message is the one
-	// that started it — so what is re-read here is the pair that CAN: the
-	// interrupt above, and a session that closed while the question was in flight.
-	a.mu.Lock()
-	closed := a.closed
-	a.mu.Unlock()
-	if closed {
-		return false
-	}
-	return a.handOverRunningTurn(ctx, hub, turn, started, model, routeRaceNote, verdict)
+	meter.tighten(verdict)
 }
-
-// routeRaceNote is the ONE line a person reads when the race converts the turn
-// they are already watching an answer arrive on.
-//
-// IT IS [checkpointCeilingNote]'S SIBLING and deliberately so: same slot, same
-// register, same promise — an observation, a middle dot, what happens next — and
-// nothing about machinery, no capital letter, no full stop. What differs is the
-// OBSERVATION, because the two moments have honestly seen different things. The
-// ceiling has watched an answer outrun its own price and says so ("this is
-// running long"); the race has read the request and nothing else, and the true
-// thing it has to say about a turn that may be four seconds old is that the
-// message reads like work.
-//
-// THE PROMISE IS THE SAME BECAUSE IT IS THE SAME TASK: watched, and armed to
-// split when the judge said the work was wide. It says "can" and not "will" for
-// the ceiling's reason — whether it splits is the worker's own discovery once it
-// has opened the material (task_divide.go).
-//
-// IT HAS TO MAKE SENSE ARRIVING SECOND. By the time this is drawn the person may
-// already have read a sentence or two of an answer, so the line is written as a
-// remark about the message and not as the opening of a turn: what came before it
-// is not contradicted, it is what the task is being handed along with. The
-// told-after line from [Agent.launchRouteTask] still follows it, naming the task
-// and what it was started on.
-const routeRaceNote = "this reads like work · moving it to a task that is watched and can split"
 
 // askRouteAhead is the screen, BOUNDED and ASKED OF THE CREW ALONE. It is
 // [Agent.askRouteJudge]'s call with the pre-turn brief, a window over it, and NO

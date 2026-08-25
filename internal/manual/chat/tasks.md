@@ -280,7 +280,7 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
 
-## A reply that begins normally and stops halfway to become a task — this reads like work
+## A message that reads like work makes aforge look sooner — nothing else happens
 
 **The judge that starts work on its own looks at two moments.** One is after a turn that
 answered in words alone, above. The other starts **the moment you press enter**: your
@@ -291,41 +291,18 @@ reply starts arriving exactly as fast as it always did, and the question is bein
 somewhere else while you watch it. So a no costs you nothing at all — which is most
 messages, and it is why the read can afford to take its time.
 
-**If both models say yes, the reply you are already reading is handed over.** At the next
-break between rounds of tool calls, the answer stops where it is, the work moves to one
-task, and two dim lines go into the transcript:
+**If both models say yes, you see nothing.** No line, no task, no interruption. The one
+thing that changes is *when aforge looks at the work*: instead of waiting until the answer
+has run ten rounds of tool calls, it looks at the very next break between rounds — and then
+at the ordinary points after that. What that look is, and what it can do, is *An answer that
+runs long is read and can be handed over* below.
 
-```
-this reads like work · moving it to a task that is watched and can split
-this looked like work, so task 4 started: fix the flaky auth test, upgrade the http client
-```
-
-The first line is the reason; the second is the ordinary line every task started this way
-carries, with its own number and name. Both are in the transcript, so the next thing you
-say is not answered on top of a message nobody replied to.
-
-**The seconds already spent are not thrown away.** Your own message rides the task **word
-for word**, and on top of it the model is asked for one last thing before the answer ends:
-what is left, and what this turn already found out that whoever picks it up would otherwise
-have to find again. That is the brief. It is the same handover *An answer that runs long is
-moved* describes below, and it fails the same way — if the brief cannot be written, the task
-still starts, on your own sentence alone.
-
-**If the model says nothing is left, nothing moves.** That same last question asks it what
-still remains, and one of the answers is that everything you asked for is already done here
-— the files written, the checks run, and only saying so left. When it answers that, the
-handover is **dropped**: no task, no lines, no interruption. The reply you were reading
-simply finishes, and it is the answer. This is what happens to a yes that arrives a few
-seconds too late to be right, and it holds at the moment below as well as at this one.
-
-**The task is named after your own message, not after the brief.** The name in the line
-above is cut from the sentence you typed, because the brief is written by a model in the
-middle of tool calls and its first line is sometimes the machinery rather than a name. A
-short name replaces it a second or two later, the way every task on this page is named.
-
-**If the answer finishes first, the yes is thrown away.** A reply that is already done is
-not interrupted after the fact — nothing starts on top of an answer you have read. That
-turn gets the ordinary look afterwards instead, which is the section above.
+**It used to hand the reply over on the spot, and it does not any more.** That was measured
+against real transcripts and it took work out of the conversation that the conversation
+would have finished faster: a message that *sounds* like four jobs is not the same fact as
+four jobs, and reading the request cannot tell them apart. Reading the work can. So this
+moment now only decides **how soon to look**, and looking at the work decides everything
+else.
 
 **What the judge is looking for is a request whose fastest correct answer is not a
 conversation:** several independent deliverables in one message, a sweep over many files or
@@ -373,75 +350,82 @@ the way every other proposal is offered — `yes`, `redirect`, `no`, and a count
 silence starts it. You are told, and it opens; what the card gives you on top of that is
 the window to redirect it before it spends anything.
 
-## An answer that runs long is moved — this is running long, moving it to a task
+## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long
 
 **When one answer keeps going, aforge prices it.** A long answer costs a little more with
 every round of tool calls and never stops costing; handing the same work to a task costs one
 fixed price — a clean copy of your folder opened and closed, a brief written, somebody
 independent reading the result — and after that the work runs watched. So the count of
 finished tool rounds is compared against that fixed price, and at three points along the way
-something happens. **Nothing about what you asked for is read.** It is the cost and only the
-cost.
+aforge stops and **looks at what is left**. **Nothing about what you asked for is read to
+decide when to look.** It is the cost and only the cost. (If the message you typed already
+read like work, the first of those points comes at the very next break instead — see the
+section above.)
 
-**Twice, the model is asked one question, and you see nothing.** At the first two points a
-line goes to the model — not to your screen — saying the answer has now cost more than
-handing it over would have, and asking it to say in one line whether what is left is one job
-or several independent parts. If it is several parts, it hands them over there and then, and
-you get the ordinary mid-answer handoff described above:
+**At each point, a second model reads the answer so far.** Not the model writing your reply
+— a different one, which is shown the conversation and asked for one line: a sketch of what
+is left, as parts and arrows. `A | B | C` means three pieces that do not wait on each other.
+`A > B > C` means one job in three steps. Then one sentence saying what the letters are.
+**The model answering you is never asked and never sees the question**, which is the whole
+point: a model in the middle of tool calls answers a question like that with another tool
+call about half the time, so it is asked of somebody who is not busy.
+
+**If the sketch has independent parts in it, the reply is handed over.** It stops halfway,
+your answer is moved to one task, and two dim lines go into the transcript:
 
 ```
-this one wants more hands · handing it over with everything found so far
+this has parts · handing it to a task that can take them side by side
+this looked like work, so task 4 started: finish the four pieces
 ```
 
-If it is one job, it says what is left and carries on, and it is not asked again until the
-next point — which is twice as far along as the last one. **An answer can be interrupted this
-way at most twice.**
+The first line is the reason; the second is the ordinary line every task started this way
+carries, with its own number and name. Both are in the transcript, so the next thing you say
+is not answered on top of a message nobody replied to.
 
-**The third point is not a question.** Past it aforge stops asking. The answer ends where it
-is, what is left of the work moves onto one task, and two dim lines go into the transcript:
+**If the sketch says one job, nothing happens at all.** No line, no note, nothing added to
+your reply, and the model writing it is not told it was looked at. The answer carries on and
+the next point is twice as far along.
+
+**And if nobody can be reached, nothing happens either.** No second model configured, a
+reader that faults, a reader that takes too long: each of those is a look that produced
+nothing, and a look that produced nothing is the answer carrying on. The third point below
+is what makes that safe.
+
+**The third point is not a question.** Past it aforge stops looking. The answer ends where it
+is, what is left of the work moves onto one task whatever the last sketch said, and two dim
+lines go into the transcript:
 
 ```
 this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
-The first line is the reason; the second is the ordinary line every task started this way
-carries, with its own number and name.
-
 **What the task is given.** Your own message rides it **word for word** — that is true of
-every task on this page and it is never rewritten. On top of it, the model is asked for one
-last thing before the answer ends: an instruction for whoever picks the work up, saying what
-is left, what it already found out that they would otherwise have to find again, what it
-ruled out, and how anybody could tell when it is done. That is the brief. If it cannot be
+every task on this page and it is never rewritten. On top of it, the model that wrote the
+answer is asked for one last thing before the turn ends: an instruction for whoever picks the
+work up, saying what is left, what it already found out that they would otherwise have to
+find again, what it ruled out, and how anybody could tell when it is done. That is the brief.
+Where the work was handed over because it had parts, the sketch and its sentence sit at the
+top of that brief, so the worker starts with the pieces already named. If the brief cannot be
 written — the model fails, replies with nothing, or replies with something that is not an
 instruction at all — the task still starts, on your own sentence alone. Its name is cut from
-your own message too, for the same reason, and a short name replaces that a second later.
+your own message too, and a short name replaces that a second later.
 
-**And the third point can still come to nothing.** Before the answer ends, that last
-question also asks what still remains — and if the model answers that everything you asked
-for is already done, the move is **dropped**. No task, no lines. The answer carries on to its
-own end and stands, which is the right outcome for a turn that was finishing anyway: what
-this whole mechanism is for is an answer that is grinding, and one that is about to stop is
-not. It is not asked again either — the three points are spent.
+**And it can still come to nothing.** That last question also asks what still remains — and
+if the model answers that everything you asked for is already done, the move is **dropped**.
+No task, no lines. The answer carries on to its own end and stands, which is the right
+outcome for a turn that was finishing anyway: what this whole mechanism is for is an answer
+that is grinding, and one that is about to stop is not. This holds at all three points.
 
-**The task is armed to split.** An answer that outran one pair of hands is the strongest
-evidence there is that the work has parts in it, so the worker is allowed to hand parts out
-once it has opened the material. Whether it actually does is its own decision and the roster
-says so if it happens — see *When a task turns out to be too wide for one worker*.
+**The task is allowed to split.** At the first two points a model has just read the work and
+named its parts, and at the third the answer outran one pair of hands by measurement — either
+way the worker is allowed to hand parts out once it has opened the material. Whether it
+actually does is its own decision, and it still has to justify the parts inside the task; the
+roster says so if it happens — see *When a task turns out to be too wide for one worker*.
 
-**What is on the rail is what you can stop.** From the moment the task exists it is an
-ordinary task: a row on the roster, a room, a budget, a report, `x` to stop it. That is the
-point of moving it — an answer grinding in the conversation has none of those.
-
-**What never gets moved:**
-
-- **Work already inside a task.** A task's own worker has a step cap, a deadline and a check
-  of its own, so nothing moves work out of one.
-- **Anything with no screen.** `--once`, and any session nobody is watching, never does this.
-- **Anything the session said to itself.** A task's report landing, a standing order's own
-  instruction, a woken turn: none of those are counted or moved.
-- **An answer you stopped.** Pressing escape ends the answer and nothing is started out of
-  it.
+**What it costs.** At most three calls to that second model, and only on an answer that has
+already spent ten rounds of tool calls, which most answers never do. The read at the front of
+your turn is one cheap call and now starts nothing by itself.
 
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.

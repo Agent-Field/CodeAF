@@ -64,6 +64,15 @@ type routeCompleter struct {
 	// belt, so without this it would fall through to the errand branch below and
 	// the task would open on "(errand)".
 	handoff string
+	// sketch is what the MARK READER answers when the checkpoint's sidecar asks it
+	// what is left (checkpoint.go's [Agent.readMark]).
+	//
+	// IT IS WHAT MAKES A RACED YES REACH A TASK AT ALL NOW. The race stopped
+	// converting turns in the wave that measured it — a both-yes only pulls the
+	// checkpoint's first mark down to the next boundary — so every test on this
+	// page whose turn ends up on the rail ends up there through this answer.
+	// Empty is a reader with nothing to say, which is a carry-on.
+	sketch string
 	// holdUntilRaced holds every CONVERSATION answer until this many PRE-TURN
 	// calls have been entered — one for the screen, two for the screen and the
 	// confirm.
@@ -83,6 +92,7 @@ type routeCompleter struct {
 	confirmed    int
 	preJudged    int
 	preConfirmed int
+	marks        int
 	answers      int
 	question     string
 	confirmQ     string
@@ -132,6 +142,15 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 		c.judged++
 		c.question = asked
 		return textResponse(c.verdict), nil
+	}
+	// THE MARK'S SIDECAR, and it has to be caught above the errand branch below
+	// for the dowry's reason: it carries no belt either.
+	if askedForSketch(messages) {
+		c.mu.Lock()
+		c.marks++
+		drawn := c.sketch
+		c.mu.Unlock()
+		return textResponse(drawn), nil
 	}
 	// THE DOWRY a converted turn is asked for on its way out. It carries no belt,
 	// so it has to be caught above the errand branch below.
@@ -244,6 +263,15 @@ func (c *routeCompleter) answered() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.answers
+}
+
+// marksRead is how many times the checkpoint's sidecar was asked what is left,
+// which is the ONLY observable effect a raced yes has until that reading says
+// something.
+func (c *routeCompleter) marksRead() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.marks
 }
 
 // sawAheadQuestion is what the pre-turn judge was shown.
@@ -934,14 +962,23 @@ const routeAheadYes = `{"work": true, "wide": true, "goal": "fix the flaky auth 
 // already found out.
 const routeDowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-// racingAgent is [routeAgent] with the whole cascade answering yes and the
-// conversation grinding: the turn goes into the model, calls tools, and is
-// converted at the boundary where the race's verdict has landed.
+// racingAgent is [routeAgent] with the whole cascade answering yes, the
+// conversation grinding, and the mark reader drawing parts: the turn goes into
+// the model, calls tools, has its first mark pulled down to the boundary where
+// the race's verdict landed, and is handed over there because the reading of the
+// WORK found independent parts in it.
+//
+// THE TWO READINGS ARE BOTH LOAD-BEARING NOW, which is the shape of the wave. The
+// race decides only WHEN the work is looked at; the sidecar decides whether
+// anything happens.
 func racingAgent(t *testing.T, completer *routeCompleter) (*Agent, *routeRun, *ran) {
 	t.Helper()
 	completer.ahead = routeAheadYes
 	completer.aheadConfirm = routeAheadYes
 	completer.handoff = routeDowry
+	if completer.sketch == "" {
+		completer.sketch = checkpointSplitSketch
+	}
 	if completer.toolRounds == 0 {
 		completer.toolRounds = 8
 	}
@@ -951,12 +988,16 @@ func racingAgent(t *testing.T, completer *routeCompleter) (*Agent, *routeRun, *r
 	return routeAgent(t, completer)
 }
 
-// A REQUEST WITH SEVERAL INDEPENDENT DELIVERABLES IN IT CONVERTS THE TURN THAT
-// IS ALREADY ANSWERING IT. The model is asked — that is the whole change — and
-// at the first step boundary where the race has answered, the turn ends, one
-// task carries the work, the person's own words ride it verbatim, and what the
-// conversation had already found out goes with it as the dowry.
-func TestARacedYesConvertsTheRunningTurn(t *testing.T) {
+// A REQUEST WITH SEVERAL INDEPENDENT DELIVERABLES IN IT IS LOOKED AT EARLY, AND
+// THE LOOK CONVERTS THE TURN.
+//
+// Two readings in sequence: the race says this one is worth looking at and pulls
+// the checkpoint's first mark down to the boundary its verdict landed on; the
+// sidecar at that mark reads the transcript, draws three independent parts, and
+// THAT is what ends the turn. One task carries the work, the person's own words
+// ride it verbatim, and what the conversation had already found out goes with it
+// as the dowry — under the parts the sidecar named.
+func TestARacedYesIsLookedAtEarlyAndTheLookConvertsTheTurn(t *testing.T) {
 	completer := &routeCompleter{answer: "I will start with the auth test."}
 	agent, runs, nodes := racingAgent(t, completer)
 
@@ -999,21 +1040,27 @@ func TestARacedYesConvertsTheRunningTurn(t *testing.T) {
 		t.Fatalf("the task carries %q as the person's request", node.request())
 	}
 	// AND THE FIRST SECONDS OF INLINE WORK ARE NOT WASTED: they are the dowry,
-	// written by the model that did them, exactly as the ceiling's are.
+	// written by the model that did them, exactly as the ceiling's are — under the
+	// parts the sidecar drew out of the same transcript.
 	if !strings.Contains(node.spec.brief, "everything this turn already found out") {
 		t.Fatalf("the converted task lost what the turn had already found: %q", node.spec.brief)
 	}
-	// The judge's own reading still rides it — the breadth it saw and the
-	// done-condition it wrote are what this task is armed and finished against.
+	if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS:") {
+		t.Fatalf("the brief does not open on the parts the mark reader named: %q", node.spec.brief)
+	}
+	// THE RACE'S OWN VERDICT STILL RIDES IT, which is the whole reason a demoted
+	// race keeps writing one — the breadth two readers agreed on and the
+	// done-condition the screen wrote are what this task is armed and finished
+	// against.
 	if !node.spec.wide {
 		t.Error("the judge said the work was wide and the converted task is not armed to split")
 	}
 	if !strings.Contains(node.acceptance(), "RELEASE-2.4.md exists") {
 		t.Errorf("the task is finished against %q, want the judge's own done-condition", node.acceptance())
 	}
-	// AND THEY ARE TOLD, in the race's own line with the told-after line under it.
+	// AND THEY ARE TOLD, in the split's own line with the told-after line under it.
 	said := noticeTexts(collected)
-	if !saidSomething(said, routeRaceNote) {
+	if !saidSomething(said, checkpointSplitNote) {
 		t.Fatalf("the conversion never said its line; notices were %q", said)
 	}
 	notice := routeNotice(collected)
@@ -1023,7 +1070,7 @@ func TestARacedYesConvertsTheRunningTurn(t *testing.T) {
 	// THE TURN IS SEALED, and the transcript is not left with a request nobody
 	// replied to: the next turn would open on it and answer it all over again.
 	if last := lastMessage(agent); last.Role != "assistant" ||
-		messageText(last) != routeRaceNote+"\n"+notice {
+		messageText(last) != checkpointSplitNote+"\n"+notice {
 		t.Fatalf("the transcript ends on %q by %q, want the two lines the person read",
 			messageText(last), last.Role)
 	}
@@ -1032,6 +1079,64 @@ func TestARacedYesConvertsTheRunningTurn(t *testing.T) {
 	}
 	if started := runs.started(); len(started) != 0 {
 		t.Fatalf("the race reached a planner: %v", started)
+	}
+}
+
+// AND A RACED YES ON ITS OWN CONVERTS NOTHING AND SAYS NOTHING. IT ONLY MAKES
+// AFORGE LOOK SOONER.
+//
+// This is the demotion, pinned. The benchmark measured the raced screen
+// converting BOTH of its small-work traps — a message whose fastest correct
+// answer was a few tool calls, taken out of the conversation that was answering
+// it — because what the race reads is a REQUEST nobody has worked on yet. So the
+// yes now buys one thing: the checkpoint's first mark lands at the next boundary
+// instead of after ten rounds. Here the mark reader looks at the work and says it
+// is one job, and the turn simply finishes.
+//
+// AND NOTHING IS SAID, because nothing the person can observe has happened — the
+// emptiness law applied to an event rather than to a number.
+func TestARacedYesOnlyMakesTheSidecarLookSooner(t *testing.T) {
+	completer := &routeCompleter{
+		answer: "Here is the fix, and the suite is green.",
+		// The reading of the work says this is one job after all.
+		sketch: checkpointChainSketch,
+	}
+	agent, _, nodes := racingAgent(t, completer)
+
+	collected := collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	if completer.preAsked() != 1 || completer.preConfirms() != 1 {
+		t.Fatalf("the screen was asked %d times and the confirm %d, want one each",
+			completer.preAsked(), completer.preConfirms())
+	}
+	// THE LOOK HAPPENED, AND IT HAPPENED EARLY. The ordinary first mark stands at
+	// ten finished rounds; this turn answered two or three times in all.
+	if read := completer.marksRead(); read != 1 {
+		t.Fatalf("the sidecar was asked %d times, want the one look the race bought", read)
+	}
+	if completer.answered() >= checkpointMarkAt(1) {
+		t.Fatalf("the turn ran %d rounds before the work was looked at; the raced yes is supposed to "+
+			"pull that mark down from %d", completer.answered(), checkpointMarkAt(1))
+	}
+	// AND NOTHING ELSE HAPPENED AT ALL.
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a raced yes started work on its own")
+	}
+	if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) ||
+		saidSomething(said, checkpointCeilingNote) {
+		t.Fatalf("a raced yes said something to the person: %q", said)
+	}
+	if notice := routeNotice(collected); notice != "" {
+		t.Fatalf("a raced yes announced %q", notice)
+	}
+	// AND THE TURN RAN TO ITS OWN END, on its own answer.
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), "the suite is green") {
+		t.Fatalf("the transcript ends on %q by %q, want the model's own answer",
+			messageText(last), last.Role)
+	}
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
 	}
 }
 
@@ -1109,10 +1214,15 @@ func TestTheConfirmsReadingOfBreadthArmsWhatTheScreenMissed(t *testing.T) {
 	}
 }
 
-// AND NEITHER READER SAYING IT ARMS NOTHING. Breadth is still a judgement
-// somebody has to make: a confirmed yes on work that is one job however long it
-// takes starts the worker it always started, with the belt it always had.
-func TestAConfirmedYesWithoutBreadthArmsNothing(t *testing.T) {
+// AND NEITHER RACE READER SAYING IT ARMS NOTHING OF THE RACE'S OWN. What arms
+// this task is the reading of the WORK, and the word on the spec says so.
+//
+// Both race readers here call the request one self-contained sweep, so nothing
+// they wrote carries breadth. The mark reader then opens the transcript and draws
+// three independent parts out of it — and THAT is what arms the road, under
+// [armedJudged] rather than [armedWide], because the two are told apart by which
+// reader decided (task_divide.go's [TaskNode.armedByJudgement]).
+func TestARacedVerdictWithoutBreadthArmsNothingOfItsOwn(t *testing.T) {
 	const narrow = `{"work": true, "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
 	completer := &routeCompleter{answer: "I will start with the auth test."}
 	agent, _, nodes := racingAgent(t, completer)
@@ -1120,14 +1230,35 @@ func TestAConfirmedYesWithoutBreadthArmsNothing(t *testing.T) {
 	completer.ahead, completer.aheadConfirm = narrow, narrow
 
 	collect(t, mustSubmit(t, agent, routeEnumerated))
-	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
+	waitFor(t, "the task the reading of the work handed over", func() bool { return nodes.count() == 1 })
 
 	node := agent.graph().node(1)
 	if node == nil {
 		t.Fatal("no node was admitted")
 	}
-	if node.spec.wide || node.dividing() {
-		t.Fatalf("a verdict that said nothing about breadth armed the task anyway (%q)", node.armedBy())
+	if node.spec.wide {
+		t.Errorf("a race verdict that said nothing about breadth still wrote it onto the spec (%q)",
+			node.armedBy())
+	}
+	if got := node.armedBy(); got != armedJudged {
+		t.Errorf("the task was armed by %q, want the mark reader's own judgement (%q)", got, armedJudged)
+	}
+}
+
+// AND A READING OF THE WORK THAT SAYS ONE JOB ARMS NOTHING EITHER — because
+// nothing is handed over at all. Breadth is still a judgement somebody has to
+// make, and when nobody makes it the turn simply finishes in the conversation.
+func TestNobodySayingTheWorkIsWideStartsNothing(t *testing.T) {
+	const narrow = `{"work": true, "goal": "port the pricing tests to the new fixture", "why": "one self-contained sweep"}`
+	completer := &routeCompleter{answer: "I will start with the auth test.", sketch: checkpointChainSketch}
+	agent, _, nodes := racingAgent(t, completer)
+	agent.config.Divide = true
+	completer.ahead, completer.aheadConfirm = narrow, narrow
+
+	collect(t, mustSubmit(t, agent, routeEnumerated))
+
+	if nodes.count() != 0 || agent.graph().node(1) != nil {
+		t.Fatal("a turn nobody called wide was handed over anyway")
 	}
 }
 
@@ -1158,7 +1289,7 @@ func TestAVerdictThatLandsAfterTheTurnIsDropped(t *testing.T) {
 	if nodes.count() != 0 || agent.graph().node(1) != nil {
 		t.Fatal("a verdict that arrived after the answer started work anyway")
 	}
-	if saidSomething(noticeTexts(collected), routeRaceNote) {
+	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
 		t.Fatalf("a dropped verdict said its line out loud: %q", noticeTexts(collected))
 	}
 	if notice := routeNotice(collected); notice != "" {
@@ -1197,7 +1328,7 @@ func TestAnInterruptDiscardsTheRacedYes(t *testing.T) {
 	if nodes.count() != 0 || agent.graph().node(1) != nil {
 		t.Fatal("an interrupted turn was converted into a task")
 	}
-	if saidSomething(noticeTexts(collected), routeRaceNote) {
+	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
 		t.Fatalf("an interrupted turn drew the conversion line: %q", noticeTexts(collected))
 	}
 	if notice := routeNotice(collected); notice != "" {
@@ -1213,7 +1344,7 @@ func TestAConversionSpendsTheGapOnce(t *testing.T) {
 	agent, _, nodes := racingAgent(t, completer)
 
 	first := collect(t, mustSubmit(t, agent, routeEnumerated))
-	if !saidSomething(noticeTexts(first), routeRaceNote) {
+	if !saidSomething(noticeTexts(first), checkpointSplitNote) {
 		t.Fatalf("the first turn was not converted; notices were %q", noticeTexts(first))
 	}
 	waitFor(t, "the task the race converted the turn into", func() bool { return nodes.count() == 1 })
@@ -1227,7 +1358,7 @@ func TestAConversionSpendsTheGapOnce(t *testing.T) {
 	if completer.preAsked() != before || completer.preConfirms() != beforeConfirms {
 		t.Fatalf("the race ran again inside the gap (%d screens then %d)", before, completer.preAsked())
 	}
-	if saidSomething(noticeTexts(second), routeRaceNote) {
+	if saidSomething(noticeTexts(second), checkpointSplitNote) {
 		t.Fatalf("a second conversion happened inside the gap: %q", noticeTexts(second))
 	}
 	if agent.graph().node(2) != nil {
@@ -1260,7 +1391,7 @@ func TestARacedYesIsDroppedWhenTheModelSaysNothingIsLeft(t *testing.T) {
 			completer.preAsked(), completer.preConfirms())
 	}
 	// NO TASK, AND NO LINE ABOUT ONE.
-	if saidSomething(noticeTexts(collected), routeRaceNote) {
+	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
 		t.Fatalf("the person was told their answer was being moved and then watched it finish where "+
 			"it was; notices were %q", noticeTexts(collected))
 	}
@@ -1343,41 +1474,30 @@ func TestAnAutoStartedTasksNameCarriesNoMarkdown(t *testing.T) {
 	}
 }
 
-// AND THE LINE A PERSON READS IS THAT LINE.
+// AND THE RACE HAS NO LINE OF ITS OWN AT ALL.
 //
-// Pinned as an exact string rather than as a shape, exactly as the ceiling's is:
-// it arrives on a turn somebody did not ask to have taken over, sometimes after
-// a sentence of the answer has already streamed, and the wording IS the feature.
-func TestTheConversionLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
-	const want = "this reads like work · moving it to a task that is watched and can split"
-	if routeRaceNote != want {
-		t.Fatalf("the conversion line reads %q, want %q", routeRaceNote, want)
+// It used to have one — "this reads like work · moving it to a task that is
+// watched and can split" — and it went away with the conversion that earned it.
+// A raced yes now changes nothing a person can observe at the moment it lands, so
+// there is nothing honest to say and NOTHING IS SAID (THE EMPTINESS LAW). What
+// they eventually read, if the reading of the work agrees, is the checkpoint's
+// own line about parts.
+//
+// This is a test rather than a deletion because the retired string is the kind of
+// thing that comes back: it is quoted in the manual, it reads well, and the next
+// lane to touch this file will want a line here.
+func TestTheRaceHasNoLineOfItsOwn(t *testing.T) {
+	const retired = "this reads like work · moving it to a task that is watched and can split"
+	for _, line := range []string{checkpointSplitNote, checkpointCeilingNote, taskEscalationNote} {
+		if line == retired {
+			t.Errorf("the race's retired line came back as %q", line)
+		}
 	}
-	if plain := plainWords(routeRaceNote); plain != routeRaceNote {
-		t.Errorf("the line carries machinery vocabulary; plainly it would read %q", plain)
-	}
-	if strings.Contains(routeRaceNote, "\n") {
-		t.Error("the line is more than one line")
-	}
-	if routeRaceNote != strings.ToLower(routeRaceNote) {
-		t.Errorf("the line is not lowercase: %q", routeRaceNote)
-	}
-	if strings.HasSuffix(routeRaceNote, ".") {
-		t.Errorf("the line ends in a full stop, which makes a remark into an announcement: %q", routeRaceNote)
-	}
-	if !strings.Contains(routeRaceNote, " · ") {
-		t.Errorf("the line has no middle dot, so it is not the observation-then-promise the surface "+
-			"already speaks in: %q", routeRaceNote)
-	}
-	// AND IT IS NOT THE CEILING'S LINE. The two arrive in the same slot through
-	// the same door, and they have honestly seen different things: one has watched
-	// an answer outrun its own price, the other has read the request. A race that
-	// said "this is running long" four seconds into a turn would be a lie.
-	if routeRaceNote == checkpointCeilingNote {
-		t.Error("the race says what the ceiling says, which is not true of a turn seconds old")
-	}
-	if strings.Contains(routeRaceNote, "running long") {
-		t.Errorf("the race claims the turn has run long: %q", routeRaceNote)
+	// AND THE LINE THAT REPLACED IT SAYS WHAT ITS OWN MOMENT SAW. The race read a
+	// request; the split read the work and drew parts out of it, which is a
+	// different and stronger claim.
+	if !strings.Contains(checkpointSplitNote, "parts") {
+		t.Errorf("the split's line does not say what it saw: %q", checkpointSplitNote)
 	}
 }
 
