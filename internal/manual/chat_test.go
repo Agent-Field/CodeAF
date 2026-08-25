@@ -496,6 +496,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is the actual answer in all this", "screen"},
 		{"I stopped it and the text stayed grey", "screen"},
 		{"nothing became the answer after I pressed esc", "screen"},
+		// A SENTENCE TYPED INTO A TURN THAT WAS ALREADY RUNNING, asked the five
+		// ways people meet it: seeing the row and not knowing what drew it,
+		// seeing the word beside it, finding a question they corrected four
+		// times folded, and — the two that matter most — looking for words that
+		// left the question they were aimed at. Every one of them is about what
+		// is on the screen, so every one of them is the screen's.
+		{"what is the line under my message", "screen"},
+		{"why is there a corner glyph under what I typed", "screen"},
+		{"what does steering next to my correction mean", "screen"},
+		{"where did my correction go", "screen"},
+		{"what does 2 more steers mean", "screen"},
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
