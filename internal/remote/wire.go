@@ -15,6 +15,7 @@ package remote
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -22,7 +23,33 @@ import (
 // Version is the protocol's version. The hello and the welcome both carry it,
 // and a mismatch is a refusal at the door — two builds that might disagree
 // about a frame must not guess at each other.
-const Version = 1
+//
+// VERSION 2 IS THE PERSISTENT ENGINE. Version 1 married a conversation to a
+// pipe: the engine was `ssh … aforge engine`, it read frames on stdin, and when
+// the pipe died so did the turn in flight. Version 2 separates the two — a
+// session lives on the engine machine and a surface ATTACHES to it — and the
+// four things that separation needs are the whole of the delta:
+//
+//   - [Frame.Seq] numbers every event of a stream, and [Hello.Resume] says
+//     which ones a returning surface already has, so a reattach replays the
+//     gap instead of the conversation.
+//   - [MethodDetach] tells the engine a surface is leaving ON PURPOSE, which is
+//     the fact version 1 could not express: a torn pipe and a closed window
+//     were one event, so both had to interrupt the turn to be safe.
+//   - [SubmitFilesArgs] and [MethodFetchFile] carry a person's attachments both
+//     ways, generalizing the one payload version 1 already remade on arrival
+//     (image.go).
+//   - [HeldQuestion] lets a card raised with nobody attached WAIT rather than
+//     expire, which is what turns half the --host refusals from "the card would
+//     land in an empty room" into an answered question.
+//
+// EVERY VERSION-2 FIELD IS ADDITIVE AND OMITEMPTY, so a version-2 frame read by
+// a version-1 decoder is a version-1 frame. That does not make the versions
+// compatible — the door still refuses a mismatch, and it must, because a
+// version-1 engine would silently interrupt a turn the surface believed was
+// detached — but it does mean this file stayed a superset rather than becoming
+// a second protocol.
+const Version = 2
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -40,6 +67,23 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+
+	// Seq is this event's position in its stream, counting from 1, on "event"
+	// and "closed" frames only.
+	//
+	// IT EXISTS SO A REATTACH CAN ASK FOR THE GAP AND NOT FOR THE
+	// CONVERSATION. A surface that dropped mid-turn has already drawn some of
+	// that turn; the transcript door would give it the finished shape of what
+	// it half-has, and the journal does not hold a partial reply's deltas at
+	// all. So the engine keeps the turn's events in memory while it runs, the
+	// returning surface says how far it got ([Hello.Resume]), and the engine
+	// sends what came after. Numbering from 1 makes zero mean "nothing of this
+	// stream has been seen", which is the state a surface attaching for the
+	// first time is in.
+	//
+	// A "closed" frame carries the seq of the LAST event it follows, so a
+	// surface can tell a stream that ended from one it lost the tail of.
+	Seq uint64 `json:"seq,omitempty"`
 }
 
 // The methods, one per door. The Agent group mirrors tui3.Agent exactly (plus
@@ -50,6 +94,7 @@ const (
 	// the return values likewise.
 	MethodSubmit          = "Submit"                 // SubmitArgs → StreamRef, then "event" frames
 	MethodSubmitImage     = "SubmitImage"            // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
 	MethodInterrupt       = "Interrupt"              // nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
@@ -87,6 +132,41 @@ const (
 	// exactly where they were.
 	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
 	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
+
+	// ── version 2 ───────────────────────────────────────────────────────────
+
+	// MethodDetach is a surface LEAVING ON PURPOSE, and it is the one method
+	// whose whole value is the difference between it and silence.
+	//
+	// Version 1 had no way to say this, so a closed window and a dead pipe were
+	// the same event and the engine had to treat both as an interrupt. That was
+	// the right reading of a closed window and the wrong reading of a dropped
+	// connection, and the person could not tell the two apart either — they
+	// closed a laptop lid and lost a running turn.
+	//
+	// Version 2 splits them. Detach says "this surface is going; the turn is
+	// yours to finish", and the engine keeps working, keeps the events, and
+	// holds any question it raises ([HeldQuestion]). A pipe that simply dies
+	// means the same thing — the engine assumes the surface will be back — and
+	// the deliberate END of a conversation is what [MethodClose] has always
+	// been. So the three roads out finally read as three different things.
+	MethodDetach = "Detach" // nothing → nothing
+
+	// MethodFetchFile is the reverse of an attachment: the surface asking for
+	// the bytes of a file the ENGINE holds, by a path on the engine's disk.
+	//
+	// IT IS WHAT MAKES `/export` AND A DOWNLOADED DELIVERABLE HONEST. Version 1
+	// had no door for moving a byte from the engine machine to the surface's,
+	// so /export assembled what the surface happened to be holding and said
+	// `· on this machine`, and a file the session MADE could not be brought
+	// here at all. The path is never resolved on this side — it is the engine's
+	// path, the way every path on a "result" already is.
+	MethodFetchFile = "Fetch.File" // FetchFileArgs → FetchedFile
+
+	// MethodHeldQuestions is what a surface asks the moment it attaches: the
+	// questions this session raised while nobody was looking. See
+	// [HeldQuestion] for why they wait rather than expire.
+	MethodHeldQuestions = "Held.Questions" // nothing → []HeldQuestion
 )
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -98,6 +178,36 @@ type Hello struct {
 	// Session is an explicit session file to open, empty for the workspace's
 	// latest-or-new (the same meaning the --session flag has locally).
 	Session string `json:"session,omitempty"`
+
+	// Model and Level are --model and --reasoning, carried in the frame that
+	// BUILDS the session rather than applied to it a millisecond later.
+	//
+	// They retire a stub. Version 1 had no room for them, so the door set them
+	// immediately after the handshake (cmd/aforge's applyHostChoices), which
+	// worked for every turn the person could type but left the session file's
+	// first line naming the model the session was BORN on rather than the one
+	// they asked for. Nobody on the screen could see the difference; the
+	// journal could, and the journal is the record.
+	Model string `json:"model,omitempty"`
+	Level string `json:"level,omitempty"`
+
+	// Resume is how far this surface got before it went away, one entry per
+	// stream it still cares about. Empty is a surface that has seen nothing,
+	// which is every first attach.
+	//
+	// THE ENGINE ANSWERS THE GAP AND NOTHING ELSE. Each cursor names a stream
+	// and the last [Frame.Seq] this surface actually drew; the engine replays
+	// from the one after it and then carries on live. A stream the engine no
+	// longer holds — it finished long ago, or this is a different engine — is
+	// answered with nothing rather than with an error: the transcript is the
+	// authority on a finished turn, and the surface reads that anyway.
+	Resume []StreamCursor `json:"resume,omitempty"`
+}
+
+// StreamCursor is one "I have seen this stream through here".
+type StreamCursor struct {
+	Stream uint64 `json:"stream"`
+	Seq    uint64 `json:"seq"`
 }
 
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
@@ -120,6 +230,44 @@ type Welcome struct {
 	// the surface's own settings would be a safety claim about a machine
 	// nobody consulted.
 	ApprovalMode string `json:"approvalMode,omitempty"`
+
+	// ── version 2 ───────────────────────────────────────────────────────────
+
+	// Live is the stream still running when this surface arrived, or zero.
+	//
+	// IT IS THE WHOLE POINT OF THE PERSISTENT ENGINE, said in one number: a
+	// person asked for a long refactor from a café, closed the laptop, and sat
+	// down somewhere else — and this field is how the new surface learns there
+	// is a turn in flight to reattach to rather than an idle session to type
+	// at. The events of that turn arrive as ordinary "event" frames from
+	// [Hello.Resume]'s cursor onward, so nothing about drawing it is special.
+	Live uint64 `json:"live,omitempty"`
+
+	// Attached is how many OTHER surfaces are on this session right now.
+	//
+	// It is carried because a surface that is not alone must be able to say so:
+	// two people (or one person and their own forgotten window) sharing a
+	// conversation is a fact about that conversation, and a screen that hid it
+	// would be the one place aforge lied about who is in the room. Zero is the
+	// ordinary case and draws nothing, by the emptiness law.
+	Attached int `json:"attached,omitempty"`
+
+	// Held is the questions this session raised while nobody was attached,
+	// carried in the welcome so the first frame a returning surface draws
+	// already has them. See [HeldQuestion].
+	Held []HeldQuestion `json:"held,omitempty"`
+
+	// Persistent says the far end is a session HOST — the engine outlives this
+	// connection — rather than version 2's other honest shape, a one-shot
+	// engine on a pipe.
+	//
+	// A SURFACE MUST NOT PROMISE A LIFETIME THE ENGINE DOES NOT HAVE. Both
+	// shapes speak this protocol and both are legitimate: `aforge engine`
+	// started by hand on a machine with no host is still a conversation, it
+	// simply ends when the pipe does. The screen's word for detaching, and
+	// whether "close the lid, it keeps going" is true, both hang off this
+	// single fact, so it is stated rather than assumed from the transport.
+	Persistent bool `json:"persistent,omitempty"`
 }
 
 // SubmitArgs carries Submit and FollowUp.
@@ -144,6 +292,116 @@ type SubmitArgs struct {
 type SubmitImageArgs struct {
 	Text   string          `json:"text"`
 	Images []session.Image `json:"images"`
+}
+
+// SubmitFilesArgs carries SubmitFiles: a message with ordinary files attached.
+//
+// IT IS image.go's LAW, GENERALIZED, and the generalization is the point. A
+// picture already travels as BYTES and is remade on the engine's disk, because
+// the surface read it off a disk the engine cannot see. Every other thing a
+// person drops into the chat — a log, a CSV, a PDF, a stack trace saved to a
+// file — has exactly the same problem and had no answer at all in version 1:
+// the path was typed here and meant nothing there.
+//
+// So the contract is one sentence: WHAT A PERSON PUTS INTO THE CHAT IS THE
+// SURFACE'S TO READ AND THE ENGINE'S TO KEEP. The bytes ride the message, the
+// engine writes them where that session keeps such things, and what reaches the
+// journal is a path that is true on the machine that owns the journal — which
+// is the same bargain internal/session's image.go already struck, for the same
+// reason (a reference is only worth writing if it names a file that exists on
+// the machine that wrote it).
+//
+// The model is TOLD THE PATH rather than the contents: an attached file is a
+// file, and the session already has a `read` tool. That keeps a 4MB CSV out of
+// the context window until something actually wants it.
+type SubmitFilesArgs struct {
+	Text  string     `json:"text"`
+	Files []WireFile `json:"files"`
+	// Images ride along so ONE MESSAGE IS ONE CALL. A person who pastes a
+	// screenshot and drops a log file has sent one message, and splitting it
+	// into two submits would open two turns.
+	Images []session.Image `json:"images,omitempty"`
+}
+
+// WireFile is one attachment travelling with its bytes.
+type WireFile struct {
+	// Name is the file's own name as the surface saw it, and NEVER a path: the
+	// engine joins it to a directory of the engine's choosing, so a "name" that
+	// walked out of that directory would be this wire handing a remote machine
+	// an arbitrary write. The engine sanitizes it regardless — a boundary that
+	// trusts its input is not a boundary — but the field is documented as a
+	// name so that nothing on this side is tempted to send a path.
+	Name string `json:"name"`
+	// MIME is what the surface believed this was, empty when it could not tell.
+	// It is a hint for the engine's naming and nothing is refused for lacking
+	// it — unlike an image, whose type the provider genuinely needs.
+	MIME string `json:"mime,omitempty"`
+	// Bytes is the file itself. The frame ceiling (server.go's frameCap) is the
+	// only limit this wire imposes; the SIZE the person is allowed to attach is
+	// a surface question, asked on the surface, in the surface's own words —
+	// the same division images already use.
+	Bytes []byte `json:"bytes"`
+}
+
+// FetchFileArgs is the surface asking for a file the engine holds.
+//
+// THE PATH IS THE ENGINE'S AND IS NEVER RESOLVED HERE, which is the same law
+// every path on this wire obeys. It comes off something the engine already
+// said — a deliverable's row, a tool result, the session file itself — and the
+// engine is free to refuse a path outside what this session may hand over.
+// THE REFUSAL IS THE ENGINE'S TO MAKE: a surface cannot know that machine's
+// boundaries, and a client-side check would be a permission decision taken on
+// the wrong machine.
+type FetchFileArgs struct {
+	Path string `json:"path"`
+}
+
+// FetchedFile is one file coming back the other way.
+type FetchedFile struct {
+	// Name is what the surface should call it when it writes it down. It is the
+	// base name of the engine's path, and it is the engine's answer rather than
+	// something this side derives, for the reason [WireFile.Name] states in the
+	// other direction.
+	Name  string `json:"name"`
+	MIME  string `json:"mime,omitempty"`
+	Bytes []byte `json:"bytes"`
+}
+
+// HeldQuestion is a card this session raised while nobody was attached.
+//
+// THE EMPTY ROOM BECOMES A WAITING ROOM, and that is the single change that
+// unlocks most of what --host could not do. Version 1's refusals — no harness
+// design, no adaptive run, no "always" on a consent card — all had the same
+// root: the answer to those questions travels on a lane a connection did not
+// carry, so a question raised with nobody there would sit in an empty room and
+// expire. A persistent engine is exactly the machine that CAN hold one: the
+// card is asked, nothing proceeds, and the next surface to attach is handed it
+// with the time it has been waiting.
+//
+// It is deliberately NOT a copy of each card's own type. The card itself
+// already crosses as an ordinary event ([EventWire]) and the surface already
+// knows how to draw every kind of card there is; what a returning surface
+// lacks is the KNOWLEDGE THAT ONE IS OUTSTANDING and the event that raised it.
+// So this carries the raw event and the identity needed to answer it, and the
+// surface replays it through the same door a live one goes through.
+type HeldQuestion struct {
+	// Kind is which resolve-door answers this: "consent", "standing",
+	// "harness", "connect". It is a string rather than an enum because the
+	// envelope is the contract and a newer engine holding a kind this build
+	// does not draw must not be a broken conversation — an unknown kind is
+	// SKIPPED by the surface, which leaves the question waiting for a build
+	// that knows it, exactly as it was.
+	Kind string `json:"kind"`
+	// Event is the frame that raised it, verbatim, so the surface draws the
+	// card it would have drawn live.
+	Event EventWire `json:"event"`
+	// Stream is the turn it belongs to, so a surface reattaching mid-turn puts
+	// the card back where it was rather than at the end of the room.
+	Stream uint64 `json:"stream,omitempty"`
+	// Since is when it was raised. THE SCREEN SHOULD SAY HOW LONG SOMETHING HAS
+	// WAITED: a consent card from four hours ago is a different thing to answer
+	// than one from four seconds ago, and only the engine knows which it is.
+	Since time.Time `json:"since"`
 }
 
 // StreamRef is the result of the three stream-opening calls: the id every

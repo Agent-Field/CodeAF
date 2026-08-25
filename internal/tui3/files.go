@@ -213,7 +213,7 @@ func (c *completion) close() { c.open = false }
 // the only one there was. Every command written here gets the completion; a
 // command that takes a path and is not written here gets nothing, silently,
 // which is the one failure worth watching for.
-var argPrefixes = []string{"/image ", "/export "}
+var argPrefixes = []string{"/image ", "/export ", "/attach "}
 
 // argToken finds the path argument the caret is standing in: everything after
 // the command's prefix up to the caret. A path may hold spaces, so the token
