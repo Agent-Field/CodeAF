@@ -2007,6 +2007,32 @@ is that the slices are declared before any of them starts, and two hands claimin
 path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
 by good manners, and it carries on inside its own.
 
+## How a hand's slice of files is spelled, and when a fork is refused over it
+
+The paths a hand may write are **relative to your working copy** — `src/parser.rs`,
+`internal/session`, `docs`. A directory claims everything under it.
+
+A path written out **in full** is accepted and means the same thing: if your working copy is
+`/work/repo`, then `/work/repo/src/parser.rs` and `src/parser.rs` are one slice, and the
+overlap check reads them as one. This is worth knowing because it used to be the opposite. A
+task worker once declared its hands' slices in full, the door accepted them, the refusal was
+made against the short form, and **every single write in every hand was refused** — the model
+kept being told that files plainly inside its slice were outside it, and it never split its
+work again. Both ends now read a path the same way, once.
+
+Three spellings are turned away at the call, before any hand starts, with a line naming the
+offending path and the form that would have worked:
+
+- a path **outside your working copy**, like `/etc` or `../secrets` — a slice is a slice of
+  this directory, and one that is not could never match anything a hand writes;
+- **`.`**, the whole working copy — that is not a slice of it, and it collides with every
+  sibling;
+- **two hands claiming one path**, in any spelling — the one shape a shared working copy
+  cannot survive.
+
+Nothing is spawned in any of those cases: the answer reads the refusal, redraws the slices
+and calls again.
+
 ## What hands cannot do, and how they differ from a task
 
 **They cannot build and they cannot run tests.** All of them are writing the same working
