@@ -453,6 +453,13 @@ func describe(place session.Place, workspace, path, name string) (DirEntry, bool
 // the two roots, a link that leaves them, and a name with nothing behind it all
 // answer the same way — the alternative is a link that exists, invites a click,
 // and answers a refusal, which is worse than a word that was never a link.
+//
+// AND IT ANSWERS WITH THE FILE'S OWN NUMBERS, which is what makes it the
+// freshness question as well as the existence one. The stat that decides
+// Exists already holds the size and the modification time, so carrying them
+// costs this machine nothing and saves the surface a whole transfer: a cache
+// that can ask "is this still the file I fetched" in one small frame is a cache
+// that can be trusted to keep bytes at all (wire.go's [PathFact]).
 func (s *server) statPaths(call Frame) (json.RawMessage, error) {
 	args, err := arg[StatPathsArgs](call)
 	if err != nil {
@@ -467,7 +474,13 @@ func (s *server) statPaths(call Frame) (json.RawMessage, error) {
 	for _, asked := range args.Paths {
 		fact := PathFact{Path: asked}
 		if _, info, err := reachable(place, workspace, asked); err == nil {
+			// THE NUMBERS COME OFF THE SAME STAT AS THE EXISTENCE, so there is
+			// no window between the two in which the file could change and no
+			// second syscall to pay for. A directory reports its own size,
+			// which is a filesystem artifact and not a fact about what is in
+			// it — the surface reads these for files.
 			fact.Exists, fact.Dir = true, info.IsDir()
+			fact.Size, fact.ModTime = info.Size(), info.ModTime().Unix()
 		}
 		facts = append(facts, fact)
 	}

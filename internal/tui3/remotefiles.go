@@ -51,13 +51,20 @@ import (
 // That is the same one-frame lateness the local pass has when a turn's last
 // tool call creates the file its first sentence named.
 //
-// AND A WORD IS ASKED ONCE PER SESSION. The local memo is emptied at every turn
-// boundary (app.settle's clear of pathSeen) because a name that was not a file
-// may have become one; this table is NOT, because emptying it would put every
-// word in the transcript back on the wire once a turn. What the turn boundary
-// bought locally is bought here by [app.prefetchWritten] instead: the model
-// writing a file is the event that makes a plain word a door, and the surface
-// sees that event and records the fact without asking anybody.
+// A YES IS ASKED ONCE PER SESSION AND A NO IS NOT. The local memo is emptied at
+// every turn boundary (app.settle's clear of pathSeen) because a name that was
+// not a file may have become one, and this table cannot be emptied that way —
+// doing it would put every word in the transcript back on the wire once a turn.
+// So the two answers are kept on different terms: a CONFIRMED path never
+// changes its mind about being a path and is remembered for the session, while
+// an ABSENT one is stamped with the moment it was answered and asked again
+// after [remoteAbsentFor]. "I'll write dist/app" is a sentence the model says
+// BEFORE the file exists, and a table with no expiry is a table in which that
+// word is plain text for the rest of the conversation no matter what gets
+// built. [app.prefetchWritten] catches the common case sooner — the model
+// writing a file is the event that makes a plain word a door — but it only sees
+// the `write` tool, and a file that appeared under `bash` or under a task has
+// nothing but the clock to find it.
 //
 // ── THE LINK IS A CAPABILITY, NOT A PATH ────────────────────────────────────
 //
@@ -115,6 +122,44 @@ const (
 	// oldest rows are far off screen, and dropping the lot costs one batched
 	// call the next time any of them is drawn.
 	remoteFactsMax = 4096
+
+	// prefetchAtOnce is how many speculative fetches may be on the wire at the
+	// same moment.
+	//
+	// SPECULATIVE WORK MUST NEVER OUTRUN THE PERSON'S NEXT MESSAGE. A turn that
+	// writes forty files is an ordinary turn — a generator, a build, a batch of
+	// charts — and without a cap that is forty stats and forty transfers fanned
+	// out on ONE ssh pipe, ahead of a click nobody has made, in front of the
+	// frames and the fetches somebody is actually waiting on. Three at a time
+	// keeps the pipe busy without owning it.
+	//
+	// AND WHAT DOES NOT FIT IS DROPPED RATHER THAN QUEUED. A queue of
+	// speculative work outlives the reason for it: the fortieth file's turn
+	// would come round long after the turn that wrote it, and the cost of not
+	// having prefetched is one round trip on a click that will probably never
+	// happen.
+	prefetchAtOnce = 3
+
+	// remoteAbsentFor is how long this surface believes a NO.
+	//
+	// It is the expiry the local pass gets for free from the turn boundary, and
+	// this file's header says why the boundary itself cannot be used here. The
+	// number is longer than the burst of frames one reply draws — so a
+	// paragraph full of names that are not files is one batch and not a batch a
+	// second — and shorter than the time a person spends reading that reply, so
+	// a file the turn actually built is a door by the time they reach for it.
+	remoteAbsentFor = 20 * time.Second
+
+	// remoteStatQuiet is how long the surface stops asking after a call did not
+	// get through at all.
+	//
+	// A DROPPED CALL LEAVES ITS WORDS RE-ASKABLE ([remoteFiles.forget]), and
+	// without this that is a question every frame for as long as the link is
+	// down — the render pass would re-queue what the failure released, on the
+	// next frame, forever. Two seconds is long enough that a link being
+	// redialled (hostlink.go) has a chance to come back before anybody asks it
+	// anything, and short enough that nobody notices the wait once it has.
+	remoteStatQuiet = 2 * time.Second
 
 	// remoteOpenQuiet is how long a fetch may take before the surface says
 	// anything at all about it. THE EMPTINESS LAW APPLIED TO A WAIT: a file that
@@ -204,10 +249,15 @@ type remoteFact struct {
 	// uri is the door's capability URL for this path, minted once. Empty while
 	// the door is not open, which is the same as not linked.
 	uri string
-	// size is what the engine's listing said, or zero for unknown — the
-	// emptiness law's own reading, and the reason a slow-fetch note sometimes
-	// carries a weight and sometimes does not.
+	// size is what the engine said, or zero for unknown — the emptiness law's
+	// own reading, and the reason a slow-fetch note sometimes carries a weight
+	// and sometimes does not.
 	size int64
+	// asOf is when this was answered, and it is written for ABSENCE ONLY. A
+	// path the engine confirmed is a path for good; a path it did not is a
+	// claim with a clock on it, because most of the names a model writes before
+	// it has made them are names it is about to make ([remoteAbsentFor]).
+	asOf time.Time
 }
 
 // remoteFiles is everything this surface holds about the other machine's disk:
@@ -238,14 +288,28 @@ type remoteFiles struct {
 	// asking is the debounce: one call in flight at a time, so a burst of rows
 	// is one round trip rather than one per frame.
 	asking bool
+	// quietUntil is the moment the surface may ask the far disk anything again
+	// after a call that did not get through ([remoteStatQuiet]).
+	quietUntil time.Time
 	// opening is the open flow's in-flight set, read by the slow-note tick to
 	// decide whether there is still anything to say (openRemotePath).
 	opening map[string]bool
-	door    doorLinker
+	// prefetching is the same guard for the speculative half: what is already
+	// being fetched on the chance somebody wants it, so that a turn writing one
+	// file six times is one fetch and a turn writing forty is three at a time
+	// ([prefetchAtOnce]).
+	prefetching map[string]bool
+	door        doorLinker
 	// doorFailed is remembered so that a door which could not open is not
 	// retried on every frame. The sentence was said once; the second attempt
 	// would say it again.
 	doorFailed bool
+
+	// now is the clock, which is time.Now everywhere but in a test. Two rules in
+	// this file are ages — how long a NO is believed and how long a dead call
+	// buys quiet — and proving either one by sleeping would be a suite that
+	// takes twenty seconds to learn what a fake clock says instantly.
+	now func() time.Time
 
 	// ── everybody's half ──
 	mu    sync.Mutex
@@ -253,15 +317,33 @@ type remoteFiles struct {
 	refs  map[string]remoteBlob
 }
 
+// clock is [remoteFiles.now] with a default, so that a zero-value struct — the
+// one a test of the door's own seam builds — still has a time.
+func (r *remoteFiles) clock() time.Time {
+	if r == nil || r.now == nil {
+		return time.Now()
+	}
+	return r.now()
+}
+
 // remoteBlob is one remote file this surface is already holding: the digest its
-// bytes live under, and the two things the door has to say about them on the way
-// back out. THE NAME AND THE TYPE ARE THE ENGINE'S ANSWER and are kept rather
-// than re-derived, for the reason [remote.FetchedFile.Name] gives: the surface
-// is not on the machine that path is true on and must not have to guess.
+// bytes live under, the two things the door has to say about them on the way
+// back out, and WHAT THE FAR FILE WAS WHEN THEY CROSSED. THE NAME AND THE TYPE
+// ARE THE ENGINE'S ANSWER and are kept rather than re-derived, for the reason
+// [remote.FetchedFile.Name] gives: the surface is not on the machine that path
+// is true on and must not have to guess.
 type remoteBlob struct {
 	ref  cas.Ref
 	name string
 	mime string
+	// size and mtime are the far file's own numbers at the moment these bytes
+	// were fetched, and they are the whole of the freshness rule
+	// ([remoteBlob.fresh]). Without them a path→digest map is a cache that can
+	// never be wrong out loud: the far file gets rewritten, nothing here
+	// notices, and the click serves last week's bytes for the rest of the
+	// session.
+	size  int64
+	mtime int64
 }
 
 // newRemoteFiles builds the surface's remote-file side, or nothing at all.
@@ -294,12 +376,14 @@ func newRemoteFilesOver(host string, wire remoteWire) *remoteFiles {
 		return nil
 	}
 	return &remoteFiles{
-		host:    strings.TrimSpace(host),
-		wire:    wire,
-		facts:   make(map[string]remoteFact, 128),
-		wanted:  make(map[string]bool, 128),
-		opening: map[string]bool{},
-		refs:    map[string]remoteBlob{},
+		host:        strings.TrimSpace(host),
+		wire:        wire,
+		facts:       make(map[string]remoteFact, 128),
+		wanted:      make(map[string]bool, 128),
+		opening:     map[string]bool{},
+		prefetching: map[string]bool{},
+		refs:        map[string]remoteBlob{},
+		now:         time.Now,
 	}
 }
 
@@ -310,15 +394,31 @@ func newRemoteFilesOver(host string, wire remoteWire) *remoteFiles {
 // IT WAS ASKED, which is what turns a render pass into a batch. That is the
 // honesty rule in one line: the first frame a word appears on, this surface has
 // no idea, so it draws no link and goes and finds out.
+//
+// A NO IS BELIEVED FOR [remoteAbsentFor] AND THEN ASKED AGAIN, which is this
+// file's header's rule and the one thing that lets a name become a door on the
+// machine that made it: the model says where it is going to put something long
+// before it puts it there, and a word answered "not there" at the top of a turn
+// is a file by the end of one.
 func (r *remoteFiles) confirm(target string) string {
 	if r == nil || target == "" {
 		return ""
 	}
 	if fact, known := r.facts[target]; known {
-		if fact.file {
+		switch {
+		case fact.file:
 			return target
+		case fact.dir:
+			return ""
+		case r.clock().Sub(fact.asOf) < remoteAbsentFor:
+			return ""
 		}
-		return ""
+		// THE NO HAS AGED OUT. Both memos are cleared, because the fact and the
+		// "already asked" mark are one memory in two maps and dropping either
+		// alone leaves the word stuck: a fact with nothing queued behind it, or
+		// a question that will be answered into a table that still says no.
+		delete(r.facts, target)
+		delete(r.wanted, target)
 	}
 	r.wantPath(target)
 	return ""
@@ -327,6 +427,13 @@ func (r *remoteFiles) confirm(target string) string {
 // wantPath puts one path in the next batch, once.
 func (r *remoteFiles) wantPath(target string) {
 	if r.wanted[target] {
+		return
+	}
+	// NOTHING IS QUEUED WHILE THE WIRE IS BEING LEFT ALONE. A call that did not
+	// get through releases its words rather than recording them as absent
+	// ([remoteFiles.forget]), and this is what stops that release from becoming
+	// a question every frame for as long as the link is down.
+	if r.clock().Before(r.quietUntil) {
 		return
 	}
 	// The want list is bounded by the same reasoning the facts table is: a
@@ -359,7 +466,47 @@ func (r *remoteFiles) learn(target string, fact remoteFact) {
 		clear(r.wanted)
 		r.want = nil
 	}
+	// THE STAMP IS PUT ON HERE AND IN NO CALLER, so that there is one place
+	// where absence acquires its clock and no way for a caller to write a NO
+	// that never expires ([remoteFact.asOf]).
+	if !fact.file && !fact.dir {
+		fact.asOf = r.clock()
+	}
 	r.facts[target] = fact
+}
+
+// forget puts a batch back the way it was before it was asked: no fact written
+// and every word free to be queued again.
+//
+// A CALL THAT DID NOT GET THROUGH IS NOT AN ANSWER. Writing absence for it
+// would be this surface deciding, on the strength of a broken pipe, that up to
+// [statBatchMax] real files are not there — a claim about a disk nobody
+// consulted, and one that would hold every one of those words plain for a whole
+// [remoteAbsentFor] on the day the link blinked. The two cases are told apart
+// because they are different sentences: "there is nothing at that path" is the
+// engine speaking, and a dead pipe is nobody speaking.
+//
+// SO NOTHING IS LEARNED AND THE WIRE IS LEFT ALONE FOR A MOMENT. The words go
+// back to being unasked, which would be a question every frame while the link
+// is down if the quiet window ([remoteStatQuiet]) did not stand in front of
+// them.
+func (r *remoteFiles) forget(asked []string) {
+	if r == nil {
+		return
+	}
+	for _, target := range asked {
+		delete(r.wanted, target)
+	}
+	// AND THE QUEUE BEHIND IT GOES TOO. What was waiting to be asked was waiting
+	// on the same wire, so sending it now is a second failure and holding it is
+	// a frame clock that goes on turning for the whole quiet window with nothing
+	// to do. Nothing was learned about those words, so releasing them costs
+	// exactly one render pass to collect again.
+	for _, target := range r.want {
+		delete(r.wanted, target)
+	}
+	r.want = nil
+	r.quietUntil = r.clock().Add(remoteStatQuiet)
 }
 
 // take pulls the next batch off the want list, at most n of it, and arms the
@@ -416,17 +563,27 @@ func (a *app) remoteStatKick() tea.Cmd {
 // remoteFactsBack writes one answer into the table and turns the rows it
 // touched back into frames.
 //
-// EVERY PATH THAT WAS ASKED IS WRITTEN DOWN, including the ones the engine
-// refused and the ones a dead connection lost. The alternative is a word that
-// is asked about on every frame forever, which is the one failure mode a
-// batched wire question must not have — and the fact written for an unanswered
-// word is ABSENCE, which is what the surface already draws for it: plain text.
+// EVERY PATH THE ENGINE ANSWERED ABOUT IS WRITTEN DOWN, including the ones it
+// refused. The alternative is a word that is asked about on every frame
+// forever, which is the one failure mode a batched wire question must not have
+// — and the fact written for a word the engine had nothing to say about is
+// ABSENCE, which is what the surface already draws for it: plain text.
+//
+// A CALL THAT NEVER GOT THERE IS NOT AN ANSWER AND IS NOT WRITTEN DOWN. It used
+// to be folded in with the rest, and folding it in meant one dropped frame
+// recorded up to [statBatchMax] real files as ABSENT on the strength of nothing
+// at all — see [remoteFiles.forget] for the whole of it.
 func (a *app) remoteFactsBack(msg remoteFactsMsg) tea.Cmd {
 	r := a.rfiles
 	if r == nil {
 		return nil
 	}
 	r.asking = false
+	if msg.err != nil {
+		r.forget(msg.asked)
+		a.touch()
+		return a.wake()
+	}
 	answered := make(map[string]remote.PathFact, len(msg.facts))
 	for _, fact := range msg.facts {
 		answered[fact.Path] = fact
@@ -444,12 +601,12 @@ func (a *app) remoteFactsBack(msg remoteFactsMsg) tea.Cmd {
 			fact, ok = msg.facts[i], true
 		}
 		switch {
-		case msg.err != nil || !ok || !fact.Exists:
+		case !ok || !fact.Exists:
 			r.learn(asked, remoteFact{})
 		case fact.Dir:
 			r.learn(asked, remoteFact{dir: true})
 		default:
-			r.learn(asked, remoteFact{file: true, uri: a.mintRemoteURL(asked)})
+			r.learn(asked, remoteFact{file: true, size: fact.Size, uri: a.mintRemoteURL(asked)})
 			linked = true
 		}
 	}
@@ -566,8 +723,17 @@ type remotePrefetchedMsg struct {
 // edit's target usually existed before the turn, so it is already a link.
 //
 // IT IS SILENT AND BEST-EFFORT. Every failure here — a refusal, a dead link, a
-// file that grew past the ceiling between the listing and the fetch — is dropped
+// file that grew past the ceiling between the stat and the fetch — is dropped
 // without a word, because nothing on the screen ever promised this happened.
+//
+// A SECOND WRITE TO THE SAME PATH IS A SECOND PREFETCH. It has to be: the whole
+// point of the trigger is that the bytes on that machine just changed, and a
+// guard that skipped a path because the surface already held SOMETHING for it
+// would be the guard that pins the stale copy in place. What is deduplicated is
+// concurrency and not repetition — one fetch of one path at a time — and
+// [remoteFiles.fetch] is what makes the repeat cheap, because a path whose size
+// and modification time have not moved is answered out of the cache after one
+// small stat.
 func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 	r := a.rfiles
 	if r == nil || ev.Kind != session.EventToolEnd || ev.Tool != "write" {
@@ -577,34 +743,50 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 	if target == "" {
 		return nil
 	}
-	if fact, known := r.facts[target]; known && fact.file && fact.uri != "" {
+	// THE PIPE BELONGS TO THE PERSON AND NOT TO THE GUESS ([prefetchAtOnce]).
+	// The same path twice over is one fetch, and a turn that wrote more files
+	// than the cap allows simply does not prefetch the rest — a click on one of
+	// those is a round trip, which is what a click was before this existed.
+	if r.prefetching[target] || len(r.prefetching) >= prefetchAtOnce {
 		return nil
 	}
+	r.prefetching[target] = true
 	wire := r.wire
 	return func() tea.Msg {
 		// THE SIZE IS ASKED BEFORE THE BYTES ARE, which is what makes
 		// [prefetchMax] a ceiling rather than a receipt. A fetch-then-measure
 		// would have already spent the connection on the file it then threw
-		// away, and the whole point of the number is not to spend it.
-		size, ok := remoteSize(wire, target)
-		if !ok || size > prefetchMax {
-			return remotePrefetchedMsg{target: target, size: size}
+		// away, and the whole point of the number is not to spend it. The same
+		// answer carries the freshness numbers the cache is about to be judged
+		// on, so the stat is one round trip doing two jobs.
+		now, told := farStat(wire, target)
+		if !told || !now.exists || now.dir || now.size > prefetchMax {
+			return remotePrefetchedMsg{target: target, size: now.size}
 		}
-		blob, _, err := r.fetch(target)
+		blob, _, err := r.fetchAsOf(target, now, told)
 		if err != nil {
-			return remotePrefetchedMsg{target: target, size: size}
+			return remotePrefetchedMsg{target: target, size: now.size}
 		}
-		return remotePrefetchedMsg{target: target, blob: blob, size: size, ok: true}
+		return remotePrefetchedMsg{target: target, blob: blob, size: now.size, ok: true}
 	}
 }
 
 // remotePrefetched files what a prefetch found. A file that landed in the cache
 // is ALSO a file the engine has just confirmed exists, so the fact is written
 // here and its row becomes a door without anybody asking StatPaths about it —
-// which is what replaces the turn-boundary memo clear the local pass has.
+// which is what makes the common case of this file's expiry rule never have to
+// wait for the clock.
 func (a *app) remotePrefetched(msg remotePrefetchedMsg) tea.Cmd {
 	r := a.rfiles
-	if r == nil || !msg.ok {
+	if r == nil {
+		return nil
+	}
+	// THE IN-FLIGHT MARK COMES OFF WHICHEVER WAY IT WENT. A prefetch that
+	// failed and left its path marked would be a path this session never
+	// prefetches again, which is the same blackhole the fact table used to have
+	// in the other lane.
+	delete(r.prefetching, msg.target)
+	if !msg.ok {
 		return nil
 	}
 	r.setRef(msg.target, msg.blob)
@@ -646,22 +828,36 @@ func (a *app) remoteTarget(name string) string {
 	return joined
 }
 
-// remoteSize asks the engine's listing how heavy one file is. It is a listing
-// rather than a stat because [remote.PathFact] answers existence and nothing
-// else, and the one number a speculative fetch needs is the one it does not
-// carry.
-func remoteSize(wire remoteLister, target string) (int64, bool) {
-	listing, err := wire.ListDir(path.Dir(target))
-	if err != nil {
-		return 0, false
+// ── how the far file stands right now ───────────────────────────────────────
+
+// farFact is one path as the engine sees it at the moment it was asked: whether
+// there is anything there, and the two numbers that say whether it is still the
+// thing this surface already has a copy of.
+type farFact struct {
+	exists bool
+	dir    bool
+	size   int64
+	mtime  int64
+}
+
+// farStat asks the engine about exactly one path, and its second answer is
+// whether the QUESTION GOT THROUGH — which is a different thing from a file
+// that is not there. The first means this surface knows nothing and must not
+// act on its ignorance; the second is a fact it may act on.
+//
+// IT IS A STAT AND NOT A LISTING ANY MORE. [remote.PathFact] carries the size
+// and the modification time now (internal/remote's wire.go), so the questions a
+// speculative fetch and a cache each have — how heavy is it, and is it still
+// the one I hold — are one small frame instead of a listing of the whole parent
+// directory, which on the `out/` of a turn that generated things is two
+// thousand rows of JSON to read one number.
+func farStat(wire pathStater, target string) (farFact, bool) {
+	facts, err := wire.StatPaths([]string{target})
+	if err != nil || len(facts) != 1 {
+		return farFact{}, false
 	}
-	name := path.Base(target)
-	for _, entry := range listing.Entries {
-		if entry.Name == name {
-			return entry.Size, !entry.Dir
-		}
-	}
-	return 0, false
+	fact := facts[0]
+	return farFact{exists: fact.Exists, dir: fact.Dir, size: fact.Size, mtime: fact.ModTime}, true
 }
 
 // ── the source the door serves from ─────────────────────────────────────────
@@ -814,9 +1010,13 @@ func (r *remoteFiles) blobStore() (*cas.Store, error) {
 }
 
 // ref and setRef are the path→content map, which is what makes a second click
-// free. It is keyed by PATH and holds a DIGEST, which is the only pair that
-// survives the file changing underneath: a path whose bytes changed gets a new
-// digest at the next fetch and the old blob is simply no longer named.
+// free. It is keyed by PATH and holds a DIGEST — and, since the path is the key,
+// IT CANNOT NOTICE ANYTHING ON ITS OWN. A digest only changes when somebody
+// fetches, so a map from path to digest with nothing else in it will hand back
+// the same bytes for a file that has been rewritten twenty times on the machine
+// that owns it. What makes it honest is the size and the modification time
+// stored beside the digest and checked against the engine before the bytes are
+// served ([remoteBlob.fresh], [remoteFiles.fetch]).
 func (r *remoteFiles) ref(target string) (remoteBlob, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
