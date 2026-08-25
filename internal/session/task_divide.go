@@ -521,9 +521,14 @@ const (
 	divisionAdmitted         = "admitted"
 	divisionRefusedMalformed = "refused:arguments"
 	divisionRefusedFloor     = "refused:floor"
-	divisionRefusedLane      = "refused:lane"
-	divisionRefusedCap       = "refused:cap"
-	divisionRefusedReview    = "refused:review"
+	// divisionRefusedUnreviewed is a below-floor division on judge-armed work
+	// that the reviewer never answered — reached or not, sense or not. The
+	// person is told the floor's refusal; the record says the review is what
+	// failed, and Error says how.
+	divisionRefusedUnreviewed = "refused:review-unreached"
+	divisionRefusedLane       = "refused:lane"
+	divisionRefusedCap        = "refused:cap"
+	divisionRefusedReview     = "refused:review"
 )
 
 // divideWork is the tool's whole life, and it is a WRAPPER because the life is
@@ -648,15 +653,22 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), false
 	}
-	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
+	parts, refusal, why := a.reviewDivision(ctx, node, parsed, thin)
 	if refusal != "" {
 		// A REVIEWER THAT COULD NOT BE REACHED ON THE ADJUDICATING PATH LEAVES THE
-		// FLOOR'S REFUSAL STANDING, and the record says `floor` because that is
-		// whose answer it is ([Agent.reviewDivision]). Everywhere else a refusal
-		// here is the reviewer's own reading of the parts.
+		// FLOOR'S REFUSAL STANDING — the person reads the floor's words, because
+		// that is whose answer it is ([Agent.reviewDivision]) — but the RECORD
+		// says the review never happened and why. A live cell once read as
+		// "the counter refused" when the truth was "nobody could ask the
+		// reviewer", and a journal that cannot tell those apart is a journal
+		// that hides the road's own faults.
 		line.Decision = divisionRefusedReview
 		if thin && refusal == divisionTooNarrow(parsed.Evidence) {
 			line.Decision = divisionRefusedFloor
+			if why != "" {
+				line.Decision = divisionRefusedUnreviewed
+				line.Error = why
+			}
 		}
 		return refusal, false
 	}
@@ -897,14 +909,18 @@ type divideReview struct {
 // the floor's own refusal standing. Failing open there would let an unreachable
 // mastermind admit every below-floor division the road ever armed, which is the
 // floor switched off by an outage.
-func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed divideArguments, thin bool) ([]dividePart, string) {
+func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed divideArguments, thin bool) ([]dividePart, string, string) {
 	// unanswered is what a review that could not be had comes to, and it is the
-	// whole of the two postures in one place so they cannot drift apart.
-	unanswered := func() ([]dividePart, string) {
+	// whole of the two postures in one place so they cannot drift apart. The
+	// third value says WHY there was no answer — a reviewer that could not be
+	// reached and a reviewer that answered nonsense both leave the floor's
+	// refusal standing, and the journal must be able to tell them apart from a
+	// counter that simply said no (bench autopsy of a live cell could not).
+	unanswered := func(why string) ([]dividePart, string, string) {
 		if thin {
-			return nil, divisionTooNarrow(parsed.Evidence)
+			return nil, divisionTooNarrow(parsed.Evidence), why
 		}
-		return parsed.Parts, ""
+		return parsed.Parts, "", why
 	}
 	ctx, cancel := context.WithTimeout(ctx, divideReviewPatience)
 	defer cancel()
@@ -920,7 +936,11 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		ai.WithMaxTokens(divideReviewTokens),
 		ai.WithTemperature(divideReviewTemp))
 	if err != nil || response == nil {
-		return unanswered()
+		why := "unreached"
+		if err != nil {
+			why = "unreached: " + err.Error()
+		}
+		return unanswered(why)
 	}
 	// The person pays for it, out of the pocket every auxiliary call comes from,
 	// against the model that actually answered.
@@ -928,14 +948,14 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 
 	raw, err := subharness.Salvage(response.Text())
 	if err != nil {
-		return unanswered()
+		return unanswered("unparseable")
 	}
 	var review divideReview
 	if err := json.Unmarshal(raw, &review); err != nil {
-		return unanswered()
+		return unanswered("unparseable")
 	}
 	if review.Refuse {
-		return nil, divisionNotAsWritten(review.Why)
+		return nil, divisionNotAsWritten(review.Why), ""
 	}
 	parts := make([]dividePart, 0, len(review.Parts))
 	for _, part := range review.Parts {
@@ -943,7 +963,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		if !part.whole() {
 			// A part with a field missing is an answer nobody can act on, and
 			// there is no repair turn here to ask for it back.
-			return unanswered()
+			return unanswered("part not whole")
 		}
 		parts = append(parts, part)
 	}
@@ -954,9 +974,9 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		// answer the brief asks it to spell as `refuse` — reading it as a
 		// refusal here would put a whole road behind a model's phrasing, which
 		// is what the fail-open law exists to stop.
-		return unanswered()
+		return unanswered("shape")
 	}
-	return parts, ""
+	return parts, "", ""
 }
 
 // divideReviewQuestion is the division as the reviewer reads it: the work it
