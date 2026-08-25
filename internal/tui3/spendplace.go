@@ -53,13 +53,22 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 		return spendReading{window: win, now: now}
 	}
 	r := spendReading{
-		window:   win,
-		now:      now,
-		totals:   session.UsageTotals(priced),
-		days:     session.UsageByDay(priced, win),
-		models:   session.UsageByModel(priced),
-		subjects: session.UsageBySubject(priced),
+		window: win,
+		now:    now,
+		totals: session.UsageTotals(priced),
+		days:   session.UsageByDay(priced, win),
+		models: session.UsageByModel(priced),
 	}
+	// A subject exists only when the ledger names one of its addresses. The
+	// grouping reader's default conversation bucket is useful arithmetic, but
+	// an addressless line is not evidence for a person-facing role word.
+	var subjectPriced []session.UsageLine
+	for _, line := range priced {
+		if strings.TrimSpace(line.Task) != "" || strings.TrimSpace(line.Standing) != "" || strings.TrimSpace(line.Session) != "" {
+			subjectPriced = append(subjectPriced, line)
+		}
+	}
+	r.subjects = session.UsageBySubject(subjectPriced)
 	for _, day := range r.days {
 		if day.USD > r.loudest.USD {
 			r.loudest = day
@@ -67,7 +76,7 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 	}
 	if r.loudest.USD > 0 {
 		var onDay []session.UsageLine
-		for _, line := range priced {
+		for _, line := range subjectPriced {
 			if sameSpendBucket(line.At, r.loudest.At, win.Grain) {
 				onDay = append(onDay, line)
 			}
@@ -117,7 +126,7 @@ func (r spendReading) rows(width int, pal palette) []string {
 			}
 		}
 		if left != "" || right != "" {
-			out = append(out, spendSides(width, left, right, pal.dim, spendMoneyInk(pal)))
+			out = append(out, spendSides(width, left, right, pal.dim, placeMoneyInk(pal)))
 		}
 	}
 	if loud := r.loudestRow(width, pal); loud != "" {
@@ -125,13 +134,13 @@ func (r spendReading) rows(width int, pal palette) []string {
 	}
 
 	if len(r.models) > 0 {
-		out = append(out, "", pal.dim(fit("what ran it · by the model, and the role it named", width)))
+		out = appendPlaceSection(out, pal.dim(fit("what ran it · by the model, and the role it named", width)))
 		for _, model := range r.models {
 			out = append(out, r.modelRow(model, width, pal))
 		}
 	}
 	if len(r.subjects) > 0 {
-		out = append(out, "", pal.dim(fit("what it was for", width)))
+		out = appendPlaceSection(out, pal.dim(fit("what it was for", width)))
 		shown := len(r.subjects)
 		if shown > spendSubjectCap {
 			shown = spendSubjectCap
@@ -140,7 +149,7 @@ func (r spendReading) rows(width int, pal palette) []string {
 			out = append(out, spendSubjectRow(subject, width, pal))
 		}
 		if more := len(r.subjects) - shown; more > 0 {
-			out = append(out, pal.dim(fit(tokens.GlyphCollapsed+" "+fmt.Sprintf("%d more", more), width)))
+			out = append(out, pal.dim(fit(foldLine(more, ""), width)))
 		}
 	}
 	return out
@@ -162,7 +171,7 @@ func (r spendReading) windowHeaderRow(width int, pal palette) string {
 	left.WriteString(pal.ink(r.window.Label()))
 	if r.totals.USD > 0 {
 		left.WriteString(pal.dim(" · "))
-		left.WriteString(spendMoneyInk(pal)(spendMoneyWord(r.totals.USD)))
+		left.WriteString(placeMoneyInk(pal)(spendMoneyWord(r.totals.USD)))
 	}
 	if r.totals.Tokens > 0 {
 		left.WriteString(pal.dim(" · "))
@@ -207,15 +216,18 @@ func (r spendReading) loudestRow(width int, pal palette) string {
 
 func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette) string {
 	name := strings.TrimSpace(model.Model)
-	if name == "" {
-		name = "unnamed model"
-	}
 	role := strings.TrimSpace(model.Role)
-	if role == "" {
-		role = "conversation"
-	}
 	money := spendMoneyWord(model.USD)
-	left := tokens.GlyphProseBullet + " " + name + " · " + role
+	left := tokens.GlyphProseBullet
+	if name != "" {
+		left += " " + name
+	}
+	if role != "" {
+		if name != "" {
+			left += " ·"
+		}
+		left += " " + role
+	}
 	stats := spendModelStats(model)
 	if width >= 80 {
 		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
@@ -230,17 +242,17 @@ func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette)
 		// The model is the payload; the role and counts remain quiet even though
 		// they share one fitted left field at narrow widths.
 		prefix := tokens.GlyphProseBullet + " " + name
-		if strings.HasPrefix(s, prefix) {
+		if name != "" && strings.HasPrefix(s, prefix) {
 			return pal.dim(tokens.GlyphProseBullet+" ") + pal.data(name) + pal.dim(strings.TrimPrefix(s, prefix))
 		}
 		return pal.dim(s)
-	}, spendMoneyInk(pal))
+	}, placeMoneyInk(pal))
 }
 
 func spendModelStats(model session.ModelSpend) string {
 	var parts []string
 	if model.Calls > 0 {
-		parts = append(parts, fmt.Sprintf("%s calls", commaInt(model.Calls)))
+		parts = append(parts, fmt.Sprintf("%s calls", groupedInt(model.Calls)))
 	}
 	if model.Tokens > 0 {
 		parts = append(parts, tokenWord(model.Tokens))
@@ -278,7 +290,7 @@ func spendSubjectRow(subject session.SubjectSpend, width int, pal palette) strin
 	for _, word := range nonempty(tag, kind) {
 		left.WriteString(pal.dim(" · " + word))
 	}
-	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, spendMoneyInk(pal))
+	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))
 }
 
 // spendMoneyWord keeps tui3's one dollar formatter while applying the page's
@@ -307,14 +319,6 @@ func nonempty(words ...string) []string {
 	return kept
 }
 
-func commaInt(n int) string {
-	s := fmt.Sprintf("%d", n)
-	for at := len(s) - 3; at > 0; at -= 3 {
-		s = s[:at] + "," + s[at:]
-	}
-	return s
-}
-
 // spendSides is the page's one right-flush seam. It fits in printable cells
 // before painting, so ANSI sequences cannot steal or create layout space.
 func spendSides(width int, left, right string, leftInk, rightInk func(string) string) string {
@@ -336,10 +340,6 @@ func spendSides(width int, left, right string, leftInk, rightInk func(string) st
 	}
 	return leftInk(left) + strings.Repeat(" ", gap) + rightInk(right)
 }
-
-// spendMoneyInk is deliberately the only money-colour call site. The router
-// lane can move it to palette.money without touching the reading or its rows.
-func spendMoneyInk(pal palette) func(string) string { return pal.add }
 
 // step gives the four drawn arrow chords their complete grammar. Unknown keys
 // leave the reading alone because an undrawn key never acts on this surface.
