@@ -770,16 +770,25 @@ aforge does not jump straight to summarizing. There are rungs before it.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
-line:
+line naming the tool, its first line, its size and where the whole of it lives:
 
 ```
-[output stubbed — 214332 bytes · full output: .aforge-v3/stubs/<hash>.txt]
+[tool: bash · go build ./... — 0 exit · 41208 bytes · full: .aforge-v3/stubs/<hash>.txt]
 ```
 
-The bytes are written to disk first, named by their own digest, and the model can `read` them
-back at any time. **The journal is never stubbed** — the record on disk keeps the whole
-result. An interrupted or failed turn is left alone, and a session with no workspace does
-nothing here.
+The bytes are written to disk first, named by their own digest — or the pointer is the id of
+the result already posted to the store — and the model can `read` them back at any time.
+**The journal is never stubbed** — the record on disk keeps the whole result. An interrupted
+or failed turn is left alone, and a session with no workspace does nothing here.
+
+**A pass that would not pay for itself does not run.** Replacing a result part-way down the
+conversation makes every byte behind it new again as far as the model's provider is
+concerned, and new bytes cost about five times cached ones. So a pass only goes ahead when
+what it reclaims is at least an **eighth** of what it would put back on the meter — otherwise
+it leaves everything alone and looks again at the end of the next turn, by which time the
+same results are usually part of a batch worth doing. This is why one middling tool result
+sitting in a long conversation can stay whole for several turns and then vanish all at once
+alongside others.
 
 **Rung 2 — page images.** Instead of summarizing the part being dropped, it can be
 photographed: rendered verbatim to monospaced page images that the model reads back. No model
