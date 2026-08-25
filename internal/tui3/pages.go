@@ -494,8 +494,8 @@ func (a *app) placeHint() string {
 			return placeTailed(a.taskSheetKeysLine())
 		}
 	case pageStanding:
-		if a.standPage.open {
-			return placeTailed(standPageVerbs)
+		if a.standPage.up {
+			return placeTailed(a.standPage.hint(a))
 		}
 	case pageMemory:
 		if a.memPanel.open {
@@ -602,7 +602,7 @@ func (a *app) pageShowing() bool {
 	case pageTasks:
 		return a.taskSheet.open
 	case pageStanding:
-		return a.standPage.open
+		return a.standPage.up
 	case pageMemory:
 		return a.memPanel.open
 	case pageSpend, pageSearch:
@@ -625,7 +625,7 @@ func (a *app) openPage(id page) (tea.Cmd, bool) {
 		return a.showTaskPlace(), a.taskSheet.open
 	case pageStanding:
 		a.openStanding()
-		return nil, a.standPage.open
+		return nil, a.standPage.up
 	case pageMemory:
 		a.openMemory()
 		return nil, a.memPanel.open

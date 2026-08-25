@@ -2344,8 +2344,8 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// what a press on a row DOES: it moves the cursor and never acts,
 			// because every verb there is a key and enter leaves this
 			// conversation (standingpage.go).
-			if a.standPage.open {
-				return a, a.standPagePress(msg.Mouse().Y)
+			if a.standPage.up {
+				return a, a.standPage.press(a, msg.Mouse().Y)
 			}
 			// AND /subharness IS THE FIFTH, on the standing page's terms and for
 			// a sharper version of its reason: one of the card's rows starts work

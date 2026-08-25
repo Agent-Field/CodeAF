@@ -194,23 +194,13 @@ func (a *app) homeRowVerbs() []verb {
 	}
 }
 
-// standRowVerbs is the standing place's strip. Its three letters were bare while
-// it was a modal overlay with no box under them; as a PLACE it has a composer,
-// so they move here — which is the trade the promotion makes and the reason the
-// strip had to exist before the promotion could.
-func (a *app) standRowVerbs() []verb {
-	if !a.standPage.reading.now.IsZero() {
-		return a.standingPlaceVerbs()
-	}
-	if _, ok := a.standPage.current(); !ok {
-		return nil
-	}
-	return []verb{
-		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { a.standPageWrite(standPause); return nil }},
-		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { a.standPageWrite(standDown); return nil }},
-		{key: 'n', word: standNotHereWord, do: func() tea.Cmd { a.standPageWrite(standExcept); return nil }},
-	}
-}
+// standRowVerbs is the standing place's strip, and it is that place's own answer
+// ([standPage.verbs]) — this file invents no verb for it, as its header says.
+// The three letters were bare while it was a modal overlay with no box under
+// them; as a PLACE it has a composer, so they moved onto the strip, which is the
+// trade the promotion makes and the reason the strip had to exist before the
+// promotion could.
+func (a *app) standRowVerbs() []verb { return a.standPage.verbs(a) }
 
 // memoryRowVerbs is the memory place's strip, and it closes a real bug: `u`
 // (undo a forget) was matched ahead of the filter's default arm, so a person
