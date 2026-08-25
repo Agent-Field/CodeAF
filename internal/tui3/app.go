@@ -259,7 +259,22 @@ type entry struct {
 	open   bool // this call's expansion is showing inline
 	// full lifts the expansion's per-tool cap: it is set by a click on the
 	// "… N more lines" foot, which is the person saying they want the rest.
+	//
+	// AND IT IS THE INSTRUCTION'S FOLD on a block that carries [entry.brief]
+	// (brieffold.go), because it is the same fact about a block — this one is
+	// shown whole — and a second flag saying it would be a second thing to keep
+	// in step. The two never meet: one is a tool call and the other is a message.
 	full bool
+	// brief says this block is THE INSTRUCTION A NODE WAS GIVEN — the first thing
+	// said on a task's own page, and the only message on this surface that folds
+	// (brieffold.go). It is false on every other block, which is nearly all of
+	// them.
+	//
+	// IT IS SET WHERE THE FACT IS KNOWN (room.go's [readRoomJournalTail]) and
+	// never worked out at render time, because [app.renderEntry] paints one block
+	// at a time and must not ask what surrounds it — the same law the answer
+	// hierarchy is stamped under ([app.deckRows]).
+	brief bool
 	// decision is what the person answered when this call was asked about —
 	// "allowed" or "denied", dim, beside the row's stat (consent.go). It is
 	// empty for every call the policy did not stop.
@@ -4604,6 +4619,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitBrief:
+		a.toggleBriefFoldAt(r.entry)
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a

@@ -326,7 +326,7 @@ an ordinary `enter` and the message waits instead.
 
 | Chord | What it does |
 |---|---|
-| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Otherwise: fold or unfold this turn's tool cluster |
+| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: fold or unfold this turn's tool cluster |
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
@@ -1509,18 +1509,29 @@ the thing you are standing on — and its own section below has the table.
 | Message box | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | Model picker only | Cycle the reasoning effort |
 
-**`ctrl+o` — four meanings:**
+**`ctrl+o` — five meanings:**
 
 | Where | What it does |
 |---|---|
 | A landed card is selected | Open its output |
 | A proposal is selected | Open its brief |
 | Phone tool detail sheet | Lift the line cap |
+| Inside a task's page, with a long instruction at the top | Open the rest of it, and press again to fold it back |
 | Nothing selected | Fold or unfold this turn's tool cluster |
 
-Inside a task's page `ctrl+o` folds and unfolds the task's own turn, and scrolling up at
-the top of the page opens the fold as well; the fold line there reads `N earlier tool
-calls · scroll up or ctrl+o`.
+Inside a task's page the first thing `ctrl+o` reaches is the **instruction** the task was
+given, where that instruction is longer than three lines: the page shows the first three
+and one dim line reading `▸ …14 more lines · ctrl+o`, and the chord opens the whole of it.
+Pressing it again folds it back, and the line then reads `▾ …14 fewer · ctrl+o`. A short
+instruction has no such line and the chord falls through to the fold below. See *tasks*,
+"The long brief at the top of a task's page".
+
+`ctrl+o` also folds and unfolds a task page's own tool cluster where there is one, and
+scrolling up at the top of the page opens that fold as well; the fold line there reads
+`N earlier tool calls · scroll up or ctrl+o`.
+
+`ctrl+o` is a chord, so it never costs you a character: you can press it with half a
+sentence in the box and go on typing into the same words.
 
 Two more chords surprise people:
 

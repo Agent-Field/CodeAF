@@ -747,6 +747,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did my finished task's details go on the column", "screen"},
 		{"how do I see the log path of a job that already finished", "screen"},
 		{"why does the right column only show three standing orders", "screen"},
+
+		// THE FOLDED INSTRUCTION, asked the four ways people meet it: complaining
+		// about the space it used to take, seeing the fold line and not knowing
+		// what it is, wanting the rest of it, and wanting it small again.
+		{"the task description takes up the whole page", "tasks"},
+		{"what does 14 more lines mean at the top of a task", "tasks"},
+		{"how do I see the full task description", "tasks"},
+		{"how do I collapse the long brief in a task", "tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

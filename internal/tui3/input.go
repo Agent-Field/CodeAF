@@ -629,6 +629,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.openDone(a.sel) || a.openCard(a.sel) {
 			return nil
 		}
+		// AND INSIDE A NODE'S PAGE IT OPENS THE INSTRUCTION, which is the one
+		// block a room folds (brieffold.go). The key keeps its meaning exactly —
+		// show me the rest of this — over the one thing on that page showing less
+		// than it has, and it is asked before the cluster fold below because a room
+		// hardly ever has one: a room's clusters carry a tail as tall as the view
+		// ([app.roomToolTail]), and the rare fold above it is opened by walking up
+		// into it ([app.roomUnfoldAtTop]). A page whose instruction is short enough
+		// to be drawn whole has no door at all and answers false, so out in the
+		// conversation — where no block is ever marked — this line changes nothing.
+		if a.toggleBriefFold() {
+			return nil
+		}
 		a.unfold(a.bodyTurn())
 		return nil
 

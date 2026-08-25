@@ -54,6 +54,14 @@ const (
 	// hoverFold is the "N earlier tool calls" line, which belongs to a turn
 	// rather than to an entry.
 	hoverFold
+	// hoverBrief is the door under a node's folded instruction (brieffold.go).
+	// It is a kind of its own rather than a hoverFold because that one is keyed
+	// by TURN and the instruction shares its turn with the node's first calls —
+	// so a pointer on one door would light the other. And it is not a hoverEntry
+	// because that brightens the WHOLE block, which is right for "click to
+	// expand" and wrong here: the three lines above the door are the person's own
+	// words and a press on them does nothing.
+	hoverBrief
 	// hoverChoices is the consent block's offer line.
 	hoverChoices
 	// hoverConnectAsk is the connect offer's answers line (connect.go). It is a
@@ -424,6 +432,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{}
 		case r.hit == hitFold || r.hit == hitWorkFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
+		case r.hit == hitBrief:
+			return hoverAt{kind: hoverBrief, entry: r.entry}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
 			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is
