@@ -1049,8 +1049,15 @@ seconds quits aforge.
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
-back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
-that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
+back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
+`w` widens the column and narrows it again. Its hint reads exactly
+`↑↓ move · →← tree · enter open · w wide · esc`.
+
+**`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
+and close the family. On a row whose **work has finished** they open and close that row's
+own detail line — the merge word and price, a job's log path — which a finished row keeps
+folded so that the column's height goes to work that is still moving. `→` on anything else
+does nothing.
 
 **The walk stops at this conversation's last task.** The roster holds this conversation's
 work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
@@ -1279,11 +1286,17 @@ under the pointer".
 The wheel moves three rows per notch, on whichever surface owns the frame. It is
 routed to copy mode, then the settings panel, then the task page, then home, then the
 rewind timeline, then the status deck, then the phone tool sheet, then the fullscreen
-roster, then an open room, and otherwise the conversation.
+roster, then **the task column** when the pointer is over it, then an open room, and
+otherwise the conversation.
 
 On the settings panel, the task page, home, the rewind timeline and the fullscreen roster
 the wheel walks the **cursor** rather than a scroll offset of its own, because on those the
 window follows the cursor.
+
+**The task column on the right scrolls under the pointer** and leaves the conversation
+beside it where it is. It moves the column's own window — running work stays pinned at the
+top, and the `tasks` label with it — unless the column is holding the keyboard (`ctrl+t`),
+in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
 up drops out of it.

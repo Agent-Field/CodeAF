@@ -2103,7 +2103,12 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	switch {
 	case e.root && line.badge.holds(at):
 		a.railSetOpen(e.node, true)
-	case e.root && line.glyph.holds(at):
+	case (e.root || a.railTucks(e)) && line.glyph.holds(at):
+		// THE GLYPH CELL IS THE DISCLOSURE ON BOTH KINDS OF ROW: a family root
+		// folds its subtree, and a row that has landed folds its own block back
+		// under itself (task.go's [app.railSaysMore]). The set that LIGHTS under
+		// the pointer is the set that acts, which is hover.go's own law — both
+		// halves ask [app.railTucks].
 		a.railToggle(e.node)
 	default:
 		if e.node.run != "" {

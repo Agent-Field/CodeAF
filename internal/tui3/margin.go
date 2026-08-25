@@ -80,7 +80,28 @@ const (
 	// what it could not draw), and it is what keeps the row from reading as a
 	// third task.
 	marginDoorMark = "+ "
+	// marginStandMoreWord is what the standing label calls the orders the column
+	// had no room for ([app.marginStandHead]). It is the footer's own word for the
+	// same fact one section down (`view more`, taskview.go's [taskSheetMoreHint]),
+	// because a column that said `hidden` in one place and `more` in another would
+	// be two vocabularies for "there is another page of this".
+	marginStandMoreWord = "more"
 )
+
+// marginStandCost is what this block spends before it has drawn a single order:
+// the `+ /task` door, which is drawn whatever else the column can afford, then
+// the blank line that separates the two sections, the `standing` label, and the
+// `+ /standing` door. It is counted here rather than measured because the rows
+// are built in [app.marginRows] and a block that guessed its own height would be
+// a column measured twice.
+const marginStandCost = 4
+
+// marginStandMax is the most orders the column draws at once, however tall the
+// frame is. Three is a glance; past three the rows stop being read one at a time,
+// and what a person wants then is the page `+ /standing` types the command for.
+// The rest are counted on the label rather than dropped in silence
+// ([app.marginStandHead]).
+const marginStandMax = 3
 
 // marginTitleFloor is how little room a standing row's title may be left with
 // before the scope tail gives way. It is [railTitleFloor] and not a second
@@ -175,7 +196,16 @@ func (a *app) marginHead(width int, hasTasks bool) []railLine {
 // whitespace, never a rule, which is the design law a border would break — and
 // it is counted like every other line, because a row the layout drew and did not
 // count is a row the conversation pays for twice (task.go's [app.railView]).
-func (a *app) marginRows(width int) []railLine {
+//
+// THIS BLOCK IS RESERVED AND NEVER SCROLLED (task.go's [app.railView] takes its
+// height out of the column before the roster's window is measured), so it is
+// asked how many rows it may have and it answers with a block that fits. What it
+// gives up under pressure is stated by [marginStandFit]: the orders go first, one
+// at a time, and the label says how many are not being shown.
+func (a *app) marginRows(width, room int) []railLine {
+	if room < 1 {
+		return nil
+	}
 	out := []railLine{{
 		text:  a.marginDoorLine(marginTaskType, width),
 		entry: -1,
@@ -184,12 +214,26 @@ func (a *app) marginRows(width int) []railLine {
 	if !a.marginStandingShows() {
 		return out
 	}
-	standing := a.marginStanding()
-	out = append(out, railLine{entry: -1})
-	if len(standing) > 0 {
-		out = append(out, railLine{text: a.pal.dim(fit(marginStandWord, width)), entry: -1})
+	stand := a.marginStanding()
+	shown := marginStandFit(len(stand), room)
+	if len(stand) == 0 && room < marginStandCost-1 {
+		// The empty section is its blank and its door and nothing else — the label
+		// it does not earn is the one row of [marginStandCost] it does not spend —
+		// and even those two are rows this column may not have.
+		return out
 	}
-	for _, view := range standing {
+	if len(stand) > 0 && shown < 1 {
+		// A SECTION WITH NO ROOM FOR A ROW IS ABSENT, NOT EMPTY. A label and a door
+		// standing over none of the orders they are about would be four rows of
+		// chrome taken off a column that has just said it has none to spare, and the
+		// count they would carry is on the status row either way (standdoor.go).
+		return out
+	}
+	out = append(out, railLine{entry: -1})
+	if len(stand) > 0 {
+		out = append(out, railLine{text: a.marginStandHead(width, len(stand)-shown), entry: -1})
+	}
+	for _, view := range stand[:shown] {
 		out = append(out, railLine{
 			text:  a.marginStandRow(view, width),
 			entry: -1,
@@ -201,6 +245,69 @@ func (a *app) marginRows(width int) []railLine {
 		entry: -1,
 		door:  marginStandType,
 	})
+}
+
+// railWorkFloor is the rows the ROSTER keeps before anything else on this column
+// is reserved a single one.
+//
+// A COLUMN THAT CANNOT SHOW THE WORK HAS NOTHING TO PUT UNDER THE WORK. Six is
+// the pinned live head and a few rows beneath it — enough to read what is
+// happening — and under a frame that short the two sections below give way
+// entirely rather than each taking a slice of a column that has none to give.
+// That is the same trade the roster's own live head makes ([app.railView] pins
+// what is moving and lets the rest scroll): what is happening outranks the
+// furniture around it.
+const railWorkFloor = 6
+
+// marginRoomFor is how many rows the two sections under the roster may reserve,
+// given the rows the column has left once the footer has taken its own and the
+// lines the roster has to draw.
+//
+// THE FLOOR COMES OUT FIRST AND THE BLOCK LIVES ON WHAT IS ABOVE IT. A roster
+// with nothing in it lends the whole column, which is why a fresh session still
+// draws both doors and every order over it; a roster with two hundred lines in it
+// lends whatever is over [railWorkFloor], and the block spends that in the order
+// [marginStandFit] states.
+func marginRoomFor(avail, work int) int { return max(0, avail-min(work, railWorkFloor)) }
+
+// marginStandFit is how many orders the standing section draws in the rows it has
+// been given, and it is the whole of what this column gives up when it is short.
+//
+// [marginStandCost] IS WHAT THE BLOCK SPENDS BEFORE ITS FIRST ORDER, so what is
+// left over is what the orders get. A section that cannot show one order shows
+// none at all (see [app.marginRows]).
+//
+// AND IT NEVER TAKES MORE THAN [marginStandMax], however tall the frame is. The
+// column is a glance at what governs this conversation and not the list of it:
+// past a handful the rows stop being read one by one, and the list a person wants
+// then is the page the door beneath them types the command for. The rest are
+// counted on the label rather than dropped in silence.
+func marginStandFit(orders, room int) int {
+	return min(orders, min(marginStandMax, room-marginStandCost))
+}
+
+// marginStandHead is the standing section's label, with the count of the orders
+// this column could not fit riding on it.
+//
+//	standing              every order it has is on screen
+//	standing · 7 more     and the shape when they are not
+//
+// IT IS THE TASKS LABEL'S OWN SHAPE (`tasks · 3 working`, [app.marginHead]): one
+// vocabulary for the two sections of one column, the figure in the data ink and
+// the words around it dim. The emptiness law keeps the tail off the ordinary
+// case — a section showing everything it has says nothing about what it is not
+// hiding.
+func (a *app) marginStandHead(width, hidden int) string {
+	if hidden <= 0 {
+		return a.pal.dim(fit(marginStandWord, width))
+	}
+	tail := " " + marginStandMoreWord
+	plainTail := " · " + itoa(hidden) + tail
+	if ansi.StringWidth(marginStandWord+plainTail) > width {
+		return a.pal.dim(fit(marginStandWord, width))
+	}
+	room := max(0, width-ansi.StringWidth(plainTail))
+	return a.pal.dim(fit(marginStandWord, room)+" · ") + a.pal.data(itoa(hidden)) + a.pal.dim(tail)
 }
 
 // marginDoorLine is one of the column's two doors — `+ /task` and `+ /standing`

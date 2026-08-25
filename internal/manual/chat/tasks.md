@@ -620,10 +620,16 @@ there from the moment the job starts until the moment it ends. This covers every
 - a video render, which is a job while it renders
 
 The row's name is the command itself — `npm run dev` — or the watch's or render's own
-label where it has one, cut to three words like every other name on this column. Under it,
-one dim line: `job 3 · log /path/to/.aforge-v3/jobs/3.log`, cut to the column's width. That
-line is the whole handle back to the work: the number is what `jobs output 3` and `jobs kill
-3` take, and the path is a file you can open yourself.
+label where it has one, cut to three words like every other name on this column. **While
+it runs**, one dim line sits under it: `job 3 · log /path/to/.aforge-v3/jobs/3.log`, cut to
+the column's width. That line is the whole handle back to the work: the number is what
+`jobs output 3` and `jobs kill 3` take, and the path is a file you can open yourself.
+
+**Once the job has ended the row is one line**, like every other finished row on the
+column, and the log line is folded under it rather than dropped: walk to the row and press
+`→`, or hover it and click the `▸` its glyph turns into, and the same
+`job 3 · log …` comes back. *What the task column looks like* on the screen page has the
+whole of that fold.
 
 **It settles where it stands.** A job that exits cleanly reads as finished and drops into
 the column's done fold; a job that exits non-zero, and a job that was killed, read as
@@ -637,8 +643,10 @@ label, and in the `3 running` line in the footer, exactly as a task worker is.
 
 Three things a job's row deliberately does **not** have, because a job has none of them:
 
-- **no room.** `→` on the row opens nothing — there is no agent inside a job and no
-  transcript to read. The log file named under the row is where you read it.
+- **no room.** There is no agent inside a job and no transcript to read, so `enter` on the
+  row and a click on its name open nothing. The log file named under the row is where you
+  read it. (On a job that has ended, `→` does one thing only: it unfolds that log line
+  back under the row.)
 - **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
   `jobs kill`; every running job is also killed when the conversation closes.
 - **no branch, no changed-files list and no price.** A job runs in the workspace itself,
