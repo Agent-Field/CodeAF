@@ -963,6 +963,18 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
+	// effPick is the five-row thinking chooser the tray's dial opens
+	// (effortchip.go). It is the crew chooser's shape for the crew chooser's
+	// reason: a fixed ladder is a thing you read rather than a thing you search.
+	effPick effortMenu
+	// effortSpan is where the thinking dial was last drawn on the tray, in
+	// columns from the box's own left edge — the same bargain [app.jumpSpan]
+	// makes, because the layout is the only thing that knows where a
+	// right-aligned cell landed.
+	effortSpan hudSpan
+	// effortLit is when the dial's change stops being emphasized. Zero is a chip
+	// that has not moved this session (effortchip.go's [app.effortFlashing]).
+	effortLit time.Time
 	// wait is the forming block a task command is standing in — its verbatim
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
@@ -2290,6 +2302,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, on exactly the harness picker's terms and for its reason: it
+			// hangs over a draft somebody is still writing, so a press anywhere
+			// else is a press on whatever is there (effortchip.go).
+			if cmd, took := a.effortMenuPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
@@ -2427,6 +2446,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dragFlashMsg:
 		// The "copied · N lines" word expiring on an idle status line: one
 		// repaint, so it comes down (dragselect.go).
+		a.touch()
+		return a, nil
+
+	case effortFlashMsg:
+		// The thinking chip's change expiring on an idle frame: one repaint, so
+		// the emphasis comes down and the dial goes back to being furniture
+		// (effortchip.go). It is the message above read for the other flash.
 		a.touch()
 		return a, nil
 

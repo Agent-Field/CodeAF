@@ -519,6 +519,18 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "reading", widget: widgetCycle,
 		about: "which rung reads your documents. auto walks local, then free, then paid OCR.",
 	},
+	// The install's own rung on the effort ladder (internal/effort), which is the
+	// LAST scope the resolver consults and therefore the answer for every
+	// conversation nobody has dialled by hand. It sits with the models because
+	// how hard they think is a question about them, and it names the chip that
+	// moves ONE conversation off it, because a row that set a default without
+	// saying the default could be overridden is a row people come back to
+	// confused (effortchip.go).
+	config.KeyEffort: {
+		tab: tabProviders, label: "thinking", widget: widgetCycle,
+		about: "how hard the model thinks, unless something nearer the work says " +
+			"otherwise. " + effortKey + " above the message box moves one conversation on its own.",
+	},
 	// It belongs on this tab and not under Session because it is a question
 	// about WHERE a request goes, not about what this conversation may do: one
 	// model id is served by many endpoints, and this is which of their

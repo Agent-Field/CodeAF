@@ -2763,6 +2763,13 @@ func (a *app) hintWord() string {
 		return "enter switch · esc"
 	case a.crewPick.open:
 		return "↑↓ · enter apply · esc"
+	case a.effPick.open:
+		// The chord is named beside the keys because this list is the only place
+		// on the surface that can teach it: the chip it opens from prints a mark
+		// and a word and has no room for a key, so the slot under the ladder is
+		// where somebody who arrived by clicking learns how to arrive by typing
+		// (effortchip.go).
+		return "↑↓ · enter apply · esc · " + effortKey + " next rung"
 	case a.roster.open:
 		return "enter open · esc"
 	case a.shelf.open:

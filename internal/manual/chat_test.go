@@ -492,17 +492,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model stopped answering halfway through", "models-and-cost"},
 
 		// The effort ladder. One dial with five rungs under a default of `high`,
-		// and nothing on the frame to see it with yet — so every question about
-		// it is asked in the words somebody uses for the *feeling* they want:
-		// a deeper answer, a faster one, a model that is thinking too long for
-		// what they asked. The last two are asked by somebody who has met a rung
-		// name in the settings row and wants to know what it costs them.
+		// so every question about it is asked in the words somebody uses for the
+		// *feeling* they want: a deeper answer, a faster one, a model that is
+		// thinking too long for what they asked. The last two are asked by
+		// somebody who has met a rung name in the settings row and wants to know
+		// what it costs them.
 		{"how do I make it think less", "models-and-cost"},
 		{"how do I make it think deeper", "models-and-cost"},
 		{"how do I get faster answers from the model", "models-and-cost"},
 		{"what does xhigh mean", "models-and-cost"},
 		{"what is the default reasoning effort", "models-and-cost"},
 		{"does the thinking level stick after a restart", "models-and-cost"},
+
+		// And the CONVERSATION's own rung, which is a chip and a chord rather
+		// than a setting — so it is asked about as a thing on the screen ("what
+		// is that symbol above the box") and as a key somebody pressed by
+		// accident, neither of which reaches a page about models and cost.
+		{"what is the chip above the message box", "keys"},
+		{"what does ctrl+v do", "keys"},
+		{"how do I make this one chat think harder", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
