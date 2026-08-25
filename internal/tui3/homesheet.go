@@ -773,6 +773,16 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return a.homeItemWrite(line, standing.StatusRetired), true
 		}
 		return nil, true
+	case "ctrl+v":
+		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
+		// card's legend names works wherever the card is drawn (homeeffort.go).
+		// There is no machine card at this tier — the cursor has no rest to walk
+		// up into on a phone ([homeView.restable]) — so this is an item's key
+		// here and nothing else's.
+		if line, ok := a.home.focusedLine(); ok && line.kind == homeItem {
+			return a.cycleItemEffort(line.item), true
+		}
+		return nil, true
 	}
 	// A DIGIT ANSWERS THE QUESTION THE SHEET IS SHOWING, which is the same rule
 	// the wide card keeps and the same function behind it (homeband_answer.go).

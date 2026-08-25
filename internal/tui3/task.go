@@ -1962,7 +1962,14 @@ const (
 	// railHoldHint is what the legend's hint slot says while the roster has the
 	// keyboard (render.go's [app.hintWord]) — the keys [app.railKey] takes,
 	// quoted from the handler rather than authored twice.
-	railHoldHint = "↑↓ move · →← tree · enter open · w wide · esc"
+	//
+	// It is split at the dismiss key because ONE OF THOSE KEYS IS CONDITIONAL:
+	// ctrl+v moves the focused node's rung and the engine refuses a node whose
+	// run is over, so it is named only while the row under the cursor could take
+	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
+	// person looks to the end of the line for.
+	railHoldKeys = "↑↓ move · →← tree · enter open · w wide"
+	railHoldHint = railHoldKeys + " · esc"
 	// The footer names both answers the handle can give. A bare "w" in a column
 	// of counts is a keystroke nobody would risk pressing, and a handle whose
 	// return trip is not named is only half an affordance.
@@ -3421,12 +3428,23 @@ func (a *app) railTake(hold bool) {
 // taking the six keys home's own foot advertises: `↑↓ move · enter open · esc
 // close`, and the follow-up enter of a stacked `ask here` with them. The only
 // thing left that moved the selection was the pointer.
+//
+// AND THE THINKING CHOOSER IS ON IT FOR THE SAME REASON, which is the one place
+// the ladder's two surfaces could have fought. [effortKey] means "move the rung
+// of the thing you are standing on" (effortscope.go), and while that chooser is
+// up the thing you are standing on is the CONVERSATION'S ladder — five rungs
+// drawn over the box, with the chord named in its own foot. Without this line a
+// held roster took the chord first and moved a TASK's rung while the
+// conversation's list sat open on screen, and took ↑↓, enter and esc off it too:
+// a list nobody could drive, exactly what home was doing above. input.go reads
+// the chooser as modal beside the crew list; this is that law restated where the
+// roster can see it.
 func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
 		a.sheet.open, a.taskSheet.open, a.home.open, a.pick.open, a.copy.on,
-		a.welcome.open, a.menu.open, a.comp.open:
+		a.welcome.open, a.menu.open, a.comp.open, a.effPick.open:
 		return nil, false
 	}
 	if key == railStowKey {
@@ -3488,6 +3506,15 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case "w":
 		a.railWiden(!a.railWide)
+		return nil, true
+	case "ctrl+v":
+		// HOW HARD THE FOCUSED NODE THINKS, one step up the ladder. It is read
+		// here — inside the hold, beside the keys that move the cursor — because
+		// the roster's cursor IS what "the task you are standing on" means while
+		// no room is open, and a rung moved from a list of work is the same
+		// gesture as a rung moved from inside one (taskeffort.go). A room open
+		// over the roster takes it first, on [app.effortTaskHere]'s precedence.
+		a.cycleTaskEffort()
 		return nil, true
 	case "enter":
 		return a.railEnter(), true
@@ -4706,8 +4733,9 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 // railTelemetry is the standing row under a running node: how long it has been
 // going, how much it has burned, what that has cost, and who is doing it.
 //
-//	42s · 9.9k · $0.31 · gpt-5    a full column, and everything known
-//	42s · 9.9k · $0.31            a slim one: the worker is the first to go
+//	42s · 9.9k · $0.31 · gpt-5 · thinking high   a wide roster, everything known
+//	42s · 9.9k · $0.31 · gpt-5    a full column: the rung is the first to go
+//	42s · 9.9k · $0.31            a slim one: the worker goes next
 //	42s · gpt-5                   an engine that publishes no usage
 //	42s                           and one that publishes nothing at all
 //
@@ -4724,7 +4752,7 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 // "0" beside a node that has been working for a minute. A row with nothing known
 // on it at all is no row.
 func (a *app) railTelemetry(node *taskNode, width int) string {
-	segs := make([]string, 0, 4)
+	segs := make([]string, 0, 5)
 	if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" {
 		segs = append(segs, clock)
 	}
@@ -4740,6 +4768,16 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 	}
 	if model := railModelWord(node); model != "" {
 		segs = append(segs, model)
+	}
+	// AND THE RUNG IS LAST, which is to say it is the first thing given up. It
+	// is a setting rather than a measurement — the four in front of it all move
+	// while a person watches and it does not — so on the twenty-six cells this
+	// column usually gets it is absent, and on a roster raised over the whole
+	// frame it is there. That is the drop-from-the-right rule applied to one
+	// more fact rather than a second layout, and the room's own header states
+	// the same rung with no width to fight over (taskeffort.go).
+	if rung := a.taskEffortClause(node); rung != "" {
+		segs = append(segs, rung)
 	}
 	for ; len(segs) > 0; segs = segs[:len(segs)-1] {
 		if line := strings.Join(segs, railSep); ansi.StringWidth(line) <= width {

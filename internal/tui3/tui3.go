@@ -51,6 +51,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -717,6 +718,22 @@ type StandingSeam struct {
 	// nil is a surface that simply draws no weekly line, which is the emptiness
 	// law applied to a fact nobody can answer.
 	Runs func(since time.Time) map[string]standing.Spend
+
+	// SetEffort moves the rung one item's firings and its checks think at
+	// (internal/standing's [Store.SetStandingEffort]) — `ctrl+v` on that item's
+	// card, and nothing else on this surface.
+	//
+	// IT IS ITS OWN FUNCTION AND NOT A FIELD ON THE ITEM [StandingSeam.Save]
+	// TAKES, and the store says why in full: Save writes a whole document, so a
+	// surface holding an item it read a beat ago would write back the check
+	// results, the spend and the next-due that the ticker has moved since — and
+	// quietly undo a firing to change a word nobody was looking at. The rung is
+	// a read-modify-write under the item's own lock and it happens in the store.
+	//
+	// Nil is a home where the key says the change cannot be made here, in the
+	// same sentence the pause and stop keys already say it in
+	// ([homeItemNoStore]).
+	SetEffort func(id string, rung effort.Rung) error
 }
 
 // Run opens the surface and blocks until it closes. A cancelled context closes

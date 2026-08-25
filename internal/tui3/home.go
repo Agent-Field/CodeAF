@@ -2184,6 +2184,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 
+	case "ctrl+v":
+		// CTRL+V MOVES THE RUNG OF WHATEVER THIS CARD IS ABOUT, which on home is
+		// two things and not one: at rest the card is the machine's own and the
+		// rung is the install's default (homeband_thinking.go), and on a standing
+		// item's row it is that item's. Both go through [app.cycleHomeEffort],
+		// which reads the same subject the card was drawn from — so the rung that
+		// moves is always the rung a person can see.
+		//
+		// A CONVERSATION'S ROW IS DELIBERATELY NOT ONE OF THEM. A session's rung
+		// is its own sticky setting and belongs to the window that session is
+		// open in; moving it from a list would be this screen reaching into a
+		// conversation somebody else is sitting in front of. The key does nothing
+		// there and the card's legend never names it.
+		return a.cycleHomeEffort()
+
 	case "backspace":
 		h.box.deleteBackward()
 		h.build()

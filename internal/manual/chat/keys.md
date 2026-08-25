@@ -1065,7 +1065,10 @@ very foot — and `ctrl+e` on a row inside the open archive brings it back (the 
 page section has the whole shape). **`ctrl+t`** starts a new conversation in that row's
 project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
 folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
-**`ctrl+e` pauses** it and **`ctrl+x` stops it for good**. Each chord acts on the card you are looking at — the row
+**`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
+item thinks** one rung. **With the cursor on no row at all** — one `↑` up off the top row,
+where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
+instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
 under your pointer when there is one, the cursor's row otherwise — and the card's own
 dim legend names exactly the keys that work. The one printable exception is the digits
 on a waiting row's answer chips, which are drawn on the row itself.
@@ -1114,7 +1117,10 @@ seconds quits aforge.
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
 `w` widens the column and narrows it again. Its hint reads exactly
-`↑↓ move · →← tree · enter open · w wide · esc`.
+`↑↓ move · →← tree · enter open · w wide · esc`. On a row whose work is still running or
+still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
+moves that task's thinking rung; a finished row does not offer it, because a finished
+task's rung is a fact about what happened.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's
@@ -1493,6 +1499,8 @@ stripped off it.
 ## Chords that mean more than one thing
 
 Two chords carry unrelated meanings. Which one you get depends on where you are.
+A third, `ctrl+v`, carries **one** meaning on several surfaces — move the thinking rung of
+the thing you are standing on — and its own section below has the table.
 
 **`ctrl+t` — two meanings:**
 
@@ -1524,6 +1532,43 @@ Two more chords surprise people:
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
 
+## ctrl+v — how hard the thing you are looking at thinks
+
+`ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
+and it moves the rung of **the thing you are standing on**. One chord, four scopes:
+
+| Where you are | What moves |
+|---|---|
+| The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
+| The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
+| You are inside a task's page | That task's rung |
+| Home, with the cursor on **no row at all** | The machine's own default — the `thinking` row in `/settings` |
+| Home, with the cursor on a `◦` standing item row or its card | That item's rung |
+
+Everywhere else it does nothing at all. A conversation row on home is deliberately not on
+the list: a conversation's rung belongs to the window that conversation is open in, where
+the chip above its message box moves it.
+
+**It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
+never returns to "nobody said" — clearing a rung hands the work back to whatever stands
+over it, which is a decision rather than something a wheel does on its way past. Set a
+thing back to nothing in the place it is written down: the `thinking` row's own `off`.
+
+**The rung reads as a quiet clause where the thing already states its facts.** A task's is
+on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
+thinking high` — and on the roster's own figures row when the column is wide enough to hold
+it. The machine's is on the card home draws at rest. An item's is on that item's card. A
+thing nobody has dialled says nothing, which is not the same as `low`.
+
+**On a task it lands on the next call, not this one.** A worker already running keeps the
+rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
+next call takes it`. A task that has finished refuses, in the engine's own words — `task 7
+is done, not running` — because what it spent is a fact you may read and must not edit.
+
+**Every card that takes it says so.** The card's dim legend reads `ctrl+v think harder`,
+and it is drawn only where the key would work: a settled task's roster row does not offer
+it, and neither does a window with nowhere to write the setting.
+
 ## Chords that are not bound
 
 These do nothing in the v3 chat. If you expect one of them, here is the straight
@@ -1535,7 +1580,7 @@ answer:
 | `ctrl+d` | Not bound |
 | `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
-| `ctrl+v` | **Bound.** In the message box it walks this conversation's thinking rung — see "The thinking chip above the message box" above. Paste is still your terminal's own paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
+| `ctrl+v` | **Bound**, on four surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, the machine's own default on home at rest, or a standing item. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |

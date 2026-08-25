@@ -313,6 +313,12 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			return items
 		},
 		Save: store.Save,
+		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
+		// through Save above: the rung is a read-modify-write under the item's
+		// lock, so a card that had been on screen for a beat cannot write back the
+		// check results and the next-due the ticker has moved since
+		// (internal/standing's SetStandingEffort says the whole of why).
+		SetEffort: store.SetStandingEffort,
 		// WHETHER THIS PROCESS IS KEEPING TIME, asked at the moment the line is
 		// drawn rather than latched when the seam was built: the ticking starts
 		// during the launch (startStandingTicks) and a boolean captured here

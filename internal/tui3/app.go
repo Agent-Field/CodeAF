@@ -682,6 +682,17 @@ type app struct {
 	// (dragselect.go's [app.dragSpan]).
 	dragFrom, dragTo int
 
+	// ── the effort ladder's surfaces (effortscope.go) ──
+	//
+	// effortLit is the ONE rung [effortKey] most recently moved, and when — the
+	// scope name and the instant, so the clause or the chip that states that rung
+	// can step up the reading ladder while it is news and come back down on the
+	// status line's own fade. It is one and not a map because only one rung can be
+	// the newest fact on a screen, and that holds ACROSS the four surfaces: the
+	// tray's chip (effortchip.go) records itself here too, so lighting a task's
+	// card is the same act as taking the emphasis off the chip.
+	effortLit effortMoved
+
 	state runState
 	model string
 	// title is the name the session gave itself, shown left of the model. Empty
@@ -972,9 +983,6 @@ type app struct {
 	// makes, because the layout is the only thing that knows where a
 	// right-aligned cell landed.
 	effortSpan hudSpan
-	// effortLit is when the dial's change stops being emphasized. Zero is a chip
-	// that has not moved this session (effortchip.go's [app.effortFlashing]).
-	effortLit time.Time
 	// wait is the forming block a task command is standing in — its verbatim
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.

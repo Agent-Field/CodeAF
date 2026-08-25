@@ -2,7 +2,7 @@ package tui3
 
 func init() {
 	registerHomeBand(homeBand{name: "keys", order: bandOrderKeys,
-		kinds: []bandKind{bandKindSession, bandKindItem}, draw: drawKeysBand})
+		kinds: []bandKind{bandKindSession, bandKindItem, bandKindMachine}, draw: drawKeysBand})
 }
 
 // drawKeysBand is the quiet legend at the foot of every actionable card.
@@ -34,7 +34,31 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 		}
 		clauses = []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder", "ctrl+y copy path", aside, "→ more"}
 	case bandKindItem:
-		clauses = []string{"enter open where it was asked", "ctrl+e pause", "ctrl+x stop", "→ more"}
+		clauses = []string{"enter open where it was asked", "ctrl+e pause", "ctrl+x stop"}
+		// AND THE RUNG'S CHORD ONLY WHERE THERE IS A DOOR TO MOVE IT THROUGH,
+		// which is the same rule the three above are drawn under — a read-only
+		// window keeps every key that asks nothing of the disk and loses the ones
+		// that do (homestanding.go's [app.homeItemWrite] refuses in words).
+		if a.stands.SetEffort != nil {
+			clauses = append(clauses, effortKeyClause)
+		}
+		clauses = append(clauses, "→ more")
+	case bandKindMachine:
+		// THE MACHINE'S CARD HAD NO LEGEND UNTIL IT HAD A KEY. Every other card
+		// here is about a row, and at rest there is no row: enter opens nothing,
+		// ctrl+t has no folder to start in, and a legend naming them would have
+		// been five invitations the screen has already decided against. ctrl+v is
+		// the first key this card answers — it moves the install's own rung, the
+		// one the `thinking` band above states (homeband_thinking.go) — so the
+		// legend appears now, with the one key that works on it and no others.
+		//
+		// AND ONLY WHERE THERE IS A PROFILE TO WRITE IT INTO. A window with none
+		// draws no rung and names no key, which is the same absence stated twice
+		// rather than a legend advertising a keystroke that would refuse.
+		if _, ok := a.effortProfile(); !ok {
+			return nil
+		}
+		clauses = []string{effortKeyClause}
 	default:
 		return nil
 	}
