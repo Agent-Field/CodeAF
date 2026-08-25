@@ -31,33 +31,14 @@ package tui3
 const placeHeadRows = 4
 
 // standPageFrame draws the standing place: the list it always drew, in the frame
-// every place is drawn in.
+// every place is drawn in. The frame knows nothing about standing orders — it
+// asks the place for its body and the place answers rows and a hit map
+// (place_standing.go).
 func (a *app) standPageFrame(width, height int) ([]string, []int, int, int) {
-	if !a.standPage.reading.now.IsZero() {
-		return a.standingReadingFrame(width, height)
-	}
 	return placeFrame(a, width, height, -1, func(width, room int) []placeRow[int] {
-		body := a.standPage.draw(width, room, a.pal, a.standPageHover(), a.now())
-		rows := make([]placeRow[int], 0, room)
-		for i, text := range body {
-			at := -1
-			if i < len(a.standPage.owner) {
-				at = a.standPage.owner[i]
-			}
-			rows = append(rows, placeRow[int]{text: text, hit: at})
-		}
-		for len(rows) < room {
-			rows = append(rows, placeRow[int]{text: "", hit: -1})
-		}
-		return rows
+		return a.standPage.body(a, width, room)
 	})
 }
-
-// standPageHover is the row under the pointer, and it is -1 until the place
-// grows a hover map of its own. The overlay read it off the chrome's marks, and
-// the chrome does not draw this list any more; a hover resolved against a map
-// nobody writes would be a highlight on whatever row it used to be.
-func (a *app) standPageHover() int { return -1 }
 
 // memoryFrame draws the memory place.
 func (a *app) memoryFrame(width, height int) ([]string, []int, int, int) {
