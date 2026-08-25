@@ -310,6 +310,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I see the picture you made without opening the row",
 			"making-pictures-audio-and-video"},
 		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
+		// Written from a real run: twelve clips rendered in parallel with
+		// nothing shared, stitched with a video-only crossfade — the person
+		// asked all three of these, in these words, and the answers were
+		// improvised because no page held them.
+		{"can you make a 2 minute video", "making-pictures-audio-and-video"},
+		{"why is the video you made not coherent", "making-pictures-audio-and-video"},
+		{"the stitched video has no sound after the first clip", "making-pictures-audio-and-video"},
+		{"keep the same character across the clips", "making-pictures-audio-and-video"},
+		{"how long is the music you compose", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught

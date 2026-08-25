@@ -20,10 +20,14 @@ package session
 // is one line naming the file, and the file is what the person plays.
 //
 // IT HAS NO LENGTH ARGUMENT because the endpoint has none. A call composes
-// whatever the model decides to write — around a minute in practice — and costs
-// the same whether the piece is eight seconds or eighty, so there is no cheap
-// call to offer and no knob to pretend there is (design-law §EMPTINESS applied
-// to an argument: better absent than accepted and ignored).
+// whatever the model decides to write — half a minute to a minute in practice,
+// and Lyria's clips land nearer thirty seconds — and costs the same whether
+// the piece is eight seconds or eighty, so there is no cheap call to offer and
+// no knob to pretend there is (design-law §EMPTINESS applied to an argument:
+// better absent than accepted and ignored). The one consequence worth the
+// model knowing: a score for anything timed — a video, a slideshow — is cut
+// from what comes back, looped or trimmed, and the file must be measured
+// before anything is laid against it.
 
 import (
 	"context"
@@ -77,7 +81,7 @@ func musicFileExtension(format string) string {
 // that what comes back is a path rather than audio it can listen to. The pointer
 // to speak is there because a model reaching for this to make a voiceover would
 // get a music model trying to sing an announcement.
-const generateMusicDescription = "Compose music from a description and save it as an audio file. Returns the path it was written to and how big the file is — never the audio itself, which stays on disk for the user to play. The prompt describes the MUSIC: genre, instruments, tempo, mood, structure — it is not lyrics to sing and not text to read out. For a voiceover or for text spoken aloud use speak instead, which is a different model. There is no length argument: the model writes a piece of its own choosing, around a minute, and the call costs the same however long it turns out — so ask for one piece and iterate on the description rather than calling this repeatedly for a shorter one. Give a path to choose the name and the folder; leave it out and the file is saved under a timestamped name derived from the description."
+const generateMusicDescription = "Compose music from a description and save it as an audio file. Returns the path it was written to and how big the file is — never the audio itself, which stays on disk for the user to play. The prompt describes the MUSIC: genre, instruments, tempo, mood, structure — it is not lyrics to sing and not text to read out. For a voiceover or for text spoken aloud use speak instead, which is a different model. There is no length argument: the model writes a piece of its own choosing — half a minute to a minute in practice — and the call costs the same however long it turns out, so ask for one piece and iterate on the description rather than calling this repeatedly for a shorter one. To lay the piece under anything timed, measure the file first and loop or trim it: its length is the model's choice, not yours. Give a path to choose the name and the folder; leave it out and the file is saved under a timestamped name derived from the description."
 
 const generateMusicSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"The music to compose, described the way a brief would describe it: genre, instruments, tempo, key or mood, and how it should develop. The whole prompt reaches the music model, so detail is worth writing. It is a description of a piece, not lyrics and not words to be spoken."},` +
