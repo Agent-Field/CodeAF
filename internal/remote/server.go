@@ -952,6 +952,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodFetchFile:
 		return s.fetchFile(call)
 
+	// And the two read-only questions a surface may ask about that machine's
+	// disk without asking for a single byte of it: what is in this directory,
+	// and which of these words name something that is really there. They are in
+	// the same file and under the same law, because they are the same boundary.
+	case MethodListDir:
+		return s.listDir(call)
+
+	case MethodStatPaths:
+		return s.statPaths(call)
+
 	case MethodInterrupt:
 		agent.Interrupt()
 		return nil, nil
