@@ -116,7 +116,7 @@ Two things tell you a window is waiting while you are elsewhere:
 
 - **A desktop notification**, sent the instant the question goes up. The banner
   is headed `aforge` and reads `<conversation> · waiting on you`.
-- **Home**, and every other aforge window, where the session's row wears `▲`,
+- **Home**, and every other aforge window, where the session's row wears `?`,
   reads `waiting on you`, and sorts to the top of its project. The status line
   says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 

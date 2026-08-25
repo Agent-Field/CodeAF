@@ -120,3 +120,30 @@ A credential changed in the settings row reaches the running conversation at onc
 exactly as the setup's does. The crew and the budget are read live too: the next call
 aforge makes on its own behalf uses the new crew, and the rail is checked against the
 new ceiling.
+
+## Set your terminal up for aforge — the font, and Option on macOS
+
+Two settings live in your terminal rather than in aforge, and both are worth the minute.
+Neither is required: aforge draws a correct screen without them, and everything they buy
+has a drawn way to it as well.
+
+**The font.** aforge is drawn for **JetBrains Mono, regular and bold** — 14px at 21px line
+height is the size the design was cut at. Any monospace font with the block and
+box-drawing ranges works, and no patched nerd-font is needed anywhere: every mark on home
+and the places is a standard Unicode character. Set it in iTerm2 under Profiles → Text →
+Font, in Terminal.app under Profiles → Text → Font → Change…, and in kitty, alacritty and
+ghostty with `font_family`, `[font.normal] family` and `font-family` in their config
+files.
+
+**Option as meta, on macOS.** Every chord aforge binds is `alt` — `alt+enter` to send what
+you typed off as a task, `alt+1`…`alt+7` to jump to a place, `alt+.` for the map. Most Mac
+terminals send Option as an accent-composing key until you tell them otherwise, so those
+chords insert `≠` and `…` instead of doing anything. Turn on **iTerm2** → Profiles → Keys →
+*Left Option key: Esc+*, or **Terminal.app** → Profiles → Keyboard → *Use Option as Meta
+key*, or set `macos_option_as_alt yes` (kitty), `option_as_alt = "Both"` (alacritty),
+`macos-option-as-alt = true` (ghostty). With it on, `alt+1` arrives as escape-then-`1`,
+which is how meta has been sent for forty years. With it off, `tab` still walks the places
+in order and the foot line under the composer still names what `enter` does.
+
+On Linux and on Windows terminals, Alt is already meta and there is nothing to set. The
+whole of this is also in *Screen* — see *The font aforge is drawn for* and *alt on macOS*.

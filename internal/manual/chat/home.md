@@ -5,8 +5,8 @@
 Type `/home`. It takes the whole screen and shows **every conversation on this machine,
 from every project**, not just the folder this window was started in.
 
-The top line reads `aforge` on the left, with the machine's own vital signs dim on the
-right — `on watch · 4 orders · 3 working · $1.10 today · fri 9:41am` (its own section below).
+The top line reads `aforge` on the left, with the machine's own vital signs on the
+right — `2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm` (its own section below).
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot does not spend a cell naming it:
 it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
@@ -79,7 +79,7 @@ stands beside it only on a frame **160 columns or wider** (see *Why is there no 
 the right*). Top to bottom:
 
 ```
- aforge                        on watch · 4 orders · 3 working · $1.10 today · fri 9:41am
+ aforge                            2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
   home   tasks 1   standing   memory 2   spend   search   settings
  ─────────────────────────────────────────────────────────────────────────────────────────
  since you left · 3h
@@ -314,7 +314,7 @@ a tie, and the note says what is actually happening: `2 tasks running · reading
 
 Two other places say the same thing more briefly:
 
-- **the pulse line** at the top — `3 working` — which is the same count over the whole
+- **the pulse line** at the top — `4 moving` — which is the same count over the whole
   machine, a conversation with three tasks out counting as three;
 - **the tasks place**, which is the full record rather than a count.
 
@@ -325,7 +325,7 @@ wears it, and the page stays a still page redrawn every three seconds.
 
 The cell that can turn is an **`ask here` errand's own row** while its answer is coming,
 and — **while you are typing** — the most recently started conversation among the matches,
-which wears the spinner instead of its `●`. However much is happening, **exactly one cell
+which wears the spinner instead of its `◐`. However much is happening, **exactly one cell
 on the frame ever turns.**
 
 Two reasons, and they are the same reason:
@@ -553,37 +553,43 @@ it in one press:
 The folds you open by hand stay open for as long as home is up, including across a
 refresh — folding is something you did, not something the data said.
 
-## The line at the top of home — the pulse, on watch, orders, spend today, the clock
+## The line at the top of home — the pulse, want you, moving, spend and allowance, the clock
 
-The top line of home is the program's name and, right-aligned and dim, what is true of the
+The top line of home is the program's name and, right-aligned, what is true of the
 **whole machine** right now:
 
 ```
- aforge              on watch · 4 orders · 3 working · $1.10 today · fri 9:41am
+ aforge              2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
 ```
 
-- `on watch · 4 orders` — the **standing orders** active across every project:
-  reminders, routines, watches, the things keeping an eye on something for you. The words
-  brighten slightly while a check or a firing is actually in flight, the way the status
-  line's own `keeping an eye on 2` does.
-- `3 working` — how many things this machine has **in flight right now**, everywhere at
+- `2 want you` — how many things have **stopped on you**: a conversation waiting for an
+  answer, a standing order that will not fire until you say so, an errand holding a
+  question. It is drawn in **amber**, which on home and the places means one thing and only
+  that thing — someone is waiting for a person. One row is one question here however many
+  tasks are parked behind it, because what you do about it is answer it once.
+- `4 moving` — how many things this machine has **in flight right now**, everywhere at
   once: task nodes out, conversations mid-turn in another window, an `ask here` errand
   answering, a standing order firing. It counts the same things the `◐` rows on the list
-  are, and a conversation with three tasks out counts as three. It shows
-  from **one** — one hand working is worth knowing — and disappears entirely at nothing,
-  never `0 working`.
-- `$1.10 today` — what the machine has spent **since midnight**: the tasks that ran and the
-  standing things that fired. It turns amber once you are four fifths of the way through
-  your daily allowance, and it never prints a fraction — what the day is allowed is on the
-  machine's card, and nowhere else.
-- `fri 9:41am` — the day and the time.
+  are, and a conversation with three tasks out counts as three. It is drawn in **cyan**,
+  the in-flight colour. It shows from **one** — one hand working is worth knowing — and
+  disappears entirely at nothing, never `0 moving`.
+- `$0.55 / $20.00` — what the machine has spent **since midnight** against what it is
+  allowed to spend today: the tasks that ran and the standing things that fired, then your
+  daily allowance. It is drawn in **green**, which is the money colour and is never spent
+  on anything else. A machine with no allowance set draws the figure alone.
+- `tue 1:11pm` — the day and the time.
 
-**Every segment but the clock disappears unless it is true.** Nothing standing means no
-`on watch` at all — never `0 orders` — and a day that has cost nothing says nothing about
-money. The clock always draws.
+**Every segment but the clock disappears unless it is true.** Nothing stopped on you means
+no `want you` at all — never `0 want you` — and a day that has cost nothing says nothing
+about money. The clock always draws. A quiet morning on an idle machine really is just
+`aforge` and the time.
 
-The count on this line and the rows on the machine's card are **one reading**, taken once
-every three seconds: the top line cannot say `4 orders` over a card that lists three.
+The counts on this line and the rows on the machine's card are **one reading**, taken once
+every three seconds: the top line cannot say `4 moving` over a list showing three.
+
+The allowance used to live only on the machine's card, and this line used to say `$1.10
+today` and change colour as the bound came close. It says the fraction now, which is what
+the colour change was standing in for.
 
 ## Where the cursor starts — your own conversation, with rest one ↑ away
 
@@ -649,7 +655,7 @@ ctrl+v think harder
   had running over the last few minutes, oldest on the left and **newest on the right**.
   The heading says what it is — `agents · in flight, the last few minutes` — and the chart
   itself prints no number: the figure is on the pulse line at the top of the screen
-  (`3 working`) and this is the shape it came from. See below for the whole of how it
+  (`4 moving`) and this is the shape it came from. See below for the whole of how it
   behaves.
 - **`since you left`** — everything that happened across all your projects while you were
   not looking: news a standing thing left in a conversation or a project, and work that
@@ -700,7 +706,7 @@ agents · in flight, the last few minutes
 - **The tallest bar is the busiest moment in that window** and the shortest is nothing at
   all. There is no fixed ceiling on how many things a machine may run, so it scales to its
   own peak: the chart is about **change**, not about size. The size is the pulse line's
-  `3 working`, said once, at the top of the screen.
+  `4 moving`, said once, at the top of the screen.
 - **It moves because the work moves.** There is no animation in it. While something runs
   the readings differ and the line slides one bar every three seconds; while the machine is
   quiet the readings are all the same and the line lies **flat and still** along the floor.
@@ -850,9 +856,9 @@ Fix the nil-map                          3h
 a mark means something is *happening*, and done is the absence of one. Every other state
 leads the second line instead, with the glyph it wears everywhere else here:
 
-- `● running · <what it is doing>`
+- `◐ running · <what it is doing>`
 - `◌ incomplete` — work that was under way when the window went
-- `▲ needs your look · <what it came to>` — brought up out of the dim, because it is asking
+- `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
 - `✗ failed · <what stopped it>`
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
@@ -1849,7 +1855,7 @@ page has the whole order):
 ```
 ◦ every Monday at 9 · set up
 ◦ every Monday at 9 · said: the standup note is in notes/standup.md
-▲ keep main green · needs your look: the fix touches migrations
+? keep main green · needs your look: the fix touches migrations
 ∙ remind me at 6 to leave · stopped
 ```
 
@@ -1877,7 +1883,7 @@ above everything the machine has to say for itself, because it is the thing you 
 minute ago — with what it is doing in the tail:
 
 ```
- ? remind me at 6 to leave                          ▲ waiting on you
+ ? remind me at 6 to leave                          ? waiting on you
  ? what did we decide about pricing                 ⠹ working · 4s
  ? tell me when CI goes red                         ∙ stood
 ```
