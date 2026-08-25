@@ -212,6 +212,116 @@ Refusals to try:
 Ceilings: **16MB per file, 32MB per message**. They apply only over a connection — a local
 `/attach` names a path the engine can already see and copies nothing.
 
+### 3f. Files, links, and the browse page
+
+The other direction: files on the far machine, opened from here. All of this was driven by
+hand over `--host localhost` on this tree, and every command below is one an agent can run
+without a keyboard.
+
+**Set up a session and make it write a file.**
+
+```sh
+tmux new-session -d -s fx -x 200 -y 50 \
+  "bin/aforge chat --host localhost:code/app --session new --model deepseek/deepseek-v4-flash"
+tmux send-keys -t fx "write a file notes/hello.txt containing hello, then say where you put it" Enter
+sleep 30
+tmux capture-pane -p -t fx | tail -6
+```
+
+**1. The path in the reply is an OSC 8 link, and it points at the door.** `capture-pane -pe`
+keeps the escape sequences, which is the only way to see a hyperlink from outside a
+terminal:
+
+```sh
+tmux capture-pane -pe -t fx | grep -o ']8;;http://127.0.0.1:[0-9]*/f/[a-f0-9]*' | sort -u
+```
+
+Expect `]8;;http://127.0.0.1:<port>/f/<32 hex>`. **The link appears only after the ENGINE
+confirmed the file** — a path the model merely names, or one that does not exist over
+there, has no anchor at all. A path inside a code span that was never confirmed stays
+ordinary inline code.
+
+**2. The door serves the bytes, and refuses everything else identically.**
+
+```sh
+URL=$(tmux capture-pane -pe -t fx | grep -o 'http://127.0.0.1:[0-9]*/f/[a-f0-9]*' | head -1)
+curl -s "$URL"; echo                                   # the file's contents
+curl -s -o /dev/null -w '%{http_code}\n' "${URL%/*}/0000000000000000000000000000dead"   # 404
+```
+
+A wrong token and an unknown id answer the **same** 404 with the same body: a distinct
+status for "real id, wrong token" would confirm existence to somebody guessing.
+
+**3. `/files` opens the browse page.** It is written into the transcript as well as opened,
+which is what makes it testable:
+
+```sh
+tmux send-keys -t fx "/files" Enter; sleep 2
+BROWSE=$(tmux capture-pane -p -t fx | grep -o 'http://127.0.0.1:[0-9]*/browse/[a-f0-9]*' | tail -1)
+PORT=$(printf '%s' "$BROWSE" | sed 's|.*127.0.0.1:\([0-9]*\)/.*|\1|')
+TOKEN=${BROWSE##*/}
+curl -s "http://127.0.0.1:$PORT/api/$TOKEN/ls?path=." | head -c 400; echo
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$PORT/api/deadbeefdeadbeefdeadbeefdeadbeef/ls?path=."   # 404
+```
+
+The listing is JSON: `path` as the engine resolved it, `entries` with `dir`, `size`,
+`mtime`, `mime`, and `truncated` past 2000 rows. In the page itself the rows are
+directories first then files, sizes and times in one column each, a click walks into a
+folder or opens a file in a new tab, and a row over 16MB is drawn **plain** with `too big
+to cross` beside it rather than as a link that would fail.
+
+**4. An upload lands in `attachments/` and opens no turn.**
+
+```sh
+printf 'up\n' > /tmp/up2.txt
+curl -s -F file=@/tmp/up2.txt "http://127.0.0.1:$PORT/api/$TOKEN/put"; echo
+tmux capture-pane -p -t fx | tail -3      # UNCHANGED: no message, no turn, no event
+```
+
+The answer is `{"landed":"…/attachments/20260824-215842-d9e4ec72-up2.txt"}` — the engine's
+own path, with the arrival stamp and a digest in front of the name, in the session's own
+folder. Confirm with `ls` on that directory. This is the whole of the deposit lane: bytes
+kept, nothing said. `/attach` is the same landing place *with* a person's sentence on it.
+
+**5. The copies on this machine: a CAS blob and a hardlinked mirror.**
+
+```sh
+ls ~/.aforge/v3/remote/cas/*/ | head               # content-addressed: <first two hex>/<sha256>
+find ~/.aforge/v3/remote/mirror -type f | head     # mirror/<host>/<the engine's own path>
+stat -c '%h %n' $(find ~/.aforge/v3/remote/mirror -type f | head -1)   # 2 links = same inode as the blob
+```
+
+A file the model **wrote** during a turn is fetched speculatively at 2MB or under, before
+anybody clicks — so `ls` the CAS immediately after a `write` and the blob is already there.
+Over that size nothing is prefetched and the click pays for the fetch.
+
+**6. The ceilings and the refusals, in the engine's own words.**
+
+```
+/files a-20mb-file.bin   → engine: a-20mb-file.bin is 20MB and the most one file may cross this connection is 16MB
+/files /etc/passwd       → engine: /etc/passwd is outside this conversation's workspace and its own folder, and nothing outside those two crosses this connection
+/files ../../secrets     → that is not a path inside the workspace on that machine
+```
+
+On a **local** session `/files <path>` refuses with
+`that form of /files is for a session on another machine — this one is local, so the paths
+in it are already yours to open`.
+
+**7. Everything dies with the window.** Quit the session and both addresses stop
+resolving:
+
+```sh
+tmux send-keys -t fx "/quit" Enter; sleep 2
+curl -s -o /dev/null -w '%{http_code}\n' "$URL"      # connection refused: the listener is gone
+```
+
+**Verified this way, on this tree:** the link appears only after StatPaths confirms;
+`/f/<id>` serves the bytes and any other id 404s; `/files` opens the browse page and lists
+dirs-first with sizes and times; a `curl -F file=@…` deposit lands in `attachments/` and
+adds nothing to the transcript; a written file is in the CAS before the click; the mirror
+is a hardlink to the blob; the two-roots and 16MB refusals are the engine's sentences,
+unchanged.
+
 ---
 
 ## 4. By hand, without ssh (`--at`) — expect it to refuse
@@ -341,7 +451,9 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 | `internal/remote/wire.go` | the protocol — frames, methods, version 2 |
 | `internal/remote/server.go`, `held.go` | the engine half; `Session` is the conversation, `server` is one connection |
 | `internal/remote/client.go`, `redial.go` | the surface half and the roaming loop |
-| `internal/remote/file.go`, `image.go` | attachments, both directions |
+| `internal/remote/file.go`, `image.go` | attachments, both directions, plus ListDir, StatPaths and Deposit.File |
+| `internal/filedoor/` | the loopback door: `/f/<id>`, the browse page, `/api/<token>/ls`, `/put` |
+| `internal/tui3/remotefiles.go`, `remoteopen.go` | the surface half: confirmed links, prefetch, the CAS and the mirror |
 | `internal/remote/loopback.go` | a real client against a real server, in memory — start here when testing |
 | `internal/enginehost/` | the session host: one per workspace, on a unix socket |
 | `internal/pair/`, `internal/relay/`, `cmd/relay/` | pairing, the blind relay, the deployable |
@@ -352,5 +464,5 @@ Ranked. Nothing here is hidden in a comment; it is all real.
 
 The manual pages the chat itself reads: `staying-on-that-machine.md`,
 `when-the-connection-drops.md`, `attaching-files.md`,
-`reaching-this-machine-without-ssh.md`, `forking-and-syncing-a-workspace.md`, and the
-rewritten `running-on-another-machine.md`.
+`reaching-this-machine-without-ssh.md`, `forking-and-syncing-a-workspace.md`,
+`opening-files-from-that-machine.md`, and the rewritten `running-on-another-machine.md`.

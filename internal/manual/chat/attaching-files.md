@@ -111,6 +111,13 @@ keep your tray:
 this connection cannot carry a file · the words were not sent
 ```
 
+**The browse page drops into the same folder.** `/files` over `--host` opens that
+machine's workspace as a page in your browser, and a file dragged onto it lands in the
+very same `attachments/` folder, under the same time-stamped name. The difference is that
+a drop **says nothing** — no message, no turn, nothing in the conversation — where
+`/attach` is the same landing place with your own sentence on it. See *Opening files from
+that machine*.
+
 ## The file is too big
 
 Over a connection, two ceilings apply. Locally there are none — the file is not going
@@ -229,23 +236,27 @@ that also lost your attachments would make you go and find the files again.
 
 ## Get a file back — downloading from the far machine
 
-There is no command that brings a file down from the far machine yet.
+**Files come back now, and there are two ways.**
 
-`/export` writes the conversation **on the machine you are sitting at**, and over `--host`
-its success note says so with the suffix ` · on this machine`:
+`/files <path>` brings **one file** off the far machine and opens it the way your desktop
+would — the path is a path on that machine, relative to the workspace the conversation is
+working in. And `/files` with nothing after it opens that machine's folder as a page in
+your browser, where clicking a file opens it in a tab and your browser's own save is the
+download. A path in a reply is a link over a connection as well: cmd+click opens the file
+itself. The whole of it is on *Opening files from that machine* — where the copies land,
+the 16MB ceiling, and why editing your copy changes nothing over there.
+
+What is still true is that **`/export` writes here**. The transcript is assembled from
+what the surface in front of you is holding, so over `--host` its success note says so
+with the suffix ` · on this machine`:
 
 ```
 exported · ~/chat.md · on this machine
 ```
 
-A file the session **made** over there — a picture it drew, a document it wrote — stays
-over there, and `/files` will not find it: that list is read from **this** machine's own
-record, and over a connection it says so as it opens:
+The `/files` **list** — the index of things conversations have made — is this machine's
+own record, so on a connection that has no file door it still says as it opens:
 
 ```
 these are the files made on this machine — what that session made is written down on the other one
 ```
-
-So the path to a file made on the far machine is whatever aforge told you when it wrote
-it, or what `/status` names. The way to bring one here today is your own `scp` from that
-path, in another terminal.

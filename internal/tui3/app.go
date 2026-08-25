@@ -1412,6 +1412,17 @@ type app struct {
 	pathLinks bool
 	pathSeen  map[string]string
 
+	// rfiles is everything this surface knows about the OTHER machine's disk —
+	// which words are real files there, the door that turns them into things
+	// this machine can open, and the content cache under it (remotefiles.go).
+	//
+	// NIL IS THE COMMON CASE AND IT IS THE ABSENCE LAW, not a gap: a local
+	// session has no far disk, and a hosted session whose agent hands over no
+	// client is a build that cannot do this at all — so it gets no remote links,
+	// no browse door and no prefetch, rather than three seams that fail one at a
+	// time in front of somebody.
+	rfiles *remoteFiles
+
 	// host is the machine the AGENT is on when it is not this one, and it is the
 	// other direction entirely from [app.remote] one line above: that one is
 	// about the terminal reading the frame, this one is about the session
@@ -1580,12 +1591,22 @@ func newApp(ctx context.Context, opts Options) *app {
 	if home, err := os.UserHomeDir(); err == nil {
 		a.tilde = home
 	}
-	// AND THE PATHS ARE ONLY CLICKABLE WHEN THEY ARE THIS MACHINE'S. It is the
-	// branch probe's judgement one more time (pathlink.go): a hosted session's
-	// files are on the other end of the connection, and `file:///app/main.go`
-	// handed to the terminal in front of you names this machine's /app/main.go —
-	// which is either nothing at all or somebody else's file.
-	a.pathLinks = terminalTakesLinks(os.Getenv) && !a.hosted()
+	// AND THE FAR MACHINE'S DISK, WHICH IS WHAT DECIDES THE LINE UNDER IT. It is
+	// built before the gate is read because the gate now asks it a question, and
+	// it is nothing at all on a local session (remotefiles.go).
+	a.rfiles = newRemoteFiles(a.host, a.agent)
+	// AND THE PATHS ARE CLICKABLE WHEN SOMETHING CAN CONFIRM THEM.
+	//
+	// This line used to end `&& !a.hosted()`, and the reason it did is still true
+	// as far as it goes: a hosted session's files are on the other end of the
+	// connection, and `file:///app/main.go` handed to the terminal in front of
+	// you names THIS machine's /app/main.go — either nothing at all or somebody
+	// else's file. What changed is not the law but who can answer it. At home the
+	// confirmation is a syscall; over a connection it is the engine, asked in
+	// batches off the render path, and the anchor points at a loopback file door
+	// rather than at `file://` (pathlink.go's far-side section). A hosted session
+	// with no way to ask is still off, which is where this line started.
+	a.pathLinks = terminalTakesLinks(os.Getenv) && (!a.hosted() || a.rfiles != nil)
 	a.pathSeen = make(map[string]string, 256)
 	// The gate's posture is read at boot and re-read at every turn end
 	// ([app.settle]): a person who opens the settings panel and turns the asking
@@ -2630,6 +2651,28 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// does not know is left waiting (hostlink.go).
 		return a, a.replayHeld(msg)
 
+	case remoteFactsMsg:
+		// The other machine's word on a batch of candidate paths. Confirmed
+		// files become doors on the next frame; everything else stays the plain
+		// text it already was (remotefiles.go).
+		return a, a.remoteFactsBack(msg)
+
+	case remotePrefetchedMsg:
+		// A file the model wrote, already in this machine's cache before anybody
+		// clicked it. It is silent by construction — the only thing it changes on
+		// screen is that a row is a link a moment earlier (remotefiles.go).
+		return a, a.remotePrefetched(msg)
+
+	case remoteOpenedMsg:
+		// One open flow finishing. A success says nothing at all; a failure says
+		// the engine's own sentence, once (remoteopen.go).
+		return a, a.remoteOpened(msg)
+
+	case remoteOpenSlowMsg:
+		// The quiet window closing on a fetch that is still out — the emptiness
+		// law's own clock, and the only line this surface draws about a wait.
+		return a, a.remoteOpenSlow(msg)
+
 	case frameMsg:
 		return a, a.paint()
 	}
@@ -2647,6 +2690,12 @@ func (a *app) paint() tea.Cmd {
 	// got there in one step instead of three (link.go).
 	a.paints += a.frameStride()
 	a.dirty = true
+	// AND THE FAR DISK IS ASKED ABOUT ON THIS CLOCK AND NO OTHER. The render pass
+	// collects candidate paths and this is the only place they are sent, which is
+	// what makes the batch a batch: a burst of new rows costs ONE round trip, not
+	// one per word and not one per row (remotefiles.go). It is nil on every local
+	// session and on every hosted one with nothing to ask.
+	kick := a.remoteStatKick()
 	// A ROOM'S ROWS ARE DROPPED ON THE SAME CLOCK, for the same reason: the page
 	// carries the same spinners, count-ups and streaming blocks the conversation
 	// does, and a cached row is a still photograph of an animation (room.go).
@@ -2754,11 +2803,18 @@ func (a *app) paint() tea.Cmd {
 		// the `reconnecting to devbox` segment would arrive on one frame and
 		// then sit there after the link came back, until something unrelated
 		// repainted the row (hostlink.go).
-		a.linkNoting() {
-		return a.frameTick()
+		a.linkNoting() ||
+		// AND A QUESTION ABOUT THE FAR MACHINE'S DISK IS THE THIRTEENTH, and the
+		// sixth that can be the whole of what is happening. The batch above is
+		// sent on this clock, so a clock that stopped the moment the last row
+		// landed would leave the words of a turn's final sentence plain text
+		// until something unrelated repainted them — and the answer, when it
+		// comes, has rows to turn into doors (remotefiles.go).
+		a.rfiles.waiting() {
+		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
-	return nil
+	return kick
 }
 
 // promoteMarkdown is the 1.5s throttle: the settled prefix of a streaming reply
@@ -3055,6 +3111,13 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.finishTool(ev)
 	case session.EventToolEnd:
 		a.closeTool(ev, toolOK, "")
+		// AND A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
+		// speculatively, silently, before anybody has clicked anything. It is the
+		// wave's whole answer to movement: no push was added to the wire, the
+		// engine does not know this is happening, and the only difference is that
+		// the click which used to be a round trip usually is not (remotefiles.go).
+		// Nil on every local session.
+		after = tea.Batch(after, a.prefetchWritten(ev))
 
 	case session.EventToolFailed:
 		a.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
@@ -4639,11 +4702,32 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.exportTranscript(rest)
 
 	case "files":
+		// WHAT HAS BEEN MADE FOR YOU, AND WHERE IT IS — and over a connection
+		// those are two different machines, which is what this command grew a
+		// second shape for.
+		//
+		// A PATH IS THE REMOTE FORM. It fetches that file off the engine's disk,
+		// keeps it by content, and hands a copy under its own name to this
+		// machine's viewer (remoteopen.go). On a local session there is nothing
+		// to fetch — the paths in this conversation are already yours — and it
+		// says so.
+		if rest != "" {
+			return a.openRemotePath(rest)
+		}
+		// AND BARE, ON A CONNECTION, IT IS THE FAR WORKSPACE AS A PAGE. The list
+		// below reads THIS machine's index, and what the session over there has
+		// made is written down over there — which used to be an apology printed
+		// under the list ([filesRemoteWord]) and is now the browse door
+		// (remotefiles.go). A hosted session with no way to ask keeps the list
+		// and the apology, which is still the truth for it.
+		if a.rfiles != nil {
+			a.openBrowse()
+			return nil
+		}
 		// What this conversation and every other one have MADE, as a list, read
-		// off the global index (deliverables.go). No argument form, for
-		// /resume's reason: a deliverable is named by a title a model wrote and
-		// lives at a path nobody types, so the only honest way to ask for one is
-		// to be shown them.
+		// off the global index (deliverables.go). A deliverable is named by a
+		// title a model wrote and lives at a path nobody types, so the only
+		// honest way to ask for one is to be shown them.
 		a.openFiles()
 		return nil
 
@@ -5208,6 +5292,11 @@ func (a *app) quit() tea.Cmd {
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
 	a.closeEverything()
+	// AND THE FILE DOOR GOES WITH THE SURFACE THAT OPENED IT. Every minted id and
+	// the browse token die here, which is the whole of the capability bargain: a
+	// URL that outlived the conversation would be a door onto somebody else's
+	// disk with nobody left holding it (remotefiles.go).
+	a.closeFileDoor()
 	// AND EVERY ERRAND WITH IT. An exchange is a session with a lock on a
 	// transcript; one left open by a process that has gone is a conversation
 	// nobody can reopen, and a stood one's folder would never reach the item it
