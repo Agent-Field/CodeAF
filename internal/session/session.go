@@ -1780,12 +1780,18 @@ type Agent struct {
 	// one call and never state: the turn takes it, clears it, and runs it.
 	harnessPick *harnessRoute
 
-	// routeTurns counts the turns this session has finished and routeOffered is
-	// the one the route judge last started work on (route_judge.go). They are the
+	// routeTurns counts the turns this session has begun and routeOffered is the
+	// one the route judge last started work on (route_judge.go). They are the
 	// whole of that feature's memory: the judge starts at most one task every
 	// few turns, and "a few turns ago" is a number that only means anything if
 	// something is counting. Both are zero for the life of a session nothing is
 	// ever started in, which is most of them.
+	//
+	// ONE PAIR SERVES BOTH MOMENTS THE JUDGE LOOKS AT — before a message is
+	// answered and after a words-only answer — because the limit is about how
+	// often WORK may begin over the top of a conversation, which is one question
+	// however it was noticed. The count is stepped at the front of a turn, where
+	// every turn passes.
 	routeTurns   uint64
 	routeOffered uint64
 

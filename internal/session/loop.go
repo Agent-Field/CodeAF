@@ -206,10 +206,33 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
-	// AND THERE IS NO THIRD THING. A turn used to be able to be a request for an
-	// ADAPTIVE RUN — the planned graph of nodes in orchestrate.go — read off an
-	// anchored cue at the head of what somebody typed, and that cue was routed
-	// from exactly here. IT IS GONE, AND NO CHAT DOOR REACHES THE PLANNED DAG
+	// AND ONE MORE QUESTION ABOUT THE SAME SENTENCE, ASKED BEFORE THE MODEL IS
+	// SENT ANYTHING: is what they just typed WORK? A cheap judge reads the
+	// REQUEST — not an answer, because there isn't one yet — and a yes hands the
+	// message to a task and ends the turn here, with the line that says so as its
+	// answer (route_judge.go).
+	//
+	// IT IS ASKED HERE BECAUSE THE MODEL WILL NOT ASK IT LATER. The prompt teaches
+	// mid-turn escalation and the belt carries propose_task, and a measured chat
+	// message with four independent pieces of work in it was still ground out
+	// inline over ninety tool rounds, twice: a model deep in tool momentum does
+	// not stop to reach for a verb it rarely uses. So the decision is made at this
+	// seam, before the first request, where it is the harness's to make.
+	//
+	// A NO IS FREE AND LEAVES THE TURN BELOW UNTOUCHED, exactly as the harness
+	// question above does — and it is bounded in time, so an ordinary turn cannot
+	// be made to wait on it (routeAheadWindow). It sits ABOVE the two refreshes
+	// below rather than beneath them because a turn that is about to be handed
+	// over should not first pay for the memories and the neighbours' news that
+	// only the model was going to read.
+	if answered, completed := a.routeAhead(ctx, hub, user, started); answered {
+		return completed
+	}
+
+	// AND THOSE TWO ARE THE ONLY QUESTIONS ASKED HERE. A turn used to be able to
+	// be a request for an ADAPTIVE RUN — the planned graph of nodes in
+	// orchestrate.go — read off an anchored cue at the head of what somebody
+	// typed, and that cue was routed from exactly here. IT IS GONE, AND NO CHAT DOOR REACHES THE PLANNED DAG
 	// ANY MORE. Somebody who types `orchestrate the migration` gets an ordinary
 	// turn: the model answers it, and if it reads as work the route judge starts
 	// a task on the one road every other piece of work takes (route_judge.go).
@@ -451,7 +474,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
 			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
-			// in words alone: should that have been WORK? A second small model reads
+			// in words alone: should that have been WORK? It is the same judge the
+			// front of this function asked about the request, reading what the
+			// request alone could not have told it. A second small model reads
 			// what was asked and the shape of what came back, and a yes STARTS it as
 			// a task and says so on the transcript (route_judge.go). It is silent
 			// when it cannot work, it is rate-limited to one start every few turns,

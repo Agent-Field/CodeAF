@@ -220,10 +220,11 @@ can no longer be answered must stop looking like one.
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
 that answered a substantial message in **words alone** — no tool call — a cheap model reads
 what you asked and the first two lines of the reply, and decides one thing: should that have
-been work?
+been work? The same judge also reads your message **before** it is answered, which is its
+own section below.
 
-**A yes is asked twice.** The cheap model only screens — it reads every wordy turn, which is
-why it is cheap — and it cannot start anything on its own. Before a task exists, the same
+**A yes is asked twice.** The cheap model only screens — it reads every substantial message
+and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
 question is put once more to your **mastermind** model, in the same words, with none of the
 first answer in front of it. Only if both say yes does the work start, and then one dim line
 goes into the transcript:
@@ -254,7 +255,8 @@ different about it: a row, a room, a report, and everything else on this page.
 **What keeps it from becoming a nuisance:**
 
 - **At most one start every three turns.** Two can never arrive back to back, so a
-  conversation you have just taken back is not interrupted again on the next line.
+  conversation you have just taken back is not interrupted again on the next line. It is
+  one allowance for both moments the judge looks, not one each.
 - **Nothing after a turn that used tools.** A turn that called tools was already work, and
   asking whether work should have been work has no useful answer.
 - **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
@@ -277,6 +279,41 @@ type disarms it for the session. What bounds it is the list above, and the stop.
 
 Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
 runs*, which explains what those rows can and cannot do.
+
+## Work handed over before your message is answered — the reply is the line that says so
+
+**The judge that starts work on its own looks at two moments.** One is after a turn that
+answered in words alone, above. The other is **before your message is answered at all**:
+the moment you send something substantial, the request itself is read — there is no reply
+yet to read instead.
+
+**If it is work, the task starts and the chat does not answer the message as well.** Your
+message has been handed to the task, whole and in your own words, so answering it here too
+would be the same job done twice. What you get back is the one line that always goes with
+an auto-start:
+
+```
+this looked like work, so task 4 started: fix the flaky auth test, upgrade the http client
+```
+
+That line is the turn's reply, and it is in the transcript as one — so the next thing you
+say is not answered on top of a question nobody replied to.
+
+**What the judge is looking for is a request whose fastest correct answer is not a
+conversation:** several independent deliverables in one message, a sweep over many files or
+many sources, or an answer you would otherwise sit and watch a spinner for. A question, a
+discussion, one obvious edit and a few tool calls are all answered here, however large the
+subject sounds.
+
+**Everything that bounds the auto-start above bounds this too** — one start every three
+turns across both moments, six words, two models agreeing, silence when either cannot
+answer — with two more that belong to this moment alone:
+
+- **Nothing you can feel.** The read in front of your message gets about three seconds and
+  no second try. A model that has not answered by then is a no: your turn goes ahead
+  exactly as it would have, and nothing is said about it.
+- **Nothing on a message with pictures in it.** A task is given words, so a message
+  carrying images is always answered here, where they can be looked at.
 
 ## Handing work over in the middle of an answer — this one wants more hands
 
