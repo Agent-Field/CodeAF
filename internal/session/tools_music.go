@@ -223,14 +223,21 @@ func (a *Agent) failMusic(composing *job, reason string) {
 }
 
 // musicFailure is the one sentence a failed compose says, with the provider's
-// own cause in it. A cancellation is named plainly rather than as a Go error
-// string, because "context canceled" is a sentence about plumbing and "was
-// stopped" is a sentence about what happened.
+// own cause in it. A cancellation and a timeout are named plainly rather than
+// as Go error strings, because "context canceled" and "Client.Timeout exceeded
+// while awaiting headers" are sentences about plumbing, and "was stopped" and
+// "timed out" are sentences about what happened. The timeout is the media
+// client's own request bound (provider.Config.Timeout) — there is no music
+// poll and so no separate deadline of the video kind.
 func musicFailure(model string, err error) string {
-	if errors.Is(err, context.Canceled) {
+	switch {
+	case errors.Is(err, context.Canceled):
 		return "music generation was stopped (" + model + "); no music was saved"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "music generation timed out (" + model + "); no music was saved"
+	default:
+		return "music generation failed (" + model + "): " + clip(firstLine(err.Error()), jobExitNoteLimit)
 	}
-	return "music generation failed (" + model + "): " + clip(firstLine(err.Error()), jobExitNoteLimit)
 }
 
 // describeGeneratedMusic is what the note and the log both say: where it is,

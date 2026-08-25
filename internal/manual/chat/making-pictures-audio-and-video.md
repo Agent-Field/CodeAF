@@ -266,7 +266,8 @@ the result hangs together is decided by three facts about the tool:
   sequence: they cannot all render in parallel.
 - **Each clip lands with its own sound**, and its note says so. A stitch keeps
   that sound only if the join carries the audio streams as well as the video,
-  and a continuous score is `generate_music`, looped under the whole cut.
+  and a continuous score is `generate_music` — a background job of its own,
+  whose file exists only once its note has landed — looped under the whole cut.
 
 Even chained, clips are distinct shots with some drift between them — a
 stitched video is a cut, not one continuous take. Fewer scenes in one setting
@@ -291,7 +292,8 @@ sound`, measured from the file — and the join dropped it. An ffmpeg filter
 that only crossfades the video streams carries just the first input's audio;
 the stitch has to map or crossfade the audio streams too, or concatenate both
 streams together. Music is separate either way: a score under the whole cut is
-`generate_music`, measured and looped to fit, mixed in at the join.
+`generate_music` — started early, because it is a background job whose file
+arrives as a note — then measured and looped to fit, mixed in at the join.
 
 ## Where do the pictures, audio, music and video you make end up?
 

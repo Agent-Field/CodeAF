@@ -3230,13 +3230,28 @@ var savingTools = map[string]bool{
 	"speak":          true,
 }
 
-// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools] and
-// nothing else, in the order the node already had them so the model sees the
-// same list minus the hands it is being told not to reach for.
+// landsLater are the saving hands whose file arrives AFTER the call returns —
+// the verbs that answer with a job id and land as a note minutes on
+// (tools_video.go, tools_music.go). Every name here is in [savingTools] too:
+// a finished render did save something, and it counts as progress the moment
+// its note says so. What they cannot do is land on a LANDING TURN. The node is
+// closed the instant that turn ends, Close kills every job it still owns
+// after a two-second grace ([jobShutdownGrace]), and a render is minutes — so
+// a landing turn handed these verbs would submit, hear "job 1 started", and
+// have its work cancelled before the bytes existed, while the person was
+// told the file was produced. Absent is honest; present and doomed is not.
+var landsLater = map[string]bool{
+	"generate_music": true,
+	"generate_video": true,
+}
+
+// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools]
+// minus [landsLater], in the order the node already had them so the model sees
+// the same list minus the hands it is being told not to reach for.
 func landingBelt(tools []bare.Tool) []bare.Tool {
 	kept := make([]bare.Tool, 0, len(savingTools))
 	for _, tool := range tools {
-		if savingTools[tool.Name] {
+		if savingTools[tool.Name] && !landsLater[tool.Name] {
 			kept = append(kept, tool)
 		}
 	}
