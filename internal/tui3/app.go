@@ -1446,7 +1446,7 @@ type app struct {
 	// folder is made ([Options.Errand], [Options.StandingRoot], homeexchange.go).
 	// A nil seam is a window that cannot ask from home and says so, which is a
 	// capability that is absent rather than broken.
-	errand       func(dir, workspace string) (Agent, error)
+	errand       func(ErrandOrders) (Agent, error)
 	standingRoot string
 	// exchanges is every errand this window has open, oldest first.
 	//
