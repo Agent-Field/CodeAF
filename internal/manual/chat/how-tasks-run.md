@@ -352,7 +352,7 @@ There are two step limits as well, and they work the same way — checkpoints, n
 | Limit | Per checkpoint | Backstop | Report when it finally stops |
 | --- | --- | --- | --- |
 | `max_steps` — finished tool calls | 200 | 1000 (200 × 5) | `stopped: 200 steps and no finish` |
-| `no_progress` — calls in a row that teach nothing, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
+| `no_progress` — calls in a row that teach nothing, ask nothing new, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
 
 At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
 to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
@@ -413,24 +413,39 @@ under everything else aforge may leave in a checkout.
 **whose answer was more new than old**. A failed one still counts as learning: finding out
 that something does not work is finding something out.
 
-That last part is measured **line by line, not result by result**. aforge remembers the
-lines a task has already been shown, and a result counts as teaching it something when
-more than half of its lines are ones it has never been given. Nothing is stripped out or
-excused first: a line is the same line, or it is not.
+"Whose answer was more new than old" is measured **line by line, not result by result**.
+aforge remembers the lines a task has already been shown, and counts how many of a
+result's lines are ones it has never been given. Nothing is stripped out or excused first:
+a line is the same line, or it is not.
 
 The reason is a shape that looks like work and is not. A task re-runs its own check
 against something it has stopped changing; the check prints the time it started, so every
 run comes back with one new line in sixteen and fifteen the task already had. Counting
 whole results, that is six discoveries in a row and the task can spin for hours. Counting
-lines, it is what it is — six per cent new — and the counter fires. The other side of the
-same rule is that a check whose numbers actually moved is a discovery, however much of its
-output is boilerplate.
+lines, it is what it is — six per cent new — and the counter fires.
 
-So what actually fires the counter is **a step that changed nothing and brought back
-almost nothing new** — the same search six times, the same failing edit retried, a
-measurement re-run over work that has not moved. `note`, `forget`, `track`, `commit` and
-`change_setting` are deliberately not progress: a task writing its own memory again has not
-learned anything.
+**But that count only decides a re-measurement, and two other things count on their own.**
+Half a rule was landing tasks in the middle of real work, so the whole rule is:
+
+- **A reading taken over work that has just changed is information whatever it says.** Edit
+  a file, rebuild, run the check: the build reprints the same warnings and the check
+  reprints the same table with three numbers moved. Almost nothing in either is new, and
+  both told the task something — it measured a state that had never existed before, and
+  finding out that an edit moved little is finding something out. One reading gets this;
+  the second re-run of an unchanged check is a re-measurement again.
+- **A question the task has never asked, whose answer brought something back, is
+  information.** Pulling six different records out of a corpus of pretty-printed JSON gives
+  six answers that are mostly `    {` and `  }` — twenty per cent new lines at best — and
+  the task is learning six things it did not know. What is *not* information is a new
+  question whose answer holds nothing new at all: nine different `sleep N && tail` commands
+  answered `(no output)` nine times are nine steps of nothing, and that is the counter's
+  oldest catch.
+
+So what actually fires the counter is **a step that changed nothing, asked nothing new, and
+brought back almost nothing new** — the same search six times, the same failing edit
+retried, a measurement re-run over work that has not moved. `note`, `forget`, `track`,
+`commit` and `change_setting` are deliberately not progress: a task writing its own memory
+again has not learned anything.
 
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
@@ -1323,7 +1338,7 @@ and only then a stop with `stopped: 200 steps and no finish`, the number being t
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
 
-**`no_progress`** — how many tool calls in a row may teach nothing, save nothing and leave
+**`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in the worktree before the task is stopped as spinning. Default **6**. On the
 limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
 the task made is committed onto its kept branch. A negative value answers

@@ -104,15 +104,23 @@ func runScriptedNode(t *testing.T, child []step, noProgress, maxSteps int) strin
 // measuring script against a deliverable it had stopped touching, and every run
 // printed a fresh clock on its first line. A detector that hashed the result saw
 // six discoveries; the score under it had not moved.
+//
+// THE COMMAND IS THE SAME EVERY ROUND, which is a correction to this fixture and
+// not a weakening of it. The worker that was measured ran `./measure.sh` six
+// times; the `--run %d` this test used to append made every call a question the
+// node had never asked, which is a DIFFERENT shape — and one the counter now
+// reads differently on purpose, because a question never asked before is not a
+// re-measurement (novelty.go's [progressLedger]). Re-measurement is what this
+// test is about, so re-measurement is what it scripts.
 func TestAResultWhoseOnlyNewLineIsItsClockTeachesNothing(t *testing.T) {
 	t.Parallel()
-	seen := newLineNovelty()
+	seen := newProgressLedger()
 	taught := 0
 	for round := 1; round <= 6; round++ {
 		event := Event{
 			Kind:   EventToolEnd,
 			Tool:   "bash",
-			Args:   fmt.Sprintf(`{"command":"./measure.sh --run %d"}`, round),
+			Args:   `{"command":"./measure.sh"}`,
 			Output: strings.Join(sameRunNewClock(round), "\n"),
 		}
 		if taughtSomething(event, seen) {
@@ -128,15 +136,36 @@ func TestAResultWhoseOnlyNewLineIsItsClockTeachesNothing(t *testing.T) {
 
 // AND THE COUNTER ACTUALLY KILLS IT: the same six results through a real node
 // and a real drain.
+//
+// ONE COMMAND STRING, TEN RUNS, A FRESH CLOCK EACH TIME. The counter is
+// re-measured against the shape it exists for, so the script has to be the shape
+// it exists for: the node calls the SAME thing every step and the world answers
+// slightly differently, because the clock lives in the script and not in the
+// call. The counter file is under $HOME rather than in the node's worktree —
+// a node that dirtied its own tree every step would be making progress by the
+// only rule that cannot be argued with ([worktreeMoved]), and this test would be
+// measuring nothing.
 func TestANodeThatRemeasuresAnUnchangedDeliverableIsStopped(t *testing.T) {
-	commands := make([]string, 0, 10)
-	for round := 1; round <= 10; round++ {
-		commands = append(commands, printing(sameRunNewClock(round)))
-	}
-	report := runScriptedNode(t, bashSteps(commands), 6, 40)
+	report := runScriptedNode(t, bashSteps(repeated(remeasuring, 10)), 6, 40)
 	if !strings.Contains(report, "stopped: 6 steps without progress") {
 		t.Fatalf("re-measuring an unchanged deliverable was not read as a spin: %q", report)
 	}
+}
+
+// remeasuring is one fixed command whose answer carries a fresh first line and
+// fifteen lines the node already has: the codeaf loop in a single string.
+const remeasuring = `n=$(cat "$HOME/.runs" 2>/dev/null || echo 0); ` +
+	`n=$((n+1)); echo "$n" > "$HOME/.runs"; ` +
+	`echo "Starting at run $n"; ` +
+	`for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do printf "row %02d ok\n" "$i"; done`
+
+// repeated is one command, n times.
+func repeated(command string, n int) []string {
+	commands := make([]string, 0, n)
+	for range n {
+		commands = append(commands, command)
+	}
+	return commands
 }
 
 // ── (ii) and a real measurement is never punished ───────────────────────────
@@ -146,7 +175,7 @@ func TestANodeThatRemeasuresAnUnchangedDeliverableIsStopped(t *testing.T) {
 // numbers for repetition would stop the node that was doing the work.
 func TestSixNewTablesAreSixDiscoveries(t *testing.T) {
 	t.Parallel()
-	seen := newLineNovelty()
+	seen := newProgressLedger()
 	for round := 1; round <= 6; round++ {
 		event := Event{
 			Kind:   EventToolEnd,
@@ -190,11 +219,11 @@ func TestALineThatDiffersOnlyInTrailingWhitespaceIsNotNew(t *testing.T) {
 		t.Fatal("an indented line read as one already seen")
 	}
 	// A result with nothing in it is not information.
-	if seen.informative("bash", "   \n\n") {
+	if mostlyNew(seen.measure("bash", "   \n\n")) {
 		t.Fatal("an empty result counted as a discovery")
 	}
 	// And ONE new line is: a single line is the whole of what came back.
-	if !seen.informative("bash", "the build is broken") {
+	if !mostlyNew(seen.measure("bash", "the build is broken")) {
 		t.Fatal("a single new line did not count as information")
 	}
 }
@@ -224,7 +253,7 @@ func TestWritingTheDeliverableIsProgressThroughBoilerplate(t *testing.T) {
 	// AND THE ESTIMATOR ITSELF NEVER CLAIMED THEM. The saving half of the belt
 	// is counted one branch up, by the file it saved, and must not also be
 	// spendable as knowledge.
-	seen := newLineNovelty()
+	seen := newProgressLedger()
 	for round := 1; round <= 3; round++ {
 		if taughtSomething(Event{Kind: EventToolEnd, Tool: "write",
 			Args: `{"path":"notes.md"}`, Output: "wrote notes.md"}, seen) {
@@ -241,7 +270,7 @@ func TestWritingTheDeliverableIsProgressThroughBoilerplate(t *testing.T) {
 // can never make a later real result look like something already known.
 func TestAHarnessMadeResultIsNeitherAndIsNotRemembered(t *testing.T) {
 	t.Parallel()
-	seen := newLineNovelty()
+	seen := newProgressLedger()
 	refused := Event{
 		Kind: EventToolEnd, Tool: "bash", Args: `{"command":"go test ./..."}`,
 		Output:      "Unknown tool: bash\nthis hand is no longer on your belt",
