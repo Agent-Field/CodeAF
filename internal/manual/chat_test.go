@@ -834,6 +834,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use option as meta", "screen"},
 		{"is alt the same as option on a mac", "screen"},
 		{"does ctrl+1 go to a place", "keys"},
+
+		// THE OWNER'S OWN WORDS, on the day the jumps were dead everywhere but
+		// the message box: "option left right and cmd and clicking does not seem
+		// to work". A person reports the KEY they pressed, never the name the
+		// terminal sent it under, so the page has to answer `option+←` and
+		// `cmd+←` and not only `alt+b` and `ctrl+a`.
+		{"option left right and cmd does not seem to work", "keys"},
+		{"option left doesn't work", "keys"},
+		{"option arrow does not jump a word", "keys"},
+		{"cmd left does nothing", "keys"},
+		{"how do I jump a word on a mac", "keys"},
+		{"jump to the start of the line", "keys"},
+		{"why does ctrl+left do nothing on a mac", "keys"},
+		{"word jump does not work in the home box", "keys"},
+		{"clicking the box does not move the cursor", "keys"},
+		{"cmd right archived my conversation", "keys"},
+		{"natural text editing iterm2", "keys"},
 		{"do the alt chords work on windows", "screen"},
 		{"how do I pick the model a task runs on before starting it", "places"},
 		{"why did pressing alt+enter not send my task straight away", "places"},

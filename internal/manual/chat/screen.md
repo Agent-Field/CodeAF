@@ -1714,6 +1714,13 @@ arrives retires it for the rest of the session. The first-run setup says the sam
 of time, as a condition rather than a diagnosis: `the seven places answer ⌥1…⌥7 · if ⌥ types
 a character instead, turn on "use option as meta" in …`.
 
+**`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
+Editing preset maps `⌥←` and `⌥→` to the escape sequences `esc b` and `esc f`, so those two
+chords arrive perfectly on a profile where Option is still composing accents — the mapping was
+written for the two arrows and not for the digits. On such a profile the **word jumps work and
+the place jumps do not**, which is exactly the case the line has to survive to explain. Every
+other `alt+` chord still settles the question on its first arrival.
+
 Where the setting lives:
 
 | Terminal | Setting |

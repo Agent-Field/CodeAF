@@ -451,10 +451,10 @@ key arrives as an ordinary `enter` and the message waits instead.
 | `left` | Empty box: step back a level — close the room, else clear the selection. Two `left` presses inside about 600ms go home to the live edge. Non-empty box: move the caret left |
 | `right` | Empty box: go into the next running task's room. Non-empty box: move the caret right |
 | `ctrl+f` | Move the caret right, always. Never navigation |
-| `alt+left` / `alt+b` / `ctrl+left` | Jump a word left. `alt+left` is what `option+←` arrives as on most Mac terminals. Does nothing over an empty box — the plain arrows keep their navigation meaning |
+| `alt+left` / `alt+b` / `ctrl+left` | Jump a word left. `option+←` arrives as one of the first two on a Mac. Does nothing over an empty box — the plain arrows keep their navigation meaning |
 | `alt+right` / `alt+f` / `ctrl+right` | Jump a word right, under the same three names |
-| `super+left` / `meta+left` | Start of the line — Mac `cmd+←`, on terminals that forward `cmd` at all (see the terminal table below). Both names are bound because a modified arrow and a modified letter arrive under different ones |
-| `super+right` / `meta+right` | End of the line — Mac `cmd+→`, under the same two names |
+| `super+left` / `meta+left` / `ctrl+a` | Start of the line. `cmd+←` arrives as one of these on a Mac. Both `super` and `meta` are bound because a modified arrow and a modified letter arrive under different ones |
+| `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
@@ -475,32 +475,101 @@ letter you aimed at, at the row's end when you click past the end of a line, and
 at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
-It is the ordinary text-field gesture, and only the message box answers it.
-While a picker's filter box is standing in the box's place — the model picker,
-`/resume`, `/files`, the memory panel — a click does not move that box's caret;
-those are typed at and filtered, not edited by pointer.
+It is the ordinary text-field gesture, and **the box on every place answers it
+too** — home, tasks, standing, memory, spend, search, settings. While a picker's
+filter box is standing in the box's place — the model picker, `/resume`,
+`/files`, the memory panel — or while the composer layer is up, a click does not
+move that box's caret; those are typed at and filtered, not edited by pointer.
 
-## Why option+left or cmd+left does nothing — word jump depends on your terminal
+## Why option+left or cmd+left does nothing — word jump and line jump on a Mac
 
-If `option+←` does nothing, the key never reached aforge: some terminals keep
-the option key to themselves or send it as something else. aforge answers every
-spelling terminals actually send — `alt+left`, `alt+b` (the esc-b some profiles
-send instead), and `ctrl+left` — so on Ghostty, Kitty, WezTerm and iTerm2's
-default profile it simply works. On iTerm2 with the option key set to *Normal*,
-set **Settings → Profiles → Keys → Left Option Key** to *Esc+* to make
-`option+←` a word jump. `alt+b` and `alt+f` are the spellings that work nearly
-everywhere.
+**On a Mac, `option+←` / `option+→` are the word jumps and `cmd+←` / `cmd+→` are
+the line's ends, in every box aforge has.** They work in the message box, in
+home's box at the foot of the screen, in the errand pane, and in every filter and
+search box on every place and panel.
 
-`cmd+←` / `cmd+→` follow the `cmd+delete` rule below: they arrive only on
-terminals that speak the keyboard protocol carrying the `cmd` modifier
-(Ghostty, Kitty, WezTerm). Everywhere else use `ctrl+a` / `ctrl+e` or
-`home` / `end`, which are the same jumps on every terminal.
+They work because of what the terminal sends, and a Mac terminal sends them one
+of two ways — aforge answers both:
 
-On those terminals a modified **arrow** and a modified **letter** arrive under
-different names: `cmd+delete` comes in as `super+backspace`, while `cmd+←` comes
-in as `meta+left`. Both spellings are bound, so the jump works — it did not
-until this wave, when only the `super` spelling was, and `cmd+←` did nothing on
-every terminal there is.
+- **iTerm2's Natural Text Editing key mappings** (the preset most people have)
+  send `esc b` for `option+←`, `esc f` for `option+→`, the byte `0x01` for
+  `cmd+←` and `0x05` for `cmd+→`. Those reach aforge as `alt+b`, `alt+f`,
+  `ctrl+a` and `ctrl+e`, and all four are bound. **This works with the option key
+  set to *Normal*** — the mappings do the work, so nothing has to be turned on.
+- **Terminals that keep option a modifier** — Ghostty, Kitty, WezTerm, and iTerm2
+  with **Settings → Profiles → Keys → Left Option Key** set to *Esc+* — send
+  `alt+left` / `alt+right` instead, and `meta+left` / `meta+right` for the `cmd`
+  arrows. Those are bound too.
+
+If `option+←` still does nothing, the profile has neither: set **Left Option
+Key** to *Esc+*, or load **Settings → Profiles → Keys → Presets → Natural Text
+Editing**. Either one is enough, and you only need one.
+
+**`ctrl+←` and `ctrl+→` are bound but will never arrive on a Mac.** macOS takes
+them for Mission Control's "Move left/right a space" before any terminal sees the
+keystroke. They are the Windows and Linux spelling of the word jump and they work
+there. On a Mac, to get them you would have to turn those two shortcuts off in
+**System Settings → Keyboard → Keyboard Shortcuts → Mission Control** — there is
+nothing aforge can do about it from inside.
+
+**`ctrl+a` and `ctrl+e` are the spellings that work on every terminal there is**,
+and they are the same two jumps. If you would rather not depend on any of the
+above, those are the keys.
+
+## Word jump and line jump work in every box, not only the message box
+
+The caret keys are one vocabulary and every box on the surface answers it: the
+message box, **home's box at the foot of the screen**, the errand pane on home,
+the settings filter and its value editor, the task page's filter, the rewind
+search, and every filterable overlay — the model picker, `/resume`, `/files`, the
+memory panel, the connect key box, the connections panel.
+
+| Chord | Everywhere |
+|---|---|
+| `alt+left` / `alt+b` / `ctrl+left` | A word back |
+| `alt+right` / `alt+f` / `ctrl+right` | A word forward |
+| `super+left` / `meta+left` / `ctrl+a` | Start of the line |
+| `super+right` / `meta+right` | End of the line |
+| `alt+backspace` / `ctrl+backspace` / `ctrl+w` | Delete the word behind the caret |
+| `ctrl+u` | Delete to the start of the line |
+
+This did not used to be true: until this wave the jumps were bound in the message
+box alone, so `option+←` moved a word in a conversation and did nothing at all in
+home's box — which is the first box most people type into. `home` and `end` are
+the exception and stay with the box that owns them: on the settings panel, the
+task page and the rewind sheet they move the **list**, not the caret.
+
+## cmd+right on home no longer puts a conversation away
+
+`ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
+archive, a standing item is paused, and the card's legend says `ctrl+e put away`.
+`cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
+to archive whatever the cursor was resting on.
+
+**It reads the caret now.** With the caret somewhere before the end of what you
+typed, `ctrl+e` moves it to the end of the line and leaves the row alone; from the
+end of the line — and over an empty box — it is the put-away key the legend names.
+So one press is never destructive, and the way back out of the archive still
+works: type the name of a row you put away, the list finds it, and `ctrl+e` from
+there brings it back.
+
+## Click the box to put the caret there — on home and on every place
+
+A click on the box puts the caret under the pointer: on the letter you aimed at,
+at the row's end when you click past the end of a line, and at the start of the
+text when you click on the prompt's side of it. It works on a wrapped, multi-line
+draft.
+
+It answers **on every place as well as in the conversation** — home, tasks,
+standing, memory, spend, search, settings. Until this wave only the conversation's
+message box answered it, so a click in home's box moved nothing.
+
+Two things it does not do. With **nothing typed** there is no caret to place, so
+the click falls through to the place underneath — the row is carrying a dim
+sentence rather than a draft. And while a picker's filter box is standing in the
+box's place — the model picker, `/resume`, `/files`, the memory panel — or while
+the composer layer is up, a click does not move that box's caret; those are typed
+at and filtered, not edited by pointer.
 
 ## Keys in the message box: deleting words and lines
 
@@ -532,7 +601,7 @@ combinations are sent to the program at all**, and several do not send them.
 | Ghostty | Yes |
 | Kitty | Yes |
 | WezTerm | Yes |
-| iTerm2 | Not by default. It has no default action for `cmd+delete` and does not forward it. You can make it work: **Settings → Profiles → Keys → Key Mappings**, add `⌘⌫`, action *Send Escape Sequence*, and give it `[127;9u` |
+| iTerm2 | Yes with the **Natural Text Editing** preset, which maps `⌘⌫` to the byte `0x15` — that reaches aforge as `ctrl+u`, the same deletion. Load it at **Settings → Profiles → Keys → Presets**. Without a mapping iTerm2 does not forward `cmd+delete` at all; you can also add one by hand at **Key Mappings**: `⌘⌫`, action *Send Escape Sequence*, `[127;9u` |
 | Terminal.app | No, and it cannot be made to. It does not speak the keyboard protocol that carries modifiers like `cmd` |
 | Anything over `ssh` or `tmux` | Only if the outer terminal is one of the first three, and tmux is passing the protocol through |
 
@@ -542,9 +611,10 @@ sitting, that is the key to use instead — nothing is missing and there is noth
 to turn on inside aforge.
 
 The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
-`ctrl+w` is *their* everywhere-spelling. aforge does not detect what your
-terminal sends and cannot tell you which of these it will deliver; the only test
-is pressing it.
+`ctrl+w` is *their* everywhere-spelling. On iTerm2's Natural Text Editing preset
+`⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
+aforge does not detect what your terminal sends and cannot tell you which of
+these it will deliver; the only test is pressing it.
 
 ## The message box itself
 
