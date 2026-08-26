@@ -547,6 +547,17 @@ reading every small reply cost a thinking-tier call on every message you sent: m
 was a third to a half of a small question's whole bill, and it almost never found anything
 left to do.
 
+**That short-reply exemption is only for a reply YOU typed.** A reply that started on its own —
+the turn a finished task's landing begins, the one *Why did the chat reply on its own* in *how
+tasks run* describes — is read for what remains **however short it was**. You are sitting in
+front of a reply you typed and can carry a small one on yourself; nobody is sitting in front of
+a woken one, so the cheapness that leaves your reply alone is exactly the reason not to leave
+that one alone. Measured, the best clean run of a ten-hour request had a task come home
+unfinished, the landing woke a reply, it read for six steps — under that first point — and
+stopped on "let me diagnose the failures systematically", and the run then sat idle for seven
+and a half of its ten hours. A woken reply that ends by **asking you** something is still left
+alone, and one that **broke** is still not read — those two endings hold for every reply.
+
 **But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
 what the reply left behind, not what it cost. If the last thing a reply did was save or edit
 something — and it then stopped in words, with nothing run over the top of it — it is read for
